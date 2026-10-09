@@ -367,8 +367,14 @@ pub struct BrandWords {
     pub brands: Named,
     /// Mail providers whose domains millions share.
     pub shared: Vec<String>,
-    /// Words a fake "your provider" name wraps a domain in.
+    /// Words of a service, which a fake name wraps a brand or your domain in
+    /// ("PayPal Service", "janedoe.example Mail Admin"): an everyday brand's
+    /// name beside these alone is borrowed (`lookalike::impersonation`).
     pub service_words: Vec<String>,
+    /// The brands whose name is also an everyday word or a place ("Orange",
+    /// "Apple", "La Poste"), by name: borrowed only alone or beside the words
+    /// of a service; any other brand counts anywhere in a name.
+    pub everyday: Vec<String>,
 }
 
 /// A site's notification that someone calls (`sites`).

@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 country = "FR"
-checked = "2026-10-08"
+checked = "2026-10-09"
 
 
 # Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
@@ -42,6 +42,12 @@ telecom = ["free", "orange", "sfr", "bouygues", "sosh", "red"]
 
 # Senders who borrow a name (lookalike.rs).
 
+# Brands whose name is also an everyday word or a place in French ("Café de
+# la Poste", "Conseil en impôts", "Société générale de transports"): borrowed
+# only alone or beside the words of a service. Any other counts anywhere in a name.
+[brands]
+everyday = ["Orange", "La Poste", "Impots", "Free Mobile", "Societe Generale"]
+
 # Brands and public services, and their domains: a sender naming one from elsewhere is set aside.
 [brands.brands]
 Ameli = ["ameli.fr", "assurance-maladie.fr"]
@@ -68,7 +74,20 @@ SFR = ["sfr.fr"]
 EDF = ["edf.fr", "edf.com"]
 Engie = ["engie.fr", "engie.com"]
 TotalEnergies = ["totalenergies.fr", "totalenergies.com"]
-"Credit Agricole" = ["credit-agricole.fr", "ca-paris.fr"]
+# Crédit Agricole: the group's two domains, then the own domain of each of
+# its 39 regional banks (credit-agricole.fr's directory of the regional banks;
+# each domain with its MX and an SPF record in public DNS, checked 9 October 2026).
+"Credit Agricole" = [
+    "credit-agricole.fr", "credit-agricole.com",
+    "ca-alpesprovence.fr", "ca-alsace-vosges.fr", "ca-anjou-maine.fr", "ca-aquitaine.fr", "ca-atlantique-vendee.fr",
+    "ca-briepicardie.fr", "ca-cb.fr", "ca-centrefrance.fr", "ca-centreloire.fr", "ca-centreouest.fr",
+    "ca-centrest.fr", "ca-charente-perigord.fr", "ca-cmds.fr", "ca-corse.fr", "ca-cotesdarmor.fr",
+    "ca-des-savoie.fr", "ca-finistere.fr", "ca-franchecomte.fr", "ca-guadeloupe.fr", "ca-illeetvilaine.fr",
+    "ca-languedoc.fr", "ca-loirehauteloire.fr", "ca-lorraine.fr", "ca-martinique.fr", "ca-morbihan.fr",
+    "ca-nmp.fr", "ca-nord-est.fr", "ca-norddefrance.fr", "ca-normandie.fr", "ca-normandie-seine.fr",
+    "ca-paris.fr", "ca-pca.fr", "ca-pyrenees-gascogne.fr", "ca-reunion.fr", "ca-sudmed.fr",
+    "ca-sudrhonealpes.fr", "ca-toulouse31.fr", "ca-tourainepoitou.fr", "ca-valdefrance.fr",
+]
 "BNP Paribas" = ["bnpparibas.com", "bnpparibas.fr", "bnpparibas"]
 "Societe Generale" = ["societegenerale.fr", "societegenerale.com"]
 LCL = ["lcl.fr"]

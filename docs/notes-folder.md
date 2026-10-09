@@ -40,7 +40,8 @@ Before projects and cases became one thing, the file was `sioul-cases.toml` and 
   - `attachment_contains`: words in an attachment's file name ("devis" takes `Devis_2026.pdf`), case and accents ignored.
 - **Several projects may match**: the first in the file is the message's home; the others are listed as "also concerns".
 - **A conversation follows its project**: a message that answers or cites one of a project's (In-Reply-To, References), or one tied to it by hand, goes to the same project ("in a conversation of this project"), unless it was set aside, is a code or is hostile.
-- **Mail is tied to its project when it arrives** (`links.toml`, `mid:` ↔ `sioul:project/`), so the project's page shows it whatever the route needed (the text, an attachment) and later replies follow it. Changing a project's routes ties the mail already here that its text or attachment routes take.
+- **Mail is tied to its project when it arrives** (`links.toml`, `mid:` ↔ `sioul:project/`, `how = "project"`), so the project's page shows it whatever the route needed (the text, an attachment) and later replies follow it. Changing a project's routes ties the mail already here that its text or attachment routes take, as the Porch would take it (`porch::Gate::routed`): never what it sets aside. A tie you make by hand is `how = "link"`.
+- **The Porch's checks hold everywhere a project takes mail** (`porch::admission`): its lanes, a project's page, the ties made when routes change, the agents' `list_projects` and what agents may read of each project (`consent::Consent::of`), the project a task made from a message is given. What it sets aside joins no project; what nothing authenticates joins by no route on its sender.
 - **Every routing keeps its reason** ("sender's domain: impots.example"), shown on request.
 - **Routes are edited** on the project's page ("Mail that comes here by itself") or in the Porch's lane for the project.
 

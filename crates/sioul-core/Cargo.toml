@@ -32,6 +32,10 @@ unic-langid.workspace = true
 # through sioul-sync), so nothing new is compiled.
 regex = "1"
 icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
+# DMARC's relaxed alignment by organisational domains (trust.rs): the Public
+# Suffix List, compiled in (no file, no network), pure Rust and no_std, so the
+# phone builds it too; MIT or Apache-2.0, released with each list update.
+psl = "2"
 
 [dev-dependencies]
 fluent-syntax.workspace = true

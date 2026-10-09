@@ -1844,15 +1844,22 @@ pub(crate) fn task_from_mail(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> 
 
 /// A message's task, before it is made.
 fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
-    let Some((_, card)) = message_card(key) else { return Err(tr().text("mail-message-gone", None)) };
+    let Some((path, card)) = message_card(key) else { return Err(tr().text("mail-message-gone", None)) };
     let loaded = loaded(shared);
     let mut edit = TaskEdit { title: card.subject.trim().to_string(), ..TaskEdit::default() };
     if let Some(id) = &card.message_id {
         edit.links.push(Link { uri: links::mail_uri(id), label: String::new(), rel: "via".into() });
     }
     edit.contacts.extend(sender_contact(&loaded, &card));
-    if let Some(store) = load_config().notes_root_path().and_then(|r| ProjectStore::load(&r).ok()) {
-        edit.projects.extend(store.route(&card).first().map(|r| r.project.id.clone()));
+    let config = load_config();
+    if let Some(store) = config.notes_root_path().and_then(|r| ProjectStore::load(&r).ok()) {
+        // Its project as the Porch would file it: none for mail it sets
+        // aside, none by its sender's address when nothing authenticates it.
+        let stored = Card { path: Some(path), ..card };
+        let gate = sioul_core::porch::Gate::load(&config, Zoned::now().timestamp().as_second());
+        if let Some(seen) = gate.admission(&stored).and_then(|a| a.for_routes(&stored)) {
+            edit.projects.extend(store.route(&seen).first().map(|r| r.project.id.clone()));
+        }
     }
     Ok(edit)
 }

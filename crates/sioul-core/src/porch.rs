@@ -1247,26 +1247,113 @@ impl Context<'_> {
     }
 }
 
-/// Gives one message its lane and its reasons.
-pub fn triage(card: Card, ctx: &Context) -> Triaged {
+/// What the Porch reads of a message before it gives it a lane: who sent it,
+/// how far that is believed, and what protects it.
+struct Checks {
+    auth: Option<trust::AuthResults>,
+    trust: Trust,
+    proof: Proof,
+    /// A code still valid.
+    code: Option<OneTimeCode>,
+    /// For a shielded address: its tone and topic.
+    assessment: Option<crate::shield::Assessment>,
+    sender: Sender,
+    /// No spam verdict touches it (`protected`).
+    protected: bool,
+}
+
+fn checks(card: &Card, ctx: &Context) -> Checks {
     let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
     // Bulk headers never rule a code out: they only narrow where it is read (`codes::detect_message`).
-    let detected = codes::detect_message(&ctx.words().codes, &card);
+    let detected = codes::detect_message(&ctx.words().codes, card);
+    checks_with(card, ctx, auth, detected)
+}
+
+/// `checks`, the results and the code already read (`detected`).
+fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, detected: Option<OneTimeCode>) -> Checks {
     // A proof counts for the domain of the address shown, never for another one.
     // A mailing list excuses a DMARC failure (it rewrites what it relays), but
     // no list relays your codes: a code failing DMARC is forged, list headers or not.
     let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list && detected.is_none(), card.sender_domain());
-    let code = detected.filter(|c| !expired(c, sent(&card), ctx.now));
+    let code = detected.filter(|c| !expired(c, sent(card), ctx.now));
     // A shielded address's mail is read before anything else is decided.
-    let assessment = ctx.shielded.then(|| crate::shield::reading(&card, ctx.assessments));
+    let assessment = ctx.shielded.then(|| crate::shield::reading(card, ctx.assessments));
     // Who sent it, judged once: a stranger when nothing authenticates it.
     let authenticated = trust::authenticated(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
-    let sender = ctx.sender(&card, authenticated);
+    let sender = ctx.sender(card, authenticated);
     // Spam is said of strangers' mail only: Sioul's own filter reads nothing protected.
-    let protected = protected(&card, ctx, trust, code.as_ref(), sender);
+    let protected = protected(card, ctx, trust, code.as_ref(), sender);
+    Checks { auth, trust, proof, code, assessment, sender, protected }
+}
+
+/// Whether a project may take a message, as the Porch decides it: the one
+/// check behind every place that ties mail to a project (the Porch's lanes, a
+/// project's page and its line of time, the mail tied when a project's routes
+/// change, the agents' `list_projects`), so that none of them shows what the
+/// Porch would not.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Admission {
+    /// Set aside before any lane, with the lane and why: a blocked sender,
+    /// forged, a borrowed name, spam (never mail a route takes), hostile. No
+    /// project takes it: no route, no conversation, no tie Sioul makes.
+    Refused(Lane, Reason),
+    /// Nothing authenticates it (`trust::authenticated`): nothing proves it
+    /// comes from the address it shows, so a route on its sender's address or
+    /// domain does not take it; one on its subject, its text or an attachment,
+    /// its conversation, a tie, still do.
+    Unproven,
+    /// Any route may take it.
+    Admitted,
+}
+
+impl Admission {
+    /// The card as a project's routes may read it: none when it is set
+    /// aside; without its sender when nothing authenticates it.
+    pub fn for_routes(&self, card: &Card) -> Option<Card> {
+        match self {
+            Admission::Refused(..) => None,
+            Admission::Unproven => Some(Card { from_address: None, ..card.clone() }),
+            Admission::Admitted => Some(card.clone()),
+        }
+    }
+
+    /// Set aside by the Porch.
+    pub fn refused(&self) -> bool {
+        matches!(self, Admission::Refused(..))
+    }
+}
+
+fn admission_of(card: &Card, ctx: &Context, checks: &Checks) -> Admission {
+    let refused = set_aside(card, ctx, checks.trust, checks.sender, checks.protected)
+        .or_else(|| checks.assessment.as_ref().filter(|a| a.tone == crate::shield::Tone::Hostile).map(|_| (Lane::Hostile, Reason::Hostile)));
+    match refused {
+        Some((lane, reason)) => Admission::Refused(lane, reason),
+        None if checks.sender.unproven => Admission::Unproven,
+        None => Admission::Admitted,
+    }
+}
+
+/// Whether a project may take a message (`Admission`), as `triage` decides
+/// it. Its code is looked for only where a code could change the verdict (it
+/// is what reading the whole text costs): a mailing list's message failing
+/// DMARC (no list relays your codes), or one your provider calls spam (a code
+/// protects it). Elsewhere the verdict is the same without it.
+pub fn admission(card: &Card, ctx: &Context) -> Admission {
+    let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
+    let list_failing = card.is_list && auth.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
+    let spam = trust::read_spam_verdict(&card.headers).is_some_and(|s| s.flagged);
+    let detected = if list_failing || spam { codes::detect_message(&ctx.words().codes, card) } else { None };
+    admission_of(card, ctx, &checks_with(card, ctx, auth, detected))
+}
+
+/// Gives one message its lane and its reasons.
+pub fn triage(card: Card, ctx: &Context) -> Triaged {
+    let checks = checks(&card, ctx);
+    let admission = admission_of(&card, ctx, &checks);
     // Its features read Sioul's own checks first, your provider's second, as the training reads the corpus's (`spam::features::auth_results`).
-    let learned = if protected { None } else { ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids).map(|verdict| (filter, verdict))) };
-    let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref(), sender, protected, learned);
+    let learned = if checks.protected { None } else { ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids).map(|verdict| (filter, verdict))) };
+    let (lane, reason) = choose_lane(&card, ctx, &checks, &admission, learned);
+    let Checks { auth, trust, proof, code, assessment, sender, .. } = checks;
     let mut reasons = vec![Reason::Trust(proof), reason];
     // Why its sender counts as nobody you know: in place of "the first
     // message" in the screener (letting them in would change nothing), else
@@ -1310,19 +1397,20 @@ pub fn sent(card: &Card) -> Option<i64> {
 }
 
 /// The lanes are decided in this order: set aside; for a shielded address,
-/// hostile; what your own spam filter flagged or would move, as you chose
-/// (`review`); codes; projects; what you sent yourself; a shielded address's own
-/// lane; addresses ranked below; newsletters and automatic senders; the
-/// screener; people you know.
-#[allow(clippy::too_many_arguments)]
-fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, assessment: Option<&crate::shield::Assessment>, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, crate::spam::Verdict)>) -> (Lane, Reason) {
-    set_aside(card, ctx, trust, sender, protected)
-        .or_else(|| assessment.filter(|a| a.tone == crate::shield::Tone::Hostile).map(|_| (Lane::Hostile, Reason::Hostile)))
-        .or_else(|| review(learned))
-        .or_else(|| right_now(code))
-        .or_else(|| in_project(card, ctx, sender.unproven))
+/// hostile (both `admission`); what your own spam filter flagged or would
+/// move, as you chose (`review`); codes; projects; what you sent yourself; a
+/// shielded address's own lane; addresses ranked below; newsletters and
+/// automatic senders; the screener; people you know.
+fn choose_lane(card: &Card, ctx: &Context, checks: &Checks, admission: &Admission, learned: Option<(&crate::spam::Filter, crate::spam::Verdict)>) -> (Lane, Reason) {
+    let (trust, sender) = (checks.trust, checks.sender);
+    if let Admission::Refused(lane, reason) = admission {
+        return (lane.clone(), reason.clone());
+    }
+    review(learned)
+        .or_else(|| right_now(checks.code.as_ref()))
+        .or_else(|| in_project(card, ctx, *admission == Admission::Unproven))
         .or_else(|| ctx.from_yourself(card, trust).then_some((Lane::People, Reason::FromYourself)))
-        .or_else(|| public(card, assessment, sender))
+        .or_else(|| public(card, checks.assessment.as_ref(), sender))
         .or_else(|| (ctx.priority == Priority::Below).then_some((Lane::Low, Reason::LowPriority)))
         .or_else(|| filed(card, ctx))
         .or_else(|| screener(sender))
@@ -1581,6 +1669,158 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], projects: Option<&ProjectSto
         .collect::<Vec<_>>();
     follow_conversations(&mut judged);
     judged
+}
+
+/// The Porch's checks for mail already kept (`admission`), read from its
+/// file with what the Porch reads beside it: every account's trusted ids and
+/// words, your projects and the mail tied to them, who may reach you, your
+/// own addresses, the AI's readings of shielded mail. A project's page, the
+/// mail tied when a project's routes change, the agents' consent and their
+/// `list_projects` ask it before a project takes a message.
+///
+/// What it says of a file is remembered for the life of the process
+/// (`VERDICTS`), by the file's path, size and time, under the seal of what
+/// the gate read (`Gate::seal`): an agent's tools make a gate at each call,
+/// and each message is read once, until a list, a project, a tie, the words,
+/// an AI reading or the ten minutes now falls in change.
+pub struct Gate {
+    sources: Vec<Source>,
+    store: Option<ProjectStore>,
+    known: SenderList,
+    senders: Senders,
+    own_domains: Vec<String>,
+    own_addresses: Vec<String>,
+    assessments: Option<std::collections::BTreeMap<String, crate::shield::Assessment>>,
+    /// Now, Unix seconds: a code past its validity protects nothing.
+    now: i64,
+    /// What the verdicts rest on, hashed (`Gate::seal`).
+    seal: u64,
+}
+
+impl std::fmt::Debug for Gate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Gate").field("sources", &self.sources.len()).field("seal", &self.seal).finish_non_exhaustive()
+    }
+}
+
+/// A file's verdict, by its path, size and modification time (nanoseconds).
+type FileKey = (PathBuf, u64, u128);
+
+/// The verdicts on files remembered, under one gate's seal; emptied when the seal changes.
+static VERDICTS: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Option<Admission>>)>> = std::sync::Mutex::new(None);
+
+/// Verdicts remembered at most: past them, the memory starts again.
+const VERDICTS_KEPT: usize = 200_000;
+
+impl Gate {
+    pub fn new(sources: Vec<Source>, store: Option<ProjectStore>, known: SenderList, senders: Senders, now: i64) -> Gate {
+        let own_domains = own_domains(&sources);
+        let own_addresses = own_addresses(&sources);
+        let assessments = sources.iter().any(|src| src.shielded).then(crate::shield::AiCache::load_all);
+        let mut gate = Gate { sources, store, known, senders, own_domains, own_addresses, assessments, now, seal: 0 };
+        gate.seal = gate.seal();
+        gate
+    }
+
+    /// What its verdicts rest on, hashed: each account's place, address, ids
+    /// and words, the projects with their routes and ties, the lists, the
+    /// address books (the same as long as their files are, `Book::load`), the
+    /// AI's readings, and the ten minutes now falls in (a code's validity).
+    fn seal(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        for src in &self.sources {
+            (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
+            (std::sync::Arc::as_ptr(&src.words) as usize).hash(&mut hash);
+        }
+        format!("{:?}", self.store.as_ref().map(|s| (&s.projects, &s.ties))).hash(&mut hash);
+        format!("{:?}", (&self.known, &self.senders.safe, &self.senders.neutral, &self.senders.restricted, &self.senders.blocked, &self.senders.known)).hash(&mut hash);
+        (std::sync::Arc::as_ptr(&self.senders.contacts) as usize).hash(&mut hash);
+        format!("{:?}", self.assessments).hash(&mut hash);
+        (self.now / 600).hash(&mut hash);
+        hash.finish()
+    }
+
+    /// Forgets every verdict remembered: the next gate reads each file again.
+    pub fn forget_verdicts() {
+        if let Ok(mut kept) = VERDICTS.lock() {
+            *kept = None;
+        }
+    }
+
+    /// As the configuration says: its accounts, its projects with the mail
+    /// tied to them (`links.toml`), the senders you let in, the four lists.
+    pub fn load(config: &crate::config::Config, now: i64) -> Gate {
+        let ties = crate::links::LocalLinks::load(&crate::links::LocalLinks::default_path());
+        let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+        Gate::new(config.mail_sources(), store, SenderList::load(&config.known_senders_path()), Senders::load(config), now)
+    }
+
+    /// Whether a project may take this message, read from one of the
+    /// accounts' folders (`card.path`); none when it is in none of them.
+    pub fn admission(&self, card: &Card) -> Option<Admission> {
+        let path = card.path.as_deref()?;
+        let src = self.sources.iter().find(|src| path.starts_with(&src.folder))?;
+        // Its account, as the Porch gives it: what you said of it there (`spam::labels::said_ham`).
+        let card = &Card { account: src.account.clone(), ..card.clone() };
+        let ctx = Context {
+            projects: self.store.as_ref(),
+            known: &self.known,
+            senders: &self.senders,
+            trusted_ids: &src.trusted_ids,
+            now: Some(self.now),
+            priority: src.priority,
+            own_domains: &self.own_domains,
+            shielded: src.shielded,
+            assessments: self.assessments.as_ref(),
+            words: Some(&src.words),
+            own_addresses: &self.own_addresses,
+            spam: None,
+        };
+        Some(admission(card, &ctx))
+    }
+
+    /// Whether a project may take the message stored in this file; none
+    /// when it cannot be read, or is in none of the accounts' folders.
+    /// Remembered by the file's path, size and time (`VERDICTS`).
+    pub fn admission_of_file(&self, path: &Path) -> Option<Admission> {
+        let meta = std::fs::metadata(path).ok()?;
+        let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+        let key: FileKey = (path.to_path_buf(), meta.len(), time);
+        if let Ok(kept) = VERDICTS.lock()
+            && let Some((seal, verdicts)) = kept.as_ref()
+            && *seal == self.seal
+            && let Some(verdict) = verdicts.get(&key)
+        {
+            return verdict.clone();
+        }
+        let verdict = self.admission(&maildir::read_one(path)?);
+        if let Ok(mut kept) = VERDICTS.lock() {
+            let fresh = kept.as_ref().is_none_or(|(seal, verdicts)| *seal != self.seal || verdicts.len() >= VERDICTS_KEPT);
+            if fresh {
+                *kept = Some((self.seal, std::collections::HashMap::new()));
+            }
+            if let Some((_, verdicts)) = kept.as_mut() {
+                verdicts.insert(key, verdict.clone());
+            }
+        }
+        verdict
+    }
+
+    /// The Message-IDs, among the messages stored in `files`, that one of
+    /// `routes` takes as the Porch would (`Admission::for_routes`): what to
+    /// tie to their project when its routes change.
+    pub fn routed<'a>(&self, routes: &[&crate::projects::Route], files: impl IntoIterator<Item = &'a Path>) -> Vec<String> {
+        let takes = |card: &Card| routes.iter().any(|r| r.explain(card).is_some());
+        files
+            .into_iter()
+            .filter_map(maildir::read_one)
+            // Routes first, cheap; then the checks, on the few they take.
+            .filter(|card| card.message_id.is_some() && takes(card))
+            .filter(|card| self.admission(card).and_then(|a| a.for_routes(card)).is_some_and(|seen| takes(&seen)))
+            .filter_map(|card| card.message_id)
+            .collect()
+    }
 }
 
 /// The domains of the sources' own addresses (see `lookalike::own_domains`),
@@ -2123,5 +2363,65 @@ mod tests {
         assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &routed).lane, Lane::Project("jane".into()));
         assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "Lunch"), &routed).lane, Lane::Screener);
         assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "About the trip"), &routed).lane, Lane::Project("trip".into()));
+    }
+
+    /// The one check behind every place that ties mail to a project
+    /// (`admission`, through `Gate` for mail already kept): what the Porch
+    /// sets aside joins no project; what nothing authenticates joins by no
+    /// route on its sender; genuine mail joins.
+    #[test]
+    fn projects_take_mail_as_the_porch_does() {
+        use crate::projects::{Project, ProjectStore, Route};
+        let root = std::env::temp_dir().join(format!("sioul-porch-gate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("cur")).unwrap();
+        let ids = ["mx.provider.example".to_string()];
+        let lumen = Project { id: "lumen".into(), title: "Studio Lumen".into(), routes: vec![Route { from_domains: vec!["lumen.example.net".into()], ..Route::default() }], ..Project::default() };
+        let store = ProjectStore { root: root.clone(), projects: vec![lumen], ties: Default::default() };
+        let senders = Senders { blocked: SenderList::parse("pest@lumen.example.net"), ..Senders::default() };
+        let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: ids.to_vec(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
+        let gate = Gate::new(vec![source], Some(store), SenderList::default(), senders, 1_791_000_000);
+        let mut stored = 0;
+        let mut store_one = |from: &str, results: &str, above: &str, body: &str| {
+            stored += 1;
+            let path = root.join("cur").join(format!("{stored}.U1-{stored}.sioul{}2,S", maildir::INFO));
+            let results = if results.is_empty() { String::new() } else { format!("Authentication-Results: mx.provider.example; {results}\r\n") };
+            std::fs::write(&path, format!("{above}{results}Message-ID: <m{stored}@lumen.example.net>\r\nFrom: {from}\r\nSubject: Our project\r\n\r\n{body}\r\n")).unwrap();
+            path
+        };
+        let genuine = "spf=pass smtp.mailfrom=lumen.example.net; dkim=pass header.d=lumen.example.net; dmarc=pass header.from=lumen.example.net";
+        let forged = "spf=fail smtp.mailfrom=attacker.example; dkim=none; dmarc=fail header.from=lumen.example.net";
+        let failed = "spf=fail smtp.mailfrom=lumen.example.net; dkim=fail header.d=lumen.example.net";
+        let flagged = "X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n";
+        let jane = "Jane <jane@lumen.example.net>";
+        let admission = |path: &PathBuf| gate.admission_of_file(path).unwrap();
+        // Genuine, and your own copy without any results: admitted.
+        let real = store_one(jane, genuine, "", "The plans attached.");
+        assert_eq!(admission(&real), Admission::Admitted);
+        assert_eq!(admission(&store_one("you@you.example.org", "", "", "My answer.")), Admission::Admitted);
+        // Forged, blocked, a borrowed name: refused, with the Porch's own reason.
+        let fake = store_one(jane, forged, "", "The plans attached: new bank details.");
+        assert_eq!(admission(&fake), Admission::Refused(Lane::SetAside, Reason::Forged));
+        assert_eq!(admission(&store_one("Pest <pest@lumen.example.net>", genuine, "", "The plans attached.")), Admission::Refused(Lane::SetAside, Reason::Blocked));
+        assert!(matches!(admission(&store_one("PayPal <billing@lumen.example.net>", genuine, "", "The plans attached.")), Admission::Refused(Lane::SetAside, Reason::Impersonation { .. })));
+        // Not authenticated: no route on its sender takes it.
+        let unproven = store_one(jane, failed, "", "The plans attached.");
+        assert_eq!(admission(&unproven), Admission::Unproven);
+        assert!(Admission::Unproven.for_routes(&maildir::read_one(&unproven).unwrap()).is_some_and(|seen| seen.from_address.is_none()));
+        // Spam your provider flagged: a route protects it; nothing else does.
+        assert_eq!(admission(&store_one(jane, genuine, flagged, "The plans attached.")), Admission::Admitted);
+        assert!(matches!(admission(&store_one("Prize <win@lottery.test>", "", flagged, "The plans attached.")), Admission::Refused(Lane::SetAside, Reason::Spam { .. })));
+        // The Porch decides the same: one function.
+        let ctx = Context { projects: None, known: &SenderList::default(), senders: &Senders::default(), trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        assert_eq!(triage(maildir::read_one(&fake).unwrap(), &ctx).lane, Lane::SetAside);
+        // Tied when routes change (text routes): the genuine and the unproven, never the forged or the blocked.
+        let plans = Route { text_contains: vec!["plans attached".into()], ..Route::default() };
+        let files: Vec<PathBuf> = (1..=stored).map(|n| root.join("cur").join(format!("{n}.U1-{n}.sioul{}2,S", maildir::INFO))).collect();
+        let tied = gate.routed(&[&plans], files.iter().map(PathBuf::as_path));
+        assert_eq!(tied, ["m1@lumen.example.net", "m6@lumen.example.net", "m7@lumen.example.net"]);
+        // A sender route on unproven mail: not tied.
+        let by_sender = Route { from_domains: vec!["lumen.example.net".into()], text_contains: vec!["plans attached".into()], ..Route::default() };
+        assert_eq!(gate.routed(&[&by_sender], [unproven.as_path(), real.as_path()]), ["m1@lumen.example.net"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

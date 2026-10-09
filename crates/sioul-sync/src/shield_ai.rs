@@ -51,33 +51,44 @@ pub struct Read {
 /// Reads the new mail of every shielded address that allows the AI, up to
 /// `PER_ROUND` messages each, newest first. Nothing is sent without a key.
 pub fn read_new(config: &Config) -> Result<Read, SyncError> {
-    let accounts: Vec<_> = config.accounts.iter().filter(|a| a.shield && a.shield_ai).collect();
-    if accounts.is_empty() {
+    if !config.accounts.iter().any(|a| a.shield && a.shield_ai) {
         return Ok(Read::default());
     }
     let Some(key) = api_key() else { return Ok(Read::default()) };
+    read_with(config, ENDPOINT, &key)
+}
+
+/// `read_new`, its questions sent to `endpoint` with `key`.
+fn read_with(config: &Config, endpoint: &str, key: &str) -> Result<Read, SyncError> {
+    let accounts: Vec<_> = config.accounts.iter().filter(|a| a.shield && a.shield_ai).collect();
     // No redirect followed: the key is a header of its own, which would go along to any other address.
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).max_redirects(0).build().into();
     let mut done = Read::default();
     for account in accounts {
         let mut cache = AiCache::load(&account.id);
+        // Neither answered, nor sent twice for answers not in the form asked (`AiCache::wants`).
         let mut waiting: Vec<_> = sioul_core::maildir::read_messages(&account.maildir_path())
             .into_iter()
             .filter_map(|card| Some((shield::ai_key(&card)?, card)))
-            .filter(|(id, _)| !cache.messages.contains_key(id))
+            .filter(|(id, _)| cache.wants(id))
             .collect();
         waiting.sort_by_key(|(_, card)| std::cmp::Reverse(card.date.unwrap_or(0)));
         done.left += waiting.len().saturating_sub(PER_ROUND);
         for (id, card) in waiting.into_iter().take(PER_ROUND) {
-            match ask(&agent, ENDPOINT, &key, &shield::ai_prompt(&card.subject, &card.excerpt)) {
+            match ask(&agent, endpoint, key, &shield::ai_prompt(&card.subject, &card.excerpt)) {
                 Ok(Some(assessment)) => {
+                    cache.malformed.remove(&id);
                     cache.messages.insert(id, assessment);
                     // Kept at once: an answer is never asked for twice.
                     cache.save(&account.id).map_err(SyncError::Disk)?;
                     done.read += 1;
                 }
-                // An answer not in the form asked: the word lists keep judging that one.
-                Ok(None) => {}
+                // An answer not in the form asked: the word lists keep judging
+                // that one. Marked, kept at once: asked once more at most.
+                Ok(None) => {
+                    *cache.malformed.entry(id).or_default() += 1;
+                    cache.save(&account.id).map_err(SyncError::Disk)?;
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -163,6 +174,69 @@ mod tests {
         assert!(request.contains("x-api-key: test-key"), "{request}");
         assert!(request.contains("anthropic-version: 2023-06-01"));
         assert!(request.contains(MODEL));
+    }
+
+    /// A stand-in that answers every request with `body`, `times` requests at
+    /// most, and counts them.
+    fn stand_in_counting(body: &'static str, times: usize) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/v1/messages", listener.local_addr().unwrap());
+        let count = std::sync::Arc::new(AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&count);
+        std::thread::spawn(move || {
+            for _ in 0..times {
+                let Ok((mut stream, _)) = listener.accept() else { return };
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let n = stream.read(&mut chunk).unwrap_or(0);
+                    request.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&request).to_string();
+                    let length = text.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length: ").map(|v| v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                    if n == 0 || text.find("\r\n\r\n").is_some_and(|end| request.len() >= end + 4 + length) {
+                        break;
+                    }
+                }
+                counted.fetch_add(1, Ordering::SeqCst);
+                let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            }
+        });
+        (url, count)
+    }
+
+    /// An answer not in the form asked is marked: the message is sent once
+    /// more at most, never at every round. A stand-in answers; nothing goes to Anthropic.
+    #[test]
+    fn a_malformed_answer_is_asked_once_more_at_most() {
+        use std::sync::atomic::Ordering;
+        let home = crate::dav::stand_in::home();
+        let mut account = sioul_core::config::Account::imap("shield-ai-tester", "public@example.org", "localhost", 993, sioul_core::config::Security::Tls, None);
+        account.shield = true;
+        account.shield_ai = true;
+        let mail = home.join(format!("mail-shield-ai-{}", std::process::id()));
+        account.maildir = Some(mail.display().to_string());
+        std::fs::create_dir_all(mail.join("cur")).unwrap();
+        std::fs::write(mail.join("cur").join(format!("1759300001.U1-1.test{}2,S", sioul_core::maildir::INFO)), "From: Someone <someone@example.net>\r\nTo: public@example.org\r\nSubject: About your software\r\nMessage-ID: <malformed-1@example.net>\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nA question about your software.\r\n").unwrap();
+        let mut config = Config::default();
+        config.accounts = vec![account.clone()];
+        let (url, asked) = stand_in_counting(r#"{"content":[{"type":"text","text":"I cannot help with that."}]}"#, 3);
+        for _ in 0..4 {
+            assert_eq!(read_with(&config, &url, "test-key").unwrap(), Read { read: 0, left: 0 });
+        }
+        assert_eq!(asked.load(Ordering::SeqCst), AiCache::TIMES as usize, "sent twice, then never again");
+        let cache = AiCache::load(&account.id);
+        assert!(cache.messages.is_empty() && cache.malformed.values().eq([&AiCache::TIMES]), "{cache:?}");
+        // An answer in the form asked replaces the mark.
+        let mut kept = cache.clone();
+        kept.malformed.clear();
+        kept.save(&account.id).unwrap();
+        let (url, asked) = stand_in_counting(r#"{"content":[{"type":"text","text":"{\"tone\": \"calm\", \"topic\": \"support\", \"summary\": \"Asks about the software.\"}"}]}"#, 2);
+        assert_eq!(read_with(&config, &url, "test-key").unwrap().read, 1);
+        let cache = AiCache::load(&account.id);
+        assert!(cache.malformed.is_empty() && cache.messages.len() == 1 && asked.load(Ordering::SeqCst) == 1, "{cache:?}");
+        let _ = std::fs::remove_dir_all(&mail);
     }
 
     #[test]

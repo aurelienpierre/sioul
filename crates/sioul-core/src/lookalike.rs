@@ -9,7 +9,12 @@
 //! from any domain. Names are compared by their skeleton, as Unicode's
 //! confusable detection does (UTS #39 §4): both sides are reduced to one
 //! prototype per family of lookalike letters. A brand named by a sender
-//! outside its own domains is an impersonation.
+//! outside its own domains is an impersonation. A brand whose name is also
+//! an everyday word or a place (`BrandWords::everyday`: Orange, Apple, La
+//! Poste…) is borrowed only when its name stands alone, or beside the words
+//! of a service ("Apple Support", "Amazon.com"), so that "Orange County
+//! Library" or "Apple Pie Bakery" borrow nothing; any other brand counts
+//! anywhere in a name ("Crédit Agricole Nord de France", "PayPal Kundendienst").
 
 /// A display name claiming a brand, or one of your own domains, that its address does not belong to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,17 +40,24 @@ pub fn own_domains<'a>(shared: &[String], addresses: impl IntoIterator<Item = &'
 /// Whether a sender's display name claims a brand, or one of `own` (your domains),
 /// from outside its domains. `brands`: the brands and public services, by the
 /// words of their name, and their domains (a sender in one of them or below
-/// it is genuine), and the words a fake "your provider" name wraps a domain in
-/// ("janedoe.example Mail Admin"; `words::BrandWords`).
+/// it is genuine), and the words of a service, which a fake name wraps a brand
+/// or a domain in ("PayPal Service", "janedoe.example Mail Admin";
+/// `words::BrandWords`). A brand is claimed when its words are in the name
+/// (`names`); an everyday one, when its name stands alone or beside such
+/// words only (`borrows`).
 pub fn impersonation(brands: &crate::words::BrandWords, name: Option<&str>, domain: Option<&str>, own: &[String]) -> Option<Impersonation> {
     let name = name?;
     let domain = domain?.to_ascii_lowercase();
-    let words: Vec<String> = words(name).iter().map(|w| skeleton(w)).collect();
+    let raw = words(name);
+    let words: Vec<String> = raw.iter().map(|w| skeleton(w)).collect();
+    let service: Vec<String> = brands.service_words.iter().map(|w| skeleton(w)).collect();
+    let everyday: Vec<String> = brands.everyday.iter().map(|b| crate::words::folded(b)).collect();
+    let claims = |brand: &str, domains: &[String]| if everyday.contains(&crate::words::folded(brand)) { borrows(&raw, &words, brand, domains, &service) } else { names(&words, brand) };
     let inside = |domains: &[String]| domains.iter().map(|d| d.trim().to_ascii_lowercase()).any(|d| !d.is_empty() && (domain == d || domain.ends_with(&format!(".{d}"))));
     let brand = brands
         .brands
         .iter()
-        .filter(|(brand, _)| names(&words, brand))
+        .filter(|(brand, domains)| claims(brand, domains))
         .find(|(_, domains)| !inside(domains))
         .map(|(brand, _)| Impersonation { brand: brand.to_string(), domain: domain.clone() });
     brand.or_else(|| {
@@ -72,6 +84,38 @@ fn names(words: &[String], brand: &str) -> bool {
     let as_sequence = words.windows(wanted.len()).any(|w| w == wanted.as_slice());
     let run_together = words.iter().any(|w| *w == joined);
     as_sequence || run_together
+}
+
+/// Whether a name claims an everyday brand: its words are there, one after the other
+/// or run together, and every other word of the name is a word of a service
+/// (`service`, skeletons: "Support", "Service client", "Infos"), a number
+/// ("Microsoft 365"), or a label of the brand's own domains ("Amazon.com",
+/// "PayPal.fr"). The brand's name standing among other words ("Orange County
+/// Library", "Apple Pie Bakery", "Café de la Poste") is someone else's name.
+/// `raw`: the name's words as written; `words`: their skeletons.
+fn borrows(raw: &[String], words: &[String], brand: &str, domains: &[String], service: &[String]) -> bool {
+    let wanted: Vec<String> = words_of_brand(brand);
+    if wanted.is_empty() {
+        return false;
+    }
+    let joined = wanted.concat();
+    // The words that are the brand's, wherever it is named.
+    let mut theirs = vec![false; words.len()];
+    let mut at = 0;
+    while at < words.len() {
+        if words[at..].starts_with(&wanted) {
+            theirs[at..at + wanted.len()].iter_mut().for_each(|t| *t = true);
+            at += wanted.len();
+        } else {
+            theirs[at] |= words[at] == joined;
+            at += 1;
+        }
+    }
+    if !theirs.contains(&true) {
+        return false;
+    }
+    let labels: Vec<String> = domains.iter().flat_map(|d| d.split('.').map(skeleton).collect::<Vec<_>>()).filter(|l| !l.is_empty()).collect();
+    words.iter().zip(raw).zip(&theirs).all(|((word, written), &brand)| brand || service.contains(word) || labels.contains(word) || written.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn words_of_brand(brand: &str) -> Vec<String> {
@@ -152,6 +196,41 @@ mod tests {
         assert_eq!(impersonation(Some("Hosting Co - jeanexemple.example"), Some("host.example"), &own), None);
         assert_eq!(impersonation(Some("Jean Exemple"), Some("sales.example"), &own), None);
         assert_eq!(impersonation(Some("cPanel on jeanexemple.example"), Some("jeanexemple.example"), &own), None);
+    }
+
+    /// Every regional bank of Crédit Agricole mails from its own domain, and
+    /// names the group: not a borrowed name (the France pack lists them all).
+    #[test]
+    fn a_regional_bank_names_its_group() {
+        for domain in ["ca-norddefrance.fr", "mail.ca-languedoc.fr", "ca-reunion.fr", "ca-paris.fr", "credit-agricole.com"] {
+            assert_eq!(impersonation(Some("Crédit Agricole"), Some(domain), &[]), None, "{domain}");
+        }
+        assert!(impersonation(Some("Credit Agricole"), Some("ca-securite.example"), &[]).is_some());
+        assert!(impersonation(Some("Crédit Agricole Nord de France"), Some("ca-nordest.fr"), &[]).is_some(), "a domain that sends no mail is not one of theirs");
+    }
+
+    /// A brand whose name is an everyday word or a place counts alone, or
+    /// beside the words of a service only; among other words, it is someone
+    /// else's name. Any other brand counts anywhere in a name.
+    #[test]
+    fn an_everyday_brand_counts_alone_or_with_its_service() {
+        // The true impersonations: an everyday brand alone, with service words, with its own domain's labels.
+        for name in ["Apple", "Apple Support", "Amazon.com", "Amazon Customer Service", "Service client Orange", "Orange - Votre espace client", "UPS Delivery Notification", "Outlook Team", "Infos La Poste", "Service des Impôts des Particuliers"] {
+            assert!(impersonation(Some(name), Some("phish.example"), &[]).is_some(), "{name}");
+        }
+        // Any other brand, anywhere in the name, as before.
+        for name in ["Crédit Agricole Nord de France", "PayPal Kundendienst", "Microsoft 365", "Netflix Billing", "PayPal.fr Sécurité", "Mon conseiller BNP Paribas"] {
+            assert!(impersonation(Some(name), Some("phish.example"), &[]).is_some(), "{name}");
+        }
+        // Everyday words and places, from their own domains.
+        for name in ["Orange County Library", "Apple Pie Bakery", "Amazon Rainforest Trust", "Weekly Outlook", "Ups and Downs Club", "Café de la Poste", "Jean Orange", "Cabinet Martin, conseil en impôts", "Société Générale de Transports"] {
+            assert_eq!(impersonation(Some(name), Some("their-own.example"), &[]), None, "{name}");
+        }
+        // Yours to mark: a brand of yours made everyday spares a name it stands in.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"en\"]\ncountries = []\n[words.brands.brands]\nadd = { \"Banque Exemple\" = [\"banque-exemple.example\"] }\n[words.brands.everyday]\nadd = [\"Banque Exemple\"]\n").unwrap();
+        let yours = crate::words::Words::of(&config);
+        assert!(super::impersonation(&yours.brands, Some("Banque Exemple Bakery"), Some("bakery.example"), &[]).is_none());
+        assert!(super::impersonation(&yours.brands, Some("Banque Exemple Support"), Some("phish.example"), &[]).is_some());
     }
 
     #[test]

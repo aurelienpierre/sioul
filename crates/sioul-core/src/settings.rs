@@ -633,7 +633,7 @@ pub const WORD_LINES: &[(&str, &str, &[&str])] = &[
     ("mail", "senders", &["senders.automatic"]),
     ("mail", "replies", &["replies.reply", "replies.forward", "quotes.openings", "quotes.wrote"]),
     ("mail", "folders", &["folders.sent", "folders.drafts", "folders.junk", "folders.trash", "folders.archive"]),
-    ("mail", "brands", &["brands.brands", "brands.shared"]),
+    ("mail", "brands", &["brands.brands", "brands.everyday", "brands.shared"]),
     ("money", "payments", &["payments.bill", "payments.paid", "payments.received", "payments.order", "payments.refund", "payments.not_payments"]),
     ("money", "bank", &["bank.filler", "accounts.between"]),
     (

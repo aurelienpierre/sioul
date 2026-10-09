@@ -20,9 +20,13 @@ use sioul_core::tasks::Task;
 /// What a thing kept from agents is called where its words would be.
 pub const KEPT: &str = "(kept from agents)";
 
-/// What the person opened to agents, and what each thing belongs to, from everything read.
+/// What the person opened to agents, and what each thing belongs to, from
+/// everything read; mail as the Porch's checks take it (`porch::Gate`), so
+/// that forged mail claiming a client never reaches an agent through the
+/// client's project. The gate remembers its verdicts for the server's life.
 pub fn of(s: &Session, loaded: &Loaded) -> Consent {
-    Consent::of(loaded, s.config.mcp.outside_projects)
+    let gate = sioul_core::porch::Gate::load(&s.config, jiff::Timestamp::now().as_second());
+    Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)))
 }
 
 /// The same for mail alone, lighter: the projects, Sioul's own ties, and

@@ -308,11 +308,24 @@ fn words_of(text: &str) -> Vec<String> {
     words
 }
 
+/// A domain's organisational domain, as DMARC's relaxed alignment reads it
+/// (RFC 7489 §3.2): the name registered under its public suffix, by the
+/// Public Suffix List ("mail.example.co.uk" → "example.co.uk"; the `psl`
+/// crate carries the list). None for a public suffix itself ("co.uk",
+/// "github.io"), which nobody owns as a whole.
+pub fn organisational(domain: &str) -> Option<String> {
+    let domain = domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    psl::domain_str(&domain).map(str::to_string)
+}
+
 /// Whether two domains belong together, as DMARC's relaxed alignment has it:
-/// the same, or one below the other ("mail.example.org" and "example.org").
+/// the same, or the same organisational domain (`organisational`):
+/// "mail.example.org", "shop.example.org" and "example.org" do;
+/// "a.github.io" and "github.io" do not, nor "victim.co.uk" and "co.uk": a
+/// name under a public suffix belongs to whoever registered it.
 pub(crate) fn aligned(a: &str, b: &str) -> bool {
-    let (a, b) = (a.trim_end_matches('.').to_ascii_lowercase(), b.trim_end_matches('.').to_ascii_lowercase());
-    !a.is_empty() && !b.is_empty() && (a == b || a.ends_with(&format!(".{b}")) || b.ends_with(&format!(".{a}")))
+    let (a, b) = (a.trim().trim_end_matches('.').to_ascii_lowercase(), b.trim().trim_end_matches('.').to_ascii_lowercase());
+    !a.is_empty() && !b.is_empty() && (a == b || organisational(&a).is_some_and(|org| organisational(&b).as_deref() == Some(org.as_str())))
 }
 
 /// The verdict on the sender, when the domain shown is not at hand: the domain
@@ -395,14 +408,19 @@ pub struct Boundary {
     pub by: String,
 }
 
+/// Walking down from the top as `written_on_arrival` does, your provider's
+/// own hops passed (`inside_hop`), the first other line: where the message
+/// came in, when the address its server saw reads (`seen_ip`) and is public.
+/// A line written another way gives none: the lines below it are the
+/// sender's to write, so no address of theirs is taken for where it came in.
 pub fn boundary(headers: &RawHeaders) -> Option<Boundary> {
-    headers.all("Received").find_map(|received| {
-        let ip = bracketed_ip(received).filter(is_public)?;
-        let text = received.trim_start();
-        let helo = text.strip_prefix("from ")?.split([' ', '(']).next()?.trim_end_matches('.').to_string();
-        let by = received.split(" by ").nth(1)?.split_whitespace().next()?.trim_end_matches([';', '.']).to_string();
-        Some(Boundary { ip, helo, by })
-    })
+    let received = headers.all("Received").find(|r| !inside_hop(r))?;
+    let ip = seen_ip(received).filter(is_public)?;
+    let (first, rest) = from_clause(received)?;
+    // qmail writes the name given in HELO apart, when it is not the reverse DNS name it writes first.
+    let helo = leading_groups(rest).first().and_then(|g| helo_group(g)).unwrap_or_else(|| first.split('(').next().unwrap_or(first)).trim_end_matches('.').to_string();
+    let by = received.split(" by ").nth(1)?.split_whitespace().next()?.trim_end_matches([';', '.']).to_string();
+    Some(Boundary { ip, helo, by })
 }
 
 /// The envelope sender (MAIL FROM), as the receiving server recorded it in Return-Path;
@@ -477,16 +495,38 @@ fn written_on_arrival(headers: &RawHeaders) -> RawHeaders {
 }
 
 /// A hop inside your provider, as its `Received` line says: no `from`, a
-/// private or local address in it, or the delivery into the mailbox.
+/// private or local address in it, the delivery into the mailbox, or a hop
+/// between Microsoft 365's own servers (`microsoft_hop`).
 fn inside_hop(received: &str) -> bool {
     let from = received.trim_start().get(..5).is_some_and(|w| w.eq_ignore_ascii_case("from "));
-    if !from {
+    if !from || microsoft_hop(received) {
         return true;
     }
-    match bracketed_ip(received) {
+    match seen_ip(received) {
         Some(ip) => !is_public(&ip),
         None => lmtp(received),
     }
+}
+
+/// The names Microsoft 365's servers carry between themselves, as each
+/// writes its own after `by`: its mailboxes and relays (`*.prod.outlook.com`,
+/// `*.prod.exchangelabs.com`), its frontends inside (`*.outlook.office365.com`)
+/// and its filters (`*.prod.protection.outlook.com`).
+const MICROSOFT_INSIDE: [&str; 4] = [".prod.outlook.com", ".prod.exchangelabs.com", ".outlook.office365.com", ".prod.protection.outlook.com"];
+
+/// A hop between Microsoft 365's own servers: received by one of the names
+/// they carry between themselves (`MICROSOFT_INSIDE`). Those hops pass the
+/// message from one public address of Microsoft's to another, so an address
+/// cannot tell them from where the message came in, which is the hop received
+/// by its Internet frontend, `*.mail.protection.outlook.com` ("Received: from
+/// mail.sender.example (203.0.113.25) by BN8NAM12FT034.mail.protection.outlook.com
+/// (10.13.182.135) with Microsoft SMTP Server … via Frontend Transport"). The
+/// receiving server writes its own name, and the lines above where the message
+/// came in are Microsoft's: no sender writes one of them.
+fn microsoft_hop(received: &str) -> bool {
+    let Some(by) = received.split(" by ").nth(1).and_then(|b| b.split_whitespace().next()) else { return false };
+    let by = by.trim_end_matches([';', '.']).to_ascii_lowercase();
+    !by.ends_with(".mail.protection.outlook.com") && MICROSOFT_INSIDE.iter().any(|suffix| by.ends_with(suffix))
 }
 
 /// "… with LMTP id …", LMTPS, LMTPA, LMTPSA (RFC 3848): the mailbox's own delivery.
@@ -537,7 +577,7 @@ fn number_after(text: &str, marker: &str) -> Option<f32> {
 /// your provider received the message from, the trust boundary
 /// (docs/design.md, "Trust").
 pub fn route_ips(headers: &RawHeaders) -> Vec<IpAddr> {
-    headers.all("Received").filter_map(bracketed_ip).collect()
+    headers.all("Received").filter_map(seen_ip).collect()
 }
 
 /// The address the receiving server saw, `[203.0.113.7]` or `[IPv6:2001:db8::1]`,
@@ -548,9 +588,7 @@ pub fn route_ips(headers: &RawHeaders) -> Vec<IpAddr> {
 /// the `helo=` in the parentheses: neither counts while the server wrote the
 /// address it saw.
 fn bracketed_ip(received: &str) -> Option<IpAddr> {
-    let from_clause = received.split(" by ").next().unwrap_or(received).trim_start();
-    let words = from_clause.get(..5).filter(|w| w.eq_ignore_ascii_case("from ")).map(|_| from_clause[5..].trim_start())?;
-    let (first, rest) = words.split_once(char::is_whitespace).unwrap_or((words, ""));
+    let (first, rest) = from_clause(received)?;
     let address = |inner: &str| inner.strip_prefix("IPv6:").unwrap_or(inner).parse::<IpAddr>().ok();
     let mut depth = 0usize;
     for (at, c) in rest.char_indices() {
@@ -569,6 +607,66 @@ fn bracketed_ip(received: &str) -> Option<IpAddr> {
         }
     }
     first.strip_prefix('[').and_then(|f| f.split(']').next()).and_then(address)
+}
+
+/// A `Received` line's `from` clause, up to " by ": its first word (the
+/// name given in HELO, with most servers; the reverse DNS name with qmail)
+/// and what follows it; none for a line without `from`.
+fn from_clause(received: &str) -> Option<(&str, &str)> {
+    let clause = received.split(" by ").next().unwrap_or(received).trim_start();
+    let words = clause.get(..5).filter(|w| w.eq_ignore_ascii_case("from ")).map(|_| clause[5..].trim_start())?;
+    Some(words.split_once(char::is_whitespace).map_or((words, ""), |(first, rest)| (first, rest.trim_start())))
+}
+
+/// The parenthesised groups that open `text`, one after the other:
+/// "(HELO x) (203.0.113.5) with SMTP" → "HELO x", "203.0.113.5".
+fn leading_groups(text: &str) -> Vec<&str> {
+    let mut groups = Vec::new();
+    let mut at = text.trim_start();
+    while let Some(inner) = at.strip_prefix('(') {
+        let mut depth = 1usize;
+        let Some(end) = inner.char_indices().find_map(|(i, c)| {
+            match c {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                _ => {}
+            }
+            (depth == 0).then_some(i)
+        }) else {
+            break;
+        };
+        groups.push(&inner[..end]);
+        at = inner[end + 1..].trim_start();
+    }
+    groups
+}
+
+/// The name a group gives in HELO, qmail's "(HELO mail.sender.example)".
+fn helo_group(group: &str) -> Option<&str> {
+    let (head, name) = group.trim().split_once(char::is_whitespace)?;
+    (head.eq_ignore_ascii_case("HELO") || head.eq_ignore_ascii_case("EHLO")).then(|| name.trim())
+}
+
+/// The address in parentheses without brackets, right after the first word,
+/// as Microsoft 365 and Exchange write it ("from mail.sender.example
+/// (203.0.113.25) by …", "(2001:db8::25)"), and qmail ("from unknown (HELO
+/// mail.sender.example) (203.0.113.5) by …"; "(ident@203.0.113.5)", where what
+/// comes before the last "@" is what the sender's ident service said). The
+/// group holds the address alone, a HELO group before it passed: a group
+/// holding anything else is not read.
+fn parenthesised_ip(rest: &str) -> Option<IpAddr> {
+    let groups = leading_groups(rest);
+    let mut groups = groups.iter().skip_while(|g| helo_group(g).is_some());
+    let group = groups.next()?.trim();
+    let address = group.rsplit_once('@').map_or(group, |(_, ip)| ip);
+    address.strip_prefix("IPv6:").unwrap_or(address).parse().ok()
+}
+
+/// The address the receiving server saw, in any of the forms servers write
+/// it: in brackets (`bracketed_ip`), else in parentheses alone
+/// (`parenthesised_ip`: Microsoft 365, Exchange, qmail).
+fn seen_ip(received: &str) -> Option<IpAddr> {
+    bracketed_ip(received).or_else(|| from_clause(received).and_then(|(_, rest)| parenthesised_ip(rest)))
 }
 
 #[cfg(test)]
@@ -628,6 +726,26 @@ mod tests {
         let h = headers("Authentication-Results: mx.example.net; spf=pass (domain of \"a)b\"@attacker.example) smtp.mailfrom=x; dkim=pass header.d=bank.example; dmarc=fail header.from=bank.example\n\n");
         let r = read_auth_results(&h, &["mx.example.net".into()]).unwrap();
         assert_eq!((r.dkim, r.dmarc), (None, Some(Outcome::Fail)));
+    }
+
+    /// Relaxed alignment by organisational domains, from the Public Suffix List.
+    #[test]
+    fn alignment_follows_the_public_suffix_list() {
+        // One organisation: the same domain, one below the other, or two below it.
+        assert!(aligned("example.org", "mail.example.org"));
+        assert!(aligned("shop.example.org", "mail.example.org"));
+        assert!(aligned("news.example.co.uk", "example.co.uk"));
+        assert_eq!(organisational("Mail.Example.CO.UK."), Some("example.co.uk".into()));
+        // A public suffix is nobody's: what is registered under it is someone else's.
+        assert!(!aligned("co.uk", "victim.co.uk"));
+        assert!(!aligned("github.io", "attacker.github.io"));
+        assert!(!aligned("victim.github.io", "attacker.github.io"));
+        assert!(!aligned("example.org", "example.net"));
+        assert_eq!(organisational("github.io"), None);
+        // A sibling's signature, under one organisation, proves the sender; one under a public suffix proves nothing.
+        let signed = |d: &str| AuthResults { dkim: Some(Outcome::Pass), dkim_passed: vec![d.into()], ..AuthResults::default() };
+        assert_eq!(judge_sender(Some(&signed("mail.example.org")), false, Some("shop.example.org")), (Trust::Verified, Proof::DkimPass));
+        assert_eq!(judge_sender(Some(&signed("attacker.github.io")), false, Some("github.io")).0, Trust::Unverified);
     }
 
     #[test]
@@ -709,7 +827,8 @@ mod tests {
         assert_eq!(ip("from x([203.0.112.66]) (unknown [203.0.112.5]) by mx.provider.example").as_deref(), Some("203.0.112.5"));
         // Exim, for an address without a name: the address first, the HELO name after "helo=".
         assert_eq!(ip("from [203.0.112.5] (port=51614 helo=[203.0.112.66]) by mx.provider.example").as_deref(), Some("203.0.112.5"));
-        assert_eq!(ip("from unknown (HELO [203.0.112.66]) (203.0.112.5) by mx.provider.example"), None);
+        // qmail: the HELO name in its own parentheses, the address in the next, without brackets.
+        assert_eq!(ip("from unknown (HELO [203.0.112.66]) (203.0.112.5) by mx.provider.example").as_deref(), Some("203.0.112.5"));
         // Addresses no server on the Internet sends from.
         for private in ["100.64.1.2", "::ffff:192.168.1.1", "240.0.0.1"] {
             assert!(!is_public(&private.parse().unwrap()), "{private}");
@@ -762,11 +881,18 @@ mod tests {
         // A line written another way stops the walk: a sender's own line from
         // a public address further down does not open its "NO" to it.
         let unreadable = headers(
-            "Received: from unknown (HELO mail.sender.example) (203.0.112.5) by mx.provider.example with SMTP\n\
+            "Received: from mail.sender.example via relay by mx.provider.example with SMTP\n\
              X-Spam-Flag: NO\n\
              Received: from relay.sender.example (relay.sender.example [203.0.112.9]) by mail.sender.example\n\n",
         );
         assert_eq!(read_spam_verdict(&unreadable), None);
+        // qmail's line, read: where the message came in, so the "NO" below it is the sender's.
+        let qmail = headers(
+            "Received: from unknown (HELO mail.sender.example) (203.0.112.5) by mx.provider.example with SMTP\n\
+             X-Spam-Flag: NO\n\
+             Received: from relay.sender.example (relay.sender.example [203.0.112.9]) by mail.sender.example\n\n",
+        );
+        assert_eq!(read_spam_verdict(&qmail), None);
         // Copied into the mailbox, never delivered: nobody's verdict.
         assert_eq!(read_spam_verdict(&headers("X-Spam-Flag: YES\nFrom: a@sender.example\n\n")), None);
         // Delivered from inside the provider: what is above its lowest line.
@@ -796,6 +922,43 @@ mod tests {
         assert!(!read(&sealed("relay.example")));
         assert_eq!(arc_sealer(&headers(&sealed("Mine.Example"))).as_deref(), Some("mine.example"));
         assert!(!read(&sealed("example.net").replace("arc=pass", "arc=fail")));
+    }
+
+    /// Microsoft 365 and qmail write the address they saw in parentheses,
+    /// without brackets (the shapes of Microsoft's and SpamAssassin's public
+    /// examples, with addresses of our own): where the message came in is read
+    /// on their line, never on the sender's lines below it.
+    #[test]
+    fn microsoft_365_and_qmail_lines_are_read() {
+        let entry = |text: &str| boundary(&headers(text)).map(|b| (b.ip.to_string(), b.helo, b.by));
+        // A sender's own line, forged below where the message came in: never read.
+        let forged = "Received: from mail.sender.example (mail.sender.example [203.0.112.200]) by relay.sender.example\n";
+        // Microsoft 365: its mailbox, its hops between its own servers (public IPv6 addresses), then its frontend.
+        let microsoft = format!(
+            "Received: from DM6PR01MB0001.namprd01.prod.outlook.com (::1) by DM6PR01MB0001.namprd01.prod.outlook.com with HTTPS; Wed, 2 Jan 2019 17:40:36 +0000\n\
+             Received: from BN9PR03CA0123.namprd03.prod.outlook.com (2603:10b6:408:fe::28) by DM6PR01MB0001.namprd01.prod.outlook.com (2603:10b6:5:1::1) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.1471.13; Wed, 2 Jan 2019 17:40:35 +0000\n\
+             Received: from BN8NAM12FT034.eop-nam12.prod.protection.outlook.com (2603:10b6:408:fe:cafe::51) by BN9PR03CA0123.outlook.office365.com (2603:10b6:408:fe::28) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.1471.13 via Frontend Transport; Wed, 2 Jan 2019 17:40:35 +0000\n\
+             Received: from mail-out.sender.example (203.0.112.25) by BN8NAM12FT034.mail.protection.outlook.com (10.13.182.135) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA) id 15.20.1471.13 via Frontend Transport; Wed, 2 Jan 2019 17:40:34 +0000\n\
+             {forged}\n"
+        );
+        assert_eq!(entry(&microsoft), Some(("203.0.112.25".into(), "mail-out.sender.example".into(), "BN8NAM12FT034.mail.protection.outlook.com".into())));
+        // Over IPv6, and from another Microsoft 365 tenant: its outbound servers are where the message came in.
+        let tenant = format!("Received: from EUR05-DB8-obe.outbound.protection.outlook.com (2603:10a6:20b::7) by AM6EUR05FT036.mail.protection.outlook.com (2603:10a6:20b:1::9) with Microsoft SMTP Server id 15.20.1471.13 via Frontend Transport; Wed, 2 Jan 2019 17:40:34 +0000\n{forged}\n");
+        assert_eq!(entry(&tenant).map(|e| e.0), Some("2603:10a6:20b::7".into()));
+        // qmail: its own delivery, then the line where the message came in; the HELO name in its own parentheses.
+        let qmail = format!("Received: (qmail 2227 invoked by uid 89); 1 Nov 2003 07:05:20 -0000\nReceived: from unknown (HELO mail-out.sender.example) (203.0.112.5) by mx.provider.example with SMTP; 1 Nov 2003 07:05:19 -0000\n{forged}\n");
+        assert_eq!(entry(&qmail), Some(("203.0.112.5".into(), "mail-out.sender.example".into(), "mx.provider.example".into())));
+        // qmail without a HELO name of its own (it was the reverse DNS name), and with what an ident service said.
+        let ident = format!("Received: from relay.sender.example (foobar@203.0.112.129) by mx.provider.example with SMTP; 14 Nov 2003 08:05:50 -0000\n{forged}\n");
+        assert_eq!(entry(&ident), Some(("203.0.112.129".into(), "relay.sender.example".into(), "mx.provider.example".into())));
+        assert_eq!(entry(&format!("Received: from adsl.sender.example (HELO laptop.example) (Owner50@203.0.112.27) by mx.provider.example with SMTP; 10 Nov 2003 06:30:34 -0000\n{forged}\n")).map(|e| e.0), Some("203.0.112.27".into()));
+        // A group holding anything but the address alone is not one.
+        assert_eq!(entry(&format!("Received: from mail.sender.example (may be forged 203.0.112.5) by mx.provider.example\n{forged}\n")), None);
+        // A line no form reads stops the walk: none, rather than the sender's line below it.
+        assert_eq!(entry(&format!("Received: from mx.provider.example by imap.provider.example with LMTP id 1\nReceived: from mail.sender.example via relay by mx.provider.example\n{forged}\n")), None);
+        // A sender cannot pass for a Microsoft hop: the frontend's line names the frontend.
+        let posing = format!("Received: from x.prod.outlook.com (203.0.112.30) by BN8NAM12FT034.mail.protection.outlook.com (10.13.182.135) with Microsoft SMTP Server via Frontend Transport\n{forged}\n");
+        assert_eq!(entry(&posing).map(|e| e.0), Some("203.0.112.30".into()));
     }
 
     #[test]

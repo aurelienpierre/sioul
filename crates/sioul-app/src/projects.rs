@@ -44,7 +44,10 @@ pub(crate) fn page(shared: &Shared, id: &str) -> String {
     let loaded = loaded(shared);
     let Some(project) = loaded.projects.iter().find(|c| c.id == id) else { return String::new() };
     let config = load_config();
-    let view = projectview::view(&loaded, project, &entries(shared), &invoice::all_in(&invoice::folder()), config.invoice.rate, Zoned::now().timestamp().as_second(), tr());
+    let now = Zoned::now().timestamp().as_second();
+    // Its mail as the Porch takes it: never what it sets aside.
+    let gate = sioul_core::porch::Gate::load(&config, now);
+    let view = projectview::view(&loaded, project, &entries(shared), &invoice::all_in(&invoice::folder()), config.invoice.rate, now, tr(), &gate);
     json(&view)
 }
 

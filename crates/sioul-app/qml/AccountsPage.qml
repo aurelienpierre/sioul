@@ -1357,6 +1357,12 @@ Item {
                                                 text: page.sioul.text("ui-export-key")
                                                 onClicked: page.sioul.pgpExport(ownKey.modelData.fingerprint)
                                             }
+                                            // Made here: its revocation certificate, kept beside it, to copy somewhere safe.
+                                            Button {
+                                                visible: ownKey.modelData.revocation === true
+                                                text: page.sioul.text("ui-save-revocation")
+                                                onClicked: page.sioul.pgpSaveRevocation(ownKey.modelData.fingerprint)
+                                            }
                                         }
                                     }
                                     Repeater {

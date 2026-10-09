@@ -40,6 +40,9 @@
 #   its content:// address and the way back, its type, ACTION_VIEW read
 #   only, the question where to save), and the provider's folders and the
 #   manifest, read from the repository (its root as the property sioul.root).
+# - ChannelsCheck: no badge on Sioul's icon: every notification channel is
+#   made by Channels.quiet, its badge off, and none elsewhere (read from the
+#   sources, as android.jar's NotificationChannel cannot be made here).
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #
@@ -56,7 +59,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

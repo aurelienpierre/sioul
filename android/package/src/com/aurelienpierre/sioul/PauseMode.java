@@ -515,7 +515,7 @@ final class PauseMode
      */
     private static boolean passingChannel(NotificationManager notifications, String id, String name)
     {
-        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_DEFAULT);
+        NotificationChannel channel = Channels.quiet(id, name, NotificationManager.IMPORTANCE_DEFAULT);
         channel.setBypassDnd(true);
         notifications.createNotificationChannel(channel);
         NotificationChannel kept = notifications.getNotificationChannel(id);

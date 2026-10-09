@@ -1029,7 +1029,10 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     if !consent.is_open(&project.id) {
         return Err(access::closed_project(&project.id));
     }
-    let mut page = projectview::view(&loaded, project, &entries, &invoice::all_in(&invoice::folder()), s.config.invoice.rate, Timestamp::now().as_second(), &s.tr);
+    // Its mail as the Porch takes it: never what it sets aside (`porch::Gate`).
+    let now = Timestamp::now().as_second();
+    let gate = porch::Gate::load(&s.config, now);
+    let mut page = projectview::view(&loaded, project, &entries, &invoice::all_in(&invoice::folder()), s.config.invoice.rate, now, &s.tr, &gate);
     // On its line of time, what is also in a closed project (a task in two, a
     // conversation in two): left out, counted.
     let world = loaded.world();
