@@ -248,20 +248,20 @@ fn the_days_off_editor_keeps_ids_and_a_day_that_arrived() {
     now = rounds_announced(&folder, &key, &both, now, 1);
     let path_of = |c: &Computer| c.path("config/config.toml");
     let days = |c: &Computer| list_of(&c.read("config/config.toml"), "time_off").iter().map(|t| (t.get("label").and_then(toml::Value::as_str).unwrap_or_default().to_string(), t.get("id").is_some())).collect::<Vec<_>>();
-    let shown = |c: &Computer| sioul_core::config::Config::load(&path_of(c)).unwrap().time_off.iter().map(|t| sioul_core::config::TimeOffValue { from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect::<Vec<_>>();
+    let shown = |c: &Computer| sioul_core::config::Config::load(&path_of(c)).unwrap().time_off.iter().map(|t| sioul_core::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect::<Vec<_>>();
     let with_ids_after_switch = days(&desk);
     // The desk's editor opens.
     let open_on_desk = shown(&desk);
     // The phone adds Christmas; it reaches the desk.
     let open_on_phone = shown(&phone);
     let mut phone_days = open_on_phone.clone();
-    phone_days.push(sioul_core::config::TimeOffValue { from: "2026-12-24".into(), until: "2026-12-26".into(), label: "Christmas".into() });
+    phone_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: "Christmas".into() });
     sioul_core::settings::change(&path_of(&phone), "time_off", Some(&sioul_core::config::SettingValue::TimeOff(open_on_phone)), &sioul_core::config::SettingValue::TimeOff(phone_days)).unwrap();
     now = rounds_announced(&folder, &key, &both, now, 2);
     let arrived = days(&desk);
     // The desk adds Easter from the editor still open.
     let mut desk_days = open_on_desk.clone();
-    desk_days.push(sioul_core::config::TimeOffValue { from: "2027-03-26".into(), until: "2027-03-29".into(), label: "Easter".into() });
+    desk_days.push(sioul_core::config::TimeOffValue { id: String::new(), from: "2027-03-26".into(), until: "2027-03-29".into(), label: "Easter".into() });
     // As the editor sends it: what it showed, and the list with its day added (`settings::change`).
     sioul_core::settings::change(&path_of(&desk), "time_off", Some(&sioul_core::config::SettingValue::TimeOff(open_on_desk)), &sioul_core::config::SettingValue::TimeOff(desk_days)).unwrap();
     rounds_announced(&folder, &key, &both, now, 3);
@@ -269,4 +269,55 @@ fn the_days_off_editor_keeps_ids_and_a_day_that_arrived() {
     let labels = |d: &[(String, bool)]| { let mut l: Vec<String> = d.iter().map(|(l, _)| l.clone()).collect(); l.sort(); l };
     assert!(labels(&on_desk) == ["Christmas", "Easter", "Summer"] && labels(&on_phone) == labels(&on_desk) && on_desk.iter().all(|(_, id)| *id), "three days off on both, ids kept (after the switch {with_ids_after_switch:?}; desk before its save {arrived:?}); desk {on_desk:?}; phone {on_phone:?}");
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device joining in the middle of the switch reads, in one exchange, the
+/// phone's whole list holding a site and the desk's later list without it:
+/// the removal is noted from the records themselves (`WholeList`), so the
+/// phone's restated site, after its round was cut, is passed over there too
+/// (fourth review, T7b; the deterministic seed).
+#[test]
+fn a_device_joining_mid_switch_keeps_a_site_unpinned_before_it() {
+    if let Err(e) = converge3(77, 7, 45, Some(30)) {
+        panic!("{e}");
+    }
+}
+
+/// Three devices, a laptop joining at minute 1, 10 or 30, over fresh seeds:
+/// every run converges (fourth review, the sweep that found T7b).
+#[test]
+fn a_third_device_joining_converges_over_more_seeds() {
+    let mut failed = Vec::new();
+    let mut runs = 0;
+    for seed in 61..=100u64 {
+        for lag in [7, 30] {
+            for (phone_from, laptop_at) in [(20, 10), (45, 30), (0, 1)] {
+                runs += 1;
+                if let Err(e) = converge3(seed, lag, phone_from, Some(laptop_at)) {
+                    failed.push(e);
+                }
+            }
+        }
+    }
+    let summary: Vec<String> = failed.iter().map(|e| e.lines().next().unwrap_or_default().to_string()).collect();
+    assert!(failed.is_empty(), "{} of {runs} runs fail:\n{}\n\nfirst in full:\n{}", failed.len(), summary.join("\n"), failed.first().cloned().unwrap_or_default());
+}
+
+/// The whole lists seen, in any order: an element held by one list and
+/// absent from a later one is taken out at the later clock, whichever came
+/// first; one a later list holds again is not; one no list held is never
+/// said taken out (`WholeList`).
+#[test]
+fn whole_lists_say_what_was_taken_out_in_any_order() {
+    let set = |names: &[&str]| names.iter().map(|n| (*n).to_string()).collect::<BTreeSet<String>>();
+    let (with, without) = (set(&["poste", "s0"]), set(&["poste"]));
+    let mut later_first = WholeList::default();
+    later_first.saw(8, &without);
+    later_first.saw(0, &with);
+    let mut in_order = WholeList::default();
+    in_order.saw(0, &with);
+    in_order.saw(8, &without);
+    assert_eq!((later_first.removed_at("s0"), in_order.removed_at("s0")), (Some(8), Some(8)));
+    in_order.saw(9, &with);
+    assert_eq!((in_order.removed_at("s0"), in_order.removed_at("poste"), in_order.removed_at("never")), (None, None, None));
 }

@@ -5066,7 +5066,7 @@ impl qobject::Sioul {
             work::focus_stop(&qt, &shared, false, "");
         }
         let screen = json(&closed.closing);
-        mail::rest(&qt, &shared, previous, serde_json::from_str::<serde_json::Value>(&screen).ok().and_then(|v| v["put_away"].as_str().map(str::to_string)).unwrap_or_default());
+        mail::rest(&qt, &shared, previous, next, serde_json::from_str::<serde_json::Value>(&screen).ok().and_then(|v| v["put_away"].as_str().map(str::to_string)).unwrap_or_default());
         self.as_mut().set_mode(QString::from(&mode_json()));
         show(&qt, &shared);
         work::show_work(&qt, &shared);
@@ -5478,7 +5478,12 @@ impl qobject::Sioul {
     fn change_setting(mut self: Pin<&mut Self>, key: &QString, shown: &QString, value: &QString) -> QString {
         let key = key.to_string();
         // What the row showed: what its change is set over the files from (none: the value as sent).
-        let shown: Option<config::SettingValue> = Some(shown.to_string()).filter(|s| !s.is_empty()).and_then(|s| serde_json::from_str(&s).ok());
+        // One that does not read is refused, said: never the whole value written over what changed meanwhile.
+        let shown: Option<config::SettingValue> = match Some(shown.to_string()).filter(|s| !s.is_empty()).map(|s| serde_json::from_str(&s)) {
+            Some(Ok(shown)) => Some(shown),
+            Some(Err(e)) => return QString::from(&format!("{key}: {e}")),
+            None => None,
+        };
         let parsed: Result<config::SettingValue, String> = serde_json::from_str(&value.to_string()).map_err(|e| e.to_string());
         let result = parsed.and_then(|v| match (key.as_str(), v) {
             // The AI's key goes to the keyring, never to the configuration; an empty one is forgotten.

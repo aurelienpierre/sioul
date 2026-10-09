@@ -242,6 +242,9 @@ pub struct RowSettings {
 /// Days off, from one day to another, both included.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TimeOff {
+    /// Its id, given when the sharing takes format 2 (one id per day off); empty before.
+    #[serde(default)]
+    pub id: String,
     #[serde(deserialize_with = "crate::budget::dates::required")]
     pub from: jiff::civil::Date,
     #[serde(deserialize_with = "crate::budget::dates::required")]
@@ -1560,6 +1563,9 @@ pub struct RenameValue {
 /// Days off, as the settings edit them.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimeOffValue {
+    /// Its id, when it has one (`TimeOff::id`): an edit of it names it so.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     /// "2026-12-24".
     pub from: String,
     pub until: String,
@@ -1628,6 +1634,19 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
             let mut tables = ArrayOfTables::new();
             for off in days {
                 let (from, until, label) = (date(&off.from)?, date(&off.until)?, off.label.trim());
+                // Named by its id: changed in its own table, which keeps its id and the rest.
+                if let Some(at) = there.iter().position(|t| !off.id.is_empty() && t.get("id").and_then(Item::as_str) == Some(off.id.as_str())) {
+                    let mut table = there.remove(at);
+                    table["from"] = value(from);
+                    table["until"] = value(until);
+                    if label.is_empty() {
+                        table.remove("label");
+                    } else {
+                        table["label"] = value(label);
+                    }
+                    tables.push(table);
+                    continue;
+                }
                 if let Some(at) = there.iter().position(|t| same(t, &from, &until, label)) {
                     tables.push(there.remove(at));
                     continue;
@@ -2108,7 +2127,7 @@ mod tests {
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
         // The last day off, the last hours taken away: the window's JSON `[]` reads as numbers.
         let empty: SettingValue = serde_json::from_str("[]").unwrap();
-        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new() }])).unwrap();
+        set_value(&path, "time_off", &SettingValue::TimeOff(vec![TimeOffValue { id: String::new(), from: "2026-12-24".into(), until: "2026-12-26".into(), label: String::new() }])).unwrap();
         set_value(&path, "time_off", &empty).unwrap();
         set_value(&path, "window.admin", &empty).unwrap();
         let config = Config::load(&path).unwrap();

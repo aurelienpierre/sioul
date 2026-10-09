@@ -166,12 +166,44 @@ pub struct Overrides {
 }
 
 impl Overrides {
-    /// `previous` put back over these (the file as it is now, read: its
-    /// `read` kept, so that saving writes what differs): every field as it
-    /// was, but the lighter days, which stay as they are now (another
-    /// device's may be among them). For an undo.
-    pub fn put_back(&self, previous: &Overrides) -> Overrides {
-        Overrides { read: self.read.clone(), lighter: self.lighter.clone(), ..previous.clone() }
+    /// An act undone (closing the day, a pause ended): over these (the file
+    /// as it is now, read: its `read` kept, so that saving writes what
+    /// differs), each field the act changed (from `previous` to `after`) put
+    /// back as it was, the others as they are now; the lighter days with what
+    /// the act added taken out and what it took out put back, another
+    /// device's kept (`settings::rebased`).
+    pub fn put_back(&self, previous: &Overrides, after: &Overrides) -> Overrides {
+        let table = |o: &Overrides| match toml::Value::try_from(o) {
+            Ok(toml::Value::Table(table)) => table,
+            _ => toml::Table::new(),
+        };
+        let (was, act, now) = (table(previous), table(after), table(self));
+        let mut out = now.clone();
+        let keys: std::collections::BTreeSet<&String> = was.keys().chain(act.keys()).collect();
+        let no_list = Vec::new();
+        for key in keys {
+            match (was.get(key), act.get(key)) {
+                (before, done) if before == done => {}
+                (before @ (Some(toml::Value::Array(_)) | None), done @ (Some(toml::Value::Array(_)) | None)) => {
+                    let list = |v: Option<&toml::Value>| v.and_then(toml::Value::as_array).cloned().unwrap_or_default();
+                    let back = crate::settings::rebased(&list(done), &list(before), now.get(key).and_then(toml::Value::as_array).unwrap_or(&no_list));
+                    if back.is_empty() {
+                        out.remove(key);
+                    } else {
+                        out.insert(key.clone(), toml::Value::Array(back));
+                    }
+                }
+                (Some(before), _) => {
+                    out.insert(key.clone(), before.clone());
+                }
+                (None, _) => {
+                    out.remove(key);
+                }
+            }
+        }
+        let mut back: Overrides = toml::Value::Table(out).try_into().unwrap_or_else(|_| self.clone());
+        back.read = self.read.clone();
+        back
     }
 
     /// The first step to show now: on the day it is for, in work time.
@@ -522,6 +554,20 @@ pub fn personal_task(task: &crate::tasks::Task, personal: &[String], personal_pr
 
 #[cfg(test)]
 mod tests {
+
+    /// An undo puts back only what the act changed: a field another device
+    /// changed meanwhile stays; a lighter day the act added goes, another
+    /// device's stays (fourth review).
+    #[test]
+    fn an_undo_puts_back_only_what_the_act_changed() {
+        let day = |d: &str| d.parse::<Date>().unwrap();
+        let previous = Overrides { work_until: Some(5), lighter: vec![day("2026-10-12")], ..Overrides::default() };
+        let after = Overrides { rest_until: Some(100), lighter: vec![day("2026-10-12"), day("2026-10-13")], ..Overrides::default() };
+        let now = Overrides { rest_until: Some(100), paused_since: Some(7), lighter: vec![day("2026-10-12"), day("2026-10-13"), day("2026-10-14")], ..Overrides::default() };
+        let back = now.put_back(&previous, &after);
+        assert_eq!((back.work_until, back.rest_until, back.paused_since), (Some(5), None, Some(7)));
+        assert_eq!(back.lighter, [day("2026-10-12"), day("2026-10-14")]);
+    }
     use super::*;
     use crate::needs::{Days, Needs};
 
@@ -559,7 +605,7 @@ mod tests {
         let saturday = at("2026-10-03T11:00[Europe/Paris]");
         assert_eq!(mode(&week(), &[], &none, &self::none(), &saturday).reason, Reason::DayOff);
         // Holidays the next week: leisure until the Monday after.
-        let off = vec![TimeOff { from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
+        let off = vec![TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
         let m = mode(&week(), &off, &none, &self::none(), &saturday);
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-12T09:00:00");
         let m = mode(&week(), &off, &none, &self::none(), &at("2026-10-06T10:00[Europe/Paris]"));
@@ -594,7 +640,7 @@ mod tests {
         split.push(AdminWindow { day: "monday".into(), start: "19:00".into(), end: Some("20:00".into()), minutes: 0, kind: None });
         assert_eq!(end_of_next_workday(&split, &[], &saturday).datetime().to_string(), "2026-10-05T20:00:00");
         // Holidays the next week: the Monday after; no working hours: midnight.
-        let off = vec![TimeOff { from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
+        let off = vec![TimeOff { id: String::new(), from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
         assert_eq!(end_of_next_workday(&week(), &off, &saturday).datetime().to_string(), "2026-10-12T17:00:00");
         assert_eq!(end_of_next_workday(&[], &[], &saturday).datetime().to_string(), "2026-10-04T00:00:00");
         // Ticked on Saturday: work shown, as work, until then.

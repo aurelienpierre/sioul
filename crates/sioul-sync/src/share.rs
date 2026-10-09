@@ -1879,10 +1879,12 @@ struct Memory {
     /// stops counting 180 days later.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     unclocked: BTreeMap<String, i64>,
-    /// While this device writes format 1: what each list format 1 sends whole
-    /// (and format 2 divides) holds, by format 2's names, and what a later
-    /// list took out of it, at that list's clock (`note_whole_lists`): kept
-    /// with the list's floor at the switch (`Floor::removed`).
+    /// What the whole lists of format 1 seen here held (lists format 2
+    /// divides), by format 2's names: each list record read, at its clock, in
+    /// whatever order (`note_whole_record`), and, while this device writes
+    /// format 1, the file between exchanges (`note_whole_lists`); what a later
+    /// list took out is passed over at or below that clock (`below_whole_floor`)
+    /// and kept with the list's floor at the switch (`Floor::removed`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     lists: BTreeMap<String, WholeList>,
     /// What it remembers of files sealed apart, in `files.json` beside.
@@ -2228,13 +2230,77 @@ struct Floor {
     removed: BTreeMap<String, u64>,
 }
 
-/// A list format 1 sends whole, as this device last saw it (`Memory::lists`).
+/// A list format 1 sends whole, as the whole lists seen here said it, each
+/// at its clock (`Memory::lists`), in whatever order they came: for each
+/// element one of them held, the latest clock of a list that held it, and
+/// the latest of one that did not. An element is taken out when a list
+/// without it came after the last one with it (`removed`). An element no
+/// list held is not in it: a list that did not know it did not take it out.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct WholeList {
-    #[serde(default)]
-    held: BTreeSet<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    removed: BTreeMap<String, u64>,
+    held_at: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    lacked_at: BTreeMap<String, u64>,
+    /// The latest clock of any list seen.
+    #[serde(default)]
+    top: u64,
+}
+
+impl WholeList {
+    /// A whole list seen, at clock `c`, holding `names`: a record read (in one
+    /// exchange, a later list may come first), or the file between exchanges.
+    fn saw(&mut self, c: u64, names: &BTreeSet<String>) {
+        for name in self.held_at.keys().filter(|name| !names.contains(*name)) {
+            let lacked = self.lacked_at.entry(name.clone()).or_default();
+            *lacked = (*lacked).max(c);
+        }
+        for name in names {
+            // Every list seen before did not hold it.
+            if !self.held_at.contains_key(name) && self.top > 0 {
+                self.lacked_at.insert(name.clone(), self.top);
+            }
+            let held = self.held_at.entry(name.clone()).or_default();
+            *held = (*held).max(c);
+        }
+        self.top = self.top.max(c);
+    }
+
+    /// When an element was taken out: the clock of the latest list without
+    /// it, when that came after the latest list with it.
+    fn removed_at(&self, name: &str) -> Option<u64> {
+        let held = self.held_at.get(name)?;
+        self.lacked_at.get(name).copied().filter(|lacked| lacked > held)
+    }
+
+    fn removed(&self) -> BTreeMap<String, u64> {
+        self.held_at.keys().filter_map(|name| self.removed_at(name).map(|at| (name.clone(), at))).collect()
+    }
+}
+
+/// A record of a list format 1 sends whole (format 2 dividing it), as
+/// `WholeList::saw` takes it: the names, in format 2, of what it holds. Any
+/// other record: nothing.
+fn note_whole_record(stores: &[Store], memory: &mut Memory, key: &str, value: Option<&str>, c: u64) {
+    let (file, entry) = (file_of(key), entry_of(key));
+    let Some((store, _)) = locate(stores, file) else { return };
+    let Shape::Toml(rules) = store.shape else { return };
+    if rules.next.is_none() {
+        return;
+    }
+    let Renamed::Whole(keyed) = renamed(rules, rules.at(2), entry) else { return };
+    let elements: Vec<toml::Value> = value
+        .and_then(|v| leaf_value(v).ok())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut element| {
+            strip_local(&mut element, keyed.local);
+            element
+        })
+        .collect();
+    let held: BTreeSet<String> = names(&elements, keyed).into_iter().collect();
+    memory.lists.entry(key.to_string()).or_default().saw(c, &held);
 }
 
 /// What each list format 1 sends whole holds now in the files format 2
@@ -2261,15 +2327,7 @@ fn note_whole_lists(stores: &[Store], memory: &mut Memory) {
         for key in keys {
             let held = now.remove(&key).unwrap_or_default();
             let clock = memory.entries.get(&key).map_or(memory.clock, |known| known.c);
-            let list = memory.lists.entry(key).or_default();
-            let gone: Vec<String> = list.held.difference(&held).cloned().collect();
-            for name in gone {
-                list.removed.insert(name, clock);
-            }
-            for name in &held {
-                list.removed.remove(name);
-            }
-            list.held = held;
+            memory.lists.entry(key).or_default().saw(clock, &held);
         }
     }
 }
@@ -2292,7 +2350,10 @@ fn below_whole_floor(memory: &Memory, key: &str, c: u64) -> bool {
     let (file, entry) = (file_of(key), entry_of(key));
     let Some((list, element)) = entry.rsplit_once(SEP) else { return false };
     let Some(name) = element.strip_prefix(MARK) else { return false };
-    memory.floors.get(&floor_key(&format!("{file}#{list}"))).is_some_and(|floor| floor.held.as_ref().is_some_and(|held| !held.contains(name)) && floor.removed.get(name).is_some_and(|at| c <= *at))
+    let whole = format!("{file}#{list}");
+    let by_floor = memory.floors.get(&floor_key(&whole)).is_some_and(|floor| floor.held.as_ref().is_some_and(|held| !held.contains(name)) && floor.removed.get(name).is_some_and(|at| c <= *at));
+    // The whole lists' records read here, in any order, in any format this device wrote (T7b: a device joining reads a list with it and a later one without in one exchange).
+    by_floor || memory.lists.get(&whole).and_then(|list| list.removed_at(name)).is_some_and(|at| c <= at)
 }
 
 /// Why a device holds back format 2 (`format_holders`).
@@ -3189,7 +3250,7 @@ fn rename_memory(memory: &mut Memory, store: &Store, file: &str, placed: &[Place
             Renamed::Same => {}
             Renamed::Whole(_) => {
                 let held = wholes.get(&key).cloned().filter(|_| !known.h.is_empty());
-                let removed = memory.lists.remove(&key).map(|list| list.removed).unwrap_or_default();
+                let removed = memory.lists.get(&key).map(WholeList::removed).unwrap_or_default();
                 memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: Some(held.unwrap_or_default()), removed });
             }
             Renamed::Element(keyed) => {
@@ -3704,6 +3765,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     wait(&mut memory.waiting, change.k, (change.v, record.c, computer.clone(), format));
                     continue;
                 }
+                // A whole list of format 1: what it holds, at its clock (`WholeList`),
+                // whatever this device writes, before its record is applied or translated.
+                if format < 2 {
+                    note_whole_record(originals, &mut memory, &change.k, change.v.as_deref(), record.c);
+                }
                 // Format 2 while this device writes format 1: another device
                 // writes it already; this one does from its next exchange, and
                 // the change waits for it.
@@ -4052,8 +4118,6 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Still on format 1: what each whole list holds now, and what one took out (`Floor::removed` at the switch).
     if memory.format < 2 {
         note_whole_lists(originals, &mut memory);
-    } else {
-        memory.lists.clear();
     }
     memory.save(sharing.memory)?;
     Ok(outcome)
