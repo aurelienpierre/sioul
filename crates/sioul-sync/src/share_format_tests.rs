@@ -546,9 +546,38 @@ fn from_fixtures(stage: &str, base: &Path) {
         for name in ["memory.json", "files.json"] {
             let path = base.join(device).join("state").join("share").join(name);
             if let Ok(text) = std::fs::read_to_string(&path) {
-                std::fs::write(&path, text.replace(BASE, &base.display().to_string())).unwrap();
+                // Each path made where the fixtures were, made here: parsed, not
+                // pasted into the text (a Windows path's backslashes are escapes
+                // in JSON), its separators this system's.
+                let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                rebase(&mut value, base);
+                std::fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
             }
         }
+    }
+}
+
+/// Every string of `value` naming a path below `BASE` (where the fixtures
+/// were made), and every key that does, named below `base` instead.
+fn rebase(value: &mut serde_json::Value, base: &Path) {
+    let moved = |s: &str| {
+        s.strip_prefix(BASE).map(|rest| rest.split('/').filter(|part| !part.is_empty()).fold(base.to_path_buf(), |path, part| path.join(part)).display().to_string())
+    };
+    match value {
+        serde_json::Value::String(s) => {
+            if let Some(path) = moved(s) {
+                *s = path;
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|item| rebase(item, base)),
+        serde_json::Value::Object(map) => {
+            let entries: Vec<(String, serde_json::Value)> = std::mem::take(map).into_iter().collect();
+            for (key, mut item) in entries {
+                rebase(&mut item, base);
+                map.insert(moved(&key).unwrap_or(key), item);
+            }
+        }
+        _ => {}
     }
 }
 
