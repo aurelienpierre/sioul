@@ -43,6 +43,10 @@
 # - ChannelsCheck: no badge on Sioul's icon: every notification channel is
 #   made by Channels.quiet, its badge off, and none elsewhere (read from the
 #   sources, as android.jar's NotificationChannel cannot be made here).
+# - StepsCheck: the background service's steps asked for later
+#   (StepService.Later.of: a folder's never in place of a message's), the
+#   files that bring a step (StepService.othersFile), and whether the texts'
+#   import asks Android (Texts.changedSince).
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #
@@ -59,7 +63,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

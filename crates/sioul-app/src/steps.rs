@@ -7,19 +7,24 @@
 //! without Qt's window, asks Rust for a step at each of its alarms and when
 //! the sync app writes another device's file into the sharing folder:
 //!
-//! 1. the other devices' news: the sync app asked to look first at an alarm,
+//! 1. the other devices' news: at an alarm, Sioul's own pull from the server
+//!    while it works (else the sync app asked to look first, and waited for),
 //!    then a quick exchange (`share::exchange_here`, which also keeps this
 //!    device's entry among the devices up to date; the service never says the
-//!    phone is in use);
+//!    phone is in use); a file the sync app wrote that the pull brought
+//!    already, left out (`brought_already`);
 //! 2. do-not-disturb: what this device should ask of its system, compared
 //!    with what was asked last; changed, Sioul's own process is asked to apply
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
-//! 3. mail at its rhythm, the inbox only: what your own spam filter moves as
-//!    you chose, into the Junk folder (`spam::after_fetch`); what your mail
-//!    filters do, on the server, to the arrivals still unread
-//!    (`filters::after_fetch`); the rest handed to the new-mail notifications
-//!    (`mailnote`), which never tell what the spam filter flagged or moved,
-//!    nor what a mail filter moves out of the inbox or marks read;
+//! 3. mail at its rhythm, the inbox only, fetched from the step's start
+//!    beside the exchange, every account at once, so that the step's network
+//!    comes in one burst (on mobile data, the radio woken once): what your
+//!    own spam filter moves as you chose, into the Junk folder
+//!    (`spam::after_fetch`); what your mail filters do, on the server, to the
+//!    arrivals still unread (`filters::after_fetch`); the rest handed to the
+//!    new-mail notifications (`mailnote`), told as soon as every account is
+//!    fetched, which never tell what the spam filter flagged or moved, nor
+//!    what a mail filter moves out of the inbox or marks read;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
 //!    changed, and the notification's "Let every call through";
 //! 5. when to look next: two minutes while another device is in use, five
@@ -29,6 +34,7 @@
 
 use crate::backend::{load_config, tr};
 use sioul_core::config::Config;
+use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
@@ -200,36 +206,77 @@ fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) ->
     config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
-/// The inbox of each account fetched, what your spam filter moves moved, what
-/// your mail filters do done, its
-/// arrivals handed to the new-mail notifications, and to the home screen's
-/// card when any came (`homecard::mail_came`); whether any came.
+/// The inbox of each account fetched, every account at once (each in a
+/// thread of its own, as the window's watchers fetch them: one connection
+/// each, the account's lock across processes), what your spam filter moves
+/// moved, what your mail filters do done, its arrivals handed to the new-mail
+/// notifications, told in one notification once every account is fetched
+/// (`mailnote::close_now`), and to the home screen's card when any came
+/// (`homecard::mail_came`); whether any came.
 fn fetch_mail(config: &Config) -> bool {
-    let mut any = false;
-    for account in config.accounts.iter().filter(|a| a.syncs()) {
-        let Ok(password) = sioul_sync::secret::password(account) else { continue };
-        match sioul_sync::inbox(account, &password) {
-            Ok(report) => {
-                any |= !report.new.is_empty();
-                crate::spam::after_fetch(account, &report.new, report.first);
-                // Your mail filters, as every device that fetches runs them (docs/client.md,
-                // "Filters"): what they would take quietly is held back from the
-                // notifications, and told as new mail if they could not act on it.
-                let filtered = crate::filters::after_fetch(account, &report.new, report.first);
-                if !filtered.problem.is_empty() {
-                    eprintln!("sioul: steps: {}: {}", account.id, filtered.problem);
+    let any = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        for account in config.accounts.iter().filter(|a| a.syncs()) {
+            let any = &any;
+            scope.spawn(move || {
+                let Ok(password) = sioul_sync::secret::password(account) else { return };
+                match sioul_sync::inbox(account, &password) {
+                    Ok(report) => {
+                        let mut came = !report.new.is_empty();
+                        crate::spam::after_fetch(account, &report.new, report.first);
+                        // Your mail filters, as every device that fetches runs them (docs/client.md,
+                        // "Filters"): what they would take quietly is held back from the
+                        // notifications, and told as new mail if they could not act on it.
+                        let filtered = crate::filters::after_fetch(account, &report.new, report.first);
+                        if !filtered.problem.is_empty() {
+                            eprintln!("sioul: steps: {}: {}", account.id, filtered.problem);
+                        }
+                        crate::mailnote::arrived(&account.id, &report.new, report.first);
+                        crate::mailnote::unfiltered(&account.id, &filtered.tell);
+                        came |= !filtered.tell.is_empty();
+                        any.fetch_or(came, Ordering::Relaxed);
+                    }
+                    Err(e) => eprintln!("sioul: steps: {}: {e:?}", account.id),
                 }
-                crate::mailnote::arrived(&account.id, &report.new, report.first);
-                crate::mailnote::unfiltered(&account.id, &filtered.tell);
-                any |= !filtered.tell.is_empty();
-            }
-            Err(e) => eprintln!("sioul: steps: {}: {e:?}", account.id),
+            });
         }
-    }
+    });
+    // Every account's arrivals known: told now, in one notification.
+    crate::mailnote::close_now();
+    let any = any.into_inner();
     if any {
         crate::homecard::mail_came();
     }
     any
+}
+
+/// The files another device wrote that the sync app just put in the sharing
+/// folder (`StepService`'s watch: their names, "/" between them), each one
+/// the pull brought already, the same here as fetched (`remote::overlay`):
+/// whole for a small file, by its size for a larger one (a log's round, which
+/// only grows). Nothing new to read: the folder's step is left out. Not when
+/// nothing is fetched beside the folder, nor for a name not known.
+fn brought_already(folder: &Path, names: &str) -> bool {
+    const SMALL: u64 = 64 << 10;
+    let Some(fetched) = sioul_sync::remote::overlay(folder) else { return false };
+    let names: Vec<&str> = names.split('/').filter(|n| !n.is_empty() && *n != "." && *n != "..").collect();
+    let same = |name: &str| {
+        let (here, there) = (folder.join(name), fetched.join(name));
+        match (std::fs::metadata(&here), std::fs::metadata(&there)) {
+            (Ok(a), Ok(b)) if a.is_file() && b.is_file() && a.len() == b.len() => a.len() > SMALL || std::fs::read(&here).ok() == std::fs::read(&there).ok(),
+            _ => false,
+        }
+    };
+    !names.is_empty() && names.iter().all(|name| same(name))
+}
+
+/// The sharing's full rounds wait (`share::set_frugal`, a round restating the
+/// records, a megabyte or two sent whole, waits while this device appended
+/// less than four) while a bulk import of texts goes on (`texts::importing_in_bulk`),
+/// or the connection is measured slow, as the window's exchanges do.
+fn rounds_wait() {
+    let memory = sioul_core::config::state_dir().join("share").join("memory.json");
+    sioul_sync::share::set_frugal(&memory, crate::texts::importing_in_bulk() || sioul_sync::remote::Sending::load(&memory).slow());
 }
 
 /// The background service's notification as things stand now (StepService;
@@ -266,7 +313,10 @@ pub(crate) fn tell_note() {
 }
 
 /// One step of the background service (see the module's words): its answer
-/// for Java, {next (seconds), folder, own, title, text, channel, calls, stop}.
+/// for Java, {next (seconds), folder, own, title, text, channel, calls, stop},
+/// or {skip} for a folder's step with nothing new (the alarm left as it is).
+/// `reason`: `alarm`, `folder:<names>` ("/" between them), `messages`,
+/// `heard`, `calls`, `start`, `restart`.
 fn step(reason: &str) -> serde_json::Value {
     let config = load_config();
     let Some((own, vault)) = crate::share::vault() else { return serde_json::json!({ "stop": true }) };
@@ -277,12 +327,29 @@ fn step(reason: &str) -> serde_json::Value {
     if !config.dnd.background {
         return serde_json::json!({ "stop": true });
     }
-    // 1. The others' news: at an alarm, the sync app asked first and given twenty
-    // seconds, unless you sleep and no other device is in use (nothing is coming:
-    // its own pace is enough); a file the sync app just wrote, read at once.
+    let (reason, names) = reason.split_once(':').unwrap_or((reason, ""));
+    // A file the sync app just wrote that the pull brought already: nothing new to read.
+    if reason == "folder" && brought_already(&folder, names) {
+        return serde_json::json!({ "skip": true });
+    }
+    // 1. The others' news: at an alarm, Sioul's own pull from the server while it
+    // works, else the sync app asked first and given twenty seconds
+    // (`share::exchange_here`), unless you sleep and no other device is in use
+    // (nothing is coming: the pull's own pace is enough); a file the sync app just wrote, read at once.
     let (asleep, paused) = crate::everywhere::rest_now();
     let asleep = asleep && !paused;
     let in_use = crate::devices::others_in_use();
+    // 3, begun now: mail at its rhythm, fetched beside the exchange, so that the
+    // step's network comes in one burst; then what waited and may come now
+    // ("The Porch opens"), at the mail's rhythm. Waited for before the answer.
+    let started = jiff::Timestamp::now().as_second();
+    let mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), asleep, paused).then(|| {
+        MAILED.store(started, Ordering::Relaxed);
+        std::thread::spawn(|| {
+            fetch_mail(&load_config());
+            crate::mailnote::tick();
+        })
+    });
     // "Let every call through" pressed on the notification: carried into the switch
     // and the calls' table first, and sent at once, the sync app not waited for.
     let pressed = reason == "calls";
@@ -290,14 +357,17 @@ fn step(reason: &str) -> serde_json::Value {
     // A press heard from this phone's own do-not-disturb (DndReceiver): sent at once too; and
     // a message's line for your computers (`phonemsgs`, the listener's "messages").
     let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
+    rounds_wait();
     if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
         eprintln!("sioul: steps: {e}");
     }
-    // texts: the requests this exchange brought, decided and sent now, their outcomes shared at once.
-    if crate::texts::phone_step()
-        && let Some(Err(e)) = crate::share::exchange_here(false)
-    {
-        eprintln!("sioul: steps: {e}");
+    // texts: the requests this exchange brought, decided and sent now, their outcomes shared at
+    // once; a batch of the import too, the full rounds waiting while it goes on.
+    if crate::texts::phone_step() {
+        rounds_wait();
+        if let Some(Err(e)) = crate::share::exchange_here(false) {
+            eprintln!("sioul: steps: {e}");
+        }
     }
     // The calls' table as your devices' news left it, and the notification's words for them.
     let calls = calls.unwrap_or_else(|| crate::calls::step(false));
@@ -309,21 +379,17 @@ fn step(reason: &str) -> serde_json::Value {
         java("poke", "{}");
         *poked = (signature, line.clone());
     }
-    // The notification's words shown now, before mail, which may take a while.
+    // The notification's words shown now, before mail ends, which may take a while.
     java("note", &note().0.to_string());
-    // 3. Mail at its rhythm, then what waited and may come now.
-    let now = jiff::Timestamp::now().as_second();
-    if mail_due(&config, now, MAILED.load(Ordering::Relaxed), asleep, paused) {
-        MAILED.store(now, Ordering::Relaxed);
-        if fetch_mail(&config) {
-            // New mail is told in one notification ten seconds after the last arrival: the step waits for it.
-            std::thread::sleep(std::time::Duration::from_secs(12));
-        }
-        // What waited and may come now ("The Porch opens"), at the mail's rhythm.
-        crate::mailnote::tick();
+    // 3. Mail, done: every account fetched and its batch told (no wait after it).
+    if let Some(mail) = mail
+        && mail.join().is_err()
+    {
+        eprintln!("sioul: steps: mail stopped short");
     }
     // The notification's words now; the next step no later than the end of what now is for,
     // so that its title changes with the time.
+    let now = jiff::Timestamp::now().as_second();
     let (note, until) = note();
     let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(next_step(in_use, asleep), |s| s.min(next_step(in_use, asleep)));
     let words = words();
@@ -448,6 +514,46 @@ mod tests {
         config.reminders.mail = true;
         config.accounts.clear();
         assert!(!mail_due(&config, now, 0, false, false), "no account");
+    }
+
+    /// A file the sync app wrote that the pull brought already, the same
+    /// here as fetched, brings no step; anything else does.
+    #[test]
+    fn a_file_the_pull_brought_already_brings_no_step() {
+        let dir = std::env::temp_dir().join(format!("sioul-steps-brought-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (folder, state) = (dir.join("Sioul"), dir.join("state").join("share"));
+        let fetched = state.join("remote");
+        for d in [&folder, &fetched] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("seal.toml"), "version = 1\n").unwrap();
+        }
+        let mut remote = toml::Table::new();
+        remote.insert("folder".into(), folder.display().to_string().into());
+        std::fs::write(state.join("remote.toml"), toml::to_string(&remote).unwrap()).unwrap();
+        let both = |name: &str, here: &[u8], there: &[u8]| {
+            std::fs::write(folder.join(name), here).unwrap();
+            std::fs::write(fetched.join(name), there).unwrap();
+        };
+        both("7c41d09e-1.jsonl", b"line one\nline two\n", b"line one\nline two\n");
+        both("7c41d09e.toml", b"read = 1\n", b"read = 1\n");
+        // Nothing fetched beside the folder in this process yet: read as before.
+        assert!(!brought_already(&folder, "7c41d09e-1.jsonl"));
+        assert!(sioul_sync::remote::attach(&folder, &state.join("memory.json")).is_some());
+        assert!(brought_already(&folder, "7c41d09e-1.jsonl/7c41d09e.toml"));
+        // A small file the same size, otherwise: read.
+        both("7c41d09e.toml", b"read = 2\n", b"read = 1\n");
+        assert!(!brought_already(&folder, "7c41d09e-1.jsonl/7c41d09e.toml") && !brought_already(&folder, "7c41d09e.toml"));
+        // A round longer here (the sync app newer than the pull): read.
+        both("7c41d09e-1.jsonl", b"line one\nline two\nline three\n", b"line one\nline two\n");
+        assert!(!brought_already(&folder, "7c41d09e-1.jsonl"));
+        // A large round, the same size: brought (a round only grows).
+        both("7c41d09e-2.jsonl", &vec![b'a'; 70 << 10], &vec![b'b'; 70 << 10]);
+        assert!(brought_already(&folder, "7c41d09e-2.jsonl"));
+        // Not fetched, no name, or a name that is no file's: read.
+        std::fs::write(folder.join("f00d.toml"), b"x").unwrap();
+        assert!(!brought_already(&folder, "f00d.toml") && !brought_already(&folder, "") && !brought_already(&folder, ".."));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The coordinator's rule (6 October 2026): the list's stars are said and

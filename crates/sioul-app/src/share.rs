@@ -1026,7 +1026,8 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// One exchange here and now, on the calling thread, without the window (an
 /// Android alarm wakes Sioul with nothing on the screen): with `fetch_first`,
 /// the sync app is asked to bring what the other devices wrote, and given
-/// twenty seconds. None when sharing is off. Waits for an exchange running.
+/// twenty seconds (the background service, its pull working: the pull alone,
+/// waited for). None when sharing is off. Waits for an exchange running.
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
     let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
@@ -1040,6 +1041,11 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     if mirror && fetch_first {
         mirror_step(&here, true, true);
     }
+    // The background service, its own pull working (`remote::State::pulls_well`):
+    // the others' news come from the server alone, the sync app neither asked
+    // to look nor waited for, before or after a send (docs/android.md, "In the
+    // background"). A dose's or a waking's alarm, in Sioul's own process, asks it as before.
+    let pull_alone = cfg!(target_os = "android") && crate::steps::in_service() && !mirror && sioul_sync::remote::State::load(&memory_path()).pulls_well(&folder);
     // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`).
     let fetching = (fetch_first && !mirror).then(|| {
         let here = here.clone();
@@ -1053,7 +1059,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     }
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
-    if fetch_first && cfg!(target_os = "android") && !mirror {
+    if fetch_first && cfg!(target_os = "android") && !mirror && !pull_alone {
         use std::sync::atomic::Ordering;
         let now = jiff::Timestamp::now().as_second();
         let last = NUDGED.load(Ordering::Relaxed);
@@ -1067,9 +1073,15 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         std::thread::sleep(std::time::Duration::from_secs((20 - waited).max(0) as u64));
     }
     // What the server brings, waited for a few seconds more at most: never
-    // the whole of a slow network's (a dose's alarm has a minute in all).
+    // the whole of a slow network's (a dose's alarm has a minute in all). The
+    // pull alone, up to the twenty-five seconds it had beside the sync app's
+    // wait, never later than before, the step going on as soon as it is done.
     if let Some(fetching) = fetching {
-        let until = std::time::Instant::now() + std::time::Duration::from_secs(if cfg!(target_os = "android") { 5 } else { 15 });
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(match (cfg!(target_os = "android"), pull_alone) {
+            (true, true) => 25,
+            (true, false) => 5,
+            (false, _) => 15,
+        });
         while !fetching.is_finished() && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
@@ -1107,7 +1119,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             let here = here.clone();
             let go = move || {
                 send_to_server(&here, false);
-                if ask {
+                if ask && !pull_alone {
                     ask_carriers_only();
                 }
             };

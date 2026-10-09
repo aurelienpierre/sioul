@@ -8,9 +8,12 @@ import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.provider.Telephony;
 import android.telephony.SubscriptionInfo;
@@ -18,6 +21,7 @@ import android.telephony.SubscriptionManager;
 import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,7 +40,10 @@ import org.json.JSONObject;
  * (TextsAsk), the texts since the reader's marks (the whole history, every
  * column, multimedia messages and their parts), a part's content, the ids
  * there are now, the texts Sioul sent lately (to find one after a crash),
- * and a text to send (TextSend). Heard: a new text, which brings a step soon.
+ * and a text to send (TextSend), whether the phone's texts changed since the
+ * last look and whether it charges (`changes`). Heard: a new text, which
+ * brings a step soon. The background service watches Android's provider of
+ * texts (`watch`): the import asks Android only when they changed.
  */
 public final class Texts
 {
@@ -46,8 +53,89 @@ public final class Texts
     /** Android's provider: a text sent; received. */
     static final int SENT_BOX = 2;
 
+    /** The phone's texts changed since Rust last asked with "clear" (`changes`): set at first, so that the first step looks. */
+    private static final AtomicBoolean changed = new AtomicBoolean(true);
+    /** Android's provider of texts watched in this process (the background service's); null: not watched here. */
+    private static ContentObserver watching;
+
     private Texts()
     {
+    }
+
+    /**
+     * Android's provider of texts watched in this process (the background
+     * service's), once READ_SMS is given: a text received, sent, deleted or
+     * read marks them changed. Asked again at each step until it holds.
+     */
+    static synchronized void watch(Context context)
+    {
+        if (watching != null || !allowed(context, Manifest.permission.READ_SMS))
+            return;
+        ContentObserver observer = new ContentObserver(null) {
+            @Override
+            public void onChange(boolean self)
+            {
+                changed.set(true);
+            }
+        };
+        try {
+            ContentResolver resolver = context.getContentResolver();
+            for (Uri uri : new Uri[] { Telephony.Sms.CONTENT_URI, Telephony.Mms.CONTENT_URI, Telephony.MmsSms.CONTENT_URI })
+                resolver.registerContentObserver(uri, true, observer);
+            watching = observer;
+            changed.set(true);
+        } catch (RuntimeException e) {
+            context.getContentResolver().unregisterContentObserver(observer);
+            Log.w(TAG, "Texts: the texts cannot be watched: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** No longer watched (the service ending). */
+    static synchronized void unwatch(Context context)
+    {
+        if (watching != null)
+            context.getContentResolver().unregisterContentObserver(watching);
+        watching = null;
+        changed.set(true);
+    }
+
+    /** A new text heard (Heard): changed, whatever the provider said yet. */
+    static void touched()
+    {
+        changed.set(true);
+    }
+
+    /**
+     * Whether the texts changed since the last look: always when not watched
+     * here (the window's process; READ_SMS not given yet); else as marked,
+     * the mark cleared when `clear`. Pure: android/jvm-checks/StepsCheck.java.
+     */
+    static boolean changedSince(boolean watched, AtomicBoolean mark, boolean clear)
+    {
+        if (!watched)
+            return true;
+        return clear ? mark.getAndSet(false) : mark.get();
+    }
+
+    /** Rust's "texts-changes": {changed (`changedSince`), plugged (the phone on its charger)}. */
+    static JSONObject changes(Context context, boolean clear) throws JSONException
+    {
+        boolean watched;
+        synchronized (Texts.class) {
+            watched = watching != null;
+        }
+        return new JSONObject().put("changed", changedSince(watched, changed, clear)).put("plugged", plugged(context));
+    }
+
+    /** The phone on its charger, by Android's last word on the battery (a sticky broadcast: no receiver kept). */
+    static boolean plugged(Context context)
+    {
+        try {
+            Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            return battery != null && battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** A row of a cursor, or of a check's stand-in: its values by column. */
@@ -111,6 +199,8 @@ public final class Texts
             return find(resolver, context.getPackageName(), asked.optLong("since", 0)).put("allowed", true).toString();
         case "texts-send":
             return TextSend.send(context, asked.optString("key", ""), asked.optString("to", ""), asked.optString("body", ""), asked.optInt("sub", -1)).toString();
+        case "texts-changes":
+            return changes(context, asked.optBoolean("clear", true)).toString();
         default:
             return null;
         }
@@ -433,8 +523,10 @@ public final class Texts
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            if (intent != null && Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(intent.getAction()))
+            if (intent != null && Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(intent.getAction())) {
+                touched();
                 StepService.soon(context.getApplicationContext());
+            }
         }
     }
 }

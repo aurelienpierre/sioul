@@ -13,8 +13,10 @@
 //! - **On the phone, never inside an exchange** (`heavy_step`: after the
 //!   background service's exchange, or in a thread of the window's): the
 //!   whole history read a batch at a time (`BATCH` texts, `MEDIA_BATCH`
-//!   bytes of media put as sealed blobs), every column kept; the texts
-//!   deleted on the phone marked so, once a day; the sizes the settings say.
+//!   bytes of media put as sealed blobs), every column kept, while the phone
+//!   charges; then what the phone's texts changed, when they did
+//!   (`import_now`); the texts deleted on the phone marked so, once a day;
+//!   the sizes the settings say.
 //! - **On a computer**: the Texts page (`view`, `conversation`), a text
 //!   written for the phone to send (`send`, `again`); the media's blobs
 //!   brought and kept sealed (`fetch_media`, in a thread, never inside an
@@ -178,6 +180,9 @@ struct Reader {
     done_media: u64,
     /// When the deletions were last looked for.
     looked: i64,
+    /// The last batch left texts to read: full, or a message's media that did
+    /// not fit. The import goes on only while the phone charges (`import_now`).
+    behind: bool,
 }
 
 /// The reader of the archive. The first version read 30 days: its marks
@@ -383,6 +388,8 @@ struct Taken {
     sms: i64,
     mms: i64,
     media: u64,
+    /// The rows the answer held: more than were taken, or a full batch, leaves the import behind.
+    rows: usize,
 }
 
 /// The texts of a `texts-read` answer as they travel, `BATCH` at most, the
@@ -392,8 +399,9 @@ fn take(answer: &Value, vault: &Vault, region: Option<&phones::Region>) -> Taken
     let threads = threads_of(answer);
     let cap = cap_mb() << 20;
     let mut budget = rules::MEDIA_BATCH;
-    let mut taken = Taken { texts: Vec::new(), sms: 0, mms: 0, media: 0 };
-    for raw in raws(answer) {
+    let raws = raws(answer);
+    let mut taken = Taken { texts: Vec::new(), sms: 0, mms: 0, media: 0, rows: raws.len() };
+    for raw in raws {
         if taken.texts.len() >= rules::BATCH {
             break;
         }
@@ -443,6 +451,7 @@ fn import_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::R
     reader.mms = reader.mms.max(taken.mms);
     reader.done_texts += written as u64;
     reader.done_media += taken.media;
+    reader.behind = taken.rows >= rules::BATCH || taken.texts.len() < taken.rows;
     if let Err(e) = reader.save() {
         eprintln!("sioul: texts: {e}");
     }
@@ -741,15 +750,46 @@ fn light_step(here: &str, seal: &Seal, region: Option<&'static phones::Region>) 
 }
 
 /// The part that may take a while, never inside an exchange: the history's
-/// next batch and its media, and the day's look for deletions. Under its own
-/// lock: one import at a time on the phone.
+/// next batch and its media when due (`import_now`), and the day's look for
+/// deletions. Under its own lock: one import at a time on the phone.
 fn heavy_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Region>) -> bool {
     sioul_core::filelock::with_lock(&private().join(".import"), || {
         let now = now_ms();
-        let mut changed = import_step(here, seal, vault, region, now);
+        let (texts_changed, plugged) = changes(true);
+        let mut changed = import_now(&Reader::load(), texts_changed, plugged, now) && import_step(here, seal, vault, region, now);
         changed |= look_again(here, seal, vault, region, now);
         changed
     })
+}
+
+/// Java's word on the phone (`Texts.changes`): whether its texts changed
+/// since it was last asked with `clear` (a text came, was sent, deleted or
+/// read: Android's provider watched by the background service; not watched
+/// in this process, or no answer: yes, as at every step before), and whether
+/// the phone is on its charger.
+fn changes(clear: bool) -> (bool, bool) {
+    let answer = crate::steps::java("texts-changes", &json!({ "clear": clear }).to_string());
+    (answer["changed"] != false, answer["plugged"] == true)
+}
+
+/// Whether the import reads the phone's texts now, at `now` (ms;
+/// docs/texts.md, "Reading, on the phone: paced"). A heavy import, the first
+/// (the whole history) or one the last batch left behind (full, or media
+/// that did not fit), only while the phone charges: it may write and send
+/// hundreds of megabytes, on mobile data too. Caught up, when the phone's
+/// texts changed since the last look, and with the day's look for deletions
+/// all the same (a change Android did not say): most steps find nothing new,
+/// and ask Android nothing.
+fn import_now(reader: &Reader, changed: bool, plugged: bool, now: i64) -> bool {
+    if reader.started == 0 || reader.behind { plugged } else { changed || now - reader.looked >= 86_400_000 }
+}
+
+/// A bulk import going on, on the charger or waiting for it (`import_now`):
+/// the sharing's full rounds wait meanwhile (`steps`), so that it does not
+/// restate the records again and again (8 October 2026: a first import made
+/// six full rounds, each sent twice).
+pub(crate) fn importing_in_bulk() -> bool {
+    phone() && sealed().is_some() && Reader::load().behind
 }
 
 /// The background service's step, after its exchange: the quick part, then
@@ -1260,11 +1300,15 @@ fn setup() -> Value {
     args.set("size", size_words(reader.total_media));
     args.set("done", i64::try_from(reader.done_texts).unwrap_or(0));
     args.set("done_size", size_words(reader.done_media));
+    // A heavy import waits for the charger (`import_now`): said, calmly.
+    let goes_now = !android || (reader.started > 0 && !reader.behind) || changes(false).1;
     let progress = match (reader.measured, reader.done_texts) {
         (0, _) => String::new(),
-        (_, 0) => tr.text("texts-setup-holds", Some(&args)),
+        (_, 0) if goes_now => tr.text("texts-setup-holds", Some(&args)),
+        (_, 0) => format!("{} {}", tr.text("texts-setup-holds", Some(&args)), tr.text("texts-setup-charging", None)),
         (_, done) if done >= reader.total_texts => tr.text("texts-setup-done", Some(&args)),
-        _ => tr.text("texts-setup-progress", Some(&args)),
+        _ if goes_now => tr.text("texts-setup-progress", Some(&args)),
+        _ => tr.text("texts-setup-progress-charging", Some(&args)),
     };
     let choices: Vec<Value> = CAPS_MB
         .iter()
@@ -1464,6 +1508,26 @@ mod tests {
         assert_eq!(found.missing_sms, [3, 6], "passed while hidden; 9 is after the mark");
         assert!(found.missing_mms.is_empty());
         assert_eq!(found.gone, ["mms-3", "sms-5"], "sms-2 is marked already");
+    }
+
+    /// The import asks Android only when the phone's texts changed; a heavy
+    /// one (the first, of the whole history, or one a full batch left behind)
+    /// only while the phone charges.
+    #[test]
+    fn a_heavy_import_waits_for_the_charger() {
+        let first = Reader::default();
+        assert!(!import_now(&first, true, false, NOW), "the whole history, on the battery: it waits");
+        assert!(import_now(&first, false, true, NOW), "on the charger");
+        let caught_up = Reader { started: NOW - 1_000, looked: NOW - 3_600_000, ..Reader::default() };
+        assert!(import_now(&caught_up, true, false, NOW), "a new text, on the battery");
+        assert!(!import_now(&caught_up, false, false, NOW) && !import_now(&caught_up, false, true, NOW), "nothing changed: Android not asked");
+        assert!(import_now(&caught_up, false, false, NOW + 86_400_000), "the day's look: read all the same");
+        let behind = Reader { started: NOW - 1_000, behind: true, ..caught_up.clone() };
+        assert!(!import_now(&behind, true, false, NOW), "a full batch left more: on the charger only");
+        assert!(import_now(&behind, false, true, NOW), "on the charger, batch after batch");
+        // A reader written before this mark: caught up.
+        let older: Reader = serde_json::from_str(r#"{"version":2,"sms":10,"mms":3,"started":1}"#).unwrap();
+        assert!(!older.behind && import_now(&older, true, false, NOW));
     }
 
     #[test]

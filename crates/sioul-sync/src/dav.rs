@@ -112,28 +112,31 @@ pub(crate) struct Budget {
 const BUDGET: Budget = Budget { connect: Duration::from_secs(20), stall: Duration::from_secs(60), whole: Duration::from_secs(15 * 60) };
 
 pub(crate) fn agent(budget: &Budget) -> ureq::Agent {
-    agent_with(budget, false)
+    // Each read and write bounded by `stall`, as long as the answer moves:
+    // on ureq's transport, which follows no semver (`stalls`).
+    crate::stalls::agent(config(budget), budget.stall, false)
 }
 
-/// The same for sending a file whole (`remote::Server::put_file`): its bytes
-/// may wait in the system's buffers long after they were handed over, on a
-/// slow uplink, while the answer is awaited; that wait is bounded by the
-/// whole budget alone, the others by `stall`.
-pub(crate) fn upload_agent(budget: &Budget) -> ureq::Agent {
-    agent_with(budget, true)
+/// The sharing's server's one agent in this process (`remote::Server`): its
+/// connections and TLS sessions kept between the requests of a pull, of the
+/// sends after it and of the next pull, so that a phone's step opens one
+/// connection, not one per pull, per send and per file sent (on mobile data,
+/// each new one wakes the radio for a TLS handshake). Each request says its
+/// own budget (its whole and its connection's time, `configure_request`; its
+/// stall, `stalls::ask`); ureq keeps an idle connection fifteen seconds.
+pub(crate) fn shared_agent() -> ureq::Agent {
+    static SHARED: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    SHARED.get_or_init(|| crate::stalls::shared_agent(config(&BUDGET), BUDGET.stall)).clone()
 }
 
-fn agent_with(budget: &Budget, patient: bool) -> ureq::Agent {
-    let config = ureq::Agent::config_builder()
+fn config(budget: &Budget) -> ureq::config::Config {
+    ureq::Agent::config_builder()
         .timeout_connect(Some(budget.connect))
         .timeout_global(Some(budget.whole))
         .http_status_as_error(false)
         .max_redirects(0)
         .allow_non_standard_methods(true)
-        .build();
-    // Each read and write bounded by `stall`, as long as the answer moves:
-    // on ureq's transport, which follows no semver (`stalls`).
-    crate::stalls::agent(config, budget.stall, patient)
+        .build()
 }
 
 impl Client {
