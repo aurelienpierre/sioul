@@ -443,7 +443,8 @@ pub(crate) fn status(folder: &str) -> String {
             if formats.holders.iter().any(|(_, holds)| *holds == share::Holds::Older) {
                 lines.push(tr().text("share-format-held", None));
             }
-            if formats.writes >= 2 && sioul_sync::devices::all(&path, &key).0.iter().any(|e| e.id != here.id && !e.left && e.format < share::FORMAT) {
+            // A device that still counts (heard of in the last 180 days, not forgotten) on an older Sioul.
+            if !formats.older.is_empty() {
                 problems.push(tr().text("share-format-older", None));
             }
         }
@@ -517,6 +518,7 @@ fn problem_text(code: &str) -> String {
         Some(("share-refused", name)) => say("share-refused", &[("file", file(name))]),
         Some(("share-not-text", name)) => say("share-not-text", &[("file", file(name))]),
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
+        Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
         _ => code.to_string(),
     }
@@ -739,6 +741,18 @@ pub(crate) fn stop() -> String {
         let _ = std::fs::remove_file(&memory);
         here.save(&state).err().unwrap_or_default()
     })
+}
+
+/// A device you said is gone (Forget this device), for the sharing too: it
+/// no longer holds the newer form back (`share::forget_device`), until it says
+/// anything newer. Sharing off: nothing to do.
+pub(crate) fn forget_device(id: &str) {
+    let here = here();
+    if let (Some(folder), Some(key)) = (attached(&here), key())
+        && let Err(e) = share::forget_device(&folder, &key, &memory_path(), &here.id, id)
+    {
+        eprintln!("sioul: sharing: {e}");
+    }
 }
 
 /// Whether this device's sharing writes format 2 (`share::FORMAT`), where

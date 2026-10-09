@@ -2942,6 +2942,7 @@ share-newer = Vos autres appareils partagent « { $part } » sous une forme 
 share-newer-plain = Vos autres appareils partagent « { $part } » sous une forme plus récente que celle que lit ce Sioul. Mettez Sioul à jour sur cet appareil pour la partager de nouveau : d’ici là, ce que vous y changez ici reste sur cet appareil, et ce qui change sur les autres attend ici.
 share-newer-status = Cet appareil a besoin d’un Sioul plus récent pour partager « { $part } » : Paramètres ▸ Votre dossier et le partage en dit plus.
 share-format-held = L’un de vos appareils a un Sioul plus ancien (sa ligne ci-dessous dit lequel) : jusqu’à sa mise à jour, vos appareils continuent de partager sous la forme qu’il lit. D’ici là, une séance de temps, vos sites épinglés ou une liste de mots changés sur deux appareils au même moment ne gardent que le dernier changement.
+share-format-wait = { $file } ne se lit pas comme il faut : vos appareils continuent de partager sous l’ancienne forme jusqu’à ce qu’il se lise. Sioul réessaie à chaque échange.
 share-format-older = L’un de vos appareils a un Sioul plus ancien, qui ne lit pas ce que vos appareils partagent désormais (sa ligne ci-dessous dit lequel) : mettez-le à jour là-bas avant qu’il partage de nouveau.
 
 ## Rappels avant les dates
