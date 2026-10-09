@@ -267,6 +267,7 @@ account-removed = « { $id } » retiré, avec son mot de passe. Son courrier
 account-portal-added = « { $id } » ajouté : il ouvre { $url } dans votre navigateur.
 account-password-saved = Mot de passe gardé dans le trousseau de votre système.
 account-has-password = mot de passe dans le trousseau
+account-signed-in-google = connecté avec Google (l’accès dans le trousseau)
 account-no-password = pas encore de mot de passe : `sioul account password { $id }`
 account-trust = Vérification des expéditeurs : fait confiance à { $ids }.
 account-trust-learning = Vérification des expéditeurs : apprise de votre courrier à la première relève.
@@ -497,7 +498,6 @@ scan-running-any = Vérification de la pièce jointe par l’antivirus…
 scan-running = Vérification de { $name } par l’antivirus…
 scan-clean = { $name } : aucune menace trouvée ; ouverture.
 scan-infected = { $name } : l’antivirus a trouvé { $threat }. Rien n’a été ouvert, et la copie est effacée.
-scan-unavailable = Aucun antivirus n’a répondu, donc rien n’a été ouvert. Installez ClamAV : sudo dnf install clamav clamav-update, puis sudo freshclam. ({ $detail })
 scan-error = La pièce jointe { $name } n’a pas pu être vérifiée ({ $detail }).
 
 ## La lecture.
@@ -849,6 +849,8 @@ event-where = Lieu
 event-repeat = Se répète
 event-calendar = Agenda
 event-pick-day = Choisir le jour
+date-month-previous = Mois précédent : { $month }
+date-month-next = Mois suivant : { $month }
 repeat-none = Ne se répète pas
 repeat-daily = Tous les jours
 repeat-weekly = Toutes les semaines
@@ -1360,6 +1362,28 @@ task-add-step = Une étape, en une ligne
 task-waits-title = Attend
 task-waits-add = Attend… (le titre d’une tâche)
 task-waits-remove = Ne l’attend plus
+task-waits-gap = Puis attendre
+task-waits-gap-help = Pour la prochaine attente ajoutée : cette tâche attend ce temps-là une fois l’autre faite (« la réponse arrive sous deux semaines »). 0 : dès qu’elle est faite.
+task-waits-gap-days = { $n ->
+    [one] jour
+   *[other] jours
+}
+task-waits-gap-weeks = { $n ->
+    [one] semaine
+   *[other] semaines
+}
+task-waits-after-days = { $n ->
+    [one] un jour après elle
+   *[other] { $count } jours après elle
+}
+task-waits-after-weeks = { $n ->
+    [one] une semaine après elle
+   *[other] { $countf } semaines après elle
+}
+task-waits-after-hours = { $n ->
+    [one] une heure après elle
+   *[other] { $countf } heures après elle
+}
 task-frees-one = Libère : { $title }
 task-field-start = Peut commencer le
 task-field-due = Date demandée
@@ -1483,7 +1507,7 @@ set-projects-rename = Renommer en sioul-projects.toml
 set-projects-rename-help = Vos projets sont dans sioul-cases.toml, le premier nom du fichier, que Sioul lit et écrit toujours tel quel. Renommé, il devient sioul-projects.toml et ses entrées [[project]], chaque champ et chaque commentaire gardés, avec une copie de l’ancien fichier à côté (sioul-cases.toml.before-rename). Renommez-le quand chacun de vos appareils a cette version de Sioul ou une plus récente : une version plus ancienne ne lit que sioul-cases.toml.
 set-projects-both = Votre dossier de notes contient à la fois sioul-projects.toml et sioul-cases.toml : Sioul lit sioul-projects.toml et laisse sioul-cases.toml tel quel. Une version plus ancienne de Sioul, sur un autre appareil, peut encore y écrire.
 set-notes-folder = Les nouvelles notes vont dans
-set-notes-folder-help = Un dossier à l’intérieur du dossier des notes, pour les notes faites à partir du courrier et des événements.
+set-notes-folder-help = Un dossier à l’intérieur du dossier des notes, où Sioul range chaque nouvelle note (sauf si vous la créez dans un autre dossier), et vos mémos vocaux dans son dossier memos.
 set-reading-family = Police
 set-reading-family-help = Pour le texte long : notes, courrier, notes d’une tâche. Vide : celle du bureau.
 set-reading-size = Taille
@@ -2041,6 +2065,9 @@ bitwarden-factor-1 = Courriel
 bitwarden-factor-3 = YubiKey
 bitwarden-factor-8 = Code de récupération
 bitwarden-factor-unsupported = Votre compte demande Duo, que Sioul ne sait pas encore prendre : ajoutez une clé de sécurité ou une application d’authentification comme seconde étape dans Bitwarden.
+bitwarden-factor-key-sites = La seconde étape de votre compte est votre clé de sécurité, que cette fenêtre ne peut pas demander. Ouvrez Bitwarden une fois depuis la page Sites, où la clé est demandée : le coffre reste alors ouvert ici aussi jusqu’à la fermeture de Sioul. Ou ajoutez une application d’authentification comme seconde étape dans Bitwarden.
+bitwarden-factor-key-phone = La seconde étape de votre compte est votre clé de sécurité, que Sioul ne peut pas demander sur un téléphone. Ajoutez une application d’authentification ou des codes par courriel comme seconde étape dans Bitwarden, ou tapez le mot de passe vous-même.
+bitwarden-waiting = En attente de Bitwarden…
 bitwarden-new-device = Un nouvel appareil : Bitwarden vous a envoyé un code par courriel.
 set-bitwarden-email = Compte Bitwarden
 set-bitwarden-email-help = Son adresse. Le coffre est lu ici, par Sioul lui-même, seulement quand vous remplissez le formulaire d’un site, et seulement avec votre mot de passe principal, jamais gardé.
@@ -2656,6 +2683,7 @@ task-billable-no = Non facturé
 health-errands-list = Les démarches vont dans
 health-list-here = sur cet appareil seulement
 scan-ask = Aucun antivirus n’est installé sur cet appareil : { $name } ne sera pas vérifié. Ne l’ouvrez que si vous lui faites confiance. Pour que les fichiers soient vérifiés : { $hint }
+scan-ask-phone = Un téléphone n’a aucun antivirus que Sioul puisse appeler : { $name } ne sera pas vérifié. Ne l’ouvrez que si vous lui faites confiance. Pour qu’il soit vérifié : { $hint }
 scan-open-anyway = L’ouvrir sans vérification
 scan-save-anyway = L’enregistrer sans vérification
 scan-unavailable-short = Aucun antivirus n’a répondu ({ $detail }).
@@ -3248,7 +3276,7 @@ bank-balance = { $amount } le { $date }, d’après le fichier de votre banque.
 bank-coming = Cette semaine :
 bank-forecast = Le mois qui vient, avec ce qui est attendu :
 bank-accounts = Comptes bancaires
-bank-accounts-help = Là où est vraiment votre argent : un compte courant, PayPal, Stripe. Chacun prend ses propres exports, remplit les budgets que vous choisissez, et vos réserves le renflouent dans votre ordre. Tant qu’aucun n’est déclaré, un export pris ne nourrit que la veille ci-dessous. Gardé dans le dossier de vos projets (sioul-budgets.toml, sioul-bank.toml) ; rien n’est envoyé nulle part.
+bank-accounts-help = Là où est vraiment votre argent : un compte courant, PayPal, Stripe. Chacun prend ses propres exports, remplit les budgets que vous choisissez, et vos réserves le renflouent dans votre ordre. Tant qu’aucun n’est déclaré, un export pris ne nourrit que la veille ci-dessous. Gardé dans le dossier des notes (sioul-budgets.toml, sioul-bank.toml) ; rien n’est envoyé nulle part.
 bank-account-new = Nouveau compte bancaire
 bank-account-edit = Compte bancaire
 bank-account-title = Nom
@@ -4092,7 +4120,7 @@ dnd-setup-here = Sur cet appareil
 dnd-setup-critical = Pendant « Ne pas déranger », les notifications de Sioul pour les personnes qui passent toujours partent comme importantes, et ce bureau les affiche.
 dnd-setup-plasma-mail = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : le courrier des personnes qui passent toujours ne peut pas s’afficher ici pendant ce temps, sauf si Sioul peut s’afficher dans ce mode dans les paramètres de notification de Plasma.
 dnd-setup-list = Passent toujours
-dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Ce qui vous joint de leur part, c’est la ligne Passent toujours de chaque canal, ci-dessus ; jamais les bloqués, même sur la liste. Sur un téléphone, son propre « Ne pas déranger » laisse sonner leurs appels et leurs messages une fois ces personnes mises en favori.
+dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Ce qui vous joint de leur part, c’est la ligne Passent toujours de chaque canal, ci-dessus ; jamais les bloqués, même sur la liste. Sur un téléphone, les modes « Ne pas déranger » de Sioul laissent sonner leurs messages une fois ces personnes mises en favori dans ses contacts. Leurs appels sonnent aussi une fois en favori ou, tant que Sioul filtre les appels du téléphone, dès qu’elles sont dans ses contacts.
 dnd-setup-empty = Personne pour l’instant.
 dnd-setup-add-safe = Ajouter vos expéditeurs sûrs
 dnd-setup-add-contact = Ajouter un contact…
@@ -4392,7 +4420,7 @@ calls-setup-dnd = Les modes « Ne pas déranger » suivent les mêmes lignes
 calls-setup-here = Sur ce téléphone
 calls-setup-on = Sioul filtre les appels de ce téléphone.
 calls-setup-off = Sioul ne filtre pas encore les appels de ce téléphone.
-calls-setup-too-old = Android 9 ne laisse aucune application filtrer les appels. « Ne pas déranger » garde les appels silencieux aux moments choisis (Paramètres ▸ Ce qui vous joint ▸ Ne pas déranger).
+calls-setup-too-old = Android 9 ne laisse aucune application filtrer les appels, ni régler un mode « Ne pas déranger » à elle : Sioul a besoin d’Android 10 ou plus récent pour l’un comme pour l’autre. Le « Ne pas déranger » d’Android, réglé dans les paramètres du téléphone, garde toujours les appels silencieux.
 calls-setup-unavailable = Ce téléphone ne propose pas de choisir une « appli numéro de l’appelant et spam » : Sioul ne peut pas filtrer ses appels. « Ne pas déranger » garde les appels silencieux aux moments choisis.
 calls-setup-no-table = Sioul n’a pas encore écrit les règles de ce téléphone : les appels sonnent en attendant, un instant après l’ouverture de Sioul.
 calls-setup-ask = Laisser Sioul filtrer les appels
@@ -4744,9 +4772,6 @@ attention-changes = { $n ->
     [one] Le vôtre : un changement depuis Comme Sioul le fait maintenant.
    *[other] Le vôtre : { $count } changements depuis Comme Sioul le fait maintenant.
 }
-attention-now-at-once = Tout de suite : { $what }.
-attention-now-shown = Affiché, sans notification : { $what }.
-attention-now-waiting = En attente : { $what }.
 attention-unblocked = Retiré de votre liste des bloqués : bloqué et Passent toujours s’excluent.
 calls-context-free = pendant votre temps libre
 calls-context-slot = pendant votre temps pour vous
@@ -5257,6 +5282,7 @@ attention-switch-realtime-on = Le temps réel est mis : le courrier est relev�
 attention-switch-realtime-off = Le temps réel est éteint : dans le menu du Porche, il relève le courrier chaque minute et fait venir tout de suite les notifications de chaque site.
 attention-channel-calls-none = Aucun de vos téléphones ne filtre encore les appels : ces lignes s’appliquent dès que l’un d’eux le fait (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-channel-messages-none = Sioul ne connaît encore aucun de vos téléphones : ces lignes s’appliquent sur un téléphone qui retient les notifications des autres applications (Paramètres ▸ Ce téléphone, sur le téléphone).
+attention-channel-messages-no-access = Aucun de vos téléphones ne donne à Sioul l’accès aux notifications, d’après ce que chacun a dit en dernier : ces lignes s’appliquent dès que l’un le fait (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-channel-messages-phone = Ces lignes s’appliquent sur votre téléphone, où Sioul retient les notifications des autres applications (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-gathered-at = Sioul les regroupe à { $times } ; les heures sont dans Paramètres ▸ Rappels.
 attention-spam-held = Le courrier que votre filtre à indésirables juge peut-être ou probablement indésirable attend sur le Porche, dans « Retenu par votre filtre à indésirables », sans notification : Courrier ⚙ ▸ Votre filtre à indésirables.

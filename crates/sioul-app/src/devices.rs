@@ -88,6 +88,8 @@ fn write(change: impl FnOnce(&mut Entry)) {
     let Some((id, vault)) = crate::share::vault() else { return };
     let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
     let doses = crate::share::shares("health");
+    // A phone's notification access, as Android says it now: what it may hold of other apps.
+    let notifications = crate::appnotes::access_here();
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.id = id;
         entry.name = name();
@@ -96,6 +98,9 @@ fn write(change: impl FnOnce(&mut Entry)) {
         entry.version = sioul_core::build::VERSION.into();
         entry.commit = sioul_core::build::COMMIT.into();
         entry.doses = doses;
+        if notifications.is_some() {
+            entry.notifications = notifications;
+        }
         change(entry);
     });
     if let Err(e) = written {

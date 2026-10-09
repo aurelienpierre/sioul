@@ -86,6 +86,7 @@ Dialog {
             id: changeDay
 
             theme: lineChange.theme
+            sioul: lineChange.sioul
             locale: lineChange.window.sioulLocale
             pickLabel: lineChange.sioul.text("event-pick-day")
         }

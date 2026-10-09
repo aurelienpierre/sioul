@@ -3,9 +3,9 @@
 <!-- Sioul's cards on the home screen (HomeCard.java, HomeCardRows.java):
      Sioul's light colours (crates/sioul-app/qml/Theme.qml: surface, text,
      muted, accent, line), the dark ones in values-night; their spacing; the
-     names and lines the launcher's list of widgets shows, in English only:
-     Qt's Gradle template keeps the English resources alone (resConfig "en"),
-     so the cards' own words are Rust's and Java's. -->
+     names and lines the launcher's list of widgets shows, in French in
+     values-fr (kept by Sioul's own build.gradle). The cards' own words are
+     Rust's and Java's. -->
 <resources>
     <color name="sioul_home_card_surface">#fbfaf7</color>
     <color name="sioul_home_card_text">#2d2a26</color>

@@ -738,9 +738,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
             let predecessor = uid_of(&plan.prefix, key);
             let Some(path) = written.get(&predecessor).filter(|p| p.exists()) else { continue };
             let current = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-            let line = tasks::relation_line("FINISHTOSTART", &successor, i64::from(*days) * 1440);
-            let without = tasks::remove_lines(&current, |l| sioul_core::lines::name(l) == "RELATED-TO" && tasks::relation_of(l).kind == "FINISHTOSTART" && tasks::relation_of(l).uid == successor && *l != line, &now)?;
-            let text = tasks::add_lines(&without, std::slice::from_ref(&line), &now)?;
+            let text = tasks::set_gap(&current, &successor, i64::from(*days) * 1440, &now)?;
             if text != current && !dry_run {
                 vdir::write_item(path, &text)?;
             }

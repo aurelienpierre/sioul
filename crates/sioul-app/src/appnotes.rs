@@ -61,6 +61,13 @@ fn java(verb: &str, json: &str) -> Value {
     }
 }
 
+/// Whether Android lets Sioul hold other apps' notifications here
+/// (notification access): on a phone, as Java says now; None elsewhere, or
+/// when Java cannot say (its library not loaded in this process).
+pub(crate) fn access_here() -> Option<bool> {
+    java("access", "{}").as_bool()
+}
+
 /// When a file last changed; none when it is not there.
 fn changed(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
@@ -595,6 +602,7 @@ mod tests {
     #[test]
     fn nothing_reaches_java_on_a_computer() {
         assert_eq!(java("access", "{}"), Value::Null);
+        assert_eq!(access_here(), None, "a computer says nothing of a phone's access");
         assert_eq!(times_in_words(&["18:00".into(), "9:00".into(), "13:00".into()]), format!("09:00, 13:00 {} 18:00", tr().text("word-and", None)));
     }
 }

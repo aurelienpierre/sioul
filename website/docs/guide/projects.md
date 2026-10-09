@@ -37,7 +37,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 On the left, every project, with its open tasks and the time left to bill. On the right, the project open:
 
 - **On one line of time**: what is **coming** first (dates asked of its open tasks, events), then what happened **before**, newest first: tasks done, mail, notes changed, time noted, invoices.
-- **Its tasks**, as a **Board**, a **List** or a **Calendar**: each opens the [Tasks](tasks.md) page, kept to this project. The **Calendar** is the Tasks page's [Timeline](tasks.md#list-board-timeline): each task on its days, the date asked as a small diamond.
+- **Its tasks**, as a **Board**, a **List** or a **Calendar**: each opens the [Tasks](tasks.md) page, kept to this project. The **Calendar** is the Tasks page's own ([List, Board, Calendar](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
 - **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
 - **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact.
@@ -102,7 +102,7 @@ As of October 2026, from each app's own documentation.
 5. Not on Vikunja's features page.
 6. Table, Calendar and Timeline views are in the Premium and Enterprise plans; the Planner, on a calendar, in the paid plans.
 7. Not in Deck's user documentation, which describes boards of stacks of cards.
-8. The project's **Calendar** button opens the Tasks page's Timeline.
+8. The project's **Calendar** button opens the Tasks page's Calendar, kept to the project.
 9. Each board is offered over CalDAV as a list of tasks, read only, so cards with a date show in Nextcloud's calendar (from Deck's code).
 10. Not in its documentation or its plan list.
 11. From the Starter plan.

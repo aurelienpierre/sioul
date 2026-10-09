@@ -274,6 +274,7 @@ ScrollView {
                         visible: row.kind === "date" || row.kind === "dates"
                         Layout.fillWidth: true
                         theme: column.theme
+                        sioul: column.sioul
                         locale: Qt.locale(column.sioul.text("qt-locale"))
                         date: row.value
                         pickLabel: row.fieldInfo ? row.fieldInfo.label : ""
@@ -321,6 +322,7 @@ ScrollView {
                     DateField {
                         Layout.fillWidth: true
                         theme: column.theme
+                        sioul: column.sioul
                         locale: Qt.locale(column.sioul.text("qt-locale"))
                         date: row.until
                         pickLabel: row.fieldInfo ? row.fieldInfo.label : ""

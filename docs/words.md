@@ -34,7 +34,7 @@ CAF = ["caisse d allocations familiales", "caf"]
 ```
 - Each table is a recogniser, each array a list; the paths are those of the `Words` structs (`codes.code`, `letters.kinds.tax_notice`, `capture.weekdays.friday`). A path the code does not know is ignored, and a test refuses it in a shipped pack.
 - **Named lists** (`words::MAPS`: `brands.brands`, `letters.senders`, `letters.months`, `letters.numbers`, `letters.fixed_delays`, `capture.months`) are tables of names, each with its words, in order.
-- Words are matched whole, capitals and accents aside, unless the list's comment says otherwise. Pack words mostly keep the code's old spelling, without accents; accents may be added, since both sides are folded. Spaces count in one list: the voicemail's `caller_leads` (" du ", " de ": the whole word, matched inside the text). Your own additions are trimmed, so a word you add there cannot keep its spaces.
+- Words are matched whole, capitals and accents aside, unless the list's comment says otherwise. Pack words mostly keep the code's old spelling, without accents; accents may be added, since both sides are folded. The voicemail's `caller_leads` ("du", "de :") are matched as whole words, a letter or a digit on neither side, so a word you add there, trimmed as every addition is, works as the shipped ones do.
 - Every comment says what the list does, in one line, for the person reading the pack to translate it.
 
 ## Your changes

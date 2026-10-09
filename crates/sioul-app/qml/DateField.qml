@@ -14,6 +14,8 @@ Item {
     id: field
 
     required property var theme
+    // The window's words, for the month arrows' names; without them, the month alone.
+    property var sioul: null
     // Month and day names in Sioul's language.
     property var locale: Qt.locale()
     // "2026-10-05".
@@ -31,6 +33,13 @@ Item {
 
     function iso(d) {
         return d.getFullYear() + "-" + field.pad(d.getMonth() + 1) + "-" + field.pad(d.getDate())
+    }
+
+    // A month arrow's name, for a screen reader and its tip: "Previous month:
+    // September 2026" (`step` -1), "Next month: November 2026" (+1).
+    function arrowName(step) {
+        const month = new Date(field.shownYear, field.shownMonth + step, 1).toLocaleDateString(field.locale, "MMMM yyyy")
+        return field.sioul ? field.sioul.textWith(step < 0 ? "date-month-previous" : "date-month-next", "month", month) : month
     }
 
     implicitWidth: row.implicitWidth
@@ -95,6 +104,9 @@ Item {
 
                         ToolButton {
                             text: "◂"
+                            Accessible.name: field.arrowName(-1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: field.arrowName(-1)
                             onClicked: {
                                 if (field.shownMonth === 0) {
                                     field.shownMonth = 11
@@ -113,6 +125,9 @@ Item {
                         }
                         ToolButton {
                             text: "▸"
+                            Accessible.name: field.arrowName(1)
+                            ToolTip.visible: hovered
+                            ToolTip.text: field.arrowName(1)
                             onClicked: {
                                 if (field.shownMonth === 11) {
                                     field.shownMonth = 0

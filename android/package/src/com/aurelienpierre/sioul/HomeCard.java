@@ -101,8 +101,7 @@ public class HomeCard extends AppWidgetProvider
 
     /**
      * The card before Sioul wrote one, in Sioul's two languages by the phone's
-     * (as DoseAlarms.words): Qt's Gradle template keeps the English resources
-     * alone (resConfig "en"), so no values-fr; every other word is Rust's.
+     * (as DoseAlarms.words); every other word is Rust's.
      */
     static String empty()
     {

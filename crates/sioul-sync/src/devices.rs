@@ -63,6 +63,12 @@ pub struct Entry {
     /// It shares the health part: the answers it captures travel.
     #[serde(default)]
     pub doses: bool,
+    /// A phone: whether Android lets Sioul hold other apps' notifications
+    /// there (notification access), as it last looked; None when unsaid (a
+    /// computer, an older Sioul). A computer's "What reaches you" counts a
+    /// phone's messages unless it says no (an older Sioul's, unsaid, as before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<bool>,
     /// It stopped sharing: it counts no more.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
@@ -295,6 +301,32 @@ mod tests {
             assert!(unread.is_empty() && entries[0].working && entries[0].commit.is_empty(), "{entries:?}");
             assert_eq!(entries[0].build(), said);
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A phone says whether Android lets Sioul hold other apps' notifications;
+    /// a change that does not look again keeps what it said; an older Sioul
+    /// says nothing, read as unsaid.
+    #[test]
+    fn a_phone_says_whether_it_holds_notifications() {
+        let dir = scratch("notifications");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let vault = Some((folder.as_path(), &KEY));
+        change(&own_path(&state), vault, |e| {
+            e.id = id.clone();
+            e.kind = PHONE.into();
+            e.notifications = Some(true);
+            e.start(1_000);
+        })
+        .unwrap();
+        change(&own_path(&state), vault, |e| e.close(1_100)).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].notifications, Some(true), "kept by a change that did not look");
+        change(&own_path(&state), vault, |e| e.notifications = Some(false)).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].notifications, Some(false));
+        let older = serde_json::json!({ "id": id, "kind": "phone", "started": 1_000, "working": true });
+        std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].notifications, None, "an older Sioul's: unsaid");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

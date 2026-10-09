@@ -7,7 +7,9 @@
 // held unseen in this dialog, where one can be (the Sites page gives it, with
 // Qt WebEngine): its PIN comes in Sioul's own dialog, above this one. On
 // Android, the steps without a key: an app's code, an e-mail's, a YubiKey's,
-// a recovery code.
+// a recovery code. Bitwarden's server is asked off the window's thread
+// (sites.rs, `bitwarden_later`): the dialog says it waits, and the window
+// stays free meanwhile.
 
 pragma ComponentBehavior: Bound
 
@@ -48,8 +50,20 @@ Dialog {
     // The steps Sioul can take, in the order Bitwarden's apps propose them:
     // a security key, a YubiKey's code, an app, e-mail; a recovery code only when chosen.
     readonly property var order: [7, 3, 0, 1, 8]
+    // Bitwarden's server asked: the ticket waited for (0: none), and what its answer does.
+    property int waiting: 0
+    property var then: null
+    readonly property bool busy: unlock.waiting !== 0
+
+    // A call to Bitwarden's server begun (its ticket): `done` takes its answer once it comes.
+    function ask(ticket, done) {
+        unlock.waiting = ticket
+        unlock.then = done
+    }
 
     function begin() {
+        unlock.waiting = 0
+        unlock.then = null
         unlock.provider = -1
         unlock.offered = []
         unlock.key = null
@@ -71,11 +85,13 @@ Dialog {
     function usePasskey() {
         unlock.problem = ""
         unlock.note = ""
-        const begun = JSON.parse(unlock.sioul.bitwardenPasskeyBegin())
-        if (begun.error)
-            unlock.problem = begun.error
-        else
-            unlock.askKey("passkey", begun)
+        unlock.ask(unlock.sioul.bitwardenPasskeyBegin(), said => {
+            const begun = JSON.parse(said)
+            if (begun.error)
+                unlock.problem = begun.error
+            else
+                unlock.askKey("passkey", begun)
+        })
     }
 
     // The key asked: Bitwarden's page loaded unseen below, the key asked there
@@ -94,9 +110,9 @@ Dialog {
         if (said.error !== undefined)
             unlock.problem = said.error === "not-allowed" ? unlock.sioul.text("bitwarden-key-not-allowed") : unlock.sioul.textWith("bitwarden-key-failed", "error", said.error)
         else if (mode === "passkey")
-            unlock.answer(JSON.parse(unlock.sioul.bitwardenPasskey(result)))
+            unlock.ask(unlock.sioul.bitwardenPasskey(result), opened => unlock.answer(JSON.parse(opened)))
         else
-            unlock.answer(JSON.parse(unlock.sioul.bitwardenUnlock(secret.text, 7, said.token)))
+            unlock.ask(unlock.sioul.bitwardenUnlock(secret.text, 7, said.token), opened => unlock.answer(JSON.parse(opened)))
     }
 
     // A step chosen: e-mail sends its code now, once; the security key is asked at once.
@@ -114,15 +130,19 @@ Dialog {
     }
 
     function sendCode() {
-        const problem = unlock.sioul.bitwardenSendCode(secret.text)
-        unlock.sent = problem === ""
-        unlock.note = problem === "" ? unlock.sioul.text("bitwarden-code-sent") : ""
-        unlock.problem = problem
+        unlock.ask(unlock.sioul.bitwardenSendCode(secret.text), problem => {
+            unlock.sent = problem === ""
+            unlock.note = problem === "" ? unlock.sioul.text("bitwarden-code-sent") : ""
+            unlock.problem = problem
+        })
     }
 
     function tryIt() {
+        if (unlock.busy)
+            return
         unlock.keyAsk = null
-        unlock.answer(JSON.parse(unlock.sioul.bitwardenUnlock(secret.text, unlock.provider, code.text)))
+        unlock.problem = ""
+        unlock.ask(unlock.sioul.bitwardenUnlock(secret.text, unlock.provider, code.text), opened => unlock.answer(JSON.parse(opened)))
     }
 
     // What Bitwarden answered: open, a second step to take, a new device's code, or why not.
@@ -139,7 +159,9 @@ Dialog {
             unlock.offered = unlock.order.filter(p => answer.factor.indexOf(p) >= 0 && can(p))
             if (unlock.offered.length === 0) {
                 unlock.provider = -1
-                unlock.problem = unlock.sioul.text("bitwarden-factor-unsupported")
+                // A security key this dialog cannot ask (from Accounts, or on a phone): where it can be, said.
+                const keyElsewhere = answer.factor.indexOf(7) >= 0 && !unlock.keyCapable
+                unlock.problem = unlock.sioul.text(!keyElsewhere ? "bitwarden-factor-unsupported" : Qt.platform.os === "android" ? "bitwarden-factor-key-phone" : "bitwarden-factor-key-sites")
             } else if (unlock.offered.indexOf(unlock.provider) < 0) {
                 unlock.choose(unlock.offered[0])
             } else {
@@ -162,6 +184,23 @@ Dialog {
     onClosed: {
         secret.text = ""
         unlock.keyAsk = null
+        // An answer still to come opens the vault all the same; this dialog no longer waits for it.
+        unlock.waiting = 0
+        unlock.then = null
+    }
+
+    Connections {
+        target: unlock.sioul
+
+        function onBitwardenAnswered(ticket, answer) {
+            if (ticket !== unlock.waiting)
+                return
+            const done = unlock.then
+            unlock.waiting = 0
+            unlock.then = null
+            if (done)
+                done(answer)
+        }
     }
 
     contentItem: ColumnLayout {
@@ -178,6 +217,7 @@ Dialog {
             id: passkeyButton
 
             visible: unlock.keyCapable && unlock.provider === -1 && unlock.keyAsk === null
+            enabled: !unlock.busy
             highlighted: unlock.passkeyFirst
             text: unlock.sioul.text("bitwarden-passkey")
             icon.name: "security-high"
@@ -298,9 +338,18 @@ Dialog {
         }
         Button {
             visible: unlock.provider === 1
+            enabled: !unlock.busy
             flat: true
             text: unlock.sioul.text("bitwarden-code-again")
             onClicked: unlock.sendCode()
+        }
+        // Bitwarden's server asked: said calmly while it answers.
+        Label {
+            visible: unlock.busy
+            Layout.fillWidth: true
+            text: unlock.sioul.text("bitwarden-waiting")
+            wrapMode: Text.Wrap
+            color: unlock.theme.muted
         }
         Label {
             visible: unlock.note !== ""
@@ -323,6 +372,7 @@ Dialog {
     footer: DialogButtonBox {
         Button {
             visible: unlock.provider !== 7
+            enabled: !unlock.busy
             text: unlock.sioul.text("bitwarden-open")
             highlighted: !unlock.passkeyFirst || unlock.provider >= 0
             onClicked: unlock.tryIt()

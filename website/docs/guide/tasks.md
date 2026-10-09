@@ -9,7 +9,7 @@ description: Tasks in Sioul - one next step with its reason, tasks that wait for
 A plan written as a list is a wall: every line is there at once, and the next step has to be found again each time. Sioul turns the plan into tasks that wait for each other, and shows the one step to take now, with the reason. It lays out your day by itself, around your events, your meals and your rest, in the hours you keep for each kind of work, and nothing is ever overdue. You say how the day is, clear, haze or fog, and a hard day holds less. Your tasks are standard tasks on your own calendar server, which your phone and your other programs see.
 
 <figure markdown="span">
-  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board and Timeline, then Routines and three choices: every project, all kinds, any category. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
+  [![The Tasks page on "Now". At the top, the views Now, The day, List, Board and Calendar, then Routines and three choices: every project, all kinds, any category. In the middle, one card, "The next step": its title, the project it is part of, why it comes now, about how long it takes and where you stopped, with Start, Done, Not now and What makes it hard?. Below, "After that" and the following step, its date asked as days left; then "Other choices" and "Done this week", folded.](../assets/screens/tasks-now.png){ loading=lazy }](../assets/screens/tasks-now.png "Open the picture at full size")
   <figcaption>Now: one step, why it comes now, and the one after it.</figcaption>
 </figure>
 
@@ -137,13 +137,13 @@ After the last step, some time is **Kept free, in case steps take longer** ([How
   <figcaption>The day: your hours by kind, and the steps placed in them.</figcaption>
 </figure>
 
-## List, Board, Timeline {#list-board-timeline}
+## List, Board, Calendar {#list-board-timeline}
 
 One switch away from Now:
 
 - **List**: every open task in the plan's order, a bigger task followed by its steps, grouped **By project** or **By list**, with a search, and **Done too** on request. The optional ones come last.
 - **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
-- **Timeline**: each open task on its days, the date asked as a small diamond, days without room shaded. One project, or all. A project's **Calendar** button opens this Timeline, kept to the project.
+- **Calendar**: each open task on its days, the date asked as a small diamond, days without room shaded. One project, or all. A project's **Calendar** button opens this view, kept to the project.
 
 <figure markdown="span">
   [![The List: a search field, "By project" and "Done too" at the top; tasks grouped by project, a bigger task followed by its steps, each with how long it takes, the date asked as days left and what it waits for; tasks without a project below, and those "when you say so" last.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")
@@ -157,13 +157,13 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 A task opens on the right with its details, from any view: a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
 - **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
-- its tags, **its steps** (each can be ticked here; their minutes are added up), **what it waits for** and what it frees;
+- its tags, **its steps** (each can be ticked here; their minutes are added up), **what it waits for**, each wait with its gap when it has one ("two weeks after it"), and what it frees;
 - its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes;
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
 
 **Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:
 
-- **its steps**, and one more in a line ("A step, in one line"); **what it waits for** ("Waits for…": another task, found by its title);
+- **its steps**, and one more in a line ("A step, in one line"); **what it waits for** ("Waits for…": another task, found by its title), and, for the next wait you add, **Then wait**: a gap in days or weeks after the other is done ("the answer comes within two weeks"; 0, none);
 - under **More**: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
 
 Anything can become a task: a message, a line of a note, an event to prepare.
@@ -474,7 +474,7 @@ Each task is a `VTODO` (RFC 5545 §3.6.2) in a CalDAV task list, one file each, 
 |---|---|
 | A step of a bigger task | `RELATED-TO;RELTYPE=PARENT:<UID>`, in the step |
 | Waits for another task | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), in the task that waits |
-| Waits, with a gap ("the answer comes within two weeks") | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`; the window writes waits without a gap. Read from any program, `NEXT` too |
+| Waits, with a gap ("the answer comes within two weeks") | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`, and by the form's **Then wait**. Read from any program, `NEXT` too |
 | Can start from; the date asked | `DTSTART`; `DUE` |
 | How long it takes | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
 | Its kind; "needs an open office" | `CONCEPT` with a tag URI (RFC 9253 §8.1, RFC 4151) |

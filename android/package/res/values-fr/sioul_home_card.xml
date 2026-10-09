@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- French: the names and lines of Sioul's cards in the launcher's list of
+     widgets (values/sioul_home_card.xml). -->
+<resources>
+    <string name="sioul_home_card_description">La date et la météo du jour, puis une prise à venir, un code, vos rappels et votre prochaine étape.</string>
+    <string name="sioul_home_card_mail_label">Sioul — Courrier</string>
+    <string name="sioul_home_card_mail_description">Les derniers messages du Porche.</string>
+    <string name="sioul_home_card_agenda_label">Sioul — Agenda</string>
+    <string name="sioul_home_card_agenda_description">Vos prochains événements, jour après jour.</string>
+</resources>

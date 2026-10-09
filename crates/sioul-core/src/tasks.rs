@@ -29,6 +29,7 @@ use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
 use jiff::{Span, Zoned};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
@@ -562,9 +563,27 @@ pub struct TaskEdit {
     /// "", "daily", "weekly", "monthly", "yearly".
     #[serde(default)]
     pub repeat: String,
+    /// The gaps the form gave its waits, in minutes, by the UID waited for
+    /// ("the answer comes within two weeks"): such a wait goes in the task
+    /// waited for, as FINISHTOSTART with its GAP (`set_gap`, written by the
+    /// window once this task is), never as a DEPENDS-ON here. Never read back
+    /// from a task: its details say each wait's gap (`taskview`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wait_gaps: BTreeMap<String, i64>,
 }
 
 impl TaskEdit {
+    /// The gap the form gave its wait for `uid`, in minutes; 0 without one.
+    pub fn gap_of(&self, uid: &str) -> i64 {
+        self.wait_gaps.get(uid).copied().unwrap_or(0).max(0)
+    }
+
+    /// The waits with a gap, (UID waited for, minutes): what the window
+    /// writes in those tasks once this one is written.
+    pub fn gapped_waits(&self) -> Vec<(String, i64)> {
+        self.waits_for.iter().filter(|u| self.gap_of(u) > 0).map(|u| (u.clone(), self.gap_of(u))).collect()
+    }
+
     /// A task as the form shows it.
     pub fn of(task: &Task) -> TaskEdit {
         TaskEdit {
@@ -593,6 +612,7 @@ impl TaskEdit {
             contacts: task.contacts.clone(),
             projects: task.projects.clone(),
             repeat: task.repeat.clone(),
+            wait_gaps: BTreeMap::new(),
         }
     }
 
@@ -662,6 +682,18 @@ fn one_line(value: &str) -> String {
 pub fn relation_line(kind: &str, uid: &str, gap_minutes: i64) -> String {
     let gap = if gap_minutes == 0 { String::new() } else { format!(";GAP={}", duration_of(gap_minutes)) };
     format!("RELATED-TO;RELTYPE={kind}{gap}:{}", one_line(uid))
+}
+
+/// A wait with its gap, written in the task that comes first (`text`), as
+/// RFC 9253 §4 places temporal links: `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<successor>`
+/// ("the answer comes within two weeks"; no GAP for 0), any other FINISHTOSTART
+/// or NEXT to the same task replaced. `sioul tasks import` and the window's
+/// form of a wait write it so; the text as it was when it says so already.
+pub fn set_gap(text: &str, successor: &str, gap_minutes: i64, now: &Zoned) -> Result<String, String> {
+    let line = relation_line("FINISHTOSTART", successor, gap_minutes);
+    let other = |l: &str| lines::name(l) == "RELATED-TO" && matches!(relation_of(l).kind.as_str(), "FINISHTOSTART" | "NEXT") && relation_of(l).uid == successor && l != line;
+    let without = remove_lines(text, other, now)?;
+    add_lines(&without, std::slice::from_ref(&line), now)
 }
 
 /// `LINK;LINKREL=…;LABEL=…;VALUE=URI:<uri>`, or `VALUE=UID` for `uid:<uid>`.
@@ -849,7 +881,8 @@ pub fn new_task(edit: &TaskEdit, uid: &str, zone: &TimeZone, now: &Zoned) -> Res
     if !edit.parent.is_empty() {
         out.push(relation_line("PARENT", &edit.parent, 0));
     }
-    out.extend(edit.waits_for.iter().map(|uid| relation_line("DEPENDS-ON", uid, 0)));
+    // A wait with a gap goes in the task waited for (`TaskEdit::wait_gaps`).
+    out.extend(edit.waits_for.iter().filter(|u| edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     out.extend(edit.links.iter().map(link_line));
     out.extend(edit.contacts.iter().map(contact_line));
     out.extend(edit.projects.iter().map(|c| format!("REFID:{}", lines::escape(c))));
@@ -913,7 +946,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     if edit.parent != old.parent && !edit.parent.is_empty() {
         added.push(relation_line("PARENT", &edit.parent, 0));
     }
-    added.extend(edit.waits_for.iter().filter(|u| !old.waits_for.contains(u)).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
+    added.extend(edit.waits_for.iter().filter(|u| !old.waits_for.contains(u) && edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     added.extend(edit.links.iter().filter(|l| !old.links.contains(l)).map(link_line));
     added.extend(edit.contacts.iter().filter(|c| !old.contacts.contains(c)).map(contact_line));
     added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| format!("REFID:{}", lines::escape(c))));
@@ -924,7 +957,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
                 let r = relation_of(line);
                 match r.kind.as_str() {
                     "PARENT" => r.uid == edit.parent,
-                    "DEPENDS-ON" => edit.waits_for.contains(&r.uid),
+                    "DEPENDS-ON" => edit.waits_for.contains(&r.uid) && edit.gap_of(&r.uid) == 0,
                     _ => true,
                 }
             }
@@ -1194,6 +1227,46 @@ mod tests {
         assert!(text.contains("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:wait-answer") && text.contains("X-OTHER-APP:keep me") && text.contains("SEQUENCE:1"), "{text}");
         let again = task_of_text(&text, &paris()).unwrap();
         assert_eq!((again.notes.as_str(), again.estimate, again.title.as_str()), ("With the form and the copy.", 90, "Send the registered letter"));
+    }
+
+    /// A gap written in the task that comes first, as the import and the
+    /// window's form write it: another gap to the same task replaced, the
+    /// same one written once, other tasks' links left as they are.
+    #[test]
+    fn a_wait_with_a_gap_goes_in_the_task_that_comes_first() {
+        let text = set_gap(LETTER, "reply", 21 * 1440, &now()).unwrap();
+        let read = task_of_text(&text, &paris()).unwrap();
+        assert!(read.relations.contains(&Relation { kind: "FINISHTOSTART".into(), uid: "reply".into(), gap: 21 * 1440 }));
+        assert!(text.contains("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P21D:reply") && text.contains("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:wait-answer"), "{text}");
+        assert_eq!(set_gap(&text, "reply", 21 * 1440, &now()).unwrap(), text, "said already: nothing written");
+        // Another gap for the same pair: replaced; a NEXT another program wrote for it too.
+        let next = text.replace("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P21D:reply", "RELATED-TO;RELTYPE=NEXT:reply\r\nRELATED-TO;RELTYPE=FINISHTOSTART;GAP=P21D:reply");
+        let changed = set_gap(&next, "reply", 7 * 1440, &now()).unwrap();
+        let gaps: Vec<i64> = task_of_text(&changed, &paris()).unwrap().relations.iter().filter(|r| r.uid == "reply").map(|r| r.gap).collect();
+        assert_eq!(gaps, [7 * 1440]);
+        assert!(changed.contains("GAP=P14D:wait-answer"), "another task's wait stays");
+        // No gap: FINISHTOSTART alone, as the import writes `after_gap = { x = 0 }`.
+        assert!(set_gap(LETTER, "reply", 0, &now()).unwrap().contains("RELATED-TO;RELTYPE=FINISHTOSTART:reply"));
+    }
+
+    /// The form's waits with a gap are no DEPENDS-ON in the task that waits:
+    /// the window writes them in the tasks waited for (`gapped_waits`).
+    #[test]
+    fn a_waits_gap_from_the_form_is_written_in_the_other_task() {
+        let mut edit = TaskEdit { title: "Call about the answer".into(), waits_for: vec!["letter".into(), "copy".into()], ..TaskEdit::default() };
+        edit.wait_gaps.insert("letter".into(), 14 * 1440);
+        let text = new_task(&edit, "call", &paris(), &now()).unwrap();
+        assert!(text.contains("RELATED-TO;RELTYPE=DEPENDS-ON:copy") && !text.contains(":letter"), "{text}");
+        assert_eq!(edit.gapped_waits(), [("letter".to_string(), 14 * 1440)]);
+        // A wait there already, given a gap in the form: its DEPENDS-ON goes.
+        let task = task_of_text(LETTER, &paris()).unwrap();
+        let mut edit = TaskEdit::of(&task);
+        edit.wait_gaps.insert("gather-papers".into(), 7 * 1440);
+        let changed = apply(LETTER, &edit, &paris(), &now()).unwrap();
+        assert!(!changed.contains("DEPENDS-ON:gather-papers"), "{changed}");
+        // Read back, a form says no gap: its details do (`taskview`).
+        assert!(TaskEdit::of(&task_of_text(&changed, &paris()).unwrap()).wait_gaps.is_empty());
+        assert!(!serde_json::to_string(&TaskEdit::of(&task)).unwrap().contains("wait_gaps"), "not written when empty");
     }
 
     #[test]

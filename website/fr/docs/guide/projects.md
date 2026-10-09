@@ -102,7 +102,7 @@ En octobre 2026, d’après la documentation de chaque application.
 5. Absent de la page des fonctions de Vikunja.
 6. Les vues Tableau (Table), Calendrier et Frise sont dans les offres Premium et Enterprise ; le Planner, sur un calendrier, dans les offres payantes.
 7. Absent de la documentation d’utilisation de Deck, qui décrit des tableaux faits de piles de cartes.
-8. Le bouton **Calendrier** du projet ouvre le calendrier de la page Tâches.
+8. Le bouton **Calendrier** du projet ouvre le Calendrier de la page Tâches, limité au projet.
 9. Chaque tableau est offert en CalDAV comme une liste de tâches, en lecture seule : les cartes datées s’affichent dans l’agenda de Nextcloud (d’après le code de Deck).
 10. Absent de sa documentation et de la liste de ses offres.
 11. À partir de l’offre Starter.

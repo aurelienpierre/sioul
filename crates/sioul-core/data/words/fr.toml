@@ -346,8 +346,8 @@ service_words = [
 words = ["message vocal", "messages vocaux", "messagerie vocale", "repondeur", "nouveau message"]
 # Says the caller hid their number.
 hidden = ["numero masque", "numero prive", "numero inconnu", "appelant inconnu", "appel masque", "anonyme"]
-# Words before the caller's number (matched inside the text, spaces included).
-caller_leads = ["part du", "part de", "appelant", "appele par", "numero :", "numero:", "de :", "de:", " du ", " de "]
+# Words before the caller's number (whole words).
+caller_leads = ["part du", "part de", "appelant", "appele par", "numero :", "numero:", "de :", "de:", "du", "de"]
 # Words before your own line's number.
 own_line = ["votre ligne", "votre numero", "sur la ligne"]
 # The word before a message's length.

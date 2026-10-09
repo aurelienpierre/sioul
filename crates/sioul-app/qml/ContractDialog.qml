@@ -144,6 +144,7 @@ Dialog {
                 id: startedField
 
                 theme: form.theme
+                sioul: form.sioul
                 locale: form.window.sioulLocale
                 pickLabel: form.sioul.text("event-pick-day")
             }
@@ -158,6 +159,7 @@ Dialog {
                     id: renewsField
 
                     theme: form.theme
+                    sioul: form.sioul
                     locale: form.window.sioulLocale
                     pickLabel: form.sioul.text("event-pick-day")
                 }
@@ -250,6 +252,7 @@ Dialog {
                 id: endedField
 
                 theme: form.theme
+                sioul: form.sioul
                 locale: form.window.sioulLocale
                 pickLabel: form.sioul.text("event-pick-day")
             }

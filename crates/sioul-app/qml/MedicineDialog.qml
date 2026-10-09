@@ -222,6 +222,7 @@ Dialog {
 
                 visible: every.currentIndex === 1
                 theme: form.theme
+                sioul: form.sioul
                 locale: form.dateLocale
             }
             Label {
@@ -260,6 +261,7 @@ Dialog {
                 id: until
 
                 theme: form.theme
+                sioul: form.sioul
                 locale: form.dateLocale
             }
             // When it was first taken, if you know: how long, said to a professional.
@@ -273,6 +275,7 @@ Dialog {
                 id: since
 
                 theme: form.theme
+                sioul: form.sioul
                 locale: form.dateLocale
             }
             Label {

@@ -839,8 +839,9 @@ pub struct DetailView {
     pub steps: Vec<CardView>,
     /// The steps' minutes added up, when they say: "Its steps add up to about 45 minutes".
     pub steps_total: String,
-    /// What it waits for and what waits for it: (uid, title).
-    pub waits_for: Vec<(String, String)>,
+    /// What it waits for: (uid, title, its gap in words: "two weeks after
+    /// it", "" without one); what waits for it: (uid, title).
+    pub waits_for: Vec<(String, String, String)>,
     pub frees: Vec<(String, String)>,
     /// "Thursday 1 October: 25 minutes", newest first.
     pub sessions: Vec<String>,
@@ -862,12 +863,32 @@ pub struct DetailView {
     pub pin_minutes: u32,
 }
 
+/// The gap of `task`'s wait for `other`, in minutes, as the plan reads it
+/// (`plan::Graph`): a FINISHTOSTART or NEXT in the other, else its own DEPENDS-ON.
+fn wait_gap(cx: &Context, task: &Task, other: &str) -> i64 {
+    let theirs = cx.task(other).and_then(|t| t.relations.iter().find(|r| matches!(r.kind.as_str(), "FINISHTOSTART" | "NEXT") && r.uid == task.uid));
+    let mine = || task.relations.iter().find(|r| r.kind == "DEPENDS-ON" && r.uid == other);
+    theirs.or_else(mine).map_or(0, |r| r.gap.max(0))
+}
+
+/// A wait's gap in words: "a day after it", "two weeks after it", "three
+/// hours after it" (a gap another program wrote in hours); "" without one.
+fn gap_words(cx: &Context, minutes: i64) -> String {
+    let n = |m: i64| usize::try_from(m).unwrap_or(0);
+    match minutes {
+        m if m <= 0 => String::new(),
+        m if m % (7 * 1440) == 0 => cx.counted("task-waits-after-weeks", n(m / (7 * 1440)), &[]),
+        m if m % 1440 == 0 => cx.counted("task-waits-after-days", n(m / 1440), &[]),
+        m => cx.counted("task-waits-after-hours", n((m + 59) / 60), &[]),
+    }
+}
+
 pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], related: &[Related]) -> DetailView {
     let mut steps: Vec<&Task> = cx.tasks.iter().filter(|t| t.parent() == Some(task.uid.as_str()) && t.status != Status::Cancelled).collect();
     let order: BTreeMap<&str, usize> = cx.plan.order.iter().enumerate().map(|(i, u)| (u.as_str(), i)).collect();
     steps.sort_by_key(|t| (!t.status.is_open(), order.get(t.uid.as_str()).copied().unwrap_or(usize::MAX)));
     let total: u32 = steps.iter().fold(0u32, |sum, t| sum.saturating_add(t.estimate));
-    let waits_for = cx.planned(&task.uid).map(|p| p.waits_for.iter().map(|u| (u.clone(), cx.title(u))).collect()).unwrap_or_default();
+    let waits_for = cx.planned(&task.uid).map(|p| p.waits_for.iter().map(|u| (u.clone(), cx.title(u), gap_words(cx, wait_gap(cx, task, u)))).collect()).unwrap_or_default();
     let frees = cx.plan.items.values().filter(|p| p.waits_for.contains(&task.uid)).map(|p| (p.uid.clone(), cx.title(&p.uid))).collect();
     let mut mine: Vec<&crate::timelog::Session> = sessions.iter().filter(|s| s.task == task.uid).collect();
     mine.sort_by_key(|s| std::cmp::Reverse(s.start));
@@ -998,5 +1019,36 @@ mod tests {
         let mut titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         titles.sort();
         assert_eq!(titles, vec!["First", "Second", "Third"]);
+    }
+
+    /// A wait's gap said beside it in the task's details, wherever it is
+    /// written: in the task that comes first (the import's and the form's
+    /// FINISHTOSTART), or in the one that waits.
+    #[test]
+    fn a_waits_gap_is_said() {
+        let today: Date = "2026-10-05".parse().unwrap();
+        let mut letter = task("letter", "Send the letter");
+        letter.relations.push(Relation { kind: "FINISHTOSTART".into(), uid: "call".into(), gap: 14 * 1440 });
+        let mut form = task("form", "Fill the form");
+        form.relations.push(Relation { kind: "NEXT".into(), uid: "call".into(), gap: 3 * 1440 });
+        let mut call = task("call", "Call about the answer");
+        call.relations.push(Relation { kind: "DEPENDS-ON".into(), uid: "photo".into(), gap: 90 });
+        call.relations.push(Relation { kind: "DEPENDS-ON".into(), uid: "copy".into(), gap: 0 });
+        let tasks = vec![letter, form, call, task("photo", "Take the photo"), task("copy", "Copy the form")];
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        for (language, said) in [
+            ("en", [("letter", "two weeks after it"), ("form", "three days after it"), ("photo", "two hours after it"), ("copy", "")]),
+            ("fr", [("letter", "deux semaines après elle"), ("form", "trois jours après elle"), ("photo", "deux heures après elle"), ("copy", "")]),
+        ] {
+            let tr = Translator::new(language);
+            let everything = Filter::default();
+            let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+            let view = detail(&cx, &tasks[2], &[], &[]);
+            for (uid, words) in said {
+                let wait = view.waits_for.iter().find(|w| w.0 == uid).unwrap_or_else(|| panic!("{uid} in {:?}", view.waits_for));
+                assert_eq!(wait.2, words, "{language} {uid}");
+            }
+        }
+        assert_eq!(gap_words(&Context { filter: &Filter::default(), offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &Translator::new("en"), projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() }, 1440), "a day after it");
     }
 }

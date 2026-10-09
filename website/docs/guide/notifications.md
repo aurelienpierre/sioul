@@ -101,7 +101,7 @@ The two layers hold on top of the time, and only ever hold more:
   <figcaption>By person: each list of people, at each time.</figcaption>
 </figure>
 
-Mail, calls and other apps' messages follow who wrote, whatever the address or the number they use. **Mail**, **Calls** and **Messages** (texts and chats from other apps, on a phone) each have a grid: who down, the times and the layers across. Calls and messages act through a phone of yours: until one screens your calls or holds other apps' notifications, a sentence says so above their grid.
+Mail, calls and other apps' messages follow who wrote, whatever the address or the number they use. **Mail**, **Calls** and **Messages** (texts and chats from other apps, on a phone) each have a grid: who down, the times and the layers across. Calls and messages act through a phone of yours: until one screens your calls, or holds other apps' notifications (a phone with this version of Sioul tells your other devices whether you gave Sioul notification access there), a sentence says so above their grid.
 
 **Who**, a row each:
 

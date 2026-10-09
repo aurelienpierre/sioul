@@ -91,6 +91,10 @@ pub mod qobject {
         #[qinvokable]
         fn text_with(self: &Sioul, id: &QString, name: &QString, value: &QString) -> QString;
 
+        /// A counted message, its plural chosen by `n` (`$n`, `$count`, `$countf`…: `Translator::counted`).
+        #[qinvokable]
+        fn text_counted(self: &Sioul, id: &QString, n: i32) -> QString;
+
         /// A sentence with several arguments, given as a JSON object of names and values.
         #[qinvokable]
         fn text_args(self: &Sioul, id: &QString, args: &QString) -> QString;
@@ -409,9 +413,9 @@ pub mod qobject {
         #[qinvokable]
         fn calendars(self: &Sioul) -> QString;
 
-        /// An event as its form shows it, as JSON.
+        /// An event as its form shows it, as JSON. Not `event`, which would hide QObject::event.
         #[qinvokable]
-        fn event(self: &Sioul, key: &QString) -> QString;
+        fn event_form(self: &Sioul, key: &QString) -> QString;
 
         /// Saves the event form (JSON); an empty key makes a new event in `calendar`.
         /// Returns what went wrong, else "".
@@ -635,9 +639,10 @@ pub mod qobject {
         #[qinvokable]
         fn set_felt(self: Pin<&mut Sioul>, uid: &QString, felt: &QString) -> QString;
 
-        /// The task waits for `other`, or no longer; returns what went wrong, else "".
+        /// The task waits for `other`, or no longer; with `gap_minutes`, that long
+        /// after `other` is done (`work::set_waits`). Returns what went wrong, else "".
         #[qinvokable]
-        fn set_waits(self: Pin<&mut Sioul>, uid: &QString, other: &QString, wait: bool) -> QString;
+        fn set_waits(self: Pin<&mut Sioul>, uid: &QString, other: &QString, wait: bool, gap_minutes: i32) -> QString;
 
         /// Puts a task off until tomorrow.
         #[qinvokable]
@@ -1317,25 +1322,30 @@ pub mod qobject {
         #[qinvokable]
         fn bitwarden_state(self: &Sioul) -> QString;
 
-        /// Unlocks Bitwarden; returns what went wrong, else "".
+        /// Unlocks Bitwarden, off the window's thread: a ticket at once, the
+        /// answer ({"ok"}, {"factor", "key"}, {"new_device"} or {"error"}) with
+        /// `bitwarden_answered` (sites.rs).
         #[qinvokable]
-        fn bitwarden_unlock(self: Pin<&mut Sioul>, password: &QString, provider: i32, code: &QString) -> QString;
+        fn bitwarden_unlock(self: Pin<&mut Sioul>, password: &QString, provider: i32, code: &QString) -> i32;
 
         /// Locks Bitwarden again: its logins leave memory.
         #[qinvokable]
         fn bitwarden_lock(self: Pin<&mut Sioul>);
 
-        /// Sends the e-mail second step's code; returns what went wrong, else "".
+        /// Sends the e-mail second step's code, off the window's thread: a
+        /// ticket, then what went wrong, else "", with `bitwarden_answered`.
         #[qinvokable]
-        fn bitwarden_send_code(self: Pin<&mut Sioul>, password: &QString) -> QString;
+        fn bitwarden_send_code(self: Pin<&mut Sioul>, password: &QString) -> i32;
 
-        /// Begins a passkey login: {"page", "script"} for the key's window, or {"error"}.
+        /// Begins a passkey login, off the window's thread: a ticket, then
+        /// {"page", "script"} for the key's window, or {"error"}, with `bitwarden_answered`.
         #[qinvokable]
-        fn bitwarden_passkey_begin(self: Pin<&mut Sioul>) -> QString;
+        fn bitwarden_passkey_begin(self: Pin<&mut Sioul>) -> i32;
 
-        /// The key's answer from that window: the vault opened with it; {"ok"} or {"error"}.
+        /// The key's answer from that window: the vault opened with it, off the
+        /// window's thread: a ticket, then {"ok"} or {"error"}, with `bitwarden_answered`.
         #[qinvokable]
-        fn bitwarden_passkey(self: Pin<&mut Sioul>, answer: &QString) -> QString;
+        fn bitwarden_passkey(self: Pin<&mut Sioul>, answer: &QString) -> i32;
 
         /// The vault's logins by site and by user name, for an address (its own
         /// first): {"found": [{"id", "name", "username", "site", "elsewhere"}], "more"} or {"error"};
@@ -1746,6 +1756,11 @@ pub mod qobject {
         /// A large vault's search, done off the window's thread: its ticket and its answer (`bitwarden_search`).
         #[qsignal]
         fn bitwarden_found(self: Pin<&mut Sioul>, ticket: i32, found: QString);
+
+        /// Bitwarden's server answered, off the window's thread: the ticket an
+        /// unlock, a passkey or a code's sending gave, and its answer.
+        #[qsignal]
+        fn bitwarden_answered(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
 
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
@@ -3074,16 +3089,16 @@ impl qobject::Sioul {
         QString::from(&say(&id.to_string(), &[(&name.to_string(), value.to_string())]))
     }
 
+    fn text_counted(&self, id: &QString, n: i32) -> QString {
+        QString::from(&tr().text(&id.to_string(), Some(&tr().counted(usize::try_from(n).unwrap_or(0)))))
+    }
+
     fn start(mut self: Pin<&mut Self>) {
         // "Work now" lasts while Sioul is open: a session that ended without saying so ends it.
         end_work_now();
-        // Sites an older file kept among the accounts move to their own list, once, a copy kept beside.
-        let path = config_path();
-        if std::fs::read_to_string(&path).is_ok_and(|text| text.contains("kind = \"portal\"")) {
-            let _ = std::fs::copy(&path, path.with_file_name("config-before-sites.toml"));
-            if let Err(e) = config::migrate_sites(&path) {
-                eprintln!("{e}");
-            }
+        // Sites an older file kept among the accounts move to their own list, a copy kept beside, made once.
+        if let Err(e) = config::migrate_sites_at_start(&config_path()) {
+            eprintln!("{e}");
         }
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_mode(QString::from(&mode_json()));
@@ -3716,7 +3731,7 @@ impl qobject::Sioul {
         QString::from(&pim::calendars())
     }
 
-    fn event(&self, key: &QString) -> QString {
+    fn event_form(&self, key: &QString) -> QString {
         QString::from(&pim::event(&key.to_string()))
     }
 
@@ -3985,8 +4000,8 @@ impl qobject::Sioul {
         QString::from(&work::set_felt(&self.qt_thread(), &self.shared(), &uid.to_string(), &felt.to_string()))
     }
 
-    fn set_waits(self: Pin<&mut Self>, uid: &QString, other: &QString, wait: bool) -> QString {
-        QString::from(&work::set_waits(&self.qt_thread(), &self.shared(), &uid.to_string(), &other.to_string(), wait))
+    fn set_waits(self: Pin<&mut Self>, uid: &QString, other: &QString, wait: bool, gap_minutes: i32) -> QString {
+        QString::from(&work::set_waits(&self.qt_thread(), &self.shared(), &uid.to_string(), &other.to_string(), wait, i64::from(gap_minutes)))
     }
 
     fn not_now(self: Pin<&mut Self>, uid: &QString) {
@@ -4862,24 +4877,27 @@ impl qobject::Sioul {
         QString::from(&crate::sites::bitwarden_state(&self.shared()))
     }
 
-    fn bitwarden_unlock(self: Pin<&mut Self>, password: &QString, provider: i32, code: &QString) -> QString {
-        QString::from(&crate::sites::bitwarden_unlock(&self.shared(), &password.to_string(), provider, &code.to_string()))
+    fn bitwarden_unlock(self: Pin<&mut Self>, password: &QString, provider: i32, code: &QString) -> i32 {
+        let (shared, password, code) = (self.shared(), password.to_string(), code.to_string());
+        crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_unlock(&shared, &password, provider, &code))
     }
 
     fn bitwarden_lock(self: Pin<&mut Self>) {
         crate::sites::bitwarden_lock(&self.shared());
     }
 
-    fn bitwarden_send_code(self: Pin<&mut Self>, password: &QString) -> QString {
-        QString::from(&crate::sites::bitwarden_send_code(&password.to_string()))
+    fn bitwarden_send_code(self: Pin<&mut Self>, password: &QString) -> i32 {
+        let password = password.to_string();
+        crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_send_code(&password))
     }
 
-    fn bitwarden_passkey_begin(self: Pin<&mut Self>) -> QString {
-        QString::from(&crate::sites::bitwarden_passkey_begin())
+    fn bitwarden_passkey_begin(self: Pin<&mut Self>) -> i32 {
+        crate::sites::bitwarden_later(&self.qt_thread(), crate::sites::bitwarden_passkey_begin)
     }
 
-    fn bitwarden_passkey(self: Pin<&mut Self>, answer: &QString) -> QString {
-        QString::from(&crate::sites::bitwarden_passkey(&self.shared(), &answer.to_string()))
+    fn bitwarden_passkey(self: Pin<&mut Self>, answer: &QString) -> i32 {
+        let (shared, answer) = (self.shared(), answer.to_string());
+        crate::sites::bitwarden_later(&self.qt_thread(), move || crate::sites::bitwarden_passkey(&shared, &answer))
     }
 
     fn bitwarden_search(self: Pin<&mut Self>, url: &QString, site: &QString, user: &QString) -> QString {
@@ -5545,8 +5563,10 @@ impl qobject::Sioul {
         // "projects-file" the projects' file under its first name renamed from Settings
         // (make-demo.py --old-projects, docs/notes-folder.md), "memory" every page as "pages" opens
         // them, then the profile's sites, held at each moment measured (tools/measure-memory.py),
+        // "bitwarden-wait" the unlock dialog waiting for Bitwarden, then its answer (no account
+        // set: no server asked), "tray" the window hidden as to the tray and brought back,
         // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

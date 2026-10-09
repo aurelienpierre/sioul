@@ -2576,4 +2576,55 @@ mod tests {
         assert_eq!(tap(r#"{"open":"elsewhere","at":0}"#, 0), None);
         assert_eq!(tap("not json", now), None);
     }
+
+    /// New mail between two drawings of the card: its messages and codes made
+    /// again as a whole card would make them, frame by frame; the rest of the
+    /// card, and the frames that say nothing of the Porch, left as they were.
+    #[test]
+    fn patch_mail_makes_the_porch_again_and_nothing_else() {
+        let now = at("2026-10-05T10:00[Europe/Paris]");
+        let config = config();
+        let tr = Translator::new("en");
+        let blocks = blocks(&now);
+        let overrides = Overrides::default();
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let (plan, agenda) = (plan_input(&now), some_events());
+        let before = porch_input(&now);
+        let written = serde_json::to_value(snapshot(&moment, Some(&before), Some(&plan), Some(&agenda), &[])).unwrap();
+        // Since then: Tom's letter read and gone from the Porch, one from Paul come, the code used up.
+        let mut after = porch_input(&now);
+        after.items.retain(|m| m.card.from_address.as_deref() != Some("tom@example.org") && m.code.is_none());
+        after.items.insert(0, sent_at("Paul <paul@example.org>", "Tickets for Sunday", now.timestamp().as_second() - 60, false));
+        let mut card = written.clone();
+        assert!(patch_mail(&mut card, &moment, &after));
+        let whole = serde_json::to_value(snapshot(&moment, Some(&after), Some(&plan), Some(&agenda), &[])).unwrap();
+        assert_eq!(card["mail"], whole["mail"]);
+        assert_eq!(card["codes"], whole["codes"]);
+        assert_eq!(card["codes"], serde_json::json!([]), "the code gone with its message");
+        let (frames, made, was) = (card["times"].as_array().unwrap(), whole["times"].as_array().unwrap(), written["times"].as_array().unwrap());
+        assert_eq!(frames.len(), made.len());
+        for ((frame, made), was) in frames.iter().zip(made).zip(was) {
+            assert_eq!(frame["porch"], made["porch"], "the frame from {}", frame["from"]);
+            // Its other words as they were: its line, its step, its agenda.
+            for key in ["from", "until", "status", "step", "note", "events", "codes", "doses"] {
+                assert_eq!(frame[key], was[key], "{key}");
+            }
+            if was["porch"].is_null() {
+                assert!(frame["porch"].is_null(), "asleep, no Porch made");
+            }
+        }
+        let senders: Vec<&str> = card["mail"].as_array().unwrap().iter().map(|m| m["sender"].as_str().unwrap()).collect();
+        assert!(senders.contains(&"Paul") && !senders.contains(&"Tom"), "{senders:?}");
+        for key in ["today", "agenda", "words", "made", "stale_after", "details"] {
+            assert_eq!(card[key], written[key], "{key}");
+        }
+        // Nothing new since: nothing changed, nothing to write.
+        assert!(!patch_mail(&mut card, &moment, &after));
+        // A card written by another version: left alone.
+        let mut older = written.clone();
+        older["v"] = serde_json::json!(2);
+        let kept = older.clone();
+        assert!(!patch_mail(&mut older, &moment, &after));
+        assert_eq!(older, kept);
+    }
 }
