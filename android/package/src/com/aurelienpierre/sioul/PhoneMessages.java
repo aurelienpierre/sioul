@@ -30,7 +30,7 @@ final class PhoneMessages
         return out.put("visibility", visibility).put("when", when).put("posted", posted).put("picture", picture);
     }
 
-    /** The phone's default SMS app, for the tab (StepService.call, "sms-app"); "" when none, or no telephony. */
+    /** The phone's default SMS app, for the tab ({@link StepService#call}, "sms-app"); "" when none, or no telephony. */
     static String smsApp(Context context)
     {
         try {

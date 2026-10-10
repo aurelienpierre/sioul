@@ -232,3 +232,17 @@ jobs:
       # reuse what the build compiled (a debug build would compile everything again).
       - name: Tests (core, sync, command line)
         run: cargo test --release --locked -p sioul-core -p sioul-sync -p sioul-cli
+
+      # The code's own comments as rustdoc reads them, private items included, as
+      # the website's API reference makes them (pages.yml, website/build.sh --api):
+      # a link to nothing or an unclosed tag fails on the push that wrote it, not
+      # at the next publication of the site. One job is enough: Linux's, after the
+      # tests, whose outcome it does not wait for.
+      - name: Documentation (rustdoc, warnings as errors)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          for crate in sioul-core sioul-sync sioul-learn sioul-cli sioul-app; do
+            cargo doc --locked --no-deps --document-private-items -p "$crate"
+          done

@@ -26,6 +26,7 @@ use std::ffi::{CString, c_char};
 use std::sync::Mutex;
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// The coming events' reminders handed to Java, which keeps them and sets their alarms (android/main.cpp).
     fn sioul_android_set_event_alarms(json: *const c_char);
@@ -109,6 +110,7 @@ fn hand(json: String) {
     }
     let Ok(text) = CString::new(json.clone()) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_set_event_alarms(text.as_ptr())
     };
@@ -148,6 +150,7 @@ pub(crate) fn show(reminder: &Reminder) {
     });
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_event_note(text.as_ptr())
     };
@@ -163,6 +166,7 @@ pub(crate) fn mail_note(title: &str, body: &str, through: bool) {
     let json = serde_json::json!({ "title": title, "body": body, "through": through, "words": words() });
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_mail_note(text.as_ptr())
     };
@@ -216,8 +220,10 @@ fn decide(key: &str) -> String {
 ///
 /// # Safety
 /// `key` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_event_decide(key: *const c_char) -> *mut c_char {
+    // SAFETY: `key` is null or a C string valid for the call, as this function's contract says.
     let key = unsafe { crate::alarms::key_of(key) };
     let answer = std::panic::catch_unwind(|| decide(&key)).unwrap_or_else(|_| "null".to_string());
     crate::alarms::handed(answer)
@@ -229,8 +235,10 @@ pub unsafe extern "C" fn sioul_event_decide(key: *const c_char) -> *mut c_char {
 ///
 /// # Safety
 /// `zone` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char {
+    // SAFETY: `zone` is null or a C string valid for the call, as this function's contract says.
     let zone = unsafe { crate::alarms::key_of(zone) };
     let answer = std::panic::catch_unwind(|| {
         let zone = TimeZone::get(&zone).unwrap_or_else(|_| TimeZone::system());
@@ -252,6 +260,7 @@ pub(crate) fn opened() -> Option<(String, String)> {
     #[cfg(target_os = "android")]
     {
         let mut buffer = vec![0u8; 4096];
+        // SAFETY: android/main.cpp's; it writes at most `buffer.len()` bytes into `buffer`, its zero included.
         let found = unsafe { sioul_android_take_reminder_opened(buffer.as_mut_ptr().cast(), buffer.len() as i32) };
         if found {
             let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());

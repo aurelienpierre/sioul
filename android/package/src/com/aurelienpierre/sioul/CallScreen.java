@@ -10,13 +10,13 @@ import android.util.Log;
 /**
  * Android's question about each call, to Sioul as the "Caller ID &amp; spam app"
  * (docs/android.md, "Calls"): answered from the table Rust wrote ahead
- * (Calls.decide), in a process of its own (":calls") that never loads
+ * ({@link Calls#decide}), in a process of its own (":calls") that never loads
  * Sioul's library or Qt, so that Telecom, which holds the ringing until it
  * hears back (five seconds at most), waits milliseconds. A call is let ring,
  * or refused plainly: declined as by hand, so the network sends it to your
  * voicemail; no missed-call notification for it; still in the phone's call
  * history, with Sioul's name. Every incoming call, declined or let ring, is
- * then listed for Sioul (Calls.held), once Android has its answer: the Porch
+ * then listed for Sioul ({@link Calls#held}), once Android has its answer: the Porch
  * of each of your devices lists the declined ones. Sioul never answers a
  * call, never records one, never listens.
  *

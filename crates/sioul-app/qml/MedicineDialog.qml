@@ -163,7 +163,7 @@ Dialog {
                 text: form.sioul.text("health-field-when")
                 color: form.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: every
 
                 Layout.fillWidth: true
@@ -282,7 +282,7 @@ Dialog {
                 text: form.sioul.text("health-field-prescription")
                 color: form.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: link
 
                 Layout.fillWidth: true

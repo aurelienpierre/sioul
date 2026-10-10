@@ -290,7 +290,7 @@ ColumnLayout {
                                 color: row.modelData.why === "unknown" ? section.theme.warm : section.theme.muted
                             }
                         }
-                        ComboBox {
+                        PlainComboBox {
                             Layout.preferredWidth: 190
                             model: row.choices.map(c => section.theme.plain(c.title))
                             currentIndex: Math.max(0, row.choices.findIndex(c => c.id === row.modelData.chosen))

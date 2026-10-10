@@ -11,7 +11,7 @@ import android.service.quicksettings.TileService;
  * "Do not disturb (Sioul)" among the quick settings: Sioul's switch, on every
  * device (docs/do-not-disturb.md), pressed without opening Sioul. Lit while
  * Sioul's do-not-disturb holds on this phone, as Rust said at its last apply
- * (PauseMode.sioulOn); a tap turns it off when it holds, else on until
+ * ({@link PauseMode#sioulOn}); a tap turns it off when it holds, else on until
  * turned off, through DndReceiver in Sioul's own process. Beside Android's
  * own tile, which Sioul hears too: both say the same once Sioul applied.
  */

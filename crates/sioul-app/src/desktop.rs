@@ -28,6 +28,7 @@ pub mod ffi {
         fn window_buttons(self: &Desktop) -> QString;
     }
 
+    // SAFETY: cxx checks these declarations against the headers they include, when it builds; the types are cxx-qt-lib's.
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;

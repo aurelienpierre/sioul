@@ -18,11 +18,13 @@ import QtQuick.Layouts
 ToolButton {
     id: button
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // Its icon alone.
     property bool compact: false
     // What it is, in words: said to screen readers, and its tip unless `tip` says more.
     property string name: button.text
+    // Its tip, when the pointer rests on it: its name, unless more is said.
     property string tip: button.name
     // On (Free time, do-not-disturb): its icon in the accent, the accent's tint under it.
     property bool switchedOn: false

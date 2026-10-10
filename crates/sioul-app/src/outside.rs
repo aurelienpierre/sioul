@@ -68,6 +68,7 @@ pub(crate) fn attaching(id: &str) -> String {
 /// saves: at the start, when the window comes back, at its minute, and when
 /// something is handed.
 pub(crate) fn take(mut sioul: Pin<&mut Sioul>) {
+    activate_with_token();
     let incoming = Incoming::here();
     let me = std::process::id();
     let mut changed = false;
@@ -227,6 +228,7 @@ fn sent(config: &Config) -> BTreeMap<String, usize> {
 }
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// Sioul's addresses that send, as Android's direct-share targets
     /// (android/main.cpp, MailShortcuts.java): JSON {accounts, gone}.
@@ -269,6 +271,7 @@ pub(crate) fn publish(recount: bool) {
 /// Android's ShareActivity: a request written, or the files copied for one
 /// (android/main.cpp). Any thread.
 #[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_handed() {
     let _ = std::panic::catch_unwind(poke);
@@ -319,7 +322,7 @@ fn socket() -> Option<std::path::PathBuf> {
 /// do. False when none answers: this one opens, and listens (`listen`).
 #[cfg(all(unix, not(target_os = "android")))]
 pub(crate) fn hand_over(addresses: &[String]) -> bool {
-    !alone() && socket().is_some_and(|path| hand_over_at(&path, addresses))
+    !alone() && socket().is_some_and(|path| hand_over_at(&path, addresses, own_token()))
 }
 
 /// The window's pictures and the demo (SIOUL_GRAB, SIOUL_DEMO) run beside
@@ -335,14 +338,52 @@ pub(crate) fn hand_over(_addresses: &[String]) -> bool {
     false
 }
 
+/// The token a desktop gives the program it starts, on Wayland, so that the
+/// window it opens may come to the front (xdg-activation-v1: the launcher's
+/// `XDG_ACTIVATION_TOKEN`). A second Sioul hands it on with its addresses:
+/// without it, KWin keeps the first Sioul's draft behind the window you
+/// clicked in (focus stealing prevention).
 #[cfg(all(unix, not(target_os = "android")))]
-fn hand_over_at(path: &std::path::Path, addresses: &[String]) -> bool {
+fn own_token() -> Option<String> {
+    std::env::var("XDG_ACTIVATION_TOKEN").ok().and_then(|token| token_of(&token))
+}
+
+/// A token as it may be handed on: short, printable, without spaces (a
+/// compositor's tokens are; anything else is not one).
+#[cfg(all(unix, not(target_os = "android")))]
+fn token_of(text: &str) -> Option<String> {
+    let token = text.trim();
+    (!token.is_empty() && token.len() <= 512 && token.bytes().all(|b| b.is_ascii_graphic())).then(|| token.to_string())
+}
+
+/// The token handed by the last Sioul started after this one, waiting for
+/// the window's thread (`activate_with_token`).
+static TOKEN: Mutex<Option<String>> = Mutex::new(None);
+
+/// On the window's thread, before a window opens or comes forward: the
+/// token handed on, given to Qt, which hands it to the compositor at the
+/// next activation (`requestActivate`) and forgets it.
+fn activate_with_token() {
+    let Some(token) = TOKEN.lock().ok().and_then(|mut token| token.take()) else { return };
+    #[cfg(all(unix, not(target_os = "android")))]
+    if let Ok(token) = std::ffi::CString::new(token) {
+        // SAFETY: `token` is a C string alive for the call, which copies it;
+        // on the window's thread, where Qt reads the variable (qputenv takes
+        // Qt's lock on the environment).
+        unsafe { crate::sioul_set_activation_token(token.as_ptr()) };
+    }
+    #[cfg(not(all(unix, not(target_os = "android"))))]
+    let _ = token;
+}
+
+#[cfg(all(unix, not(target_os = "android")))]
+fn hand_over_at(path: &std::path::Path, addresses: &[String], token: Option<String>) -> bool {
     use std::io::{BufRead, BufReader, Write};
     let Ok(mut stream) = std::os::unix::net::UnixStream::connect(path) else { return false };
     let wait = Some(std::time::Duration::from_secs(5));
     let _ = stream.set_read_timeout(wait);
     let _ = stream.set_write_timeout(wait);
-    let asked = serde_json::json!({ "open": addresses }).to_string();
+    let asked = serde_json::json!({ "open": addresses, "activation": token }).to_string();
     if stream.write_all(format!("{asked}\n").as_bytes()).is_err() {
         return false;
     }
@@ -360,12 +401,18 @@ pub(crate) fn listen() {
         return;
     }
     let Some(path) = socket() else { return };
-    let heard = |addresses: Vec<String>| {
+    let heard = |addresses: Vec<String>, token: Option<String>| {
+        if let (Some(token), Ok(mut waiting)) = (token, TOKEN.lock()) {
+            *waiting = Some(token);
+        }
         if addresses.is_empty() {
             let window = WINDOW.lock().ok().and_then(|w| w.clone());
             if let Some(qt) = window {
                 // A reminder's "Open" with nothing to open: the window brought forward.
-                let _ = qt.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::default(), QString::default(), QString::default()));
+                let _ = qt.queue(|mut sioul| {
+                    activate_with_token();
+                    sioul.as_mut().reminder_opened(QString::default(), QString::default(), QString::default());
+                });
             }
         } else {
             hand(&addresses);
@@ -397,7 +444,7 @@ pub(crate) fn stop_listening() {
 }
 
 #[cfg(all(unix, not(target_os = "android")))]
-fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>) + Send + 'static) -> std::io::Result<()> {
+fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Option<String>) + Send + 'static) -> std::io::Result<()> {
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     if let Some(parent) = path.parent() {
@@ -426,7 +473,7 @@ fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>) + Send + 'stati
                 .map(|all| all.iter().filter_map(|a| a.as_str()).filter(|a| sioul_core::mailto::is_mailto(a)).map(str::to_string).collect())
                 .unwrap_or_default();
             if asked.get("open").is_some() {
-                heard(addresses);
+                heard(addresses, asked["activation"].as_str().and_then(token_of));
                 let _ = (&stream).write_all(b"ok\n");
             }
         }
@@ -482,19 +529,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s.sock");
         // None open: this one opens.
-        assert!(!hand_over_at(&path, &["mailto:a@example.org".into()]));
+        assert!(!hand_over_at(&path, &["mailto:a@example.org".into()], None));
         // A socket left by a Sioul that ended is replaced.
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
         let (send, heard) = std::sync::mpsc::channel();
-        listen_at(&path, move |addresses| send.send(addresses).unwrap()).unwrap();
-        assert!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()]));
-        assert_eq!(heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), ["mailto:a@example.org?subject=Hi"]);
+        listen_at(&path, move |addresses, token| send.send((addresses, token)).unwrap()).unwrap();
+        let next = || heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        assert!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()], None));
+        assert_eq!(next(), (vec!["mailto:a@example.org?subject=Hi".to_string()], None));
         // A plain start: nothing to write, the window brought forward.
-        assert!(hand_over_at(&path, &[]));
-        assert!(heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap().is_empty());
+        assert!(hand_over_at(&path, &[], None));
+        assert!(next().0.is_empty());
         // Only mailto: addresses are taken from another process.
-        assert!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()]));
-        assert_eq!(heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), ["mailto:b@example.org"]);
+        assert!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()], None));
+        assert_eq!(next().0, ["mailto:b@example.org"]);
+        // The desktop's activation token goes with the link, so that its
+        // draft may come to the front; what is not a token stays behind.
+        assert!(hand_over_at(&path, &["mailto:c@example.org".into()], Some("kwin-1234_abcd".into())));
+        assert_eq!(next(), (vec!["mailto:c@example.org".to_string()], Some("kwin-1234_abcd".to_string())));
+        assert!(hand_over_at(&path, &[], Some("two words\n".into())));
+        assert_eq!(next(), (Vec::new(), None));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

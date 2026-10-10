@@ -67,7 +67,7 @@ import java.util.Set;
  * (crates/sioul-core/src/calls.rs, `decide`) on tables as Rust writes them
  * (android/jvm-checks/: DecideCheck, TableCheck).
  *
- * Here too: Rust's questions (StepService.call, verbs "calls-…"), and the
+ * Here too: Rust's questions ({@link StepService#call}, verbs "calls-…"), and the
  * press of "Let every call through" on the background service's notification,
  * kept in a file of this phone's (`through-here.json`) that Rust reads and
  * shares with your other devices.
@@ -766,7 +766,7 @@ final class Calls
 
     // ---------------------------------------------------------------- Rust's questions
 
-    /** Rust's question (StepService.call, verbs "calls-…"), from Sioul's own process or the service's. */
+    /** Rust's question ({@link StepService#call}, verbs "calls-…"), from Sioul's own process or the service's. */
     static String call(Context context, String verb, JSONObject asked) throws JSONException
     {
         switch (verb) {

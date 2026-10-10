@@ -366,6 +366,7 @@ pub(crate) fn said() -> Said {
 /// # Safety
 /// `profile` holds `length` bytes, or is null; `cube` and `curve` have room
 /// for what is said above.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_colour_tables(profile: *const u8, length: usize, calmer: i32, cube_size: usize, cube: *mut f32, curve_size: usize, curve: *mut f32) -> i32 {
     if cube_size != CUBE || curve_size != CURVE || cube.is_null() || curve.is_null() {
@@ -398,6 +399,7 @@ pub unsafe extern "C" fn sioul_colour_tables(profile: *const u8, length: usize, 
 ///
 /// # Safety
 /// `profile` holds `length` bytes; `out` has room for `capacity` bytes.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_colour_profile_name(profile: *const u8, length: usize, out: *mut u8, capacity: usize) -> usize {
     if profile.is_null() || out.is_null() || capacity == 0 {
@@ -425,6 +427,7 @@ pub unsafe extern "C" fn sioul_colour_profile_name(profile: *const u8, length: u
 ///
 /// # Safety
 /// `name` is null or a C string.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_colour_said(state: i32, name: *const std::ffi::c_char) {
     // SAFETY: as the caller says.

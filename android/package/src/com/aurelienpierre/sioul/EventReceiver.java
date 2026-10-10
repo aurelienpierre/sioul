@@ -137,7 +137,7 @@ public final class EventReceiver extends BroadcastReceiver
     }
 
     /**
-     * Rust's decision: shown already (by Rust, through EventAlarms.show);
+     * Rust's decision: shown already (by Rust, through {@link EventAlarms#show});
      * held now, asked again at `again_at`; or nothing (moved, cancelled, told,
      * too late). No answer at all: the words kept, rather than nothing.
      */

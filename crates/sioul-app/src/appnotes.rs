@@ -30,6 +30,7 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// AppNotes.call (android/main.cpp): a verb and its JSON, a JSON answer or null.
     fn sioul_android_appnotes(verb: *const c_char, json: *const c_char) -> *mut c_char;
@@ -259,8 +260,10 @@ fn review(json: &str) -> String {
 ///
 /// # Safety
 /// `json` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_appnotes_decide(json: *const c_char) -> *mut c_char {
+    // SAFETY: `json` is null or a C string valid for the call, as this function's contract says.
     let json = unsafe { crate::alarms::key_of(json) };
     let answer = std::panic::catch_unwind(|| decide(&json)).unwrap_or_else(|_| "null".to_string());
     crate::alarms::handed(answer)
@@ -270,8 +273,10 @@ pub unsafe extern "C" fn sioul_appnotes_decide(json: *const c_char) -> *mut c_ch
 ///
 /// # Safety
 /// `json` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_appnotes_review(json: *const c_char) -> *mut c_char {
+    // SAFETY: `json` is null or a C string valid for the call, as this function's contract says.
     let json = unsafe { crate::alarms::key_of(json) };
     let answer = std::panic::catch_unwind(|| review(&json)).unwrap_or_else(|_| "null".to_string());
     crate::alarms::handed(answer)

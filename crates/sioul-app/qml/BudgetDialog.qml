@@ -15,16 +15,24 @@ import QtQuick.Layouts
 Dialog {
     id: dialog
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The budget changed, by its id; "" for a new one.
     property string budgetId: ""
+    // What went wrong when saving, in words; "" for nothing.
     property string problem: ""
+    // "Take it out" pressed once: the next press takes it out.
     property bool removing: false
+    // The periods offered, in their order.
     readonly property var periods: ["month", "year"]
     // "work", "admin+leisure"…; "" when none is ticked: your admin.
     property string area: ""
 
+    // Saved: the budget's id.
     signal saved(string id)
+    // The budget was taken out.
     signal removed
 
     // `shown` is the budget's page, or null for a new one.
@@ -47,6 +55,8 @@ Dialog {
         return typed === "" ? 0 : Number(typed)
     }
 
+    // The form saved: its amount read first (said when unreadable), then the budget
+    // kept by the backend.
     function save() {
         const goal = dialog.amount(target.text)
         if (Number.isNaN(goal)) {
@@ -88,7 +98,7 @@ Dialog {
             text: dialog.sioul.text("budget-field-period")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: period
 
             Layout.fillWidth: true

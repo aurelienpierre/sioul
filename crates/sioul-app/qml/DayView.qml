@@ -458,7 +458,9 @@ ColumnLayout {
                 height: 1
 
                 Label {
-                    y: -height / 2
+                    // Centred on its line; the first hour's under it, else
+                    // the top of the view cut it in half.
+                    y: hour.index === 0 ? 0 : -height / 2
                     width: 52
                     text: dayView.time(hour.at)
                     textFormat: Text.PlainText

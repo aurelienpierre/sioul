@@ -13,8 +13,12 @@ import QtQuick.Layouts
 RowLayout {
     id: actions
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The main window (main.qml), which opens what is asked of it. Its "Link to…"
+    // chooser ties the thing open to another.
     required property var window
     // The thing open: {uri, kind, key, title, start, name, address}.
     property var source: null

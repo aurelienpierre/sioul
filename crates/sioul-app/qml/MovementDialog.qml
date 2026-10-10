@@ -13,17 +13,25 @@ import QtQuick.Layouts
 Dialog {
     id: dialog
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The budget it goes into, by its id.
     property string budget: ""
     // Started from "New": the budget is chosen here, among {id, title}.
     property var budgets: []
+    // The budget is chosen in the form (started from "New"), among `budgets`.
     property bool choosing: false
+    // Each month or year rather than once.
     property bool recurring: false
+    // What went wrong when saving, in words; "" for nothing.
     property string problem: ""
 
+    // The movement was added.
     signal saved
 
+    // Today, as 2026-10-05.
     function today() {
         const d = new Date()
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -37,6 +45,7 @@ Dialog {
         budgetChoice.currentIndex = 0
     }
 
+    // The form emptied and opened for `budget`.
     function begin(budget) {
         dialog.choosing = false
         dialog.budget = budget
@@ -52,6 +61,8 @@ Dialog {
         label.forceActiveFocus()
     }
 
+    // The form saved: the amount read as typed, then the movement kept by the backend;
+    // what went wrong said in the form, which stays open.
     function save() {
         // "−1 234,50 €" as typed; what is no number goes as 0, which the core
         // answers in words (a NaN would reach it as null, and a parser's error).
@@ -93,7 +104,7 @@ Dialog {
             text: dialog.sioul.text("budget-add-budget")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: budgetChoice
 
             visible: dialog.choosing
@@ -172,7 +183,7 @@ Dialog {
         RowLayout {
             visible: dialog.recurring
 
-            ComboBox {
+            PlainComboBox {
                 id: every
 
                 Layout.preferredWidth: 190

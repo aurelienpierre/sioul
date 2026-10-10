@@ -13,12 +13,17 @@ import QtQuick.Controls.Basic
 SioulMenu {
     id: addMenu
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The main window (main.qml), which opens what is asked of it. What is made opens
+    // there, ready to fill.
     required property var window
     // What the new thing is tied to: {uri, kind, key, title, start, name, address}.
     property var source: null
+    // The kind of thing it is made from ("mail", "event", "task"…), "" for none.
     readonly property string from: addMenu.source ? addMenu.source.kind : ""
 
+    // Whether something new of `kind` is offered from that thing.
     function offers(kind) {
         if (addMenu.source === null)
             return false

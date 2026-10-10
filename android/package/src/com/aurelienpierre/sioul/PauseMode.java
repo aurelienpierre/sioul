@@ -661,7 +661,7 @@ final class PauseMode
     }
 
     /**
-     * A change heard by DndReceiver, decided (DndHeard.decide) from what
+     * A change heard by DndReceiver, decided ({@link DndHeard#decide}) from what
      * Android has now and Sioul's record; the phone's state noted as seen,
      * unless the decision waits for Sioul's own change to settle.
      */

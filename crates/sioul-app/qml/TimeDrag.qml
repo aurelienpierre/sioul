@@ -28,9 +28,11 @@ Item {
     required property Flickable flick
     // The pointer's look where it hovers, and while it drags (the timeline says).
     property int cursorShape: Qt.ArrowCursor
+    // The pointer's look while it drags.
     property int dragCursor: Qt.ClosedHandCursor
     // A finger held this long picks up (seconds); it goes once moved this far (pixels).
     property real holdSeconds: 0.45
+    // A press goes once moved this far, in pixels.
     property real threshold: 10
     // Picked up by a finger, or dragged with a mouse.
     readonly property bool dragging: area.going
@@ -39,7 +41,9 @@ Item {
 
     // The pointer over the timeline, in this item's coordinates; off it: (-1, -1).
     signal hovered(point position)
+    // A tap or a click, where it was in the timeline and on the screen.
     signal tapped(point position, point scenePosition)
+    // A double click or a double tap.
     signal doubleTapped(point position)
     // A right click; a long press let go without moving, after `pickUp(true)`.
     signal menuAsked(point position, point scenePosition)
@@ -47,8 +51,12 @@ Item {
     signal held(point position, point scenePosition)
     // A drag begins at `position` (where it was pressed), goes on, ends.
     signal started(point position)
+    // Where a drag is now, in the timeline.
     signal moved(point position)
+    // A drag let go: the timeline changes the thing now.
     signal released(point position)
+    // Picked up or dragged, then not dropped (a long press let go in place, the
+    // grab taken away): nothing changes.
     signal canceled
 
     // A finger's long press took something: the finger drags it now. With
@@ -59,10 +67,15 @@ Item {
         area.flick.interactive = false
     }
 
+    // A finger's long press picked something up (`pickUp`).
     property bool armed: false
+    // A drag under way.
     property bool going: false
+    // Let go without moving after `pickUp(true)`: the menu is asked.
     property bool menuOnRelease: false
+    // Where the press began, in the timeline.
     property point pressed: Qt.point(0, 0)
+    // Where the press began, on the screen.
     property point pressedScene: Qt.point(0, 0)
     // Where the pointer was last, on the screen: the view may scroll under a still hand.
     property point lastScene: Qt.point(0, 0)
@@ -80,6 +93,8 @@ Item {
             area.canceled()
     }
 
+    // The pointer at `scene`, on the screen: the drag goes there, and the view scrolls
+    // near its top or bottom.
     function follow(scene) {
         area.lastScene = scene
         const inView = area.flick.mapFromItem(null, scene.x, scene.y)

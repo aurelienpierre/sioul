@@ -14,10 +14,14 @@ import QtMultimedia
 ColumnLayout {
     id: player
 
+    // The sound's address (a file:// address of the notes folder).
     required property url source
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
 
+    // `ms` milliseconds as minutes and seconds, "3:07".
     function clock(ms) {
         const seconds = Math.floor(ms / 1000)
         const pad = n => n < 10 ? "0" + n : String(n)

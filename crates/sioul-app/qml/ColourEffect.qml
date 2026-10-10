@@ -18,7 +18,10 @@ ShaderEffect {
     // The tables, as textures (shaders/colour.frag): the cube, 33 tiles of
     // 33 × 33 side by side, and the curve.
     readonly property Image cube: cubeImage
+    // The tone curve's table, as a texture: 1,024 entries.
     readonly property Image curve: curveImage
+    // The cube's entries on each side, for the shader's lookup
+    // (ScreenColours.cubeSize).
     readonly property real tableSize: ScreenColours.cubeSize
 
     fragmentShader: "qrc:/sioul/shaders/colour.frag.qsb"

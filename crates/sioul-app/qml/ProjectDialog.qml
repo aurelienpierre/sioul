@@ -134,7 +134,7 @@ Dialog {
             text: dialog.sioul.text("project-field-budget")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: budget
 
             visible: isProject.checked
@@ -145,7 +145,7 @@ Dialog {
             text: dialog.sioul.text("project-field-status")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: status
 
             Layout.fillWidth: true

@@ -239,7 +239,7 @@ public final class Attachments
     // ---------------------------------------------------------------- on the phone
 
     /**
-     * Rust's question (StepService.call, verbs "attachment-…"):
+     * Rust's question ({@link StepService#call}, verbs "attachment-…"):
      * "attachment-open" {path, type}, answered {opened} or {problem};
      * "attachment-save" {path, name, type}, answered {asked} or {problem},
      * then AttachmentSave tells Rust what became of it.

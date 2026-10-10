@@ -34,7 +34,9 @@ import QtQuick.Layouts
 ColumnLayout {
     id: tiles
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // What is said: {cognitive, emotional, anxiety, body, gain}, each 0 to 10, null or missing when unsaid.
     property var values: ({})
@@ -44,6 +46,8 @@ ColumnLayout {
     property string proposedFrom: ""
     // "How was it?": the forecast as thin marks, the gain asked in the past, no faint values.
     property bool felt: false
+    // What was foreseen, the same shape as `values`: thin marks on the gauges, with
+    // `felt`.
     property var forecast: ({})
     // One column under this width, whatever the device.
     property real narrow: 360
@@ -55,17 +59,25 @@ ColumnLayout {
     readonly property real mouseCell: 14
     // A cell at the tiles' natural width.
     readonly property real comfortCell: 16
+    // A touch screen: cells as wide as a fingertip needs.
     readonly property bool touch: tiles.theme.touch === true
+    // The room between two tiles, in pixels.
     readonly property real gap: 8
+    // The room inside a tile, around what it holds.
     readonly property real pad: 10
+    // The four costs, by their names in a task's record.
     readonly property var costs: ["cognitive", "emotional", "anxiety", "body"]
+    // The four costs and the gain, in the order the tiles show them.
     readonly property var names: ["cognitive", "emotional", "anxiety", "body", "gain"]
 
     // The band words, after Borg's CR10: a word at fixed numbers, a number
     // between two takes the word below it (docs/capacity.md, "The form").
     readonly property var costWords: [tiles.sioul.text("tile-cost-0"), tiles.sioul.text("tile-cost-1"), tiles.sioul.text("tile-cost-2"), tiles.sioul.text("tile-cost-3"), tiles.sioul.text("tile-cost-5"), tiles.sioul.text("tile-cost-7"), tiles.sioul.text("tile-cost-10")]
+    // The band of each value of a cost, 0 to 10: which of `costWords` it takes.
     readonly property var costBands: [0, 1, 2, 3, 3, 4, 4, 5, 5, 5, 6]
+    // The gain's band words, as the costs have theirs (`tile-gain-…`).
     readonly property var gainWords: [tiles.sioul.text("tile-gain-0"), tiles.sioul.text("tile-gain-1"), tiles.sioul.text("tile-gain-3"), tiles.sioul.text("tile-gain-5"), tiles.sioul.text("tile-gain-7"), tiles.sioul.text("tile-gain-10")]
+    // The band of each value of the gain, 0 to 10: which of `gainWords` it takes.
     readonly property var gainBands: [0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5]
 
     // The widest word, for the gauges beside it to line up from tile to tile.
@@ -76,6 +88,8 @@ ColumnLayout {
     readonly property bool beside: tiles.cellOf(tiles.tileInside - tiles.wordRoom - 8) >= (tiles.touch ? tiles.fingerCell : tiles.mouseCell)
     // Every gauge as wide, the gain's too, so that their cells line up.
     readonly property real gaugeWidth: tiles.beside ? tiles.tileInside - tiles.wordRoom - 8 : tiles.tileInside
+    // The tiles two by two, or one under the other when the width (or a fingertip's
+    // cells) asks for it.
     readonly property int columns: tiles.width < tiles.narrow || (tiles.touch && tiles.cellOf((tiles.width - tiles.gap) / 2 - 2 * tiles.pad - 2) < tiles.fingerCell) ? 1 : 2
     // Whether a faint value waits on an unsaid tile.
     readonly property bool offered: !tiles.felt && tiles.names.some(n => tiles.said(n) === null && tiles.faint(n) !== null)
@@ -91,6 +105,7 @@ ColumnLayout {
         return (width - 20) / 10.6
     }
 
+    // What a tile says: 0 to 10, or null when unsaid.
     function said(name) {
         const value = tiles.values ? tiles.values[name] : null
         return value === undefined || value === null ? null : value
@@ -102,17 +117,20 @@ ColumnLayout {
         return value === undefined || value === null ? null : Math.max(0, Math.min(10, Math.round(value)))
     }
 
+    // What was foreseen for a tile, with `felt`: 0 to 10, or null.
     function foreseen(name) {
         const value = tiles.felt && tiles.forecast ? tiles.forecast[name] : null
         return value === undefined || value === null ? null : value
     }
 
+    // A tile's band word for `value`, or "unsaid".
     function word(name, value) {
         if (value === null)
             return tiles.sioul.text("tile-unsaid")
         return name === "gain" ? tiles.gainWords[tiles.gainBands[value]] : tiles.costWords[tiles.costBands[value]]
     }
 
+    // A tile's name, in your language.
     function title(name) {
         switch (name) {
         case "cognitive":
@@ -128,6 +146,7 @@ ColumnLayout {
         }
     }
 
+    // A tile's question in small print, in your language.
     function ask(name) {
         switch (name) {
         case "cognitive":

@@ -185,6 +185,7 @@ fn put(shown: &mut Shown, note: Option<&Note>, window: Option<(&QtThread, &Arc<S
 }
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// The note in Android's notifications, put up or changed; "" takes it
     /// away (android/main.cpp). Any thread.
@@ -266,6 +267,7 @@ fn act_in(dir: &Path, stopped: &Path, action: &str, now: i64) -> Result<bool, St
 ///
 /// # Safety
 /// `action` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_time_action(action: *const c_char) -> *mut c_char {
     // SAFETY: as the caller promises.

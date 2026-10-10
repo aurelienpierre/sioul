@@ -12,11 +12,13 @@ Loader {
     visible: false
     active: false
 
+    // The form, made the first time it is asked for.
     function now() {
         active = true
         return item
     }
 
+    // The form closed, if it was ever made.
     function close() {
         if (item)
             item.close()

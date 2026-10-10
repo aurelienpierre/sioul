@@ -70,7 +70,7 @@ Thunderbird, your phone's mail app and the webmail see the same mailbox:
 | Only what changed | sync tokens, else each item's tag | Radicale; a stand-in in the tests | most servers | without sync tokens, every item's tag is compared at each round, which is slower |
 | Tasks | task lists | Murena (Nextcloud), in daily use since 4 October 2026 | servers whose calendars take tasks, Nextcloud's among them | **iCloud**: reminders upgraded since iOS 13 are not reachable by any CalDAV program. **Google**: through Google Tasks ([below](#google)) |
 | Steps, waits, links, kinds, costs | a server that keeps what it is given, lines it does not know included | Murena (Nextcloud), in daily use since 4 October 2026 | servers that store tasks as they are sent, Nextcloud's among them | other apps may drop some of them when they save a task ([below](#other-apps-on-the-same-accounts)) |
-| A time given to a step for one day | a line of Sioul's own in the task | — | — | other apps do not show it. It is not the task's start: servers that check (Nextcloud's) refuse a start with a time when the date asked has none. **Coming**: an event in a calendar, tied to the task, which every calendar app shows |
+| A task pinned to a time | an event in a calendar that holds events, tied to the task both ways | its parts, in tests | servers whose calendars take events, Nextcloud's among them | the time is not the task's start, which servers that check (Nextcloud's) refuse with a time when the date asked has none: it is a time block, an event in "Planned tasks" or in the calendar you choose, which every calendar app shows ([Tasks](tasks.md#pinned-to-a-time)). Moved or deleted in another app, the task follows at the next sync. Not tried at Google yet, which adds your default reminders to each block |
 | New lists, calendars and address books; renaming them | the standard's requests to make and rename them | — | Nextcloud and most servers | not at Google |
 | Contact categories | the card's own categories | cards written as Nextcloud writes them | Nextcloud Contacts (its groups); DAVx⁵ set to keep groups as categories | groups kept as cards of their own (Apple's way, and DAVx⁵'s other setting) are not read as categories: such a group shows as a card |
 | Invitations | received by mail; your answer goes back by mail | Radicale, an invitation answered | the organiser's own mail program, whatever it is | inviting people from Sioul: not supported. The copy in your calendar does not record your answer, so other apps may show it as not answered |
@@ -88,7 +88,7 @@ Thunderbird, your phone's mail app and the webmail see the same mailbox:
 
 ## Other apps on the same accounts
 
-Your tasks, events and contacts are standard: every app on the same server shows them. What an app keeps of Sioul's own lines when it saves a task is up to that app. This was read in their source code on 6 October 2026, not tried with Sioul yet:
+Your tasks, events and contacts are standard: every app on the same server shows them. What an app keeps of Sioul's own lines when it saves a task is up to that app. This was read in their source code on 6 and 8 October 2026, not tried with Sioul yet:
 
 | App | Steps | Waits | Links, kinds, costs, ratings | How sure |
 |---|---|---|---|---|
@@ -97,6 +97,7 @@ Your tasks, events and contacts are standard: every app on the same server shows
 | Tasks.org or OpenTasks, through DAVx⁵ | shown as subtasks | shown as steps, and written back as steps when the phone changes the task | kept | **limit** |
 | jtx Board, through DAVx⁵ | shown as subtasks | dropped when the phone changes the task | kept | **limit** |
 | Android's calendar, through DAVx⁵ (events) | — | — | kept | **expected** |
+| TaskNotes for Obsidian, through tasknotes-caldav | not checked | **read backwards**: it writes a wait in the task that waits, the other way round from RFC 9253, so Sioul shows the other task as the one waiting ([Tasks](tasks.md#waits-in-other-caldav-programs)) | not checked | **limit** |
 | Thunderbird, Apple's Calendar and Reminders, Evolution, KOrganizer | not checked | not checked | not checked | an app that rewrites a task from only what it understands drops the rest |
 | Google Tasks | one level | not kept | not kept | **limit**: greyed in Sioul, with why |
 

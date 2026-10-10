@@ -19,7 +19,9 @@ import QtQuick.Layouts
 Rectangle {
     id: band
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // Whose band this is: a draft's id, or a message's key.
     property string context: ""
@@ -27,8 +29,11 @@ Rectangle {
     property string purpose: "sign"
     // What Sioul says now: {state, line, tries, warm, action}.
     property var said: band.quiet
+    // What the band says when nothing is asked: nothing.
     readonly property var quiet: ({ state: "", line: "", tries: "", warm: false, action: "" })
+    // Something is asked or said: the band shows.
     readonly property bool active: band.said.state !== "" && band.said.state !== "done"
+    // For a signature at Send (else, to open an encrypted message).
     readonly property bool signing: band.purpose === "sign"
 
     // Go on, with the PIN typed ("" for the one Sioul holds).
@@ -49,11 +54,13 @@ Rectangle {
         band.said = { state: "problem", line: line, tries: "", warm: true, action: "" }
     }
 
+    // Back to nothing asked, the PIN's field emptied.
     function reset() {
         pinField.text = ""
         band.said = band.quiet
     }
 
+    // The PIN typed, given to Sioul; nothing when the field is empty.
     function submit() {
         if (pinField.text === "")
             return
@@ -64,11 +71,14 @@ Rectangle {
         band.go(pin)
     }
 
+    // Not now: what was asked is let go, the band emptied.
     function notNow() {
         band.sioul.securityKeyNotNow(band.context)
         band.reset()
     }
 
+    // GnuPG asked to let go of the key, which it holds; then Sioul goes on, or says
+    // why not.
     function release() {
         const answer = JSON.parse(band.sioul.letGnupgRelease() || "{}")
         if (answer.done) {

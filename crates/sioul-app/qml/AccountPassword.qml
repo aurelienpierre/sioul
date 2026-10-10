@@ -3,8 +3,9 @@
 
 // An account's password, given on this device: an account come from another
 // device arrives without one, since passwords never travel. Typed, or taken
-// from your Bitwarden vault, found by its address as the user name; tested
-// with the account's server before this device's keyring keeps it.
+// from your Bitwarden vault, found by the name the account logs in with (its
+// address, unless it names another) as the user name; tested with the
+// account's server before this device's keyring keeps it.
 
 pragma ComponentBehavior: Bound
 
@@ -17,7 +18,7 @@ Dialog {
 
     required property var sioul
     required property var theme
-    // The account, as the Accounts page has it: id, address, host.
+    // The account, as the Accounts page has it: id, address, host, login.
     property var account: null
     property string problem: ""
     property string note: ""
@@ -41,7 +42,12 @@ Dialog {
         return dialog.account !== null && dialog.account.host ? "https://" + dialog.account.host : ""
     }
 
-    // The vault opened first when it is locked; then its logins, found by the account's address as the user name.
+    // The name the account logs in with: its own, else its address.
+    function login() {
+        return dialog.account === null ? "" : dialog.account.login || dialog.account.address || ""
+    }
+
+    // The vault opened first when it is locked; then its logins, found by the account's login as the user name.
     function fromVault() {
         dialog.problem = ""
         dialog.vault = dialog.sioul.bitwardenState()
@@ -50,7 +56,7 @@ Dialog {
         else if (dialog.vault === "locked")
             unlock.begin()
         else
-            chooser.now().beginForAccount(dialog.site(), dialog.account.address || "")
+            chooser.now().beginForAccount(dialog.site(), dialog.login())
     }
 
     // A login chosen in the vault: its password tested and kept at once.
@@ -166,7 +172,7 @@ Dialog {
         theme: dialog.theme
         onUnlocked: {
             dialog.vault = "unlocked"
-            chooser.now().beginForAccount(dialog.site(), dialog.account.address || "")
+            chooser.now().beginForAccount(dialog.site(), dialog.login())
         }
     }
 

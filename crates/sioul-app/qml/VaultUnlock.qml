@@ -20,14 +20,19 @@ import QtQuick.Layouts
 Dialog {
     id: unlock
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // What asks a security key, where one can be asked: Bitwarden's page held
     // unseen (the Sites page gives one, with Qt WebEngine); none on Android.
     property Component keyComponent: null
     // The key's page can be made now (the Sites page's web profile is ready).
     property bool keyReady: true
+    // A security key can be asked here: something to hold Bitwarden's page was given.
     readonly property bool keyCapable: unlock.keyComponent !== null
+    // Bitwarden's page held unseen while a security key is asked, for the window's
+    // tests.
     property alias keyView: keyView
 
     // The vault is open: what asked for it goes on.
@@ -36,6 +41,7 @@ Dialog {
     // -1: the password only; else the step asked (0 app, 1 e-mail, 3 YubiKey OTP,
     // 7 security key, 8 recovery, 100 new device).
     property int provider: -1
+    // The second steps the account offers, by Bitwarden's numbers.
     property var offered: []
     // The security key's step, when the account has one: {page, script}.
     property var key: null
@@ -45,14 +51,18 @@ Dialog {
     property bool sent: false
     // The security key alone opened the vault last time: proposed first.
     property bool passkeyFirst: false
+    // What went wrong, in words; "" for nothing.
     property string problem: ""
+    // What was done that you should know ("A code was sent…"); "" for nothing.
     property string note: ""
     // The steps Sioul can take, in the order Bitwarden's apps propose them:
     // a security key, a YubiKey's code, an app, e-mail; a recovery code only when chosen.
     readonly property var order: [7, 3, 0, 1, 8]
     // Bitwarden's server asked: the ticket waited for (0: none), and what its answer does.
     property int waiting: 0
+    // What the answer of the call waited for does, once it comes.
     property var then: null
+    // A call to Bitwarden's server is waited for: the buttons wait too.
     readonly property bool busy: unlock.waiting !== 0
 
     // A call to Bitwarden's server begun (its ticket): `done` takes its answer once it comes.
@@ -61,6 +71,8 @@ Dialog {
         unlock.then = done
     }
 
+    // The dialog opened afresh: every field and step forgotten, the security key
+    // proposed first when it opened the vault last.
     function begin() {
         unlock.waiting = 0
         unlock.then = null
@@ -129,6 +141,7 @@ Dialog {
             code.forceActiveFocus()
     }
 
+    // Bitwarden asked to send the code by e-mail.
     function sendCode() {
         unlock.ask(unlock.sioul.bitwardenSendCode(secret.text), problem => {
             unlock.sent = problem === ""
@@ -137,6 +150,8 @@ Dialog {
         })
     }
 
+    // The vault opened with what was typed: the password, the step chosen and its
+    // code.
     function tryIt() {
         if (unlock.busy)
             return
@@ -296,7 +311,7 @@ Dialog {
             onAccepted: unlock.tryIt()
         }
         // The second step, or a new device's code.
-        ComboBox {
+        PlainComboBox {
             visible: unlock.offered.length > 1
             Layout.fillWidth: true
             model: unlock.offered.map(p => unlock.sioul.text("bitwarden-factor-" + p))

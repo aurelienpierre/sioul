@@ -284,18 +284,23 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
 pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
     crate::mailsearch::changed(qt, shared);
     let qt = qt.clone();
-    crate::backend::coalesced(shared, |s| &s.mail_job, move |shared| {
-        let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
-        let views = views(shared);
-        let _ = qt.queue(move |mut sioul| {
-            // Only the newest (see `backend::show`).
-            if sioul.shared().mail_generation.load(Ordering::Relaxed) != generation || sioul.shared().mail_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
-                return;
-            }
-            sioul.as_mut().set_mail_accounts(QString::from(&views.accounts));
-            sioul.as_mut().set_mail_folder(QString::from(&views.folder));
-            sioul.as_mut().set_drafts(QString::from(&views.drafts));
-        });
+    crate::backend::coalesced(shared, |s| &s.mail_job, move |shared| show_mail_here(&qt, shared));
+}
+
+/// The mail page computed on this thread, and shown unless a newer one came
+/// first. `backend::show` runs it in the same look at the mail as the Porch,
+/// so that the inbox the page shows is parsed once for both (`maildir::CardsKept`).
+pub(crate) fn show_mail_here(qt: &QtThread, shared: &Shared) {
+    let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
+    let views = views(shared);
+    let _ = qt.queue(move |mut sioul| {
+        // Only the newest (see `backend::show`).
+        if sioul.shared().mail_generation.load(Ordering::Relaxed) != generation || sioul.shared().mail_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
+            return;
+        }
+        sioul.as_mut().set_mail_accounts(QString::from(&views.accounts));
+        sioul.as_mut().set_mail_folder(QString::from(&views.folder));
+        sioul.as_mut().set_drafts(QString::from(&views.drafts));
     });
 }
 

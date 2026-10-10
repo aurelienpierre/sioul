@@ -48,6 +48,15 @@ fn key() -> Option<[u8; 32]> {
     *held
 }
 
+/// The sharing folder and its key, the key asked of the keyring only once a
+/// folder is set up: a device that does not share never asks it (on Linux a
+/// D-Bus call each time; the demo profile started the Secret Service at each
+/// start, review of 6 October 2026).
+fn sealed(folder: Option<PathBuf>) -> Option<(PathBuf, [u8; 32])> {
+    let folder = folder?;
+    Some((folder, key()?))
+}
+
 fn memory_path() -> PathBuf {
     state_dir().join("share").join("memory.json")
 }
@@ -87,6 +96,7 @@ fn here() -> share::Here {
 fn files_readable() -> bool {
     #[cfg(target_os = "android")]
     {
+        // SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
         unsafe extern "C" {
             /// android/main.cpp's: whether Sioul may reach your files by their path.
             fn sioul_android_files_access() -> bool;
@@ -763,8 +773,8 @@ pub(crate) fn put_back_item(file: &str, stamp: &str) -> Result<String, String> {
 /// what went wrong, else "".
 pub(crate) fn put_back(part: &str, file: &str, stamp: &str) -> String {
     let here = here();
-    let (folder, key) = (here.folder_path(), key());
-    let vault = folder.as_deref().zip(key.as_ref());
+    let sealed = sealed(here.folder_path());
+    let vault = sealed.as_ref().map(|(folder, key)| (folder.as_path(), key));
     // Every part, those switched off too: put back here only.
     let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
     quietly(|| share::put_back(&memory_path(), vault, &stores, part, file, stamp, jiff::Timestamp::now().as_millisecond()).err().map(|e| problem_text(&e)).unwrap_or_default())
@@ -865,7 +875,7 @@ pub(crate) fn stop() -> String {
 /// anything newer. Sharing off: nothing to do.
 pub(crate) fn forget_device(id: &str) {
     let here = here();
-    if let (Some(folder), Some(key)) = (attached(&here), key())
+    if let Some((folder, key)) = sealed(attached(&here))
         && let Err(e) = share::forget_device(&folder, &key, &memory_path(), &here.id, id)
     {
         eprintln!("sioul: sharing: {e}");
@@ -910,7 +920,7 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
     let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let here = share::Here::load(&state_dir());
     let alone = sioul_sync::lease::Keeper::alone(&here.id);
-    let (Some(folder), Some(key)) = (attached(&here), key()) else { return (alone, false) };
+    let Some((folder, key)) = sealed(attached(&here)) else { return (alone, false) };
     // The claim says how far this computer wrote its records: read that far, the others know all it marked.
     let wrote = share::written(&memory_path(), &here.id);
     match sioul_sync::lease::renew(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), active, take, rule, wrote) {
@@ -927,7 +937,7 @@ fn renews(phone: bool, away: bool) -> bool {
 /// Who keeps a part, as the claims read now, without claiming it. Sharing off: this computer alone.
 pub(crate) fn looked(part: &str, rule: sioul_sync::lease::Rule) -> sioul_sync::lease::Keeper {
     let here = share::Here::load(&state_dir());
-    let (Some(folder), Some(key)) = (attached(&here), key()) else { return sioul_sync::lease::Keeper::alone(&here.id) };
+    let Some((folder, key)) = sealed(attached(&here)) else { return sioul_sync::lease::Keeper::alone(&here.id) };
     sioul_sync::lease::look(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), rule)
 }
 
@@ -946,7 +956,7 @@ pub(crate) fn closing() {
     // Over, unless a phone's Sioul is back already (put away a moment).
     let ended = || !cfg!(target_os = "android") || crate::backend::AWAY.load(std::sync::atomic::Ordering::SeqCst);
     let here = here();
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else {
+    let Some((folder, key)) = sealed(here.folder_path()) else {
         crate::devices::window_closed(ended);
         return;
     };
@@ -1019,7 +1029,7 @@ pub(crate) struct Others {
 /// they marked (`health::know`). None when sharing is off.
 pub(crate) fn others_on_health() -> Option<Others> {
     let here = share::Here::load(&state_dir());
-    let (Some(folder), Some(key)) = (attached(&here), key()) else { return None };
+    let Some((folder, key)) = sealed(attached(&here)) else { return None };
     let claims = sioul_sync::lease::claims(&folder, &key, "health").into_iter().filter(|c| c.computer != here.id).collect();
     let (mut entries, mut unread) = sioul_sync::devices::all(&folder, &key);
     entries.retain(|e| e.id != here.id);
@@ -1038,7 +1048,7 @@ pub(crate) fn vault() -> Option<(String, Option<(PathBuf, [u8; 32])>)> {
     if here.id.is_empty() {
         return None;
     }
-    let vault = attached(&here).zip(key());
+    let vault = sealed(attached(&here));
     Some((here.id, vault))
 }
 
@@ -1203,6 +1213,7 @@ fn ask_carriers_only() {
     for (package, receiver, action) in CARRIERS {
         let text = |s: &str| std::ffi::CString::new(s).unwrap_or_default();
         let (package, receiver, action) = (text(package), text(receiver), text(action));
+        // SAFETY: android/main.cpp's; the three C strings live until the call returns, and it copies them.
         unsafe { crate::backend::sioul_android_broadcast(package.as_ptr(), receiver.as_ptr(), action.as_ptr()) };
     }
 }
@@ -1278,7 +1289,7 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// seconds. None when sharing is off. Waits for an exchange running.
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
     let here = here();
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    let Some((folder, key)) = sealed(here.folder_path()) else { return None };
     // A phone's calls copied into its own log first (the background step's, a dose's alarm's).
     crate::calls::before_exchange();
     crate::phonemsgs::before_exchange();
@@ -1462,7 +1473,7 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
         let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let here = here();
-        let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
+        let Some((folder, key)) = sealed(here.folder_path()) else { return };
         // A phone's calls copied into its own log first, so that they go now (`calls`).
         crate::calls::before_exchange();
         crate::phonemsgs::before_exchange();
@@ -1615,6 +1626,7 @@ fn worker() {
 fn give_back_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
+        // SAFETY: glibc's malloc_trim, as malloc.h declares it.
         unsafe extern "C" {
             fn malloc_trim(pad: usize) -> std::ffi::c_int;
         }

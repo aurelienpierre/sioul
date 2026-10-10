@@ -7,7 +7,7 @@ description: "La politique de confidentialité de Sioul : Sioul fonctionne sur
 
 Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/privacy.html) fait foi.
 
-*Dernière mise à jour le 8 octobre 2026 (2026-10-08).*
+*Dernière mise à jour le 10 octobre 2026 (2026-10-10).*
 
 Sioul est une application de bureau libre et à code source ouvert, publiée par Aurélien Pierre sous la licence GPL-3.0-or-later. Cette politique dit ce que Sioul fait de vos données, et en particulier des données qu’il reçoit de Google quand vous vous connectez avec un compte Google.
 
@@ -41,7 +41,7 @@ Quand vous ajoutez un compte Google dans Sioul (Comptes ▸ Ajouter un compte �
 
 Si vous décochez les tâches sur la page de Google, Sioul laisse les tâches de côté, et le reste fonctionne.
 
-Se connecter avec Google ne donne à Sioul aucun accès à votre Gmail. Si vous lisez Gmail dans Sioul, il est ajouté comme un compte de courrier ordinaire, avec un mot de passe d’application que vous créez vous-même, comme avec n’importe quel logiciel de courrier.
+Se connecter avec Google pour vos agendas, contacts et tâches ne donne à Sioul aucun accès à votre Gmail, et la clé propre à Sioul ne le demande jamais. Si vous lisez Gmail dans Sioul, il est ajouté comme un compte de courrier à part, de l’une de deux façons. Avec un mot de passe d’application que vous créez vous-même, comme avec n’importe quel logiciel de courrier. Ou, seulement avec une clé Google à vous (votre propre projet Google Cloud), en vous connectant avec Google pour le courrier lui-même : Google vous demande alors votre autorisation pour le champ d’application `https://mail.google.com/`, dont Sioul se sert pour lire cette boîte aux lettres par IMAP et pour envoyer par SMTP les messages que vous envoyez, comme le fait tout logiciel de courrier. Ce courrier est gardé sur votre appareil comme celui de tout compte ; sa connexion a sa propre entrée dans le trousseau, à part de celle des agendas ; et retirer le compte rend l’accès à Google (sauf si vos agendas utilisent la même clé, car Google leur retirerait aussi l’accès : Sioul l’oublie alors seulement).
 
 ### Comment les données Google sont utilisées {#how-google-data-is-used}
 
@@ -79,7 +79,7 @@ En français : l’utilisation et le transfert, par Sioul, des informations re
 
 Retirer le compte laisse votre compte Google lui-même tel qu’il est. Les copies déjà sur votre appareil restent dans le dossier de données de Sioul jusqu’à ce que vous les supprimiez : sur Linux, les dossiers au nom du compte dans `~/.local/share/sioul/calendars/` et `~/.local/share/sioul/contacts/`.
 
-Si vous utilisez une clé Google à vous (votre propre projet Google Cloud, comme Sioul le permet), tout ce qui précède vaut de même : les données ne circulent qu’entre votre appareil et Google.
+Si vous utilisez une clé Google à vous (votre propre projet Google Cloud, comme Sioul le permet), tout ce qui précède vaut de même : les données ne circulent qu’entre votre appareil et Google. Une telle clé permet aussi de vous connecter à Gmail par Google ([plus haut](#google-calendars-contacts-and-tasks)).
 
 ## Autres données {#other-data}
 

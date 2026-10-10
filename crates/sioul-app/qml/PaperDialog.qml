@@ -82,7 +82,7 @@ Dialog {
                 text: form.sioul.text("papers-kind")
                 color: form.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: kindChoice
 
                 Layout.fillWidth: true

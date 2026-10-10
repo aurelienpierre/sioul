@@ -437,7 +437,7 @@ public final class WakeRinger extends Service
     /**
      * After "10 min later": when it rings again, with Stop (a try's, its own
      * line and Stop). Silent: the "Waking" channel has no sound of its own
-     * (WakeAlarms.channel).
+     * ({@link WakeAlarms#channel}).
      */
     private static void again(Context context, long at, boolean trial)
     {

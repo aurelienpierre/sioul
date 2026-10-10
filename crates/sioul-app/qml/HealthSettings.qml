@@ -158,7 +158,7 @@ Popup {
                     text: panel.sioul.text("health-errands-list")
                     color: panel.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var lists: panel.shown.lists
 
                     Layout.fillWidth: true

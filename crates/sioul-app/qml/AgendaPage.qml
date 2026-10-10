@@ -341,7 +341,7 @@ Item {
                 }
                 // The day, the week and the month, one switch away; on a phone,
                 // in the title's room.
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: page.narrow
                     Layout.preferredWidth: page.narrow ? -1 : 150
                     model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
@@ -624,7 +624,7 @@ Item {
                     wrapMode: Text.Wrap
                     color: page.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     visible: page.reminds.length > 0
                     Layout.fillWidth: page.narrow
                     Layout.preferredWidth: page.narrow ? -1 : 260

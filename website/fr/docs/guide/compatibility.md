@@ -70,7 +70,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 | Seulement ce qui a changé | les jetons de synchronisation, sinon l’étiquette de chaque élément | Radicale ; une imitation dans les tests | la plupart des serveurs | sans jetons de synchronisation, l’étiquette de chaque élément est comparée à chaque passage, ce qui est plus lent |
 | Les tâches | des listes de tâches | Murena (Nextcloud), utilisé chaque jour depuis le 4 octobre 2026 | les serveurs dont les agendas acceptent les tâches, celui de Nextcloud parmi eux | **iCloud** : les rappels mis à niveau depuis iOS 13 ne sont accessibles à aucun programme CalDAV. **Google** : par Google Tasks ([plus bas](#google)) |
 | Étapes, attentes, liens, types, coûts | un serveur qui garde ce qu’on lui donne, lignes inconnues comprises | Murena (Nextcloud), utilisé chaque jour depuis le 4 octobre 2026 | les serveurs qui gardent les tâches telles qu’on les envoie, celui de Nextcloud parmi eux | les autres applications peuvent en perdre une partie en enregistrant une tâche ([plus bas](#other-apps-on-the-same-accounts)) |
-| Une heure donnée à une étape pour un jour | une ligne propre à Sioul dans la tâche | — | — | les autres applications ne la montrent pas. Ce n’est pas le début de la tâche : les serveurs qui vérifient (celui de Nextcloud) refusent un début avec une heure quand la date demandée n’en a pas. **À venir** : un événement dans un agenda, lié à la tâche, que toute application d’agenda montre |
+| Une tâche fixée à une heure | un événement dans un agenda qui accepte les événements, lié à la tâche dans les deux sens | ses morceaux, dans les tests | les serveurs dont les agendas acceptent les événements, celui de Nextcloud parmi eux | l’heure n’est pas le début de la tâche, que les serveurs qui vérifient (celui de Nextcloud) refusent avec une heure quand la date demandée n’en a pas : c’est un créneau, un événement dans « Tâches planifiées » ou dans l’agenda que vous choisissez, que toute application d’agenda montre ([Tâches](tasks.md#pinned-to-a-time)). Déplacé ou supprimé dans une autre application, la tâche suit à la synchronisation suivante. Pas encore essayé chez Google, qui ajoute vos rappels par défaut à chaque créneau |
 | Nouvelles listes, nouveaux agendas et carnets d’adresses ; les renommer | les requêtes de la norme pour les créer et les renommer | — | Nextcloud et la plupart des serveurs | pas chez Google |
 | Les catégories des contacts | les catégories de la fiche elle-même | des fiches écrites comme Nextcloud les écrit | Nextcloud Contacts (ses groupes) ; DAVx⁵ réglé pour garder les groupes en catégories | les groupes gardés comme fiches à part (la façon d’Apple, et l’autre réglage de DAVx⁵) ne sont pas lus comme catégories : un tel groupe apparaît comme une fiche |
 | Les invitations | reçues par courrier ; votre réponse repart par courrier | Radicale, une invitation acceptée | le logiciel de courrier de l’organisateur, quel qu’il soit | inviter des personnes depuis Sioul : non pris en charge. La copie dans votre agenda ne garde pas votre réponse : d’autres applications peuvent la montrer sans réponse |
@@ -88,7 +88,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 
 ## Les autres applications sur les mêmes comptes {#other-apps-on-the-same-accounts}
 
-Vos tâches, vos événements et vos contacts sont standard : toute application sur le même serveur les montre. Ce qu’une application garde des lignes propres à Sioul quand elle enregistre une tâche dépend d’elle. Ceci a été lu dans leur code source le 6 octobre 2026, pas encore essayé avec Sioul :
+Vos tâches, vos événements et vos contacts sont standard : toute application sur le même serveur les montre. Ce qu’une application garde des lignes propres à Sioul quand elle enregistre une tâche dépend d’elle. Ceci a été lu dans leur code source les 6 et 8 octobre 2026, pas encore essayé avec Sioul :
 
 | Application | Étapes | Attentes | Liens, types, coûts, ressentis | À quel point c’est sûr |
 |---|---|---|---|---|
@@ -97,6 +97,7 @@ Vos tâches, vos événements et vos contacts sont standard : toute applicatio
 | Tasks.org ou OpenTasks, par DAVx⁵ | montrées comme sous-tâches | montrées comme des étapes, et réécrites comme des étapes quand le téléphone change la tâche | gardés | **limite** |
 | jtx Board, par DAVx⁵ | montrées comme sous-tâches | perdues quand le téléphone change la tâche | gardés | **limite** |
 | L’agenda d’Android, par DAVx⁵ (événements) | — | — | gardés | **attendu** |
+| TaskNotes pour Obsidian, par tasknotes-caldav | pas vérifié | **lues à l’envers** : il écrit une attente dans la tâche qui attend, à l’inverse de la RFC 9253, si bien que Sioul montre l’autre tâche comme celle qui attend ([Tâches](tasks.md#waits-in-other-caldav-programs)) | pas vérifié | **limite** |
 | Thunderbird, Calendrier et Rappels d’Apple, Evolution, KOrganizer | pas vérifié | pas vérifié | pas vérifié | une application qui réécrit une tâche à partir de ce qu’elle comprend seulement perd le reste |
 | Google Tasks | un niveau | pas gardées | pas gardés | **limite** : grisé dans Sioul, en disant pourquoi |
 

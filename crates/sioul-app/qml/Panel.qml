@@ -10,7 +10,9 @@ import QtQuick.Controls.Basic
 Pane {
     id: panel
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // A firmer border, in the accent: the one thing that cannot wait.
     property bool accent: false
 
     padding: theme.gap

@@ -13,6 +13,7 @@ import QtQuick.Layouts
 Item {
     id: field
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The window's words, for the month arrows' names; without them, the month alone.
     property var sioul: null
@@ -20,17 +21,22 @@ Item {
     property var locale: Qt.locale()
     // "2026-10-05".
     property string date: ""
+    // The calendar button's name, said on hover and to screen readers.
     property string pickLabel: ""
     // The month shown by the picker (month 0 is January).
     property int shownYear: 2026
+    // The month the picker shows, 0 for January, in `shownYear`.
     property int shownMonth: 0
 
+    // The date was typed or picked: the form saves it.
     signal edited
 
+    // A number on two digits, "05".
     function pad(n) {
         return n < 10 ? "0" + n : String(n)
     }
 
+    // A date as 2026-10-05.
     function iso(d) {
         return d.getFullYear() + "-" + field.pad(d.getMonth() + 1) + "-" + field.pad(d.getDate())
     }

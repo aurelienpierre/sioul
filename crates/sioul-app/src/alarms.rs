@@ -14,6 +14,7 @@ use std::ffi::{CStr, CString, c_char};
 static GIVEN: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// Android's alarm clock given the coming doses, replacing those given before (android/main.cpp).
     fn sioul_android_set_alarms(json: *const c_char);
@@ -35,6 +36,7 @@ static REMOVED: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync
 pub(crate) fn remove_reminder(key: &str) {
     let Ok(text) = CString::new(key) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_remove_reminder(text.as_ptr())
     };
@@ -48,6 +50,7 @@ pub(crate) fn remove_reminder(key: &str) {
 /// Sioul's notifications through; elsewhere, always.
 pub(crate) fn notifications_allowed() -> bool {
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's, without arguments; it may be called from any thread.
     return unsafe { sioul_android_notifications_allowed() };
     #[cfg(not(target_os = "android"))]
     true
@@ -57,6 +60,7 @@ pub(crate) fn notifications_allowed() -> bool {
 /// Sioul set exact alarms; elsewhere, always.
 pub(crate) fn exact() -> bool {
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's, without arguments; it may be called from any thread.
     return unsafe { sioul_android_exact_alarms() };
     #[cfg(not(target_os = "android"))]
     true
@@ -83,6 +87,7 @@ pub(crate) fn schedule() {
     }
     let Ok(text) = CString::new(coming.clone()) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_set_alarms(text.as_ptr())
     };
@@ -95,6 +100,7 @@ pub(crate) fn opened() -> Option<String> {
     #[cfg(target_os = "android")]
     {
         let mut buffer = vec![0u8; 512];
+        // SAFETY: android/main.cpp's; it writes at most `buffer.len()` bytes into `buffer`, its zero included.
         let found = unsafe { sioul_android_take_opened(buffer.as_mut_ptr().cast(), buffer.len() as i32) };
         if found {
             let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
@@ -117,6 +123,7 @@ pub(crate) unsafe fn key_of(key: *const c_char) -> String {
     if key.is_null() {
         return String::new();
     }
+    // SAFETY: not null (above), and a C string valid for the call, as this function's contract says.
     unsafe { CStr::from_ptr(key) }.to_string_lossy().to_string()
 }
 
@@ -126,8 +133,10 @@ pub(crate) unsafe fn key_of(key: *const c_char) -> String {
 ///
 /// # Safety
 /// `key` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_alarm_decide(key: *const c_char) -> *mut c_char {
+    // SAFETY: `key` is null or a C string valid for the call, as this function's contract says.
     let key = unsafe { key_of(key) };
     let answer = std::panic::catch_unwind(|| crate::health::alarm_decide(&key)).unwrap_or_else(|_| {
         // Something broke: never silence, never a claim. A dose is due, to be checked in Sioul.
@@ -143,8 +152,10 @@ pub unsafe extern "C" fn sioul_alarm_decide(key: *const c_char) -> *mut c_char {
 ///
 /// # Safety
 /// `key` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_alarm_taken(key: *const c_char) -> *mut c_char {
+    // SAFETY: `key` is null or a C string valid for the call, as this function's contract says.
     let key = unsafe { key_of(key) };
     let answer = std::panic::catch_unwind(|| crate::health::alarm_taken(&key)).unwrap_or_else(|_| r#"{"done":false,"open":true,"line":""}"#.to_string());
     // The home screen's card says the doses as they are now (homecard.rs).
@@ -157,9 +168,11 @@ pub unsafe extern "C" fn sioul_alarm_taken(key: *const c_char) -> *mut c_char {
 ///
 /// # Safety
 /// `text` is null, or came from one of them and is given back once.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_string_free(text: *mut c_char) {
     if !text.is_null() {
+        // SAFETY: `text` was made by `handed` (CString::into_raw) and is given back once, as the contract says.
         drop(unsafe { CString::from_raw(text) });
     }
 }

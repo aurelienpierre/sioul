@@ -11,7 +11,11 @@ import QtQuick.Controls.Basic
 TextField {
     id: field
 
+    // Sioul's backend (backend.rs): its words in your language and what it does. The
+    // choice to show passwords as you type is read there.
     required property var sioul
+    // What is typed shown as it is; hidden by default, unless Paramètres says to show
+    // passwords.
     property bool shown: field.sioul.viewFlag("passwords-shown")
 
     echoMode: field.shown ? TextInput.Normal : TextInput.Password

@@ -227,6 +227,29 @@ pub fn learn_provider(config_path: &Path, account: &Account) -> Result<Learned, 
     }
 }
 
+/// The sentences of `SyncError::Said`: what Sioul found itself, said in your
+/// language, never in English inside a translated sentence.
+pub mod said {
+    /// A folder made without a name.
+    pub const FOLDER_NAME: &str = "sync-said-folder-name";
+    /// No folder of that name on this account (the name follows).
+    pub const NO_FOLDER: &str = "sync-said-no-folder";
+    /// A folder Sioul keeps no copy of (the name follows).
+    pub const NOT_KEPT: &str = "sync-said-not-kept";
+    /// The inbox, Sent, Drafts, the trash, the junk or the archive: never deleted (the name follows).
+    pub const PURPOSE: &str = "sync-said-purpose";
+    /// A file that no fetch of Sioul's wrote.
+    pub const NOT_FETCHED: &str = "sync-said-not-fetched";
+    /// A file in no folder Sioul knows for the account.
+    pub const UNKNOWN_FOLDER: &str = "sync-said-unknown-folder";
+    /// The folder's UIDVALIDITY changed since the message was fetched.
+    pub const RENUMBERED: &str = "sync-said-renumbered";
+    /// The message is gone from the server.
+    pub const GONE: &str = "sync-said-gone";
+    /// A message seen on the server only, to be brought here before this act.
+    pub const OPEN_FIRST: &str = "sync-said-open-first";
+}
+
 /// What went wrong, in the categories the interface says in your language.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncError {
@@ -262,6 +285,11 @@ pub enum SyncError {
     /// item, the account's principal): it was not asked, and the login was
     /// not sent there.
     Elsewhere(String),
+    /// What Sioul found itself, never a server's words: its sentence in your
+    /// language (`said::RENUMBERED`, "sync-said-renumbered"), and what it
+    /// names, if anything (a folder's name). Matched as `Server` was, which
+    /// held these in English before (the review of 5 October 2026).
+    Said(&'static str, String),
 }
 
 impl SyncError {
@@ -286,6 +314,7 @@ impl SyncError {
             SyncError::NotFiled(_) => "send-error-not-filed",
             SyncError::Message(_) => "send-error-message",
             SyncError::Elsewhere(_) => "sync-error-elsewhere",
+            SyncError::Said(id, _) => id,
         }
     }
 
@@ -304,7 +333,8 @@ impl SyncError {
             | SyncError::Refused(d)
             | SyncError::NotFiled(d)
             | SyncError::Message(d)
-            | SyncError::Elsewhere(d) => d,
+            | SyncError::Elsewhere(d)
+            | SyncError::Said(_, d) => d,
         }
     }
 
@@ -352,5 +382,22 @@ mod tests {
         assert_eq!(tidy_password("imap.gmail.com", "my long pass phrase"), "my long pass phrase");
         assert_eq!(tidy_password("mail.example.org", "abcd efgh ijkl mnop"), "abcd efgh ijkl mnop");
         assert!(is_gmail("Someone@GMail.com") && !is_gmail("someone@example.org"));
+    }
+
+    /// What Sioul found itself is said in your language, never as English
+    /// inside a translated sentence (the review of 5 October 2026): "the
+    /// server renumbered this folder" was the detail of "le serveur a refusé
+    /// une commande (…)".
+    #[test]
+    fn what_sioul_found_itself_is_said_in_your_language() {
+        let fr = Translator::new("fr");
+        let renumbered = SyncError::Said(said::RENUMBERED, String::new()).sentence(&fr, "travail");
+        assert!(renumbered.starts_with("travail") && renumbered.contains("renuméroté") && !renumbered.contains("renumbered"), "{renumbered}");
+        let folder = SyncError::Said(said::NO_FOLDER, "Banque".into()).sentence(&fr, "travail");
+        assert!(folder.contains("«\u{202f}Banque\u{202f}»"), "{folder}");
+        let en = Translator::new("en");
+        assert_eq!(SyncError::Said(said::GONE, String::new()).sentence(&en, "work"), "work: this message is no longer on the server.");
+        // Never a lasting error: trying again later may help.
+        assert!(!SyncError::Said(said::RENUMBERED, String::new()).is_lasting());
     }
 }

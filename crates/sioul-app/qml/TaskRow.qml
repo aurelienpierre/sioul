@@ -15,20 +15,31 @@ import QtQuick.Layouts
 ItemDelegate {
     id: row
 
+    // The task as the core's views give it (`taskview`): its uid, title, status and
+    // the words of its details.
     required property var task
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // For the circle's name, said by screen readers in words.
     property var sioul: null
+    // Its details are open in the panel: the row is highlighted.
     property bool selected: false
+    // Tighter, its words on one line: on the board, on a phone.
     property bool compact: false
     // Indent for steps, in levels.
     property int depth: 0
 
+    // A click: its details asked, by its UID.
     signal open(string uid)
+    // Its circle ticked: done, or open again.
     signal tick(string uid)
+    // A right click or a long press: its menu asked.
     signal menu(var task)
 
+    // Done or dropped: its circle filled, its title quieter.
     readonly property bool done: row.task.status === "completed" || row.task.status === "cancelled"
+    // The words under its title that say something: the date asked, the length, the
+    // steps, what it waits for, where you stopped.
     readonly property var details: [row.task.due, row.task.estimate, row.task.steps, row.task.waits, row.task.stopped].filter(t => t !== "")
 
     leftPadding: 8 + row.depth * 22

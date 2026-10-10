@@ -15,11 +15,18 @@ import QtQuick.Layouts
 Dialog {
     id: browser
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The folder shown: its path, its parent's, its folders, and whether it can be
+    // read.
     property var shown: ({ path: "", parent: "", folders: [], readable: true })
+    // Whether Android gives Sioul "All files access": without it, the phone's folders
+    // cannot be read.
     property bool access: true
 
+    // A folder chosen, by its path.
     signal chosen(string path)
 
     // Opens in `path`, else in the phone's storage.
@@ -29,6 +36,7 @@ Dialog {
         browser.open()
     }
 
+    // The folder at `path` shown, its list scrolled back to the top.
     function go(path) {
         browser.shown = JSON.parse(browser.sioul.foldersIn(path))
         list.positionViewAtBeginning()

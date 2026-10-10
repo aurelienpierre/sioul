@@ -818,6 +818,9 @@ pub struct AccountView {
     pub google: bool,
     /// Its server, for its password's login in a vault (Bitwarden).
     pub host: Option<String>,
+    /// The name it logs in with (`Account::login`: its user name, else its
+    /// address): the user name its login in a vault is found by (Bitwarden).
+    pub login: Option<String>,
     /// No password kept on this device, or its server refused it: one can be
     /// given (an account come from another device arrives without one).
     pub password_wanted: bool,
@@ -889,6 +892,7 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 priority: a.priority.as_str(),
                 google: a.auth.as_deref() == Some("google"),
                 host: a.host.clone(),
+                login: a.login().map(str::to_string),
                 password_wanted: wanted.contains(&a.id) && a.auth.as_deref() != Some("google"),
                 name: a.name.clone().unwrap_or_default(),
                 signature: a.signature.clone().unwrap_or_default(),
@@ -1662,6 +1666,34 @@ auth = "google"
         assert!(mail.rows[0].value.starts_with("imap.gmail.com"), "{}", mail.rows[0].value);
         let calendars = views.iter().find(|v| v.id == "google").unwrap();
         assert_eq!((calendars.service, calendars.rows[0].value.as_str()), ("google", "Google"));
+    }
+
+    /// The password dialog looks in a vault for the name an account logs in
+    /// with: its own user name when it has one, else its address (the review
+    /// of 5 October 2026 found it prefilled with the address all the same).
+    #[test]
+    fn an_account_says_the_name_it_logs_in_with() {
+        let config: Config = toml::from_str(
+            r#"
+[[account]]
+id = "work"
+kind = "imap"
+address = "noa@example.org"
+username = "nferrand"
+host = "imap.example.org"
+
+[[account]]
+id = "home"
+kind = "imap"
+address = "noa@example.com"
+host = "imap.example.com"
+"#,
+        )
+        .unwrap();
+        let views = accounts(&config, &Translator::new("en"), &BTreeMap::new(), &BTreeSet::new());
+        let login = |id: &str| views.iter().find(|v| v.id == id).and_then(|v| v.login.clone());
+        assert_eq!(login("work").as_deref(), Some("nferrand"));
+        assert_eq!(login("home").as_deref(), Some("noa@example.com"));
     }
 
     #[test]

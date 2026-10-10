@@ -16,7 +16,9 @@ import QtQuick.Layouts
 ColumnLayout {
     id: line
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The sentence; "" when the dose is known.
     property string doubt: ""

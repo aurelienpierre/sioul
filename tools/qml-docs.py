@@ -68,7 +68,7 @@ NAMED = {
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",
     "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls",
-    "WrapCheckBox": "controls",
+    "WrapCheckBox": "controls", "PlainComboBox": "controls",
 }
 
 # Qt's page for each root type the files are based on (Qt 6).
@@ -79,6 +79,7 @@ QT_TYPES = {
     "Canvas": "qml-qtquick-canvas.html",
     "CheckBox": "qml-qtquick-controls-checkbox.html",
     "ColumnLayout": "qml-qtquick-layouts-columnlayout.html",
+    "ComboBox": "qml-qtquick-controls-combobox.html",
     "Dialog": "qml-qtquick-controls-dialog.html",
     "Item": "qml-qtquick-item.html",
     "ItemDelegate": "qml-qtquick-controls-itemdelegate.html",

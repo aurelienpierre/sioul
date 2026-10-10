@@ -307,7 +307,7 @@ Item {
             }
 
             // One category only, or all of them: what Nextcloud Contacts shows as groups.
-            ComboBox {
+            PlainComboBox {
                 readonly property var names: page.shown.categories || []
 
                 visible: names.length > 0 && !page.mapShown
@@ -777,7 +777,7 @@ Item {
                                     }
                                     // Another address book moves the contact there, asked first
                                     // when it would not keep everything (Google's keeps less).
-                                    ComboBox {
+                                    PlainComboBox {
                                         id: bookChoice
 
                                         property var books: []

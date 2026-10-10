@@ -17,15 +17,21 @@ import QtQuick.Layouts
 ColumnLayout {
     id: field
 
+    // The setting, as the core describes it (`settings::Setting`): its key, kind, name,
+    // words, value and choices.
     required property var setting
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The days of a week, in the order the office hours and windows are listed.
     readonly property var weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
     // `shown`: the value the row showed, what its change is set over the files
     // from (`changeSetting`), so that what another device added meanwhile stays.
     signal save(string key, var value, var shown)
 
+    // Whether two values are the same, compared as JSON.
     function same(a, b) {
         return JSON.stringify(a) === JSON.stringify(b)
     }
@@ -411,7 +417,7 @@ ColumnLayout {
         Layout.fillWidth: true
 
         sourceComponent: Component {
-            ComboBox {
+            PlainComboBox {
                 model: field.setting.kind === "choice" ? field.setting.choices.map(c => field.theme.plain(c.label)) : []
                 currentIndex: field.setting.kind === "choice" ? Math.max(0, field.setting.choices.findIndex(c => field.same(c.value, field.setting.value))) : -1
                 Accessible.name: field.setting.label
@@ -539,7 +545,7 @@ ColumnLayout {
         Layout.fillWidth: true
 
         sourceComponent: Component {
-            ComboBox {
+            PlainComboBox {
                 readonly property var families: [""].concat(Qt.fontFamilies())
 
                 model: field.setting.kind === "font" ? families.map(f => f === "" ? field.sioul.text("set-font-desktop") : field.theme.plain(f)) : []

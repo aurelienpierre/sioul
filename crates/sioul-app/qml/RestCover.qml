@@ -12,12 +12,16 @@ import QtQuick.Layouts
 Rectangle {
     id: cover
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The one line said over the page ("Sleep: nothing disturbs until 07:00.").
     required property string line
     // Shown under the line: a field to note a thought for later, say.
     default property alias content: more.data
 
+    // "Show anyway" was pressed: the page is shown all the same.
     signal shown
 
     anchors.fill: parent

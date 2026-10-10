@@ -10,6 +10,8 @@ import QtQuick.Controls.Basic
 ApplicationWindow {
     id: root
 
+    // The window's colours, sizes and fonts (Theme.qml). Its colours are given to Qt's
+    // controls in the window.
     required property var theme
 
     color: root.theme.background

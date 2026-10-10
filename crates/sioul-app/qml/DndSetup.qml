@@ -17,21 +17,30 @@ import QtQuick.Layouts
 ColumnLayout {
     id: setup
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // everywhere.rs's `setup`: {here: {on, line, lines, consent, offers}, gnome, people, problem, said, android, stars, steps}.
     property var shown: ({ here: { line: "", lines: [], consent: "", offers: [] }, gnome: false, people: [], problem: "", said: "", android: false })
     // The person being written by hand, or changed: its id ("" new), or none.
     property var editing: null
+    // The people found by the search for Always through, to add.
     property var found: []
+    // What the search says when it found nobody; "" otherwise.
     property string none: ""
     // Which parts: "device" (this device's system), "list" (Always through),
     // "phone" (this device's system, the stars and the background), or "all".
     property string part: "all"
+    // This device's part shown: `part` "device", "phone" or "all".
     readonly property bool deviceShown: setup.part === "all" || setup.part === "device" || setup.part === "phone"
+    // The Always through list shown: `part` "list" or "all".
     readonly property bool listShown: setup.part === "all" || setup.part === "list"
+    // A phone's own parts shown (its stars, the background): on a phone, `part`
+    // "phone" or "all".
     readonly property bool phoneShown: setup.shown.android === true && (setup.part === "all" || setup.part === "phone")
 
+    // What is shown read again from the backend (`dndSetup`).
     function reload() {
         setup.shown = JSON.parse(setup.sioul.dndSetup() || "null") || setup.shown
     }
@@ -44,6 +53,8 @@ ColumnLayout {
         emailsField.text = person ? person.emails : ""
     }
 
+    // A change asked of the backend (`dndChange`): `verb` and its arguments; its
+    // answer shown.
     function act(verb, args) {
         const answer = JSON.parse(setup.sioul.dndChange(verb, JSON.stringify(args || {})) || "null")
         if (answer)

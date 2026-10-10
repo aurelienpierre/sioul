@@ -291,7 +291,7 @@ Dialog {
                     text: dialog.sioul.text("event-repeat")
                     color: dialog.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     id: repeat
 
                     Layout.fillWidth: true
@@ -304,7 +304,7 @@ Dialog {
                     wrapMode: Text.Wrap
                     color: dialog.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
@@ -316,7 +316,7 @@ Dialog {
                     wrapMode: Text.Wrap
                     color: dialog.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
@@ -330,7 +330,7 @@ Dialog {
                     wrapMode: Text.Wrap
                     color: dialog.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     textRole: "label"
                     model: dialog.reminds.map(c => ({ value: c.value, label: dialog.theme.plain(c.label) }))
@@ -356,7 +356,7 @@ Dialog {
                     text: dialog.sioul.text("event-calendar")
                     color: dialog.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     id: calendar
 
                     visible: dialog.calendars.length > 1 && dialog.key === ""

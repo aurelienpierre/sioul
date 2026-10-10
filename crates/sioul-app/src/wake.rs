@@ -25,6 +25,7 @@ use std::ffi::{CString, c_char};
 use std::path::Path;
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// The coming wakings handed to Java, which keeps them and arms the next (android/main.cpp).
     fn sioul_android_set_wake(json: *const c_char);
@@ -113,6 +114,7 @@ fn hand(json: String) {
     }
     let Ok(text) = CString::new(json.clone()) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_set_wake(text.as_ptr())
     };
@@ -155,8 +157,10 @@ fn next(zone: &str, fetch: bool) -> String {
 ///
 /// # Safety
 /// `zone` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_wake_next(zone: *const c_char, fetch: bool) -> *mut c_char {
+    // SAFETY: `zone` is null or a C string valid for the call, as this function's contract says.
     let zone = unsafe { crate::alarms::key_of(zone) };
     let answer = std::panic::catch_unwind(|| next(&zone, fetch)).unwrap_or_else(|_| unknown());
     crate::alarms::handed(answer)
@@ -166,6 +170,7 @@ pub unsafe extern "C" fn sioul_wake_next(zone: *const c_char, fetch: bool) -> *m
 /// screen, 4 notifications. All of it elsewhere, where nothing rings.
 fn allowed() -> i32 {
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's, without arguments; it may be called from any thread.
     return unsafe { sioul_android_wake_state() };
     #[cfg(not(target_os = "android"))]
     7
@@ -202,6 +207,7 @@ pub(crate) fn status(needs: &Needs) -> serde_json::Value {
 pub(crate) fn open_settings(which: &str) {
     let Ok(text) = CString::new(which) else { return };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_wake_settings(text.as_ptr())
     };
@@ -221,6 +227,7 @@ pub(crate) fn trial(now: &Zoned, tr: &Translator) -> serde_json::Value {
 fn hand_try(json: &str) -> i32 {
     let Ok(text) = CString::new(json) else { return -1 };
     #[cfg(target_os = "android")]
+    // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     return unsafe { sioul_android_wake_try(text.as_ptr()) };
     #[cfg(not(target_os = "android"))]
     {

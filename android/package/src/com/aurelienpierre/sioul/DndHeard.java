@@ -30,7 +30,7 @@ final class DndHeard
     /** Look again once Sioul's own change settled: this, then the milliseconds to wait. */
     static final String LATER = "later:";
 
-    /** A mode of Sioul's as Android has it now (PauseMode.live). */
+    /** A mode of Sioul's as Android has it now ({@link PauseMode#live}). */
     static final int LIVE_UNKNOWN = 0;
     static final int LIVE_ON = 1;
     static final int LIVE_OFF = 2;
@@ -83,7 +83,7 @@ final class DndHeard
     }
 
     /**
-     * The state noted as seen at a restart or an update (PauseMode.noteSeen),
+     * The state noted as seen at a restart or an update ({@link PauseMode#noteSeen}),
      * so that the next change counts from it: on or off; null when Android
      * does not say (nothing noted).
      */
