@@ -128,6 +128,12 @@ const SILENT_DAYS: i64 = 180;
 /// out: one being written, a full disk or a crash never takes everything out
 /// everywhere at once.
 const EMPTIED_WAIT: i64 = 10 * 60_000;
+
+/// How long a round waits for the end of the round before (`Turn`), which a
+/// sync app may bring late, before that end is taken for lost: an hour
+/// (milliseconds). Then the gap is said, the doses doubt what that computer
+/// marked until its next full round, and its later records are read.
+const AWAITED: i64 = 60 * 60_000;
 /// A line of a computer's records longer than this is none (the longest, a
 /// file whole of 16 MiB sealed in a line, is about 30 MiB): skipped as broken.
 const LONGEST_LINE: usize = 32 << 20;
@@ -1277,9 +1283,15 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
     sioul_core::filelock::with_lock(path, || {
         let new = rewritten(store, path, changes)?;
         // What the file holds once written, entry by entry, by hash: what the next look compares with.
-        let written = new.as_deref().and_then(|bytes| entries_of(store, bytes)).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
+        let written: BTreeMap<String, String> = new.as_deref().and_then(|bytes| entries_of(store, bytes)).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
         let old = std::fs::read(path).ok();
         if old == new {
+            return Ok(written);
+        }
+        // A doses' record not here that would hold no entry (only removals
+        // came): nothing written. Written empty, with its witness, it would
+        // read as lost and be repaired again and again.
+        if old.is_none() && of_the_doses(store) && written.is_empty() {
             return Ok(written);
         }
         if old.is_some() {
@@ -1960,7 +1972,8 @@ struct Memory {
     /// A full round is owed: the last round after lost lines of this
     /// computer's (its file cut short) could not restate all it holds (a file
     /// not readable then), and a reader that had not read those lines waits
-    /// for a full round. Written as soon as all reads again (`new_round`).
+    /// for a full round; or another device asks for one (`Seen::full`).
+    /// Written as soon as all reads again (`new_round`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     owed: bool,
     /// This memory enters a round only once the one before was read to its
@@ -2016,6 +2029,11 @@ struct Memory {
     /// 10 October 2026): as `read_n`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     met: BTreeMap<String, (u32, u64)>,
+    /// Each other computer's round waiting here for the end of the one
+    /// before (`Turn`), and since when (milliseconds): passed over as lost
+    /// past `AWAITED`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    awaited: BTreeMap<String, (u32, i64)>,
     /// When a line of another computer's could not be read here (Unix seconds): what it said is lost.
     #[serde(default)]
     broken: BTreeMap<String, i64>,
@@ -2451,6 +2469,14 @@ fn is_zero_u64(n: &u64) -> bool {
     *n == 0
 }
 
+/// The turn of a round that does not know where the round before it ended
+/// (`Turn::p`): one that could not restate all (`new_round`) after a round
+/// of its own found without a line. No reader ever met that line: it waits
+/// for the round before as for a lost one (`AWAITED`), then reads on with
+/// the gap said, the doses in doubt until a full round, never as an older
+/// Sioul's round, which would take all before it as read.
+const UNKNOWN_TURN: u64 = u64::MAX;
+
 /// A sealed line's change and its round's turn (`Turn`), read in one pass.
 #[derive(Deserialize)]
 struct Opened {
@@ -2493,6 +2519,13 @@ struct Seen {
     round: u32,
     #[serde(default)]
     read: BTreeMap<String, u32>,
+    /// The computers it asks for a full round, each with the latest round of
+    /// theirs it met: some of their records were lost here (a damaged line,
+    /// a round taken for lost), so what they wrote is not all known here,
+    /// the doses in doubt, until a full round of theirs after that one. An
+    /// older Sioul passes it over (review of 10 October 2026).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    full: BTreeMap<String, u32>,
     /// Its size changed at each writing (`pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pad: String,
@@ -3759,7 +3792,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let hurried = || sharing.hurry.is_some_and(|hurry| hurry.load(std::sync::atomic::Ordering::Relaxed));
     // A single file sealed apart (the spam filter's table), in every exchange:
     // one file of Sioul's own, quick to read, never in a shared storage.
-    let reads = |store: &Store| sharing.files || !matches!(store.shape, Shape::Files) || !store.folder;
+    let reads = |store: &Store| reads_now(sharing, store);
     // What it reads, as it stands before anything is read (`Standing`): as
     // when the last exchange in this process left everything settled, there
     // is nothing to do, and nothing is read (`quiet`). Not with notes and
@@ -3820,7 +3853,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // there, which gives it a name of its own (review of 5 October 2026,
         // F22). Meanwhile the others meet gaps in that name's records: the
         // doses say the doubt.
-        if appended(sharing.memory, sharing.computer) != Some((round, n)) {
+        if appended(sharing.memory, sharing.computer).is_none_or(|end| (round, n) > end) {
             if memory.ahead_at > 0 && now_ms - memory.ahead_at < TWIN_WITHIN {
                 outcome.problems.push("share-twin".into());
             }
@@ -3851,6 +3884,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // moved past the end of a round it had not read whole: every other
     // computer's kept rounds are read again, once; what was known already
     // changes nothing, what was passed over comes in.
+    // Entries of stores that left (`RETIRED`) are forgotten: nothing reads or
+    // writes them any more (review of 10 October 2026, S2-B).
+    memory.entries.retain(|key, _| !retired(key));
     if !memory.turns {
         if memory.joined {
             memory.read.clear();
@@ -4137,7 +4173,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             // again from its start (lines already known change nothing).
             if !own && file.metadata().is_ok_and(|m| m.len() < offset) {
                 outcome.problems.push(format!("share-other-cut:{computer}"));
-                memory.broken.insert(computer.clone(), now_ms / 1000);
+                say_broken(&mut memory, computer, now_ms / 1000);
                 offset = 0;
             }
             {
@@ -4167,7 +4203,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     if !own {
                         if let Some(at) = lost_line(memory.read_n.get(computer).copied(), round, good, next.as_ref().map(|(n, _)| n.as_slice()), now_ms) {
                             outcome.problems.push(format!("share-other-line:{computer}"));
-                            memory.broken.insert(computer.clone(), at);
+                            say_broken(&mut memory, computer, at);
                         }
                         lost_here(&mut memory, computer, round, None);
                     }
@@ -4181,7 +4217,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     if !own && next.as_ref().and_then(|(next, _)| record_of(next)).is_some_and(|next| opens(&next).is_some()) {
                         offset += length;
                         if let Some(at) = lost_line(memory.read_n.get(computer).copied(), round, good, next.as_ref().map(|(n, _)| n.as_slice()), now_ms) {
-                            memory.broken.insert(computer.clone(), at);
+                            say_broken(&mut memory, computer, at);
                         }
                         lost_here(&mut memory, computer, round, Some(record.n));
                         continue;
@@ -4208,6 +4244,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 // (`remove_old_rounds`): the round before missing while an earlier
                 // one is kept has not come yet; missing with every earlier one, it
                 // was taken out, and what it held past here is lost: a gap, said below.
+                // Waited for an hour (`AWAITED`; a round truly lost: an older copy
+                // kept for good, a file taken out of the server), it is passed over
+                // as lost: the gap said, what that computer wrote not all known
+                // here (`read_n` stays) until its next full round, which this device
+                // asks for (`Seen::full`), and the rest of its records flow
+                // meanwhile (review of 10 October 2026).
                 if !own
                     && record.n == 1
                     && turn.p > 0
@@ -4215,12 +4257,25 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     && memory.met.get(computer).or_else(|| memory.read_n.get(computer)).is_some_and(|met| *met < (before, turn.p))
                 {
                     if let Some(full) = later_full(sharing, computer, their_rounds, round) {
+                        memory.awaited.remove(computer);
                         from_round = full;
                         continue 'rounds;
                     }
                     if their_rounds.iter().any(|r| *r <= before) {
-                        break 'rounds;
+                        let since = match memory.awaited.get(computer) {
+                            Some((at_round, since)) if *at_round == round => *since,
+                            _ => {
+                                memory.awaited.insert(computer.clone(), (round, now_ms));
+                                now_ms
+                            }
+                        };
+                        if now_ms - since < AWAITED {
+                            break 'rounds;
+                        }
                     }
+                }
+                if !own && record.n == 1 {
+                    memory.awaited.remove(computer);
                 }
                 offset += length;
                 good = Some((record.n, Some(record.c)));
@@ -4277,7 +4332,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                             outcome.problems.push(format!("share-other-gap:{computer}"));
                         }
                         // What was lost was written before this line: about then.
-                        memory.broken.insert(computer.clone(), ((record.c >> 16) as i64 / 1000).min(now_ms / 1000));
+                        say_broken(&mut memory, computer, ((record.c >> 16) as i64 / 1000).min(now_ms / 1000));
                     }
                 }
                 memory.clock = memory.clock.max(record.c);
@@ -4666,8 +4721,13 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // rounds before it can go. Waits while the connection is metered or slow,
     // and while a bulk import goes on (`set_importing`).
     let waits = if importing(sharing.memory) { memory.grown <= IMPORT_ROUND_SIZE } else { frugal(sharing.memory) && memory.grown <= FRUGAL_ROUND_SIZE };
-    // One owed (a round after lost lines that could not restate all, R7): as
-    // soon as all reads again.
+    // Another device asks for one (it lost some of this computer's records:
+    // `Seen::full`), unless a bulk import goes on: owed.
+    if !memory.owed && !importing(sharing.memory) && asked_for_full(sharing, &memory, now_ms) {
+        memory.owed = true;
+    }
+    // One owed (a round after lost lines that could not restate all, R7, or
+    // asked for): as soon as all reads again.
     let owed = memory.owed && restatement(sharing, &memory, stores, &found).1 == 0;
     if (memory.grown > ROUND_SIZE && !waits) || owed {
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
@@ -4897,11 +4957,12 @@ impl LineReader {
 /// or does not open), said and dated already (`lost_line`): its number, as
 /// the line says it (one that does not open), or the one after the line met
 /// before in its round (one that does not read). Met (`Memory::met`), so that
-/// a round continuing this one is entered (until 10 October 2026, round
-/// turns aside, a damaged line was one line and the next ones read on);
-/// following what was read, counted in `read_n` too: lost, said, its time in
-/// doubt for the doses (`broken`), what comes after it follows. A round's
-/// first line damaged is not counted: where its round stands is not known.
+/// a round continuing this one is entered and the rest of that computer's
+/// records flow; never counted as read (`read_n` stays before it): what that
+/// computer wrote is not all known here until its next full round, and the
+/// doses doubt until then, as they did before rounds turned aside (5fa4dd1:
+/// review of 10 October 2026, S2-A). This device asks for that full round
+/// (`Seen::full`).
 fn lost_here(memory: &mut Memory, computer: &str, round: u32, n: Option<u64>) {
     let met = memory.met.get(computer).or_else(|| memory.read_n.get(computer)).copied();
     let n = n.unwrap_or(match met {
@@ -4911,9 +4972,14 @@ fn lost_here(memory: &mut Memory, computer: &str, round: u32, n: Option<u64>) {
     if met.is_none_or(|met| (round, n) > met) {
         memory.met.insert(computer.to_string(), (round, n));
     }
-    if n > 1 && memory.read_n.get(computer) == Some(&(round, n - 1)) {
-        memory.read_n.insert(computer.to_string(), (round, n));
-    }
+}
+
+/// A line of another computer's lost here, dated (`Memory::broken`): the
+/// latest such date is kept, never an earlier one, so a doubt once said only
+/// grows.
+fn say_broken(memory: &mut Memory, computer: &str, at: i64) {
+    let kept = memory.broken.entry(computer.to_string()).or_insert(at);
+    *kept = (*kept).max(at);
 }
 
 /// The first of another computer's rounds after `round` that opens full
@@ -4945,9 +5011,10 @@ fn later_full(sharing: &Sharing, computer: &str, rounds: &[u32], round: u32) -> 
 static FIRST_LINES: std::sync::Mutex<BTreeMap<(PathBuf, String, u32), bool>> = std::sync::Mutex::new(BTreeMap::new());
 
 /// A line of another computer's round lost here (it does not read, or does
-/// not open): when its computer wrote it, about, in seconds (the clock of the
-/// line before it in its round, else of the line after, else now), for the
-/// doses' doubt (`Memory::broken`). None when it was met before: a line after
+/// not open): when its computer wrote it, at the latest, in seconds (the
+/// clock of the line after it, else now; never the line before it, which
+/// may be days older: review of 10 October 2026, S2-A), for the doses'
+/// doubt (`Memory::broken`). None when it was met before: a line after
 /// it was read already (`read_n`), and this reading goes over the round again
 /// (a store joining, a record rebuilt): said once, never stamped anew.
 /// `good`: the last line of the round that opened in this reading, its
@@ -4958,8 +5025,7 @@ fn lost_line(read_n: Option<(u32, u64)>, round: u32, good: Option<(u64, Option<u
         return None;
     }
     let after = next.and_then(|line| std::str::from_utf8(line).ok()).and_then(|text| serde_json::from_str::<Line>(text).ok()).map(|line| line.c);
-    let clock = good.and_then(|(_, c)| c).or(after);
-    Some(clock.map_or(now_ms / 1000, |c| ((c >> 16) as i64 / 1000).min(now_ms / 1000)))
+    Some(after.map_or(now_ms / 1000, |c| ((c >> 16) as i64 / 1000).min(now_ms / 1000)))
 }
 
 /// The sealed files this computer's records point to, looked for now and
@@ -5461,8 +5527,10 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     // Where this append ends, noted on the disk before it is made: its own
-    // lines told from another device's under its name (`appended`).
-    let _ = write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes());
+    // lines told from another device's under its name (`appended`). Not
+    // noted (a full disk), nothing is appended: a line of its own is never
+    // taken for another device's (`share-twin`).
+    write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes())?;
     // A line left half written (Sioul stopped, a full disk): cut back to the
     // last whole line, so that the next record is not glued to it and lost.
     if let Some(whole) = unfinished(&path) {
@@ -5482,8 +5550,9 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
 
 /// Where this device's last append ended (its round and last number), as
 /// noted before it was made (`append`): its own records found ahead of its
-/// memory there were its own, its memory not saved after (a process stopped,
-/// a full disk), not another device's under its name (`share-twin`).
+/// memory up to there were its own, its memory not saved after (a process
+/// stopped, a full disk; an append cut short ends before it), not another
+/// device's under its name (`share-twin`).
 fn appended(memory: &Path, computer: &str) -> Option<(u32, u64)> {
     #[derive(Deserialize)]
     struct Appended {
@@ -5550,9 +5619,12 @@ fn last_of(path: &Path) -> Option<(u64, u64)> {
 
 /// What a full round restates: every entry this computer holds the last
 /// word on, with its value as it reads now, and how many of them it could
-/// not restate (their file not readable now, a settings file held empty
-/// (`EMPTIED_WAIT`), a change found and not sent yet: their value here is not
-/// the one this computer last said).
+/// not restate though their store is here and read (their file not readable
+/// now, a settings file held empty (`EMPTIED_WAIT`), a change found and not
+/// sent yet: their value here is not the one this computer last said). An
+/// entry of a store not here (a part switched off on this device, a store
+/// that left) is passed over, as it always was: it stops no round from
+/// being full (review of 10 October 2026, S2-B).
 fn restatement(sharing: &Sharing, memory: &Memory, stores: &[Store], found: &Found) -> (Vec<(String, Option<String>, u64, String)>, usize) {
     let mut omitted = 0usize;
     let ours = memory
@@ -5563,6 +5635,7 @@ fn restatement(sharing: &Sharing, memory: &Memory, stores: &[Store], found: &Fou
             if known.h.is_empty() {
                 return (!found.hashes.contains_key(key)).then(|| (key.clone(), None, known.c, known.b.clone()));
             }
+            let (store, _) = locate(stores, file_of(key))?;
             // A file sealed apart from its last look, never read through for this.
             let value = match found.values.get(key) {
                 Some(value) => Some(value.clone()),
@@ -5572,13 +5645,21 @@ fn restatement(sharing: &Sharing, memory: &Memory, stores: &[Store], found: &Fou
             match value {
                 Some(value) if value_hash(key, &value) == known.h => Some((key.clone(), Some(value), known.c, known.b.clone())),
                 _ => {
-                    omitted += 1;
+                    if reads_now(sharing, store) {
+                        omitted += 1;
+                    }
                     None
                 }
             }
         })
         .collect();
     (ours, omitted)
+}
+
+/// Whether this exchange reads a store: every one, but notes and papers
+/// (files sealed apart in a folder) only when it reads them (`Sharing::files`).
+fn reads_now(sharing: &Sharing, store: &Store) -> bool {
+    sharing.files || !matches!(store.shape, Shape::Files) || !store.folder
 }
 
 /// A new file for this computer, opening on every entry it holds the last
@@ -5612,7 +5693,7 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
         memory.continues = 0;
         memory.owed = false;
     } else {
-        memory.continues = previous;
+        memory.continues = if previous > 0 { previous } else { UNKNOWN_TURN };
         memory.owed |= cut;
     }
     append(sharing, memory, &ours)
@@ -5766,18 +5847,41 @@ fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32
         at: now_ms / 1000,
         round: memory.round,
         read: memory.read.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, (round, _))| (c.clone(), *round)).collect(),
+        full: full_asked(memory, all),
         pad: String::new(),
     };
-    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && seen.at - old.at < again) {
+    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && old.full == seen.full && seen.at - old.at < again) {
         return (old.at + again) * 1000;
     }
     let path = seen_path(sharing.folder, sharing.computer);
-    let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), ..*seen }).unwrap_or_default();
+    let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), full: seen.full.clone(), ..*seen }).unwrap_or_default();
     seen.pad = ".".repeat(pad_for(&path, |pad| text(&seen, pad).len() as u64));
     if let Ok(text) = toml::to_string(&seen) {
         let _ = write_atomically(&path, text.as_bytes());
     }
     (seen.at + again) * 1000
+}
+
+/// The other computers whose records this one met past what it read in
+/// order (`Memory::met` ahead of `read_n`: a line lost, a round passed over
+/// as lost, a device first read from a round continuing one gone), each with
+/// the latest round of theirs met: a full round of theirs after it tells
+/// where they stand (`Seen::full`).
+fn full_asked(memory: &Memory, all: &BTreeMap<String, Vec<u32>>) -> BTreeMap<String, u32> {
+    memory.met.iter().filter(|(computer, met)| all.contains_key(*computer) && memory.read_n.get(*computer) != Some(*met)).map(|(computer, (round, _))| (computer.clone(), *round)).collect()
+}
+
+/// Whether another computer heard lately asks this one for a full round
+/// after a round of its own that no full round followed yet (`Seen::full`):
+/// a round this computer wrote, at or after its last full one.
+fn asked_for_full(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let last_full = memory.full_round.max(1);
+    computers(sharing.folder)
+        .iter()
+        .filter(|c| *c != sharing.computer)
+        .filter_map(|c| read_seen(sharing.folder, c))
+        .filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400)
+        .any(|s| s.full.get(sharing.computer).is_some_and(|round| (last_full..=memory.round).contains(round)))
 }
 
 fn read_seen_in(folder: &Path, computer: &str) -> Option<Seen> {

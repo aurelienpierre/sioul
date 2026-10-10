@@ -821,3 +821,211 @@ fn the_doses_records_the_sharing_writes_are_witnessed() {
     assert_eq!(sioul_core::health::HealthState::read(&record), Err(sioul_core::health::Unsound::Lost));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+// ---------------------------------------------------------------- the review of 10 October 2026, second pass
+
+/// S2-A: a damaged line between a line days older and one after it, all
+/// read in one exchange: never counted as read (`read_n` stays before it),
+/// dated by the line after it, never by the older line before it; the doses
+/// doubt (not all known) where they took the dose it marked for not taken.
+/// The reader asks the writer for a full round (`Seen::full`), which brings
+/// the dose and ends the doubt.
+#[test]
+fn a_lost_line_is_never_counted_read_and_a_full_round_mends_it() {
+    let base = scratch("lost-dated");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + 30_000);
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+    desk.exchange(&folder, &key, NOW + 10 * MINUTE);
+    let day3 = NOW + 3 * 86_400_000;
+    let due = day3 / 1000 - 300;
+    let file = round_file(&folder, &desk.id, 1);
+    let before = std::fs::metadata(&file).unwrap().len() as usize;
+    desk.write("state/health-state.toml", &format!("[taken]\n\"iron@{due}\" = {}\n", due + 60));
+    desk.exchange(&folder, &key, day3);
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\nc@example.org\n");
+    desk.exchange(&folder, &key, day3 + MINUTE);
+    assert!(!round_file(&folder, &desk.id, 2).exists());
+    // The dose's line damaged (a letter of its seal changed), the line after it whole.
+    let mut bytes = std::fs::read(&file).unwrap();
+    let seal_at = before + std::str::from_utf8(&bytes[before..]).unwrap().find("\"s\":\"").unwrap() + 10;
+    bytes[seal_at] = if bytes[seal_at] == b'A' { b'B' } else { b'A' };
+    std::fs::write(&file, &bytes).unwrap();
+    let now = day3 + 2 * MINUTE;
+    phone.exchange(&folder, &key, now);
+    let doubts = |phone: &Computer, now: i64| {
+        let h = heard(&phone.memory, &phone.id);
+        let complete = h.complete(&desk.id, written(&desk.memory, &desk.id).unwrap());
+        let said = sioul_core::health::Said { started: due - 7_200, closed: now / 1000 - 30, working: false, exported: now / 1000 - 30, doses: true, ..Default::default() };
+        let peer = sioul_core::health::Peer { id: desk.id.clone(), name: "desk".into(), said: Some(said), complete, seen: now / 1000 - 20, heard: now / 1000 - 30, broken: h.broken.get(&desk.id).copied(), ..Default::default() };
+        sioul_core::health::doubts_now(due, now / 1000, None, &[peer])
+    };
+    let record = phone.read("state/health-state.toml");
+    assert!(!record.contains(&format!("iron@{due}")), "the dose's line is lost here");
+    assert!(!doubts(&phone, now).is_empty(), "a dose taken never known not taken");
+    let h = heard(&phone.memory, &phone.id);
+    assert!(h.broken[&desk.id] >= (day3 + MINUTE) / 1000 - 1, "dated by the line after it: {}", h.broken[&desk.id]);
+    // Asked for a full round; the desk writes one at its next exchange.
+    assert!(read_seen(&folder, &phone.id).is_some_and(|seen| seen.full.contains_key(&desk.id)), "the phone asks the desk for a full round");
+    desk.exchange(&folder, &key, now + MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!(m.full_round, m.round, "a full round, asked for");
+    phone.exchange(&folder, &key, now + 2 * MINUTE);
+    assert!(phone.read("state/health-state.toml").contains(&format!("iron@{due}")), "the dose comes with the full round");
+    assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()), "and all is known again");
+    assert!(read_seen(&folder, &phone.id).is_some_and(|seen| seen.full.is_empty()), "nothing more asked");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// S2-B: a part switched off on this device leaves its entries in the
+/// memory, which no round can restate: passed over, they stop no round from
+/// being full.
+#[test]
+fn a_part_switched_off_stops_no_full_round() {
+    let base = scratch("part-off-full");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/known-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    let config = Config::default();
+    let off = stores_of(&config, &desk.roots, &|part| part != "senders" && shared_by_default(part, &config));
+    let sharing = Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: true, hurry: None };
+    desk.write("data/drafts/big.toml", &format!("body = \"{}\"\n", "x".repeat(ROUND_SIZE as usize + 1000)));
+    exchange(&sharing, &off, NOW + MINUTE).unwrap();
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!(m.full_round, m.round, "past ROUND_SIZE, a full round");
+    assert!(m.entries.keys().any(|key| key.starts_with("config/known-senders.txt")), "the part's entries kept");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// S2-B: an entry of a store that left (`RETIRED`: the watch's days, the
+/// texts' first folder) is forgotten, and stops no round from being full.
+#[test]
+fn a_retired_store_s_entry_is_forgotten_and_stops_no_full_round() {
+    let base = scratch("retired-full");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/known-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    let mut memory: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&desk.memory).unwrap()).unwrap();
+    let clock = memory["clock"].as_u64().unwrap();
+    memory["entries"]["data/watch/2026-10-01.toml\u{1f}steps"] = serde_json::json!({ "c": clock, "w": desk.id, "h": "0123456789abcdef", "b": "" });
+    std::fs::write(&desk.memory, memory.to_string()).unwrap();
+    desk.write("data/drafts/big.toml", &format!("body = \"{}\"\n", "x".repeat(ROUND_SIZE as usize + 1000)));
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!(m.full_round, m.round, "past ROUND_SIZE, a full round");
+    assert!(!m.entries.keys().any(|key| key.starts_with("data/watch/")), "forgotten");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A round truly lost (taken out of the server, never to come) while the
+/// round before it is kept: waited for an hour, the doses in doubt; then
+/// passed over, the gap said: what comes after it flows (a dose marked
+/// later is here), the doses still in doubt; the reader asks for a full
+/// round, which brings what was lost and ends the doubt.
+#[test]
+fn a_round_truly_lost_is_passed_over_after_an_hour() {
+    let base = scratch("round-lost");
+    let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+    let key = quick_key(&server, "four words make a passphrase").unwrap();
+    carry(&server, &phone_folder, "seal.toml", None);
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/known-senders.txt", &senders(0, 1500));
+    desk.exchange(&server, &key, NOW);
+    carry(&server, &phone_folder, &format!("{}-1.jsonl", desk.id), None);
+    phone.exchange(&phone_folder, &key, NOW + 30_000);
+    desk.write("config/known-senders.txt", &senders(0, 3000));
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&server, &key, NOW + MINUTE);
+    desk.write("state/health-state.toml", &doses(&["a@1790000600", "b@1790000700"]));
+    desk.exchange(&server, &key, NOW + 2 * MINUTE);
+    assert!(round_file(&server, &desk.id, 3).exists());
+    std::fs::remove_file(round_file(&server, &desk.id, 2)).unwrap();
+    carry(&server, &phone_folder, &format!("{}-3.jsonl", desk.id), None);
+    let wrote = written(&desk.memory, &desk.id).unwrap();
+    for m in 3..8 {
+        phone.exchange(&phone_folder, &key, NOW + m * MINUTE);
+    }
+    assert!(!phone.read("state/health-state.toml").contains("b@1790000700"), "waited for round 2");
+    assert!(!heard(&phone.memory, &phone.id).complete(&desk.id, wrote));
+    // An hour on: passed over, the gap said; what came after flows, the doses still in doubt.
+    let outcome = phone.exchange(&phone_folder, &key, NOW + 3 * MINUTE + AWAITED);
+    assert!(outcome.problems.iter().any(|p| p.starts_with("share-other-gap")), "{:?}", outcome.problems);
+    let record = phone.read("state/health-state.toml");
+    assert!(record.contains("b@1790000700") && !record.contains("a@1790000600"), "{record}");
+    assert!(!heard(&phone.memory, &phone.id).complete(&desk.id, wrote), "not all known: round 2 lost");
+    // The phone asks the desk for a full round; the desk writes one.
+    let note = seen_path(&phone_folder, &phone.id);
+    assert!(read_seen(&phone_folder, &phone.id).is_some_and(|seen| seen.full.contains_key(&desk.id)));
+    std::fs::copy(&note, seen_path(&server, &phone.id)).unwrap();
+    desk.exchange(&server, &key, NOW + 70 * MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!(m.full_round, m.round, "a full round, asked for");
+    for r in rounds(&server).get(&desk.id).cloned().unwrap_or_default() {
+        carry(&server, &phone_folder, &format!("{}-{r}.jsonl", desk.id), None);
+    }
+    phone.exchange(&phone_folder, &key, NOW + 71 * MINUTE);
+    let record = phone.read("state/health-state.toml");
+    assert!(record.contains("a@1790000600") && record.contains("b@1790000700"), "{record}");
+    assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device that never held the doses' record and receives only removals
+/// for it writes nothing: written empty, with its witness, it would read as
+/// lost and be repaired again and again.
+#[test]
+fn removals_alone_write_no_doses_record() {
+    let base = scratch("removals-alone");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&folder, &key, NOW);
+    desk.write("state/health-state.toml", "[taken]\n");
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+    let record = phone.path("state/health-state.toml");
+    assert!(!record.exists(), "{}", phone.read("state/health-state.toml"));
+    assert!(sioul_core::health::HealthState::read(&record).is_ok(), "never read as lost");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Where its append ends is noted before each append (`appended`); a note
+/// that cannot be written (a full disk) appends nothing, so that a line of
+/// its own is never taken for another device's (`share-twin`).
+#[test]
+fn an_append_not_noted_is_not_made() {
+    let base = scratch("not-noted");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    let first = round_file(&folder, &desk.id, 1);
+    let size = std::fs::metadata(&first).unwrap().len();
+    // The note's place taken (as a full disk refuses it).
+    let note = desk.memory.with_file_name("appended.toml");
+    std::fs::remove_file(&note).unwrap();
+    std::fs::create_dir_all(note.join("taken")).unwrap();
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+    let stores = stores(&Config::default(), &desk.roots);
+    let sharing = Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: true, hurry: None };
+    assert!(exchange(&sharing, &stores, NOW + MINUTE).is_err(), "said");
+    assert_eq!(std::fs::metadata(&first).unwrap().len(), size, "nothing appended");
+    std::fs::remove_dir_all(&note).unwrap();
+    let mut said = Vec::new();
+    for n in 2..5 {
+        said.extend(desk.exchange(&folder, &key, NOW + n * MINUTE).problems);
+    }
+    assert!(!said.iter().any(|p| p == "share-own-ahead" || p == "share-twin"), "{said:?}");
+    assert!(std::fs::metadata(&first).unwrap().len() > size, "appended once noted");
+    let _ = std::fs::remove_dir_all(&base);
+}
