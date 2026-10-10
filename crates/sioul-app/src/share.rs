@@ -1004,10 +1004,11 @@ enum News {
     /// seconds at most (as long as the sync app's twenty and the five after
     /// them, never later), and over as soon as the pull is.
     Pull,
-    /// A dose's or a waking's alarm, its pull working: trusted alone only once
-    /// a pull begun since the alarm went through (this one, or another's that
-    /// ran meanwhile, waited for); else the sync app asked and waited for, as
-    /// before (`remote::alarm_news`).
+    /// A dose's or a waking's alarm, the folder found on the server: a pull
+    /// begun since the alarm, trusted alone once it went through (this one,
+    /// or another's that ran meanwhile, waited for); else the sync app asked
+    /// and waited for, as before; neither bringing anything, the doubt said
+    /// (`remote::alarm_news`, `news_missed`).
     Alarm,
     /// The sync app asked and given twenty seconds, the pull meanwhile, then
     /// five more seconds at most for it.
@@ -1017,15 +1018,31 @@ enum News {
 }
 
 /// How an exchange waits for the others' news, as it is asked (`fetch_first`:
-/// the background step, or an `alarm`, a dose's or a waking's) on this device.
-fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool, alarm: bool) -> News {
-    match (fetch_first && !mirror, phone, pulls_well) {
-        (false, _, _) => News::None,
-        (true, false, _) => News::Computer,
-        (true, true, true) if alarm => News::Alarm,
-        (true, true, true) => News::Pull,
-        (true, true, false) => News::SyncApp,
+/// the background step, or an `alarm`, a dose's or a waking's) on this
+/// device: its pull working (`pulls_well`), or the folder found on the server
+/// at least (`found`: an alarm tries a pull all the same).
+fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool, found: bool, alarm: bool) -> News {
+    match (fetch_first && !mirror, phone) {
+        (false, _) => News::None,
+        (true, false) => News::Computer,
+        (true, true) if alarm && found => News::Alarm,
+        (true, true) if pulls_well && !alarm => News::Pull,
+        (true, true) => News::SyncApp,
     }
+}
+
+thread_local! {
+    /// An alarm on this thread that read none of the others' news since it
+    /// began (`remote::AlarmNews::Nothing`): when it began (Unix seconds).
+    static NEWS_MISSED: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether the last alarm's exchange on this thread (`exchange_here(true)`)
+/// read none of the others' news since it began, its pull and the sync app
+/// bringing nothing: then since when. What was read before is not taken as
+/// knowledge then (`sioul_core::health::doubts_unread`).
+pub(crate) fn news_missed() -> Option<i64> {
+    NEWS_MISSED.with(std::cell::Cell::take)
 }
 
 /// The sync app asked to bring the others' news, as before Sioul's own pull,
@@ -1058,6 +1075,8 @@ fn ask_carriers_only() {
 
 /// When the sync app was last asked to look (Unix seconds), and whether Sioul is on the screen.
 static NUDGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+/// When `nudge` last did its work while Sioul's own pull brings the news, the sync app not asked (Unix seconds).
+static ALONE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 /// Sioul on the phone's screen, or put away: the sync app is asked to look only while it is shown.
@@ -1080,9 +1099,14 @@ pub(crate) fn nudge(qt: &QtThread, shared: &Arc<Shared>, every: i64, then_read: 
     let Some(folder) = here.folder_path() else { return };
     // Sioul's own pull bringing the others' news (`pulls_alone`): the sync
     // app is left to its own pace. Back on the screen, an exchange at once
-    // pulls and reads them, each minute's after it; after a write, Sioul's own
-    // send carried this device's files, where it sends them there too.
+    // pulls and reads them, each minute's after it, once a minute at most
+    // (`ALONE`); after a write, Sioul's own send carried this device's files,
+    // where it sends them there too.
     if pulls_alone(&folder) {
+        let alone = ALONE.load(Ordering::Relaxed);
+        if now - alone < every.max(60) || ALONE.compare_exchange(alone, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+            return;
+        }
         if then_read && every == 0 {
             exchange(qt, shared);
         }
@@ -1138,7 +1162,12 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     let pull_alone = !mirror && pulls_alone(&folder);
     // A dose's or a waking's alarm, in Sioul's own process (the background step runs in its own).
     let alarm = fetch_first && !crate::steps::in_service();
-    let waits = news(fetch_first, cfg!(target_os = "android"), mirror, pull_alone, alarm);
+    let found = {
+        let state = sioul_sync::remote::State::load(&memory_path());
+        state.fetching() && state.confirmed_for(&folder)
+    };
+    let waits = news(fetch_first, cfg!(target_os = "android"), mirror, pull_alone, found, alarm);
+    NEWS_MISSED.with(|missed| missed.set(None));
     // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`);
     // an alarm's pull is its own (`alarm_news`, below).
     let fetching = (fetch_first && !mirror && waits != News::Alarm).then(|| {
@@ -1165,11 +1194,15 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             Some(at) => {
                 let state = sioul_sync::remote::State::load(&memory);
                 let login = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of);
-                let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, login, &FETCHING, since, Box::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
+                let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, login, &FETCHING, since, std::sync::Arc::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
                 log_backup(match came {
                     sioul_sync::remote::AlarmNews::Pulled => "alarm: the others' news pulled since it began".into(),
                     sioul_sync::remote::AlarmNews::SyncApp => "alarm: no pull went through in time; the sync app asked and waited for".into(),
+                    sioul_sync::remote::AlarmNews::Nothing => "alarm: no news read since it began, by the pull or the sync app: what was read before is said in doubt".into(),
                 });
+                if came == sioul_sync::remote::AlarmNews::Nothing {
+                    NEWS_MISSED.with(|missed| missed.set(Some(since)));
+                }
             }
             None => std::thread::sleep(ask_sync_app()),
         }
@@ -2116,6 +2149,8 @@ fn backup_line(state: &sioul_sync::remote::State, folder: &Path) -> String {
         };
         return match (code, state.last) {
             ("", 0) => say("share-backup-soon", &[("host", host)]),
+            // Records too large to fetch: the sync app brings them, and is asked again (`State::left`).
+            ("", last) if !state.left.is_empty() => format!("{} {}", say("share-backup-on", &[("host", host), ("when", when(last))]), tr().text("share-backup-left", None)),
             ("", last) => say("share-backup-on", &[("host", host), ("when", when(last))]),
             (code, 0) => say("share-backup-failing-never", &[("host", host), ("why", why(code))]),
             (code, last) => say("share-backup-failing", &[("host", host), ("when", when(last)), ("why", why(code))]),
@@ -2177,12 +2212,14 @@ mod tests {
     /// window pulls, a pull that fails, one too slow.
     #[test]
     fn a_doses_alarm_waits_for_the_pull_alone_while_it_works() {
-        assert_eq!(news(true, true, false, true, true), News::Alarm, "an alarm: a pull since it began, else the sync app (`remote::alarm_news`)");
-        assert_eq!(news(true, true, false, true, false), News::Pull, "the background step: its pull alone");
-        assert_eq!(news(true, true, false, false, true), News::SyncApp, "the pull failing: as before");
-        assert_eq!(news(true, true, true, false, true), News::None, "Sioul keeping the folder: the server looked through already");
-        assert_eq!(news(true, false, false, false, true), News::Computer);
-        assert_eq!(news(false, true, false, true, false), News::None, "a button pressed: nothing waited for");
+        assert_eq!(news(true, true, false, true, true, true), News::Alarm, "an alarm: a pull since it began, else the sync app (`remote::alarm_news`)");
+        assert_eq!(news(true, true, false, false, true, true), News::Alarm, "the last pull failed: an alarm tries one all the same, the sync app asked when it fails");
+        assert_eq!(news(true, true, false, true, true, false), News::Pull, "the background step: its pull alone");
+        assert_eq!(news(true, true, false, false, true, false), News::SyncApp, "the background step, its pull failing: as before");
+        assert_eq!(news(true, true, false, false, false, true), News::SyncApp, "no folder found on a server: the sync app, as before");
+        assert_eq!(news(true, true, true, false, false, true), News::None, "Sioul keeping the folder: the server looked through already");
+        assert_eq!(news(true, false, false, false, false, true), News::Computer);
+        assert_eq!(news(false, true, false, true, true, false), News::None, "a button pressed: nothing waited for");
     }
 
     #[test]
@@ -2239,6 +2276,8 @@ mod tests {
         assert!(backup_line(&fetched, folder).contains("murena.io"));
         let failing = State { said: "network:murena.io".into(), ..fetched.clone() };
         assert_ne!(backup_line(&failing, folder), backup_line(&fetched, folder));
+        let left = State { left: [("desk-9.jsonl".to_string(), 70 << 20)].into(), ..fetched.clone() };
+        assert!(backup_line(&left, folder).ends_with(&tr().text("share-backup-left", None)), "a round left to the sync app, said");
         let off = State { on: Some(false), ..fetched.clone() };
         assert!(backup_line(&off, folder).contains("murena.io"));
         let looking = State { folder: here.clone(), ..State::default() };

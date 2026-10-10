@@ -2855,6 +2855,7 @@ share-files-unreadable = Les notes et les papiers attendent : sans l’accès 
 share-backup-switch = Aller aussi les chercher sur le serveur
 share-backup-help = Quand votre application de synchronisation tarde à apporter les fichiers de vos autres appareils, Sioul les lit aussi sur le serveur qui garde ce dossier (Nextcloud, Murena, ownCloud), avec votre compte là-bas. Il ne fait que lire, et seulement un dossier scellé comme celui-ci.
 share-backup-on = Aussi cherché directement sur { $host }, la dernière fois à { $when }.
+share-backup-left = Certains enregistrements de vos autres appareils sont trop gros pour être cherchés directement : votre application de synchronisation les apporte, et Sioul lui demande de regarder jusqu’à ce qu’elle l’ait fait.
 share-backup-soon = Trouvé sur { $host } : cherché là aussi au prochain échange.
 share-backup-failing = Cherché directement sur { $host } jusqu’à { $when } ; plus depuis : { $why }. Nouvel essai au prochain échange.
 share-backup-failing-never = Trouvé sur { $host }, pas encore cherché : { $why }. Nouvel essai au prochain échange.

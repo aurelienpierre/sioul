@@ -729,6 +729,36 @@ pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> V
     doubts_now(due, now, record_lost, peers)
 }
 
+/// `doubts_now`, when this device could read none of its other devices' news
+/// since `since` (Unix seconds): a phone's alarm whose own pull failed, or was
+/// too slow, and whose sync app brought nothing meanwhile (offline, or the
+/// sync app not running). A device known only by what it said before then,
+/// closed (or an older Sioul whose claims say so), may have opened since and
+/// answered: said in doubt, as it was last heard, never known (docs/health.md,
+/// "Knowing"). One in use stays as `FRESH` has it: known only while its news
+/// is minutes old, which the alarm's own wait already spends.
+pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer], since: i64) -> Vec<Doubt> {
+    let mut out = doubts_now(due, now, record_lost, peers);
+    for peer in peers.iter().filter(|p| counts(p, now)) {
+        let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) };
+        let names = |doubt: &Doubt| match doubt {
+            Doubt::Unheard { device: d, .. } | Doubt::Broken { device: d } | Doubt::Working { device: d, .. } | Doubt::Coming { device: d, .. } | Doubt::Apart { device: d } => *d == device,
+            Doubt::Record { .. } => false,
+        };
+        if out.iter().any(names) {
+            continue;
+        }
+        let until = match &peer.said {
+            Some(said) if said.working => continue,
+            Some(said) => said.closed,
+            None if peer.closed => peer.known_until,
+            None => continue,
+        };
+        out.push(Doubt::Unheard { device, until: until.clamp(1, since.max(1)), closed: true });
+    }
+    out
+}
+
 /// Until when a dose due at `due`, known not taken at `from` (`doubts_now`),
 /// stays known while nothing new is read (a device in use goes stale after
 /// `FRESH`): the first moment it is not, else `until`; 0 when it is not known
@@ -1156,6 +1186,22 @@ mod tests {
         // Its entry here, but its records not all read yet (a sync that brought one file first): it may hold the answer.
         let behind = Peer { complete: false, ..p };
         assert_eq!(doubts_now(DUE, DUE + 1_300, None, &[behind]), vec![Doubt::Coming { device: the_phone(), shared: DUE + 1_195 }]);
+    }
+
+    /// No news of the others read since a phone's alarm began (its pull
+    /// failed, its sync app brought nothing): a device known closed by what it
+    /// said before is said in doubt, as last heard, never known; one in use
+    /// and fresh stays as `FRESH` has it; a doubt said already is not said twice.
+    #[test]
+    fn with_no_news_since_the_alarm_a_device_known_closed_is_a_doubt() {
+        let closed = phone(Said { started: DUE - 7_200, closed: DUE - 3_600, working: false, exported: DUE - 3_605, imported: DUE - 3_605, ..Said::default() }, DUE - 3_500);
+        assert!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&closed)).is_empty(), "closed before the dose, its news read: known");
+        let unread = doubts_unread(DUE, DUE + 60, None, std::slice::from_ref(&closed), DUE + 30);
+        assert_eq!(unread, vec![Doubt::Unheard { device: the_phone(), until: DUE - 3_600, closed: true }], "nothing read since the alarm: it may have opened since");
+        let working = phone(Said { started: DUE - 600, closed: DUE - 7_200, working: true, exported: DUE + 180, ..Said::default() }, DUE + 200);
+        assert_eq!(doubts_unread(DUE, DUE + 240, None, std::slice::from_ref(&working), DUE + 230), doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&working)), "in use: as FRESH has it");
+        let stale = phone(Said { started: DUE - 3_600, working: true, exported: DUE - 900, ..Said::default() }, DUE - 870);
+        assert_eq!(doubts_unread(DUE, DUE + 60, None, std::slice::from_ref(&stale), DUE + 30).len(), 1, "doubted already: once");
     }
 
     #[test]

@@ -1444,6 +1444,9 @@ const SHOWN_EVERY: i64 = 15 * 60;
 pub(crate) fn alarm_decide(key: &str) -> String {
     let answer = |show: bool, title: &str, body: &str, again: i64| serde_json::json!({ "show": show, "title": title, "body": body, "again_at": again * 1000, "taken": tr().text("health-taken", None) }).to_string();
     let _ = crate::share::exchange_here(true);
+    // None of the others' news read since this alarm began (its pull and the
+    // sync app bringing nothing): what was read before is said in doubt.
+    let missed = crate::share::news_missed();
     let health = load();
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
@@ -1483,7 +1486,7 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     if !keeper.mine && waiting {
         return answer(false, "", "", due + WAIT_FOR_NEWS);
     }
-    let doubt = doubt_of(&know(), due, stamp);
+    let doubt = doubt_unread(&know(), due, stamp, missed);
     if !doubt.is_empty() && waiting {
         return answer(false, "", "", due + WAIT_FOR_NEWS);
     }
@@ -2186,7 +2189,17 @@ fn said(words: &Translator, id: &str, pairs: &[(&str, String)]) -> String {
 
 /// A dose's doubt as its reminder says it, at its time; "" when it is known.
 fn doubt_of(knowledge: &Knowledge, due: i64, now: i64) -> String {
-    let doubts = sioul_core::health::doubts(due, now, knowledge.record_lost, &knowledge.peers);
+    doubt_unread(knowledge, due, now, None)
+}
+
+/// The same, at an alarm that read none of the others' news since `missed`
+/// (`share::news_missed`): a device known closed by what was read before is
+/// said in doubt, as last heard (`sioul_core::health::doubts_unread`).
+fn doubt_unread(knowledge: &Knowledge, due: i64, now: i64, missed: Option<i64>) -> String {
+    let doubts = match missed {
+        Some(since) => sioul_core::health::doubts_unread(due, now, knowledge.record_lost, &knowledge.peers, since),
+        None => sioul_core::health::doubts(due, now, knowledge.record_lost, &knowledge.peers),
+    };
     if doubts.is_empty() { String::new() } else { say("dose-doubt", &[("why", why(&doubts))]) }
 }
 
@@ -3439,6 +3452,23 @@ mod tests {
     /// is timed by this device's clock; an export dated later than it was seen
     /// tells how far the other clock is ahead, at least; what no longer reads
     /// is not said; a device said off counts again once it says anything newer.
+    /// An alarm that read none of the others' news since it went off
+    /// (`share::news_missed`): the laptop, known closed before the dose by
+    /// what was read before, is said in doubt with when it closed; with news
+    /// read, it is known, as before (docs/health.md, "No news at the alarm").
+    #[test]
+    fn an_alarm_that_read_no_news_says_a_closed_device_in_doubt() {
+        let english = Translator::new("en");
+        let due = 1_800_000_000;
+        let said = sioul_core::health::Said { started: due - 7_200, closed: due - 3_600, working: false, exported: due - 3_605, imported: due - 3_605, doses: true, ..Default::default() };
+        let laptop = Peer { id: "laptop-id".into(), name: "laptop".into(), said: Some(said), complete: true, seen: due - 3_500, heard: due - 3_605, ..Peer::default() };
+        let peers = vec![laptop];
+        assert!(sioul_core::health::doubts(due, due + 60, None, &peers).is_empty(), "news read: known");
+        let doubts = sioul_core::health::doubts_unread(due, due + 60, None, &peers, due + 30);
+        let words = why_in(&doubts, &english);
+        assert!(words.starts_with("laptop closed") && words.contains("its news can be slow to come") && !words.to_lowercase().contains("not taken"), "{words}");
+    }
+
     #[test]
     fn what_the_devices_say_of_themselves_teaches() {
         use sioul_sync::devices::Entry;
