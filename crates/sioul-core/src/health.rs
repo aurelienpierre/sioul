@@ -731,8 +731,8 @@ pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> V
 
 /// `doubts_now`, at a phone's alarm whose own pull did not go through since
 /// it began (`since`, Unix seconds): failed, or too slow, the sync app asked
-/// instead. Of the devices in `heard`, an entry or a claim of their own came
-/// since: what they say is as fresh as the sync app makes it. Any other known
+/// instead. Of the devices in `heard`, an entry or a health claim saying more
+/// came since: what they say is as fresh as the sync app makes it. Any other known
 /// only by what it said before then, closed (or an older Sioul whose claims
 /// say so), may have opened since and answered: said in doubt, as it was last
 /// heard, never known (docs/health.md, "Knowing"). One in use stays as `FRESH`

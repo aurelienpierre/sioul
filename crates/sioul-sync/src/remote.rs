@@ -1107,9 +1107,10 @@ pub enum AlarmNews {
     /// A pull begun since the alarm went through: what it read is trusted alone.
     Pulled,
     /// No pull since went through; the sync app asked and waited for, as
-    /// before Sioul's own pull. `heard`: the devices whose own entry or claim
-    /// was written into the folder, or into what was fetched beside it, since
-    /// the alarm began. Of the others no news came: what this device knows
+    /// before Sioul's own pull. `heard`: the devices whose entry or claim on
+    /// the health part says more since the alarm began, by its own times (in
+    /// the folder, or in what was fetched beside it). Of the others no news
+    /// came: what this device knows
     /// of them is from before the alarm, and one known closed then may have
     /// opened since and answered (`sioul_core::health::doubts_unread`).
     SyncApp { heard: BTreeSet<String> },
@@ -1127,17 +1128,18 @@ pub enum AlarmNews {
 /// how long its wait still runs: twenty seconds, less when another alarm
 /// asked it a moment ago), and waited for, that wait ended as soon as a pull
 /// since the alarm goes through; `times.most` in all at most. `clock` gives
-/// the time now (Unix seconds).
-pub fn alarm_news(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration) -> AlarmNews {
-    alarm_news_with(memory, folder, own, login, lock, since, ALARM_TIMES, clock, ask, LIMITS)
+/// the time now (Unix seconds); `key` opens the others' entries and claims.
+#[allow(clippy::too_many_arguments)]
+pub fn alarm_news(memory: &Path, folder: &Path, own: &str, key: [u8; 32], login: Option<Login>, lock: &'static Mutex<()>, since: i64, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration) -> AlarmNews {
+    alarm_news_with(memory, folder, own, key, login, lock, since, ALARM_TIMES, clock, ask, LIMITS)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, times: AlarmTimes, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration, limits: Limits) -> AlarmNews {
+pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, key: [u8; 32], login: Option<Login>, lock: &'static Mutex<()>, since: i64, times: AlarmTimes, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration, limits: Limits) -> AlarmNews {
     let begun = Instant::now();
     let until = begun + times.most;
-    // Each other device's entry and claims as they stand now: what the sync app brings changes them.
-    let before = said_by_each(folder, own);
+    // What each other device says of itself now, for the doses: what the sync app brings may say more.
+    let before = said_by_each(folder, &key, own);
     let mut pulling = {
         let (memory, folder, own, clock) = (memory.to_path_buf(), folder.to_path_buf(), own.to_string(), std::sync::Arc::clone(&clock));
         Some(std::thread::spawn(move || pull_since_with(&memory, &folder, &own, login.as_ref(), lock, since, begun, until, &*clock, limits)))
@@ -1161,7 +1163,7 @@ pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Op
             if through_since(memory, folder, since, begun, clock()) {
                 return AlarmNews::Pulled;
             }
-            return AlarmNews::SyncApp { heard: heard_since(&before, &said_by_each(folder, own)) };
+            return AlarmNews::SyncApp { heard: heard_since(&before, &said_by_each(folder, &key, own)) };
         }
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -1213,38 +1215,35 @@ pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Op
     through()
 }
 
-/// What each other device says of itself in the folder and in what was
-/// fetched beside it: its entry (`devices/<id>.device`) and its claims
-/// (`leases/<part>/<id>.lease`), each file by its size and time, by device.
-type Said = BTreeMap<String, BTreeMap<PathBuf, (u64, u64)>>;
+/// What each other device says of itself as the doses read it (`health::know`):
+/// its entry (`devices`) and its claim on the health part (`lease`), the later
+/// of the folder's copy and the one fetched beside it, each by its own times
+/// (`devices::written`; the claim's renewal and its end).
+type Said = BTreeMap<String, (Option<(i64, i64, i64, i64, i64)>, Option<(i64, i64)>)>;
 
-pub(crate) fn said_by_each(folder: &Path, own: &str) -> Said {
+pub(crate) fn said_by_each(folder: &Path, key: &[u8; 32], own: &str) -> Said {
     let mut out: Said = BTreeMap::new();
-    let mut look = |dir: &Path, suffix: &str| {
-        for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
-            let name = entry.file_name().to_string_lossy().to_string();
-            let Some(id) = name.strip_suffix(suffix).filter(|id| *id != own && !id.starts_with('.')) else { continue };
-            if let Ok(meta) = entry.metadata()
-                && meta.is_file()
-            {
-                out.entry(id.to_string()).or_default().insert(entry.path(), (meta.len(), crate::share::modified_ns(&meta)));
-            }
-        }
-    };
-    for root in std::iter::once(folder.to_path_buf()).chain(overlay(folder)) {
-        look(&root.join("devices"), ".device");
-        for part in std::fs::read_dir(root.join("leases")).into_iter().flatten().filter_map(Result::ok) {
-            look(&part.path(), ".lease");
-        }
+    for entry in crate::devices::all(folder, key).0.into_iter().filter(|e| e.id != own) {
+        out.entry(entry.id.clone()).or_default().0 = Some(crate::devices::written(&entry));
+    }
+    for claim in crate::lease::claims(folder, key, "health").into_iter().filter(|c| c.computer != own) {
+        out.entry(claim.computer.clone()).or_default().1 = Some((claim.renewed, claim.until));
     }
     out
 }
 
-/// The devices one of whose files was written since `before`: there now, and
-/// new or changed. A copy taken away (what was fetched, once the folder caught
-/// up) is no news.
+/// The devices whose entry or health claim says more than before: later by
+/// its own times. Another part's claim (notices, invoices) is no news of a
+/// session for the doses; a file touched with the same bytes, or an older
+/// copy put back, is none either.
 fn heard_since(before: &Said, now: &Said) -> BTreeSet<String> {
-    now.iter().filter(|(id, files)| files.iter().any(|(path, stamp)| before.get(*id).and_then(|was| was.get(path)) != Some(stamp))).map(|(id, _)| id.clone()).collect()
+    now.iter()
+        .filter(|(id, (entry, claim))| {
+            let (was_entry, was_claim) = before.get(*id).copied().unwrap_or_default();
+            entry.is_some_and(|e| was_entry.is_none_or(|w| e > w)) || claim.is_some_and(|c| was_claim.is_none_or(|w| c > w))
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
 }
 
 /// What a pull did.
@@ -3792,7 +3791,7 @@ mod tests {
             w.restore(&aside);
             assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "minute {minute}");
             let mut ask = || -> Duration { panic!("minute {minute}: the pull went through, the sync app is not asked") };
-            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, now + 20, QUICK, Arc::new(move || now + 20), &mut ask, TEST);
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, now + 20, QUICK, Arc::new(move || now + 20), &mut ask, TEST);
             assert_eq!(came, AlarmNews::Pulled, "minute {minute}");
             w.phone.exchange(&w.phone_folder, now + 25);
             let alone = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
@@ -3837,7 +3836,7 @@ mod tests {
             w.down();
             Duration::from_millis(200)
         };
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         assert!(matches!(came, AlarmNews::SyncApp { ref heard } if heard.contains(&w.desk.id)) && asked == 1, "the pull failed: the sync app asked, once, the desk's entry brought: {came:?}");
         w.phone.exchange(&w.phone_folder, DUE + 65);
         let taken = w.phone.read("health-state.toml").contains("dose@0");
@@ -3876,7 +3875,7 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(pause));
                     let begun = Instant::now();
                     let mut ask = || -> Duration { panic!("the pull went through: the sync app is not asked") };
-                    (alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST), begun.elapsed())
+                    (alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST), begun.elapsed())
                 })
             };
             let (first, second) = (alarm(0), alarm(150));
@@ -3915,7 +3914,7 @@ mod tests {
             });
             std::thread::sleep(Duration::from_millis(200));
             let mut ask = || -> Duration { panic!("a pull went through: the sync app is not asked") };
-            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 61), &mut ask, TEST);
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 61), &mut ask, TEST);
             assert!(window.join().unwrap().problem.is_none());
             came
         });
@@ -3949,7 +3948,7 @@ mod tests {
             Duration::from_millis(300)
         };
         let begun = Instant::now();
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         let waited = begun.elapsed();
         assert!(matches!(came, AlarmNews::SyncApp { .. }) && asked == 1, "not through in time: the sync app asked, once: {came:?}");
         assert!(waited < QUICK.most, "never past the alarm's wait: {waited:?}");
@@ -3993,7 +3992,7 @@ mod tests {
             asked += 1;
             Duration::from_millis(200)
         };
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         assert_eq!((&came, asked), (&AlarmNews::SyncApp { heard: BTreeSet::new() }, 1), "the old pull not taken: pulled again, refused; the sync app asked, nothing came");
         w.phone.exchange(&w.phone_folder, DUE + 65);
         assert!(!w.phone.read("health-state.toml").contains("dose@0"));
@@ -4019,7 +4018,7 @@ mod tests {
         let w = alarm_scene("alarm-nothing", DUE - 3_000, true);
         w.fake.fault(|_| Some(Fault::Status(503)));
         let mut ask = || Duration::from_millis(200);
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         assert_eq!(came, AlarmNews::SyncApp { heard: BTreeSet::new() });
         w.phone.exchange(&w.phone_folder, DUE + 65);
         let peer = w.phone.sees(&w.phone_folder, &w.desk, DUE + 70);
@@ -4031,7 +4030,7 @@ mod tests {
         static ANOTHER: Mutex<()> = Mutex::new(());
         let quiet = alarm_scene("alarm-pulled", DUE - 3_000, false);
         let mut never = || -> Duration { panic!("the pull went through: the sync app is not asked") };
-        let came = alarm_news_with(&quiet.phone.memory, &quiet.phone_folder, &quiet.phone.id, Some(quiet.fake.login()), &ANOTHER, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut never, TEST);
+        let came = alarm_news_with(&quiet.phone.memory, &quiet.phone_folder, &quiet.phone.id, KEY, Some(quiet.fake.login()), &ANOTHER, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut never, TEST);
         assert_eq!(came, AlarmNews::Pulled);
         quiet.phone.exchange(&quiet.phone_folder, DUE + 65);
         assert!(doubts_now(DUE, DUE + 70, None, &[quiet.phone.sees(&quiet.phone_folder, &quiet.desk, DUE + 70)]).is_empty(), "pulled since the alarm, the desk closed: known");
@@ -4068,7 +4067,7 @@ mod tests {
             std::fs::File::options().write(true).open(w.phone_folder.join(&notes)).unwrap().set_modified(std::time::SystemTime::now()).unwrap();
             Duration::from_millis(200)
         };
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         w.fake.clear_faults();
         assert_eq!(came, AlarmNews::SyncApp { heard: BTreeSet::new() }, "the notes are no news of the desk's session");
         let (wrong, taken, doubts) = alarm_verdict(&w, &came, DUE + 60, DUE + 65);
@@ -4082,7 +4081,7 @@ mod tests {
             std::fs::copy(other.server.join(&entry), other.phone_folder.join(&entry)).unwrap();
             Duration::from_millis(200)
         };
-        let came = alarm_news_with(&other.phone.memory, &other.phone_folder, &other.phone.id, Some(other.fake.login()), &AGAIN, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&other.phone.memory, &other.phone_folder, &other.phone.id, KEY, Some(other.fake.login()), &AGAIN, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         other.fake.clear_faults();
         assert!(matches!(came, AlarmNews::SyncApp { ref heard } if heard.contains(&other.desk.id)), "{came:?}");
         let (wrong, _, doubts) = alarm_verdict(&other, &came, DUE + 60, DUE + 65);
@@ -4098,7 +4097,7 @@ mod tests {
         let w = alarm_scene("alarm-forward-back", DUE - 3_000, false);
         assert!(w.pull(DUE + 600).problem.is_none());
         let mut never = || -> Duration { panic!("the alarm's own pull went through: the sync app is not asked") };
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut never, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut never, TEST);
         assert_eq!(came, AlarmNews::Pulled);
         assert_eq!(State::load(&w.phone.memory).last, DUE + 60, "the time from before the set-back gives way");
         let (_, _, doubts) = alarm_verdict(&w, &came, DUE + 60, DUE + 65);
@@ -4123,6 +4122,45 @@ mod tests {
         let merged = State::load(&w.phone.memory);
         assert_eq!(merged.left.get("r-1.jsonl"), Some(&200), "{:?}", merged.left);
         assert!(!merged.pulls_well(&w.phone_folder));
+    }
+
+    /// Only what the doses read of a device is news of its session (review of
+    /// battery part B, fourth pass): its claim on another part (notices),
+    /// brought alone, is none (U1); its stale entry merely touched, same bytes
+    /// at a new time, is none either (U2). Either way the desk, opened since and
+    /// the dose marked there, is said in doubt, never known closed.
+    #[test]
+    fn only_a_newer_entry_or_health_claim_is_news_of_a_device() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = alarm_scene("alarm-notices", DUE - 3_000, true);
+        crate::lease::renew(&w.server, &KEY, "notices", &w.desk.id, DUE + 20, DUE + 20, false, crate::lease::Rule::FollowsYou, crate::share::written(&w.desk.memory, &w.desk.id)).unwrap();
+        w.fake.fault(|_| Some(Fault::Status(503)));
+        let lease = format!("leases/notices/{}.lease", w.desk.id);
+        let mut ask = || {
+            let to = w.phone_folder.join(&lease);
+            std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+            std::fs::copy(w.server.join(&lease), &to).unwrap();
+            Duration::from_millis(200)
+        };
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, KEY, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        w.fake.clear_faults();
+        assert_eq!(came, AlarmNews::SyncApp { heard: BTreeSet::new() }, "a notices claim is no news of the session");
+        let (wrong, _, doubts) = alarm_verdict(&w, &came, DUE + 60, DUE + 65);
+        assert!(!wrong && !doubts.is_empty(), "{doubts:?}");
+        // The stale entry touched: same bytes, a new time.
+        static AGAIN: Mutex<()> = Mutex::new(());
+        let touched = alarm_scene("alarm-touched", DUE - 3_000, true);
+        touched.fake.fault(|_| Some(Fault::Status(503)));
+        let entry = touched.phone_folder.join(format!("devices/{}.device", touched.desk.id));
+        let mut ask = || {
+            std::fs::File::options().write(true).open(&entry).unwrap().set_modified(std::time::SystemTime::now()).unwrap();
+            Duration::from_millis(200)
+        };
+        let came = alarm_news_with(&touched.phone.memory, &touched.phone_folder, &touched.phone.id, KEY, Some(touched.fake.login()), &AGAIN, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        touched.fake.clear_faults();
+        assert_eq!(came, AlarmNews::SyncApp { heard: BTreeSet::new() }, "the same entry at a new time is no news");
+        let (wrong, _, doubts) = alarm_verdict(&touched, &came, DUE + 60, DUE + 65);
+        assert!(!wrong && !doubts.is_empty(), "{doubts:?}");
     }
 
     /// Two pulls at once in two processes (the window's or an alarm's, and the

@@ -197,7 +197,7 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
 /// When an entry was written, as far as its times tell: each writing sets
 /// one of them to its device's clock then (a start, a close, an exchange), and
 /// none goes back.
-fn written(entry: &Entry) -> (i64, i64, i64, i64, i64) {
+pub(crate) fn written(entry: &Entry) -> (i64, i64, i64, i64, i64) {
     (entry.started.max(entry.closed).max(entry.imported), entry.closed, entry.started, entry.imported, entry.exported)
 }
 

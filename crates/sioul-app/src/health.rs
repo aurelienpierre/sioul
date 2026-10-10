@@ -2193,8 +2193,8 @@ fn doubt_of(knowledge: &Knowledge, due: i64, now: i64) -> String {
 }
 
 /// The same, at an alarm whose pull did not go through since it began
-/// (`share::news_missed`: when, and the devices whose own entry or claim came
-/// since): any other known closed by what was read before is said in doubt,
+/// (`share::news_missed`: when, and the devices whose entry or health claim
+/// says more since): any other known closed by what was read before is said in doubt,
 /// as last heard (`sioul_core::health::doubts_unread`).
 fn doubt_unread(knowledge: &Knowledge, due: i64, now: i64, missed: Option<&(i64, std::collections::BTreeSet<String>)>) -> String {
     let doubts = match missed {
