@@ -237,11 +237,35 @@ fn write_piece(out: &mut impl Write, cipher: &XChaCha20Poly1305, name: &str, ind
     out.write_all(&sealed)
 }
 
-/// A content opened from the folder into `target` (a new hidden file beside
-/// the one it will replace, `share::temporary`), and checked against its hash:
-/// whole and right, or nothing (`target` removed). Never more than `LARGEST`
-/// bytes written, whatever the file says.
+/// A content opened into `target` (a new hidden file beside the one it will
+/// replace, `share::temporary`), and checked against its hash: whole and
+/// right, or nothing (`target` removed). Never more than `LARGEST` bytes
+/// written, whatever the file says. Opened from the folder, else from the
+/// copy fetched from its server beside it (`remote::overlay`, brought by
+/// `remote::fetch_wanted`): a copy fetched that does not open whole is taken
+/// out there, and fetched again.
 pub fn get(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(), Fault> {
+    get_unless(folder, key, hash, target, false)
+}
+
+/// As `get`, the folder's copy passed over as damaged when `damaged`: found
+/// so before, and the same copy still (`share::receive`).
+pub(crate) fn get_unless(folder: &Path, key: &[u8; 32], hash: &str, target: &Path, damaged: bool) -> Result<(), Fault> {
+    let here = if damaged { Err(Fault::Broken) } else { get_from(folder, key, hash, target) };
+    let Err(fault @ (Fault::Missing | Fault::Broken)) = here else { return here };
+    let Some(fetched) = crate::remote::overlay(folder) else { return Err(fault) };
+    match get_from(&fetched, key, hash, target) {
+        Ok(()) => Ok(()),
+        Err(Fault::Broken) => {
+            let _ = std::fs::remove_file(path(&fetched, key, hash));
+            Err(fault)
+        }
+        Err(Fault::Missing) => Err(fault),
+        Err(other) => Err(other),
+    }
+}
+
+fn get_from(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(), Fault> {
     let opened = open_into(folder, key, hash, target);
     if opened.is_err() {
         let _ = std::fs::remove_file(target);
@@ -249,21 +273,47 @@ pub fn get(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(
     opened
 }
 
-fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(), Fault> {
-    let name = name(key, hash);
-    let Ok(file) = std::fs::File::open(folder.join("blobs").join(&name)) else { return Err(Fault::Missing) };
-    // An empty file is a placeholder (files kept on demand), not a damaged one.
-    if file.metadata().map_or(0, |m| m.len()) == 0 {
-        return Err(Fault::Missing);
-    }
+/// The sealed file at `path` opens whole to the content `hash`, checked as
+/// `get` checks it, nothing written: a copy fetched is kept only so
+/// (`remote::fetch_wanted`).
+pub fn check(path: &Path, key: &[u8; 32], hash: &str) -> Result<(), Fault> {
+    let Some(file) = present(path) else { return Err(Fault::Missing) };
     let mut reader = BufReader::new(file);
+    begins(&mut reader)?;
+    unseal(reader, key, &name(key, hash), hash, std::io::sink(), &|e| Fault::Local(format!("{}: {e}", path.display()))).map(|_| ())
+}
+
+/// A sealed file there, opened; none when it is not, or only its empty
+/// placeholder (files kept on demand), which is not a damaged one.
+fn present(path: &Path) -> Option<std::fs::File> {
+    let file = std::fs::File::open(path).ok()?;
+    (file.metadata().map_or(0, |m| m.len()) > 0).then_some(file)
+}
+
+/// A sealed file begins as one does.
+fn begins(reader: &mut impl Read) -> Result<(), Fault> {
     let mut magic = [0u8; MAGIC.len()];
     if reader.read_exact(&mut magic).is_err() || magic != MAGIC {
         return Err(Fault::Broken);
     }
+    Ok(())
+}
+
+fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(), Fault> {
+    let name = name(key, hash);
+    let Some(file) = present(&folder.join("blobs").join(&name)) else { return Err(Fault::Missing) };
+    let mut reader = BufReader::new(file);
+    begins(&mut reader)?;
     let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", target.display()));
     // Yours alone (0600 on Unix): it takes the place of the file here.
     let out = BufWriter::new(crate::share::new_private(target).map_err(local)?);
+    let out = unseal(reader, key, &name, hash, out, &local)?;
+    out.into_inner().map_err(|e| local(e.into_error()))?.sync_all().map_err(local)
+}
+
+/// A sealed file's pieces, past its beginning, opened into `out` and checked
+/// against the content's hash: `out` given back once all of it opened whole and right.
+fn unseal<W: Write>(mut reader: impl Read, key: &[u8; 32], name: &str, hash: &str, out: W, local: &dyn Fn(std::io::Error) -> Fault) -> Result<W, Fault> {
     let mut unpacked = flate2::write::GzDecoder::new(Hashing { inner: out, hasher: Sha256::new(), size: 0 });
     let cipher = XChaCha20Poly1305::new((&keys(key).0).into());
     // A write that fails on bad compressed data, or on data past its end, is
@@ -282,7 +332,7 @@ fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result
         let mut sealed = vec![0u8; length];
         reader.read_exact(&mut sealed).map_err(|_| Fault::Broken)?;
         let (nonce, body) = sealed.split_at(24);
-        let plain = cipher.decrypt(XNonce::from_slice(nonce), Payload { msg: body, aad: bound(&name, index, end).as_bytes() }).map_err(|_| Fault::Broken)?;
+        let plain = cipher.decrypt(XNonce::from_slice(nonce), Payload { msg: body, aad: bound(name, index, end).as_bytes() }).map_err(|_| Fault::Broken)?;
         if end {
             break;
         }
@@ -303,7 +353,7 @@ fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result
     if hex(&hasher.finalize()) != hash {
         return Err(Fault::Broken);
     }
-    inner.into_inner().map_err(|e| local(e.into_error()))?.sync_all().map_err(local)
+    Ok(inner)
 }
 
 /// The sealed files this device wrote that no record points to any more,
@@ -336,6 +386,75 @@ pub fn sweep(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTreeSet<St
         let _ = std::fs::remove_file(path);
         false
     });
+}
+
+/// The sealed files of the others' notes and papers this device waits for:
+/// their records came, and the files they name are neither in the folder nor
+/// fetched beside it yet (docs/database.md, "Sealed files fetched when
+/// waited for"). The exchange says which (`share::exchange`), the pull's
+/// fetch brings them from the folder's server (`remote::fetch_wanted`).
+/// Kept in `share/wanted.toml` beside the sharing's memory, never shared;
+/// none when nothing waits.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Wanted {
+    /// By the sealed file's name in the folder (`name`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub blobs: BTreeMap<String, Want>,
+    /// When a large one last came on a metered or slow connection (Unix seconds).
+    #[serde(default)]
+    pub large_at: i64,
+}
+
+/// A sealed file waited for.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Want {
+    /// Its content's hash: the copy fetched is checked against it (`check`).
+    #[serde(default)]
+    pub hash: String,
+    /// The file's size, as its record says it (bytes).
+    #[serde(default)]
+    pub size: u64,
+    /// Waited for since (Unix seconds).
+    #[serde(default)]
+    pub since: i64,
+    /// Fetches in a row that did not bring it whole, and none tried before `again` (Unix seconds).
+    #[serde(default)]
+    pub tries: u32,
+    #[serde(default)]
+    pub again: i64,
+}
+
+impl Wanted {
+    /// Beside the sharing's memory: `<state>/share/wanted.toml`.
+    pub fn path(memory: &Path) -> PathBuf {
+        memory.with_file_name("wanted.toml")
+    }
+
+    pub fn load(memory: &Path) -> Wanted {
+        std::fs::read_to_string(Wanted::path(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    }
+
+    /// Changed under its lock (the exchange and the fetch, in two processes
+    /// maybe), written only when it changed; taken out once nothing waits.
+    pub fn change(memory: &Path, change: impl FnOnce(&mut Wanted)) -> Result<(), String> {
+        let path = Wanted::path(memory);
+        sioul_core::filelock::with_lock(&path, || {
+            let before = Wanted::load(memory);
+            let mut wanted = before.clone();
+            change(&mut wanted);
+            if wanted == before {
+                return Ok(());
+            }
+            if wanted.blobs.is_empty() {
+                return match std::fs::remove_file(&path) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
+                    _ => Ok(()),
+                };
+            }
+            let text = toml::to_string(&wanted).map_err(|e| e.to_string())?;
+            crate::share::write_atomically(&path, format!("# Sioul: the others' sealed notes and papers this device waits for (docs/database.md). Never shared.\n{text}").as_bytes())
+        })
+    }
 }
 
 #[cfg(test)]
@@ -398,6 +517,32 @@ mod tests {
         let mut plain = <Hmac<Sha256> as Mac>::new_from_slice(&key).unwrap();
         plain.update(hash.as_bytes());
         assert_ne!(name(&key, &hash), hex(&plain.finalize().into_bytes()));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A copy fetched is checked as `get` checks it, nothing written: whole
+    /// and right, damaged, of another content, or only a placeholder.
+    #[test]
+    fn a_copy_is_checked_whole_without_being_written() {
+        let base = scratch("check");
+        let folder = base.join("vault");
+        let key = [6u8; 32];
+        let source = base.join("note.md");
+        std::fs::write(&source, "a note\n".repeat(300)).unwrap();
+        let (hash, _) = hash_file(&source).unwrap();
+        put(&folder, &key, &source, &hash).unwrap();
+        let sealed = path(&folder, &key, &hash);
+        assert_eq!(check(&sealed, &key, &hash), Ok(()));
+        assert_eq!(check(&sealed, &key, &"0".repeat(64)), Err(Fault::Broken), "another content");
+        let whole = std::fs::read(&sealed).unwrap();
+        let mut damaged = whole.clone();
+        damaged[whole.len() - 30] ^= 0x01;
+        std::fs::write(&sealed, &damaged).unwrap();
+        assert_eq!(check(&sealed, &key, &hash), Err(Fault::Broken));
+        std::fs::write(&sealed, b"").unwrap();
+        assert_eq!(check(&sealed, &key, &hash), Err(Fault::Missing));
+        assert_eq!(check(&base.join("none"), &key, &hash), Err(Fault::Missing));
+        assert_eq!(std::fs::read_dir(folder.join("blobs")).unwrap().count(), 1, "nothing written beside");
         let _ = std::fs::remove_dir_all(&base);
     }
 

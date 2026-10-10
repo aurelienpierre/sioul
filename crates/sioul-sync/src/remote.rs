@@ -411,6 +411,7 @@ fn usable(folder: &Path, memory: &Path) -> bool {
 pub fn forget(memory: &Path, folder: &Path) {
     let _ = std::fs::remove_dir_all(cache_of(memory));
     let _ = std::fs::remove_file(state_path(memory));
+    let _ = std::fs::remove_file(crate::blobs::Wanted::path(memory));
     let _ = std::fs::remove_file(Lane::Main.memory(memory));
     let _ = std::fs::remove_file(Lane::Urgent.memory(memory));
     if let Ok(mut attached) = ATTACHED.lock() {
@@ -1269,9 +1270,10 @@ pub struct Pulled {
     /// This device's files found otherwise there, by kind and size, for the
     /// log ("records 70708 here, 71234 there"; eight at most): never a name nor a content.
     pub differ: Vec<String>,
-    /// Large files left for later on a metered or slow connection (`send`).
+    /// Large files left for later on a metered or slow connection (`send`, `fetch_wanted`).
     pub paced: usize,
-    /// Files that did not go (too slow, cut), held back until their backoff (`send`).
+    /// Files that did not go (too slow, cut), held back until their backoff
+    /// (`send`); sealed files fetched that did not open whole (`fetch_wanted`).
     pub held: usize,
     /// The last failure, in detail (`send`).
     pub failure: Option<Failure>,
@@ -1318,7 +1320,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     let cache = cache_of(memory);
     // Switched off here: not a request; what the folder caught up with goes.
     if !state.fetching() {
-        tidy_cache(&state, folder, &cache, own);
+        tidy_cache(&state, folder, memory, own);
         pulled.problem = Some("off".into());
         return pulled;
     }
@@ -1347,7 +1349,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
         }
         Err(Stop::Failed(e)) => state.said = code(&e, &host),
     }
-    tidy_cache(&state, folder, &cache, own);
+    tidy_cache(&state, folder, memory, own);
     if state.said.is_empty() {
         // Gone through, begun at this moment of this process (`went_through_since`).
         if let Ok(mut all) = PULLED.lock()
@@ -1372,17 +1374,20 @@ static PULLED: Mutex<BTreeMap<PathBuf, (Instant, i64)>> = Mutex::new(BTreeMap::n
 /// synced folder caught up with, entries and notes the same as the folder's
 /// and, the backup switched off, all of them; records longer than the
 /// folder's stay until it catches up (read past its end here, a records'
-/// file gone would read as cut, and the doses would doubt for hours).
+/// file gone would read as cut, and the doses would doubt for hours). Sealed
+/// files fetched for a note waiting (`fetch_wanted`) go once it is written,
+/// once the synced folder holds them, or after a few days.
 pub fn tidy(memory: &Path, folder: &Path, own: &str) {
     let state = State::load(memory);
     if state.folder == shown(folder) && state.mode != MIRROR {
-        tidy_cache(&state, folder, &cache_of(memory), own);
+        tidy_cache(&state, folder, memory, own);
     }
 }
 
-fn tidy_cache(state: &State, folder: &Path, cache: &Path, own: &str) {
+fn tidy_cache(state: &State, folder: &Path, memory: &Path, own: &str) {
+    let cache = &cache_of(memory);
     // What a crash left half written, an hour later.
-    for dir in [cache.to_path_buf(), cache.join("devices")].into_iter().chain(std::fs::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).map(|e| e.path())) {
+    for dir in [cache.to_path_buf(), cache.join("devices"), cache.join("blobs")].into_iter().chain(std::fs::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).map(|e| e.path())) {
         crate::share::clean_leftovers(&dir);
     }
     for relative in cached_files(cache) {
@@ -1397,6 +1402,33 @@ fn tidy_cache(state: &State, folder: &Path, cache: &Path, own: &str) {
         if gone && !name.starts_with('.') {
             let _ = std::fs::remove_file(&fetched);
         }
+    }
+    // Sealed files fetched because a note or a paper waited for them
+    // (`fetch_wanted`): gone once the synced folder holds the same, once
+    // nothing waits for them (written), after `WANTED_KEPT_DAYS` whatever,
+    // and all of them with the backup switched off.
+    // One aged out is no longer waited for either, until an exchange that
+    // reads notes finds it missing again: never fetched every few days for a
+    // note nothing here writes (Android's leave to read them taken back).
+    let wanted = crate::blobs::Wanted::load(memory);
+    let mut aged: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(cache.join("blobs")).into_iter().flatten().filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Ok(meta) = entry.metadata() else { continue };
+        if name.starts_with('.') || !meta.is_file() {
+            continue;
+        }
+        let brought = std::fs::metadata(folder.join("blobs").join(&name)).is_ok_and(|here| here.len() == meta.len());
+        let old = meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() >= WANTED_KEPT_DAYS * 86_400);
+        if !state.fetching() || brought || old || !wanted.blobs.contains_key(&name) {
+            let _ = std::fs::remove_file(entry.path());
+            if old {
+                aged.push(name);
+            }
+        }
+    }
+    if !aged.is_empty() {
+        let _ = crate::blobs::Wanted::change(memory, |wanted| wanted.blobs.retain(|name, _| !aged.contains(name)));
     }
 }
 
@@ -1444,6 +1476,133 @@ fn cached_files(cache: &Path) -> Vec<String> {
     }
     out.extend(names(&cache.join("texts").join("send")).into_iter().map(|n| format!("texts/send/{n}")));
     out
+}
+
+// ---------------------------------------------------------------- sealed files waited for
+
+/// A step fetches at most this many sealed files waited for (`fetch_wanted`),
+const WANTED_FILES: usize = 16;
+/// and this many bytes of them, the first whatever its size.
+const WANTED_BYTES: u64 = 16 << 20;
+/// A file waited for under this size (a note, bytes) comes at once, the
+/// connection metered or slow too; a larger one (a paper) at most every ten minutes then.
+pub const SMALL_WANTED: u64 = 1 << 20;
+/// A sealed file fetched for a note waiting is kept this long at most (days),
+/// in case it was not written meanwhile (`tidy_cache`).
+const WANTED_KEPT_DAYS: u64 = 3;
+/// A sealed file waited for and not on the server yet (or cut on the way) is
+/// asked again within this long (seconds): it comes as soon as it is there.
+const WANTED_AGAIN: i64 = 5 * 60;
+
+/// The sealed files of the others' notes and papers this device waits for
+/// (`blobs::Wanted`: their records came, the files they name did not),
+/// fetched from the folder's server by their names, beside the synced folder
+/// (`overlay`'s `blobs/`, read by `blobs::get`), when the backup is found
+/// there under the same seal (docs/database.md, "Sealed files fetched when
+/// waited for"). Only those neither in the folder nor fetched yet, the
+/// smallest first, at most `WANTED_FILES` and `WANTED_BYTES` a step (the
+/// first whatever its size). On a metered or slow connection (`frugal`),
+/// the pace of what is sent (`send`): one of `SMALL_WANTED` or more at most
+/// every ten minutes, a note's at once. Each kept only once it opens whole to
+/// its content (`blobs::check`): one that does not is asked again after a
+/// while (`backoff`, up to an hour); one not on the server yet, within five
+/// minutes. No listing of the server's `blobs/`: the records name them. Never
+/// on the window's thread; one fetch at a time on this device.
+pub fn fetch_wanted(memory: &Path, folder: &Path, login: &Login, key: &[u8; 32], now: i64, frugal: bool) -> Pulled {
+    fetch_wanted_with(memory, folder, login, key, now, frugal, LIMITS)
+}
+
+/// Whether a sealed file waited for is due to be fetched (`fetch_wanted`):
+/// cheap, nothing of the network; none while nothing waits.
+pub fn wanted_due(memory: &Path, folder: &Path, now: i64) -> bool {
+    crate::blobs::Wanted::path(memory).exists() && !wanted_now(&crate::blobs::Wanted::load(memory), folder, &cache_of(memory).join("blobs"), now).is_empty()
+}
+
+/// The sealed files waited for that are neither in the folder nor fetched
+/// (`into`), and not asked lately in vain.
+fn wanted_now<'a>(wanted: &'a crate::blobs::Wanted, folder: &Path, into: &Path, now: i64) -> Vec<(&'a String, &'a crate::blobs::Want)> {
+    let here = |dir: &Path, name: &str| std::fs::metadata(dir.join(name)).is_ok_and(|m| m.len() > 0);
+    wanted.blobs.iter().filter(|(name, want)| want.again <= now && !here(&folder.join("blobs"), name) && !here(into, name)).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fetch_wanted_with(memory: &Path, folder: &Path, login: &Login, key: &[u8; 32], now: i64, frugal: bool, limits: Limits) -> Pulled {
+    let mut pulled = Pulled::default();
+    let state = State::load(memory);
+    if state.mode == MIRROR || !state.fetching() || !state.confirmed_for(folder) || state.account != login.account || !usable(folder, memory) {
+        pulled.problem = Some("not-confirmed".into());
+        return pulled;
+    }
+    let into = cache_of(memory).join("blobs");
+    sioul_core::filelock::with_lock(&memory.with_file_name("wanted.step"), || {
+        let wanted = crate::blobs::Wanted::load(memory);
+        let mut due = wanted_now(&wanted, folder, &into, now);
+        if due.is_empty() {
+            return pulled;
+        }
+        due.sort_by_key(|(name, want)| (want.size, want.since, *name));
+        let mut tried: BTreeMap<String, (u32, i64)> = BTreeMap::new();
+        let mut large_at = wanted.large_at;
+        let (mut count, mut budget) = (0, WANTED_BYTES);
+        let outcome = Server::new(login, limits).and_then(|server| {
+            for (name, want) in due {
+                if count >= WANTED_FILES || (count > 0 && want.size > budget) {
+                    break;
+                }
+                let large = want.size >= SMALL_WANTED;
+                if frugal && large && now - large_at < PACE {
+                    pulled.paced += 1;
+                    continue;
+                }
+                if frugal && large {
+                    large_at = now;
+                }
+                count += 1;
+                budget = budget.saturating_sub(want.size);
+                let path = into.join(name);
+                let failed = |soon: bool| {
+                    let tries = want.tries + 1;
+                    (tries, now + if soon { backoff(tries).min(WANTED_AGAIN) } else { backoff(tries) })
+                };
+                match server.download(&format!("{}{}", state.url, encode_path(&format!("blobs/{name}"))), &path, BLOB_LIMIT) {
+                    Ok(Some(size)) => match crate::blobs::check(&path, key, &want.hash) {
+                        Ok(()) => {
+                            pulled.fetched += 1;
+                            pulled.bytes += size;
+                            tried.insert(name.clone(), (0, 0));
+                        }
+                        // Not whole, or another content: never kept, asked again after a while.
+                        Err(fault) => {
+                            let _ = std::fs::remove_file(&path);
+                            pulled.held += 1;
+                            tried.insert(name.clone(), failed(!matches!(fault, crate::blobs::Fault::Broken)));
+                        }
+                    },
+                    // Not on the server yet (its writer's sync app has not sent it), or too large.
+                    Ok(None) => {
+                        tried.insert(name.clone(), failed(true));
+                    }
+                    Err(e) => {
+                        tried.insert(name.clone(), failed(true));
+                        return Err(e);
+                    }
+                }
+            }
+            Ok(())
+        });
+        if let Err(e) = outcome {
+            pulled.problem = Some(code(&e, &state.host()));
+        }
+        let _ = crate::blobs::Wanted::change(memory, |wanted| {
+            for (name, (tries, again)) in tried {
+                if let Some(want) = wanted.blobs.get_mut(&name) {
+                    (want.tries, want.again) = (tries, again);
+                }
+            }
+            wanted.large_at = wanted.large_at.max(large_at);
+        });
+        pulled
+    })
 }
 
 /// One pull: the server's folder looked through, what is newer there fetched.
@@ -5453,5 +5612,267 @@ mod tests {
         // Every dose there for the others.
         w.phone.exchange(&w.server, DUE + 3_700);
         assert!(w.phone.read("health-state.toml").contains("dose@60"));
+    }
+
+    // ------------------------------------------------ sealed files waited for
+
+    impl Device {
+        /// An exchange of its notes too (`files`), kept in `notes`.
+        fn exchange_notes(&self, folder: &Path, notes: &Path, now: i64) -> Outcome {
+            let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+            let stores = crate::share::stores_of(&config, &self.roots, &|part| part == "notes" || crate::share::shared_by_default(part, &config));
+            crate::share::exchange(&Sharing { folder, computer: &self.id, key: &KEY, memory: &self.memory, files: true, hurry: None }, &stores, now * 1000).unwrap()
+        }
+    }
+
+    /// The desk and the phone sharing their notes, the backup found for the
+    /// phone; the phone's sync app brings nothing down from now on (eDrive's
+    /// half-hour, 10 October 2026). Their notes' folders.
+    fn notes_world(name: &str) -> (World, PathBuf, PathBuf) {
+        let w = World::new(name);
+        let (desk_notes, phone_notes) = (w.base.join("desk-notes"), w.base.join("phone-notes"));
+        for dir in [&desk_notes, &phone_notes] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        w.desk.exchange_notes(&w.server, &desk_notes, DUE + 10);
+        w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 20);
+        w.up();
+        assert!(w.find(DUE + 30).confirmed_for(&w.phone_folder));
+        (w, desk_notes, phone_notes)
+    }
+
+    /// A note written on the desk, its client carrying it to the server at once: its sealed file's name there.
+    fn desk_writes(w: &World, desk_notes: &Path, file: &str, text: &str, now: i64) -> String {
+        put(desk_notes, file, text);
+        w.desk.exchange_notes(&w.server, desk_notes, now);
+        let name = crate::blobs::name(&KEY, &crate::blobs::hash_file(&desk_notes.join(file)).unwrap().0);
+        assert!(w.server.join("blobs").join(&name).exists());
+        name
+    }
+
+    fn fetch(w: &World, now: i64, frugal: bool) -> Pulled {
+        fetch_wanted_with(&w.phone.memory, &w.phone_folder, &w.fake.login(), &KEY, now, frugal, TEST)
+    }
+
+    fn blob_gets(w: &World) -> usize {
+        w.fake.seen().iter().filter(|l| l.starts_with("GET ") && l.contains("/blobs/")).count()
+    }
+
+    /// A note written on the desk reaches a phone whose sync app brings no
+    /// sealed file within one step: the pull brings the record, the exchange
+    /// says the sealed file it waits for, the fetch brings that file alone,
+    /// by its name, beside the synced folder, and the next exchange writes
+    /// the note. Nothing listed in the server's `blobs/`, nothing sent; the
+    /// copy fetched goes once the note is written.
+    #[test]
+    fn a_note_waited_for_is_fetched_by_its_name_and_written_within_one_step() {
+        let (w, desk_notes, phone_notes) = notes_world("wanted");
+        let name = desk_writes(&w, &desk_notes, "lease.md", "The lease, signed.\n", DUE + 60);
+        w.fake.forget_seen();
+        // The step: the pull, then the exchange.
+        let pulled = w.pull(DUE + 70);
+        assert!(pulled.problem.is_none(), "{pulled:?}");
+        let first = w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 71);
+        assert_eq!(first.waits.get("no-blob"), Some(&1), "{first:?}");
+        assert_eq!((first.received, first.pending), (0, 1));
+        assert!(!phone_notes.join("lease.md").exists());
+        let wanted = crate::blobs::Wanted::load(&w.phone.memory);
+        assert_eq!(wanted.blobs.keys().cloned().collect::<Vec<_>>(), [name.clone()]);
+        assert!(wanted.blobs[&name].size == 19 && wanted.blobs[&name].since == DUE + 71, "{wanted:?}");
+        assert!(wanted_due(&w.phone.memory, &w.phone_folder, DUE + 71));
+        // Its sealed file fetched, then the exchange again.
+        let fetched = fetch(&w, DUE + 72, false);
+        assert_eq!((fetched.fetched, fetched.problem.as_deref()), (1, None), "{fetched:?}");
+        assert!(w.cache().join("blobs").join(&name).exists());
+        assert!(!w.phone_folder.join("blobs").join(&name).exists(), "never written into the synced folder");
+        assert!(!wanted_due(&w.phone.memory, &w.phone_folder, DUE + 72), "fetched: no longer due");
+        let second = w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 73);
+        assert_eq!((second.received, second.pending), (1, 0), "{second:?}");
+        assert!(second.waits.is_empty() && second.problems.is_empty(), "{second:?}");
+        assert_eq!(std::fs::read_to_string(phone_notes.join("lease.md")).unwrap(), "The lease, signed.\n");
+        assert!(!crate::blobs::Wanted::path(&w.phone.memory).exists(), "nothing waits");
+        // By its name: one GET, no listing of `blobs/`, nothing sent.
+        assert_eq!(blob_gets(&w), 1, "{:?}", w.fake.seen());
+        for line in w.fake.seen() {
+            assert!(!(line.starts_with("PROPFIND") && line.contains("/blobs")), "{line}");
+            assert!(line.starts_with("PROPFIND ") || line.starts_with("GET "), "{line}");
+        }
+        // Nothing waits: no request.
+        w.fake.forget_seen();
+        assert_eq!(fetch(&w, DUE + 74, false), Pulled::default());
+        assert!(w.fake.seen().is_empty());
+        // Written: the copy fetched goes at the next tidying.
+        tidy(&w.phone.memory, &w.phone_folder, &w.phone.id);
+        assert!(!w.cache().join("blobs").join(&name).exists());
+    }
+
+    /// A copy fetched that does not open whole is never read: one damaged on
+    /// this phone is taken out and fetched again; one damaged on the server
+    /// is never kept, and asked again after a while; whole again there, it
+    /// comes, and the note is written.
+    #[test]
+    fn a_damaged_copy_fetched_is_refused_and_fetched_again() {
+        let (w, desk_notes, phone_notes) = notes_world("wanted-damaged");
+        let name = desk_writes(&w, &desk_notes, "lease.md", "The lease, signed.\n", DUE + 60);
+        assert!(w.pull(DUE + 70).problem.is_none());
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 71).waits.get("no-blob"), Some(&1));
+        // Damaged here, after it came: refused, taken out, waited for again.
+        let whole = std::fs::read(w.server.join("blobs").join(&name)).unwrap();
+        let mut damaged = whole.clone();
+        let middle = damaged.len() / 2;
+        damaged[middle] ^= 0x10;
+        put_bytes(&w.cache(), &format!("blobs/{name}"), &damaged);
+        let outcome = w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 72);
+        assert_eq!(outcome.waits.get("no-blob"), Some(&1), "{outcome:?}");
+        assert!(outcome.problems.is_empty(), "the copy fetched is not the folder's: nothing said damaged, {outcome:?}");
+        assert!(!w.cache().join("blobs").join(&name).exists());
+        assert!(!phone_notes.join("lease.md").exists());
+        // Damaged on the server: fetched, refused, never kept; not asked again at once.
+        std::fs::write(w.server.join("blobs").join(&name), &damaged).unwrap();
+        let fetched = fetch(&w, DUE + 73, false);
+        assert_eq!((fetched.fetched, fetched.held), (0, 1), "{fetched:?}");
+        assert!(!w.cache().join("blobs").join(&name).exists());
+        assert_eq!(crate::blobs::Wanted::load(&w.phone.memory).blobs[&name].again, DUE + 73 + 60);
+        w.fake.forget_seen();
+        assert_eq!(fetch(&w, DUE + 100, false).fetched, 0);
+        assert_eq!(blob_gets(&w), 0, "within its wait: not asked");
+        // Whole there again: it comes, the note is written.
+        std::fs::write(w.server.join("blobs").join(&name), &whole).unwrap();
+        assert_eq!(fetch(&w, DUE + 140, false).fetched, 1);
+        let outcome = w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 141);
+        assert_eq!(outcome.received, 1, "{outcome:?}");
+        assert_eq!(std::fs::read_to_string(phone_notes.join("lease.md")).unwrap(), "The lease, signed.\n");
+    }
+
+    /// A sealed file the sync app is late with is not on the server yet
+    /// either: asked again within minutes, never backed off for long; there,
+    /// it comes at the next ask.
+    #[test]
+    fn a_sealed_file_not_on_the_server_yet_is_asked_again_within_minutes() {
+        let (w, desk_notes, phone_notes) = notes_world("wanted-late");
+        let name = desk_writes(&w, &desk_notes, "lease.md", "The lease, signed.\n", DUE + 60);
+        let aside = w.base.join("aside-blob");
+        std::fs::rename(w.server.join("blobs").join(&name), &aside).unwrap();
+        assert!(w.pull(DUE + 70).problem.is_none());
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 71).waits.get("no-blob"), Some(&1));
+        let mut at = DUE + 72;
+        for _ in 0..8 {
+            let fetched = fetch(&w, at, false);
+            assert!(fetched.fetched == 0 && fetched.problem.is_none(), "{fetched:?}");
+            let again = crate::blobs::Wanted::load(&w.phone.memory).blobs[&name].again;
+            assert!(again > at && again <= at + WANTED_AGAIN, "{again} after {at}");
+            at = again;
+        }
+        std::fs::rename(&aside, w.server.join("blobs").join(&name)).unwrap();
+        assert_eq!(fetch(&w, at, false).fetched, 1);
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, at + 1).received, 1);
+    }
+
+    /// A copy fetched, then the same brought by the sync app into the synced
+    /// folder: the folder's is read, identical, and the copy fetched goes,
+    /// even while the note still waits.
+    #[test]
+    fn a_sealed_file_fetched_then_brought_by_the_sync_app_is_kept_once() {
+        let (w, desk_notes, phone_notes) = notes_world("wanted-brought");
+        let name = desk_writes(&w, &desk_notes, "lease.md", "The lease, signed.\n", DUE + 60);
+        assert!(w.pull(DUE + 70).problem.is_none());
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 71).waits.get("no-blob"), Some(&1));
+        assert_eq!(fetch(&w, DUE + 72, false).fetched, 1);
+        // The sync app catches up before the next exchange.
+        w.down();
+        let (fetched, brought) = (std::fs::read(w.cache().join("blobs").join(&name)).unwrap(), std::fs::read(w.phone_folder.join("blobs").join(&name)).unwrap());
+        assert_eq!(fetched, brought, "the same file");
+        tidy(&w.phone.memory, &w.phone_folder, &w.phone.id);
+        assert!(!w.cache().join("blobs").join(&name).exists(), "the synced folder holds it: the copy fetched goes");
+        assert!(crate::blobs::Wanted::path(&w.phone.memory).exists(), "the note still waits");
+        let outcome = w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 73);
+        assert_eq!(outcome.received, 1, "{outcome:?}");
+        assert!(!crate::blobs::Wanted::path(&w.phone.memory).exists());
+    }
+
+    /// What was fetched beside the folder never piles up: a copy no note
+    /// waits for goes, one kept past a few days goes and is no longer waited
+    /// for (an exchange that reads notes says it again if it still waits),
+    /// all of them with the backup switched off.
+    #[test]
+    fn the_sealed_files_fetched_are_pruned() {
+        let (w, desk_notes, phone_notes) = notes_world("wanted-pruned");
+        let name = desk_writes(&w, &desk_notes, "lease.md", "The lease, signed.\n", DUE + 60);
+        assert!(w.pull(DUE + 70).problem.is_none());
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 71).waits.get("no-blob"), Some(&1));
+        assert_eq!(fetch(&w, DUE + 72, false).fetched, 1);
+        let blobs = w.cache().join("blobs");
+        put(&blobs, "0123abcd", "a copy no note waits for");
+        tidy(&w.phone.memory, &w.phone_folder, &w.phone.id);
+        assert!(blobs.join(&name).exists(), "waited for: kept");
+        assert!(!blobs.join("0123abcd").exists());
+        set_mtime(&blobs.join(&name), SystemTime::now() - Duration::from_secs(4 * 86_400));
+        tidy(&w.phone.memory, &w.phone_folder, &w.phone.id);
+        assert!(!blobs.join(&name).exists(), "past a few days");
+        assert!(!crate::blobs::Wanted::path(&w.phone.memory).exists(), "no longer waited for");
+        w.fake.forget_seen();
+        assert_eq!(fetch(&w, DUE + 80, false).fetched, 0);
+        assert_eq!(blob_gets(&w), 0);
+        // Still waiting, said again by the next exchange that reads notes: fetched again.
+        assert_eq!(w.phone.exchange_notes(&w.phone_folder, &phone_notes, DUE + 81).waits.get("no-blob"), Some(&1));
+        assert_eq!(fetch(&w, DUE + 82, false).fetched, 1);
+        // The backup switched off: what was fetched goes.
+        State::choose(&w.phone.memory, |s| s.on = Some(false)).unwrap();
+        tidy(&w.phone.memory, &w.phone_folder, &w.phone.id);
+        assert!(!blobs.join(&name).exists());
+        assert_eq!(fetch(&w, DUE + 83, false).problem.as_deref(), Some("not-confirmed"));
+    }
+
+    /// Waited for: a step brings at most `WANTED_FILES` and `WANTED_BYTES`,
+    /// the smallest first; on a metered or slow connection a note's sealed
+    /// file comes at once, a large paper's at most every ten minutes.
+    #[test]
+    fn sealed_files_waited_for_come_bounded_and_paced() {
+        let (w, _, _) = notes_world("wanted-paced");
+        let made = |seed: u32, size: usize| {
+            let mut x = seed.wrapping_mul(2_654_435_761) | 1;
+            (0..size)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 17;
+                    x ^= x << 5;
+                    x as u8
+                })
+                .collect::<Vec<u8>>()
+        };
+        // Sealed on the server by hand, said waited for as an exchange says it.
+        let sealed = |seed: u32, size: usize| {
+            let source = w.base.join(format!("source-{seed}"));
+            std::fs::write(&source, made(seed, size)).unwrap();
+            let (hash, size) = crate::blobs::hash_file(&source).unwrap();
+            crate::blobs::put(&w.server, &KEY, &source, &hash).unwrap();
+            let name = crate::blobs::name(&KEY, &hash);
+            crate::blobs::Wanted::change(&w.phone.memory, |wanted| {
+                wanted.blobs.insert(name.clone(), crate::blobs::Want { hash, size, since: DUE, ..Default::default() });
+            })
+            .unwrap();
+            name
+        };
+        let papers = [sealed(1, 1_500_000), sealed(2, 1_200_000)];
+        let note = sealed(3, 3_000);
+        // Metered: the note and one paper; the other paper waits ten minutes.
+        let first = fetch(&w, DUE + 100, true);
+        assert_eq!((first.fetched, first.paced), (2, 1), "{first:?}");
+        let blobs = w.cache().join("blobs");
+        assert!(blobs.join(&note).exists() && blobs.join(&papers[1]).exists() && !blobs.join(&papers[0]).exists());
+        w.fake.forget_seen();
+        assert_eq!((fetch(&w, DUE + 400, true).fetched, blob_gets(&w)), (0, 0), "paced: not asked");
+        assert_eq!(fetch(&w, DUE + 100 + PACE, true).fetched, 1);
+        assert!(blobs.join(&papers[0]).exists());
+        // Many notes at once: `WANTED_FILES` a step, the rest at the next.
+        let notes: Vec<String> = (10..10 + WANTED_FILES as u32 + 2).map(|seed| sealed(seed, 500)).collect();
+        assert_eq!(fetch(&w, DUE + 2_000, true).fetched, WANTED_FILES);
+        assert_eq!(fetch(&w, DUE + 2_001, true).fetched, 2);
+        assert!(notes.iter().all(|n| blobs.join(n).exists()));
+        // `WANTED_BYTES` a step, the first whatever its size: on an unmetered connection, all at once otherwise.
+        let large: Vec<String> = (40..43).map(|seed| sealed(seed, 7 << 20)).collect();
+        assert_eq!(fetch(&w, DUE + 3_000, false).fetched, 2, "14 MiB, then the third past 16");
+        assert_eq!(fetch(&w, DUE + 3_001, false).fetched, 1);
+        assert!(large.iter().all(|n| blobs.join(n).exists()));
     }
 }
