@@ -91,6 +91,10 @@ pub struct Client {
     /// A Google account's address: its access token ends after an hour, and a
     /// refused one is asked again, once.
     google: Option<String>,
+    /// The servers the login goes to, by origin (`origin`), once the
+    /// account's homes are known (`keep_to`): an address a server's answer
+    /// names on any other is refused, never asked with the login.
+    own: Mutex<Option<Vec<String>>>,
 }
 
 /// What a server answered.
@@ -142,17 +146,41 @@ fn config(budget: &Budget) -> ureq::config::Config {
 
 impl Client {
     pub fn new(login: &str, password: &str) -> Client {
-        Client { agent: agent(&BUDGET), authorization: Mutex::new(format!("Basic {}", sioul_core::lines::base64_encode(format!("{login}:{password}").as_bytes()))), google: None }
+        Client {
+            agent: agent(&BUDGET),
+            authorization: Mutex::new(format!("Basic {}", sioul_core::lines::base64_encode(format!("{login}:{password}").as_bytes()))),
+            google: None,
+            own: Mutex::new(None),
+        }
     }
 
     /// A Google account, signed in with its access token.
     pub fn google(address: &str) -> Result<Client, SyncError> {
         let token = crate::google::access_token(address, false)?;
-        Ok(Client { agent: agent(&BUDGET), authorization: Mutex::new(format!("Bearer {token}")), google: Some(address.to_string()) })
+        Ok(Client { agent: agent(&BUDGET), authorization: Mutex::new(format!("Bearer {token}")), google: Some(address.to_string()), own: Mutex::new(None) })
     }
 
     pub fn is_google(&self) -> bool {
         self.google.is_some()
+    }
+
+    /// From now on, the login goes only to the servers of the account's
+    /// homes: their scheme, host and port. Every address of its address
+    /// books, calendars and items comes from a server's answer, which may
+    /// name any server; one on another is refused, and said
+    /// (`SyncError::Elsewhere`).
+    pub(crate) fn keep_to(&self, homes: &Homes) {
+        let own = [&homes.calendars, &homes.contacts].into_iter().flatten().filter_map(|home| origin(home)).collect();
+        *self.own.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(own);
+    }
+
+    /// Whether a request may go to `url` with the login: before the homes
+    /// are known, finding them (`discover`) keeps to the account's domain.
+    fn mine(&self, url: &str) -> Result<(), SyncError> {
+        match &*self.own.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+            Some(own) if !origin(url).is_some_and(|o| own.contains(&o)) => Err(SyncError::Elsewhere(url.to_string())),
+            _ => Ok(()),
+        }
     }
 
     fn send(&self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&str>) -> Result<Answer, SyncError> {
@@ -171,6 +199,7 @@ impl Client {
 
     fn send_once(&self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&str>) -> Result<Answer, SyncError> {
         allowed(url)?;
+        self.mine(url)?;
         let authorization = self.authorization.lock().map(|a| a.clone()).unwrap_or_default();
         let mut request = ureq::http::Request::builder().method(method).uri(url).header("Authorization", &authorization).header("User-Agent", "Sioul");
         for (name, value) in headers {
@@ -299,7 +328,26 @@ pub(crate) fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), 
     Ok((responses, token))
 }
 
+/// An address's origin, what a login is kept to: its scheme, host and port,
+/// in lowercase, the port written even when it is the scheme's own
+/// (`https://dav.example.org:443`). None without a scheme or a host.
+pub(crate) fn origin(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let scheme = scheme.to_ascii_lowercase();
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // What stands before an "@" is a login, not the host.
+    let at = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    let (host, port) = match at.rsplit_once(':') {
+        // "[2001:db8::1]" holds colons of its own.
+        Some((host, port)) if !port.contains(']') => (host, port.parse::<u16>().ok()?),
+        _ => (at, if scheme == "https" { 443 } else if scheme == "http" { 80 } else { return None }),
+    };
+    (!host.is_empty()).then(|| format!("{scheme}://{}:{port}", host.to_ascii_lowercase()))
+}
+
 /// `href` made absolute against `base` ("https://host/a/b/" + "/c/" → "https://host/c/").
+/// An absolute `href` is kept as it is, whatever its server: the login goes
+/// only to the account's own (`Client::keep_to`).
 pub fn absolute(base: &str, href: &str) -> String {
     if href.starts_with("http://") || href.starts_with("https://") {
         return href.to_string();
@@ -467,6 +515,11 @@ fn home(client: &Client, kind: Kind, start: &str) -> Result<Option<String>, Sync
                     .iter()
                     .find_map(|r| r.prop(DAV, "current-user-principal").and_then(|p| p.hrefs.first().cloned()))
                     .map_or_else(|| url.clone(), |href| absolute(&url, &href));
+                // The principal and the home are asked with the login too: on
+                // the domain started from only, as redirects (iCloud's homes
+                // are on another of its hosts).
+                let ours = |next: &str| if client.is_google() || domain(next) == domain(start) { Ok(()) } else { Err(SyncError::Elsewhere(next.to_string())) };
+                ours(&principal)?;
                 let (ns, name) = match kind {
                     Kind::Calendars => (CALDAV, "calendar-home-set"),
                     Kind::Contacts => (CARDDAV, "addressbook-home-set"),
@@ -476,7 +529,11 @@ fn home(client: &Client, kind: Kind, start: &str) -> Result<Option<String>, Sync
                     Kind::Contacts => "<a:addressbook-home-set/>",
                 };
                 let (_, responses) = client.propfind(&principal, "0", prop)?;
-                return Ok(responses.iter().find_map(|r| r.prop(ns, name).and_then(|p| p.hrefs.first().cloned())).map(|href| absolute(&principal, &href)));
+                let home = responses.iter().find_map(|r| r.prop(ns, name).and_then(|p| p.hrefs.first().cloned())).map(|href| absolute(&principal, &href));
+                if let Some(home) = &home {
+                    ours(home)?;
+                }
+                return Ok(home);
             }
             _ => return Ok(None),
         }
@@ -582,6 +639,7 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         homes = discover(client, account.address.as_deref().unwrap_or(login), account.url.as_deref(), None)?;
         homes.save(&account.id)?;
     }
+    client.keep_to(&homes);
     let mut report = Report::default();
     let mut refused = None;
     for (kind, home) in [(Kind::Contacts, &homes.contacts), (Kind::Calendars, &homes.calendars)] {
@@ -1592,6 +1650,10 @@ pub(crate) mod stand_in {
         /// A new item whose UID another item of its calendar holds is refused
         /// with this status, the other named in a `no-uid-conflict` or not.
         uid_clash: Option<(u16, bool)>,
+        /// Another server's address (`http://127.0.0.1:port`), which this one
+        /// names as a hostile one would: a calendar "theirs" there among its
+        /// own, and an item there in each of its calendars (`name_elsewhere`).
+        elsewhere: Option<String>,
     }
 
     impl Dav {
@@ -1639,6 +1701,11 @@ pub(crate) mod stand_in {
         /// §5.3.2.1), or not (Nextcloud's 400).
         pub(crate) fn one_uid_each(&self, status: u16, named: bool) {
             self.held().uid_clash = Some((status, named));
+        }
+
+        /// From now on, its answers name addresses on the server at `base` too.
+        pub(crate) fn name_elsewhere(&self, base: &str) {
+            self.held().elsewhere = Some(base.to_string());
         }
     }
 
@@ -1716,6 +1783,9 @@ pub(crate) mod stand_in {
                     for calendar in self.calendars.keys() {
                         out += &found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
                     }
+                    if let Some(base) = &self.elsewhere {
+                        out += &found(&format!("{base}/cal/theirs/"), "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>theirs</d:displayname>");
+                    }
                     multistatus(&out)
                 }
                 (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
@@ -1723,6 +1793,9 @@ pub(crate) mod stand_in {
                     let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
                     for (item, (etag, _)) in &self.calendars[*calendar] {
                         out += &found(&format!("/cal/{calendar}/{item}"), &format!("{}<d:resourcetype/>", etag_prop(etag)));
+                    }
+                    if let Some(base) = &self.elsewhere {
+                        out += &found(&format!("{base}/cal/{calendar}/there.ics"), &format!("{}<d:resourcetype/>", etag_prop("\"there\"")));
                     }
                     multistatus(&out)
                 }
@@ -1820,6 +1893,7 @@ pub(crate) mod stand_in {
 mod tests {
     use super::stand_in::{Dav, Fault, home, nth};
     use super::*;
+    use std::sync::Arc;
 
     /// A contacts-and-calendars account, the test's own.
     fn account(id: &str) -> Account {
@@ -1926,6 +2000,92 @@ mod tests {
         assert!(std::fs::read_to_string(dir.join("clash.ics")).unwrap().contains("SUMMARY:Theirs"));
         let report = sync_one(&client, "lost", &home, "home").unwrap();
         assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 0, 0), "{report:?}");
+    }
+
+    /// A server that only notes what it is asked, and with what login.
+    #[derive(Default)]
+    struct Elsewhere {
+        seen: Mutex<Vec<String>>,
+    }
+
+    impl stand_in::Server for Elsewhere {
+        fn misbehaves(&self, _: &stand_in::Request) -> Option<Fault> {
+            None
+        }
+
+        fn answer(&self, request: &stand_in::Request) -> stand_in::Reply {
+            self.seen.lock().unwrap().push(format!("{} {} {}", request.method, request.path, request.header("Authorization").unwrap_or("")));
+            stand_in::Reply::new(404, "")
+        }
+    }
+
+    /// A server whose answers name another server (a calendar there, an item
+    /// there, as a hostile or broken one would): the login never goes there,
+    /// the sync says so, and its own calendars sync all the same.
+    #[test]
+    fn the_login_stays_on_the_account_s_server() {
+        let account = account("kept-to");
+        let elsewhere = Arc::new(Elsewhere::default());
+        let there = stand_in::serve(elsewhere.clone());
+        // "mine" holds an item of its own; "only-there" none but the one it names there,
+        // which a multiget does not bring, so that it is asked for alone.
+        let (dav, home) = Dav::start(&["mine", "only-there"]);
+        Homes { calendars: Some(home.clone()), contacts: None }.save(&account.id).unwrap();
+        dav.put("mine", "new.ics", &event("new", "New here"));
+        dav.name_elsewhere(&there);
+        let result = sync_with(&client(), &account);
+        assert!(matches!(&result, Err(SyncError::Elsewhere(url)) if url.starts_with(&there)), "{result:?}");
+        assert!(folder("kept-to", "mine").join("new.ics").exists());
+        assert!(dav.seen().iter().any(|s| s.starts_with("REPORT /cal/only-there/")), "{:?}", dav.seen());
+        assert!(elsewhere.seen.lock().unwrap().is_empty(), "{:?}", elsewhere.seen.lock().unwrap());
+        // Said in words, with the address.
+        let said = result.unwrap_err().sentence(&sioul_core::i18n::Translator::new("en"), "Calendars");
+        assert!(said.starts_with("Calendars: the server named an address on another server") && said.contains(&there), "{said}");
+        // Its own server's addresses go through, whatever their spelling.
+        let kept = client();
+        kept.keep_to(&Homes { calendars: Some(home.clone()), contacts: None });
+        assert!(kept.mine(&format!("{home}mine/new.ics")).is_ok());
+        assert!(kept.mine(&home.replacen("http://", "HTTP://", 1)).is_ok());
+        assert!(kept.mine(&format!("{there}/cal/")).is_err());
+        assert!(kept.mine("https://127.0.0.1/cal/").is_err());
+        // Before the homes are known, finding them keeps to the domain started from.
+        let pointing = stand_in::serve(Arc::new(Pointing(format!("{}/principals/jane/", there.replace("127.0.0.1", "localhost")))));
+        assert!(matches!(super::home(&client(), Kind::Calendars, &format!("{pointing}/")), Err(SyncError::Elsewhere(url)) if url.contains("localhost")));
+        assert!(elsewhere.seen.lock().unwrap().is_empty());
+    }
+
+    /// A server whose principal is at the address it is given.
+    struct Pointing(String);
+
+    impl stand_in::Server for Pointing {
+        fn misbehaves(&self, _: &stand_in::Request) -> Option<Fault> {
+            None
+        }
+
+        fn answer(&self, _: &stand_in::Request) -> stand_in::Reply {
+            stand_in::Reply::new(
+                207,
+                format!(
+                    r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/</d:href><d:propstat><d:prop><d:current-user-principal><d:href>{}</d:href></d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                    self.0
+                ),
+            )
+        }
+    }
+
+    #[test]
+    fn origins_are_scheme_host_and_port() {
+        assert_eq!(origin("https://Dav.Example.org/remote.php/dav/").as_deref(), Some("https://dav.example.org:443"));
+        assert_eq!(origin("https://dav.example.org:443/x"), origin("https://dav.example.org/y?z"));
+        assert_ne!(origin("https://dav.example.org:8443/"), origin("https://dav.example.org/"));
+        assert_ne!(origin("http://dav.example.org/"), origin("https://dav.example.org/"));
+        // A login before the host is not the host.
+        assert_eq!(origin("https://dav.example.org@other.example.org/").as_deref(), Some("https://other.example.org:443"));
+        assert_eq!(origin("https://[2001:db8::1]:8443/").as_deref(), Some("https://[2001:db8::1]:8443"));
+        assert_eq!(origin("https://[2001:db8::1]/").as_deref(), Some("https://[2001:db8::1]:443"));
+        assert_eq!(origin("/cal/a/"), None);
+        assert_eq!(origin("https://dav.example.org:x/"), None);
+        assert_eq!(origin("ftp://dav.example.org/"), None);
     }
 
     /// F1: a calendar the server fails on, or whose connection drops, does

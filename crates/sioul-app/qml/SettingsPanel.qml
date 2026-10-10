@@ -94,6 +94,7 @@ Popup {
                 visible: panel.problem !== ""
                 Layout.fillWidth: true
                 text: panel.problem
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: panel.theme.warm
             }
@@ -118,6 +119,7 @@ Popup {
                         visible: row.newGroup
                         Layout.fillWidth: true
                         text: row.modelData.group
+                        textFormat: Text.PlainText
                         font.pixelSize: 16
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight

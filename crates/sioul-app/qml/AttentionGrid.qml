@@ -160,6 +160,7 @@ ColumnLayout {
 
             visible: false
             text: modelData.label
+            textFormat: Text.PlainText
             font.pixelSize: 13
         }
     }
@@ -173,6 +174,7 @@ ColumnLayout {
 
             visible: false
             text: modelData.label
+            textFormat: Text.PlainText
         }
     }
 
@@ -210,6 +212,7 @@ ColumnLayout {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     text: head.modelData.label
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     color: strip.view.theme.muted
                 }
@@ -219,6 +222,7 @@ ColumnLayout {
                     x: (head.width - height) / 2
                     y: head.height - 3
                     text: head.modelData.label
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     color: strip.view.theme.muted
                     transform: Rotation { angle: -90 }
@@ -252,6 +256,7 @@ ColumnLayout {
                 Layout.topMargin: row.index === 0 ? 4 : 12
                 Layout.bottomMargin: 2
                 text: row.modelData.group
+                textFormat: Text.PlainText
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
@@ -263,6 +268,7 @@ ColumnLayout {
                 Layout.preferredWidth: Math.max(grid.widths.reduce((sum, w) => sum + w, 0), 1)
                 Layout.topMargin: 4
                 text: row.modelData.label
+                textFormat: Text.PlainText
                 elide: Text.ElideRight
                 color: grid.theme.text
             }
@@ -273,6 +279,7 @@ ColumnLayout {
                     visible: grid.beside
                     Layout.preferredWidth: grid.nameWidth
                     text: row.modelData.label
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: grid.theme.text
                 }
@@ -293,7 +300,7 @@ ColumnLayout {
                         Accessible.role: Accessible.Button
                         Accessible.name: box.modelData.said
                         ToolTip.visible: box.hovered
-                        ToolTip.text: box.modelData.said
+                        ToolTip.text: grid.theme.plain(box.modelData.said)
                         ToolTip.delay: 600
 
                         background: Rectangle {
@@ -364,6 +371,7 @@ ColumnLayout {
                     // A long one wraps under itself on a narrow screen.
                     Layout.maximumWidth: Math.max(120, grid.width - 30)
                     text: legend.modelData.label
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.pixelSize: 12
                     color: grid.theme.muted

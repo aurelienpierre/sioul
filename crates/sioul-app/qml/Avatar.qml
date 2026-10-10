@@ -30,6 +30,7 @@ Item {
         Label {
             anchors.centerIn: parent
             text: avatar.initials
+            textFormat: Text.PlainText
             font.pixelSize: Math.round(avatar.size * 0.38)
             color: avatar.theme.muted
         }

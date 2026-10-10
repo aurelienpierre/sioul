@@ -323,7 +323,7 @@ Item {
             MenuItem {
                 visible: line.pauses.can_keep
                 height: visible ? implicitHeight : 0
-                text: line.sioul.textWith("free-menu-keep", "time", line.pauses.usual_end)
+                text: line.theme.plain(line.sioul.textWith("free-menu-keep", "time", line.pauses.usual_end))
                 onTriggered: line.sioul.keepUsualEnd()
             }
             MenuItem {

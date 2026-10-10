@@ -410,7 +410,9 @@ Item {
                         ComboBox {
                             id: listAccount
 
-                            model: JSON.parse(page.sioul.listAccounts())
+                            readonly property var accounts: JSON.parse(page.sioul.listAccounts())
+
+                            model: listAccount.accounts.map(a => page.theme.plain(a))
                         }
                         TextField {
                             id: listName
@@ -421,7 +423,7 @@ Item {
                         Button {
                             text: page.sioul.text("task-make-list")
                             highlighted: true
-                            onClicked: page.sioul.newList(listAccount.currentText, listName.text)
+                            onClicked: page.sioul.newList(listAccount.accounts[listAccount.currentIndex] || "", listName.text)
                         }
                     }
                 }
@@ -721,7 +723,7 @@ Item {
                                                                 delegate: MenuItem {
                                                                     required property int modelData
 
-                                                                    text: modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData))
+                                                                    text: page.theme.plain(modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData)))
                                                                     onTriggered: page.focusOn(page.shown.now.now.uid, modelData)
                                                                 }
                                                             }

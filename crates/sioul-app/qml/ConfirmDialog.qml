@@ -46,7 +46,7 @@ Dialog {
 
     footer: DialogButtonBox {
         Button {
-            text: dialog.action
+            text: dialog.theme.plain(dialog.action)
             DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
         }
         Button {

@@ -91,6 +91,7 @@ ColumnLayout {
                 visible: line.newFamily
                 Layout.fillWidth: true
                 text: line.modelData.unit
+                textFormat: Text.PlainText
                 font.pixelSize: 17
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
@@ -114,6 +115,7 @@ ColumnLayout {
                         Label {
                             Layout.fillWidth: true
                             text: line.modelData.group
+                            textFormat: Text.PlainText
                             font.weight: Font.DemiBold
                             wrapMode: Text.Wrap
                             color: tab.theme.text
@@ -121,6 +123,7 @@ ColumnLayout {
                         Label {
                             Layout.fillWidth: true
                             text: line.modelData.help
+                            textFormat: Text.PlainText
                             font.pixelSize: 13
                             wrapMode: Text.Wrap
                             color: tab.theme.muted
@@ -159,6 +162,7 @@ ColumnLayout {
         visible: tab.openNote !== null
         Layout.fillWidth: true
         text: tab.openNote === null ? "" : tab.openNote.group
+        textFormat: Text.PlainText
         font.pixelSize: 17
         font.weight: Font.DemiBold
         wrapMode: Text.Wrap
@@ -169,6 +173,7 @@ ColumnLayout {
         visible: tab.openNote !== null
         Layout.fillWidth: true
         text: tab.openNote === null ? "" : tab.openNote.label
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         lineHeight: 1.25
         color: tab.theme.text

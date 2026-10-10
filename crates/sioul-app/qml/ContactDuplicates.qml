@@ -397,13 +397,13 @@ Panel {
                     }
                     RadioButton {
                         Layout.fillWidth: true
-                        text: view.pair ? view.pair.first.name : ""
+                        text: view.theme.plain(view.pair ? view.pair.first.name : "")
                         checked: view.kept === "first"
                         onClicked: view.kept = "first"
                     }
                     RadioButton {
                         Layout.fillWidth: true
-                        text: view.pair ? view.pair.second.name : ""
+                        text: view.theme.plain(view.pair ? view.pair.second.name : "")
                         checked: view.kept === "second"
                         onClicked: view.kept = "second"
                     }

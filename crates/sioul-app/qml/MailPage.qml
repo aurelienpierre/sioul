@@ -778,6 +778,7 @@ Item {
                         visible: !page.draftsShown && !page.searchOpen
                         Layout.fillWidth: true
                         text: page.account
+                        textFormat: Text.PlainText
                         font.pixelSize: 12
                         elide: Text.ElideRight
                         color: page.theme.muted
@@ -998,11 +999,11 @@ Item {
                                 Layout.preferredHeight: 22
                                 Layout.preferredWidth: implicitContentWidth + 10
                                 padding: 2
-                                text: (row.threadOpen ? "▾ " : "▸ ") + row.modelData.size
+                                text: page.theme.plain((row.threadOpen ? "▾ " : "▸ ") + row.modelData.size)
                                 font.pixelSize: 12
                                 Accessible.name: page.sioul.textWith("ui-conversation", "n", String(row.modelData.size))
                                 ToolTip.visible: hovered
-                                ToolTip.text: page.sioul.textWith("ui-conversation", "n", String(row.modelData.size))
+                                ToolTip.text: page.theme.plain(page.sioul.textWith("ui-conversation", "n", String(row.modelData.size)))
                                 ToolTip.delay: 400
                                 onClicked: page.threadsOpen = page.toggle(page.threadsOpen, row.modelData.thread, !row.threadOpen)
                             }
@@ -1044,6 +1045,7 @@ Item {
                             }
                             Label {
                                 text: row.modelData.date
+                                textFormat: Text.PlainText
                                 color: page.theme.muted
                                 font.pixelSize: 13
                             }
@@ -1142,6 +1144,7 @@ Item {
                             }
                             Label {
                                 text: draftRow.modelData.date
+                                textFormat: Text.PlainText
                                 color: page.theme.muted
                                 font.pixelSize: 13
                             }
@@ -1168,7 +1171,7 @@ Item {
             id: readerLoader
 
             active: page.readerMade
-            visible: page.openKey !== "" && readerLoader.item !== null && readerLoader.item.reading !== null
+            visible: page.openKey !== "" && readerLoader.item !== null && readerLoader.item.showing
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
@@ -1342,7 +1345,7 @@ Item {
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
-                title: page.sioul.textWith("folder-new-title", "account", newFolderDialogForm.accountTitle)
+                title: page.theme.plain(page.sioul.textWith("folder-new-title", "account", newFolderDialogForm.accountTitle))
 
                 contentItem: TextField {
                     id: newFolderName

@@ -90,6 +90,7 @@ ColumnLayout {
         visible: section.shown.needs.meals_on && section.shown.gaps.length > 0
         Layout.fillWidth: true
         text: section.shown.gaps.join(" ")
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: section.theme.muted
@@ -216,7 +217,7 @@ ColumnLayout {
                     checkable: true
                     checked: alarm.mornings[morning.modelData]
                     flat: !checked
-                    text: alarm.wake.short[morning.modelData] || ""
+                    text: section.theme.plain(alarm.wake.short[morning.modelData] || "")
                     Accessible.name: alarm.wake.names[morning.modelData] || ""
                     onToggled: {
                         const on = checked
@@ -299,7 +300,7 @@ ColumnLayout {
         Button {
             visible: trial.answer !== null && trial.answer.fix !== ""
             flat: true
-            text: trial.answer === null ? "" : trial.answer.button
+            text: section.theme.plain(trial.answer === null ? "" : trial.answer.button)
             onClicked: section.sioul.wakeSettings(trial.answer.fix)
         }
     }
@@ -343,6 +344,7 @@ ColumnLayout {
 
         Label {
             text: timeField.label
+            textFormat: Text.PlainText
             color: section.theme.muted
         }
         TextField {
@@ -372,6 +374,7 @@ ColumnLayout {
 
         Label {
             text: minutesField.label
+            textFormat: Text.PlainText
             color: section.theme.muted
         }
         SpinBox {
@@ -414,7 +417,7 @@ ColumnLayout {
                 TextField {
                     Layout.fillWidth: true
                     text: editor.block.name || ""
-                    placeholderText: editor.usual
+                    placeholderText: section.theme.plain(editor.usual)
                     Accessible.name: section.sioul.text("needs-name-hint")
                     onEditingFinished: {
                         if (text.trim() !== (editor.block.name || ""))

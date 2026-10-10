@@ -166,7 +166,7 @@ fn clean_html(html: &str) -> String {
         .url_relative(ammonia::UrlRelative::Deny)
         .link_rel(None)
         .strip_comments(true)
-        .clean(html)
+        .clean(&shallow(html))
         .to_string();
     let mut out = cleaned;
     // Tables laid out a page, not data: one block after another reads better.
@@ -180,17 +180,159 @@ fn clean_html(html: &str) -> String {
     for level in 1..=6 {
         out = out.replace(&format!("<h{level}>"), "<p><b>").replace(&format!("</h{level}>"), "</b></p>");
     }
-    // Spacer blocks and runs of line breaks, which layouts use for room.
-    loop {
-        let before = out.len();
-        for empty in ["<div></div>", "<div>&nbsp;</div>", "<div> </div>", "<p></p>", "<p>&nbsp;</p>", "<span></span>", "<br><br><br>"] {
-            out = out.replace(empty, if empty.starts_with("<br>") { "<br><br>" } else { "" });
+    without_spacers(&out).trim().to_string()
+}
+
+/// How deep elements may stand in one another in a message's HTML before the
+/// deeper ones are left out, their words kept (`shallow`). Mail nests a few
+/// dozen levels; web browsers stop at 512 too.
+const DEEPEST: usize = 512;
+
+/// Elements that hold nothing: never left open.
+const VOID: &[&str] = &[
+    "area", "base", "basefont", "bgsound", "br", "col", "embed", "frame", "hr", "image", "img", "input", "keygen", "link", "meta", "param",
+    "source", "track", "wbr",
+];
+
+/// The start tags before which the parser closes an open paragraph.
+const CLOSES_P: &[&str] = &[
+    "address", "article", "aside", "blockquote", "center", "details", "dialog", "dir", "div", "dl", "fieldset", "figcaption", "figure",
+    "footer", "header", "hgroup", "main", "menu", "nav", "ol", "p", "search", "section", "summary", "ul", "h1", "h2", "h3", "h4", "h5",
+    "h6", "pre", "listing", "xmp", "plaintext", "li", "dd", "dt", "hr",
+];
+
+const HEADINGS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
+
+/// The end tags that close what the parser closes for them on the way, and
+/// what, from the innermost out: a paragraph before a block's end, a list
+/// item before its list's, a cell and a row before their table's. Any other
+/// end tag closes the innermost element only, when it is the one it names.
+fn closed_on_the_way(name: &str) -> &'static [&'static [&'static str]] {
+    match name {
+        "ul" | "ol" => &[&["p"], &["li"]],
+        "dl" => &[&["p"], &["dd", "dt"]],
+        "table" => &[&["p"], &["td", "th"], &["tr"], &["tbody", "thead", "tfoot"]],
+        "tbody" | "thead" | "tfoot" => &[&["p"], &["td", "th"], &["tr"]],
+        "tr" => &[&["p"], &["td", "th"]],
+        "address" | "article" | "aside" | "blockquote" | "center" | "details" | "dialog" | "dir" | "div" | "fieldset" | "figcaption"
+        | "figure" | "footer" | "header" | "hgroup" | "listing" | "main" | "menu" | "nav" | "pre" | "search" | "section" | "summary"
+        | "li" | "dd" | "dt" | "td" | "th" | "caption" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => &[&["p"]],
+        _ => &[],
+    }
+}
+
+/// What a start tag closes first when it is innermost, from the innermost
+/// out: the next list item closes the last, the next cell the last.
+fn closed_before(name: &str) -> &'static [&'static [&'static str]] {
+    match name {
+        "li" => &[&["li"]],
+        "dd" | "dt" => &[&["dd", "dt"]],
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => &[HEADINGS],
+        "option" | "optgroup" => &[&["option"]],
+        "td" | "th" => &[&["td", "th"]],
+        "tr" => &[&["td", "th"], &["tr"]],
+        "tbody" | "thead" | "tfoot" => &[&["td", "th"], &["tr"], &["tbody", "thead", "tfoot"]],
+        _ => &[],
+    }
+}
+
+/// The HTML with no element deeper than `DEEPEST`, in one pass. The parser
+/// under ammonia looks through the elements still open at most tags, so
+/// elements nested by the thousand cost it the square of their number
+/// (32,000 empty blocks in one another: 3 seconds; a megabyte of them,
+/// minutes). This follows the elements the parser keeps open without ever
+/// counting one closed before the parser closes it: an element closes on
+/// its own end tag when it is the innermost, or when the parser surely
+/// closes it then (`closed_on_the_way`, `closed_before`). Sloppy mail at
+/// worst seems deeper than it is; the parser, which also opens elements of
+/// its own (a table's body and row), never holds more than a few times what
+/// is counted. A start tag past the depth is left out, a space in
+/// its place, so that no word runs into the next and no "<" before it starts
+/// a tag; its words stay.
+fn shallow(html: &str) -> std::borrow::Cow<'_, str> {
+    let mut open: Vec<String> = Vec::new();
+    // Only once a tag is left out: what came before it, copied.
+    let mut out: Option<String> = None;
+    let mut copied = 0;
+    let mut from = 0;
+    while let Some(lt) = html[from..].find('<').map(|at| from + at) {
+        let after = &html.as_bytes()[lt + 1..];
+        let (end, name_at) = match after {
+            [b'/', c, ..] if c.is_ascii_alphabetic() => (true, lt + 2),
+            [c, ..] if c.is_ascii_alphabetic() => (false, lt + 1),
+            _ => {
+                from = lt + 1;
+                continue;
+            }
+        };
+        // A tag never ended is words, for the parser too.
+        let Some(gt) = html[name_at..].find('>').map(|at| name_at + at) else { break };
+        from = gt + 1;
+        let name_end = html[name_at..gt].find(|c: char| c.is_ascii_whitespace() || c == '/').map_or(gt, |at| name_at + at);
+        let name = html[name_at..name_end].to_ascii_lowercase();
+        // The parser keeps one of each, whatever is written.
+        if matches!(name.as_str(), "html" | "head" | "body") {
+            continue;
         }
-        if out.len() == before {
-            break;
+        let mut keep = open.len();
+        let close = |sets: &[&[&str]], keep: &mut usize| {
+            for set in sets {
+                if *keep > 0 && set.contains(&open[*keep - 1].as_str()) {
+                    *keep -= 1;
+                }
+            }
+        };
+        if end {
+            close(closed_on_the_way(&name), &mut keep);
+            if keep > 0 && open[keep - 1] == name {
+                open.truncate(keep - 1);
+            }
+            continue;
+        }
+        if CLOSES_P.contains(&name.as_str()) {
+            close(&[&["p"]], &mut keep);
+        }
+        close(closed_before(&name), &mut keep);
+        if VOID.contains(&name.as_str()) {
+            open.truncate(keep);
+        } else if keep < DEEPEST {
+            open.truncate(keep);
+            open.push(name);
+        } else {
+            let out = out.get_or_insert_with(|| String::with_capacity(html.len()));
+            out.push_str(&html[copied..lt]);
+            out.push(' ');
+            copied = gt + 1;
         }
     }
-    out.trim().to_string()
+    match out {
+        None => std::borrow::Cow::Borrowed(html),
+        Some(mut out) => {
+            out.push_str(&html[copied..]);
+            std::borrow::Cow::Owned(out)
+        }
+    }
+}
+
+/// Spacer blocks and runs of line breaks, which layouts use for room, taken
+/// out in one pass: a block is dropped as its end is written, when nothing
+/// but a space stands in it, so a block left empty by the spacers it held goes
+/// too (`<div><p></p></div>`), and a third line break in a row goes. Done by
+/// replacing them over the whole text until none was left, the work grew with
+/// the square of the nesting: 8,000 empty blocks in one another took seconds.
+fn without_spacers(html: &str) -> String {
+    const EMPTY: [&str; 6] = ["<div></div>", "<div>&nbsp;</div>", "<div> </div>", "<p></p>", "<p>&nbsp;</p>", "<span></span>"];
+    let mut out = String::with_capacity(html.len());
+    // Each piece ends with a ">", the only place a spacer can end.
+    for piece in html.split_inclusive('>') {
+        out.push_str(piece);
+        if let Some(empty) = EMPTY.iter().find(|empty| out.ends_with(*empty)) {
+            out.truncate(out.len() - empty.len());
+        } else if out.ends_with("<br><br><br>") {
+            out.truncate(out.len() - "<br>".len());
+        }
+    }
+    out
 }
 
 /// Plain text as HTML: escaped, its web links clickable and shown by their site
@@ -202,7 +344,7 @@ pub fn linkify(text: &str) -> String {
             out.push_str("<br>");
         }
         let mut rest = line;
-        while let Some(at) = ["https://", "http://"].iter().filter_map(|p| rest.find(p)).min() {
+        while let Some(at) = next_link(rest) {
             out.push_str(&escape(&rest[..at]));
             let url_len = rest[at..].find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | ')' | ']')).unwrap_or(rest.len() - at);
             let url = rest[at..at + url_len].trim_end_matches(['.', ',', ';', ':', '!', '?']);
@@ -214,6 +356,16 @@ pub fn linkify(text: &str) -> String {
         out.push_str(&escape(rest));
     }
     out
+}
+
+/// Where the next web address starts: "http://" or "https://". One search
+/// for both: searched apart, a line of a thousand "https://" links had its
+/// whole rest read again for an "http://" before each of them.
+fn next_link(text: &str) -> Option<usize> {
+    text.match_indices("http").map(|(at, _)| at).find(|&at| {
+        let after = &text[at + "http".len()..];
+        after.starts_with("://") || after.starts_with("s://")
+    })
 }
 
 fn escape(text: &str) -> String {
@@ -286,17 +438,74 @@ pub fn parts(text: &str) -> Vec<Part> {
     parts_with(&crate::words::current().quotes, text)
 }
 
-/// Whether one of a list's words, folded, is what `test` asks of a folded text.
-fn any_folded(list: &[String], test: impl Fn(&str) -> bool) -> bool {
-    list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && test(&w))
+/// The words of `words::Quotes`, folded once for a whole text, not once per line.
+struct Folded {
+    openings: Vec<String>,
+    header_names: Vec<String>,
+    from_names: Vec<String>,
+    enough_names: Vec<String>,
+    wrote: Vec<String>,
+}
+
+impl Folded {
+    fn of(q: &crate::words::Quotes) -> Folded {
+        let fold = |list: &[String]| list.iter().map(|w| crate::words::folded(w)).filter(|w| !w.is_empty()).collect();
+        Folded { openings: fold(&q.openings), header_names: fold(&q.header_names), from_names: fold(&q.from_names), enough_names: fold(&q.enough_names), wrote: fold(&q.wrote) }
+    }
+}
+
+/// What `parts_with` looks ahead for, read once from the end of the text: each
+/// line's header field, where each run of header fields ends and whether it
+/// names a subject or a date, and the next line that is not blank. Looked for
+/// again from every line, they made the work grow with the square of the
+/// lines: 8,000 lines of "From: x" took half a minute.
+struct Ahead {
+    fields: Vec<Option<(String, String)>>,
+    run_end: Vec<usize>,
+    enough: Vec<bool>,
+    next_filled: Vec<Option<usize>>,
+}
+
+impl Ahead {
+    fn of(words: &Folded, lines: &[&str]) -> Ahead {
+        let n = lines.len();
+        let fields: Vec<Option<(String, String)>> = lines.iter().map(|line| header_field(words, line)).collect();
+        let (mut run_end, mut enough, mut next_filled) = (vec![n; n + 1], vec![false; n + 1], vec![None; n + 1]);
+        let mut filled = None;
+        for i in (0..n).rev() {
+            if let Some((name, _)) = &fields[i] {
+                run_end[i] = run_end[i + 1];
+                enough[i] = enough[i + 1] || words.enough_names.contains(&crate::words::folded(name));
+            } else {
+                run_end[i] = i;
+            }
+            next_filled[i] = filled;
+            if !lines[i].trim().is_empty() {
+                filled = Some(i);
+            }
+        }
+        Ahead { fields, run_end, enough, next_filled }
+    }
+
+    /// A block of repeated headers starting at `i`: at least a sender and a
+    /// subject or a date among consecutive "Name: value" lines. Returns them
+    /// and the line after.
+    fn header_block_at(&self, words: &Folded, i: usize) -> Option<(Vec<(String, String)>, usize)> {
+        let (name, _) = self.fields.get(i)?.as_ref()?;
+        let end = self.run_end[i];
+        (words.from_names.contains(&crate::words::folded(name)) && end - i >= 2 && self.enough[i]).then(|| (self.fields[i..end].iter().flatten().cloned().collect(), end))
+    }
 }
 
 /// Cuts a message's text into parts with these words (`words::Quotes`): the
 /// lines that open a forwarded or answered message, the header names of a
 /// repeated header block, the endings of an attribution, in any language
-/// your correspondents' mail programs write them.
+/// your correspondents' mail programs write them. Each line is read a set
+/// number of times, whatever comes after it (`Ahead`).
 pub fn parts_with(q: &crate::words::Quotes, text: &str) -> Vec<Part> {
+    let words = Folded::of(q);
     let lines: Vec<&str> = text.lines().collect();
+    let ahead = Ahead::of(&words, &lines);
     let mut parts: Vec<Part> = Vec::new();
     let mut i = 0;
     // After the headers of a message answered or forwarded, the rest is that message.
@@ -305,17 +514,17 @@ pub fn parts_with(q: &crate::words::Quotes, text: &str) -> Vec<Part> {
         let line = lines[i];
         let lower = line.trim().to_lowercase();
         let folded = crate::words::folded(line);
-        if any_folded(&q.openings, |o| folded.starts_with(o)) || is_separator(&lower) && header_block_at(q, &lines, i + 1).is_some() {
+        if words.openings.iter().any(|o| folded.starts_with(o.as_str())) || is_separator(&lower) && ahead.header_block_at(&words, i + 1).is_some() {
             i += 1;
             continue;
         }
-        if let Some((fields, next)) = header_block_at(q, &lines, i) {
+        if let Some((fields, next)) = ahead.header_block_at(&words, i) {
             parts.push(Part::Headers { fields });
             quoted_below = quoted_below.saturating_add(1);
             i = next;
             continue;
         }
-        if is_attribution(q, &lines, i) {
+        if is_attribution(&words, &folded, ahead.next_filled[i].map(|j| lines[j])) {
             take_previous_line_into_attribution(q, &mut parts, line);
             i += 1;
             continue;
@@ -396,38 +605,16 @@ fn is_separator(lower: &str) -> bool {
 }
 
 /// "Name: value", with a header name, possibly with a space before the colon.
-fn header_field(q: &crate::words::Quotes, line: &str) -> Option<(String, String)> {
+fn header_field(words: &Folded, line: &str) -> Option<(String, String)> {
     let (name, value) = line.split_once(':')?;
     let key = crate::words::folded(name.trim().trim_start_matches(['*', '>', ' ']));
-    any_folded(&q.header_names, |n| n == key).then(|| (name.trim().trim_matches('*').trim().to_string(), value.trim().to_string()))
+    words.header_names.contains(&key).then(|| (name.trim().trim_matches('*').trim().to_string(), value.trim().to_string()))
 }
 
-/// A block of repeated headers starting at `i`: at least a sender and a subject
-/// or a date among consecutive "Name: value" lines. Returns them and the line after.
-fn header_block_at(q: &crate::words::Quotes, lines: &[&str], i: usize) -> Option<(Vec<(String, String)>, usize)> {
-    let first = header_field(q, lines.get(i)?)?;
-    let first_name = crate::words::folded(&first.0);
-    if !any_folded(&q.from_names, |n| n == first_name) {
-        return None;
-    }
-    let mut fields = vec![first];
-    let mut j = i + 1;
-    while let Some(field) = lines.get(j).and_then(|l| header_field(q, l)) {
-        fields.push(field);
-        j += 1;
-    }
-    let names: Vec<String> = fields.iter().map(|(n, _)| crate::words::folded(n)).collect();
-    let enough = names.iter().any(|name| any_folded(&q.enough_names, |n| n == name));
-    (fields.len() >= 2 && enough).then_some((fields, j))
-}
-
-/// "On Thu, 1 Oct 2026, Jean wrote:" or "Le jeu. 1 oct. 2026, Jean a écrit :",
-/// right before a quote.
-fn is_attribution(q: &crate::words::Quotes, lines: &[&str], i: usize) -> bool {
-    let line = crate::words::folded(lines[i]);
-    let ends = any_folded(&q.wrote, |e| line.ends_with(e));
-    let next = lines[i + 1..].iter().find(|l| !l.trim().is_empty());
-    ends && next.is_some_and(|l| quote_depth(l).0 > 0)
+/// "On Thu, 1 Oct 2026, Jean wrote:" or "Le jeu. 1 oct. 2026, Jean a écrit :"
+/// (`folded`), right before a quote (`next`, the next line that is not blank).
+fn is_attribution(words: &Folded, folded: &str, next: Option<&str>) -> bool {
+    words.wrote.iter().any(|e| folded.ends_with(e.as_str())) && next.is_some_and(|l| quote_depth(l).0 > 0)
 }
 
 /// Gmail cuts long attributions in two: "Le jeu. 1 oct. 2026 à 12:03, Jean <" and
@@ -544,5 +731,101 @@ mod tests {
         assert_eq!(file_name(Some("COM1"), 0), "_COM1");
         assert_eq!(file_name(Some("scan.pdf. . "), 0), "scan.pdf");
         assert_eq!(file_name(Some("Console.pdf"), 0), "Console.pdf");
+    }
+
+    #[test]
+    fn spacers_go_in_one_pass() {
+        assert_eq!(without_spacers("<div><p></p><span></span> </div>x"), "x");
+        assert_eq!(without_spacers("<div><div>&nbsp;</div></div><p>&nbsp;</p>"), "");
+        assert_eq!(without_spacers("a<br><br><br><br><br>b"), "a<br><br>b");
+        assert_eq!(without_spacers("<br><div></div><br><br>"), "<br><br>");
+        assert_eq!(without_spacers("<div>x</div><div>  </div><p>y</p>"), "<div>x</div><div>  </div><p>y</p>");
+        // A spacer split by the end of a run of breaks, and one with words around it.
+        assert_eq!(without_spacers("<div><br><br><br></div>"), "<div><br><br></div>");
+        assert_eq!(without_spacers("x<span></span>y"), "xy");
+    }
+
+    /// How long a pass may take over one of the texts below (64 to 176 KB, made
+    /// to cost the most): linear, it takes milliseconds; quadratic, as it was,
+    /// from 10 seconds to a minute. Wide, for a busy machine, and wider for a
+    /// debug build.
+    fn bound() -> std::time::Duration {
+        std::time::Duration::from_secs(if cfg!(debug_assertions) { 20 } else { 2 })
+    }
+
+    fn timed<T>(what: &str, f: impl FnOnce() -> T) -> T {
+        let start = std::time::Instant::now();
+        let out = f();
+        let took = start.elapsed();
+        eprintln!("{what}: {took:?}");
+        assert!(took < bound(), "{what}: {took:?}, more than {:?}", bound());
+        out
+    }
+
+    #[test]
+    fn hostile_html_reads_in_linear_time() {
+        // Empty blocks nested in one another: each pass of the old spacer loop took one level off.
+        let n = 16_000;
+        let html = format!("<html><body>{}{}</body></html>", "<div>".repeat(n), "</div>".repeat(n));
+        let safe = timed("nested empty blocks", || safe_html(&html));
+        assert!(safe.main.matches("<div>").count() <= DEEPEST, "{}", safe.main.len());
+        // The same through the reader's entry point, as a message.
+        let raw = format!("From: a@example.org\r\nTo: b@example.org\r\nSubject: hi\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{html}\r\n");
+        let reading = timed("a message of nested empty blocks", || read_bytes(raw.as_bytes())).unwrap();
+        assert!(reading.html.is_some_and(|h| h.main.matches("<div>").count() <= DEEPEST));
+        // Ways to keep elements open in the parser that a count of start and
+        // end tags would think closed: end tags it ignores, cells outside a
+        // table, items in one another, formatting it opens again.
+        let n = 40_000;
+        for (what, hostile) in [
+            ("ignored end tags", "<div></span>".repeat(n)),
+            ("blocks around an ignored end", format!("{}<object>{}", "<div>".repeat(400), "</div>".repeat(400)).repeat(n / 800)),
+            ("cells outside a table", "<td><li><dd></td>".repeat(n)),
+            ("a list closed by a list it is not in", "<select><ul></select><li><dd></ul>".repeat(n / 4)),
+            ("formatting", "<b id=x1><i id=x2><p></b>x".repeat(n / 2)),
+            ("paragraphs in buttons", "<button><p>".repeat(n)),
+            ("self-closed blocks", "<div/>".repeat(n)),
+            ("end tags with nothing to close, deep", format!("{}{}", "<div>".repeat(600), "</p>".repeat(n))),
+        ] {
+            let safe = timed(what, || safe_html(&hostile));
+            assert!(safe.main.len() <= hostile.len(), "{what}");
+        }
+    }
+
+    #[test]
+    fn deep_html_is_cut_and_mail_is_not() {
+        // Mail as mail programs write it, sloppy ones too: every element kept.
+        let sloppy = "<ul><li>a<li>b</ul><p>c<p>d<div><p>e</div><table><tr><td>f<td>g<tr><td>h</table><dl><dt>i<dd>j</dl><p>k<hr>l<br>".repeat(2_000);
+        assert!(matches!(shallow(&sloppy), std::borrow::Cow::Borrowed(_)));
+        let nested = format!("{}x{}", "<table><tbody><tr><td><div><p>".repeat(60), "</p></div></td></tr></tbody></table>".repeat(60));
+        assert!(matches!(shallow(&nested), std::borrow::Cow::Borrowed(_)));
+        // Deeper than `DEEPEST`, start tags go, their words and the end tags stay.
+        let deep = format!("{}x{}", "<div class=\"a\">".repeat(1_000), "</div>".repeat(1_000));
+        let cut = shallow(&deep);
+        assert_eq!(cut.matches("<div").count(), DEEPEST);
+        assert!(cut.contains(" x</div>") && cut.matches("</div>").count() == 1_000);
+        // A "<" left before a tag taken out never starts another.
+        let tricky = format!("{}<<div>img src=x>", "<div>".repeat(DEEPEST));
+        assert!(shallow(&tricky).ends_with("< img src=x>"));
+    }
+
+    #[test]
+    fn hostile_plain_text_reads_in_linear_time() {
+        // Lines that each start a header block: the old scan read every line after each.
+        let headers = "From: x\n".repeat(8_000);
+        let read = timed("header lines", || parts(&headers));
+        assert!(!read.is_empty());
+        // One word, then blank lines: each looked for the next line that is not blank.
+        let blanks = format!("x{}", "\n".repeat(160_000));
+        assert_eq!(timed("blank lines", || parts(&blanks)), [Part::Text { text: "x".into() }]);
+        // Attributions, each before many blank lines and a quote.
+        let attributions = format!("{}\n> quoted", "Jean wrote:\n\n\n\n\n\n\n\n".repeat(8_000));
+        assert!(timed("attributions", || parts(&attributions)).iter().any(|p| matches!(p, Part::Quote { .. })));
+        // A real header block among them is still one.
+        let block = format!("{headers}Subject: y\n\nText.\n");
+        assert!(timed("header lines and a subject", || parts(&block)).iter().any(|p| matches!(p, Part::Headers { fields } if fields.len() == 8_001)));
+        // A line of links: each looked for "http://" over the rest of the line.
+        let links = "https://example.org/a ".repeat(40_000);
+        assert_eq!(timed("a line of links", || linkify(&links)).matches("<a href=").count(), 40_000);
     }
 }

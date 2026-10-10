@@ -95,18 +95,13 @@ Rectangle {
         icon.height: 16
         icon.color: bar.theme.text
         icon.name: windowButton.modelData === "minimize" ? "window-minimize" : windowButton.modelData === "close" ? "window-close" : windowButton.maximized || windowButton.full ? "window-restore" : "window-maximize"
-        text: {
-            if (windowButton.modelData === "minimize")
-                return bar.sioul.text("titlebar-minimize")
-            if (windowButton.modelData === "close")
-                return bar.sioul.text(bar.window.trayHolds ? "titlebar-close-tray" : "titlebar-close")
-            if (windowButton.full)
-                return bar.sioul.text("titlebar-full-screen-leave")
-            return bar.sioul.text(windowButton.maximized ? "titlebar-restore" : "titlebar-maximize")
-        }
+        text: bar.sioul.text(windowButton.modelData === "minimize" ? "titlebar-minimize"
+                             : windowButton.modelData === "close" ? (bar.window.trayHolds ? "titlebar-close-tray" : "titlebar-close")
+                             : windowButton.full ? "titlebar-full-screen-leave"
+                             : windowButton.maximized ? "titlebar-restore" : "titlebar-maximize")
         Accessible.name: windowButton.text
         ToolTip.visible: windowButton.hovered
-        ToolTip.text: windowButton.text
+        ToolTip.text: bar.theme.plain(windowButton.text)
         ToolTip.delay: 600
         onClicked: {
             if (windowButton.modelData === "minimize")

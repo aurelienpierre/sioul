@@ -76,7 +76,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
-    title: dialog.account !== null ? (dialog.google ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : ""
+    title: dialog.theme.plain(dialog.account !== null ? (dialog.google ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : "")
     onClosed: password.text = ""
 
     Connections {

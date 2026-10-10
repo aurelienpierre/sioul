@@ -182,6 +182,7 @@ ColumnLayout {
             text: (form.stepsShown ? "▾  " : "▸  ") + form.sioul.text("ui-google-steps")
             contentItem: Label {
                 text: stepsButton.text
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: form.theme.text
             }

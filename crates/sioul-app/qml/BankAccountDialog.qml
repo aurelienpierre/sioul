@@ -198,7 +198,7 @@ Dialog {
 
                     CheckBox {
                         Layout.fillWidth: true
-                        text: dialog.theme.plain(reserveRow.modelData.title) + (reserveRow.modelData.delay_days > 0 ? "  · " + dialog.sioul.textArgs("reserve-delay-short", JSON.stringify({ days: reserveRow.modelData.delay_days })) : "  · " + dialog.sioul.text("reserve-at-once"))
+                        text: dialog.theme.plain(reserveRow.modelData.title) + (reserveRow.modelData.delay_days > 0 ? "  · " + dialog.sioul.textArgs("reserve-delay-short", JSON.stringify({ days: Number(reserveRow.modelData.delay_days) })) : "  · " + dialog.sioul.text("reserve-at-once"))
                         checked: reserveRow.on
                         onToggled: dialog.toppedUpBy = dialog.toggled(dialog.toppedUpBy, reserveRow.modelData.id, checked)
                     }

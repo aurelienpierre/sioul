@@ -49,6 +49,7 @@ ColumnLayout {
         visible: filter.about !== ""
         Layout.fillWidth: true
         text: filter.about
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         lineHeight: 1.25

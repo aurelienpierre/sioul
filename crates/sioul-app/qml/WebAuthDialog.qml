@@ -57,7 +57,7 @@ Dialog {
     modal: true
     closePolicy: Popup.NoAutoClose
     width: Math.min(440, (parent ? parent.width : 440) - 2 * dialog.theme.gap)
-    title: dialog.request ? dialog.sioul.textWith("webauth-title", "site", dialog.request.relyingPartyId) : ""
+    title: dialog.theme.plain(dialog.request ? dialog.sioul.textWith("webauth-title", "site", dialog.request.relyingPartyId) : "")
 
     Connections {
         target: dialog.request
@@ -99,6 +99,7 @@ Dialog {
             visible: dialog.step === WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin
             Layout.fillWidth: true
             text: !dialog.pin ? "" : dialog.pin.reason === WebEngineWebAuthUxRequest.PinEntryReason.Challenge ? dialog.sioul.textWith("webauth-pin", "left", String(dialog.pin.remainingAttempts)) : dialog.sioul.textWith(dialog.pin.reason === WebEngineWebAuthUxRequest.PinEntryReason.Set ? "webauth-pin-set" : "webauth-pin-change", "length", String(dialog.pin.minPinLength))
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: dialog.theme.text
         }

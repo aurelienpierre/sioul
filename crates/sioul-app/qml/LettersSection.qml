@@ -97,6 +97,7 @@ ColumnLayout {
                     }
                     Label {
                         text: card.modelData.received
+                        textFormat: Text.PlainText
                         font.pixelSize: 12
                         color: section.theme.muted
                     }
@@ -160,7 +161,7 @@ ColumnLayout {
                         readonly property var choices: [{ id: "", title: section.sioul.text("letters-no-project") }].concat(section.shown.projects)
 
                         Layout.preferredWidth: 170
-                        model: choices.map(c => c.title)
+                        model: choices.map(c => section.theme.plain(c.title))
                         currentIndex: Math.max(0, choices.findIndex(c => c.id === card.modelData.project))
                     }
                     Button {

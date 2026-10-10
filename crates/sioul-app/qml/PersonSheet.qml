@@ -57,7 +57,7 @@ Dialog {
     modal: true
     width: Math.min(520, (parent ? parent.width : 520) - 2 * sheet.theme.gap)
     height: Math.min(implicitHeight, (parent ? parent.height : 640) - 2 * sheet.theme.gap)
-    title: sheet.shown.title
+    title: sheet.theme.plain(sheet.shown.title)
     objectName: "personSheet"
 
     contentItem: ScrollView {
@@ -91,7 +91,7 @@ Dialog {
                 ComboBox {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    model: (sheet.shown.choices || []).map(c => c.label)
+                    model: (sheet.shown.choices || []).map(c => sheet.theme.plain(c.label))
                     currentIndex: Math.max(0, (sheet.shown.choices || []).findIndex(c => c.value === sheet.shown.choice))
                     Accessible.name: sheet.sioul.text("person-standing")
                     onActivated: index => sheet.change("list", sheet.shown.choices[index].value)
@@ -171,6 +171,7 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
                 text: sheet.shown.calls_title || ""
+                textFormat: Text.PlainText
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
                 color: sheet.theme.accent
@@ -205,6 +206,7 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
                 text: sheet.shown.texts_title || ""
+                textFormat: Text.PlainText
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
                 color: sheet.theme.accent

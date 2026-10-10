@@ -101,7 +101,7 @@ LineButton {
                 visible: applet.on
                 height: visible ? implicitHeight : 0
                 enabled: false
-                text: applet.calls.line
+                text: applet.theme.plain(applet.calls.line)
             }
             MenuItem {
                 visible: applet.on

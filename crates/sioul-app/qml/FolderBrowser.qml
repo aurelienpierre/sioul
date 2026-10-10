@@ -107,7 +107,7 @@ Dialog {
                 width: ListView.view.width
                 icon.name: "folder"
                 icon.color: browser.theme.text
-                text: row.modelData.sealed ? row.modelData.name + "  ·  " + browser.sioul.text("folder-browser-shared") : row.modelData.name
+                text: browser.theme.plain(row.modelData.sealed ? row.modelData.name + "  ·  " + browser.sioul.text("folder-browser-shared") : row.modelData.name)
                 onClicked: browser.go(row.modelData.path)
             }
         }

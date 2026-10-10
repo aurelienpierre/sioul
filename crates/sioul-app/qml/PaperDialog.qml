@@ -86,7 +86,7 @@ Dialog {
                 id: kindChoice
 
                 Layout.fillWidth: true
-                model: form.kinds.map(k => k.label)
+                model: form.kinds.map(k => form.theme.plain(k.label))
             }
             Label {
                 text: form.sioul.text("papers-title")

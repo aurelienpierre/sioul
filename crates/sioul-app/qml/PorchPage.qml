@@ -466,7 +466,7 @@ Item {
 
                                             required property var modelData
 
-                                            text: page.sioul.textWith("overlap-open", "title", openOne.modelData.title)
+                                            text: page.theme.plain(page.sioul.textWith("overlap-open", "title", openOne.modelData.title))
                                             onClicked: page.window.openThing({ kind: "event", key: openOne.modelData.key, uri: "" })
                                         }
                                     }
@@ -606,6 +606,7 @@ Item {
                                     Layout.topMargin: missedDose.index === 0 ? 0 : 6
                                     Layout.bottomMargin: 4
                                     text: missedDose.modelData.question
+                                    textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     font.weight: Font.DemiBold
                                     color: page.theme.text
@@ -699,6 +700,7 @@ Item {
                     Label {
                         Layout.fillWidth: true
                         text: money.bank === null ? "" : [money.bank.week, money.bank.attention > 0 ? page.sioul.textArgs("bank-attention", JSON.stringify({ count: money.bank.attention })) : ""].filter(t => t !== "").join(" ")
+                        textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: page.theme.muted
                     }
@@ -780,6 +782,7 @@ Item {
                             Label {
                                 visible: !!codeCard.modelData.validity
                                 text: codeCard.modelData.validity || ""
+                                textFormat: Text.PlainText
                                 color: page.theme.muted
                             }
                         }
@@ -796,6 +799,7 @@ Item {
                     Label {
                         Layout.fillWidth: true
                         text: page.view.closed || ""
+                        textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 19
                         lineHeight: 1.3
@@ -942,6 +946,7 @@ Item {
                                     Label {
                                         visible: lane.modelData.counted !== false
                                         text: page.countWords(lane.modelData.items.length)
+                                        textFormat: Text.PlainText
                                         color: page.theme.muted
                                     }
                                 }
@@ -1001,6 +1006,7 @@ Item {
 
                                             Layout.fillWidth: true
                                             text: modelData
+                                            textFormat: Text.PlainText
                                             wrapMode: Text.Wrap
                                             lineHeight: 1.25
                                             color: page.theme.text
@@ -1121,6 +1127,7 @@ Item {
                                         }
                                         Label {
                                             text: row.modelData.date
+                                            textFormat: Text.PlainText
                                             color: page.theme.muted
                                             font.pixelSize: 13
                                         }
@@ -1245,7 +1252,7 @@ Item {
         Loader {
             id: reader
 
-            visible: page.opened !== null && reader.item !== null && reader.item.reading !== null
+            visible: page.opened !== null && reader.item !== null && reader.item.showing
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0

@@ -256,7 +256,7 @@ Item {
                             width: Math.max(4, (bars.width - bars.spacing * ((page.shown ? page.shown.bars.length : 1) - 1)) / Math.max(1, page.shown ? page.shown.bars.length : 1))
                             height: bars.height
                             ToolTip.visible: hover.hovered && bar.modelData.minutes > 0
-                            ToolTip.text: page.barTip(bar.modelData)
+                            ToolTip.text: page.theme.plain(page.barTip(bar.modelData))
                             ToolTip.delay: 200
 
                             HoverHandler {

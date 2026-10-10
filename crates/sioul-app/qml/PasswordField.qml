@@ -33,7 +33,7 @@ TextField {
         text: field.sioul.text(field.shown ? "password-hide" : "password-show")
         Accessible.name: eye.text
         ToolTip.visible: eye.hovered
-        ToolTip.text: eye.text
+        ToolTip.text: field.sioul.text(field.shown ? "password-hide" : "password-show")
         ToolTip.delay: 400
         onClicked: field.shown = !field.shown
     }

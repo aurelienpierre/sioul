@@ -90,7 +90,7 @@ Dialog {
                 id: kindChoice
 
                 Layout.fillWidth: true
-                model: form.kinds.map(k => k.label)
+                model: form.kinds.map(k => form.theme.plain(k.label))
                 onActivated: index => {
                     if (!form.noticeTouched)
                         noticeBox.value = form.kinds[index].notice

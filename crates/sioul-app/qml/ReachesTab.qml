@@ -215,7 +215,7 @@ ColumnLayout {
                 required property var modelData
 
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                text: presetButton.modelData.label
+                text: tab.theme.plain(presetButton.modelData.label)
                 checkable: true
                 checked: presetButton.modelData.current
                 flat: !presetButton.modelData.current
@@ -332,6 +332,7 @@ ColumnLayout {
                     Label {
                         Layout.fillWidth: true
                         text: card.modelData.label + (card.modelData.now ? " · " + tab.sioul.text("attention-now-mark") : "")
+                        textFormat: Text.PlainText
                         font.pixelSize: 16
                         font.weight: Font.DemiBold
                         wrapMode: Text.Wrap
@@ -409,6 +410,7 @@ ColumnLayout {
         Label {
             Layout.fillWidth: true
             text: tab.openCard ? tab.openCard.label : ""
+            textFormat: Text.PlainText
             font.pixelSize: 17
             font.weight: Font.DemiBold
             wrapMode: Text.Wrap
@@ -439,6 +441,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: 10
                     text: timeRow.modelData.group
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                     wrapMode: Text.Wrap
@@ -487,6 +490,7 @@ ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.leftMargin: 6
                 text: line.name
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: tab.theme.text
             }
@@ -501,6 +505,7 @@ ColumnLayout {
             Label {
                 Layout.preferredWidth: Math.round(line.width * 0.42)
                 text: tab.valueWords(line.row, line.cell.value)
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: line.fixed ? tab.theme.muted : tab.theme.text
             }
@@ -553,6 +558,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.leftMargin: 6
                         text: rowButton.modelData.group
+                        textFormat: Text.PlainText
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                         color: tab.theme.accent
@@ -565,6 +571,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 6
                             text: rowButton.modelData.label + (rowButton.modelData.changed ? "  •" : "")
+                            textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: tab.theme.text
                         }
@@ -590,7 +597,7 @@ ColumnLayout {
 
         Button {
             flat: true
-            text: "‹  " + values.row.group + " · " + values.row.label
+            text: tab.theme.plain("‹  " + values.row.group + " · " + values.row.label)
             onClicked: tab.rowOpen = ""
         }
         Note {
@@ -628,7 +635,7 @@ ColumnLayout {
 
                 required property var modelData
 
-                text: channelButton.modelData.label
+                text: tab.theme.plain(channelButton.modelData.label)
                 checkable: true
                 checked: tab.channel === channelButton.modelData.id
                 flat: !checked
@@ -733,6 +740,7 @@ ColumnLayout {
                 visible: listRow.newGroup
                 Layout.fillWidth: true
                 text: listRow.modelData.group
+                textFormat: Text.PlainText
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
@@ -755,7 +763,7 @@ ColumnLayout {
             Button {
                 visible: listRow.modelData.key.startsWith("contact:")
                 flat: true
-                text: tab.sioul.textWith("attention-sheet-title", "name", listRow.modelData.label)
+                text: tab.theme.plain(tab.sioul.textWith("attention-sheet-title", "name", listRow.modelData.label))
                 icon.name: "go-next"
                 icon.color: tab.theme.text
                 onClicked: {

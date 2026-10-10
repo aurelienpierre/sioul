@@ -92,7 +92,7 @@ ColumnLayout {
                 required property var modelData
 
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                text: offer.modelData.label
+                text: setup.theme.plain(offer.modelData.label)
                 onClicked: setup.act("open", { key: offer.modelData.key })
             }
         }
@@ -236,6 +236,7 @@ ColumnLayout {
         visible: setup.listShown && setup.none !== "" && search.text.trim().length >= 2
         Layout.fillWidth: true
         text: setup.none
+        textFormat: Text.PlainText
         color: setup.theme.muted
     }
     Repeater {

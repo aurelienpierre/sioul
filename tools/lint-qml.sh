@@ -4,7 +4,9 @@
 #
 # Lints the window's QML as one module: the qmldir and types the build
 # generated, with the pages beside them, so qmllint knows Sioul's own types.
-# Run `cargo build -p sioul-app` first.
+# Run `cargo build --release -p sioul-app` first. Then checks that words from outside
+# are drawn as plain text, never guessed rich (tools/check-plain-text.py).
+# Exits with 1 when qmllint fails or a binding does.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 # The newest build's types, debug or release: each feature set builds in its own folder.
@@ -25,4 +27,7 @@ cp "$repo"/crates/sioul-app/qml-desktop/*.qml "$module/qml-desktop/"
 cd "$module"
 # Fedora names the Qt 6 tool qmllint-qt6; a bare qmllint may be Qt 5's.
 qmllint=$(command -v qmllint-qt6 || command -v qmllint6 || echo /usr/lib64/qt6/bin/qmllint)
-"$qmllint" -I "$lint" qml/*.qml qml-desktop/*.qml
+status=0
+"$qmllint" -I "$lint" qml/*.qml qml-desktop/*.qml || status=$?
+python3 "$repo/tools/check-plain-text.py" || status=1
+exit "$status"

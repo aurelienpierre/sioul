@@ -68,7 +68,7 @@ ColumnLayout {
                 required property var modelData
 
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                text: offer.modelData.label
+                text: setup.theme.plain(offer.modelData.label)
                 onClicked: {
                     setup.sioul.openDnd(offer.modelData.key)
                     setup.reload()

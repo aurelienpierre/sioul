@@ -34,7 +34,7 @@ Sioul ne chiffre pas lui-même les fichiers de votre appareil : votre système
 
 ### Chaque connexion chiffrée {#every-connection-encrypted}
 
-Votre courrier, vos agendas, vos contacts, votre coffre Bitwarden et les recherches de clés de chiffrement voyagent toujours chiffrés, et le certificat de chaque serveur est vérifié avec ceux de votre système. Aucun réglage ne permet de les envoyer en clair. La connexion à Google se fait sur la page de Google, dans votre navigateur habituel, avec ce que Google y demande (votre mot de passe, votre clé de sécurité, une clé d’accès) : Sioul ne voit jamais votre mot de passe Google, et reçoit la réponse de Google sur votre seul appareil.
+Votre courrier, vos agendas, vos contacts, votre coffre Bitwarden et les recherches de clés de chiffrement voyagent toujours chiffrés, et le certificat de chaque serveur est vérifié avec ceux de votre système. Aucun réglage ne permet de les envoyer en clair. Le mot de passe de vos agendas et de vos contacts ne va qu’aux serveurs de votre fournisseur : une adresse sur un autre serveur, donnée dans leurs réponses, n’est jamais demandée. La connexion à Google se fait sur la page de Google, dans votre navigateur habituel, avec ce que Google y demande (votre mot de passe, votre clé de sécurité, une clé d’accès) : Sioul ne voit jamais votre mot de passe Google, et reçoit la réponse de Google sur votre seul appareil.
 
 ### Chaque message vérifié {#every-message-checked}
 
@@ -56,6 +56,8 @@ Les résultats sont gardés avec le message, sous un nom que seule votre copie d
 ### Lire sans risque {#reading-safely}
 
 **Le courrier HTML** est montré avec ses paragraphes, ses listes, son texte en gras et ses liens seulement : pas d’images, pas de styles, pas de scripts, pas de formulaires. Rien ne se charge depuis le réseau, jamais, et aucun réglage ne le permet : aucune image de pistage n’apprend que vous avez ouvert un message. Sioul n’envoie jamais d’accusé de lecture non plus.
+
+**Les noms et les titres** qui viennent avec votre courrier et vos agendas (le nom d’un expéditeur, un objet, le titre d’un événement d’un agenda partagé ou d’une invitation, le nom d’un contact ou d’un dossier) sont montrés comme de simples mots, partout où ils paraissent : la balise d’une image cachée dans l’un d’eux s’affiche telle qu’elle est écrite, et ne charge rien. Un message, si grand ou si étrangement construit soit-il, s’ouvre à part, la fenêtre le disant en attendant, et ne la bloque jamais.
 
 **Les liens** montrent leur adresse complète avant de s’ouvrir : sous le pointeur, ou après un premier toucher sur un écran tactile. Seuls les liens web et de courrier s’ouvrent. Un lien de courrier commence un message vers sa seule adresse, sans l’objet ni le texte qu’il remplirait pour vous.
 

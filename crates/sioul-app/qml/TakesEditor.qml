@@ -86,7 +86,7 @@ ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.minimumWidth: 60
                 text: row.amount
-                placeholderText: editor.usual !== "" ? editor.usual : editor.sioul.text("health-take-amount-hint")
+                placeholderText: editor.theme.plain(editor.usual !== "" ? editor.usual : editor.sioul.text("health-take-amount-hint"))
                 Accessible.name: editor.sioul.text("health-take-amount-hint")
                 onTextEdited: {
                     rows.setProperty(row.index, "amount", own.text)

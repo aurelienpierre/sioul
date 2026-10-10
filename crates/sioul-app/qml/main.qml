@@ -513,7 +513,7 @@ SioulWindow {
         railTip.active = true
         const tip = railTip.item as ToolTip
         tip.parent = button
-        tip.text = button.tip
+        tip.text = button.theme.plain(button.tip)
         tip.delay = ms > 0 ? 0 : 500
         tip.timeout = ms
         tip.open()

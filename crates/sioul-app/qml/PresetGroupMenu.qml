@@ -18,8 +18,9 @@ SioulMenu {
 
     signal pin(var rows)
 
-    // "&" marks a shortcut in a menu: "&&" is one ("PG&E").
-    title: groupMenu.group.name.replace(/&/g, "&&")
+    // "&" marks a shortcut in a menu: "&&" is one ("PG&E"). A word joiner
+    // after each "<" keeps a name plain text (Theme.qml's `plain`).
+    title: groupMenu.group.name.replace(/</g, "<\u2060").replace(/&/g, "&&")
 
     MenuItem {
         text: groupMenu.sioul.textWith("site-presets-pin-all", "count", String(groupMenu.group.sites.filter(r => !r.kept).length))
@@ -36,7 +37,7 @@ SioulMenu {
 
             required property var modelData
 
-            text: siteLine.modelData.name.replace(/&/g, "&&") + (siteLine.modelData.kept ? "  ✓" : "")
+            text: siteLine.modelData.name.replace(/</g, "<\u2060").replace(/&/g, "&&") + (siteLine.modelData.kept ? "  ✓" : "")
             enabled: !siteLine.modelData.kept
             onTriggered: groupMenu.pin([siteLine.modelData])
         }

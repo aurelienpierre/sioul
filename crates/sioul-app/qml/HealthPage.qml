@@ -777,7 +777,7 @@ Item {
                                     visible: row.isDose && scroll.day.today
                                     flat: row.modelData.taken !== ""
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                                    text: row.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", row.modelData.taken) : page.sioul.text(row.modelData.late && !row.modelData.choose ? "health-taken-when" : "health-taken")
+                                    text: page.theme.plain(row.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", row.modelData.taken) : page.sioul.text(row.modelData.late && !row.modelData.choose ? "health-taken-when" : "health-taken"))
                                     icon.name: row.modelData.taken !== "" ? "task-complete" : ""
                                     icon.color: page.theme.text
                                     onClicked: {
@@ -810,7 +810,7 @@ Item {
                                     visible: row.editable
                                     flat: true
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                                    text: row.modelData.off ? page.sioul.text("need-put-back") : page.sioul.textWith("need-later-n", "minutes", String(page.shown.later))
+                                    text: page.theme.plain(row.modelData.off ? page.sioul.text("need-put-back") : page.sioul.textWith("need-later-n", "minutes", String(page.shown.later)))
                                     onClicked: page.change(scroll.day.date, row.modelData.key, row.modelData.off ? "on" : "later")
                                 }
                                 // On a past day, a night not over (after midnight): its alarm alone.
@@ -821,7 +821,7 @@ Item {
                                     text: "⋯"
                                     Accessible.name: page.sioul.textWith("need-menu", "name", row.modelData.name)
                                     ToolTip.visible: hovered
-                                    ToolTip.text: Accessible.name
+                                    ToolTip.text: page.theme.plain(Accessible.name)
                                     ToolTip.delay: 400
                                     onClicked: page.openMenu(scroll.day, row.modelData, more)
                                 }
@@ -941,6 +941,7 @@ Item {
                             Layout.topMargin: missed.index === 0 ? 0 : 6
                             Layout.bottomMargin: 4
                             text: missed.modelData.question
+                            textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             font.weight: Font.DemiBold
                             color: page.theme.text
@@ -1029,7 +1030,7 @@ Item {
                 MenuItem {
                     visible: !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
-                    text: page.sioul.textWith("need-later-n", "minutes", String(page.shown.later))
+                    text: page.theme.plain(page.sioul.textWith("need-later-n", "minutes", String(page.shown.later)))
                     onTriggered: menu.act("later")
                 }
                 MenuItem {
@@ -1056,7 +1057,7 @@ Item {
                 MenuItem {
                     visible: menu.item !== null && menu.item.kind === "sleep" && (menu.item.alarm || "") !== "" && !menu.off
                     height: visible ? implicitHeight : 0
-                    text: menu.item === null ? "" : page.sioul.textWith(menu.item.alarm_skipped ? "wake-unskip" : "wake-skip", "time", menu.item.alarm || "")
+                    text: page.theme.plain(menu.item === null ? "" : page.sioul.textWith(menu.item.alarm_skipped ? "wake-unskip" : "wake-skip", "time", menu.item.alarm || ""))
                     onTriggered: menu.act(menu.item.alarm_skipped ? "alarm" : "no-alarm")
                 }
                 MenuItem {

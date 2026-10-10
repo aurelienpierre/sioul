@@ -83,6 +83,7 @@ Dialog {
             visible: dialog.info !== null && dialog.info.hours > 0
             Layout.fillWidth: true
             text: dialog.info === null ? "" : dialog.sioul.textWith("dose-next-after", "hours", String(dialog.info.hours))
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: dialog.theme.muted

@@ -348,6 +348,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: card.modelData.identity
+                                textFormat: Text.PlainText
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
                                 // An address has no space to break at: anywhere, rather than cut.
@@ -382,6 +383,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: card.scout === null ? "" : page.sioul.textWith("scout-title", "server", card.scout.nextcloud ? card.scout.nextcloud.server.replace("https://", "") : card.modelData.identity.split("@")[1])
+                                textFormat: Text.PlainText
                                 font.weight: Font.DemiBold
                                 wrapMode: Text.Wrap
                                 color: page.theme.text
@@ -917,6 +919,7 @@ Item {
                                         text: (page.googleStepsShown ? "▾  " : "▸  ") + page.sioul.text("ui-google-steps")
                                         contentItem: Label {
                                             text: googleStepsButton.text
+                                            textFormat: Text.PlainText
                                             wrapMode: Text.Wrap
                                             color: page.theme.text
                                         }
@@ -1347,6 +1350,7 @@ Item {
                                                 Label {
                                                     Layout.fillWidth: true
                                                     text: ownKey.modelData.fingerprint.match(/.{1,4}/g).join(" ") + (ownKey.modelData.expires ? "  ·  " + page.sioul.textWith("pgp-expires", "date", ownKey.modelData.expires) : "")
+                                                    textFormat: Text.PlainText
                                                     font.family: page.theme.mono
                                                     font.pixelSize: 12
                                                     elide: Text.ElideRight
@@ -1373,7 +1377,7 @@ Item {
 
                                             required property string modelData
 
-                                            text: page.sioul.textWith("ui-make-key", "address", makeKey.modelData)
+                                            text: page.theme.plain(page.sioul.textWith("ui-make-key", "address", makeKey.modelData))
                                             onClicked: page.sioul.pgpGenerate(makeKey.modelData)
                                         }
                                     }
@@ -1712,7 +1716,7 @@ Item {
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(560, page.width - 2 * page.theme.gap)
-                title: writingForm.account
+                title: page.theme.plain(writingForm.account)
                 onAccepted: page.sioul.setWriting(writingForm.account, writingName.text, writingSignature.text)
 
                 ColumnLayout {
@@ -1778,6 +1782,7 @@ Item {
                 Label {
                     width: parent.width
                     text: page.sioul.textWith("ui-remove-confirmForm", "id", page.removing)
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: page.theme.text
                 }

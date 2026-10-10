@@ -23,6 +23,10 @@ Panel {
     // Its entry in the list: trust, and on the Porch the reasons and the screener.
     property var item: null
     property var reading: null
+    // The message is being read off the window's thread (`readMessage`): the pane says so meanwhile.
+    property bool opening: false
+    // Something to show: the message, or that it is opening.
+    readonly property bool showing: reader.reading !== null || reader.opening
     // The invitation the message carries, if any.
     property var invite: null
     // The sender's contact, by file; empty when the sender is not one.
@@ -144,13 +148,37 @@ Panel {
         reader.attachmentsShown = false
         reader.historyShown = false
         reader.hoveredLink = ""
-        reader.reading = reader.key ? JSON.parse(reader.sioul.message(reader.key) || "null") : null
-        reader.invite = reader.key ? JSON.parse(reader.sioul.invitation(reader.key) || "null") : null
-        reader.senderContact = reader.reading && reader.reading.from_address ? reader.sioul.contactFor(reader.reading.from_address) : ""
+        // Read off the window's thread, so that a large or hostile message
+        // never holds the window: `messageRead` brings it.
+        reader.reading = null
+        reader.invite = null
+        reader.senderContact = ""
         reader.unread = false
-        reader.flagged = reader.reading ? reader.reading.flagged : false
-        if (reader.reading)
-            reader.sioul.opened(reader.key)
+        reader.flagged = false
+        reader.opening = reader.key !== ""
+        if (reader.key)
+            reader.sioul.readMessage(reader.key)
+    }
+
+    Connections {
+        target: reader.sioul
+
+        // The message read (`readMessage`): shown if it is still the one asked
+        // for; read again (opened with the security key), its words only change.
+        function onMessageRead(key, reading, invitation) {
+            if (key !== reader.key)
+                return
+            const first = reader.opening
+            reader.opening = false
+            reader.reading = JSON.parse(reading || "null")
+            reader.invite = JSON.parse(invitation || "null")
+            if (!first)
+                return
+            reader.senderContact = reader.reading && reader.reading.from_address ? reader.sioul.contactFor(reader.reading.from_address) : ""
+            reader.flagged = reader.reading ? reader.reading.flagged : false
+            if (reader.reading)
+                reader.sioul.opened(reader.key)
+        }
     }
 
     Shortcut {
@@ -290,7 +318,7 @@ Panel {
                 iconName: "dialog-cancel"
                 label: unsubscribeButton.offer !== null ? unsubscribeButton.offer.label : ""
                 ToolTip.visible: unsubscribeButton.hovered
-                ToolTip.text: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
+                ToolTip.text: reader.theme.plain(unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : "")
                 Accessible.description: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
                 onClicked: {
                     const page = reader.sioul.unsubscribe(reader.key)
@@ -353,7 +381,7 @@ Panel {
             MenuItem {
                 visible: reader.tight
                 height: visible ? implicitHeight : 0
-                text: junkButton.label
+                text: reader.theme.plain(junkButton.label)
                 onTriggered: reader.act(reader.role === "junk" ? "not-junk" : "junk")
             }
             MenuItem {
@@ -466,10 +494,20 @@ Panel {
                 width: readingScroll.availableWidth
                 spacing: 12
 
+                // While the message is being read: it never takes long, unless it is very large.
+                Label {
+                    visible: reader.opening
+                    Layout.fillWidth: true
+                    text: reader.sioul.text("reader-opening")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.muted
+                }
+
                 // A secure mailbox's notice: the mailbox itself, one click away.
                 Button {
                     visible: reader.announces !== null
-                    text: reader.announces ? reader.sioul.textWith("site-open", "site", reader.announces.name) : ""
+                    text: reader.theme.plain(reader.announces ? reader.sioul.textWith("site-open", "site", reader.announces.name) : "")
                     icon.name: "internet-web-browser"
                     icon.color: reader.theme.accentText
                     highlighted: true
@@ -557,7 +595,7 @@ Panel {
                             onGo: pin => reader.sioul.openWithSecurityKey(reader.key, pin)
                             // Opened: its session key stays in memory, the message reads as any other.
                             onDone: {
-                                reader.reading = JSON.parse(reader.sioul.message(reader.key) || "null")
+                                reader.sioul.readMessage(reader.key)
                                 keyBand.reset()
                             }
                         }
@@ -599,6 +637,7 @@ Panel {
                             Label {
                                 Layout.fillWidth: true
                                 text: reader.reading ? reader.reading.date : ""
+                                textFormat: Text.PlainText
                                 color: reader.theme.text
                             }
                         }
@@ -672,6 +711,7 @@ Panel {
                                 Label {
                                     Layout.fillWidth: true
                                     text: attachmentsTitle.text
+                                    textFormat: Text.PlainText
                                     font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                     color: reader.theme.text
@@ -711,6 +751,7 @@ Panel {
                                 }
                                 Label {
                                     text: attached.modelData.size
+                                    textFormat: Text.PlainText
                                     color: reader.theme.muted
                                     font.pixelSize: 13
                                 }
@@ -831,6 +872,7 @@ Panel {
                     visible: reader.reading !== null && reader.reading.html !== null
                     Layout.fillWidth: true
                     Layout.topMargin: 4
+                    // rich on purpose: the message's HTML made safe in Rust (reading::safe_html): no picture, style or script, links to the web or to an address only.
                     text: reader.reading && reader.reading.html ? reader.theme.spaced(reader.withLinks(reader.reading.html.main)) : ""
                     textFormat: TextEdit.RichText
                     readOnly: true
@@ -878,6 +920,7 @@ Panel {
                     }
                     TextEdit {
                         Layout.fillWidth: true
+                        // rich on purpose: the message's HTML made safe in Rust (reading::safe_html): no picture, style or script, links to the web or to an address only.
                         text: reader.historyShown && reader.reading && reader.reading.html && reader.reading.html.quoted ? reader.theme.spaced(reader.withLinks(reader.reading.html.quoted)) : ""
                         textFormat: TextEdit.RichText
                         readOnly: true
@@ -908,6 +951,7 @@ Panel {
                         TextEdit {
                             visible: part.modelData.kind === "text"
                             Layout.fillWidth: true
+                            // rich on purpose: plain text escaped in Rust, its web links made (reading::linkify).
                             text: part.modelData.kind === "text" ? reader.theme.spaced(reader.withLinks(part.modelData.rich)) : ""
                             readOnly: true
                             selectByMouse: true
@@ -959,6 +1003,7 @@ Panel {
 
                                 TextEdit {
                                     Layout.fillWidth: true
+                                    // rich on purpose: plain text escaped in Rust, its web links made (reading::linkify).
                                     text: part.modelData.kind !== "quote" ? "" : reader.theme.spaced(reader.withLinks(part.unfolded ? part.modelData.rich : part.modelData.rich.split("<br>").slice(0, 4).join("<br>") + " …"))
                                     readOnly: true
                                     selectByMouse: true
@@ -973,7 +1018,7 @@ Panel {
                                 Button {
                                     visible: part.lines > 8
                                     flat: true
-                                    text: part.unfolded ? reader.sioul.text("ui-quote-hide") : reader.sioul.textWith("ui-quote-show", "n", String(part.lines))
+                                    text: reader.theme.plain(part.unfolded ? reader.sioul.text("ui-quote-hide") : reader.sioul.textWith("ui-quote-show", "n", String(part.lines)))
                                     onClicked: part.unfolded = !part.unfolded
                                 }
                             }

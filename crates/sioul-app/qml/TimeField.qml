@@ -57,7 +57,7 @@ RowLayout {
 
         implicitContentWidthPolicy: ComboBox.WidestText
         implicitWidth: implicitContentWidth + leftPadding + rightPadding
-        model: field.hours
+        model: field.hours.map(h => field.theme.plain(h))
         currentIndex: field.hour
         font.features: { "tnum": 1 }
         Accessible.name: field.sioul.text("health-take-hour")
@@ -72,7 +72,7 @@ RowLayout {
 
         implicitContentWidthPolicy: ComboBox.WidestText
         implicitWidth: implicitContentWidth + leftPadding + rightPadding
-        model: field.minutes
+        model: field.minutes.map(m => field.theme.plain(m))
         currentIndex: field.minutes.indexOf(field.pad(field.minute))
         font.features: { "tnum": 1 }
         Accessible.name: field.sioul.text("health-take-minute")

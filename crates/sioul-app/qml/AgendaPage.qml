@@ -629,7 +629,7 @@ Item {
                     Layout.fillWidth: page.narrow
                     Layout.preferredWidth: page.narrow ? -1 : 260
                     textRole: "label"
-                    model: page.reminds
+                    model: page.reminds.map(c => ({ value: c.value, label: page.theme.plain(c.label) }))
                     currentIndex: Math.max(0, page.reminds.findIndex(c => c.value === (page.reminder.remind || "")))
                     Accessible.name: page.sioul.text("event-remind")
                     onActivated: index => {

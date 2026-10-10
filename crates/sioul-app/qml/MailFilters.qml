@@ -298,6 +298,7 @@ ColumnLayout {
         visible: filters.about !== ""
         Layout.fillWidth: true
         text: filters.about
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         lineHeight: 1.25
@@ -316,7 +317,7 @@ ColumnLayout {
         }
         ComboBox {
             Layout.fillWidth: true
-            model: [filters.sioul.text("filter-ui-all-addresses")].concat(filters.shown.accounts.map(a => a.label))
+            model: [filters.sioul.text("filter-ui-all-addresses")].concat(filters.shown.accounts.map(a => filters.theme.plain(a.label)))
             currentIndex: filters.narrowed === "" ? 0 : 1 + filters.shown.accounts.findIndex(a => a.id === filters.narrowed)
             Accessible.name: filters.sioul.text("filter-ui-narrow")
             onActivated: index => filters.narrowed = index === 0 ? "" : filters.shown.accounts[index - 1].id
@@ -409,7 +410,7 @@ ColumnLayout {
                     icon.color: filters.theme.text
                     Accessible.name: filters.sioul.text(row.open ? "filter-ui-done" : "filter-ui-edit")
                     ToolTip.visible: hovered
-                    ToolTip.text: Accessible.name
+                    ToolTip.text: filters.theme.plain(Accessible.name)
                     ToolTip.delay: 400
                     onClicked: row.open ? filters.close() : filters.open(row.index)
                 }
@@ -424,7 +425,7 @@ ColumnLayout {
                         implicitHeight: 22
                         Accessible.name: filters.sioul.text("filter-ui-up")
                         ToolTip.visible: hovered
-                        ToolTip.text: Accessible.name
+                        ToolTip.text: filters.theme.plain(Accessible.name)
                         ToolTip.delay: 400
                         onClicked: filters.move(row.index, -1)
                     }
@@ -434,7 +435,7 @@ ColumnLayout {
                         implicitHeight: 22
                         Accessible.name: filters.sioul.text("filter-ui-down")
                         ToolTip.visible: hovered
-                        ToolTip.text: Accessible.name
+                        ToolTip.text: filters.theme.plain(Accessible.name)
                         ToolTip.delay: 400
                         onClicked: filters.move(row.index, 1)
                     }
@@ -672,7 +673,7 @@ ColumnLayout {
                             Layout.columnSpan: filters.narrow && !condition.removable ? 2 : 1
                             Layout.fillWidth: filters.narrow
                             implicitContentWidthPolicy: ComboBox.WidestText
-                            model: filters.shown.form.fields.map(f => f.label)
+                            model: filters.shown.form.fields.map(f => filters.theme.plain(f.label))
                             currentIndex: filters.shown.form.fields.findIndex(f => f.id === condition.modelData.field)
                             Accessible.name: filters.sioul.text("filter-ui-field")
                             onActivated: index => filters.setField(condition.index, filters.shown.form.fields[index].id)
@@ -683,7 +684,7 @@ ColumnLayout {
                             Layout.columnSpan: filters.narrow || !condition.removable ? 2 : 1
                             Layout.fillWidth: true
                             implicitContentWidthPolicy: ComboBox.WidestText
-                            model: condition.field ? condition.field.tests.map(t => t.label) : []
+                            model: condition.field ? condition.field.tests.map(t => filters.theme.plain(t.label)) : []
                             currentIndex: condition.field ? condition.field.tests.findIndex(t => t.id === condition.modelData.test) : -1
                             Accessible.name: filters.sioul.text("filter-ui-test")
                             onActivated: index => filters.setTest(condition.index, condition.field.tests[index].id)
@@ -695,7 +696,7 @@ ColumnLayout {
                             text: "×"
                             Accessible.name: filters.sioul.text("filter-ui-remove")
                             ToolTip.visible: hovered
-                            ToolTip.text: Accessible.name
+                            ToolTip.text: filters.theme.plain(Accessible.name)
                             ToolTip.delay: 400
                             onClicked: {
                                 filters.draft.conditions.splice(condition.index, 1)
@@ -777,7 +778,7 @@ ColumnLayout {
 
                                     readonly property var picked: (condition.modelData.value || "").split(",").filter(d => d !== "")
 
-                                    text: modelData.label
+                                    text: filters.theme.plain(modelData.label)
                                     checked: picked.indexOf(modelData.id) >= 0
                                     onToggled: {
                                         const days = filters.shown.form.days.map(d => d.id).filter(id => id === modelData.id ? checked : picked.indexOf(id) >= 0)
@@ -791,7 +792,7 @@ ColumnLayout {
                                 implicitContentWidthPolicy: ComboBox.WidestText
                                 readonly property var choices: condition.kind === "kind" ? filters.shown.form.kinds : condition.kind === "who" ? filters.shown.form.who : []
 
-                                model: choices.map(c => c.label)
+                                model: choices.map(c => filters.theme.plain(c.label))
                                 currentIndex: choices.findIndex(c => c.id === condition.modelData.value)
                                 Accessible.name: filters.sioul.text("filter-ui-value")
                                 onActivated: index => condition.setValue(choices[index].id)
@@ -848,7 +849,7 @@ ColumnLayout {
                             Layout.columnSpan: filters.narrow && !action.removable ? 2 : 1
                             Layout.fillWidth: filters.narrow
                             implicitContentWidthPolicy: ComboBox.WidestText
-                            model: filters.shown.form.actions.map(a => a.label)
+                            model: filters.shown.form.actions.map(a => filters.theme.plain(a.label))
                             currentIndex: filters.shown.form.actions.findIndex(a => a.id === action.modelData.do)
                             Accessible.name: filters.sioul.text("filter-ui-then")
                             onActivated: index => {
@@ -869,7 +870,7 @@ ColumnLayout {
                             Layout.columnSpan: filters.narrow || !action.removable ? 2 : 1
                             Layout.fillWidth: true
                             Layout.minimumWidth: 120
-                            model: choices
+                            model: choices.map(c => filters.theme.plain(c))
                             currentIndex: action.modelData.name === "" ? -1 : choices.findIndex(n => n.toLowerCase() === action.modelData.name.toLowerCase())
                             displayText: currentIndex < 0 ? filters.sioul.text("filter-ui-folder") : currentText
                             Accessible.name: filters.sioul.text("filter-ui-folder")
@@ -902,7 +903,7 @@ ColumnLayout {
                             text: "×"
                             Accessible.name: filters.sioul.text("filter-ui-remove")
                             ToolTip.visible: hovered
-                            ToolTip.text: Accessible.name
+                            ToolTip.text: filters.theme.plain(Accessible.name)
                             ToolTip.delay: 400
                             onClicked: {
                                 filters.draft.actions.splice(action.index, 1)
