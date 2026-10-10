@@ -784,7 +784,7 @@ dav-found = Contacts : { $contacts } · Agendas : { $calendars }
 dav-none = aucun
 dav-added = Compte « { $id } » ajouté : ses contacts et agendas arrivent.
 dav-report = { $account } : { $sent } envoyés, { $received } reçus, { $removed } retirés.
-dav-conflict = Modifié des deux côtés : la version du serveur est gardée, la vôtre est dans { $path }.
+dav-conflict = Modifié des deux côtés : la version du serveur est gardée ; la vôtre est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre si vous la préférez.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
         [tentative] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : peut-être. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -2757,6 +2757,14 @@ share-differ = Les deux phrases de passe diffèrent.
 share-wrong = Ce n’est pas la phrase de passe choisie sur votre autre appareil.
 share-no-folder = Choisissez d’abord un dossier.
 share-other-seal = Un appareil de ce dossier scelle avec une autre phrase de passe : ses changements sont laissés de côté.
+share-no-seal = Le dossier de partage, ou son sceau, n’est plus où il était : rien n’est partagé d’ici jusqu’à son retour. Votre application de synchronisation tourne-t-elle, et le disque qui le porte est-il là ?
+share-sealed-otherwise = Le dossier de partage est désormais scellé avec une autre phrase de passe que celle de cet appareil : rien n’est envoyé d’ici tant que vous n’avez pas repris le partage ici avec la phrase de passe de vos autres appareils.
+share-twin = Un autre appareil partage sous le nom de celui-ci (son disque ou ses réglages y ont été copiés) : arrêtez le partage sur l’un des deux, puis reprenez-le là, ce qui lui donne un nom à lui.
+share-own-ahead = Les enregistrements de cet appareil dans le dossier vont plus loin que sa mémoire (restaurée d’une sauvegarde, ou partage remis en place) : il continue après eux, et relit tout.
+share-own-cut = L’application de synchronisation a remis une copie plus ancienne des enregistrements de cet appareil : il les a recommencés, en reprenant tout.
+share-other-gap = Des enregistrements d’un autre appareil manquent ici : ce qu’il a fait entre-temps n’est pas connu (une prise de médicament affiche le doute) jusqu’à ce qu’il reprenne tout.
+share-other-cut = L’application de synchronisation a remis une copie plus ancienne des enregistrements d’un autre appareil : ils sont relus.
+share-other-line = Une ligne des enregistrements d’un autre appareil n’a pas pu être lue ici : ce qu’elle contenait n’est pas connu (une prise de médicament affiche le doute).
 share-unreadable = { $file } n’a pas pu être lu : ce qui est venu pour lui attend qu’il puisse l’être.
 share-key-missing = Tapez à nouveau la phrase de passe sur cet appareil : le trousseau ne la garde plus.
 share-not-shared = Pas partagé : la disposition des pages sur cet écran, les dossiers où chaque appareil garde ses fichiers, les notifications du navigateur de cet appareil, vos propres clés PGP (copiez-les à la main), les caches.
@@ -2791,6 +2799,7 @@ share-part-lists-carries = Les agendas et contacts gardés sur cet appareil seul
 share-part-notes = Notes
 share-part-notes-carries = Votre dossier de notes : les notes, leurs images, PDF et mémos, les lettres numérisées. Chaque fichier scellé à part, seul ce qui a changé envoyé ; les fichiers de plus de 64 Mo restent.
 share-part-papers = Papiers
+share-part-accounts = Vos agendas et contacts (votre version, mise de côté quand un élément a changé ici et sur son serveur aussi)
 share-part-papers-carries = Le portefeuille de papiers et ses fichiers.
 share-part-carried = Votre dossier de notes ({ $store }) est déjà transporté par une application de synchronisation : transporté ici aussi, les deux déferaient les changements l’une de l’autre. Pour le partager ici, déplacez-le dans un dossier qu’aucune synchronisation ne transporte, ou laissez-le à cette synchronisation.
 share-part-sent = Dernier envoi : { $when }.
@@ -2800,7 +2809,7 @@ share-conflict = Deux appareils ont changé le même fichier : les deux versio
 share-conflict-gone = Un fichier changé ici a été retiré sur un autre appareil : ce qui a changé est gardé sous le nom « { $copy } ».
 share-damaged = { $file } est arrivé abîmé d’un autre appareil : votre copie ici reste telle quelle jusqu’à ce qu’une entière arrive.
 share-too-big = { $file } dépasse 64 Mo : il reste sur cet appareil.
-share-history-help = Avant qu’un changement venu d’un autre appareil soit écrit dans un fichier ici, le fichier tel qu’il était est gardé sur cet appareil : les 20 dernières versions de chaque fichier, et toutes celles des 30 derniers jours. Elles ne sont jamais partagées.
+share-history-help = Avant qu’un changement venu d’un autre appareil soit écrit dans un fichier ici, le fichier tel qu’il était est gardé sur cet appareil : les 20 dernières versions de chaque fichier, et toutes celles des 30 derniers jours. De même pour votre version d’un événement, d’une tâche ou d’un contact modifié ici et sur son serveur aussi, la version du serveur gardée. Elles ne sont jamais partagées.
 share-history-show = Voir les versions précédentes
 share-history-hide = Cacher les versions précédentes
 share-history-empty = Rien de gardé pour l’instant.
@@ -2838,6 +2847,10 @@ share-estimate = { $count ->
 } Allumer ?
 share-estimating = Calcul de ce qui voyagerait…
 share-switch-on = Allumer
+share-carried-ask = Une application de synchronisation de ce téléphone porte-t-elle votre dossier de notes ({ $store }) ? Sioul ne peut pas lire ses réglages pour le savoir. Porté par les deux, l’application et le partage déferaient les changements l’un de l’autre.
+share-carried-not = Aucune ne le porte : activer
+share-carried-yes = Une application le porte
+share-carried-wrong = Aucune application ne le porte sur ce téléphone
 share-vanished = { $count ->
     [one] Un fichier est parti
    *[other] { $count } fichiers sont partis

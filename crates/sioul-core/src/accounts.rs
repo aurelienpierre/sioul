@@ -88,6 +88,10 @@ fn folded(text: &str) -> String {
 pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<Placed> {
     let mut movements: Vec<(&BankAccount, &Movement)> = bank.movements.iter().filter_map(|m| account_of(ledger, &m.account).map(|a| (a, m))).collect();
     movements.sort_by(|a, b| (a.1.date, &a.1.id).cmp(&(b.1.date, &b.1.id)));
+    // A movement read under two names of one account (an export first read
+    // without its number, later with it) is one: counted once.
+    let mut seen: std::collections::BTreeSet<(&str, &str)> = std::collections::BTreeSet::new();
+    movements.retain(|(account, m)| m.id.is_empty() || seen.insert((account.id.as_str(), m.id.as_str())));
     // What each account's exports cover: a movement elsewhere names it only inside.
     let mut covered: BTreeMap<&str, (Date, Date)> = BTreeMap::new();
     for (account, m) in &movements {
@@ -276,11 +280,21 @@ pub struct TopUp {
     pub late: bool,
 }
 
-/// A bank account's balance known, and its day: the newest of its exports'.
+/// A bank account's balance known, and its day: the newest of its exports',
+/// whatever name each gave it (`BankAccount::exports`: its number, its IBAN,
+/// none). Each name is the same account, so their balances are one balance
+/// at different days, never added: an export first read without a number,
+/// later with one, counted the same money twice (review of 5 October 2026).
+/// Two real accounts are two cards.
 pub fn balance_of(bank: &Bank, account: &BankAccount) -> Option<(Date, Money)> {
-    let known: Vec<(Date, Money)> = bank.accounts.iter().filter(|a| account.owns(&a.id)).filter_map(|a| a.balance).collect();
-    let day = known.iter().map(|(d, _)| *d).max()?;
-    Some((day, known.iter().map(|(_, m)| *m).sum()))
+    bank.accounts.iter().filter(|a| account.owns(&a.id)).filter_map(|a| a.balance).max_by_key(|(day, _)| *day)
+}
+
+/// A bank account's movements under every name its exports gave it, each
+/// once: the same movement read under two names (the bank's own id) is one.
+pub fn movements_of<'a>(bank: &'a Bank, account: &BankAccount) -> Vec<&'a Movement> {
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    bank.movements.iter().filter(|m| account.owns(&m.account)).filter(|m| m.id.is_empty() || seen.insert(m.id.as_str())).collect()
 }
 
 /// The budgets whose payments a bank account carries forward: those it is the
@@ -301,7 +315,7 @@ pub fn top_ups(ledger: &Ledger, bank: &Bank, today: Date, looked: &crate::words:
     let mut out = Vec::new();
     for account in ledger.bank_accounts.iter().filter(|a| !a.topped_up_by.is_empty()) {
         let Some((as_of, start)) = balance_of(bank, account) else { continue };
-        let movements: Vec<&Movement> = bank.movements.iter().filter(|m| account.owns(&m.account)).collect();
+        let movements: Vec<&Movement> = movements_of(bank, account);
         let budgets = carried_by(ledger, account);
         let flows: Vec<Expected> = bank::expected(&movements, ledger, Some(&budgets), as_of, today, horizon, &looked.bank.filler);
         let (_, below) = bank::carry(start, as_of, &flows, today, horizon, account.floor);
@@ -792,5 +806,23 @@ mod tests {
         assert_eq!(ups[1].amount.cents() % 1000, 0, "rounded up to ten");
         // Asked on the 20th, the assurance vie arrives after the tax.
         assert!(top_ups(&ledger, &bank(), day("2026-10-20"), crate::words::Words::builtin_ref()).iter().any(|u| u.reserve == "av" && u.late));
+    }
+
+    /// The review of 5 October 2026 (money): one account read under two names
+    /// (an export first read without its number, kept under its card's id;
+    /// later ones with it) has one balance, the newest, never the sum, and a
+    /// movement read under both is counted once, in the budgets and the top-ups.
+    #[test]
+    fn one_account_under_two_names_counts_its_money_once() {
+        let ledger = ledger();
+        let mut bank = bank();
+        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), balance: Some((day("2026-09-30"), Money(39000))) });
+        let first = bank.movements[0].clone();
+        bank.movements.push(Movement { account: "mybank".into(), ..first });
+        let card = &ledger.bank_accounts[0];
+        assert_eq!(balance_of(&bank, card), Some((day("2026-10-02"), Money(40000))), "the newest, never the sum");
+        assert_eq!(bank.balance_in(&ledger), Some((day("2026-10-02"), Money(40000))), "the money watch's total too");
+        assert_eq!(movements_of(&bank, card).iter().filter(|m| m.id == "m1").count(), 1);
+        assert_eq!(place(&ledger, &bank, crate::words::Words::builtin_ref()).iter().filter(|p| p.movement.id == "m1").count(), 1, "placed once");
     }
 }

@@ -172,8 +172,9 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     let changed = match result {
         Ok(report) => {
             let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty();
-            for conflict in report.conflicts {
-                tell(qt, shared, say("dav-conflict", &[("path", conflict.display().to_string())]));
+            // Yours kept among the earlier versions, which the window lists and puts back, on a phone too.
+            if !report.conflicts.is_empty() {
+                tell(qt, shared, tr().text("dav-conflict", None));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
             for (summary, kept) in report.answered {

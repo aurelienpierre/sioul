@@ -74,7 +74,7 @@ Thunderbird, your phone's mail app and the webmail see the same mailbox:
 | New lists, calendars and address books; renaming them | the standard's requests to make and rename them | — | Nextcloud and most servers | not at Google |
 | Contact categories | the card's own categories | cards written as Nextcloud writes them | Nextcloud Contacts (its groups); DAVx⁵ set to keep groups as categories | groups kept as cards of their own (Apple's way, and DAVx⁵'s other setting) are not read as categories: such a group shows as a card |
 | Invitations | received by mail; your answer goes back by mail | Radicale, an invitation answered | the organiser's own mail program, whatever it is | inviting people from Sioul: not supported. The copy in your calendar does not record your answer, so other apps may show it as not answered |
-| Changed in two places at once | each item's tag | a stand-in in the tests | any server | the server's version wins; yours is kept aside, and the status line says where |
+| Changed in two places at once | each item's tag | a stand-in in the tests | any server | the server's version wins; yours is kept among the earlier versions, to put back from the window, and the status line says so |
 
 ## Google
 

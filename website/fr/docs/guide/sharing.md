@@ -43,6 +43,11 @@ Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul t
 - **Une copie plus ancienne remise à la main** (une sauvegarde restaurée avec ses anciennes dates) ne défait pas les changements de vos autres appareils.
 - **Un appareil restauré d’une sauvegarde**, ou qui a perdu sa mémoire, reprend là où en est le dossier et rattrape le reste : ce qu’il avait noté après la sauvegarde revient.
 - **Avant qu’un changement d’un autre appareil remplace ou retire un fichier ici**, le fichier tel qu’il était est gardé sur cet appareil, pour le remettre au besoin ([plus bas](#putting-back-an-older-version)).
+- **Le dossier de partage parti, ou son sceau** (un disque non monté, une application de synchronisation qui a déplacé ou refait son dossier) : rien n’est écrit jusqu’à son retour, et le panneau le dit. Sioul ne refait jamais le dossier, vide, à côté du vrai.
+- **Le dossier scellé avec une autre phrase de passe** que celle de cet appareil (deux appareils qui ont chacun mis en place le dossier avant que le sceau de l’autre arrive) : cet appareil n’y écrit rien, et le dit ; reprenez le partage sur lui avec la phrase de passe de vos autres appareils, et ils se retrouvent.
+- **Deux appareils sous un même nom** (un disque ou les données d’un téléphone copiés sur un autre) : chacun trouve les lignes de l’autre dans son propre fichier, et le panneau le dit ; arrêtez le partage sur l’un des deux et reprenez-le là, ce qui lui donne un nom à lui.
+- **Une liste tenue par un autre programme dans un autre codage** (un texte que Sioul ne sait pas lire) : laissée telle quelle, c’est dit, et rien n’en est retiré ailleurs.
+- **Un brouillon envoyé sur un appareil pendant qu’un autre le modifiait**, aucun des deux ne le sachant encore : il reste envoyé partout, quel que soit le dernier ; la modification faite entre-temps est gardée parmi les versions précédentes de cet appareil.
 
 ## Ce que cela protège, et ce que cela ne peut pas cacher {#what-it-protects-and-what-it-cannot-hide}
 
@@ -135,7 +140,7 @@ Allumés, les notes et les papiers voyagent par le même dossier scellé, un fic
 - **Beaucoup partis d’un coup** : si beaucoup de fichiers quittent un dossier d’un coup, ou si un dossier devient soudain vide, disparaît ou ne se lit plus, rien n’en est retiré sur vos autres appareils et rien n’y est écrit ; le panneau le dit, avec **Les retirer partout** pour quand vous l’avez fait exprès. Éteindre puis rallumer Notes remplit à nouveau le dossier depuis vos autres appareils.
 - **Des noms qu’un téléphone prend pour un seul** : deux notes dont les noms ne diffèrent que par la casse ou par la façon d’écrire un accent (« Bail.md » et « bail.md ») sont un seul fichier sur un téléphone : la seconde attend, et le panneau le dit ; renommez-en une.
 - **La place** : rien n’est écrit sans place pour lui, et un peu plus ; une note qui ne tient pas attend, c’est dit, et vient quand il y a de la place.
-- **Pas avec un dossier de notes déjà synchronisé** : si une application de synchronisation transporte déjà votre dossier de notes sur cet appareil (Nextcloud, Dropbox, Syncthing, ou, sur un téléphone, le même dossier que celui du partage), Sioul refuse de le transporter aussi, et dit pourquoi : deux transporteurs déferaient les changements l’un de l’autre. Déplacez les notes dans un dossier qu’aucune synchronisation ne transporte pour que Sioul les transporte, ou laissez-les à cette synchronisation. Sioul ne reconnaît pas toutes les applications de synchronisation (Google Drive, Insync, rclone, MEGA…) : laissez Notes éteint là où l’une d’elles transporte vos notes.
+- **Pas avec un dossier de notes déjà synchronisé** : si une application de synchronisation transporte déjà votre dossier de notes sur cet appareil (Nextcloud, Dropbox, Syncthing), Sioul refuse de le transporter aussi, et dit pourquoi : deux transporteurs déferaient les changements l’un de l’autre. Sur un téléphone, Sioul ne peut pas lire les réglages de l’application de synchronisation : il vous le demande avant d’activer Notes ou Papiers, et tant que vous ne l’avez pas dit, compte comme transporté un dossier de notes dans le même dossier de premier niveau que celui du partage (Documents…), avec un bouton pour dire qu’aucune application ne le transporte. Déplacez les notes dans un dossier qu’aucune synchronisation ne transporte pour que Sioul les transporte, ou laissez-les à cette synchronisation. Sioul ne reconnaît pas toutes les applications de synchronisation (Google Drive, Insync, rclone, MEGA…) : laissez Notes éteint là où l’une d’elles transporte vos notes.
 - **Sur Android**, les notes et les papiers attendent tant que Sioul n’a pas l’accès d’Android à tous vos fichiers (sans lui, Sioul ne verrait que les fichiers qu’il a créés).
 
 ## Remettre une version précédente {#putting-back-an-older-version}
@@ -145,6 +150,7 @@ Avant qu’un changement venu d’un autre appareil soit écrit dans un fichier 
 Dans **Paramètres ▸ Votre dossier et le partage**, **Voir les versions précédentes** les liste : chaque partie, ses fichiers (le dernier changé d’abord ; tapez une partie d’un nom pour en trouver de plus anciens), et sous un fichier ses versions, avec leur date et leur taille. **Remettre** dit d’abord ce que cela changerait, puis remet cette version :
 
 - une note, un papier, un brouillon reviennent entiers ; le fichier tel qu’il était juste avant est gardé dans la liste lui aussi : remettre peut se défaire de la même façon ;
+- un événement, une tâche ou un contact modifié ici et sur son serveur entre deux synchronisations : la version du serveur a été gardée, et la vôtre est listée ici, sous **Vos agendas et contacts**, nommée par son titre, sur un téléphone aussi ; remise, elle part vers son serveur par-dessus la version du serveur ;
 - un fichier de réglages ou de listes (vos réglages, les prises, le temps noté) revient entrée par entrée : chaque réglage ou marque que la version contenait est remis tel qu’il était, ceux retirés depuis reviennent, et ceux ajoutés depuis restent. Remettre ne retire jamais, sur aucun appareil, ce qui a été ajouté après cette version : une prise notée ce matin reste notée.
 
 L’échange suivant envoie ce qui a été remis à vos autres appareils, comme un changement que vous venez de faire.
@@ -168,7 +174,7 @@ Sioul pour Android partage de la même façon, par le dossier que l’applicatio
 
 - **Les médicaments** ne sont rappelés que par l’appareil que vous utilisez, pour qu’une prise ne soit pas rappelée deux fois. Une prise notée part tout de suite vers les autres.
 - **La notification regroupée des sites** vient sur l’appareil où vous êtes.
-- **Les factures** sont numérotées sur un seul appareil, pour qu’un numéro ne soit jamais donné deux fois. Un autre appareil dit où elles se font, et propose **Faire les factures sur cet appareil**. Voir [Le temps et les factures](time.md#on-several-computers).
+- **Les factures** sont numérotées sur un seul appareil, pour qu’un numéro ne soit jamais donné deux fois. Un autre appareil dit où elles se font, et propose **Faire les factures sur cet appareil**. Un appareil qui les numérote et dont on n’a pas de nouvelles (sa synchronisation arrêtée, ou en retard sur un téléphone) les garde, jusqu’à ce qu’on en ait, qu’il ferme Sioul, ou qu’une journée passe sans nouvelles de lui. Voir [Le temps et les factures](time.md#on-several-computers).
 
 ## Pas encore là {#not-there-yet}
 

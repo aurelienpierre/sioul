@@ -738,11 +738,31 @@ ColumnLayout {
                     font.pixelSize: 13
                     color: panel.theme.warm
                 }
+                // On a phone the refusal is a guess (Sioul cannot read the sync app's settings there): you say.
+                Button {
+                    visible: part.modelData.guessed === true
+                    flat: true
+                    text: panel.sioul.text("share-carried-wrong")
+                    onClicked: {
+                        panel.problem = panel.sioul.setNotesCarried(false)
+                        panel.reload()
+                    }
+                }
                 // Switching notes or papers on: how much would travel, then a word.
                 Label {
                     visible: panel.asking === part.modelData.id
                     Layout.fillWidth: true
                     text: panel.estimate !== "" ? panel.estimate : panel.sioul.text("share-estimating")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.text
+                }
+                // On a phone, asked first: does a sync app there carry the notes folder?
+                Label {
+                    visible: panel.asking === part.modelData.id && panel.estimate !== "" && (panel.status.carried_ask || "") !== ""
+                    Layout.fillWidth: true
+                    text: panel.status.carried_ask || ""
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.pixelSize: 13
@@ -755,9 +775,23 @@ ColumnLayout {
 
                     Button {
                         highlighted: true
-                        text: panel.sioul.text("share-switch-on")
+                        text: panel.sioul.text((panel.status.carried_ask || "") !== "" ? "share-carried-not" : "share-switch-on")
                         onClicked: {
-                            panel.problem = panel.sioul.setSharePart(part.modelData.id, true)
+                            let problem = ""
+                            if ((panel.status.carried_ask || "") !== "")
+                                problem = panel.sioul.setNotesCarried(false)
+                            if (problem === "")
+                                problem = panel.sioul.setSharePart(part.modelData.id, true)
+                            panel.problem = problem
+                            panel.asking = ""
+                            panel.reload()
+                        }
+                    }
+                    Button {
+                        visible: (panel.status.carried_ask || "") !== ""
+                        text: panel.sioul.text("share-carried-yes")
+                        onClicked: {
+                            panel.problem = panel.sioul.setNotesCarried(true)
                             panel.asking = ""
                             panel.reload()
                         }

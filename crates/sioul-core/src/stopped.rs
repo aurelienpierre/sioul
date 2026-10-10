@@ -46,7 +46,8 @@ impl Stopped {
                 _ => Ok(()),
             };
         }
-        crate::filelock::with_lock(path, || std::fs::write(path, toml::to_string(&stopped).map_err(|e| e.to_string())?).map_err(fail))
+        // Written beside, then renamed: the sharing never reads it empty (it reads without the lock).
+        crate::filelock::with_lock(path, || crate::filelock::replace(path, toml::to_string(&stopped).map_err(|e| e.to_string())?.as_bytes()).map_err(fail))
     }
 }
 

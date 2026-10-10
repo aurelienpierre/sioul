@@ -763,7 +763,7 @@ dav-found = Contacts: { $contacts } · Calendars: { $calendars }
 dav-none = none
 dav-added = Account “{ $id }” added: its contacts and calendars come now.
 dav-report = { $account }: { $sent } sent, { $received } received, { $removed } removed.
-dav-conflict = Changed on both sides: the server’s version is kept, yours is in { $path }.
+dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
         [tentative] You had already answered “{ $summary }” on another device: maybe. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -2739,6 +2739,14 @@ share-differ = The two passphrases differ.
 share-wrong = This is not the passphrase chosen on your other device.
 share-no-folder = Choose a folder first.
 share-other-seal = A device in this folder seals with another passphrase: its changes are left aside.
+share-no-seal = The sharing folder, or its seal, is not where it was: nothing is shared from here until it is back. Is your sync app running, and the disk it is on there?
+share-sealed-otherwise = The sharing folder is now sealed with another passphrase than this device's: nothing is sent from here until you start sharing again here with the passphrase your other devices use.
+share-twin = Another device shares under this device's name (its disk or its settings were copied to it): stop sharing on one of them, then start again there, which gives it a name of its own.
+share-own-ahead = This device's records in the folder went further than its memory (restored from a backup, or sharing set up again): it goes on after them, and reads everything again.
+share-own-cut = The sync app put back an older copy of this device's records: it started them again, holding everything.
+share-other-gap = Some records of another device are missing here: what it did meanwhile is not known (a dose shows the doubt) until it restates everything.
+share-other-cut = The sync app put back an older copy of another device's records: they are read again.
+share-other-line = A line of another device's records could not be read here: what it held is not known (a dose shows the doubt).
 share-unreadable = { $file } could not be read: what came for it waits until it can be.
 share-key-missing = Type the passphrase again on this device: the keyring no longer holds it.
 share-not-shared = Not shared: how pages are laid out on this screen, the folders each device keeps its files in, this device's browser notices, your own PGP keys (copy them by hand), caches.
@@ -2773,6 +2781,7 @@ share-part-lists-carries = Calendars and contacts kept on this device only.
 share-part-notes = Notes
 share-part-notes-carries = Your notes folder: notes, their pictures, PDFs and memos, scanned letters. Each file sealed apart, only what changed sent; files over 64 MB stay.
 share-part-papers = Papers
+share-part-accounts = Your calendars and contacts (your version, set aside when an item changed here and on its server too)
 share-part-papers-carries = The papers wallet and its files.
 share-part-carried = Your notes folder ({ $store }) is carried by a sync app already: carried here too, the two would undo each other's changes. To share it here, move it to a folder no sync carries, or leave it to that sync.
 share-part-sent = Last sent: { $when }.
@@ -2782,7 +2791,7 @@ share-conflict = Two devices changed the same file: both versions are kept, the 
 share-conflict-gone = A file changed here was taken out on another device: what changed is kept as “{ $copy }”.
 share-damaged = { $file } came damaged from another device: your copy here stays as it is until a whole one comes.
 share-too-big = { $file } is over 64 MB: it stays on this device.
-share-history-help = Before another device's change is written into a file here, the file as it was is kept on this device: the last 20 versions of each file, and all those of the last 30 days. They are never shared.
+share-history-help = Before another device's change is written into a file here, the file as it was is kept on this device: the last 20 versions of each file, and all those of the last 30 days. So is your version of an event, a task or a contact changed here and on its server too, the server's version kept. They are never shared.
 share-history-show = Show earlier versions
 share-history-hide = Hide earlier versions
 share-history-empty = Nothing kept yet.
@@ -2820,6 +2829,10 @@ share-estimate = { $count ->
 } Switch on?
 share-estimating = Counting what would travel…
 share-switch-on = Switch on
+share-carried-ask = Does a sync app on this phone carry your notes folder ({ $store })? Sioul cannot read its settings to tell. Carried by both, the sync app and the sharing would undo each other's changes.
+share-carried-not = No sync app carries it: switch on
+share-carried-yes = A sync app carries it
+share-carried-wrong = No sync app carries it on this phone
 share-vanished = { $count ->
     [one] One file
    *[other] { $count } files

@@ -176,21 +176,16 @@ impl DoseRecords {
         crate::config::state_dir().join(FILE)
     }
 
-    /// A hidden file beside the records, made the first time they are
-    /// written: gone with its witness there, they were lost, not never written.
-    fn witness(path: &Path) -> PathBuf {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        path.with_file_name(format!(".{name}.written"))
-    }
-
     /// The records as written, or why they cannot be trusted. Never empty in
     /// place of a file that does not read: an answer given would look not
     /// given, and written back empty, the sharing would take it out everywhere.
+    /// Of no bytes, or gone, though written before (`health::witnessed`): lost.
     pub fn read(path: &Path) -> Result<DoseRecords, Unsound> {
         match std::fs::read_to_string(path) {
+            Ok(text) if text.trim().is_empty() && crate::health::witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if Self::witness(path).exists() {
+                if crate::health::witnessed(path) {
                     Err(Unsound::Lost)
                 } else {
                     Ok(DoseRecords::default())
@@ -217,7 +212,9 @@ impl DoseRecords {
     /// held can be taken out elsewhere (`share::rebuild`).
     pub fn set_aside(path: &Path, now: i64) -> Result<Option<PathBuf>, String> {
         crate::filelock::with_lock(path, || {
-            let _ = std::fs::remove_file(Self::witness(path));
+            for witness in crate::health::witnesses(path) {
+                let _ = std::fs::remove_file(witness);
+            }
             if !path.exists() {
                 return Ok(None);
             }
@@ -232,20 +229,8 @@ impl DoseRecords {
     fn save(&mut self, path: &Path, now: i64) -> Result<(), String> {
         let oldest = now - KEPT_DAYS * 86_400;
         self.dose.retain(|key, record| (if record.due > 0 { record.due } else { parts(key).1 }) >= oldest);
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        let temporary = path.with_extension("toml.new");
         let text = format!("# Each dose that fell due, and the answers your devices captured (docs/health.md).\n{}", toml::to_string(self).map_err(|e| e.to_string())?);
-        std::fs::write(&temporary, text).map_err(fail)?;
-        crate::health::keep_private(&temporary);
-        std::fs::rename(&temporary, path).map_err(fail)?;
-        let witness = Self::witness(path);
-        if !witness.exists() {
-            std::fs::write(&witness, "").map_err(fail)?;
-        }
-        Ok(())
+        crate::health::write_witnessed(path, text.as_bytes())
     }
 
     fn record(&mut self, key: &str) -> &mut Record {

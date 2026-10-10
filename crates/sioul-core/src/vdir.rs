@@ -181,7 +181,7 @@ pub fn rename_collection(collection: &Collection, name: &str) -> Result<(), Stri
     if collection.read_only {
         return Err(format!("{}: read only", collection.name));
     }
-    std::fs::write(collection.dir.join("displayname"), name).map_err(|e| e.to_string())?;
+    crate::filelock::replace(&collection.dir.join("displayname"), name.as_bytes()).map_err(|e| e.to_string())?;
     let path = collection.state_path();
     let mut state = State::load(&path);
     if collection.account != LOCAL && !state.pending {
@@ -232,9 +232,10 @@ pub fn prepare(kind: Kind, account: &str, id: &str, name: &str, color: Option<&s
     }
     let dir = kind.root().join(account).join(id);
     std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join("displayname"), name)?;
+    // Written beside, then renamed: the sharing (local lists) never reads them empty.
+    crate::filelock::replace(&dir.join("displayname"), name.as_bytes())?;
     match color {
-        Some(color) => std::fs::write(dir.join("color"), color)?,
+        Some(color) => crate::filelock::replace(&dir.join("color"), color.as_bytes())?,
         None => {
             let _ = std::fs::remove_file(dir.join("color"));
         }
