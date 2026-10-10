@@ -169,6 +169,18 @@ pub struct State {
     /// ("not-found:murena.io", "network:murena.io"); "" when all is well.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub said: String,
+    /// The other devices' records on the server past what a pull brings
+    /// (`LARGEST`), longer there than here, by name, as the last look through
+    /// the folder found them: only the sync app brings them, and the pull
+    /// alone is not trusted meanwhile (`pulls_well`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub left: BTreeMap<String, u64>,
+    /// This device's entry on the server (`devices/<id>.device`) as a pull
+    /// last listed it: its size, and when (Unix seconds). Of another size than
+    /// this device last sent, listed after that send, it is an older copy put
+    /// back there: looked at again by the next send, and sent over it (`send`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_entry: Option<(u64, i64)>,
     /// `MIRROR` when Sioul keeps the folder in step itself, no sync app: the
     /// folder here is its own copy (`mirror_of`), the server's is the one the
     /// devices share; "" beside a sync app's folder.
@@ -269,7 +281,14 @@ impl State {
     /// nor waited for (docs/android.md, "In the background"); otherwise, as
     /// before: the sync app asked, and given twenty seconds.
     pub fn pulls_well(&self, folder: &Path) -> bool {
-        self.mode != MIRROR && self.fetching() && self.confirmed_for(folder) && self.last > 0 && self.said.is_empty()
+        self.mode != MIRROR && self.fetching() && self.confirmed_for(folder) && self.last > 0 && self.said.is_empty() && self.left.is_empty()
+    }
+
+    /// A pull begun at or after `since` (Unix seconds) went through, with
+    /// nothing left on the server that only the sync app brings: what a
+    /// dose's or a waking's alarm trusts alone (`alarm_news`).
+    pub fn went_through_since(&self, folder: &Path, since: i64) -> bool {
+        self.pulls_well(folder) && self.last >= since
     }
 
     /// Sending this device's own files there too (`send`): with the backup
@@ -1013,6 +1032,109 @@ pub fn due(state: &State, now: i64, pace: Pace) -> bool {
     since >= pace.step - 30
 }
 
+/// The longest of another device's records a pull brings (`LARGEST`); a test's own, in its thread.
+fn round_cap() -> u64 {
+    #[cfg(test)]
+    if let Some(cap) = tests::ROUND_CAP.with(std::cell::Cell::get) {
+        return cap;
+    }
+    LARGEST
+}
+
+/// How long a dose's or a waking's alarm waits for the others' news (`alarm_news`).
+#[derive(Debug, Clone, Copy)]
+pub struct AlarmTimes {
+    /// Sioul's own pull alone, before the sync app is asked too.
+    pub alone: Duration,
+    /// In all, at most: the twenty seconds the sync app had, and the five the pull had after them.
+    pub most: Duration,
+}
+
+/// An alarm's waits, as they are on a phone.
+pub const ALARM_TIMES: AlarmTimes = AlarmTimes { alone: Duration::from_secs(5), most: Duration::from_secs(25) };
+
+/// Where an alarm's news came from (`alarm_news`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlarmNews {
+    /// A pull begun since the alarm went through: what it read is trusted alone.
+    Pulled,
+    /// The sync app asked, and waited for, as before Sioul's own pull.
+    SyncApp,
+}
+
+/// What a dose's or a waking's alarm reads before it decides, `since` its
+/// start (Unix seconds), on a phone whose own pull works (`State::pulls_well`;
+/// docs/android.md, "Doses while Sioul is away"). Sioul's own pull alone is
+/// trusted only once a pull begun since the alarm went through
+/// (`State::went_through_since`): this one, or another's that ran meanwhile in
+/// this process (`lock`, one pull at a time: another alarm's, the window's),
+/// waited for, never passed over. A pull that fails, or has not gone through
+/// within `times.alone`: the sync app asked as before (`ask`, which asks it
+/// and says how long its wait still runs: twenty seconds, less when another
+/// alarm asked it a moment ago), and waited for, that wait ended as soon as
+/// a pull since the alarm goes through; `times.most` in all at most. `clock`
+/// gives the time a pull is said begun at (Unix seconds).
+pub fn alarm_news(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, clock: Box<dyn Fn() -> i64 + Send>, ask: &mut dyn FnMut() -> Duration) -> AlarmNews {
+    alarm_news_with(memory, folder, own, login, lock, since, ALARM_TIMES, clock, ask, LIMITS)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, times: AlarmTimes, clock: Box<dyn Fn() -> i64 + Send>, ask: &mut dyn FnMut() -> Duration, limits: Limits) -> AlarmNews {
+    let begun = Instant::now();
+    let until = begun + times.most;
+    let mut pulling = {
+        let (memory, folder, own) = (memory.to_path_buf(), folder.to_path_buf(), own.to_string());
+        Some(std::thread::spawn(move || pull_since_with(&memory, &folder, &own, login.as_ref(), lock, since, until, &*clock, limits)))
+    };
+    let mut went = None;
+    let mut asked: Option<Instant> = None;
+    loop {
+        if went.is_none() && pulling.as_ref().is_some_and(std::thread::JoinHandle::is_finished) {
+            went = pulling.take().map(|pull| pull.join().unwrap_or(false));
+        }
+        if went == Some(true) {
+            return AlarmNews::Pulled;
+        }
+        let now = Instant::now();
+        // Failed, or not through yet: the sync app asked, as before.
+        if asked.is_none() && (went == Some(false) || now >= begun + times.alone) {
+            asked = Some(now + ask());
+        }
+        if asked.is_some_and(|end| now >= end) || now >= until {
+            // A pull since, through at the last moment, counts all the same.
+            return if State::load(memory).went_through_since(folder, since) { AlarmNews::Pulled } else { AlarmNews::SyncApp };
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// A pull begun since `since` (Unix seconds) gone through: one that ran
+/// meanwhile, waited for (`lock`: one pull at a time in this process), else
+/// this one, begun before `until`. False when a pull begun since failed, or
+/// none could begin in time.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Option<&Login>, lock: &Mutex<()>, since: i64, until: Instant, clock: &dyn Fn() -> i64, limits: Limits) -> bool {
+    let through = || State::load(memory).went_through_since(folder, since);
+    let _one = loop {
+        match lock.try_lock() {
+            Ok(held) => break held,
+            Err(std::sync::TryLockError::Poisoned(held)) => break held.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) if Instant::now() < until => std::thread::sleep(Duration::from_millis(50)),
+            Err(std::sync::TryLockError::WouldBlock) => return through(),
+        }
+    };
+    if through() {
+        return true;
+    }
+    // One begun since that failed (another alarm's): the sync app, not another try within this alarm.
+    if State::load(memory).tried >= since || Instant::now() >= until {
+        return false;
+    }
+    let Some(login) = login else { return false };
+    let _ = pull_with(memory, folder, own, login, clock(), limits);
+    through()
+}
+
 /// What a pull did.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Pulled {
@@ -1038,6 +1160,8 @@ pub struct Pulled {
     pub failure: Option<Failure>,
     /// Bytes that came down.
     pub bytes: u64,
+    /// The other devices' records found past what a pull brings, left to the sync app (`State::left`).
+    pub left: usize,
     /// What went wrong, as `State::said` says it; none when it went through.
     pub problem: Option<String>,
 }
@@ -1239,8 +1363,14 @@ impl Puller<'_> {
         // here): everything looked through again, what it wrote brought back first.
         self.lost = self.mirror() && own_latest(self.folder, self.own).is_none();
         if self.unchanged("", &root.etag) {
+            // What was left to the sync app and has come here since: no longer left.
+            let (folder, into) = (self.folder, self.into);
+            let here = |name: &str| [folder.join(name), into.join(name)].iter().filter_map(|path| std::fs::metadata(path).ok()).map(|m| m.len()).max().unwrap_or(0);
+            self.state.left.retain(|name, size| here(name) < *size);
             return Ok(());
         }
+        // Looked through anew: what is left to the sync app, found again.
+        self.state.left.clear();
         self.own_listed("", &root);
         for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
             match kind_of(name) {
@@ -1256,6 +1386,10 @@ impl Puller<'_> {
             let listing = self.server.list(&self.url("devices/"))?;
             self.pulled.listed += listing.items.len();
             self.own_listed("devices/", &listing);
+            // This device's own entry there, as listed: an older copy put back there is sent over (`send`).
+            if let Some(item) = listing.items.get(&format!("{}.device", self.own)).filter(|item| !item.dir) {
+                self.state.own_entry = Some((item.size, self.now));
+            }
             for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                 let relative = format!("devices/{name}");
                 match kind_of(&relative) {
@@ -1615,7 +1749,10 @@ impl Puller<'_> {
             self.state.files.insert(name.to_string(), known);
             return Ok(());
         }
-        if item.size > LARGEST {
+        if item.size > round_cap() {
+            // Past what a pull brings: left to the sync app, and said (`State::left`).
+            self.state.left.insert(name.to_string(), item.size);
+            self.pulled.left += 1;
             return Ok(());
         }
         let base = if size(&into) >= size(&here) { into.clone() } else { here.clone() };
@@ -2161,6 +2298,19 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         let mut sending = Sending::load_lane(memory, lane);
         if sending.url != state.url {
             sending = Sending { url: state.url.clone(), again: sending.again.clone(), ..Sending::default() };
+        }
+        // This device's entry listed there by a pull after this send last went
+        // through, of another size than it was sent: an older copy put back
+        // there (by another device's sync app, the server's own versions).
+        // Looked at again now, and sent over it, rather than at the check of
+        // every six hours.
+        let entry = format!("devices/{own}.device");
+        if lane == Lane::Main
+            && let Some((size, at)) = state.own_entry
+            && at > sending.last
+            && sending.sent.get(&entry).is_some_and(|sent| sent.size != size)
+        {
+            sending.sent.remove(&entry);
         }
         let host = state.host();
         // The server unreachable a moment ago: not tried before its backoff.
@@ -2963,6 +3113,10 @@ mod tests {
     const OTHER_SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"BBBBBBBBBBBBBBBBBBBBBB==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"two\"\n";
     /// The network's limits, short: a test does not wait ten seconds.
     const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5), floor: 1 << 30, stall: Duration::from_millis(700) };
+    thread_local! {
+        /// The longest round a pull brings, in this test's thread (`round_cap`).
+        pub(super) static ROUND_CAP: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    }
     const DUE: i64 = 1_800_000_000;
 
     fn scratch(name: &str) -> PathBuf {
@@ -3473,16 +3627,20 @@ mod tests {
         assert!(synced < std::fs::read(w.server.join(w.desk_round())).unwrap().len());
     }
 
+    /// An alarm's waits, short: a test does not wait twenty-five seconds.
+    const QUICK: AlarmTimes = AlarmTimes { alone: Duration::from_secs(2), most: Duration::from_secs(5) };
+
     /// A dose's alarm on the phone (`health::alarm_decide`, through the app's
-    /// `exchange_here`) reads the others' news from its own pull alone while
-    /// it works (`State::pulls_well`): the sync app neither asked to look nor
-    /// waited for. Minute after minute, the desk in use marking doses, the
-    /// phone's sync app bringing nothing down: from the same moment, the
-    /// alarm on the pull alone knows exactly what it knows with the sync app
-    /// asked as before (it brought everything down), its doubt never weaker,
-    /// and a dose marked elsewhere is never known not taken.
+    /// `exchange_here`) on its own pull while it works (`alarm_news`): a pull
+    /// begun since the alarm, gone through, and the sync app neither asked to
+    /// look nor waited for. Minute after minute, the desk in use marking
+    /// doses, the phone's sync app bringing nothing down: from the same
+    /// moment, the alarm on its pull knows exactly what it knows with the sync
+    /// app asked as before (it brought everything down), its doubt never
+    /// weaker, and a dose marked elsewhere is never known not taken.
     #[test]
-    fn a_doses_alarm_on_the_pull_alone_knows_what_it_knew_with_the_sync_app_asked() {
+    fn a_doses_alarm_on_its_pull_knows_what_it_knew_with_the_sync_app_asked() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
         let w = World::new("alarm-alone");
         assert!(w.find(DUE).confirmed_for(&w.phone_folder));
         assert!(w.pull(DUE).problem.is_none());
@@ -3502,10 +3660,12 @@ mod tests {
             let _ = w.pull(now + 20);
             w.phone.exchange(&w.phone_folder, now + 25);
             let asked = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
-            // The pull alone, from the same moment: the phone's folder as stale as the sync app left it.
+            // The alarm on its pull, from the same moment: the phone's folder as stale as the sync app left it.
             w.restore(&aside);
             assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "minute {minute}");
-            assert!(w.pull(now + 20).problem.is_none());
+            let mut ask = || -> Duration { panic!("minute {minute}: the pull went through, the sync app is not asked") };
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, now + 20, QUICK, Box::new(move || now + 20), &mut ask, TEST);
+            assert_eq!(came, AlarmNews::Pulled, "minute {minute}");
             w.phone.exchange(&w.phone_folder, now + 25);
             let alone = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
             assert_eq!(alone.0, asked.0, "minute {minute}: the same answers here");
@@ -3519,32 +3679,203 @@ mod tests {
         assert!(std::fs::read(w.phone_folder.join(w.desk_round())).map_or(0, |b| b.len()) < std::fs::read(w.server.join(w.desk_round())).unwrap().len());
     }
 
-    /// The same alarm while the server fails: nothing came, and the doubt is
-    /// said, never "not taken"; the pull is no longer trusted alone, and the
-    /// next alarm asks the sync app first, as before; the server back, the
-    /// answer comes and the pull is trusted again.
+    /// The desk closed an hour before the dose, the phone heard it through a
+    /// good pull; a minute before the dose the desk opens, the dose is marked
+    /// taken there and shared. The phone's alarm: its own pull fails. It never
+    /// decides on what the last good pull said (the desk closed: the dose
+    /// "known" not taken); it asks the sync app, as before Sioul's own pull,
+    /// and waits for it: the answer comes, or the doubt is said. The next
+    /// alarm asks the sync app first; the server back, the pull is trusted
+    /// again (review of battery part B, F2).
     #[test]
-    fn a_doses_alarm_whose_pull_fails_says_its_doubt_and_asks_the_sync_app_next() {
+    fn a_doses_alarm_whose_pull_fails_asks_the_sync_app_and_never_knows_wrongly() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
         let w = World::new("alarm-fails");
-        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
-        assert!(w.pull(DUE + 5).problem.is_none());
-        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "the pull goes through: an alarm reads it alone");
-        // The dose falls due; the desk, in use, marks it taken and shares; the server then fails the phone.
-        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 60\n");
-        w.desk.exchange(&w.server, DUE + 60);
+        assert!(w.find(DUE - 3_000).confirmed_for(&w.phone_folder));
+        w.desk.exchange(&w.server, DUE - 3_600);
+        w.desk.session(&w.server, |e| e.close(DUE - 3_590));
+        assert!(w.pull(DUE - 3_000).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE - 2_990);
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "the pull works");
+        assert!(doubts_now(DUE, DUE + 10, None, &[w.phone.sees(&w.phone_folder, &w.desk, DUE + 10)]).is_empty(), "the desk closed before the dose: known");
+        w.desk.session(&w.server, |e| e.start(DUE - 60));
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+        w.desk.exchange(&w.server, DUE + 30);
+        // The alarm at DUE + 60: its pull refused (503); the sync app asked brings the server's files down.
         w.fake.fault(|_| Some(Fault::Status(503)));
-        assert!(w.pull(DUE + 120).problem.is_some());
-        w.phone.exchange(&w.phone_folder, DUE + 125);
-        assert!(!w.phone.read("health-state.toml").contains("dose@0"));
-        let doubts = doubts_now(DUE, DUE + 130, None, &[w.phone.sees(&w.phone_folder, &w.desk, DUE + 130)]);
-        assert!(matches!(doubts.as_slice(), [Doubt::Working { .. }]), "nothing came: the doubt said, never known: {doubts:?}");
+        let mut asked = 0;
+        let mut ask = || {
+            asked += 1;
+            w.down();
+            Duration::from_millis(200)
+        };
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST);
+        assert_eq!((came, asked), (AlarmNews::SyncApp, 1), "the pull failed: the sync app asked, once");
+        w.phone.exchange(&w.phone_folder, DUE + 65);
+        let taken = w.phone.read("health-state.toml").contains("dose@0");
+        let doubts = doubts_now(DUE, DUE + 70, None, &[w.phone.sees(&w.phone_folder, &w.desk, DUE + 70)]);
+        assert!(taken || !doubts.is_empty(), "the dose marked on the desk is never known not taken: {doubts:?}");
+        assert!(taken, "the sync app brought it");
         assert!(!State::load(&w.phone.memory).pulls_well(&w.phone_folder), "the next alarm asks the sync app first, as before");
-        // The server back: the answer comes, and the pull is trusted again.
+        // The server back: the pull is trusted again.
         w.fake.clear_faults();
         assert!(w.pull(DUE + 180).problem.is_none());
-        w.phone.exchange(&w.phone_folder, DUE + 185);
-        assert!(w.phone.read("health-state.toml").contains("dose@0"));
         assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder));
+    }
+
+    /// Two doses due at the same minute: two alarms at once, each on its own
+    /// thread (review of battery part B, F1). The second finds the first one
+    /// pulling: it waits for that pull, never decides on what came before it,
+    /// and knows what it brought; the sync app is asked by neither.
+    #[test]
+    fn two_doses_at_once_the_second_alarm_waits_for_the_first_ones_pull() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = World::new("alarm-twice");
+        assert!(w.find(DUE - 3_000).confirmed_for(&w.phone_folder));
+        w.desk.session(&w.server, |e| e.close(DUE - 3_590));
+        assert!(w.pull(DUE - 3_000).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE - 2_990);
+        // The desk opens a minute before, the doses are marked taken there.
+        w.desk.session(&w.server, |e| e.start(DUE - 60));
+        w.desk.write("health-state.toml", "[taken]\n\"a@0\" = 1\n\"b@0\" = 2\n");
+        w.desk.exchange(&w.server, DUE + 10);
+        // The first alarm's pull is slow: its first listing takes half a second (within the test's wait for an answer).
+        w.fake.fault(once(|r| r.method == "PROPFIND", Fault::Late(Duration::from_millis(450))));
+        let outcomes: Vec<(AlarmNews, Duration)> = std::thread::scope(|scope| {
+            let alarm = |pause: u64| {
+                let w = &w;
+                scope.spawn(move || {
+                    std::thread::sleep(Duration::from_millis(pause));
+                    let begun = Instant::now();
+                    let mut ask = || -> Duration { panic!("the pull went through: the sync app is not asked") };
+                    (alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST), begun.elapsed())
+                })
+            };
+            let (first, second) = (alarm(0), alarm(150));
+            vec![first.join().unwrap(), second.join().unwrap()]
+        });
+        assert!(outcomes.iter().all(|(came, _)| *came == AlarmNews::Pulled), "{outcomes:?}");
+        assert!(outcomes[1].1 >= Duration::from_millis(250), "the second waited for the first one's pull: {outcomes:?}");
+        w.phone.exchange(&w.phone_folder, DUE + 70);
+        let record = w.phone.read("health-state.toml");
+        assert!(record.contains("a@0") && record.contains("b@0"), "{record}");
+        let seen = w.phone.sees(&w.phone_folder, &w.desk, DUE + 70);
+        assert!(seen.said.as_ref().is_some_and(|s| s.working), "the desk known in use, from the pull: {seen:?}");
+    }
+
+    /// An alarm while the window's pull runs (Sioul on the screen, its minute's
+    /// pull begun before the alarm): the alarm waits for it, then, that pull
+    /// begun before it, pulls again itself, and knows what came since (review
+    /// of battery part B, F1).
+    #[test]
+    fn an_alarm_while_the_windows_pull_runs_pulls_again_after_it() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = World::new("alarm-window");
+        assert!(w.find(DUE - 3_000).confirmed_for(&w.phone_folder));
+        w.desk.session(&w.server, |e| e.close(DUE - 3_590));
+        assert!(w.pull(DUE - 3_000).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE - 2_990);
+        w.desk.session(&w.server, |e| e.start(DUE - 60));
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+        w.desk.exchange(&w.server, DUE + 10);
+        w.fake.fault(once(|r| r.method == "PROPFIND", Fault::Late(Duration::from_millis(450))));
+        let came = std::thread::scope(|scope| {
+            // The window's pull, begun at DUE + 50, holding the one pull at a time.
+            let window = scope.spawn(|| {
+                let _one = ONE_PULL.lock().unwrap();
+                pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 50, TEST)
+            });
+            std::thread::sleep(Duration::from_millis(200));
+            let mut ask = || -> Duration { panic!("a pull went through: the sync app is not asked") };
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 61), &mut ask, TEST);
+            assert!(window.join().unwrap().problem.is_none());
+            came
+        });
+        assert_eq!(came, AlarmNews::Pulled);
+        assert_eq!(State::load(&w.phone.memory).last, DUE + 61, "pulled again, after the window's");
+        w.phone.exchange(&w.phone_folder, DUE + 70);
+        assert!(w.phone.read("health-state.toml").contains("dose@0"));
+    }
+
+    /// An alarm whose pull is slower than its wait (a large round first, a
+    /// slow network): the sync app is asked after the pull's few seconds, and
+    /// waited for; the alarm decides on what it brought, never on what came
+    /// before it (review of battery part B, F2 and F7).
+    #[test]
+    fn an_alarm_whose_pull_does_not_go_through_in_time_asks_the_sync_app() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = World::new("alarm-slow");
+        assert!(w.find(DUE - 3_000).confirmed_for(&w.phone_folder));
+        w.desk.session(&w.server, |e| e.close(DUE - 3_590));
+        assert!(w.pull(DUE - 3_000).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE - 2_990);
+        w.desk.session(&w.server, |e| e.start(DUE - 60));
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+        w.desk.exchange(&w.server, DUE + 10);
+        // Every answer of the server comes after six seconds: past the alarm's wait.
+        w.fake.fault(|_| Some(Fault::Late(Duration::from_secs(6))));
+        let mut asked = 0;
+        let mut ask = || {
+            asked += 1;
+            w.down();
+            Duration::from_millis(300)
+        };
+        let begun = Instant::now();
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST);
+        let waited = begun.elapsed();
+        assert_eq!((came, asked), (AlarmNews::SyncApp, 1), "not through in time: the sync app asked, once");
+        assert!(waited < QUICK.most, "never past the alarm's wait: {waited:?}");
+        w.phone.exchange(&w.phone_folder, DUE + 65);
+        assert!(w.phone.read("health-state.toml").contains("dose@0"), "what the sync app brought is read");
+        w.fake.clear_faults();
+    }
+
+    /// A round on the server past what a pull brings (`LARGEST`; a small cap
+    /// in this test) is left to the sync app, and said: the pull alone is no
+    /// longer trusted while it lasts; once the sync app brought it, the pull is
+    /// again (review of battery part B, F4).
+    #[test]
+    fn a_round_too_large_for_the_pull_is_said_and_left_to_the_sync_app() {
+        let w = World::new("too-large");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+        w.desk.exchange(&w.server, DUE + 10);
+        ROUND_CAP.with(|cap| cap.set(Some(64)));
+        let pulled = w.pull(DUE + 20);
+        assert!(pulled.problem.is_none() && pulled.left >= 1, "{pulled:?}");
+        let state = State::load(&w.phone.memory);
+        assert!(!state.left.is_empty() && !state.pulls_well(&w.phone_folder) && !state.went_through_since(&w.phone_folder, DUE + 20), "{:?}", state.left);
+        // The sync app brings it: nothing left there that is not here.
+        w.down();
+        let pulled = w.pull(DUE + 100);
+        ROUND_CAP.with(|cap| cap.set(None));
+        assert_eq!(pulled.left, 0, "{pulled:?}");
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder));
+    }
+
+    /// The phone's entry on the server put back to an older copy (another
+    /// device's sync app, the server's versions): the next pull lists it of
+    /// another size than the phone sent, and the next send sends it over that
+    /// copy, rather than at the check of every six hours (review of battery
+    /// part B, F6).
+    #[test]
+    fn the_phones_entry_put_back_older_on_the_server_is_sent_again() {
+        let w = World::new("entry-back");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let entry = format!("devices/{}.device", w.phone.id);
+        let older = std::fs::read(w.phone_folder.join(&entry)).unwrap();
+        w.phone.session(&w.phone_folder, |e| e.close(DUE + 10));
+        assert!(phone_sends(&w, DUE + 20, false).problem.is_none());
+        let current = std::fs::read(w.phone_folder.join(&entry)).unwrap();
+        assert_eq!(std::fs::read(w.server.join(&entry)).unwrap(), current);
+        assert_ne!(older.len(), current.len());
+        // Put back there; the desk changes too, so that the folder's listing is looked at again.
+        std::fs::write(w.server.join(&entry), &older).unwrap();
+        w.desk.exchange(&w.server, DUE + 30);
+        assert!(w.pull(DUE + 40).problem.is_none());
+        assert_eq!(State::load(&w.phone.memory).own_entry.map(|(size, _)| size), Some(older.len() as u64));
+        assert!(phone_sends(&w, DUE + 50, false).problem.is_none());
+        assert_eq!(std::fs::read(w.server.join(&entry)).unwrap(), current, "sent over the copy put back");
     }
 
     /// The owner's phone, 6 October 2026, 23:30: the folder found on the

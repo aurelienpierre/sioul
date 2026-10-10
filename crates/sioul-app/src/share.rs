@@ -955,6 +955,12 @@ const CARRIERS: &[(&str, &str, &str)] = &[
 
 /// Every known sync app asked to look now (`CARRIERS`); elsewhere than a phone, nothing.
 fn ask_carriers() {
+    ask_carriers_with(false);
+}
+
+/// `ask_carriers`; with `always`, the sync app asked even while Sioul's own
+/// pull works (a dose's alarm whose pull did not go through falls back to it).
+fn ask_carriers_with(always: bool) {
     // Sioul keeping the folder itself: what changed here goes up now, off the caller's thread.
     if mirrored().is_some() {
         std::thread::spawn(|| mirror_step(&here(), false, false));
@@ -969,7 +975,7 @@ fn ask_carriers() {
         std::thread::spawn(move || {
             send_to_server(&here, false);
             // Sioul's own pull bringing the others' news: the send was all that was needed.
-            if !here.folder_path().is_some_and(|folder| pulls_alone(&folder)) {
+            if always || !here.folder_path().is_some_and(|folder| pulls_alone(&folder)) {
                 ask_carriers_only();
             }
         });
@@ -994,10 +1000,15 @@ enum News {
     /// Nothing waited for: a button pressed (Android waits eight seconds for
     /// its answer), or Sioul keeping the folder itself (the server looked through already).
     None,
-    /// Sioul's own pull alone, waited for twenty-five seconds at most: as long
-    /// as the sync app's twenty and the five after them, never later, and over
-    /// as soon as the pull is.
+    /// The background step: Sioul's own pull alone, waited for twenty-five
+    /// seconds at most (as long as the sync app's twenty and the five after
+    /// them, never later), and over as soon as the pull is.
     Pull,
+    /// A dose's or a waking's alarm, its pull working: trusted alone only once
+    /// a pull begun since the alarm went through (this one, or another's that
+    /// ran meanwhile, waited for); else the sync app asked and waited for, as
+    /// before (`remote::alarm_news`).
+    Alarm,
     /// The sync app asked and given twenty seconds, the pull meanwhile, then
     /// five more seconds at most for it.
     SyncApp,
@@ -1006,14 +1017,33 @@ enum News {
 }
 
 /// How an exchange waits for the others' news, as it is asked (`fetch_first`:
-/// the background step, a dose's or a waking's alarm) on this device.
-fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool) -> News {
+/// the background step, or an `alarm`, a dose's or a waking's) on this device.
+fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool, alarm: bool) -> News {
     match (fetch_first && !mirror, phone, pulls_well) {
         (false, _, _) => News::None,
         (true, false, _) => News::Computer,
+        (true, true, true) if alarm => News::Alarm,
         (true, true, true) => News::Pull,
         (true, true, false) => News::SyncApp,
     }
+}
+
+/// The sync app asked to bring the others' news, as before Sioul's own pull,
+/// and how long its twenty seconds still run: asked a moment ago already (two
+/// doses due at once), only what is left of them. Only where it is really
+/// asked is it said asked (`NUDGED`).
+fn ask_sync_app() -> std::time::Duration {
+    use std::sync::atomic::Ordering;
+    let now = jiff::Timestamp::now().as_second();
+    let last = NUDGED.load(Ordering::Relaxed);
+    let waited = if now - last < 20 {
+        now - last
+    } else {
+        NUDGED.store(now, Ordering::Relaxed);
+        ask_carriers_with(true);
+        0
+    };
+    std::time::Duration::from_secs((20 - waited).max(0) as u64)
 }
 
 /// The sync apps asked to look now, and nothing else.
@@ -1043,7 +1073,7 @@ pub(crate) fn nudge(qt: &QtThread, shared: &Arc<Shared>, every: i64, then_read: 
     use std::sync::atomic::Ordering;
     let now = jiff::Timestamp::now().as_second();
     let last = NUDGED.load(Ordering::Relaxed);
-    if !cfg!(target_os = "android") || now - last < every.max(60) || NUDGED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+    if !cfg!(target_os = "android") || now - last < every.max(60) {
         return;
     }
     let here = share::Here::load(&state_dir());
@@ -1059,6 +1089,10 @@ pub(crate) fn nudge(qt: &QtThread, shared: &Arc<Shared>, every: i64, then_read: 
         if then_read || sending_on(&here) {
             return;
         }
+    }
+    // Said asked only where it is (an alarm reads it: asked a moment ago, it waits what is left).
+    if NUDGED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+        return;
     }
     ask_carriers();
     if then_read {
@@ -1102,9 +1136,12 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     // alike; the sync app neither asked to look nor waited for, before or
     // after a send. Else, as before: asked, and given twenty seconds.
     let pull_alone = !mirror && pulls_alone(&folder);
-    let waits = news(fetch_first, cfg!(target_os = "android"), mirror, pull_alone);
-    // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`).
-    let fetching = (fetch_first && !mirror).then(|| {
+    // A dose's or a waking's alarm, in Sioul's own process (the background step runs in its own).
+    let alarm = fetch_first && !crate::steps::in_service();
+    let waits = news(fetch_first, cfg!(target_os = "android"), mirror, pull_alone, alarm);
+    // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`);
+    // an alarm's pull is its own (`alarm_news`, below).
+    let fetching = (fetch_first && !mirror && waits != News::Alarm).then(|| {
         let here = here.clone();
         std::thread::spawn(move || fetch_from_server(&here, true))
     });
@@ -1117,17 +1154,25 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
     if waits == News::SyncApp {
-        use std::sync::atomic::Ordering;
-        let now = jiff::Timestamp::now().as_second();
-        let last = NUDGED.load(Ordering::Relaxed);
-        let waited = if now - last < 20 {
-            now - last
-        } else {
-            NUDGED.store(now, Ordering::Relaxed);
-            ask_carriers();
-            0
-        };
-        std::thread::sleep(std::time::Duration::from_secs((20 - waited).max(0) as u64));
+        std::thread::sleep(ask_sync_app());
+    }
+    // A dose's or a waking's alarm, its pull working: a pull begun since it
+    // started, gone through, or the sync app as before (`remote::alarm_news`).
+    if waits == News::Alarm {
+        let memory = memory_path();
+        let since = jiff::Timestamp::now().as_second();
+        match attached(&here) {
+            Some(at) => {
+                let state = sioul_sync::remote::State::load(&memory);
+                let login = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of);
+                let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, login, &FETCHING, since, Box::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
+                log_backup(match came {
+                    sioul_sync::remote::AlarmNews::Pulled => "alarm: the others' news pulled since it began".into(),
+                    sioul_sync::remote::AlarmNews::SyncApp => "alarm: no pull went through in time; the sync app asked and waited for".into(),
+                });
+            }
+            None => std::thread::sleep(ask_sync_app()),
+        }
     }
     // What the server brings, waited for a few seconds more at most: never
     // the whole of a slow network's (a dose's alarm has a minute in all). The
@@ -1137,7 +1182,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         let until = std::time::Instant::now() + std::time::Duration::from_secs(match waits {
             News::Pull => 25,
             News::SyncApp => 5,
-            News::Computer | News::None => 15,
+            News::Computer | News::None | News::Alarm => 15,
         });
         while !fetching.is_finished() && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1924,7 +1969,7 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
     let pulled = sioul_sync::remote::pull(&memory, &folder, &here.id, &login, now);
     let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
     log_backup(match &pulled.problem {
-        None => format!("{at} pulled from {}: {} listed, {} fetched, {} bytes", state.host(), pulled.listed, pulled.fetched, pulled.bytes),
+        None => format!("{at} pulled from {}: {} listed, {} fetched, {} bytes{}", state.host(), pulled.listed, pulled.fetched, pulled.bytes, if pulled.left > 0 { format!("; {} records too large left to the sync app", pulled.left) } else { String::new() }),
         Some(why) => format!("{at} pull from {} stopped: {}", state.host(), backup_words(why)),
     });
 }
@@ -2124,20 +2169,20 @@ mod tests {
 
     /// A dose's alarm (`health::alarm_decide`) asks for the others' news
     /// before it decides (`exchange_here(true)`): on a phone whose own pull
-    /// works (`pulls_alone`), the pull alone, waited for twenty-five seconds
-    /// at most and no longer than it takes, the sync app neither asked nor
-    /// waited for; the pull failing, or the backup off, the sync app asked and
-    /// given its twenty seconds, as before. What the doses then know is the
-    /// same either way (sioul-sync's
-    /// `a_doses_alarm_on_the_pull_alone_knows_what_it_knew_with_the_sync_app_asked`,
-    /// `a_doses_alarm_whose_pull_fails_says_its_doubt_and_asks_the_sync_app_next`).
+    /// works (`pulls_alone`), a pull begun since the alarm, gone through, else
+    /// the sync app asked and waited for as before (`remote::alarm_news`); the
+    /// pull failing, or the backup off, the sync app's twenty seconds as
+    /// before; the background step, its pull alone. What the doses then know,
+    /// in sioul-sync's `remote` tests: two alarms at once, an alarm while the
+    /// window pulls, a pull that fails, one too slow.
     #[test]
     fn a_doses_alarm_waits_for_the_pull_alone_while_it_works() {
-        assert_eq!(news(true, true, false, true), News::Pull);
-        assert_eq!(news(true, true, false, false), News::SyncApp, "the pull failing: as before");
-        assert_eq!(news(true, true, true, false), News::None, "Sioul keeping the folder: the server looked through already");
-        assert_eq!(news(true, false, false, false), News::Computer);
-        assert_eq!(news(false, true, false, true), News::None, "a button pressed: nothing waited for");
+        assert_eq!(news(true, true, false, true, true), News::Alarm, "an alarm: a pull since it began, else the sync app (`remote::alarm_news`)");
+        assert_eq!(news(true, true, false, true, false), News::Pull, "the background step: its pull alone");
+        assert_eq!(news(true, true, false, false, true), News::SyncApp, "the pull failing: as before");
+        assert_eq!(news(true, true, true, false, true), News::None, "Sioul keeping the folder: the server looked through already");
+        assert_eq!(news(true, false, false, false, true), News::Computer);
+        assert_eq!(news(false, true, false, true, false), News::None, "a button pressed: nothing waited for");
     }
 
     #[test]

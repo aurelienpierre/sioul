@@ -227,14 +227,26 @@ pub const RESTATED: i64 = 60 * 60;
 
 /// What this device last wrote into the folder, kept beside its own entry and
 /// never shared (`published_path`): what it said then, its exchanges' times
-/// left out (`steady`), the file as written (its size and time), where, and when.
+/// left out (`steady`), the file as written (its size and time), where, under
+/// which key (`sealed_with`: the folder sealed again, it is written again at
+/// once), and when.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct Published {
     said: String,
     folder: String,
+    #[serde(default)]
+    key: String,
     size: u64,
     modified: u64,
     at: i64,
+}
+
+/// Which key an entry was sealed with, as a mark that says nothing of the key
+/// itself (a hash of it under a name of its own).
+fn sealed_with(key: &[u8; 32]) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::new().chain_update(b"sioul: the key a device entry was sealed with\x1f").chain_update(key).finalize();
+    digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 fn published_path(own: &Path) -> PathBuf {
@@ -277,11 +289,12 @@ pub(crate) fn change_at(path: &Path, vault: Option<(&Path, &[u8; 32])>, now: i64
             let there = folder.display().to_string();
             let last: Option<Published> = std::fs::read_to_string(published_path(path)).ok().and_then(|t| toml::from_str(&t).ok());
             // As the others last read it: the same words, the folder's copy the one written, within the hour.
-            let current = last.is_some_and(|last| last.said == said && last.folder == there && stamp_of(&file) == Some((last.size, last.modified)) && (0..RESTATED).contains(&(now - last.at)));
+            let mark = sealed_with(key);
+            let current = last.is_some_and(|last| last.said == said && last.folder == there && last.key == mark && stamp_of(&file) == Some((last.size, last.modified)) && (0..RESTATED).contains(&(now - last.at)));
             if entry.working || !current {
                 publish(folder, key, &entry)?;
                 let (size, modified) = stamp_of(&file).unwrap_or_default();
-                let published = Published { said, folder: there, size, modified, at: now };
+                let published = Published { said, folder: there, key: mark, size, modified, at: now };
                 // Lost, the entry is only written again at the next change: nothing is said wrongly.
                 let _ = toml::to_string(&published).map_err(|e| e.to_string()).and_then(|text| crate::share::write_atomically(&published_path(path), text.as_bytes()));
             }
@@ -460,6 +473,11 @@ mod tests {
         // Its doses no longer shared: there at once.
         change_at(&own, vault, t + 900 + RESTATED, |e| e.doses = false).unwrap();
         assert!(!all(&folder, &KEY).0[0].doses);
+        // The folder sealed again (another passphrase, the same place): written under the new key at once.
+        let other = [9u8; 32];
+        exported(t + 950 + RESTATED, (2, 1));
+        change_at(&own, Some((folder.as_path(), &other)), t + 960 + RESTATED, |e| e.exported((t + 960 + RESTATED) * 1000, Some((2, 1)), t + 960 + RESTATED)).unwrap();
+        assert_eq!(all(&folder, &other).0.len(), 1, "readable under the new key at once");
         // In use: every export, each with its time.
         change_at(&own, vault, t + 1_000 + RESTATED, |e| e.start(t + 1_000 + RESTATED)).unwrap();
         for n in 1..=3 {
@@ -662,6 +680,55 @@ mod tests {
         desk.exchange(&folder, DUE + 360);
         assert!(matches!(desk.answered(DOSE), Answered::Taken(_)));
         assert!(doubts_now(DUE, DUE + 360, None, &[desk.sees(&folder, &phone, DUE + 360)]).is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// What the desktop knows of the phone with `seen` as `health::know` keeps
+    /// it (when the phone's entry was last seen changing: its session, its
+    /// export), not the moment it looks (review of battery part B, F7). Put
+    /// away and quiet for hours, its entry unchanged: `seen` hours old, the
+    /// dose known all the same (a closed device's knowing never reads it). In
+    /// use, exporting every minute: known after the dose while it goes on;
+    /// stopped without closing (a crash), its entry still: the doubt said once
+    /// `FRESH` has passed.
+    #[test]
+    fn a_dose_is_known_with_seen_as_the_desktop_keeps_it() {
+        let (base, folder, desk, phone) = pair("seen-kept");
+        let mut watched: Option<((i64, i64, bool, i64, bool), i64)> = None;
+        let mut sees = |at: i64| -> Peer {
+            let entry = all(&folder, &KEY).0.into_iter().find(|e| e.id == phone.id).expect("its entry");
+            let state = (entry.started, entry.closed, entry.working, entry.exported, entry.left);
+            if watched.is_none_or(|(last, _)| last != state) {
+                watched = Some((state, at));
+            }
+            Peer { seen: watched.map_or(at, |(_, seen)| seen), ..desk.sees(&folder, &phone, at) }
+        };
+        phone.exchange(&folder, DUE - 3_600);
+        phone.session(&folder, |e| e.close(DUE - 3_595));
+        desk.exchange(&folder, DUE - 3_590);
+        let closed_seen = sees(DUE - 3_590).seen;
+        for n in 0..12 {
+            phone.exchange(&folder, DUE - 3_500 + n * 300);
+            desk.exchange(&folder, DUE - 3_490 + n * 300);
+            assert_eq!(sees(DUE - 3_490 + n * 300).seen, closed_seen, "put away and quiet: its entry not seen changing");
+        }
+        for at in [DUE + 30, DUE + 3_600, DUE + 6 * 3_600] {
+            let peer = sees(at);
+            assert!(at - peer.seen > sioul_core::health::FRESH);
+            assert!(doubts_now(DUE, at, None, &[peer]).is_empty(), "closed, its seen {} s old: known at {at}", at - closed_seen);
+        }
+        // In use from DUE + 400, exporting every minute: seen follows, the dose known after it.
+        let later = DUE + 7 * 3_600;
+        phone.session(&folder, |e| e.start(later));
+        for n in 1..=5 {
+            phone.exchange(&folder, later + n * 60);
+            desk.exchange(&folder, later + n * 60 + 5);
+            assert!(doubts_now(later, later + n * 60 + 10, None, &[sees(later + n * 60 + 10)]).is_empty() || n * 60 < sioul_core::health::SKEW, "in use, exporting: known at minute {n}");
+        }
+        // Stopped without closing (a crash): its entry still, the doubt said once FRESH has passed.
+        let stopped = later + 5 * 60 + 10 + sioul_core::health::FRESH + 60;
+        desk.exchange(&folder, stopped - 5);
+        assert!(matches!(doubts_now(later, stopped, None, &[sees(stopped)]).as_slice(), [Doubt::Working { .. }]), "a phone in use gone quiet: the doubt said");
         let _ = std::fs::remove_dir_all(&base);
     }
 
