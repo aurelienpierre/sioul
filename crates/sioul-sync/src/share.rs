@@ -131,9 +131,25 @@ const EMPTIED_WAIT: i64 = 10 * 60_000;
 
 /// How long a round waits for the end of the round before (`Turn`), which a
 /// sync app may bring late, before that end is taken for lost: an hour
-/// (milliseconds). Then the gap is said, the doses doubt what that computer
-/// marked until its next full round, and its later records are read.
+/// (milliseconds) of exchanges, time asleep left out (`AWAIT_STEP`). Then the
+/// gap is said, the doses doubt what that computer marked until its next
+/// full round, and its later records are read.
 const AWAITED: i64 = 60 * 60_000;
+
+/// The most one exchange counts of the wait (`AWAITED`): the time since the
+/// one before, five minutes at most (milliseconds). A device asleep, or
+/// closed, counts none of that time: woken, its sync app may not have
+/// brought the round's end yet, and passing the round over then would ask
+/// for a full round for nothing (on a phone, megabytes of its texts: review
+/// of 10 October 2026, third pass).
+const AWAIT_STEP: i64 = 5 * 60_000;
+
+/// The longest a full round owed or asked for (`Memory::owed`) waits for a
+/// connection not metered: six hours of exchanges, counted as `AWAITED` is
+/// (milliseconds). A phone always on mobile data, which marks most doses,
+/// would otherwise leave the others saying "check" on its doses for days
+/// after one damaged line, until 4 MiB of growth.
+const OWED_METERED: i64 = 6 * 60 * 60_000;
 /// A line of a computer's records longer than this is none (the longest, a
 /// file whole of 16 MiB sealed in a line, is about 30 MiB): skipped as broken.
 const LONGEST_LINE: usize = 32 << 20;
@@ -1976,6 +1992,13 @@ struct Memory {
     /// Written as soon as all reads again (`new_round`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     owed: bool,
+    /// How long the full round owed waited for a connection not metered,
+    /// exchanges running (milliseconds, as `Awaited::waited`), and the last
+    /// exchange that counted it: past `OWED_METERED`, it goes all the same.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    owed_waited: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    owed_last: i64,
     /// This memory enters a round only once the one before was read to its
     /// end (`Turn`). One kept before (10 October 2026) may have moved past
     /// the end of a round not read whole: every other computer's kept rounds
@@ -2030,10 +2053,11 @@ struct Memory {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     met: BTreeMap<String, (u32, u64)>,
     /// Each other computer's round waiting here for the end of the one
-    /// before (`Turn`), and since when (milliseconds): passed over as lost
-    /// past `AWAITED`.
+    /// before (`Turn`), and how long it waited, exchanges running: passed
+    /// over as lost past `AWAITED`. (`awaited`, which counted the clock's
+    /// time, is left aside.)
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    awaited: BTreeMap<String, (u32, i64)>,
+    waiting_for: BTreeMap<String, Awaited>,
     /// When a line of another computer's could not be read here (Unix seconds): what it said is lost.
     #[serde(default)]
     broken: BTreeMap<String, i64>,
@@ -2465,8 +2489,23 @@ struct Turn {
     full: bool,
 }
 
+fn is_zero_i64(n: &i64) -> bool {
+    *n == 0
+}
+
 fn is_zero_u64(n: &u64) -> bool {
     *n == 0
+}
+
+/// A round waiting for the end of the round before (`Memory::waiting_for`).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Awaited {
+    /// The round waiting.
+    round: u32,
+    /// How long it waited, the exchanges' time counted (`AWAIT_STEP`), in milliseconds.
+    waited: i64,
+    /// The last exchange that counted it (milliseconds).
+    last: i64,
 }
 
 /// The turn of a round that does not know where the round before it ended
@@ -4244,7 +4283,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 // (`remove_old_rounds`): the round before missing while an earlier
                 // one is kept has not come yet; missing with every earlier one, it
                 // was taken out, and what it held past here is lost: a gap, said below.
-                // Waited for an hour (`AWAITED`; a round truly lost: an older copy
+                // Waited for an hour of exchanges (`AWAITED`; a round truly lost: an older copy
                 // kept for good, a file taken out of the server), it is passed over
                 // as lost: the gap said, what that computer wrote not all known
                 // here (`read_n` stays) until its next full round, which this device
@@ -4257,25 +4296,25 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     && memory.met.get(computer).or_else(|| memory.read_n.get(computer)).is_some_and(|met| *met < (before, turn.p))
                 {
                     if let Some(full) = later_full(sharing, computer, their_rounds, round) {
-                        memory.awaited.remove(computer);
+                        memory.waiting_for.remove(computer);
                         from_round = full;
                         continue 'rounds;
                     }
                     if their_rounds.iter().any(|r| *r <= before) {
-                        let since = match memory.awaited.get(computer) {
-                            Some((at_round, since)) if *at_round == round => *since,
-                            _ => {
-                                memory.awaited.insert(computer.clone(), (round, now_ms));
-                                now_ms
-                            }
-                        };
-                        if now_ms - since < AWAITED {
+                        let waiting = memory.waiting_for.entry(computer.clone()).or_default();
+                        if waiting.round == round {
+                            waiting.waited += (now_ms - waiting.last).clamp(0, AWAIT_STEP);
+                        } else {
+                            *waiting = Awaited { round, waited: 0, last: now_ms };
+                        }
+                        waiting.last = now_ms;
+                        if waiting.waited < AWAITED {
                             break 'rounds;
                         }
                     }
                 }
                 if !own && record.n == 1 {
-                    memory.awaited.remove(computer);
+                    memory.waiting_for.remove(computer);
                 }
                 offset += length;
                 good = Some((record.n, Some(record.c)));
@@ -4722,13 +4761,29 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // and while a bulk import goes on (`set_importing`).
     let waits = if importing(sharing.memory) { memory.grown <= IMPORT_ROUND_SIZE } else { frugal(sharing.memory) && memory.grown <= FRUGAL_ROUND_SIZE };
     // Another device asks for one (it lost some of this computer's records:
-    // `Seen::full`), unless a bulk import goes on: owed.
-    if !memory.owed && !importing(sharing.memory) && asked_for_full(sharing, &memory, now_ms) {
+    // `Seen::full`): owed.
+    if !memory.owed && asked_for_full(sharing, &memory, now_ms) {
         memory.owed = true;
     }
     // One owed (a round after lost lines that could not restate all, R7, or
-    // asked for): as soon as all reads again.
-    let owed = memory.owed && restatement(sharing, &memory, stores, &found).1 == 0;
+    // asked for): as soon as all reads again, and not while the connection is
+    // metered or slow, nor while a bulk import goes on, as a full round past
+    // `ROUND_SIZE` waits (on a phone always on mobile data, a full round
+    // restates every text it holds: review of 10 October 2026, third pass).
+    // The others' doubt holds meanwhile. Metered, it waits `OWED_METERED` of
+    // exchanges at most (counted as `AWAITED` is), then goes all the same: a
+    // phone always on mobile data, which marks most doses, never leaves the
+    // others in doubt for days; past the growth those waits allow, it comes
+    // sooner.
+    let metered = frugal(sharing.memory) && !importing(sharing.memory);
+    if memory.owed && metered {
+        if memory.owed_last > 0 {
+            memory.owed_waited += (now_ms - memory.owed_last).clamp(0, AWAIT_STEP);
+        }
+        memory.owed_last = now_ms;
+    }
+    let thrifty = importing(sharing.memory) || (metered && memory.owed_waited < OWED_METERED);
+    let owed = memory.owed && !thrifty && restatement(sharing, &memory, stores, &found).1 == 0;
     if (memory.grown > ROUND_SIZE && !waits) || owed {
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
         memory.round_base = own(&memory);
@@ -4768,6 +4823,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         && memory.sealed.gone.is_empty()
         && memory.sealed.failing.is_empty()
         && memory.sealed.missing.is_empty()
+        && memory.waiting_for.is_empty()
+        && !memory.owed
         && memory.pending.keys().all(|key| locate(stores, file_of(key)).is_some_and(|(store, _)| !reads(store)));
     let until = (now_ms + HOUR).min(memory.tidied + HOUR).min(memory.cleaned + DAY).min(seen_due);
     let (round, own_size) = (memory.round, memory.own_size);
@@ -5692,6 +5749,7 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
         memory.full_round = memory.round;
         memory.continues = 0;
         memory.owed = false;
+        (memory.owed_waited, memory.owed_last) = (0, 0);
     } else {
         memory.continues = if previous > 0 { previous } else { UNKNOWN_TURN };
         memory.owed |= cut;
