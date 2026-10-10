@@ -61,6 +61,9 @@ struct AccountView {
     kind: String,
     /// "€845.10 on Saturday 3 October", or "" before its first export.
     balance: String,
+    /// Two of its exports' balances on one day differ: two real accounts
+    /// under one (`accounts::two_accounts_in_one`), said calmly.
+    two_accounts: bool,
     /// The budgets it fills, the one taking what nothing else places first.
     fills: Vec<Named>,
     floor: f64,
@@ -284,6 +287,7 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
             title: account.title.clone(),
             kind: account.kind().to_string(),
             balance,
+            two_accounts: accounts::two_accounts_in_one(bank, account),
             fills: account.fills.iter().map(|b| Named { id: b.clone(), title: budget_title(b) }).collect(),
             floor: account.floor.cents() as f64 / 100.0,
             floor_text: if account.floor.cents() > 0 { tr().money(account.floor) } else { String::new() },

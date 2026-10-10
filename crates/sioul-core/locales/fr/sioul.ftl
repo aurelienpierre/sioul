@@ -3328,6 +3328,7 @@ bank-account-remove = Le retirer
 bank-account-remove-yes = Le retirer pour de bon
 bank-account-remove-ask = Ses mouvements restent dans sioul-bank.toml et ses règles dans le fichier des budgets ; ses budgets ne les comptent plus.
 bank-account-no-export = Aucun export pris encore : « Prendre un export… ».
+bank-account-two-in-one = Deux de ses exports donnent des soldes différents le même jour : ils semblent venir de deux comptes, et seul le solde le plus récent est affiché. Pour compter les deux, créez un nouveau compte bancaire pour le second et prenez-y ses exports.
 bank-account-fills-line = Remplit { $budgets }.
 bank-account-fills-none = Il ne remplit encore aucun budget : ses mouvements ne comptent nulle part. « Modifier » pour choisir.
 bank-account-topped = Renfloué par { $reserves }.

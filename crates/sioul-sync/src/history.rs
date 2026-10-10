@@ -219,7 +219,9 @@ pub fn version(root: &Path, part: &str, file: &str, stamp: &str) -> Option<Kept>
 
 /// The history held within bounds, now and then: each file's versions as
 /// `keep` keeps them, those of a file no longer here (`here` says which are)
-/// past 30 days, then the oldest copies past `cap` bytes in all.
+/// past 30 days, then the oldest copies past `cap` bytes in all. Your
+/// versions of calendars' and contacts' items (`ACCOUNTS`) are kept as those
+/// of a file still here: the last 20, and all those of the last 30 days.
 pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bool) {
     let mut copies: Vec<(i64, PathBuf, u64)> = Vec::new();
     for entry in std::fs::read_dir(root).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
@@ -229,7 +231,10 @@ pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bo
         for (file, _) in listed {
             let Some(dir) = below(root, &part, &file) else { continue };
             crate::share::clean_leftovers(&dir);
-            prune_file(&dir, now_ms, !here(&part, &file));
+            // Your versions of your calendars' and contacts' items are kept as
+            // a file still here's, the item on its server or not: no shared
+            // store holds them (review of 10 October 2026, R4).
+            prune_file(&dir, now_ms, part != ACCOUNTS && !here(&part, &file));
             copies.extend(versions_in(&dir).into_iter().filter(|v| v.sealed.is_none()).map(|v| (v.at, dir.join(&v.stamp), v.size)));
         }
     }
