@@ -1492,6 +1492,13 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
                 crate::devices::exported(&outcome);
                 (received, pending) = (outcome.received, outcome.pending);
                 if !outcome.written.is_empty() {
+                    // What the pages were read from (`work::loaded`: the notes, the
+                    // recently changed, projects and tasks) came before these:
+                    // read again, or a note come from another device stays unseen.
+                    if let Ok(mut cache) = shared.loaded.lock() {
+                        *cache = None;
+                    }
+                    crate::work::show_work(&qt, &shared);
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
                 }
