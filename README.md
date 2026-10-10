@@ -76,7 +76,7 @@ Sioul is the working counterpart of a book by the same author, *Design and Engin
 
 ## Where it stands
 
-Version 0.0.4: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
+Version 0.0.5: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

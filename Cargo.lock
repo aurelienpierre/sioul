@@ -4356,7 +4356,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-app"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -4376,7 +4376,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-cli"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "clap",
  "jiff",
@@ -4392,7 +4392,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-core"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "ammonia",
  "calcard",
@@ -4419,7 +4419,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-learn"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "async-imap",
  "fasttext",
@@ -4437,7 +4437,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-sync"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "aes",
  "aes-gcm",
