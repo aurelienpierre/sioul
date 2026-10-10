@@ -252,7 +252,7 @@ ColumnLayout {
             text: panel.sioul.text("share-server-account")
             color: panel.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: accountBox
 
             visible: panel.byServer

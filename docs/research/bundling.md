@@ -75,7 +75,8 @@ References, in order: rbw's source; the SDK's `bitwarden-crypto` (GPL branch); B
 ### What Sioul does
 - **Each system's own antivirus; nothing of ClamAV ships with Sioul.** The research allowed bundling ClamAV beside Sioul as a separate program; the decision went further: the packages stay simpler, and every system keeps its antivirus current itself ([client.md](../client.md), "Antivirus"). **Built**.
 - **Linux and macOS**: ClamAV when the system has it (its daemon, else its scanner); with the system's signatures, else Sioul's own copy, refreshed once a day with the system's freshclam. **Windows**: AMSI. Without an antivirus, nothing is refused: Sioul says the file will not be checked, asks before opening it, and gives the command that installs one. A Flatpak does not reach the system's ClamAV: there, Sioul asks. **Built** (AMSI written to Microsoft's documented sequence, not yet run on Windows).
-- **Not built**: IAttachmentExecute and the Mark of the Web on Windows; quarantine attributes on files Sioul writes on macOS.
+- **The system's mark of what came from the Internet**: every attachment Sioul writes to be opened, and every one it saves to your downloads, carries the Mark of the Web on Windows (a `Zone.Identifier` stream with `ZoneId=3`) and the quarantine attribute on macOS (`com.apple.quarantine`, written with `xattr`), so that Office opens it in Protected View and Gatekeeper checks it (`mark_from_mail`, `crates/sioul-app/src/backend.rs`). A disk that cannot keep the mark leaves the file as it is. **Built** (not yet run on Windows or macOS).
+- **Not built**: IAttachmentExecute on Windows. Sioul writes the Mark of the Web itself, and does not ask Windows' attachment services to check a file as it is saved.
 
 ## 3. Sounds to focus or rest by
 

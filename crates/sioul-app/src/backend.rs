@@ -32,6 +32,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 #[cxx_qt::bridge]
 pub mod qobject {
+    // SAFETY: cxx checks these declarations against the headers they include, when it builds; the types are cxx-qt-lib's.
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -1673,6 +1674,7 @@ pub mod qobject {
     }
 
     #[auto_cxx_name]
+    // SAFETY: CXX-Qt makes both sides of these signals and methods from this declaration.
     unsafe extern "RustQt" {
         /// The notification's "copy" button was pressed.
         #[qsignal]
@@ -1808,6 +1810,7 @@ pub(crate) type QtThread = cxx_qt::CxxQtThread<Sioul>;
 static PHONE_CHOOSER: std::sync::Mutex<Option<QtThread>> = std::sync::Mutex::new(None);
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// Opens Android's chooser of the phone's accounts (android/main.cpp).
     fn sioul_android_choose_account();
@@ -1826,6 +1829,7 @@ unsafe extern "C" {
 /// # Safety
 /// `name` and `kind` are null, or zero-terminated UTF-8 texts valid for the call.
 #[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_android_account_chosen(name: *const std::ffi::c_char, kind: *const std::ffi::c_char) {
     // SAFETY: as the caller promises.
@@ -2002,6 +2006,7 @@ fn session_language() -> String {
 #[cfg(windows)]
 fn system_locale() -> Option<String> {
     #[link(name = "kernel32")]
+    // SAFETY: kernel32's own, as winnls.h declares it: a buffer of UTF-16 and its size in characters, the length written back.
     unsafe extern "system" {
         fn GetUserDefaultLocaleName(name: *mut u16, size: i32) -> i32;
     }
@@ -2431,9 +2436,14 @@ fn compute(shared: &Shared) -> Views {
 
 /// Computes the views on a thread and shows them, unless newer ones came first.
 pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
-    mail::show_mail(qt, shared);
+    crate::mailsearch::changed(qt, shared);
     let qt = qt.clone();
     coalesced(shared, |s| &s.views_job, move |shared| {
+        // One look at the mail for the Mail page and the Porch: the folder the
+        // page shows (the inbox, most often) is parsed once for both, not once
+        // each (the owner's question, whether the phone parses each message once).
+        let _cards = sioul_core::maildir::CardsKept::begin();
+        mail::show_mail_here(&qt, shared);
         let generation = shared.generation.fetch_add(1, Ordering::Relaxed) + 1;
         let views = compute(shared);
         let _ = qt.queue(move |mut sioul| {

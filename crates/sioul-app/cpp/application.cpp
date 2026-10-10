@@ -52,3 +52,13 @@ extern "C" QGuiApplication *sioul_new_application(int count, const char *const *
     QGuiApplication::setQuitOnLastWindowClosed(false);
     return application;
 }
+
+// The token a second Sioul handed on with its links (outside.rs,
+// `activate_with_token`): Qt's Wayland client gives XDG_ACTIVATION_TOKEN to
+// the compositor at the next window's activation (requestActivate), then
+// unsets it, so that the draft it opens comes to the front. qputenv takes Qt's
+// own lock on the environment, which Qt reads under the same lock.
+extern "C" void sioul_set_activation_token(const char *token)
+{
+    qputenv("XDG_ACTIVATION_TOKEN", QByteArray(token));
+}

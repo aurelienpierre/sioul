@@ -295,7 +295,7 @@ Item {
                             text: page.sioul.text("ui-history")
                             color: page.theme.text
                         }
-                        ComboBox {
+                        PlainComboBox {
                             id: history
 
                             readonly property var weeks: [1, 2, 4, 13, 26, 52, 0]
@@ -720,7 +720,7 @@ Item {
                                                 text: page.sioul.text("ui-security")
                                                 color: page.theme.muted
                                             }
-                                            ComboBox {
+                                            PlainComboBox {
                                                 id: security
                                                 Layout.fillWidth: true
                                                 model: [page.sioul.text("security-tls"), page.sioul.text("security-starttls")]
@@ -1637,7 +1637,7 @@ Item {
                 text: page.sioul.text("account-row-priority")
                 color: page.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: priority
 
                 readonly property var levels: ["above", "average", "below"]

@@ -106,13 +106,13 @@ Dialog {
                                     dialog.save(rule.modelData, text, rule.modelData.direction, rule.modelData.to, rule.modelData.everywhere)
                             }
                         }
-                        ComboBox {
+                        PlainComboBox {
                             Layout.preferredWidth: 180
                             model: dialog.directions.map(d => dialog.sioul.text("bank-rule-direction-" + (d === "" ? "any" : d)))
                             currentIndex: Math.max(0, dialog.directions.indexOf(rule.modelData.direction))
                             onActivated: index => dialog.save(rule.modelData, ruleWords.text, dialog.directions[index], rule.modelData.to, rule.modelData.everywhere)
                         }
-                        ComboBox {
+                        PlainComboBox {
                             Layout.preferredWidth: 220
                             model: dialog.places.map(p => dialog.theme.plain(p.title))
                             currentIndex: Math.max(0, dialog.places.findIndex(p => p.id === rule.modelData.to))
@@ -162,13 +162,13 @@ Dialog {
                         addRule.clicked()
                 }
             }
-            ComboBox {
+            PlainComboBox {
                 id: newDirection
 
                 Layout.preferredWidth: 180
                 model: dialog.directions.map(d => dialog.sioul.text("bank-rule-direction-" + (d === "" ? "any" : d)))
             }
-            ComboBox {
+            PlainComboBox {
                 id: newPlace
 
                 Layout.preferredWidth: 220

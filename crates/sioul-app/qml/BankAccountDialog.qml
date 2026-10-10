@@ -108,7 +108,7 @@ Dialog {
             text: dialog.sioul.text("bank-account-kind")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: kind
 
             Layout.fillWidth: true

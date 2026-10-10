@@ -166,6 +166,7 @@ mod work;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
+// SAFETY: declared as the C++ files of cpp/ (and, for a phone, android/main.cpp) define them: extern "C", the same types.
 unsafe extern "C" {
     /// Qt Quick drawn as Qt WebEngine (the Sites page) needs; before the application is
     /// made (cpp/webengine.cpp). Android has no Qt WebEngine: its Sites page opens sites in the browser.
@@ -179,6 +180,11 @@ unsafe extern "C" {
     /// Sioul's own icon on its windows (cpp/appicon.cpp); once the application is made.
     #[cfg(not(target_os = "android"))]
     fn sioul_set_window_icon();
+    /// The activation token a second Sioul handed on, for the next window
+    /// brought forward on Wayland (cpp/application.cpp; `outside::activate_with_token`).
+    /// `token` is a C string, copied.
+    #[cfg(not(target_os = "android"))]
+    pub(crate) fn sioul_set_activation_token(token: *const std::ffi::c_char);
     /// SIGTERM, SIGINT and SIGHUP end Sioul as its window's close does
     /// (cpp/signals.cpp); once the application is made.
     #[cfg(not(target_os = "android"))]
@@ -229,6 +235,7 @@ fn timed() -> bool {
 fn steady_heap() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
+        // SAFETY: glibc's mallopt, as malloc.h declares it.
         unsafe extern "C" {
             fn mallopt(param: std::ffi::c_int, value: std::ffi::c_int) -> std::ffi::c_int;
         }
@@ -252,6 +259,7 @@ fn process_age() -> Option<std::time::Duration> {
         seconds: i64,
         nanoseconds: i64,
     }
+    // SAFETY: the C library's clock_gettime, as time.h declares it; `Timespec` is its struct timespec where Sioul runs (64-bit Linux and Android: two 64-bit fields).
     unsafe extern "C" {
         fn clock_gettime(clock: i32, time: *mut Timespec) -> i32;
     }
@@ -423,6 +431,7 @@ fn widgets_application() -> cxx::UniquePtr<QGuiApplication> {
 
 /// Android: [`run`], for the program Qt for Android starts (android/main.cpp).
 #[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_app_run() -> i32 {
     run()
@@ -436,6 +445,7 @@ pub extern "C" fn sioul_app_run() -> i32 {
 /// `vm` is the process's JavaVM and `context` a global reference to the
 /// application's Context, never released; called once.
 #[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_android_init(vm: *mut std::ffi::c_void, context: *mut std::ffi::c_void) -> bool {
     // SAFETY: as the caller promises.

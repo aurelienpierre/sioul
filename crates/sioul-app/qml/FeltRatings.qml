@@ -17,13 +17,17 @@ import QtQuick.Layouts
 ColumnLayout {
     id: how
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // What was foreseen: {cognitive, emotional, anxiety, body, gain}, each 0 to 10 or null.
     property var forecast: ({})
     // What was felt today, as kept so far; null before.
     property var kept: null
+    // The four costs and the gain, by their names in a task's record.
     readonly property var names: ["cognitive", "emotional", "anxiety", "body", "gain"]
+    // Whether anything was said of how it was.
     readonly property bool said: how.kept !== null && how.kept !== undefined && how.names.some(n => how.kept[n] !== null && how.kept[n] !== undefined)
 
     // The tiles themselves (for the tests).
@@ -32,11 +36,13 @@ ColumnLayout {
     // Today's five values to keep: the one just given, the others as kept so far.
     signal given(var values)
 
+    // What was said of one of them: 0 to 10, or null when unsaid.
     function felt(name) {
         const value = how.kept ? how.kept[name] : null
         return value === undefined ? null : value
     }
 
+    // One of them said (a tile tapped): kept as felt, the others as they were.
     function give(name, value) {
         const values = {}
         for (const n of how.names)

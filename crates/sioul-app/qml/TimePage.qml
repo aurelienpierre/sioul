@@ -461,12 +461,12 @@ Item {
     }
 
     // The period and the project shown: beside the title, or under it on a phone.
-    component PeriodChoice: ComboBox {
+    component PeriodChoice: PlainComboBox {
         model: page.periods.map(p => page.sioul.text("time-period-" + p))
         currentIndex: page.periods.indexOf(page.period)
         onActivated: index => page.period = page.periods[index]
     }
-    component ProjectChoice: ComboBox {
+    component ProjectChoice: PlainComboBox {
         readonly property var choices: [{ id: "", title: page.sioul.text("time-all-projects") }].concat(page.projects)
 
         model: choices.map(c => page.theme.plain(c.title))

@@ -86,7 +86,7 @@ Dialog {
                 text: form.sioul.text("papers-kind")
                 color: form.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: kindChoice
 
                 Layout.fillWidth: true
@@ -128,7 +128,7 @@ Dialog {
                 text: form.sioul.text("contracts-preset")
                 color: form.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: presetChoice
 
                 readonly property var choices: [{ id: "", title: "—" }].concat(form.presets)
@@ -163,7 +163,7 @@ Dialog {
                     locale: form.window.sioulLocale
                     pickLabel: form.sioul.text("event-pick-day")
                 }
-                ComboBox {
+                PlainComboBox {
                     id: everyChoice
 
                     Layout.preferredWidth: 170

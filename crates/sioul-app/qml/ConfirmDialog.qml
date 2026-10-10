@@ -10,15 +10,20 @@ import QtQuick.Controls.Basic
 Dialog {
     id: dialog
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // What happens, in a sentence.
     property string sentence: ""
+    // The button that does it, named by what it does ("Delete for good").
     property string action: ""
     // The sentence holds commands in backticks, Sioul's own (how to install
     // an antivirus): each shown to copy (CommandText.qml). Off unless asked:
     // a name from a message is never taken for a command.
     property bool commands: false
 
+    // The action was chosen.
     signal confirmed
 
     // Asks, then calls `confirmed` if the action is chosen. The heading and the

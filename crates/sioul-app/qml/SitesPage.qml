@@ -1343,7 +1343,7 @@ Item {
                         text: page.sioul.text("site-device-" + deviceRow.which)
                         color: page.theme.muted
                     }
-                    ComboBox {
+                    PlainComboBox {
                         Layout.fillWidth: true
                         model: deviceRow.names.map(n => n === "" ? page.sioul.text("site-device-system") : page.theme.plain(n))
                         currentIndex: Math.max(0, deviceRow.names.indexOf(deviceRow.chosen))
@@ -1781,7 +1781,7 @@ Item {
                 text: page.sioul.text("site-field-kind")
                 color: page.theme.muted
             }
-            ComboBox {
+            PlainComboBox {
                 id: editKind
 
                 Layout.fillWidth: true
@@ -1914,7 +1914,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 6
 
-                ComboBox {
+                PlainComboBox {
                     id: countryChoice
 
                     readonly property var choices: [{ code: "-", name: page.sioul.text("site-presets-everyone") }].concat(adding.offered.countries)
@@ -1924,7 +1924,7 @@ Item {
                     currentIndex: Math.max(0, choices.findIndex(c => c.code === (adding.offered.country || "-")))
                     onActivated: index => adding.load(choices[index].code, "")
                 }
-                ComboBox {
+                PlainComboBox {
                     id: regionChoice
 
                     readonly property var choices: [{ code: "", name: page.sioul.text("site-presets-whole-country") }].concat(adding.country ? adding.country.regions : [])
@@ -1935,7 +1935,7 @@ Item {
                     currentIndex: Math.max(0, choices.findIndex(r => r.code === adding.offered.region))
                     onActivated: index => adding.load(adding.offered.country, choices[index].code)
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: [{ id: "", name: page.sioul.text("site-presets-all") }].concat(adding.offered.types.map(t => ({ id: "type:" + t, name: page.sioul.text("site-kind-" + t) }))).concat(adding.offered.categories.map(c => ({ id: "category:" + c, name: c })))
 
                     Layout.fillWidth: true
@@ -2047,7 +2047,7 @@ Item {
                     text: page.sioul.text("site-field-kind")
                     color: page.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     id: siteKind
 
                     Layout.fillWidth: true

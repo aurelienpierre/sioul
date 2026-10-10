@@ -20,8 +20,12 @@ import QtQuick.Layouts
 ColumnLayout {
     id: grid
 
+    // The setting it shows, as the core gives it, its matrix in `grid`: {columns,
+    // marks, rows}.
     required property var setting
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
 
     // A row's words, nine of them, the one chosen changed.
@@ -33,8 +37,12 @@ ColumnLayout {
     // The legend's "fixed" mark: shown only where a row has a fixed cell.
     readonly property bool anyFixed: grid.rows.some(r => r.cells.some(c => (c.locked || "") !== ""))
 
+    // The matrix shown: its times and layers across (`columns`), its marks, its rows.
     readonly property var matrix: grid.setting.grid || ({ columns: [], marks: [], rows: [] })
+    // The seven times and the two layers, across: each its id and its name.
     readonly property var columns: grid.matrix.columns
+    // The rows down, in their groups: each its name, its help, its cells and the
+    // choices they offer.
     readonly property var rows: grid.matrix.rows
     // A mark's cell, as narrow as a finger allows.
     readonly property real cell: 36
@@ -47,7 +55,9 @@ ColumnLayout {
         }
         return out
     }
+    // The width of every column with its time's name lying across.
     readonly property real flatWidth: grid.flatWidths.reduce((sum, w) => sum + w, 0)
+    // The width of the widest row's name, 60 pixels at least.
     readonly property real nameWidth: {
         let width = 60
         for (let i = 0; i < names.count; i++) {
@@ -61,7 +71,10 @@ ColumnLayout {
     readonly property bool beside: grid.width > 0 && grid.nameWidth + grid.flatWidth <= grid.width
     // The times' names upright when even they do not fit across.
     readonly property bool upright: grid.width > 0 && !grid.beside && grid.flatWidth > grid.width
+    // Each column's width: a mark's cell when the names stand upright, else its
+    // name's.
     readonly property var widths: grid.upright ? grid.columns.map(() => grid.cell) : grid.flatWidths
+    // The height the times' names need standing upright: the longest of them.
     readonly property real tallest: {
         let height = 0
         for (let i = 0; i < heads.count; i++) {
@@ -92,7 +105,10 @@ ColumnLayout {
 
     // The cell whose choices are open.
     property var openRow: null
+    // The cell whose choices are open, in `openRow`; null when none is.
     property var openCell: null
+    // What the open cell's choices say: its row and time, the row's help, then each
+    // choice it offers, or why it is fixed.
     readonly property var lines: {
         if (!grid.openRow || !grid.openCell)
             return []
@@ -103,6 +119,7 @@ ColumnLayout {
         return out.concat(grid.openRow.choices.filter(c => grid.openCell.choices.indexOf(c.id) >= 0))
     }
 
+    // A cell's choices opened under `item`, its mark.
     function open(row, cell, item) {
         grid.openRow = row
         grid.openCell = cell
@@ -141,6 +158,7 @@ ColumnLayout {
             grid.open(row, cell, item)
     }
 
+    // The cell's choices closed.
     function closeChoices() {
         choices.close()
     }

@@ -14,15 +14,21 @@ import QtQuick.Layouts
 Dialog {
     id: dialog
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // "The task's own project" (`time-own-project`), then the open projects, and
+    // the one asked for even when closed: the choices.
     property var projects: []
     // "No task", then the open tasks (and the stretch's own).
     property var tasks: []
+    // What went wrong when saving, in words; "" for nothing.
     property string problem: ""
     // The stretch being changed, by its key; "" for a new one.
     property string replacing: ""
 
+    // The stretch was kept.
     signal saved
 
     // "09:30" → minutes of the day; -1 when it is no time.
@@ -40,16 +46,19 @@ Dialog {
         return to > from ? to - from : to + 24 * 60 - from
     }
 
+    // How long the stretch typed lasts, in minutes (`lengthOf`).
     function length() {
         return dialog.lengthOf(at.text, until.text)
     }
 
+    // Minutes of the day as "09:30".
     function clock(minutes) {
         const pad = n => n < 10 ? "0" + n : String(n)
         const m = ((minutes % 1440) + 1440) % 1440
         return pad(Math.floor(m / 60)) + ":" + pad(m % 60)
     }
 
+    // Today, as 2026-10-05.
     function today() {
         const d = new Date()
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -67,6 +76,7 @@ Dialog {
         unbilled.checked = !entry.billable
     }
 
+    // The form opened for a new stretch, in `project` and on `task` when given.
     function begin(project, task) {
         // Open projects, and the one asked for even when closed: a stretch changed
         // there must not move to another project unseen.
@@ -89,6 +99,8 @@ Dialog {
         at.forceActiveFocus()
     }
 
+    // The form saved: the stretch kept by the backend, in the project and on the task
+    // chosen; what went wrong said in the form, which stays open.
     function save() {
         const chosen = dialog.projects[which.currentIndex]
         const task = dialog.tasks[what.currentIndex]
@@ -124,7 +136,7 @@ Dialog {
             text: dialog.sioul.text("time-field-task")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: what
 
             Layout.fillWidth: true
@@ -140,7 +152,7 @@ Dialog {
             text: dialog.sioul.text("time-field-project")
             color: dialog.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: which
 
             Layout.fillWidth: true

@@ -10,7 +10,7 @@
 //! Changes made elsewhere (read on the phone, deleted in the webmail) come back
 //! at each sync (`reconcile`).
 
-use crate::SyncError;
+use crate::{SyncError, said};
 use crate::imap::{self, COMMAND, Imap, Server};
 use async_imap::types::NameAttribute;
 use futures_util::StreamExt;
@@ -86,7 +86,7 @@ pub(crate) fn own_dir(account: &Account, folder: &Folder) -> Option<PathBuf> {
 pub fn create_folder(account: &Account, password: &str, name: &str) -> Result<(), SyncError> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(SyncError::Server("a folder needs a name".into()));
+        return Err(SyncError::Said(said::FOLDER_NAME, String::new()));
     }
     let name = folders::encode_utf7(name);
     let server = Server::of(account)?;
@@ -107,9 +107,9 @@ pub const NOT_EMPTY: &str = "not-empty";
 /// never one with a purpose (the inbox, Sent, Drafts, the trash, junk, the
 /// archive), so no message is ever lost this way.
 pub fn delete_folder(account: &Account, password: &str, name: &str) -> Result<(), SyncError> {
-    let folder = folders(&account.id).into_iter().find(|f| f.name == name).ok_or_else(|| SyncError::Server(format!("{name}: no such folder")))?;
+    let folder = folders(&account.id).into_iter().find(|f| f.name == name).ok_or_else(|| SyncError::Said(said::NO_FOLDER, name.to_string()))?;
     if folder.role != Role::Other {
-        return Err(SyncError::Server(format!("{}: a folder with a purpose stays", folder.display)));
+        return Err(SyncError::Said(said::PURPOSE, folder.display.clone()));
     }
     let server = Server::of(account)?;
     crate::fetch::block_on(async {
@@ -288,8 +288,8 @@ pub enum Action {
 /// moved, into this device's log of its moves.
 pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> Result<(), SyncError> {
     let server = Server::of(account)?;
-    let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
-    let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
+    let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
     if *action == Action::Archive && matches!(folder.role, Role::Archive | Role::All) {
         return Ok(());
     }
@@ -353,8 +353,8 @@ fn device() -> String {
 /// Writes into the spam filter's label log what you said of the message
 /// stored at `file`, without acting on it there: a sender blocked from it.
 pub fn label(account: &Account, file: &Path, source: labels::Source) -> Result<(), SyncError> {
-    let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
-    let entry = labels::Entry::of_file(&account.id, &folder.name, file, source).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
+    let entry = labels::Entry::of_file(&account.id, &folder.name, file, source).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
     labels::append_to(&labels::own_log(&labels::state(), &device()), &entry).map_err(SyncError::Disk)
 }
 
@@ -364,8 +364,8 @@ pub fn label(account: &Account, file: &Path, source: labels::Source) -> Result<(
 /// training learns from it as it is until you say otherwise: a probable spam
 /// as spam, a maybe spam not at all.
 pub fn flagged(account: &Account, file: &Path, class: sioul_core::spam::Class) -> Result<(), SyncError> {
-    let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
-    let flag = labels::Flagged::of_file(&account.id, &folder.name, file, class).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
+    let flag = labels::Flagged::of_file(&account.id, &folder.name, file, class).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
     labels::append_to(&labels::own_flagged_log(&labels::state(), &device()), &flag).map_err(SyncError::Disk)
 }
 
@@ -386,8 +386,8 @@ fn said(action: &Action) -> Option<labels::Source> {
 /// copy fails, the original stays; if removing the original fails, both remain.
 pub fn move_across(from: &Account, from_password: &str, file: &Path, to: &Account, to_password: &str, folder: &str) -> Result<(), SyncError> {
     let raw = std::fs::read(file).map_err(|e| SyncError::Disk(format!("{}: {e}", file.display())))?;
-    let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
-    let source = folder_of(from, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
+    let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
+    let source = folder_of(from, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
     append_then_remove(from, from_password, &source, origin, &raw, &maildir::flags_of(file), to, to_password, folder)?;
     if let Some(file) = maildir::locate(file) {
         let _ = std::fs::remove_file(&file);
@@ -413,7 +413,7 @@ pub fn move_across_from_server(from: &Account, from_password: &str, source: &str
 async fn read_whole(session: &mut Imap, folder: &Folder, origin: ImapOrigin) -> Result<(Vec<u8>, String), SyncError> {
     let examined = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
     if examined.uid_validity.unwrap_or(0) != origin.validity {
-        return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
+        return Err(SyncError::Said(said::RENUMBERED, String::new()));
     }
     let mut fetches = imap::within(COMMAND, session.uid_fetch(origin.uid.to_string(), "(UID FLAGS BODY.PEEK[])")).await?.map_err(imap::server)?;
     let mut found = None;
@@ -425,7 +425,7 @@ async fn read_whole(session: &mut Imap, folder: &Folder, origin: ImapOrigin) -> 
             found = Some((body.to_vec(), crate::fetch::maildir_flags(fetch.flags())));
         }
     }
-    found.ok_or_else(|| SyncError::Server("this message is no longer on the server".into()))
+    found.ok_or_else(|| SyncError::Said(said::GONE, String::new()))
 }
 
 /// Copies `raw` into `folder` of `to`, its flags kept (Maildir letters), and
@@ -469,7 +469,7 @@ pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[
             }
         }
         if !remote.is_empty() {
-            first.get_or_insert(SyncError::Server("open the message first".into()));
+            first.get_or_insert(SyncError::Said(said::OPEN_FIRST, String::new()));
         }
         return first.map_or(Ok(()), Err);
     }
@@ -487,7 +487,7 @@ pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[
         match (maildir::origin_of(file), folder_of(account, file)) {
             (Some(origin), Some(folder)) => add(folder, origin, Some(file)),
             _ => {
-                first.get_or_insert(SyncError::Server("not a message fetched by Sioul".into()));
+                first.get_or_insert(SyncError::Said(said::NOT_FETCHED, String::new()));
             }
         }
     }
@@ -544,7 +544,7 @@ pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[
 async fn remove_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin) -> Result<(), SyncError> {
     let selected = imap::within(COMMAND, session.select(&folder.name)).await?.map_err(imap::server)?;
     if selected.uid_validity.unwrap_or(0) != origin.validity {
-        return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
+        return Err(SyncError::Said(said::RENUMBERED, String::new()));
     }
     let uid = origin.uid.to_string();
     let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
@@ -561,7 +561,7 @@ async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: 
 async fn act_set(session: &mut Imap, account: &Account, folder: &Folder, validity: u32, uid: &str, action: &Action) -> Result<(), SyncError> {
     let selected = imap::within(COMMAND, session.select(&folder.name)).await?.map_err(imap::server)?;
     if selected.uid_validity.unwrap_or(0) != validity {
-        return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
+        return Err(SyncError::Said(said::RENUMBERED, String::new()));
     }
     let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
     let (can_move, uidplus) = (capabilities.has_str("MOVE"), capabilities.has_str("UIDPLUS"));

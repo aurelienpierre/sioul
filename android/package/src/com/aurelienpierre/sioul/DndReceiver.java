@@ -18,7 +18,7 @@ import android.util.Log;
  * (PauseMode): asked by the background service when your other devices
  * changed it, at the alarm of its next end (the switch's "until", waking,
  * the night), and after the phone's restart. Sioul's window open or not:
- * the library is loaded alone, as for a dose (DoseAlarms.load), and Rust
+ * the library is loaded alone, as for a dose ({@link DoseAlarms#load}), and Rust
  * answers on a thread of its own, the broadcast held open meanwhile.
  *
  * Both ways (docs/do-not-disturb.md): the phone's own do-not-disturb heard as
@@ -44,7 +44,7 @@ public final class DndReceiver extends BroadcastReceiver
     static final String TOGGLE = "com.aurelienpierre.sioul.action.DND_TOGGLE";
     /**
      * The phone's interruption filter changed, as Sioul's notification listener
-     * heard it (AppNotes.onInterruptionFilterChanged, in its own process):
+     * heard it ({@link AppNotes#onInterruptionFilterChanged}, in its own process):
      * decided here as Android's own broadcast is, whichever comes first.
      */
     static final String HEARD = "com.aurelienpierre.sioul.action.DND_HEARD";
@@ -134,7 +134,7 @@ public final class DndReceiver extends BroadcastReceiver
         });
     }
 
-    /** One decision (PauseMode.decide), never two at once in this process. */
+    /** One decision ({@link PauseMode#decide}), never two at once in this process. */
     private static String decided(Context app, String action, int status, String kind, String id)
     {
         synchronized (DECIDING) {

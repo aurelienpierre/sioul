@@ -17,7 +17,9 @@ import QtQuick.Layouts
 ColumnLayout {
     id: editor
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The medicine's dose, what a take with no amount of its own is given: its field's hint.
     property string usual: ""

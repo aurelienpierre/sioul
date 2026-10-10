@@ -17,9 +17,14 @@ import QtQuick.Layouts
 ColumnLayout {
     id: said
 
+    // Sioul's backend (backend.rs): its words in your language and what it does. The
+    // Copy buttons' words come from there.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The line, its commands in backticks.
     property string text: ""
+    // The words' colour; the commands keep the fields' own.
     property color color: said.theme.text
     // The words' size; 0 for a label's own.
     property int pixelSize: 0

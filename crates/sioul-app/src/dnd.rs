@@ -894,6 +894,7 @@ mod phone {
     use std::ffi::{CStr, CString, c_char};
 
     #[cfg(target_os = "android")]
+    // SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
     unsafe extern "C" {
         /// PauseMode.call (android/main.cpp): a verb and its JSON, a JSON answer or null.
         fn sioul_android_dnd(verb: *const c_char, json: *const c_char) -> *mut c_char;

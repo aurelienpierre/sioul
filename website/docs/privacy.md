@@ -5,7 +5,7 @@ description: Sioul's privacy policy - Sioul runs on your device and has no serve
 
 # Privacy policy
 
-*Last updated on 8 October 2026 (2026-10-08).*
+*Last updated on 10 October 2026 (2026-10-10).*
 
 Sioul is a free and open-source desktop application, published by Aurélien Pierre under the GPL-3.0-or-later licence. This policy says what Sioul does with your data, and in particular with the data it receives from Google when you sign in with a Google account.
 
@@ -39,7 +39,7 @@ When you add a Google account in Sioul (Accounts ▸ Add an account ▸ Google c
 
 If you untick tasks on Google's page, Sioul leaves tasks out, and the rest works.
 
-Signing in with Google gives Sioul no access to your Gmail. If you read Gmail in Sioul, it is added as an ordinary mail account, with an app password you make yourself, as with any mail program.
+Signing in with Google for your calendars, contacts and tasks gives Sioul no access to your Gmail, and Sioul's own key never asks for it. If you read Gmail in Sioul, it is added as a mail account of its own, in one of two ways. With an app password you make yourself, as with any mail program. Or, only with a Google key of your own (your own Google Cloud project), by signing in with Google for the mail itself: Google then asks your permission for the scope `https://mail.google.com/`, which Sioul uses to read that mailbox over IMAP and to send the messages you send over SMTP, as any mail program does. That mail is kept on your device as any account's mail is; its sign-in has a keyring entry of its own, apart from the calendars'; and removing the account gives the access back to Google (unless your calendars use the same key, since Google would end their access too: Sioul then only forgets it).
 
 ### How Google data is used
 
@@ -74,7 +74,7 @@ Sioul's use and transfer of information received from Google APIs adheres to the
 
 Removing the account leaves your Google account itself as it is. The copies already on your device stay in Sioul's data folder until you delete them: on Linux, the folders named after the account in `~/.local/share/sioul/calendars/` and `~/.local/share/sioul/contacts/`.
 
-If you use a Google key of your own (your own Google Cloud project, as Sioul allows), all of the above holds the same: the data travels only between your device and Google.
+If you use a Google key of your own (your own Google Cloud project, as Sioul allows), all of the above holds the same: the data travels only between your device and Google. Such a key also lets you sign in to Gmail through Google ([above](#google-calendars-contacts-and-tasks)).
 
 ## Other data
 

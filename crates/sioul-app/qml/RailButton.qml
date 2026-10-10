@@ -20,7 +20,9 @@ import QtQuick.Controls.impl
 Button {
     id: rail
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // Its icon, by its freedesktop name.
     required property string iconName
     // What it is, in words: said in its tip and to screen readers, shown when `named`.
     required property string name
@@ -43,11 +45,14 @@ Button {
     property var sayTip: null
     // A long press on a touch screen said its name: letting go opens nothing.
     property bool held: false
+    // Its icon, for the window to turn (the sync's button while it syncs, Places.qml).
     readonly property alias glyph: glyph
 
     // Clicked, or Space or Enter, unless a long press only said its name.
     signal chosen
 
+    // Its tip shown or hidden for `ms` milliseconds: by the window when it says the
+    // places' tips (`sayTip`), else by Qt.
     function showTip(shown, ms) {
         if (rail.sayTip !== null)
             rail.sayTip(rail, shown, ms)

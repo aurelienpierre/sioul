@@ -9,7 +9,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 /**
- * A reminder tapped: its dose kept for Sioul (DoseAlarms.takeOpened, which
+ * A reminder tapped: its dose kept for Sioul ({@link DoseAlarms#takeOpened}, which
  * Rust reads when the window comes up), then Sioul brought up as by its icon.
  * A window of its own, never shown, so that no intent with a dose in it stays
  * with Sioul's window, to be given again when Android restores it.

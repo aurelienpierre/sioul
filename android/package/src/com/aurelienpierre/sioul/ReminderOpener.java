@@ -12,7 +12,7 @@ import android.util.Log;
 /**
  * An event's reminder or new mail's notification tapped (EventAlarms,
  * MailNotes): what it opens, the event's file or the Porch, kept for Sioul
- * (EventAlarms.takeOpened, which Rust reads when the window comes up), then
+ * ({@link EventAlarms#takeOpened}, which Rust reads when the window comes up), then
  * Sioul brought up as by its icon. A window of its own, never shown, as
  * DoseOpener: no intent naming a file stays with Sioul's window.
  */

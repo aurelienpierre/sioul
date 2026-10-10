@@ -665,6 +665,9 @@ SioulWindow {
         if (window.composer === null)
             window.composer = Qt.createComponent("ComposeWindow.qml")
         const opened = window.composer.createObject(null, { draftId: id, sioul: sioul, theme: theme, phoneSize: window.phoneGrab })
+        // Asked to the front: on Wayland with the token a second Sioul handed on
+        // with its link (outside.rs), so that KWin does not keep it behind.
+        opened.requestActivate()
         window.drafts = window.drafts.concat([opened])
         opened.finished.connect(() => {
             window.drafts = window.drafts.filter(w => w !== opened)

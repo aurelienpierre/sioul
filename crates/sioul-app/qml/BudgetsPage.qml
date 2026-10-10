@@ -519,7 +519,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: page.theme.gap
 
-                                    ComboBox {
+                                    PlainComboBox {
                                         id: budgetChoice
 
                                         visible: mailRow.modelData.can_add

@@ -13,7 +13,9 @@ import QtQuick.Layouts
 IconImage {
     id: icon
 
+    // The icon, by its freedesktop name ("mail-reply-sender").
     required property string iconName
+    // Its side, in pixels.
     property int size: 18
     // Said on hover, when set: what the icon stands for, in words.
     property string tip: ""

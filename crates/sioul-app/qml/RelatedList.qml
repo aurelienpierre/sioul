@@ -15,17 +15,25 @@ import QtQuick.Layouts
 ColumnLayout {
     id: related
 
+    // Sioul's backend (backend.rs): its words in your language and what it does. The
+    // ties are read there (`related`).
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The thing open, by its address.
     property string uri: ""
     // Ties shown elsewhere on the card, by how they read ("Step of"…).
     property var leaveOut: []
+    // Its heading; "" for none.
     property string title: ""
+    // The ties shown: each {uri, how, title, …}, those of the kinds left out
+    // (`leaveOut`) taken out.
     property var items: []
 
+    // A tie clicked: the thing it names, to open where it lives.
     signal openThing(var item)
 
+    // The ties read again, for `uri`.
     function reload() {
         const all = related.uri !== "" ? JSON.parse(related.sioul.related(related.uri) || "[]") : []
         related.items = all.filter(r => related.leaveOut.indexOf(r.how) < 0)

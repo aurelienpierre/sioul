@@ -10,9 +10,13 @@ import QtQuick.Controls.Basic
 Button {
     id: action
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // Its icon, by its freedesktop name.
     required property string iconName
+    // Its name: beside the icon, or, `compact`, said on hover and to screen readers.
     property string label: ""
+    // Narrow: its icon alone.
     property bool compact: false
     // Its width with its name beside its icon, whatever it shows now: what a
     // row of actions needs to show their names (the Reader's `compact`).

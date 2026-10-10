@@ -10,12 +10,17 @@ import QtQuick.Controls.Basic
 Item {
     id: avatar
 
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The picture's address; "" for the initials alone.
     property string source: ""
+    // Whose: their initials are made from it (two at most).
     property string name: ""
+    // Its side, in pixels.
     property int size: 40
     // A word's first letter as a whole character: an emoji or a rare letter is two UTF-16 halves.
     readonly property string initials: avatar.name.split(/[\s.@_-]+/).filter(w => w !== "").slice(0, 2).map(w => Array.from(w)[0].toUpperCase()).join("")
+    // How round its corners are: a fifth of its side.
     readonly property int corner: Math.round(avatar.size / 5)
 
     implicitWidth: avatar.size

@@ -306,7 +306,7 @@ Item {
                     onClicked: routinesDialog.now().show()
                 }
                 // The board and the timeline: one project, or all.
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
 
                     // On a phone, two choices a line.
@@ -319,7 +319,7 @@ Item {
                     }
                 }
                 // One kind of task at a time: the calls together, the forms together.
-                ComboBox {
+                PlainComboBox {
                     id: kindChoice
 
                     readonly property var choices: [{ id: "", label: page.sioul.text("task-filter-all") }].concat(page.shown ? page.shown.kinds : [])
@@ -333,11 +333,14 @@ Item {
                     ToolTip.delay: 600
                     onActivated: index => page.sioul.filterTasks(choices[index].id, page.categoryFilter)
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: [""].concat(page.shown ? page.shown.categories : [])
 
                     visible: choices.length > 1
-                    width: page.narrow ? page.halfFlow : 170
+                    // As wide as its longest choice ("Toutes les catégories" was cut),
+                    // within its line: on a phone, the line but the settings' button.
+                    implicitContentWidthPolicy: ComboBox.WidestText
+                    width: Math.min(Math.max(page.narrow ? page.halfFlow : 170, implicitWidth), page.narrow ? viewsFlow.width - tasksSettings.width - viewsFlow.spacing : 280)
                     model: choices.map(c => c === "" ? page.sioul.text("task-filter-any-category") : page.theme.plain(c))
                     currentIndex: Math.max(0, choices.findIndex(c => c.toLowerCase() === page.categoryFilter.toLowerCase()))
                     onActivated: index => page.sioul.filterTasks(page.kindFilter, choices[index])
@@ -407,7 +410,7 @@ Item {
                     RowLayout {
                         spacing: 8
 
-                        ComboBox {
+                        PlainComboBox {
                             id: listAccount
 
                             readonly property var accounts: JSON.parse(page.sioul.listAccounts())
@@ -981,7 +984,7 @@ Item {
                                         page.apply()
                                     }
                                 }
-                                ComboBox {
+                                PlainComboBox {
                                     model: [page.sioul.text("task-by-project"), page.sioul.text("task-by-list")]
                                     currentIndex: page.by === "list" ? 1 : 0
                                     onActivated: index => {

@@ -16,12 +16,17 @@ import QtQuick.Layouts
 Panel {
     id: reader
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The main window (main.qml), which opens what is asked of it. Drafts, tasks and
+    // notes made from the message open there.
     required property var window
     // The message, by its file; empty when none is open.
     property string key: ""
     // Its entry in the list: trust, and on the Porch the reasons and the screener.
     property var item: null
+    // The message as the backend read it (`readMessage`): its headers, text,
+    // attachments and what it is tied to; null while none is read.
     property var reading: null
     // The message is being read off the window's thread (`readMessage`): the pane says so meanwhile.
     property bool opening: false
@@ -45,7 +50,9 @@ Panel {
         })
     // Read and flagged, as last done here: the server follows.
     property bool unread: false
+    // Flagged, as last done here: the server follows.
     property bool flagged: false
+    // Why it is in its lane on the Porch, unfolded.
     property bool reasonsShown: false
     // Attachments stay folded until asked for.
     property bool attachmentsShown: false
@@ -56,14 +63,20 @@ Panel {
     // What the message is tied to (tasks made from it, notes), read when it opens.
     // A message set aside as hostile shows nothing of itself until you choose to read it.
     property bool revealed: false
+    // Set aside as hostile and not yet asked for: nothing of it shows.
     readonly property bool gated: reader.item !== null && reader.item.hidden === true && !reader.revealed
+    // Its folder's purpose ("inbox", "trash", "junk", "archive", "all"…), for the
+    // actions that fit there.
     readonly property string role: reading && reading.role ? reading.role : ""
     // Narrow: the actions show their icons only, their names on hover, as
     // soon as their names would not fit in the row (French ones are longer).
     // Narrower still (a phone): "junk" goes in the menu under ⋮.
     readonly property bool compact: reader.actionsWidth(b => b.wideWidth) > reader.availableWidth
+    // Too narrow for every action's icon: "Junk" goes into the "…" menu.
     readonly property bool tight: reader.actionsWidth(b => b.narrowWidth) > reader.availableWidth
 
+    // The message is done with here (filed away, deleted, Escape): its page closes the
+    // reader.
     signal closeRequested
 
     // The row's width, each action as wide as `width` says. "Junk" counts
@@ -73,10 +86,13 @@ Panel {
         return named.reduce((sum, b) => sum + width(b), 0) + moreButton.implicitWidth + (named.length + 1) * actionRow.spacing
     }
 
+    // The colour of a sender's check: the accent when verified, the forged colour when
+    // forged, else muted.
     function trustColor(level) {
         return level === "verified" ? reader.theme.accent : level === "forged" ? reader.theme.forged : reader.theme.muted
     }
 
+    // The icon of a sender's check, by its level.
     function trustIcon(level) {
         return level === "verified" ? "security-high" : level === "forged" ? "security-low" : "security-medium"
     }
@@ -125,6 +141,7 @@ Panel {
             flick.contentY = Math.max(0, flick.contentHeight - flick.height)
     }
 
+    // An attachment's icon, by its kind.
     function attachmentIcon(kind) {
         return { "pdf": "application-pdf", "image": "image-x-generic", "text": "text-x-generic", "document": "x-office-document",
                  "archive": "package-x-generic", "calendar": "view-calendar-day" }[kind] || "mail-attachment"

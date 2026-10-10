@@ -19,7 +19,7 @@
 //! UTF-8`: non-synchronizing (`{n+}`, RFC 7888) where the server takes them,
 //! else waiting for the server's go-ahead before each.
 
-use crate::SyncError;
+use crate::{SyncError, said};
 use crate::imap::{self, COMMAND, Imap, Server};
 use crate::mailbox;
 use async_imap::imap_proto::{BodyStructure, MailboxDatum, Response, Status};
@@ -233,8 +233,8 @@ async fn search_in(session: &mut Imap, account: &Account, search: &Search, folde
 /// Brings a message seen on its server only into its folder here, whole and
 /// checked, as a sync would have (unread stays unread: BODY.PEEK). Its file.
 pub fn bring(account: &Account, password: &str, place: &ServerRef) -> Result<PathBuf, SyncError> {
-    let folder = mailbox::folders(&account.id).into_iter().find(|f| f.name == place.folder).ok_or_else(|| SyncError::Server(format!("{}: no such folder", place.folder)))?;
-    let root = kept_root(account, &folder).ok_or_else(|| SyncError::Server(format!("{}: not a folder Sioul can keep", place.folder)))?;
+    let folder = mailbox::folders(&account.id).into_iter().find(|f| f.name == place.folder).ok_or_else(|| SyncError::Said(said::NO_FOLDER, place.folder.clone()))?;
+    let root = kept_root(account, &folder).ok_or_else(|| SyncError::Said(said::NOT_KEPT, place.folder.clone()))?;
     // Here already (a sync came first): that copy.
     if let Some(path) = here(&root, place.origin) {
         return Ok(path);
@@ -246,13 +246,13 @@ pub fn bring(account: &Account, password: &str, place: &ServerRef) -> Result<Pat
         let _ = session.logout().await;
         result
     })?;
-    written.ok_or_else(|| SyncError::Server("this message is no longer on the server".into()))
+    written.ok_or_else(|| SyncError::Said(said::GONE, String::new()))
 }
 
 async fn bring_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin, root: &std::path::Path) -> Result<Option<PathBuf>, SyncError> {
     let examined = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
     if examined.uid_validity.unwrap_or(0) != origin.validity {
-        return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
+        return Err(SyncError::Said(said::RENUMBERED, String::new()));
     }
     let arrived = imap::within(COMMAND, crate::fetch::fetch_batch(session, &origin.uid.to_string())).await??;
     let verifier = crate::verify::Verifier::new();

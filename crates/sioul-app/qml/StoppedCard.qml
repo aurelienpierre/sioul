@@ -14,10 +14,16 @@ import QtQuick.Layouts
 Panel {
     id: card
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The main window (main.qml), which opens what is asked of it. The line's task
+    // opens there.
     required property var window
+    // The line kept, as the backend gives it: its words (`text`), when, and the
+    // task it was about (`task`, `title`); null when none waits.
     property var stopped: null
 
+    // The line read again from the backend.
     function reload() {
         card.stopped = JSON.parse(card.sioul.stopped() || "null")
     }

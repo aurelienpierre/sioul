@@ -141,7 +141,7 @@ public final class ShareActivity extends Activity
 
     /**
      * "Sioul could not take what you shared: …", in the phone's language,
-     * as DoseAlarms.words picks it: Rust's words are not loaded yet.
+     * as {@link DoseAlarms#words} picks it: Rust's words are not loaded yet.
      */
     private static String failed(Exception e)
     {

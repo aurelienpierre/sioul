@@ -14,13 +14,19 @@ import QtQuick.Controls.impl
 Item {
     id: mark
 
+    // The level it marks: "now", "quiet" (shown, not told), "event", "gathered",
+    // "later", "never", "as" (as their own list), "through" (docs/attention.md).
     property string value: ""
     // On the Always through row: at once is a star.
     property bool always: false
+    // Its colour.
     property color tint: "black"
     // The page's colour, to hollow the star of ☆.
     property color hole: "white"
+    // Drawn as a star: at once on the Always through row, or through do-not-disturb.
     readonly property bool star: (mark.value === "now" && mark.always) || mark.value === "through"
+    // Drawn hollow: later, at the gathered times, when its event falls, or shown
+    // without a word.
     readonly property bool ring: mark.value === "later" || mark.value === "gathered" || mark.value === "event" || mark.value === "quiet"
 
     implicitWidth: 16

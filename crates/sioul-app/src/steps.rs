@@ -53,6 +53,7 @@ pub(crate) fn in_service() -> bool {
 }
 
 #[cfg(target_os = "android")]
+// SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
     /// StepService.call (android/main.cpp): a verb and its JSON, a JSON answer or null.
     fn sioul_android_steps(verb: *const std::ffi::c_char, json: *const std::ffi::c_char) -> *mut std::ffi::c_char;
@@ -412,8 +413,10 @@ fn step(reason: &str) -> serde_json::Value {
 ///
 /// # Safety
 /// `reason` is null or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_steps_step(reason: *const std::ffi::c_char) -> *mut std::ffi::c_char {
+    // SAFETY: `reason` is not null here, and a C string valid for the call, as this function's contract says.
     let reason = if reason.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(reason) }.to_string_lossy().to_string() };
     let answer = std::panic::catch_unwind(|| step(&reason)).unwrap_or_else(|_| serde_json::json!({ "next": STEP_AWAKE }));
     crate::alarms::handed(answer.to_string())
@@ -421,6 +424,7 @@ pub unsafe extern "C" fn sioul_steps_step(reason: *const std::ffi::c_char) -> *m
 
 /// Java says this process is the background service's: Android's modes are
 /// never touched from it (`everywhere::apply` runs in Sioul's own process).
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_steps_in_service() {
     IN_SERVICE.store(true, Ordering::Relaxed);
@@ -431,6 +435,7 @@ pub extern "C" fn sioul_steps_in_service() {
 
 /// Do-not-disturb applied in Sioul's own process (DndReceiver): asked by the
 /// service, at its next end, after a restart.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_dnd_apply() -> *mut std::ffi::c_char {
     let answer = std::panic::catch_unwind(|| {
@@ -447,8 +452,10 @@ pub extern "C" fn sioul_dnd_apply() -> *mut std::ffi::c_char {
 ///
 /// # Safety
 /// `json` is null or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_dnd_heard(json: *const std::ffi::c_char) -> *mut std::ffi::c_char {
+    // SAFETY: `json` is not null here, and a C string valid for the call, as this function's contract says.
     let json = if json.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(json) }.to_string_lossy().to_string() };
     let answer = std::panic::catch_unwind(|| {
         let asked: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
@@ -463,6 +470,7 @@ pub unsafe extern "C" fn sioul_dnd_heard(json: *const std::ffi::c_char) -> *mut 
 
 /// Sioul's switch pressed on the phone's quick-settings tile (DndTile, through
 /// DndReceiver, in Sioul's own process).
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_dnd_toggle() -> *mut std::ffi::c_char {
     let answer = std::panic::catch_unwind(|| {

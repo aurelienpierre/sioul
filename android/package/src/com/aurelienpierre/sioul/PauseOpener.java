@@ -10,7 +10,7 @@ import android.os.Bundle;
 /**
  * "Pause" pressed on the quick-settings tile (PauseTile) or the home screen's
  * shortcut (res/xml/sioul_shortcuts.xml): the press kept for Sioul
- * (PauseMode.pressed, which Rust takes when the window comes up), then Sioul
+ * ({@link PauseMode#pressed}, which Rust takes when the window comes up), then Sioul
  * brought up as by its icon, where the pause starts, or shows when it is on
  * already. Never shown itself. Not exported: no other app can press it.
  */

@@ -23,7 +23,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.
 - **Calendars and contacts**: CalDAV (RFC 4791) and CardDAV (RFC 6352), through a small client of Sioul's own (`sioul_sync::dav`). Tasks are VTODO with RFC 9253 relationships.
 - **Discovery**: Mozilla ISPDB and providers' autoconfig, SRV records (RFC 6186), DAV well-known URLs (RFC 6764).
-- **What is built of these**, what each feature needs from a server or another program, and how far each was tried: [compatibility.md](compatibility.md). Not built yet: CONDSTORE and QRESYNC, JMAP, SRV records.
+- **What is built of these**, what each feature needs from a server or another program, and how far each was tried: [compatibility.md](compatibility.md). Not built yet: CONDSTORE and QRESYNC to keep folders in step (CONDSTORE serves only the filters' claim on a message), JMAP, SRV records.
 
 ## Crates, and their licences
 | Use | Crate | Licence |
@@ -69,10 +69,10 @@ Qt is LGPL-3.0. Every licence above is compatible with Sioul's, GPL-3.0-or-later
 - **Windows**: an installer, Qt beside the program. Maildir puts `:` in file names, which Windows forbids: there Sioul writes `!` instead, as mbsync does, and reads both (`sioul_core::maildir::INFO`).
 - **macOS**: one `.dmg` for Apple silicon and Intel, signed ad hoc, not notarised.
 - **Android**, an experiment, packaged since version 0.0.2: an APK for 64-bit phones, Android 9 and later. Qt for Android, with the same window; sites open in the browser and PDFs in another app, since Qt WebEngine and Qt PDF do not exist there; Java for what Android starts without the window ([android-basics.md](android-basics.md), [android.md](android.md)).
-- **Built on each push to `main`** that changes the code: `.github/workflows/build.yml` builds and tests on Linux, Windows and macOS, `.github/workflows/android.yml` builds the APK.
+- **Built on each push to `main`** that changes the code: `.github/workflows/build.yml` builds and tests on Linux, Windows and macOS (and checks the code's rustdoc on Linux), `.github/workflows/android.yml` builds the APK.
 
 ## Known hurdles
-- **Gmail**: full IMAP through OAuth is a restricted scope. An unverified app is capped at 100 users for its whole life, and verification needs a paid security assessment (CASA). App passwords work meanwhile.
+- **Gmail**: full IMAP through OAuth is a restricted scope. Sioul's own key needs Google's restricted-scope review before it can ask for it; an unverified app lets 100 people in at most. Meanwhile, app passwords work, and so does signing in with Google with a key of your own ([google.md](google.md), "Mail").
 - **Proton**: IMAP needs Bridge, a paid feature. On the free plan Proton is a portal.
 - **Spamhaus**: queries through public DNS resolvers are refused; the free Data Query Service key works.
 

@@ -165,7 +165,7 @@ ScrollView {
         }
 
         // All of them, or any: asked once there are two.
-        ComboBox {
+        PlainComboBox {
             id: joinBox
 
             visible: conditionsModel.count > 1
@@ -201,7 +201,7 @@ ScrollView {
                     Layout.fillWidth: true
                     spacing: 4
 
-                    ComboBox {
+                    PlainComboBox {
                         id: fieldBox
 
                         Layout.fillWidth: true
@@ -234,7 +234,7 @@ ScrollView {
                     Layout.fillWidth: true
                     spacing: 4
 
-                    ComboBox {
+                    PlainComboBox {
                         id: testBox
 
                         // Alone on its line when nothing follows it ("there is one");
@@ -283,7 +283,7 @@ ScrollView {
                     }
 
                     // A choice: a kind of file, who the sender is, a mark, an address, a folder.
-                    ComboBox {
+                    PlainComboBox {
                         id: choiceBox
 
                         readonly property var choices: !column.words ? [] : row.kind === "kind" ? column.words.kinds : row.kind === "who" ? column.words.who : row.kind === "mark" ? column.words.marks : row.kind === "account" ? column.words.accounts : row.kind === "folder" ? column.words.folders : []

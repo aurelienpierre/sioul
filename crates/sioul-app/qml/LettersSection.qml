@@ -155,7 +155,7 @@ ColumnLayout {
                     Item {
                         Layout.fillWidth: true
                     }
-                    ComboBox {
+                    PlainComboBox {
                         id: projectChoice
 
                         readonly property var choices: [{ id: "", title: section.sioul.text("letters-no-project") }].concat(section.shown.projects)

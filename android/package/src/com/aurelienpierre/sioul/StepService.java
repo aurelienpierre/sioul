@@ -549,7 +549,7 @@ public final class StepService extends Service
 
     /**
      * "Let every call through" pressed on the notification (StepReceiver, in
-     * this process): kept for the screening at once (Calls.press), then a
+     * this process): kept for the screening at once ({@link Calls#press}), then a
      * step, in which Rust shares it with your other devices and words the
      * notification again.
      */

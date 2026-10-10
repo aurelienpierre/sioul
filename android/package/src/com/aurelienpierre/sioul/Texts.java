@@ -35,7 +35,7 @@ import org.json.JSONObject;
  * download. Java reads, and hands Rust plain JSON; Rust keys the numbers,
  * seals the lines, and decides what travels. Java never writes a shared file.
  *
- * Asked through StepService.call ("texts-…", from either process): the
+ * Asked through {@link StepService#call} ("texts-…", from either process): the
  * permissions and the SIMs, Android's question for the permissions
  * (TextsAsk), the texts since the reader's marks (the whole history, every
  * column, multimedia messages and their parts), a part's content, the ids
@@ -171,7 +171,7 @@ public final class Texts
 
     // ---------------------------------------------------------------- Rust's questions
 
-    /** Rust's question (StepService.call): its answer in JSON, or null. */
+    /** Rust's question ({@link StepService#call}): its answer in JSON, or null. */
     static String call(Context context, String verb, JSONObject asked) throws JSONException
     {
         ContentResolver resolver = context.getContentResolver();

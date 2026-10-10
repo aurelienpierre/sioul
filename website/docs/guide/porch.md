@@ -17,7 +17,7 @@ The Porch is where new mail from every address waits until you look. Before anyt
 
 Without any setting:
 
-- **Each message is checked before it is shown.** A forged one, or one borrowing a bank's or a public service's name, is set aside first, whatever your lists say, even when it claims to come from someone you marked safe ([The lanes](#the-lanes)).
+- **Each message is checked before it is shown.** A forged one is set aside first, whatever your lists say, even when it claims to come from someone you marked safe. So is one borrowing a bank's or a public service's name, unless it comes from someone you know: their mail keeps the name it uses, once it is proven theirs ([The lanes](#the-lanes)).
 - **A stranger's first message waits in the screener** until you let them in. A message that nothing proves comes from its address is treated as a stranger's, whatever address it shows ([Letting someone in](#letting-someone-in)).
 - **A fake "your code" message is set aside**, and a code from a sender that is only not verified comes with a warning ([Codes and links](#codes-and-links-come-at-once)).
 - **Spam verdicts never touch the people you know**, your codes or your projects' mail ([Spam, and your own filter](#spam-and-your-own-filter)).
@@ -325,7 +325,7 @@ The lanes are decided in this order, what protects you most first: set aside (fo
 
 ### Before any list is read {#before-any-list-is-read}
 
-Each message is checked first ([how a sender is checked](mail.md#how-a-sender-is-checked)). Forged mail and borrowed names are set aside whatever your lists say, even when they name someone you marked safe. Mail nothing authenticates (SPF and DKIM both failed, with no DMARC pass and no ARC seal from your provider or one of your domains) is read as a stranger's: no People lane, a stranger's times, no protection from spam, and no project lane by its address. Spam verdicts apply to strangers only, whether your provider's (SpamAssassin's or rspamd's headers, read only where your provider wrote them) or your own filter's: never to your address books, your lists, those you let in, a code, a project's mail, your own verified mail, or a message you said is not spam, on any device or in another mail program (`$NotJunk`).
+Each message is checked first ([how a sender is checked](mail.md#how-a-sender-is-checked)). Forged mail is set aside whatever your lists say, even when it names someone you marked safe. A borrowed name is looked for only in mail from someone Sioul does not know: a person in your address books, let in, safe, or on a list by their own address keeps the name they use, and is never taken for impersonation. Mail nothing authenticates (SPF and DKIM both failed, with no DMARC pass and no ARC seal from your provider or one of your domains) is read as a stranger's: no People lane, a stranger's times, no protection from spam, no project lane by its address, and a borrowed name in it is found whatever address it shows. Spam verdicts apply to strangers only, whether your provider's (SpamAssassin's or rspamd's headers, read only where your provider wrote them) or your own filter's: never to your address books, your lists, those you let in, a code, a project's mail, your own verified mail, or a message you said is not spam, on any device or in another mail program (`$NotJunk`).
 
 ### Codes {#codes}
 

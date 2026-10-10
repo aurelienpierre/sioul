@@ -14,7 +14,10 @@ import QtQuick.Layouts
 ColumnLayout {
     id: capture
 
+    // Sioul's backend (backend.rs): its words in your language and what it does. The
+    // core reads the line there (`capture`).
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // Made as a step of this task, when set.
     property string parentUid: ""
@@ -22,11 +25,16 @@ ColumnLayout {
     property string list: ""
     // A line of steps: nothing is made until the task they are steps of is.
     property bool step: false
+    // What the line says while empty: an example of a line.
     property string placeholder: capture.sioul.text("task-capture-hint")
+    // What the line says, read by the core as it is typed (`capture`): the chips
+    // shown, and the task's fields.
     readonly property var parsed: line.text.trim() === "" ? ({ chips: [], edit: {} }) : JSON.parse(capture.sioul.capture(line.text))
 
+    // A task was made from the line, by its UID.
     signal added(string uid)
 
+    // The keyboard's focus given to the line.
     function focusLine() {
         line.forceActiveFocus()
     }

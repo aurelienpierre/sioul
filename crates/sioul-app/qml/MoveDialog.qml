@@ -14,13 +14,19 @@ import QtQuick.Layouts
 Dialog {
     id: dialog
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The account and folder the messages are in, left out of the choices.
     property string fromAccount: ""
+    // The folder the messages are in, on `fromAccount`.
     property string fromFolder: ""
+    // Every account with its folders, as the Mail page has them: where messages may
+    // go.
     property var accounts: []
 
+    // A folder chosen: the account's id and the folder's name on its server.
     signal chosen(string account, string folder)
 
     parent: Overlay.overlay

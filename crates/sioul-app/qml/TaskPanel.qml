@@ -749,7 +749,7 @@ Panel {
                         }
                     }
                 }
-                ComboBox {
+                PlainComboBox {
                     id: newTag
 
                     readonly property var others: panel.categories.filter(c => !panel.detail || panel.detail.edit.categories.indexOf(c) < 0)
@@ -963,7 +963,7 @@ Panel {
                     editable: true
                     Accessible.name: panel.sioul.text("task-waits-gap")
                 }
-                ComboBox {
+                PlainComboBox {
                     id: gapUnit
 
                     Layout.fillWidth: true
@@ -1152,7 +1152,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("estimate") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var minutes: [0, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240]
 
                     Layout.fillWidth: true
@@ -1170,7 +1170,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("margins")
                     opacity: panel.keeps("margins") ? 1 : 0.45
@@ -1185,7 +1185,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("margins")
                     opacity: panel.keeps("margins") ? 1 : 0.45
@@ -1220,7 +1220,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("project") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: [{ id: "", title: "—" }].concat(panel.projects)
 
                     Layout.fillWidth: true
@@ -1238,7 +1238,7 @@ Panel {
                     opacity: panel.keeps("billable") ? 1 : 0.45
                 }
                 // Its time billed or not; unsaid, as its project says (work for a client is billed).
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: [null, true, false]
 
                     Layout.fillWidth: true
@@ -1266,7 +1266,7 @@ Panel {
                     color: panel.theme.text
                     opacity: panel.keeps("energy") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: ["", "light", "heavy", "rest"]
 
                     visible: panel.level() === ""
@@ -1284,7 +1284,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("kind") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property string current: panel.detail ? panel.detail.edit.kind : ""
                     // A kind taken away from the choices stays shown on the tasks that have it.
                     readonly property var choices: [{ id: "", label: panel.sioul.text("task-kind-none") }].concat(panel.kinds).concat(current !== "" && !panel.kinds.some(k => k.id === current) ? [{ id: current, label: current }] : [])
@@ -1386,7 +1386,7 @@ Panel {
                             text: panel.sioul.text("task-office-open")
                             color: panel.theme.muted
                         }
-                        ComboBox {
+                        PlainComboBox {
                             id: fromDay
 
                             implicitWidth: 120
@@ -1400,7 +1400,7 @@ Panel {
                             text: panel.sioul.text("task-office-to")
                             color: panel.theme.muted
                         }
-                        ComboBox {
+                        PlainComboBox {
                             id: toDay
 
                             implicitWidth: 120
@@ -1486,7 +1486,7 @@ Panel {
                     wrapMode: Text.Wrap
                     opacity: panel.keeps("repeat") ? 1 : 0.45
                 }
-                ComboBox {
+                PlainComboBox {
                     readonly property var choices: ["", "daily", "weekly", "monthly", "yearly"]
 
                     Layout.fillWidth: true
@@ -1504,7 +1504,7 @@ Panel {
                 }
                 // Another list moves it there, its steps with it; a calendar that keeps
                 // no task is shown greyed, with why.
-                ComboBox {
+                PlainComboBox {
                     id: listChoice
 
                     readonly property var choices: panel.detail ? panel.detail.lists : []
@@ -1780,7 +1780,7 @@ Panel {
                             text: panel.sioul.text("task-do-at-length")
                             color: panel.theme.muted
                         }
-                        ComboBox {
+                        PlainComboBox {
                             id: lengthField
 
                             Layout.fillWidth: true

@@ -24,6 +24,7 @@ fn main() {
         "qml/GoogleMail.qml",
         "qml/Panel.qml",
         "qml/WrapCheckBox.qml",
+        "qml/PlainComboBox.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
         "qml/RailButton.qml",

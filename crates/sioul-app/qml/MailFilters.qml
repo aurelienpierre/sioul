@@ -315,7 +315,7 @@ ColumnLayout {
             text: filters.sioul.text("filter-ui-narrow")
             color: filters.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             Layout.fillWidth: true
             model: [filters.sioul.text("filter-ui-all-addresses")].concat(filters.shown.accounts.map(a => filters.theme.plain(a.label)))
             currentIndex: filters.narrowed === "" ? 0 : 1 + filters.shown.accounts.findIndex(a => a.id === filters.narrowed)
@@ -623,7 +623,7 @@ ColumnLayout {
                         font.weight: Font.DemiBold
                         color: filters.theme.text
                     }
-                    ComboBox {
+                    PlainComboBox {
                         visible: filters.draft.conditions.length > 1
                         Layout.fillWidth: true
                         model: [filters.sioul.text("filter-ui-all"), filters.sioul.text("filter-ui-any")]
@@ -667,7 +667,7 @@ ColumnLayout {
                         columnSpacing: 6
                         rowSpacing: 4
 
-                        ComboBox {
+                        PlainComboBox {
                             Layout.row: 0
                             Layout.column: 0
                             Layout.columnSpan: filters.narrow && !condition.removable ? 2 : 1
@@ -678,7 +678,7 @@ ColumnLayout {
                             Accessible.name: filters.sioul.text("filter-ui-field")
                             onActivated: index => filters.setField(condition.index, filters.shown.form.fields[index].id)
                         }
-                        ComboBox {
+                        PlainComboBox {
                             Layout.row: filters.narrow ? 1 : 0
                             Layout.column: filters.narrow ? 0 : 1
                             Layout.columnSpan: filters.narrow || !condition.removable ? 2 : 1
@@ -786,7 +786,7 @@ ColumnLayout {
                                     }
                                 }
                             }
-                            ComboBox {
+                            PlainComboBox {
                                 visible: condition.kind === "kind" || condition.kind === "who"
                                 width: Math.min(implicitWidth, valueRow.width)
                                 implicitContentWidthPolicy: ComboBox.WidestText
@@ -843,7 +843,7 @@ ColumnLayout {
                         columnSpacing: 6
                         rowSpacing: 4
 
-                        ComboBox {
+                        PlainComboBox {
                             Layout.row: 0
                             Layout.column: 0
                             Layout.columnSpan: filters.narrow && !action.removable ? 2 : 1
@@ -859,7 +859,7 @@ ColumnLayout {
                                 filters.saveDraft(true)
                             }
                         }
-                        ComboBox {
+                        PlainComboBox {
                             readonly property var names: filters.shown.folders.map(f => f.name)
                             // A folder another device chose, not listed here yet: shown all the same.
                             readonly property var choices: (action.modelData.name !== "" && names.every(n => n.toLowerCase() !== action.modelData.name.toLowerCase()) ? [action.modelData.name] : []).concat(names)

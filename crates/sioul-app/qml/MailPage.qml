@@ -80,6 +80,11 @@ Item {
     // Every account resting (quiet time) and none chosen: no list, the line saying so.
     readonly property bool allResting: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
     readonly property bool canGoBack: page.openKey !== "" || page.foldersShown || page.searchOpen
+    // The search on a line of its own, under the folder's name: on a phone, and
+    // beside an open message, where the list's column is narrow; on one line
+    // there, "Plus de critères…" and "Temps réel" pushed the row under the
+    // reader, the name and the dates cut.
+    readonly property bool searchBelow: page.window.compact || page.openKey !== ""
     function back() {
         if (page.openKey !== "")
             page.openKey = ""
@@ -785,9 +790,7 @@ Item {
                     }
                 }
                 SearchField {
-                    visible: !page.draftsShown && !page.window.compact && !page.searchOpen
-                    // Narrower when the reader takes the room: a width of its own
-                    // would push the row past the column, under the reader.
+                    visible: !page.draftsShown && !page.searchBelow && !page.searchOpen
                     Layout.fillWidth: true
                     Layout.preferredWidth: 200
                     Layout.maximumWidth: 200
@@ -795,7 +798,7 @@ Item {
                 }
                 // The search by conditions, when needed: in words, out of the way.
                 MoreButton {
-                    visible: !page.draftsShown && !page.window.compact && !page.searchOpen
+                    visible: !page.draftsShown && !page.searchBelow && !page.searchOpen
                 }
                 CheckBox {
                     id: realtime
@@ -819,9 +822,10 @@ Item {
                 }
             }
 
-            // On a phone, the search on a line of its own: the folder's name keeps the first.
+            // On a phone, and beside an open message, the search on a line of its own:
+            // the folder's name keeps the first (`searchBelow`).
             RowLayout {
-                visible: !page.draftsShown && page.window.compact && !page.searchOpen
+                visible: !page.draftsShown && page.searchBelow && !page.searchOpen
                 Layout.fillWidth: true
                 spacing: 6
 

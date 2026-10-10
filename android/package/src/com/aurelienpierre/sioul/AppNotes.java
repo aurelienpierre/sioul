@@ -57,7 +57,7 @@ import java.util.Map;
  * QtActivityBase.onDestroy), which would unbind the listener at each close,
  * and the background service's process (":steps") runs only when its own
  * setting is on and does long work a notification must not wait for. Here,
- * Sioul's library without Qt's window (DoseAlarms.load), as for the doses.
+ * Sioul's library without Qt's window ({@link DoseAlarms#load}), as for the doses.
  *
  * For each notification of another app: what Android says of it, its words
  * included, handed to Rust in memory on a thread of its own; Rust answers how
@@ -75,6 +75,7 @@ import java.util.Map;
  */
 public final class AppNotes extends NotificationListenerService
 {
+    /** The log's tag, the doses' own: `adb logcat -s sioul` shows both. */
     static final String TAG = DoseAlarms.TAG;
     /** Android's words in a notification it redacted for an untrusted listener (Android 15). */
     private static final String REDACTED = "redacted_notification_message";
@@ -91,15 +92,23 @@ public final class AppNotes extends NotificationListenerService
         "safe-senders.txt", "neutral-senders.txt", "restricted-senders.txt", "blocked-senders.txt",
     };
 
+    /** Bound by Android, the access given: notifications are decided and held only then. */
     private static volatile boolean connected;
 
+    /** The listener's own thread, made in onCreate, ended in onDestroy: nothing is decided on Android's main thread. */
     private HandlerThread thread;
+    /** That thread's queue: each notification, each review and the files' watch go through it, one at a time. */
     private Handler worker;
+    /** The watches of Sioul's folders (`watch`), stopped when the listener is unbound or ends. */
     private final List<FileObserver> watches = new ArrayList<>();
+    /** Each app's name as the phone shows it, by package, found once a process (`label`). */
     private final Map<String, String> labels = new HashMap<>();
+    /** Android's words in a redacted notification, in the phone's language; read once (`redacted`). */
     private String redactedWords;
+    /** The phone's default SMS app's package, "" for none (`smsApp`), and when it was last asked. */
     private String smsApp = "";
     private long smsAppAt;
+    /** What is held worked out again after Sioul's files changed: one runnable, so that a burst of changes runs it once. */
     private final Runnable review = () -> review("files");
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why"}. */
@@ -151,6 +160,7 @@ public final class AppNotes extends NotificationListenerService
         }
     }
 
+    /** This listener, as Android's settings and NotificationManager name it. */
     private static ComponentName component(Context context)
     {
         return new ComponentName(context, AppNotes.class);
@@ -175,6 +185,7 @@ public final class AppNotes extends NotificationListenerService
         return open(context, new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
     }
 
+    /** One of Android's pages opened, in a task of its own; false when this phone has no such page or refuses it. */
     private static boolean open(Context context, Intent page)
     {
         try {
@@ -198,7 +209,9 @@ public final class AppNotes extends NotificationListenerService
      * never shared; forgotten after a week unseen, as the tab forgets its name.
      */
     private static final String TALKS = "sioul-conversations";
+    /** A conversation unseen for eight days is forgotten (`forgotten`). */
     private static final long TALK_KEPT_MS = 8L * 24 * 3600 * 1000;
+    /** At most this many conversations kept; past them, the oldest seen go first. */
     private static final int TALKS_AT_MOST = 300;
     /** Written again at most this often when nothing changed: not at each message. */
     private static final long TALK_AGAIN_MS = 24L * 3600 * 1000;
@@ -386,6 +399,7 @@ public final class AppNotes extends NotificationListenerService
 
     // ---------------------------------------------------------------- the listener
 
+    /** The listener's own thread started, before Android binds it. */
     @Override
     public void onCreate()
     {
@@ -395,6 +409,7 @@ public final class AppNotes extends NotificationListenerService
         worker = new Handler(thread.getLooper());
     }
 
+    /** Ended: nothing held from here on, the watches stopped, the thread let finish what it was doing. */
     @Override
     public void onDestroy()
     {
@@ -404,6 +419,11 @@ public final class AppNotes extends NotificationListenerService
         super.onDestroy();
     }
 
+    /**
+     * Bound, the access given (at the phone's start, when the access is
+     * given, after Android restarted the listener): Sioul's files watched,
+     * and what Android holds already worked out again.
+     */
     @Override
     public void onListenerConnected()
     {
@@ -427,6 +447,7 @@ public final class AppNotes extends NotificationListenerService
         DndReceiver.forward(getApplicationContext());
     }
 
+    /** Unbound: the access taken back, or Android stopping the listener. */
     @Override
     public void onListenerDisconnected()
     {
@@ -435,6 +456,11 @@ public final class AppNotes extends NotificationListenerService
         worker.post(this::unwatch);
     }
 
+    /**
+     * Another app's notification, posted or updated: asked about on the
+     * worker thread with the ranking Android gave with it. Never Sioul's own,
+     * an ongoing one (a call, music, a download), or one that cannot be cleared.
+     */
     @Override
     public void onNotificationPosted(StatusBarNotification sbn, RankingMap rankings)
     {
@@ -474,6 +500,7 @@ public final class AppNotes extends NotificationListenerService
         }
     }
 
+    /** A notification held by Android for `ms` (a second at least), then given back whole, as it came. */
     private void snooze(String key, long ms)
     {
         try {
@@ -540,6 +567,7 @@ public final class AppNotes extends NotificationListenerService
         }
     }
 
+    /** The watches of Sioul's folders stopped. */
     private void unwatch()
     {
         for (FileObserver observer : watches)

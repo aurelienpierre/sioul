@@ -22,8 +22,12 @@ import QtQuick.Layouts
 Item {
     id: line
 
+    // The main window (main.qml), which opens what is asked of it. The moment it says
+    // is the window's.
     required property var window
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // At the window's top: the pop-ups of its buttons open under it.
     property bool atTop: false
@@ -31,7 +35,11 @@ Item {
     readonly property bool compact: line.window.compact
     // Work time or quiet time, the day to close, the two pauses (main.qml).
     readonly property var moment: line.window.moment
+    // What is offered to close at its time: the work day, or the day ({kind, date,
+    // line, button}).
     readonly property var offer: line.window.offer
+    // What Free time and the pauses offer now: whether there is nothing, the usual
+    // end, the moved end, whether it can be kept.
     readonly property var pauses: line.window.pauses
     // What it says: what just happened (Undo's line while it waits). Narrow,
     // when nothing did, the day to close at its time, else what now is, whose
@@ -39,6 +47,7 @@ Item {
     readonly property string sentence: line.sioul.undoLine !== "" ? line.sioul.undoLine : line.sioul.status !== "" ? line.sioul.status : !line.compact ? "" : line.offer.kind !== "" ? line.offer.line : line.moment.line
     // For the documentation's pictures (main.qml's grabber).
     readonly property alias weatherApplet: weatherApplet
+    // The moment's menu (made the first time), for the window's pictures.
     readonly property alias modeMenu: modeMenu
 
     implicitHeight: 36

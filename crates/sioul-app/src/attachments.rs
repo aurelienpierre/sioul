@@ -157,6 +157,7 @@ fn saved(text: &str) {
 /// # Safety
 /// `json` is null, or a zero-terminated UTF-8 text valid for the call.
 #[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_attachment_saved(json: *const std::ffi::c_char) {
     // SAFETY: as the caller promises.

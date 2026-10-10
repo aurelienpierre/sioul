@@ -231,7 +231,7 @@ Label {
 Button {
     text: page.theme.plain(page.sioul.textWith("overlap-open", "title", openOne.modelData.title))
 }
-ComboBox {
+PlainComboBox {
     textRole: "label"
     valueRole: "id"
     model: column.words.fields.map(f => Object.assign({}, f, { label: column.theme.plain(f.label) }))
@@ -239,6 +239,8 @@ ComboBox {
 ```
 
 What a person types (a `TextField`, a `TextArea`) is plain text already, and kept as typed. Code that saves or sends reads the data, never the words a control draws (a `ComboBox`'s `currentText`): the word joiner would go with them (the form that makes a task list takes its account by its place in the list, `TasksPage.qml`). The few views that are rich on purpose (a message's HTML, made safe in Rust by `reading::safe_html`; Markdown made HTML by `compose::markdown_html`, which shows HTML written in it as words and a picture from elsewhere as a link) say why in a comment holding "rich on purpose:", on their line or the line above. `tools/check-plain-text.py` holds every page to this ("Checking QML", below), and `tst_plaintext.qml` shows Sioul's components such words while a stand-in web server notes what is asked of it: nothing is fetched, nothing crashes.
+
+**"&" in a list or a menu.** A button and a menu line read "&" as the mark of their shortcut key and leave it out ("R&D" drew "RD"), and a `ComboBox`'s list is made of such lines. Menus double each "&" of words from outside (`.replace(/&/g, "&&")`, "&&" being one). Every ComboBox of the window is a `PlainComboBox` (`PlainComboBox.qml`), whose list does it, its closed box being a text field, which shows the text as it is; a ComboBox with a list of its own doubles the "&" itself (the task lists' in `TaskPanel.qml`). `tst_plaincombobox.qml` measures what a line draws against the same words in a plain `Text`, Qt's own list included, which leaves the "&" out.
 
 ## A computer and a phone
 The same files serve both. What differs:

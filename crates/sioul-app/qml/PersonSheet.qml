@@ -88,7 +88,7 @@ Dialog {
                     text: sheet.sioul.text("person-standing")
                     color: sheet.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     model: (sheet.shown.choices || []).map(c => sheet.theme.plain(c.label))

@@ -22,23 +22,31 @@ import QtQuick.Layouts
 ColumnLayout {
     id: setup
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, times, heard, rang, apps, conversations, sites, grid, more}.
     property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, times: "", heard: "", rang: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
 
     // "phone" (this phone's setup), "lists" (each app, conversation, site), or "all".
     property string part: "all"
+    // This phone's part shown: on a phone, with `part` "phone" or "all".
     readonly property bool phonePart: setup.shown.android && (setup.part === "all" || setup.part === "phone")
+    // The lists' part shown: on a phone, with `part` "lists" or "all".
     readonly property bool listsPart: setup.shown.android && (setup.part === "all" || setup.part === "lists")
     // A computer, in Exceptions: the rows by time set on the phone, when there are some.
     readonly property bool computerPart: !setup.shown.android && setup.part === "lists" && setup.shown.grid !== undefined && setup.shown.grid.rows.length > 0
+    // The rows by time shown: the lists' part, or a computer's rows set on the phone.
     readonly property bool byTime: setup.listsPart || setup.computerPart
 
+    // What is shown read again from the backend (`appNotesSetup`).
     function reload() {
         setup.shown = JSON.parse(setup.sioul.appNotesSetup() || "null") || setup.shown
     }
 
+    // A change asked of the backend (`appNotesChange`): `verb` and its arguments; its
+    // answer shown.
     function act(verb, args) {
         const answer = JSON.parse(setup.sioul.appNotesChange(verb, JSON.stringify(args || {})) || "null")
         if (answer)

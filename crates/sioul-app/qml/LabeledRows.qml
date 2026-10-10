@@ -36,7 +36,7 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
 
-            ComboBox {
+            PlainComboBox {
                 Layout.preferredWidth: 130
                 Layout.alignment: Qt.AlignTop
                 model: rows.labels.map(l => l === "" ? "—" : rows.sioul.text("label-" + l))

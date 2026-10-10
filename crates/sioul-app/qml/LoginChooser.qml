@@ -5,9 +5,10 @@
 // both matching when both are filled: Site (the logins' sites, else their
 // names; never their user names) and User name (the user name only).
 // Opened for a site, Site holds its domain, or that of the login chosen
-// there last; for a mail account, User name holds its address. Names, user
-// names and sites only here: a password leaves the vault for the one login
-// chosen. A login made for another domain than the page's says which.
+// there last; for a mail account, User name holds the name it logs in with
+// (its address, unless it names another). Names, user names and sites only
+// here: a password leaves the vault for the one login chosen. A login made
+// for another domain than the page's says which.
 
 pragma ComponentBehavior: Bound
 
@@ -18,7 +19,9 @@ import QtQuick.Layouts
 Dialog {
     id: chooser
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
     // The address the logins are for: a site's page, or a mail account's server.
     property string url: ""
@@ -31,14 +34,19 @@ Dialog {
     // A large vault is searched off the window's thread: the search waited
     // for (its ticket, else 0, and what it asked), and whether Enter came first.
     property int waiting: 0
+    // What the fields held when the search waited for: an answer for older fields is
+    // not shown.
     property var waitingFor: ({ site: "", user: "" })
+    // Enter was pressed while the search waited: its first login is taken once found.
     property bool takeWhenFound: false
     // For the window's tests: what the fields hold.
     property alias site: siteField.text
+    // For the window's tests: what the User name field holds.
     property alias user: userField.text
     // What taking a login does: "Fill" in a site, "Use" for an account's password.
     property string takeText: chooser.sioul.text("bitwarden-choose-fill")
 
+    // A login taken, by its id in the vault.
     signal chosen(string item)
 
     // Opened for a site's page: Site holds its domain, or the domain of the
@@ -48,21 +56,25 @@ Dialog {
         chooser.start(url, first.chosen || first.domain || "", "")
     }
 
-    // Opened for a mail account: User name holds its address; Site the domain
-    // of the login chosen for it last, else nothing: a mail server's domain is
-    // seldom where its provider's login is kept (imap.gmail.com and
-    // accounts.google.com, mail.ecloud.global and murena.io), and with both
-    // fields matching it would hide the very login looked for. The server's
-    // own logins still come first.
-    function beginForAccount(server, address) {
-        chooser.start(server, chooser.first(server).chosen || "", address || "")
+    // Opened for a mail account: User name holds the name it logs in with
+    // (its address, unless the account names another: AccountPassword.qml);
+    // Site the domain of the login chosen for it last, else nothing: a mail
+    // server's domain is seldom where its provider's login is kept
+    // (imap.gmail.com and accounts.google.com, mail.ecloud.global and
+    // murena.io), and with both fields matching it would hide the very login
+    // looked for. The server's own logins still come first.
+    function beginForAccount(server, login) {
+        chooser.start(server, chooser.first(server).chosen || "", login || "")
     }
 
+    // What the vault suggests for an address: its domain, and the login chosen there
+    // last.
     function first(url) {
         const first = JSON.parse(chooser.sioul.bitwardenSite(url))
         return first.error ? { domain: "", chosen: "" } : first
     }
 
+    // Opened for `url`, the fields holding `site` and `user`, searched at once.
     function start(url, site, user) {
         chooser.url = url
         chooser.takeWhenFound = false
@@ -91,11 +103,13 @@ Dialog {
         chooser.show(answer, site, user)
     }
 
+    // A search's answer shown: the logins found, how many more, or why none.
     function show(answer, site, user) {
         chooser.shown = { found: answer.found || [], more: answer.more || 0, error: answer.error || "", asked: site !== "" || user !== "", both: site !== "" && user !== "" }
         list.currentIndex = 0
     }
 
+    // The login at `index` taken: the chooser closes and says which (`chosen`).
     function take(index) {
         const choice = chooser.shown.found[index]
         if (!choice)
@@ -116,6 +130,7 @@ Dialog {
             chooser.take(list.currentIndex)
     }
 
+    // The highlight moved by `by` logins, within the list.
     function move(by) {
         list.currentIndex = Math.max(0, Math.min(list.count - 1, list.currentIndex + by))
     }

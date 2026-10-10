@@ -10,8 +10,12 @@ import QtQuick.Controls.Basic
 ToolButton {
     id: button
 
+    // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
+    // The page whose settings it opens: "tasks", "mail", "agenda"… (the core's
+    // `settings::for_view`).
     property string view: ""
     // "Aa": the reading settings, wherever long text is.
     property bool reading: false
@@ -27,6 +31,7 @@ ToolButton {
     Accessible.name: ToolTip.text
     onClicked: button.show(true)
 
+    // Its settings panel opened (made the first time), or closed.
     function show(open) {
         if (open) {
             if (panel.item === null)

@@ -402,7 +402,7 @@ final class HomeCardToday
 
     /**
      * The full card at its size: each part kept while it fits, the most
-     * needed first (RANKS), and its taps (HomeCard.opener, through
+     * needed first (RANKS), and its taps ({@link HomeCard#opener}, through
      * HomeCardOpener); the rest opens Sioul as its icon does.
      */
     static RemoteViews views(Context context, Lines lines, Bundle options)

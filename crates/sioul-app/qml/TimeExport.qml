@@ -77,7 +77,7 @@ Dialog {
             text: exporting.sioul.text("time-export-project")
             color: exporting.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: projectChoice
 
             Layout.fillWidth: true
@@ -87,7 +87,7 @@ Dialog {
             text: exporting.sioul.text("time-export-range")
             color: exporting.theme.muted
         }
-        ComboBox {
+        PlainComboBox {
             id: rangeChoice
 
             Layout.fillWidth: true

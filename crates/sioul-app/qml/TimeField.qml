@@ -52,7 +52,7 @@ RowLayout {
     spacing: 2
 
     // As wide as "23" and its arrow, not the style's 140 pixels.
-    ComboBox {
+    PlainComboBox {
         id: hourBox
 
         implicitContentWidthPolicy: ComboBox.WidestText
@@ -67,7 +67,7 @@ RowLayout {
         text: ":"
         color: field.theme.muted
     }
-    ComboBox {
+    PlainComboBox {
         id: minuteBox
 
         implicitContentWidthPolicy: ComboBox.WidestText

@@ -266,7 +266,7 @@ SioulWindow {
                     text: compose.sioul.text("compose-from")
                     color: compose.theme.muted
                 }
-                ComboBox {
+                PlainComboBox {
                     id: from
 
                     visible: compose.draft !== null && compose.draft.accounts.length > 1
