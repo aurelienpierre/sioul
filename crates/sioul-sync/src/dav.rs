@@ -21,7 +21,8 @@
 //!   answered on two devices): the item there takes its place here, said
 //!   when its answer differs (`same_uid_there`, `adopt`).
 //! - **When both changed the same item**, the server's version wins and yours
-//!   is kept aside in `$XDG_STATE_HOME/sioul/dav/conflicts`, said in the report.
+//!   is kept among this device's earlier versions (`history::ACCOUNTS`), which
+//!   the window lists and puts back, said in the report.
 //! - **Cut short** (the network lost, the app killed), a sync resumes where it
 //!   stopped: what was sent or brought is known at once, never sent twice.
 //!
@@ -1170,15 +1171,19 @@ fn url_segment(name: &str) -> String {
         .collect()
 }
 
-/// Your version of an item changed on both sides, kept where you can find it.
-/// Not kept (a full disk), the sync stops there: the server's version does not
-/// take its place, and yours is never lost.
+/// Your version of an item changed on both sides, kept where you can find it,
+/// on a phone too: among this device's earlier versions (`history`, the part
+/// `history::ACCOUNTS`, named by the item's place in the data folder), which
+/// the window lists and puts back (Settings ▸ Your folder and sharing ▸ Show
+/// earlier versions), sharing on or off. Until 10 October 2026 it went to
+/// `$XDG_STATE_HOME/sioul/dav/conflicts`, out of reach on a phone. Not kept (a
+/// full disk), the sync stops there: the server's version does not take its
+/// place, and yours is never lost.
 fn set_aside(path: &Path, mine: &[u8]) -> Result<PathBuf, SyncError> {
-    let folder = state_dir().join("dav").join("conflicts");
-    let name = format!("{}-{}", jiff::Timestamp::now().as_second(), path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
-    let target = folder.join(name);
-    std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&target, mine)).map_err(|e| SyncError::Disk(format!("{}: {e}", target.display())))?;
-    Ok(target)
+    let root = crate::history::root(&state_dir().join("share").join("memory.json"));
+    let data = sioul_core::config::data_dir();
+    let file = path.strip_prefix(&data).ok().map(|relative| format!("data/{}", relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"))).unwrap_or_else(|| format!("data/{}", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+    crate::history::keep_bytes(&root, crate::history::ACCOUNTS, &file, mine, jiff::Timestamp::now().as_millisecond()).map_err(SyncError::Disk)
 }
 
 /// An item's file, when it changed here since the server last agreed on it (or never did).

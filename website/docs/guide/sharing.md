@@ -43,6 +43,11 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 - **An older copy put back by hand** (a backup restored with its old dates) does not undo your other devices' changes.
 - **A device restored from a backup**, or one that lost its memory, carries on from where the folder is and catches up: what it marked after the backup comes back.
 - **Before another device's change replaces or removes a file here**, the file as it was is kept on this device, to put back if needed ([below](#putting-back-an-older-version)).
+- **The sharing folder gone, or its seal** (a disk not mounted, a sync app that moved or rebuilt its folder): nothing is written until it is back, and the panel says so. Sioul never makes the folder again, empty, beside the real one.
+- **The folder sealed with another passphrase** than this device's (two devices that each set up the folder before the other's seal arrived): this device writes nothing there, and says so; start sharing again on it with the passphrase your other devices use, and they meet.
+- **Two devices under one name** (a disk or a phone's data copied to another): each finds the other's lines in its own file, and the panel says so; stop sharing on one of them and start again there, which gives it a name of its own.
+- **A list kept by another program in another encoding** (not text Sioul can read): left as it is, said, and nothing of it is taken out elsewhere.
+- **A draft sent on one device while another changed it**, neither knowing yet: it stays sent everywhere, whichever came later; the change made meanwhile is kept among that device's earlier versions.
 
 ## What it protects, and what it cannot hide {#what-it-protects-and-what-it-cannot-hide}
 
@@ -135,7 +140,7 @@ Switched on, notes and papers travel through the same sealed folder, one file at
 - **Many gone at once**: if many files leave a folder at once, or a folder is suddenly empty, gone or unreadable, nothing of them is taken out on your other devices and nothing is written into it; the panel says so, with **Take them out everywhere** for when you did it on purpose. Switching Notes off and on fills the folder again from your other devices.
 - **Names a phone takes for one**: two notes whose names differ only by case or by how an accent is written ("Lease.md" and "lease.md") are one file on a phone: the second waits, and the panel says so; rename one.
 - **Room**: nothing is written without room for it and some left over; a note that does not fit waits, said, and comes when there is room.
-- **Not with a synced notes folder**: if a sync app already carries your notes folder on this device (Nextcloud, Dropbox, Syncthing, or on a phone the same folder as the sharing one), Sioul refuses to carry it too, and says why: two carriers would undo each other's changes. Move the notes to a folder no sync carries to let Sioul carry them, or leave them to that sync. Sioul does not recognise every sync app (Google Drive, Insync, rclone, MEGA…): leave Notes off where one carries your notes.
+- **Not with a synced notes folder**: if a sync app already carries your notes folder on this device (Nextcloud, Dropbox, Syncthing), Sioul refuses to carry it too, and says why: two carriers would undo each other's changes. On a phone, Sioul cannot read the sync app's settings: it asks you before Notes or Papers is switched on, and until you say, takes a notes folder in the same top folder as the sharing one (Documents…) as carried, with a button to say no sync app carries it. Move the notes to a folder no sync carries to let Sioul carry them, or leave them to that sync. Sioul does not recognise every sync app (Google Drive, Insync, rclone, MEGA…): leave Notes off where one carries your notes.
 - **On Android**, notes and papers wait while Sioul lacks Android's access to all your files (without it, Sioul would see only the files it made).
 
 ## Putting back an older version {#putting-back-an-older-version}
@@ -145,6 +150,7 @@ Before a change from another device is written into a file here, or takes it out
 In **Settings ▸ Your folder and sharing**, **Show earlier versions** lists them: each part, its files (the one changed last first; type part of a name to find older ones), and under a file its versions, with when and how big. **Put back** first says what it would change, then puts that version back:
 
 - a note, a paper, a draft goes back whole; the file as it was just before is kept in the list too, so putting back can be undone the same way;
+- an event, a task or a contact changed here and on its server between two syncs: the server's version was kept, and yours is listed here, under **Your calendars and contacts**, named by its title, on a phone too; put back, it goes to its server over the server's version;
 - a file of settings or lists (your settings, the doses taken, time noted) goes back entry by entry: each setting or mark the version held is put back as it was, those taken out since come back, and those added since stay. Putting back never takes out, on any device, what was added after that version: a dose marked this morning stays marked.
 
 The next exchange sends what was put back to your other devices, as a change you made now.
@@ -168,7 +174,7 @@ Sioul for Android shares the same way, through the folder your phone's sync app 
 
 - **Medicines** are reminded by the device you are using only, so that a dose is not reminded twice. A dose marked taken goes to the others at once.
 - **The sites' gathered notification** comes on the device you are using.
-- **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. See [Time and invoices](time.md#on-several-computers).
+- **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. A device that numbers them and has not been heard from (its sync stopped, or late on a phone) still holds them, until it is heard from, closes Sioul, or a day goes by without its news. See [Time and invoices](time.md#on-several-computers).
 
 ## Not there yet {#not-there-yet}
 

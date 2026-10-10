@@ -111,12 +111,40 @@ fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
 
 /// The notes folder, when a sync app carries it already: notes and papers then
 /// never travel through the sharing too, the two carriers would undo each
-/// other's changes. On a phone, a notes folder in the same top folder of its
-/// storage as the sharing folder (Documents…), which the sync app carries whole.
-fn notes_carried(config: &Config, folder: Option<&Path>) -> Option<PathBuf> {
+/// other's changes. On a computer, from the sync apps' own settings and the
+/// folders named like theirs. On a phone, whose sync apps' settings Sioul
+/// cannot read, as you said there (`Here::notes_carried`, asked before notes
+/// or papers are switched on); until then guessed: a notes folder in the same
+/// top folder of its storage as the sharing folder (Documents…), which eDrive
+/// carries whole, whatever name the storage goes by.
+fn notes_carried(config: &Config, here: &share::Here) -> Option<PathBuf> {
     let store = config.notes_root_path()?;
-    let carried = if cfg!(target_os = "android") { folder.is_some_and(|folder| same_top(&on_storage(&store), &on_storage(folder), Path::new(STORAGE))) } else { carried(&store, &synced_roots()) };
+    let carried = if cfg!(target_os = "android") { carried_on_phone(here.notes_carried, here.folder_path().is_some_and(|folder| same_top(&on_storage(&store), &on_storage(&folder), Path::new(STORAGE)))) } else { carried(&store, &synced_roots()) };
     carried.then_some(store)
+}
+
+/// On a phone: what you said, else the guess.
+fn carried_on_phone(said: Option<bool>, guessed: bool) -> bool {
+    said.unwrap_or(guessed)
+}
+
+/// What you say of the notes folder on a phone: a sync app carries it, or
+/// none does (`Here::notes_carried`). Carried: notes and papers stop
+/// travelling through the sharing here. Returns what went wrong, else "".
+pub(crate) fn set_notes_carried(carried: bool) -> String {
+    between_exchanges(|| {
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut here = here();
+        here.notes_carried = Some(carried);
+        if carried {
+            for part in ["notes", "papers"] {
+                if here.parts.get(part) == Some(&true) {
+                    here.parts.insert(part.to_string(), false);
+                }
+            }
+        }
+        here.save(&state_dir()).err().unwrap_or_default()
+    })
 }
 
 /// A phone's shared storage.
@@ -139,13 +167,13 @@ fn refused(part: &str, config: &Config, here: &share::Here) -> Option<String> {
     if !matches!(part, "notes" | "papers") {
         return None;
     }
-    notes_carried(config, here.folder_path().as_deref()).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
+    notes_carried(config, here).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
 }
 
 /// What this device shares: each part as switched here, else as before parts had switches.
 fn stores_here(here: &share::Here) -> Vec<share::Store> {
     let config = load_config();
-    let carried = notes_carried(&config, here.folder_path().as_deref()).is_some();
+    let carried = notes_carried(&config, here).is_some();
     share::stores_of(&config, &share::Roots::here(), &|part| here.shares(part, &config) && !(carried && matches!(part, "notes" | "papers")))
 }
 
@@ -167,6 +195,8 @@ fn part_words(part: &str) -> (String, String) {
         "lists" => (text("share-part-lists"), text("share-part-lists-carries")),
         "notes" => (text("share-part-notes"), text("share-part-notes-carries")),
         "papers" => (text("share-part-papers"), text("share-part-papers-carries")),
+        // Your calendars' and contacts' versions set aside when an item changed here and on its server too.
+        sioul_sync::history::ACCOUNTS => (text("share-part-accounts"), String::new()),
         _ => (part.to_string(), String::new()),
     }
 }
@@ -363,6 +393,10 @@ struct Status {
     can_again: bool,
     /// What it did last, in words; "" before it was pressed.
     again: String,
+    /// On a phone, before notes or papers are switched on: whether a sync app
+    /// there carries the notes folder, asked (Sioul cannot read its settings);
+    /// "" on a computer, or once you said.
+    carried_ask: String,
 }
 
 /// Files gone at once from a folder of notes or papers, held until you say.
@@ -383,6 +417,9 @@ struct Part {
     on: bool,
     /// Why it cannot be switched on here; "" when it can.
     refused: String,
+    /// Refused on a phone by a guess (a sync app carries the notes folder),
+    /// which you can say is wrong there.
+    guessed: bool,
     /// When it last sent and received a change here, said shortly; "" when not shared.
     last: String,
 }
@@ -495,7 +532,8 @@ pub(crate) fn status(folder: &str) -> String {
                 ("texts", false) => [last, crate::texts::kept_words()].join(" ").trim().to_string(),
                 _ => last,
             };
-            Part { id, name, carries, on: shared, refused, last }
+            let guessed = cfg!(target_os = "android") && !refused.is_empty() && here.notes_carried.is_none();
+            Part { id, name, carries, on: shared, refused, guessed, last }
         })
         .collect();
     // Every device holding the newer form back, or on an older Sioul once it travels, has its line.
@@ -506,13 +544,19 @@ pub(crate) fn status(folder: &str) -> String {
     // Pressed while the folder is not found on a server, it says why nothing went.
     let can_again = on;
     let again = if on { again_line(&sioul_sync::remote::Sending::load(&memory_path()).again, &sioul_sync::remote::State::load(&memory_path()).host()) } else { String::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again })
+    let carried_ask = match config.notes_root_path() {
+        Some(store) if cfg!(target_os = "android") && here.notes_carried.is_none() => say("share-carried-ask", &[("store", shorten(&store))]),
+        _ => String::new(),
+    };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask })
 }
 
 fn problem_text(code: &str) -> String {
     let file = |file: &str| share::shown(file).to_string();
     match code.split_once(':') {
         Some(("share-other-seal", _)) => tr().text("share-other-seal", None),
+        // Another device's records, by its name in the sharing (an id that says nothing to you).
+        Some((other @ ("share-other-gap" | "share-other-cut" | "share-other-line"), _)) => tr().text(other, None),
         Some(("share-unreadable", path)) => say("share-unreadable", &[("file", path.to_string())]),
         Some(("share-conflict", copy)) => say("share-conflict", &[("copy", copy.to_string())]),
         Some(("share-conflict-gone", copy)) => say("share-conflict-gone", &[("copy", copy.to_string())]),
@@ -527,6 +571,7 @@ fn problem_text(code: &str) -> String {
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
         Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
+        None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut") => tr().text(code, None),
         _ => code.to_string(),
     }
 }
@@ -631,16 +676,18 @@ struct KeptVersion {
 pub(crate) fn history(filter: &str) -> String {
     let root = sioul_sync::history::root(&memory_path());
     let needle = filter.trim().to_lowercase();
+    // The parts shared, and your calendars' and contacts' versions set aside (`dav`).
     let kept: Vec<Kept> = share::PARTS
         .iter()
+        .chain(std::iter::once(&sioul_sync::history::ACCOUNTS))
         .filter_map(|&part| {
-            let all: Vec<_> = sioul_sync::history::files(&root, part).into_iter().filter(|(file, _)| share::shown(file).to_lowercase().contains(&needle)).collect();
+            let all: Vec<_> = sioul_sync::history::files(&root, part).into_iter().filter(|(file, versions)| shown_kept(&root, part, file, versions).to_lowercase().contains(&needle)).collect();
             let more = if all.len() > 100 { say("share-history-more", &[("count", (all.len() - 100).to_string())]) } else { String::new() };
             let files: Vec<KeptFile> = all
                 .into_iter()
                 .take(100)
                 .map(|(file, versions)| KeptFile {
-                    shown: share::shown(&file).to_string(),
+                    shown: shown_kept(&root, part, &file, &versions),
                     count: say("share-versions", &[("count", versions.len().to_string())]),
                     versions: versions.into_iter().map(|v| KeptVersion { when: when(v.at / 1000), size: sioul_core::view::size(tr(), usize::try_from(v.size).unwrap_or(usize::MAX)), stamp: v.stamp }).collect(),
                     file,
@@ -650,6 +697,49 @@ pub(crate) fn history(filter: &str) -> String {
         })
         .collect();
     json(&kept)
+}
+
+/// A file of the earlier versions, as the list names it: a calendar's event
+/// or a contact set aside by what it is ("Dentist", "Jane Doe"), from its
+/// newest version; any other by its name.
+fn shown_kept(root: &Path, part: &str, file: &str, versions: &[sioul_sync::history::Version]) -> String {
+    if part != sioul_sync::history::ACCOUNTS {
+        return share::shown(file).to_string();
+    }
+    let text = versions.first().and_then(|v| match sioul_sync::history::version(root, part, file, &v.stamp) {
+        Some(sioul_sync::history::Kept::Copy(path)) => std::fs::read_to_string(path).ok(),
+        _ => None,
+    });
+    let named = text.as_deref().and_then(|text| sioul_core::lines::unfold(text).iter().find(|l| matches!(sioul_core::lines::name(l).as_str(), "SUMMARY" | "FN")).map(|l| sioul_core::lines::value(l).trim().to_string())).filter(|n| !n.is_empty());
+    named.unwrap_or_else(|| share::shown(file).to_string())
+}
+
+/// Where an item of your calendars or contacts set aside belongs, from its
+/// name among the earlier versions (`data/calendars/<account>/…`): inside
+/// Sioul's calendars and address books only.
+fn account_item(file: &str) -> Option<PathBuf> {
+    let relative = file.strip_prefix("data/")?;
+    if relative.split('/').any(|piece| piece.is_empty() || piece == "." || piece == "..") {
+        return None;
+    }
+    let path = sioul_core::config::data_dir().join(relative);
+    crate::pim::account_of(&path).map(|_| path)
+}
+
+/// A calendar's item or a contact set aside put back (`history::ACCOUNTS`):
+/// its version written over the item, the item as it is then kept first; its
+/// account's sync sends it, over the server's version. Returns the account
+/// to sync, or what went wrong.
+pub(crate) fn put_back_item(file: &str, stamp: &str) -> Result<String, String> {
+    let root = sioul_sync::history::root(&memory_path());
+    let path = account_item(file).ok_or_else(|| format!("{file}?"))?;
+    let Some(sioul_sync::history::Kept::Copy(version)) = sioul_sync::history::version(&root, sioul_sync::history::ACCOUNTS, file, stamp) else { return Err(format!("{file}: {stamp}: not kept")) };
+    let bytes = std::fs::read(&version).map_err(|e| e.to_string())?;
+    if path.is_file() {
+        sioul_sync::history::keep(&root, sioul_sync::history::ACCOUNTS, file, &path, jiff::Timestamp::now().as_millisecond())?;
+    }
+    share::write_atomically(&path, &bytes)?;
+    crate::pim::account_of(&path).ok_or_else(|| format!("{file}?"))
 }
 
 /// A file put back as it was (`stamp`), the one there now kept in the list
@@ -674,6 +764,10 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
     let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
     let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
     let shown = share::shown(file).to_string();
+    // Your calendar's item or contact set aside: it goes back whole, sent to its server.
+    if part == sioul_sync::history::ACCOUNTS {
+        return say("share-put-back-whole", &[("file", shown), ("when", kept)]);
+    }
     match share::put_back_preview(&memory_path(), &stores, part, file, stamp) {
         Ok(back) if back.whole => say("share-put-back-whole", &[("file", shown), ("when", kept)]),
         Ok(back) if back.changed + back.returning == 0 => say("share-put-back-nothing", &[("file", shown)]),
@@ -790,6 +884,13 @@ pub(crate) fn last_exchange() -> Option<(i64, bool)> {
 /// `take` takes the part here on purpose. Sharing off: this computer alone.
 /// The second value: the folder could not be written, so the others may not know.
 pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, take: bool) -> (sioul_sync::lease::Keeper, bool) {
+    // Put away on a phone, its claims said closed (`closing`): renewed only
+    // once it is back (`back_here`), never by the minute's tick that runs
+    // meanwhile, which would say it open in a pocket (review of 5 October
+    // 2026, F9): who keeps the part, as the claims read.
+    if !renews(cfg!(target_os = "android"), crate::backend::AWAY.load(std::sync::atomic::Ordering::SeqCst)) {
+        return (looked(part, rule), false);
+    }
     let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let here = share::Here::load(&state_dir());
     let alone = sioul_sync::lease::Keeper::alone(&here.id);
@@ -800,6 +901,11 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
         Ok(keeper) => (keeper, false),
         Err(_) => (alone, true),
     }
+}
+
+/// Whether this device's claims are renewed now: always, but on a phone with Sioul put away.
+fn renews(phone: bool, away: bool) -> bool {
+    !(phone && away)
 }
 
 /// Who keeps a part, as the claims read now, without claiming it. Sharing off: this computer alone.
@@ -896,7 +1002,8 @@ pub(crate) fn others_on_health() -> Option<Others> {
     let (mut entries, mut unread) = sioul_sync::devices::all(&folder, &key);
     entries.retain(|e| e.id != here.id);
     unread.retain(|id| *id != here.id);
-    Some(Others { claims, heard: share::heard(&memory_path(), &here.id), others: share::others(&folder, &here.id), entries, unread })
+    // Every device in the folder, heard of by its notes, its entry or its last record (`others_heard`).
+    Some(Others { claims, heard: share::heard(&memory_path(), &here.id), others: share::others_heard(&folder, &key, &here.id), entries, unread })
 }
 
 /// This device's id, and the folder and key when sharing is on: where its
@@ -2223,6 +2330,14 @@ mod tests {
         assert_eq!(news(false, true, false, true, true, false), News::None, "a button pressed: nothing waited for");
     }
 
+    /// F9: on a phone put away, its claims said closed, the minute's tick
+    /// renews none (it would say it open in a pocket); back, or on a computer, each minute.
+    #[test]
+    fn a_phone_put_away_renews_no_claim() {
+        assert!(!renews(true, true));
+        assert!(renews(true, false) && renews(false, true) && renews(false, false));
+    }
+
     #[test]
     fn keeping_the_folder_says_in_words_where_it_stands() {
         use sioul_sync::remote::{MIRROR, State};
@@ -2306,6 +2421,34 @@ mod tests {
         std::fs::create_dir_all(&other).unwrap();
         assert!(!beside_documents(&other.join("Sioul"), &[other.clone()]));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// An event or a contact changed here and on its server, yours kept among
+    /// the earlier versions (`dav::set_aside`): listed by its title, put back
+    /// only inside Sioul's calendars and address books.
+    #[test]
+    fn your_calendars_and_contacts_set_aside_are_named_and_kept_inside() {
+        let root = std::env::temp_dir().join(format!("sioul-kept-items-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let event = "data/calendars/work/personal/dentist.ics";
+        sioul_sync::history::keep_bytes(&root, sioul_sync::history::ACCOUNTS, event, b"BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Dentist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", 1_790_000_000_000).unwrap();
+        let card = "data/contacts/work/friends/jane.vcf";
+        sioul_sync::history::keep_bytes(&root, sioul_sync::history::ACCOUNTS, card, b"BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Jane Doe\r\nEND:VCARD\r\n", 1_790_000_000_000).unwrap();
+        let named = |file: &str| shown_kept(&root, sioul_sync::history::ACCOUNTS, file, &sioul_sync::history::versions(&root, sioul_sync::history::ACCOUNTS, file));
+        assert_eq!((named(event).as_str(), named(card).as_str()), ("Dentist", "Jane Doe"));
+        assert_eq!(shown_kept(&root, "settings", "config/config.toml", &[]), "config.toml");
+        assert!(account_item(event).is_some_and(|p| p.ends_with("calendars/work/personal/dentist.ics")));
+        assert!(account_item("data/../config/config.toml").is_none() && account_item("data/drafts/reply.eml").is_none() && account_item("config/config.toml").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// On a phone, what you said of the notes folder wins over the guess,
+    /// either way; until you said, the guess (the same top folder).
+    #[test]
+    fn on_a_phone_your_word_on_the_notes_folder_wins_over_the_guess() {
+        assert!(carried_on_phone(None, true) && !carried_on_phone(None, false));
+        assert!(!carried_on_phone(Some(false), true), "not carried, as you said, though it looked so");
+        assert!(carried_on_phone(Some(true), false), "carried, as you said, though it did not look so");
     }
 
     #[test]

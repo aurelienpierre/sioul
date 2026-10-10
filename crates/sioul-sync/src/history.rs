@@ -107,6 +107,24 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
     Ok(())
 }
 
+/// The part of the history that holds your calendars' and contacts' versions
+/// set aside: an item changed both here and on its server, the server's
+/// version kept, yours kept here (`dav`), to be put back from the window, on
+/// a phone too, whose state folder no file manager reaches. Its files are
+/// named by their place in the data folder (`data/calendars/<account>/…`).
+pub const ACCOUNTS: &str = "accounts";
+
+/// Bytes kept as a version of `file` (a calendar's item set aside, `ACCOUNTS`),
+/// as `keep` keeps a file: under a hidden name, then renamed. Returns where.
+pub fn keep_bytes(root: &Path, part: &str, file: &str, bytes: &[u8], now_ms: i64) -> Result<PathBuf, String> {
+    let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let target = dir.join(new_stamp(&dir, now_ms));
+    crate::share::write_atomically(&target, bytes)?;
+    prune_file(&dir, now_ms, false);
+    Ok(target)
+}
+
 /// A file's content kept by reference: a record named it, so it is sealed in
 /// the sharing folder already; nothing copied.
 pub fn keep_sealed(root: &Path, part: &str, file: &str, hash: &str, size: u64, now_ms: i64) -> Result<(), String> {

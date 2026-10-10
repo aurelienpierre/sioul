@@ -560,6 +560,24 @@ impl Bank {
         std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// The balance of every account together, and the newest day among them,
+    /// each account once: the names a card gives one account (its number, its
+    /// IBAN, none: `BankAccount::exports`) are one balance, its newest, never
+    /// added up (review of 5 October 2026).
+    pub fn balance_in(&self, ledger: &Ledger) -> Option<(Date, Money)> {
+        let mut by: std::collections::BTreeMap<String, (Date, Money)> = std::collections::BTreeMap::new();
+        for account in &self.accounts {
+            let Some((day, amount)) = account.balance else { continue };
+            let owner = ledger.bank_accounts.iter().find(|card| card.owns(&account.id)).map_or_else(|| format!("\u{1f}{}", account.id), |card| card.id.clone());
+            let kept = by.entry(owner).or_insert((day, amount));
+            if day > kept.0 {
+                *kept = (day, amount);
+            }
+        }
+        let day = by.values().map(|(d, _)| *d).max()?;
+        Some((day, by.values().map(|(_, m)| *m).sum()))
+    }
+
     /// The balance of every account together, and the newest day among them.
     pub fn balance(&self) -> Option<(Date, Money)> {
         let known: Vec<(Date, Money)> = self.accounts.iter().filter_map(|a| a.balance).collect();
@@ -638,7 +656,7 @@ pub(crate) fn matches(filler: &[String], movement: &Movement, label: &[String], 
 /// Holds the movements against the ledger's recurring payments and planned
 /// lines, their labels compared without `filler` (`words::BankWords::filler`).
 pub fn watch(bank: &Bank, ledger: &Ledger, today: Date, filler: &[String]) -> Watch {
-    let mut out = Watch { balance: bank.balance(), ..Watch::default() };
+    let mut out = Watch { balance: bank.balance_in(ledger), ..Watch::default() };
     let first = bank.movements.iter().map(|m| m.date).min();
     let last = bank.movements.iter().map(|m| m.date).max();
     let mut used: Vec<bool> = vec![false; bank.movements.len()];

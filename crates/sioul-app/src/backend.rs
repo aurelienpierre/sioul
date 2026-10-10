@@ -1145,6 +1145,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_share_part(self: Pin<&mut Sioul>, part: &QString, on: bool) -> QString;
 
+        /// On a phone: whether a sync app carries the notes folder, as you
+        /// say (Sioul cannot read its settings there). Returns what went wrong, else "".
+        #[qinvokable]
+        fn set_notes_carried(self: Pin<&mut Sioul>, carried: bool) -> QString;
+
         /// The versions kept here before other devices' changes whose file's
         /// name holds `filter`, listed off the window's thread: `share_listed`
         /// brings them, as JSON [{"part", "name", "more", "files": [{"file", "shown", "count", "versions": [{"stamp", "when", "size"}]}]}].
@@ -2354,6 +2359,8 @@ pub(crate) fn mode_json() -> String {
 }
 
 fn compute(shared: &Shared) -> Views {
+    // One look at the mail: the Porch, then the money lines, each message parsed once (`maildir::CardsKept`).
+    let _cards = sioul_core::maildir::CardsKept::begin();
     let world = World::load();
     let now = Zoned::now();
     let hidden = mail::hidden_files(shared);
@@ -5616,6 +5623,10 @@ impl qobject::Sioul {
 
 // Sharing, part by part, and the versions kept before other devices' changes (`share`).
 impl qobject::Sioul {
+    fn set_notes_carried(self: Pin<&mut Self>, carried: bool) -> QString {
+        QString::from(&crate::share::set_notes_carried(carried))
+    }
+
     fn set_share_part(self: Pin<&mut Self>, part: &QString, on: bool) -> QString {
         let problem = crate::share::set_part(&part.to_string(), on);
         if problem.is_empty() {
@@ -5641,7 +5652,18 @@ impl qobject::Sioul {
         let (part, file, stamp) = (part.to_string(), file.to_string(), stamp.to_string());
         // Off the window's thread: it waits for an exchange running, and copies a file whole.
         std::thread::spawn(move || {
-            let problem = crate::share::put_back(&part, &file, &stamp);
+            // Your calendar's item or contact set aside: written back, then sent by its account's sync.
+            let problem = if part == sioul_sync::history::ACCOUNTS {
+                match crate::share::put_back_item(&file, &stamp) {
+                    Ok(account) => {
+                        crate::pim::nudge(&shared, &account);
+                        String::new()
+                    }
+                    Err(e) => e,
+                }
+            } else {
+                crate::share::put_back(&part, &file, &stamp)
+            };
             let said = if problem.is_empty() { crate::share::put_back_said(&file, &stamp) } else { String::new() };
             let store = crate::share::store_of(&file);
             let done = problem.clone();

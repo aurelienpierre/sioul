@@ -475,6 +475,30 @@ impl Health {
         Some((before, *from))
     }
 
+    /// The moves of medicines taken every few hours, mended: a dose taken
+    /// late moves the next ones (`taken_at`), inside the medicine, which
+    /// travels whole between devices; changed meanwhile on another device (its
+    /// note, its dose's text), the medicine there, its start as it was, can win
+    /// everywhere, and the next dose would come early, the hours between doses
+    /// broken (review of 5 October 2026, F23). Each move is kept with its mark
+    /// (`HealthState::moved`), which travels apart: a medicine whose start is
+    /// one a mark moved it from goes again where that mark moved it, its
+    /// other changes kept. Returns whether one moved.
+    pub fn mend_shifts(&mut self, state: &HealthState) -> bool {
+        let mut mended = false;
+        for medicine in &mut self.medicines {
+            let Schedule::Hours { from, .. } = &mut medicine.schedule else { continue };
+            let moves: Vec<[i64; 2]> = state.moved.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id)).map(|(_, moved)| *moved).collect();
+            // Moved several times since: each from where the one before left it.
+            for _ in 0..moves.len() {
+                let Some([_, after]) = moves.iter().find(|[before, after]| *before == *from && after != before) else { break };
+                *from = *after;
+                mended = true;
+            }
+        }
+        mended
+    }
+
     /// A mark taken back: the doses it moved go back where they were, unless
     /// they moved again since. Returns whether they did.
     pub fn taken_back(&mut self, key: &str, before: i64, after: i64) -> bool {
@@ -559,6 +583,13 @@ pub struct Peer {
     /// You said it is off: not counted until it shows life again.
     #[serde(default)]
     pub off: bool,
+    /// How late the news of its opening comes here: the longest a start of
+    /// its was seen after it began, of its last starts seen while this device
+    /// looked (seconds, this device's clock, its clock's lead taken off);
+    /// none measured yet. A device closed before a dose may open around it to
+    /// mark it: known closed only once that while went by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wake: Option<i64>,
 }
 
 /// What a device says of itself in the sharing folder: its entry in the
@@ -634,6 +665,10 @@ pub const SKEW: i64 = 2 * 60;
 /// closing (a crash): said so. Only the words change.
 pub const QUIET: i64 = 60 * 60;
 
+/// How long before a dose's time a line lost from another device's records
+/// may have held its answer (a dose marked ahead of its time), in seconds.
+pub const BROKEN_SPAN: i64 = 12 * 3600;
+
 /// A device silent this long stops counting for the doses, and Settings ▸ Your
 /// folder and sharing offers to forget it: a guess (a computer away for a long
 /// weekend comes back within it).
@@ -682,14 +717,22 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
     }
     for peer in peers.iter().filter(|p| counts(p, now)) {
         let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) };
-        // A line lost from around the dose's time may have been its answer.
-        if peer.broken.is_some_and(|at| at >= due - 6 * 3600) {
+        // A line lost from around the dose's time may have been its answer:
+        // one written before it, or within `BROKEN_SPAN` after (a dose marked
+        // ahead of its time). The line is dated by its own time, never by when
+        // it was found (a round read again finds an old one again).
+        if peer.broken.is_some_and(|at| at >= due - BROKEN_SPAN) {
             out.push(Doubt::Broken { device });
             continue;
         }
+        // Closed before the dose, it may open again around it to mark it: the
+        // news of its opening comes after a while, as measured on its last
+        // openings (`Peer::wake`), and it is known closed only once that while
+        // went by. None measured yet: as before, at once.
+        let woke = peer.wake.is_none_or(|wake| now - due >= wake);
         let Some(said) = &peer.said else {
             let closed = peer.closed && peer.heard <= peer.known_until;
-            let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN);
+            let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN) && (peer.known_until >= due + SKEW || woke);
             let fresh = peer.known_until >= due && now - peer.known_until <= FRESH;
             if !quiet && !fresh {
                 out.push(Doubt::Unheard { device, until: peer.known_until, closed });
@@ -702,18 +745,29 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
             continue;
         }
         let closed = !said.working && said.closed >= said.started;
+        let margin = SKEW + peer.ahead.max(0);
         if !said.doses {
             // Its answers never travel: known only if it was closed before the
-            // dose was due, its clock maybe `SKEW` behind this one's.
+            // dose was due, its clock maybe `SKEW` behind this one's, and the
+            // news of an opening since had the time to come.
             if !(closed && said.closed + SKEW < due) {
                 out.push(Doubt::Apart { device });
+            } else if !woke {
+                out.push(Doubt::Unheard { device, until: said.closed, closed: true });
             }
             continue;
         }
         if closed {
+            // Closed after the dose (its clock, allowing `SKEW` and its lead):
+            // its last export holds every answer it captured until then. Closed
+            // before: it may have opened again since to mark it (a phone picked
+            // up for that, its sync slow to wake: review of 5 October 2026, F21),
+            // known only once the news of an opening had the time to come.
+            if said.closed < due + margin && !woke {
+                out.push(Doubt::Unheard { device, until: said.closed, closed: true });
+            }
             continue;
         }
-        let margin = SKEW + peer.ahead.max(0);
         let after = said.exported >= due + margin;
         let fresh = now - peer.seen <= FRESH && now - said.exported <= FRESH + margin;
         if !(after && fresh) {
@@ -760,6 +814,19 @@ pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer
     out
 }
 
+/// The first moment from `from` on, before `until`, at which a dose due at
+/// `due` is known not taken (`doubts_now`) while nothing new is read: a
+/// device closed before it becomes known so once the news of an opening had
+/// the time to come (`Peer::wake`), a device in use only goes stale. None when
+/// it is not known by `until`. For what is shown ahead of time (a phone's home
+/// screen card): "check" until then.
+pub fn known_from(due: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> Option<i64> {
+    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w)).filter(|t| *t >= from && *t < until).collect();
+    moments.sort_unstable();
+    moments.dedup();
+    moments.into_iter().find(|t| doubts_now(due, *t, record_lost, peers).is_empty())
+}
+
 /// Until when a dose due at `due`, known not taken at `from` (`doubts_now`),
 /// stays known while nothing new is read (a device in use goes stale after
 /// `FRESH`): the first moment it is not, else `until`; 0 when it is not known
@@ -796,6 +863,65 @@ pub(crate) fn keep_private(path: &Path) {
     }
     #[cfg(not(unix))]
     let _ = path;
+}
+
+/// The witnesses of a record of the doses (the marks, `health-state.toml`;
+/// each dose's record, `health-doses.toml`), made the first time it is
+/// written: gone, or of no bytes, with a witness there, it was lost, not
+/// never written. One beside it; one apart, in the data folder with the
+/// medicines, for a record in its usual place, the state folder: a state
+/// folder wiped whole (a reset, a backup put back without it) takes the
+/// record and the witness beside it, never that one (review of 5 October
+/// 2026, F22).
+pub(crate) fn witnesses(path: &Path) -> Vec<PathBuf> {
+    let name = path.file_name().map(|n| format!(".{}.written", n.to_string_lossy())).unwrap_or_default();
+    let mut all = vec![path.with_file_name(&name)];
+    #[cfg(test)]
+    let apart = APART.with(|apart| apart.borrow().as_ref().map(|dir| dir.join(&name)));
+    #[cfg(not(test))]
+    let apart = (path.parent() == Some(crate::config::state_dir().as_path())).then(|| crate::config::data_dir().join(&name));
+    all.extend(apart.filter(|apart| !all.contains(apart)));
+    all
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Where the witness apart is kept, in this test's thread (else none).
+    pub(crate) static APART: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Whether a record of the doses was written here before (`witnesses`).
+pub(crate) fn witnessed(path: &Path) -> bool {
+    witnesses(path).iter().any(|witness| witness.exists())
+}
+
+/// A record of the doses written next to its place, its bytes on the disk
+/// before it takes its name (a phone's file system may keep the name of a
+/// file whose bytes a crash lost: a record of no bytes), then its folder's
+/// change made to last; its witnesses made when missing.
+pub(crate) fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    let parent = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent).map_err(fail)?;
+    // Next to its place, then moved: a dose marked is never lost to half a file.
+    let temporary = path.with_extension("toml.new");
+    let mut file = std::fs::File::create(&temporary).map_err(fail)?;
+    file.write_all(bytes).and_then(|()| file.sync_all()).map_err(fail)?;
+    drop(file);
+    keep_private(&temporary);
+    std::fs::rename(&temporary, path).map_err(fail)?;
+    #[cfg(unix)]
+    let _ = std::fs::File::open(parent).and_then(|dir| dir.sync_all());
+    for witness in witnesses(path) {
+        if !witness.exists() {
+            if let Some(folder) = witness.parent() {
+                let _ = std::fs::create_dir_all(folder);
+            }
+            std::fs::write(&witness, "").map_err(fail)?;
+        }
+    }
+    Ok(())
 }
 
 /// One dose to take.
@@ -889,22 +1015,18 @@ impl HealthState {
         crate::config::state_dir().join("health-state.toml")
     }
 
-    /// A hidden file beside the record, made the first time it is written:
-    /// the record gone with its witness there was lost, not never written.
-    fn witness(path: &Path) -> PathBuf {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        path.with_file_name(format!(".{name}.written"))
-    }
-
     /// The doses' record as written, or why it cannot be trusted. Never an
     /// empty record in place of one that does not read: a dose taken would
     /// look not taken, and written back empty, the sharing would take every
-    /// mark out on your other devices too.
+    /// mark out on your other devices too. Of no bytes at all, or gone,
+    /// though written before (`witnessed`): lost (a crash after a write that
+    /// had not reached the disk, a full disk, a state folder wiped).
     pub fn read(path: &Path) -> Result<HealthState, Unsound> {
         match std::fs::read_to_string(path) {
+            Ok(text) if text.trim().is_empty() && witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if Self::witness(path).exists() {
+                if witnessed(path) {
                     Err(Unsound::Lost)
                 } else {
                     Ok(HealthState::default())
@@ -931,7 +1053,9 @@ impl HealthState {
     /// once nothing it held can be taken out elsewhere (`share::rebuild`).
     pub fn set_aside(path: &Path, now: i64) -> Result<Option<PathBuf>, String> {
         crate::filelock::with_lock(path, || {
-            let _ = std::fs::remove_file(Self::witness(path));
+            for witness in witnesses(path) {
+                let _ = std::fs::remove_file(witness);
+            }
             if !path.exists() {
                 return Ok(None);
             }
@@ -950,20 +1074,7 @@ impl HealthState {
         self.unshown.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        // Next to its place, then moved: a dose marked is never lost to half a file.
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        keep_private(&temporary);
-        std::fs::rename(&temporary, path).map_err(fail)?;
-        let witness = Self::witness(path);
-        if !witness.exists() {
-            std::fs::write(&witness, "").map_err(fail)?;
-        }
-        Ok(())
+        write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
     /// The doses to remind now: due in the last `minutes`, not taken, not reminded yet.
@@ -1177,6 +1288,39 @@ mod tests {
             assert!(doubts_now(DUE, now, None, std::slice::from_ref(&p)).is_empty(), "{now}");
         }
         assert_eq!(known_until(DUE, DUE + 60, DUE + 86_400, None, &[p]), DUE + 86_400, "nothing ends it but the day");
+    }
+
+    /// F21 of the review of 5 October 2026: a device closed before the dose
+    /// may be picked up at its time to mark it, its sync slow to wake; how
+    /// late the news of its opening comes here is measured on its last
+    /// openings (`Peer::wake`): known closed only once that while went by
+    /// after the dose; closed after the dose, at once; none measured, as before.
+    #[test]
+    fn a_device_closed_before_the_dose_is_known_once_its_opening_could_have_come() {
+        let closed = phone(Said { started: DUE - 7_200, closed: DUE - 3_600, working: false, exported: DUE - 3_605, ..Said::default() }, DUE - 3_500);
+        let doubt = vec![Doubt::Unheard { device: the_phone(), until: DUE - 3_600, closed: true }];
+        assert!(doubts_now(DUE, DUE + 10, None, std::slice::from_ref(&closed)).is_empty(), "none measured: as before");
+        // Its openings came here within 40 s lately: known 40 s after the dose, not before.
+        let quick = Peer { wake: Some(40), ..closed.clone() };
+        assert_eq!(doubts_now(DUE, DUE + 10, None, std::slice::from_ref(&quick)), doubt);
+        assert!(doubts_now(DUE, DUE + 40, None, std::slice::from_ref(&quick)).is_empty());
+        // A phone whose sync woke four minutes late once: four minutes.
+        let slow = Peer { wake: Some(240), ..closed.clone() };
+        assert_eq!(doubts_now(DUE, DUE + 200, None, std::slice::from_ref(&slow)), doubt);
+        assert!(doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&slow)).is_empty());
+        assert_eq!(known_from(DUE, DUE - 600, DUE + 86_400, None, std::slice::from_ref(&slow)), Some(DUE + 240), "a dose seen ahead: known from then");
+        assert_eq!(known_until(DUE, DUE + 240, DUE + 86_400, None, std::slice::from_ref(&slow)), DUE + 86_400);
+        // Closed after the dose, all it wrote read: its last export holds its answer, at once.
+        let after = Peer { wake: Some(240), ..phone(Said { started: DUE - 600, closed: DUE + 600, working: false, exported: DUE + 595, ..Said::default() }, DUE + 620) };
+        assert!(doubts_now(DUE, DUE + 630, None, &[after]).is_empty());
+        // An older Sioul known by its claims, closed before, its steady news quick: the same wait.
+        let older = Peer { name: "laptop".into(), id: "laptop-id".into(), known_until: DUE - 3_600, closed: true, delay: Some(30), heard: DUE - 3_600, wake: Some(120), ..Peer::default() };
+        assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&older)).len(), 1);
+        assert!(doubts_now(DUE, DUE + 120, None, std::slice::from_ref(&older)).is_empty());
+        // Not sharing its doses, closed before: the same wait, then known.
+        let apart = Peer { said: slow.said.clone().map(|s| Said { doses: false, ..s }), ..slow };
+        assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&apart)), doubt);
+        assert!(doubts_now(DUE, DUE + 240, None, &[apart]).is_empty());
     }
 
     #[test]
@@ -1704,5 +1848,63 @@ mod tests {
         let hand: Health = toml::from_str(by_hand).unwrap();
         assert_eq!((hand.medicines[0].short_name().as_str(), hand.medicines[0].precise().as_str()), ("metformin", "metformin 500 mg"));
         assert_eq!(day_of(&hand, "2026-10-08")[0].1, "metformin");
+    }
+
+    /// The review of 5 October 2026, F10 and F22: a record of no bytes (a
+    /// crash after a write that had not reached a phone's disk, a full disk)
+    /// read as lost, never as a sound empty one, the doses due before then in
+    /// doubt; the same once the state folder is wiped whole, its witness with
+    /// it, the one kept apart in the data folder telling. Each dose's records
+    /// alike.
+    #[test]
+    fn a_record_of_no_bytes_or_gone_with_its_folder_is_lost_never_empty() {
+        let dir = std::env::temp_dir().join(format!("sioul-record-lost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (state, data) = (dir.join("state"), dir.join("data"));
+        APART.with(|apart| *apart.borrow_mut() = Some(data.clone()));
+        let path = state.join("health-state.toml");
+        assert_eq!(HealthState::read(&path), Ok(HealthState::default()), "never written: nothing lost");
+        HealthState::update(&path, DUE, |s| {
+            s.taken.insert("iron@1800000000".into(), DUE);
+        })
+        .unwrap();
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(HealthState::read(&path), Err(Unsound::Lost), "of no bytes, written before");
+        std::fs::remove_dir_all(&state).unwrap();
+        assert_eq!(HealthState::read(&path), Err(Unsound::Lost), "the state folder wiped, the witness apart kept");
+        HealthState::set_aside(&path, DUE).unwrap();
+        assert_eq!(HealthState::read(&path), Ok(HealthState::default()), "set aside: a new record starts");
+        let records = state.join("health-doses.toml");
+        crate::doses::DoseRecords::update(&records, DUE, |r| r.open("iron@1800000000", "desk-id", DUE)).unwrap();
+        std::fs::write(&records, "").unwrap();
+        assert_eq!(crate::doses::DoseRecords::read(&records), Err(Unsound::Lost));
+        std::fs::remove_dir_all(&state).unwrap();
+        assert_eq!(crate::doses::DoseRecords::read(&records), Err(Unsound::Lost));
+        APART.with(|apart| *apart.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// F23: a medicine's start, moved by a dose taken late, put back by an
+    /// edit made elsewhere meanwhile: moved again where the mark said, its
+    /// edit kept; twice moved, both; nothing to mend, nothing changed.
+    #[test]
+    fn a_move_lost_to_an_edit_elsewhere_is_mended() {
+        let start = at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second();
+        let mut health = Health {
+            medicines: vec![Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: "1 tablet, with food".into(), schedule: Schedule::Hours { hours: 8, from: start }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None }],
+            ..Health::default()
+        };
+        let mut state = HealthState::default();
+        let late = start + 90 * 60;
+        state.moved.insert(format!("antibiotic@{start}"), [start, late + 8 * 3600]);
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == late + 8 * 3600));
+        assert_eq!(health.medicines[0].dose, "1 tablet, with food", "its other changes kept");
+        assert!(!health.mend_shifts(&state), "mended once");
+        let next = late + 8 * 3600;
+        state.moved.insert(format!("antibiotic@{next}"), [next, next + 3600 + 8 * 3600]);
+        health.medicines[0].schedule = Schedule::Hours { hours: 8, from: start };
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == next + 3600 + 8 * 3600), "both moves");
     }
 }

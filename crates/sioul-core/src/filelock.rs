@@ -10,6 +10,21 @@
 
 use std::path::{Path, PathBuf};
 
+/// Bytes written beside `path` under a hidden name of their own, then renamed
+/// over it: a reader never finds the file empty or half written (the sharing
+/// reads without the lock), and a full disk leaves the file as it was rather
+/// than empty (review of 5 October 2026, F10).
+pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let written = std::fs::write(&temporary, bytes).and_then(|()| std::fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
 /// Whether a writer of `path` takes its lock here (its hidden lock file is
 /// there): for files the sharing writes without it otherwise (a note, which
 /// most writers do not lock), so that a file one of Sioul's own writers

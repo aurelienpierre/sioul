@@ -144,12 +144,13 @@ pub(crate) fn view() -> String {
         Err(problem) => return json(&View { store: true, problem, ..View::default() }),
     };
     let today = jiff::Zoned::now().date();
-    let mut view = View { store: true, any: !bank.movements.is_empty() || bank.balance().is_some(), ..View::default() };
-    if let Some((date, amount)) = bank.balance() {
-        view.balance = say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))]);
-    }
     let ledger = Ledger::load(&root).unwrap_or_default();
     let watch = sioul_core::bank::watch(&bank, &ledger, today, &looked.bank.filler);
+    // Each account once, whatever names its exports gave it (`Bank::balance_in`).
+    let mut view = View { store: true, any: !bank.movements.is_empty() || watch.balance.is_some(), ..View::default() };
+    if let Some((date, amount)) = watch.balance {
+        view.balance = say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))]);
+    }
     view.findings = watch.findings.iter().map(|f| finding_text(f, today)).collect();
     view.coming = watch.coming.iter().map(|e| format!("{} · {} · {}", tr().day_in(e.date, today), e.label, tr().money(e.amount.abs()))).collect();
     view.forecast = watch.forecast.iter().map(|(d, m)| Point { day: d.to_string(), cents: m.cents() }).collect();

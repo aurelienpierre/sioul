@@ -74,7 +74,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 | Nouvelles listes, nouveaux agendas et carnets d’adresses ; les renommer | les requêtes de la norme pour les créer et les renommer | — | Nextcloud et la plupart des serveurs | pas chez Google |
 | Les catégories des contacts | les catégories de la fiche elle-même | des fiches écrites comme Nextcloud les écrit | Nextcloud Contacts (ses groupes) ; DAVx⁵ réglé pour garder les groupes en catégories | les groupes gardés comme fiches à part (la façon d’Apple, et l’autre réglage de DAVx⁵) ne sont pas lus comme catégories : un tel groupe apparaît comme une fiche |
 | Les invitations | reçues par courrier ; votre réponse repart par courrier | Radicale, une invitation acceptée | le logiciel de courrier de l’organisateur, quel qu’il soit | inviter des personnes depuis Sioul : non pris en charge. La copie dans votre agenda ne garde pas votre réponse : d’autres applications peuvent la montrer sans réponse |
-| Changé à deux endroits à la fois | l’étiquette de chaque élément | une imitation dans les tests | tout serveur | la version du serveur l’emporte ; la vôtre est mise de côté, et la ligne d’état dit où |
+| Changé à deux endroits à la fois | l’étiquette de chaque élément | une imitation dans les tests | tout serveur | la version du serveur l’emporte ; la vôtre est gardée parmi les versions précédentes, à remettre depuis la fenêtre, et la ligne d’état le dit |
 
 ## Google {#google}
 

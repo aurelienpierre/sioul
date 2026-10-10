@@ -32,6 +32,12 @@ use std::sync::Mutex;
 pub const ALIVE: i64 = 5 * 60;
 /// How long a computer keeps a part before acting on it.
 pub const SETTLING: i64 = 90;
+/// How long a claim on a part that stays put (invoices) still holds it once
+/// lapsed, unless it says it closed: a computer whose sync stopped, or whose
+/// claims a phone's sync app brings half an hour late, may still be numbering
+/// (review of 5 October 2026, F7); one gone without closing (a crash, a
+/// computer given away) holds it a day, then no more.
+pub const UNCLOSED: i64 = 24 * 3600;
 
 /// Who keeps a part, as the claims say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,9 +85,13 @@ pub struct Keeper {
     pub mine: bool,
     /// And has kept it long enough to act.
     pub settled: bool,
-    /// The last renewal heard from another live computer; 0 when none is alive.
+    /// The last renewal heard from another live computer; 0 when none is
+    /// alive. For a part that stays put: the renewal of the one heard from
+    /// least lately among those still holding it, lapsed but not closed too
+    /// (`UNCLOSED`).
     pub others_heard: i64,
-    /// How many other computers claim it now.
+    /// How many other computers claim it now (for a part that stays put,
+    /// those lapsed but not closed too).
     pub others: usize,
 }
 
@@ -153,9 +163,16 @@ fn read_in(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
         .collect()
 }
 
-/// The keeper among live claims, by the part's rule; ties go to the smaller id.
+/// Whether a claim holds its part now: alive; for a part that stays put,
+/// lapsed but not closed, within `UNCLOSED` of its last renewal too.
+fn holds(claim: &Claim, rule: Rule, now: i64) -> bool {
+    claim.until > now || (rule == Rule::StaysPut && !claim.closed && now - claim.renewed <= UNCLOSED)
+}
+
+/// The keeper among the claims that hold the part (`holds`), by the part's
+/// rule; ties go to the smaller id.
 fn choose<'a>(claims: &'a [Claim], rule: Rule, now: i64) -> Option<&'a Claim> {
-    let live = claims.iter().filter(|c| c.until > now);
+    let live = claims.iter().filter(|c| holds(c, rule, now));
     match rule {
         Rule::FollowsYou => live.max_by(|a, b| a.active.cmp(&b.active).then_with(|| b.computer.cmp(&a.computer))),
         // The last taken on purpose; none taken: the oldest claim.
@@ -197,8 +214,14 @@ pub fn look(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64,
 }
 
 fn keeper(claims: &[Claim], part: &str, computer: &str, rule: Rule, now: i64) -> Keeper {
-    let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && c.until > now).collect();
-    let others_heard = others.iter().map(|c| c.renewed).max().unwrap_or(0);
+    let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && holds(c, rule, now)).collect();
+    let heard = others.iter().map(|c| c.renewed);
+    let others_heard = match rule {
+        Rule::FollowsYou => heard.max(),
+        // Invoices: each other computer holding them heard from lately, the least lately one counts.
+        Rule::StaysPut => heard.min(),
+    }
+    .unwrap_or(0);
 let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(computer) };
     let mine = chosen.computer == computer;
     // Settled: this computer has kept it, as seen here, for the settling time.
@@ -275,10 +298,42 @@ mod tests {
         let taken = renew(&dir, &key, "invoices", "laptop", 1200, 1200, true, Rule::StaysPut, None).unwrap();
         assert!(taken.mine && !taken.settled);
         assert!(!look(&dir, &key, "invoices", "desktop", 1210, Rule::StaysPut).mine);
-        // Claims not renewed die: nobody else keeps them then.
-        assert!(look(&dir, &key, "invoices", "desktop", 1200 + ALIVE + 1, Rule::StaysPut).mine, "dead claims keep nothing");
+        // A claim not renewed, not closed, still holds them a day (until 10 October 2026 it died
+        // with its five minutes, and another computer numbered too: the review's F7).
+        assert!(!look(&dir, &key, "invoices", "desktop", 1200 + ALIVE + 1, Rule::StaysPut).mine, "a lapsed claim, not closed, still holds them");
+        assert!(look(&dir, &key, "invoices", "desktop", 1200 + UNCLOSED + 1, Rule::StaysPut).mine, "a day without news: it keeps nothing");
         // Another key reads nothing: a stranger's claims do not count.
         assert!(look(&dir, &[1u8; 32], "invoices", "desktop", 1210, Rule::StaysPut).mine);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The review of 5 October 2026, F7: the desktop numbers invoices; on the
+    /// phone its claim lapsed (a sync app half an hour late, a sync stopped),
+    /// not closed. The phone never numbers meanwhile: the desktop keeps them;
+    /// taken on purpose, the phone still waits until the desktop is heard
+    /// from, closes, or a day went by without its news.
+    #[test]
+    fn invoices_stay_with_a_computer_not_heard_from_until_it_closes() {
+        let dir = folder("unclosed");
+        let key = [5u8; 32];
+        renew(&dir, &key, "invoices", "desktop", 1000, 1000, false, Rule::StaysPut, None).unwrap();
+        // Ten minutes on, its claim not renewed here: the phone does not keep them.
+        let phone = renew(&dir, &key, "invoices", "phone", 1600, 1600, false, Rule::StaysPut, None).unwrap();
+        assert!(!phone.mine, "a computer not heard from is not a computer gone: {phone:?}");
+        // Taken here on purpose: kept here, but the desktop, not heard from for ten minutes, holds the numbers back.
+        let taken = renew(&dir, &key, "invoices", "phone", 1700, 1700, true, Rule::StaysPut, None).unwrap();
+        assert!(taken.mine && taken.others == 1 && taken.others_heard == 1000, "{taken:?}");
+        // The desktop closes: the phone alone.
+        close(&dir, &key, "invoices", "desktop", 1800, None).unwrap();
+        let alone = renew(&dir, &key, "invoices", "phone", 1900, 1900, false, Rule::StaysPut, None).unwrap();
+        assert!(alone.mine && alone.others == 0, "{alone:?}");
+        // A computer gone without closing holds them a day, then no more.
+        renew(&dir, &key, "invoices", "laptop", 2000, 2000, true, Rule::StaysPut, None).unwrap();
+        assert!(!look(&dir, &key, "invoices", "phone", 2000 + UNCLOSED, Rule::StaysPut).mine);
+        assert!(look(&dir, &key, "invoices", "phone", 2001 + UNCLOSED, Rule::StaysPut).mine);
+        // A part that follows you (medicines; its own name here, as `KEPT` is the process's): a lapsed claim keeps nothing, as before.
+        renew(&dir, &key, "follows", "desktop", 1000, 1000, false, Rule::FollowsYou, None).unwrap();
+        assert!(renew(&dir, &key, "follows", "phone", 1600, 1600, false, Rule::FollowsYou, None).unwrap().mine);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

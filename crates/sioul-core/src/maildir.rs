@@ -99,13 +99,84 @@ fn read_folder(folder: &Path, keep: &impl Fn(Option<ImapOrigin>) -> bool) -> Vec
         .collect()
 }
 
-/// One message file as a card.
+/// One message file as a card. While a `CardsKept` lives in this thread, a
+/// message already read in it is not parsed again: the file's name less its
+/// flags, its size and its time say it is the same (a message's content never
+/// changes; its flags move it between `new/` and `cur/`).
 pub fn read_one(path: &Path) -> Option<Card> {
+    let key = kept_key(path);
+    if let Some(mut card) = key.as_ref().and_then(|key| KEPT.with(|kept| kept.borrow().as_ref().and_then(|kept| kept.get(key).cloned()))) {
+        card.path = Some(path.to_path_buf());
+        card.origin = origin_of(path);
+        return Some(card);
+    }
     let raw = std::fs::read(path).ok()?;
+    #[cfg(test)]
+    PARSED.with(|n| n.set(n.get() + 1));
     let mut card = Card::from_bytes(&raw)?;
     card.path = Some(path.to_path_buf());
     card.origin = origin_of(path);
+    if let Some(key) = key {
+        KEPT.with(|kept| {
+            if let Some(kept) = kept.borrow_mut().as_mut() {
+                kept.insert(key, card.clone());
+            }
+        });
+    }
     Some(card)
+}
+
+type KeptCards = std::collections::HashMap<(String, u64, u64), Card>;
+
+thread_local! {
+    /// The cards read in this thread while a `CardsKept` lives.
+    static KEPT: std::cell::RefCell<Option<KeptCards>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Message files parsed in this test's thread.
+    static PARSED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// A message file as `CardsKept` knows it: its name less its flags, its size, its time (nanoseconds).
+fn kept_key(path: &Path) -> Option<(String, u64, u64)> {
+    if KEPT.with(|kept| kept.borrow().is_none()) {
+        return None;
+    }
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos() as u64;
+    Some((unique_part(path.file_name()?.to_str()?).to_string(), meta.len(), modified))
+}
+
+/// While it lives, each message file this thread reads is parsed once
+/// (`read_one`): one look at the mail (the Porch, then the money lines it
+/// holds, each going through every message kept) parses each message once,
+/// not once each. Nothing is kept once it ends: a card holds a few kilobytes,
+/// and every message kept would stay in memory between looks. One begun
+/// inside another changes nothing.
+pub struct CardsKept(bool);
+
+impl CardsKept {
+    pub fn begin() -> CardsKept {
+        let outer = KEPT.with(|kept| {
+            let mut kept = kept.borrow_mut();
+            let outer = kept.is_some();
+            if !outer {
+                *kept = Some(KeptCards::new());
+            }
+            outer
+        });
+        CardsKept(outer)
+    }
+}
+
+impl Drop for CardsKept {
+    fn drop(&mut self) {
+        if !self.0 {
+            KEPT.with(|kept| *kept.borrow_mut() = None);
+        }
+    }
 }
 
 fn is_hidden(path: &Path) -> bool {
@@ -297,5 +368,37 @@ mod tests {
         // As Windows names them.
         assert_eq!(origin_of(Path::new("cur/1759400000.U17-4521.sioul!2,S")), Some(ImapOrigin { validity: 17, uid: 4521 }));
         assert_eq!(flags_of(Path::new("cur/1759400000.U17-4521.sioul!2,FS")), "FS");
+    }
+
+    /// Whether the phone parses each message once (the owner's question, 9
+    /// October 2026): within one look at the mail (`CardsKept`), each message
+    /// file is parsed once, however many passes read it, its flags moved
+    /// meanwhile too; outside one, as before.
+    #[test]
+    fn each_message_is_parsed_once_in_a_look() {
+        let dir = std::env::temp_dir().join(format!("sioul-cards-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for sub in ["new", "cur", "tmp"] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        for n in 0..3 {
+            std::fs::write(dir.join("new").join(format!("17594000{n}.U1700000000-{n}.sioul")), format!("From: a@example.org\r\nSubject: Hello {n}\r\nMessage-ID: <{n}@example.org>\r\n\r\nBody {n}\r\n")).unwrap();
+        }
+        let parsed = || PARSED.with(std::cell::Cell::get);
+        let before = parsed();
+        {
+            let _kept = CardsKept::begin();
+            assert_eq!(read_messages(&dir).len(), 3);
+            // Read, its flags moved: the same message.
+            let first = dir.join("new").join("175940000.U1700000000-0.sioul");
+            std::fs::rename(&first, dir.join("cur").join("175940000.U1700000000-0.sioul:2,S")).unwrap();
+            let again = read_messages(&dir);
+            assert_eq!(again.len(), 3);
+            assert!(again.iter().any(|c| c.path.as_ref().is_some_and(|p| p.to_string_lossy().ends_with(":2,S")) && c.subject == "Hello 0"), "its path as it is now");
+            assert_eq!(parsed() - before, 3, "parsed once each");
+        }
+        assert_eq!(read_messages(&dir).len(), 3);
+        assert_eq!(parsed() - before, 6, "nothing kept once the look ended");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
