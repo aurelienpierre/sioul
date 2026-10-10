@@ -12,7 +12,9 @@
 //!    then a quick exchange (`share::exchange_here`, which also keeps this
 //!    device's entry among the devices up to date; the service never says the
 //!    phone is in use); a file the sync app wrote that the pull brought
-//!    already, left out (`brought_already`);
+//!    already, left out (`brought_already`); then the sealed files of the
+//!    others' notes and papers this phone waits for, fetched by their names
+//!    (`share::fetch_wanted_here`), for the window's exchange to write;
 //! 2. do-not-disturb: what this device should ask of its system, compared
 //!    with what was asked last; changed, Sioul's own process is asked to apply
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
@@ -372,6 +374,11 @@ fn step(reason: &str) -> serde_json::Value {
             eprintln!("sioul: steps: {e}");
         }
     }
+    // The others' sealed notes and papers this phone waits for, fetched
+    // from the server by their names beside the mail (`share::fetch_wanted_here`):
+    // the window's exchange, or the next step, writes them. Waited for before
+    // the answer, with the mail.
+    let wanted = std::thread::spawn(crate::share::fetch_wanted_here);
     // The calls' table as your devices' news left it, and the notification's words for them.
     let calls = calls.unwrap_or_else(|| crate::calls::step(false));
     // 2. Do-not-disturb: Sioul's own process asked when what it should ask changed.
@@ -389,6 +396,13 @@ fn step(reason: &str) -> serde_json::Value {
         && mail.join().is_err()
     {
         eprintln!("sioul: steps: mail stopped short");
+    }
+    // The sealed files waited for, twenty-five seconds more at most: a large
+    // paper on a slow line goes on without holding the step (asked again
+    // later if it is cut).
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while !wanted.is_finished() && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
     // The notification's words now; the next step no later than the end of what now is for,
     // so that its title changes with the time.

@@ -3756,6 +3756,14 @@ pub struct Sharing<'a> {
 pub struct Outcome {
     /// The stores written to, by name: what to read again.
     pub written: BTreeSet<String>,
+    /// Why notes and papers received wait, by reason, counted (never named):
+    /// "no-store" (not shared here), "not-read" (not this time: a quick
+    /// exchange, or Android's leave to read them all not given), "hurried",
+    /// "unknown" (their file here not readable as it stands), "backoff" (could
+    /// not be written lately, tried again later), "no-blob" (their sealed file
+    /// neither in the folder nor fetched beside it yet: waited for, `blobs::Wanted`),
+    /// "later" (changed here since it was looked at: the next exchange sends that first).
+    pub waits: BTreeMap<String, usize>,
     /// Changes found here and sent.
     pub sent: usize,
     /// Changes from the others written here.
@@ -4490,19 +4498,31 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let mut kept = false;
     let mut names: Option<Names> = None;
     let receiving = Receiving { sharing, history: &history, now_ms, clock };
+    // Sealed files the others' changes name: not here yet (their content's hash and size), or here.
+    let mut wanted: BTreeMap<String, (String, u64)> = BTreeMap::new();
+    let mut there: BTreeSet<String> = BTreeSet::new();
     for file in order {
         let changes = &by_file[file];
-        let Some((store, path)) = locate(stores, file) else { continue };
+        let Some((store, path)) = locate(stores, file) else {
+            if file.starts_with(FILES) {
+                *outcome.waits.entry("no-store".into()).or_default() += 1;
+            }
+            continue;
+        };
         if matches!(store.shape, Shape::Files) {
             // Not read this time, too big here, in a folder that cannot be read
             // or emptied of a sudden, or a hurried exchange waits: left waiting.
             let Some((key, value)) = changes.first() else { continue };
-            if !reads(store) || hurried() || found.is_unknown(file) {
+            let why = if !reads(store) { "not-read" } else if hurried() { "hurried" } else if found.is_unknown(file) { "unknown" } else { "" };
+            if !why.is_empty() {
+                *outcome.waits.entry(why.into()).or_default() += 1;
                 continue;
             }
-            let blob = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok()).map(|r| crate::blobs::name(sharing.key, &r.h)).unwrap_or_default();
+            let reference = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok());
+            let blob = reference.as_ref().map(|r| crate::blobs::name(sharing.key, &r.h)).unwrap_or_default();
             // Could not be written lately (a full disk, a name a folder takes here): tried again after a while, not at every exchange.
             if memory.sealed.failing.get(key).is_some_and(|(failed, again, _)| *failed == blob && now_ms < *again) {
+                *outcome.waits.entry("backoff".into()).or_default() += 1;
                 continue;
             }
             if !writable(store, &path, sharing) {
@@ -4521,13 +4541,24 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 let wait = [MINUTE, 10 * MINUTE, HOUR, 6 * HOUR][(tried as usize).min(3)];
                 failing.insert(key.clone(), (blob.clone(), now_ms + wait, tried + 1));
             };
-            match receive(&receiving, store, file, &path, value.as_deref(), found.hashes.get(key).map(String::as_str), &seen, memory.entries.get(key), found.files.get(file), &mut memory.sealed.damaged) {
+            let came = receive(&receiving, store, file, &path, value.as_deref(), found.hashes.get(key).map(String::as_str), &seen, memory.entries.get(key), found.files.get(file), &mut memory.sealed.damaged);
+            // Its sealed file neither in the folder nor fetched beside it: waited for (`note_wanted`); else no longer.
+            match (&came, &reference) {
+                (Err(crate::blobs::Fault::Missing), Some(reference)) => {
+                    wanted.insert(blob.clone(), (reference.h.clone(), reference.s));
+                }
+                (_, Some(_)) => {
+                    there.insert(blob.clone());
+                }
+                _ => {}
+            }
+            match came {
                 Ok(Received::AlreadySo) => {
                     settled.insert(key.clone());
                     memory.sealed.missing.remove(key);
                     memory.sealed.failing.remove(key);
                 }
-                Ok(Received::Later) => {}
+                Ok(Received::Later) => *outcome.waits.entry("later".into()).or_default() += 1,
                 Ok(Received::Written { stat, copy, kept: into_history }) => {
                     kept |= into_history;
                     outcome.written.insert(store.name.clone());
@@ -4542,8 +4573,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                         outcome.problems.push(format!("{}:{copy}", if value.is_some() { "share-conflict" } else { "share-conflict-gone" }));
                     }
                 }
-                // Not here yet: it comes with the sync app, and is written then; said after a day.
+                // Not here yet: it comes with the sync app, or fetched from the
+                // folder's server (`remote::fetch_wanted`), and is written then; said after a day.
                 Err(crate::blobs::Fault::Missing) => {
+                    *outcome.waits.entry("no-blob".into()).or_default() += 1;
                     if now_ms - *memory.sealed.missing.entry(key.clone()).or_insert(now_ms) > DAY {
                         outcome.problems.push(format!("share-missing:{file}"));
                     }
@@ -4723,6 +4756,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         look_after_sealed(sharing, stores, &mut memory, &found, &hurried, &mut outcome.problems, now_ms);
         memory.checked = now_ms;
     }
+    note_wanted(sharing, &memory, &wanted, &there, now_ms);
     // Damaged sealed files no change waits for any more are forgotten.
     if !memory.sealed.damaged.is_empty() {
         let waited: BTreeSet<String> = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v)))).collect();
@@ -5145,6 +5179,26 @@ fn folded(name: &str) -> String {
     icu_normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(name).to_lowercase()
 }
 
+/// The sealed files this device waits for, said for the pull to fetch
+/// (`blobs::Wanted`, `remote::fetch_wanted`): those this exchange found
+/// neither in the folder nor fetched beside it (`missing`: their content's
+/// hash and size) join; those it found (`there`), and those no change waits
+/// for any more (written, or another change came), leave. Those of changes it
+/// did not look at (not read this time, hurried) stay. Nothing read nor
+/// written while nothing waits.
+fn note_wanted(sharing: &Sharing, memory: &Memory, missing: &BTreeMap<String, (String, u64)>, there: &BTreeSet<String>, now_ms: i64) {
+    if missing.is_empty() && !crate::blobs::Wanted::path(sharing.memory).exists() {
+        return;
+    }
+    let waited: BTreeSet<String> = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v)))).collect();
+    let _ = crate::blobs::Wanted::change(sharing.memory, |wanted| {
+        wanted.blobs.retain(|name, _| waited.contains(name) && !there.contains(name));
+        for (name, (hash, size)) in missing.iter().filter(|(name, _)| waited.contains(*name)) {
+            wanted.blobs.entry(name.clone()).or_insert_with(|| crate::blobs::Want { hash: hash.clone(), size: *size, since: now_ms / 1000, ..Default::default() });
+        }
+    });
+}
+
 /// What came of another device's change to a file sealed apart.
 enum Received {
     /// The file here holds it already.
@@ -5212,17 +5266,15 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     }
     let temporary = temporary(path);
     if let Some(wanted) = &wanted {
-        // Found damaged before, and the same copy still: not opened again.
+        // The folder's copy found damaged before, and the same copy still: not
+        // opened again (the one fetched from the server beside it is, `blobs::get`).
         let blob = crate::blobs::name(sharing.key, &wanted.h);
-        let source = blob_folder(sharing.folder, sharing.key, &wanted.h);
-        let copy = std::fs::metadata(crate::blobs::path(&source, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
-        if copy.is_some() && damaged.get(&blob) == copy.as_ref() {
-            return Err(Fault::Broken);
-        }
+        let copy = std::fs::metadata(crate::blobs::path(sharing.folder, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
+        let known_damaged = copy.is_some() && damaged.get(&blob) == copy.as_ref();
         if let Some(parent) = path.parent() {
             private_dirs(parent).map_err(local)?;
         }
-        match crate::blobs::get(&source, sharing.key, &wanted.h, &temporary) {
+        match crate::blobs::get_unless(sharing.folder, sharing.key, &wanted.h, &temporary, known_damaged) {
             Err(Fault::Broken) => {
                 damaged.extend(copy.map(|copy| (blob, copy)));
                 return Err(Fault::Broken);
@@ -5302,16 +5354,6 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         Some((stat, copy, kept)) => Received::Written { stat, copy: copy.map(in_store), kept },
         None => Received::Later,
     })
-}
-
-/// Where a sealed file is opened from: the sharing folder, else the copy
-/// fetched from the server (`remote::overlay`) when only it holds that file.
-fn blob_folder(folder: &Path, key: &[u8; 32], hash: &str) -> PathBuf {
-    let there = |dir: &Path| std::fs::metadata(crate::blobs::path(dir, key, hash)).is_ok_and(|m| m.len() > 0);
-    match crate::remote::overlay(folder) {
-        Some(fetched) if !there(folder) && there(&fetched) => fetched,
-        _ => folder.to_path_buf(),
-    }
 }
 
 /// The name of the copy kept beside a file two devices changed, the same on
@@ -5486,7 +5528,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         crate::history::Kept::Copy(version) => copy_private(&version, &temporary).map_err(fail),
         crate::history::Kept::Sealed { hash, .. } => {
             let (folder, key) = vault.ok_or_else(|| format!("{file}: kept in the sharing folder, which is not set here"))?;
-            crate::blobs::get(&blob_folder(folder, key, &hash), key, &hash, &temporary).map_err(|fault| match fault {
+            crate::blobs::get(folder, key, &hash, &temporary).map_err(|fault| match fault {
                 crate::blobs::Fault::Missing => format!("share-missing:{file}"),
                 crate::blobs::Fault::Broken => format!("share-damaged:{file}"),
                 crate::blobs::Fault::Room => format!("share-no-room:{file}"),

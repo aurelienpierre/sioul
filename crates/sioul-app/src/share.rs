@@ -1396,7 +1396,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             let codes: Vec<&str> = outcome.problems.iter().map(|p| p.split(':').next().unwrap_or_default()).collect();
             match outcome.quiet {
                 true => eprintln!("sioul: sharing: nothing new, nothing read"),
-                false => eprintln!("sioul: sharing: {} sent, {} received, {} waiting{}{}", outcome.sent, outcome.received, outcome.pending, if codes.is_empty() { "" } else { "; " }, codes.join("; ")),
+                false => eprintln!("sioul: sharing: {} sent, {} received, {} waiting{}{}{}", outcome.sent, outcome.received, outcome.pending, waits_said(&outcome.waits), if codes.is_empty() { "" } else { "; " }, codes.join("; ")),
             }
         }
         // Inside a reminder's own session, the sync app is asked once it is down (`devices::receiver`).
@@ -1485,12 +1485,13 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // Notes and papers only when they can be read whole (Android: "All files access").
         let readable = files_readable();
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: readable, hurry: Some(&HURRY) };
-        let (mut received, mut pending) = (0, 0);
+        let (mut received, mut pending, mut waits, mut no_blob) = (0, 0, String::new(), false);
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
                 // What it read and wrote, said in this device's entry (docs/database.md, "Devices").
                 crate::devices::exported(&outcome);
-                (received, pending) = (outcome.received, outcome.pending);
+                (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
+                no_blob = outcome.waits.contains_key("no-blob");
                 if !outcome.written.is_empty() {
                     // What the pages were read from (`work::loaded`: the notes, the
                     // recently changed, projects and tasks) came before these:
@@ -1539,7 +1540,7 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         if cfg!(target_os = "android") {
             // Codes alone: a note's name is what was exchanged.
             let codes: Vec<&str> = problems.iter().map(|p| p.split(':').next().unwrap_or_default()).collect();
-            eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{}{}", if codes.is_empty() { "" } else { "; " }, codes.join("; "));
+            eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{waits}{}{}", if codes.is_empty() { "" } else { "; " }, codes.join("; "));
         }
         // A part met in a newer form than this Sioul reads: said once in the
         // status line, calmly, the first time this Sioul meets it (Settings
@@ -1567,10 +1568,31 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             crate::pim::show_pim(&qt, &shared);
             crate::work::show_work(&qt, &shared);
         }
+        // Notes or papers come whose sealed file is not here yet (neither
+        // brought by the sync app nor fetched): fetched from the server by
+        // their names now, then another exchange at once writes them. On a
+        // thread of its own: a large paper on a slow line never holds back
+        // the next exchange (a dose marked meanwhile goes at once).
+        if !mirror && no_blob {
+            let folder = folder.clone();
+            std::thread::spawn(move || {
+                if fetch_wanted(&folder, &key) > 0 {
+                    want(|soon, now| soon.ask(now));
+                }
+            });
+        }
     }
 }
 
 // ---------------------------------------------------------------- shared as soon as it is saved
+
+/// Why notes and papers received wait, for the log: " (unknown 2, backoff 1)", "" when none.
+fn waits_said(waits: &std::collections::BTreeMap<String, usize>) -> String {
+    if waits.is_empty() {
+        return String::new();
+    }
+    format!(" ({})", waits.iter().map(|(why, n)| format!("{why} {n}")).collect::<Vec<_>>().join(", "))
+}
 
 /// What wants an exchange (`sioul_sync::trigger::Soon`), and the worker waiting on it.
 static SOON: Mutex<sioul_sync::trigger::Soon> = Mutex::new(sioul_sync::trigger::Soon::new());
@@ -2159,6 +2181,62 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
     });
 }
 
+/// The background step's (`steps::step`, after its exchange): the sealed
+/// files of notes and papers waited for, fetched (`fetch_wanted`); the
+/// window's exchange, or the next step, writes them. Nothing asked, not even
+/// the key, while nothing waits.
+pub(crate) fn fetch_wanted_here() {
+    let here = here();
+    let Some(folder) = attached(&here) else { return };
+    if !sioul_sync::remote::wanted_due(&memory_path(), &folder, jiff::Timestamp::now().as_second()) {
+        return;
+    }
+    if let Some((folder, key)) = sealed(Some(folder)) {
+        fetch_wanted(&folder, &key);
+    }
+}
+
+/// The others' sealed notes and papers an exchange found not here yet,
+/// neither brought by the sync app nor fetched (`sioul_sync::blobs::Wanted`),
+/// fetched by their names from the folder's server when the folder is found
+/// there (`sioul_sync::remote::fetch_wanted`): the next exchange writes them
+/// (docs/database.md, "Sealed files fetched when waited for"). Never on the
+/// window's thread, nor while an exchange runs: a dose's alarm never waits
+/// for it. Said in a phone's log. How many came.
+fn fetch_wanted(folder: &Path, key: &[u8; 32]) -> usize {
+    if mirrored().is_some() {
+        return 0;
+    }
+    // One at a time in this process: one fetching already brings them.
+    static WANTING: Mutex<()> = Mutex::new(());
+    let _one = match WANTING.try_lock() {
+        Ok(held) => held,
+        Err(std::sync::TryLockError::Poisoned(held)) => held.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return 0,
+    };
+    let memory = memory_path();
+    let now = jiff::Timestamp::now().as_second();
+    let state = sioul_sync::remote::State::load(&memory);
+    if !state.fetching() || !state.confirmed_for(folder) || !sioul_sync::remote::wanted_due(&memory, folder, now) {
+        return 0;
+    }
+    let Some(login) = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return 0 };
+    let pulled = sioul_sync::remote::fetch_wanted(&memory, folder, &login, key, now, frugal_now());
+    let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+    log_backup(match &pulled.problem {
+        None => format!(
+            "{at} sealed files waited for: {} fetched from {}, {} bytes{}{}",
+            pulled.fetched,
+            state.host(),
+            pulled.bytes,
+            if pulled.paced > 0 { format!("; {} large left for later on this connection", pulled.paced) } else { String::new() },
+            if pulled.held > 0 { format!("; {} did not come whole, asked again later", pulled.held) } else { String::new() }
+        ),
+        Some(why) => format!("{at} sealed files waited for: fetching from {} stopped: {}", state.host(), backup_words(why)),
+    });
+    pulled.fetched
+}
+
 /// Fetched from the server too, as the panel shows it.
 #[derive(Serialize)]
 struct Backup {
@@ -2353,6 +2431,15 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A phone's log says why notes and papers wait, counted, never named:
+    /// a sealed file not here yet apart from a backoff (`Outcome::waits`).
+    #[test]
+    fn the_log_says_why_notes_wait() {
+        assert_eq!(waits_said(&std::collections::BTreeMap::new()), "");
+        let waits: std::collections::BTreeMap<String, usize> = [("no-blob".to_string(), 2), ("backoff".to_string(), 1)].into();
+        assert_eq!(waits_said(&waits), " (backoff 1, no-blob 2)");
+    }
 
     /// A dose's alarm (`health::alarm_decide`) asks for the others' news
     /// before it decides (`exchange_here(true)`): on a phone whose own pull
