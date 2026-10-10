@@ -926,10 +926,10 @@ fn a_retired_store_s_entry_is_forgotten_and_stops_no_full_round() {
 }
 
 /// A round truly lost (taken out of the server, never to come) while the
-/// round before it is kept: waited for an hour, the doses in doubt; then
-/// passed over, the gap said: what comes after it flows (a dose marked
-/// later is here), the doses still in doubt; the reader asks for a full
-/// round, which brings what was lost and ends the doubt.
+/// round before it is kept: waited for an hour of exchanges, the doses in
+/// doubt; then passed over, the gap said: what comes after it flows (a dose
+/// marked later is here), the doses still in doubt; the reader asks for a
+/// full round, which brings what was lost and ends the doubt.
 #[test]
 fn a_round_truly_lost_is_passed_over_after_an_hour() {
     let base = scratch("round-lost");
@@ -955,9 +955,15 @@ fn a_round_truly_lost_is_passed_over_after_an_hour() {
     }
     assert!(!phone.read("state/health-state.toml").contains("b@1790000700"), "waited for round 2");
     assert!(!heard(&phone.memory, &phone.id).complete(&desk.id, wrote));
-    // An hour on: passed over, the gap said; what came after flows, the doses still in doubt.
-    let outcome = phone.exchange(&phone_folder, &key, NOW + 3 * MINUTE + AWAITED);
-    assert!(outcome.problems.iter().any(|p| p.starts_with("share-other-gap")), "{:?}", outcome.problems);
+    // An hour of exchanges on: passed over, the gap said; what came after flows, the doses still in doubt.
+    let (mut at, mut said) = (NOW + 7 * MINUTE, Vec::new());
+    while !phone.read("state/health-state.toml").contains("b@1790000700") {
+        assert!(at < NOW + 3 * 3_600_000, "never passed over");
+        at += 5 * MINUTE;
+        said.extend(phone.exchange(&phone_folder, &key, at).problems);
+    }
+    assert!(at - (NOW + 3 * MINUTE) >= AWAITED, "after an hour, not before: {} min", (at - NOW) / MINUTE);
+    assert!(said.iter().any(|p| p.starts_with("share-other-gap")), "{said:?}");
     let record = phone.read("state/health-state.toml");
     assert!(record.contains("b@1790000700") && !record.contains("a@1790000600"), "{record}");
     assert!(!heard(&phone.memory, &phone.id).complete(&desk.id, wrote), "not all known: round 2 lost");
@@ -965,13 +971,13 @@ fn a_round_truly_lost_is_passed_over_after_an_hour() {
     let note = seen_path(&phone_folder, &phone.id);
     assert!(read_seen(&phone_folder, &phone.id).is_some_and(|seen| seen.full.contains_key(&desk.id)));
     std::fs::copy(&note, seen_path(&server, &phone.id)).unwrap();
-    desk.exchange(&server, &key, NOW + 70 * MINUTE);
+    desk.exchange(&server, &key, at + MINUTE);
     let m = Memory::load(&desk.memory, &desk.id);
     assert_eq!(m.full_round, m.round, "a full round, asked for");
     for r in rounds(&server).get(&desk.id).cloned().unwrap_or_default() {
         carry(&server, &phone_folder, &format!("{}-{r}.jsonl", desk.id), None);
     }
-    phone.exchange(&phone_folder, &key, NOW + 71 * MINUTE);
+    phone.exchange(&phone_folder, &key, at + 2 * MINUTE);
     let record = phone.read("state/health-state.toml");
     assert!(record.contains("a@1790000600") && record.contains("b@1790000700"), "{record}");
     assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()));
@@ -1027,5 +1033,148 @@ fn an_append_not_noted_is_not_made() {
     }
     assert!(!said.iter().any(|p| p == "share-own-ahead" || p == "share-twin"), "{said:?}");
     assert!(std::fs::metadata(&first).unwrap().len() > size, "appended once noted");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The hour's wait (`AWAITED`) counts only the time exchanges run, five
+/// minutes at most between two (`AWAIT_STEP`): a phone asleep for hours,
+/// woken before its sync app brought the round's end, still waits for it,
+/// asks for no full round, and reads it when it comes.
+#[test]
+fn time_asleep_counts_none_of_the_wait() {
+    let base = scratch("asleep-wait");
+    let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+    let key = quick_key(&server, "four words make a passphrase").unwrap();
+    carry(&server, &phone_folder, "seal.toml", None);
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/known-senders.txt", &senders(0, 1500));
+    desk.exchange(&server, &key, NOW);
+    carry(&server, &phone_folder, &format!("{}-1.jsonl", desk.id), None);
+    phone.exchange(&phone_folder, &key, NOW + 30_000);
+    desk.write("config/known-senders.txt", &senders(0, 3000));
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&server, &key, NOW + MINUTE);
+    desk.write("state/health-state.toml", &doses(&["a@1790000600", "b@1790000700"]));
+    desk.exchange(&server, &key, NOW + 2 * MINUTE);
+    // Round 3 here, round 2 not yet; then the phone sleeps three hours.
+    carry(&server, &phone_folder, &format!("{}-3.jsonl", desk.id), None);
+    phone.exchange(&phone_folder, &key, NOW + 3 * MINUTE);
+    let woken = NOW + 3 * 3_600_000;
+    phone.exchange(&phone_folder, &key, woken);
+    phone.exchange(&phone_folder, &key, woken + MINUTE);
+    assert!(!phone.read("state/health-state.toml").contains("b@1790000700"), "still waiting for round 2");
+    assert!(read_seen(&phone_folder, &phone.id).is_none_or(|seen| seen.full.is_empty()), "no full round asked for");
+    // Round 2 comes: read, all of it, nothing asked.
+    carry(&server, &phone_folder, &format!("{}-2.jsonl", desk.id), None);
+    phone.exchange(&phone_folder, &key, woken + 2 * MINUTE);
+    let record = phone.read("state/health-state.toml");
+    assert!(record.contains("a@1790000600") && record.contains("b@1790000700"), "{record}");
+    assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()));
+    assert!(read_seen(&phone_folder, &phone.id).is_none_or(|seen| seen.full.is_empty()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A full round asked for (`Seen::full`) waits while the connection is
+/// metered or slow (`set_frugal`), as one past `ROUND_SIZE` does: on a phone
+/// always on mobile data, it would restate every text it holds. The doubt
+/// holds meanwhile; the full round comes once the connection is not.
+#[test]
+fn an_asked_full_round_waits_while_the_connection_is_metered() {
+    let base = scratch("asked-metered");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + 30_000);
+    let file = round_file(&folder, &desk.id, 1);
+    let before = std::fs::metadata(&file).unwrap().len() as usize;
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+    desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    // The dose's line damaged on its way: the phone asks for a full round.
+    let mut bytes = std::fs::read(&file).unwrap();
+    let seal_at = before + std::str::from_utf8(&bytes[before..]).unwrap().find("\"s\":\"").unwrap() + 10;
+    bytes[seal_at] = if bytes[seal_at] == b'A' { b'B' } else { b'A' };
+    std::fs::write(&file, &bytes).unwrap();
+    phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+    assert!(read_seen(&folder, &phone.id).is_some_and(|seen| seen.full.contains_key(&desk.id)));
+    // Metered: no full round; the phone stays in doubt.
+    let round = Memory::load(&desk.memory, &desk.id).round;
+    set_frugal(&desk.memory, true);
+    for m in 4..7 {
+        desk.exchange(&folder, &key, NOW + m * MINUTE);
+    }
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!(m.round, round, "no full round while metered");
+    assert!(m.owed, "owed all the same");
+    phone.exchange(&folder, &key, NOW + 7 * MINUTE);
+    assert!(!heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()), "the doubt holds");
+    // The connection free again: the full round, and the dose.
+    set_frugal(&desk.memory, false);
+    desk.exchange(&folder, &key, NOW + 8 * MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!((m.round, m.full_round), (round + 1, round + 1), "a full round");
+    phone.exchange(&folder, &key, NOW + 9 * MINUTE);
+    assert!(phone.read("state/health-state.toml").contains("a@1790000600"));
+    assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The metered wait of a full round asked for is six hours of exchanges at
+/// most (`OWED_METERED`, counted as `AWAITED` is: time asleep left out); then
+/// it goes all the same, so that a phone always on mobile data never leaves
+/// the others in doubt for days. A bulk import still holds it back.
+#[test]
+fn an_asked_full_round_goes_after_six_hours_metered() {
+    let base = scratch("asked-six-hours");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + 30_000);
+    let file = round_file(&folder, &desk.id, 1);
+    let before = std::fs::metadata(&file).unwrap().len() as usize;
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+    desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    let mut bytes = std::fs::read(&file).unwrap();
+    let seal_at = before + std::str::from_utf8(&bytes[before..]).unwrap().find("\"s\":\"").unwrap() + 10;
+    bytes[seal_at] = if bytes[seal_at] == b'A' { b'B' } else { b'A' };
+    std::fs::write(&file, &bytes).unwrap();
+    phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+    assert!(read_seen(&folder, &phone.id).is_some_and(|seen| seen.full.contains_key(&desk.id)));
+    let round = Memory::load(&desk.memory, &desk.id).round;
+    set_frugal(&desk.memory, true);
+    // A bulk import holds it back, however long.
+    set_importing(&desk.memory, true);
+    let mut at = NOW + 4 * MINUTE;
+    for _ in 0..80 {
+        desk.exchange(&folder, &key, at);
+        at += 5 * MINUTE;
+    }
+    assert_eq!(Memory::load(&desk.memory, &desk.id).round, round, "held while importing");
+    set_importing(&desk.memory, false);
+    // Metered: ten hours asleep count five minutes; then exchanges every five minutes.
+    desk.exchange(&folder, &key, at);
+    at += 10 * 3_600_000;
+    desk.exchange(&folder, &key, at);
+    assert_eq!(Memory::load(&desk.memory, &desk.id).round, round, "time asleep does not count");
+    let start = at;
+    while Memory::load(&desk.memory, &desk.id).round == round {
+        assert!(at - start <= OWED_METERED + 10 * MINUTE, "never went");
+        at += 5 * MINUTE;
+        desk.exchange(&folder, &key, at);
+    }
+    assert!(at - start >= OWED_METERED - 2 * AWAIT_STEP, "after six hours of exchanges, not before: {} min", (at - start) / MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert_eq!((m.round, m.full_round, m.owed), (round + 1, round + 1, false), "a full round, metered all the same");
+    phone.exchange(&folder, &key, at + MINUTE);
+    assert!(phone.read("state/health-state.toml").contains("a@1790000600"));
+    assert!(heard(&phone.memory, &phone.id).complete(&desk.id, written(&desk.memory, &desk.id).unwrap()));
+    set_frugal(&desk.memory, false);
     let _ = std::fs::remove_dir_all(&base);
 }
