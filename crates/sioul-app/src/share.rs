@@ -66,6 +66,18 @@ fn here() -> share::Here {
             let _ = here.save(&state);
         }
     }
+    // An answer on the notes folder given before it was tied to the folder
+    // (`Here::notes_carried_for`): tied to the notes folder of now, once.
+    if here.notes_carried.is_some() && here.notes_carried_for.is_none() {
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        here = share::Here::load(&state);
+        if here.notes_carried.is_some() && here.notes_carried_for.is_none()
+            && let Some(notes) = load_config().notes_root_path()
+        {
+            here.notes_carried_for = Some(notes.display().to_string());
+            let _ = here.save(&state);
+        }
+    }
     here
 }
 
@@ -119,7 +131,7 @@ fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
 /// carries whole, whatever name the storage goes by.
 fn notes_carried(config: &Config, here: &share::Here) -> Option<PathBuf> {
     let store = config.notes_root_path()?;
-    let carried = if cfg!(target_os = "android") { carried_on_phone(here.notes_carried, here.folder_path().is_some_and(|folder| same_top(&on_storage(&store), &on_storage(&folder), Path::new(STORAGE)))) } else { carried(&store, &synced_roots()) };
+    let carried = if cfg!(target_os = "android") { carried_on_phone(here.notes_said(&store), here.folder_path().is_some_and(|folder| same_top(&on_storage(&store), &on_storage(&folder), Path::new(STORAGE)))) } else { carried(&store, &synced_roots()) };
     carried.then_some(store)
 }
 
@@ -134,8 +146,11 @@ fn carried_on_phone(said: Option<bool>, guessed: bool) -> bool {
 pub(crate) fn set_notes_carried(carried: bool) -> String {
     between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut here = here();
+        // Read as it is, never through `here()`, which takes this lock to mend it.
+        let mut here = share::Here::load(&state_dir());
         here.notes_carried = Some(carried);
+        // Said of the notes folder of now: asked again once it moves.
+        here.notes_carried_for = load_config().notes_root_path().map(|notes| notes.display().to_string());
         if carried {
             for part in ["notes", "papers"] {
                 if here.parts.get(part) == Some(&true) {
@@ -532,7 +547,7 @@ pub(crate) fn status(folder: &str) -> String {
                 ("texts", false) => [last, crate::texts::kept_words()].join(" ").trim().to_string(),
                 _ => last,
             };
-            let guessed = cfg!(target_os = "android") && !refused.is_empty() && here.notes_carried.is_none();
+            let guessed = cfg!(target_os = "android") && !refused.is_empty() && config.notes_root_path().is_none_or(|notes| here.notes_said(&notes).is_none());
             Part { id, name, carries, on: shared, refused, guessed, last }
         })
         .collect();
@@ -545,7 +560,7 @@ pub(crate) fn status(folder: &str) -> String {
     let can_again = on;
     let again = if on { again_line(&sioul_sync::remote::Sending::load(&memory_path()).again, &sioul_sync::remote::State::load(&memory_path()).host()) } else { String::new() };
     let carried_ask = match config.notes_root_path() {
-        Some(store) if cfg!(target_os = "android") && here.notes_carried.is_none() => say("share-carried-ask", &[("store", shorten(&store))]),
+        Some(store) if cfg!(target_os = "android") && here.notes_said(&store).is_none() => say("share-carried-ask", &[("store", shorten(&store))]),
         _ => String::new(),
     };
     json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask })
@@ -639,7 +654,8 @@ pub(crate) fn set_part(part: &str, on: bool) -> String {
     // Between two exchanges: one never reads half the parts as they were.
     between_exchanges(|| {
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut here = here();
+        // Read as it is, never through `here()`, which takes this lock to mend it.
+        let mut here = share::Here::load(&state_dir());
         here.parts.insert((*part).to_string(), on);
         here.save(&state_dir()).err().unwrap_or_default()
     })
@@ -990,6 +1006,12 @@ pub(crate) struct Others {
     /// What each says of itself (`sioul_sync::devices`), and the ids of those whose entry does not read.
     pub entries: Vec<sioul_sync::devices::Entry>,
     pub unread: Vec<String>,
+    /// Whether this device's own news flows now: its own pull from the
+    /// server went through within the last two minutes (`Some(true)`), or
+    /// failed, or is older (`Some(false)`); none when a sync app alone
+    /// carries the folder, which says nothing of a pause (review of 10
+    /// October 2026, R8: `health::note_wake`).
+    pub news: Option<bool>,
 }
 
 /// The others' claims on the doses, their entries in the devices' registry,
@@ -1002,8 +1024,11 @@ pub(crate) fn others_on_health() -> Option<Others> {
     let (mut entries, mut unread) = sioul_sync::devices::all(&folder, &key);
     entries.retain(|e| e.id != here.id);
     unread.retain(|id| *id != here.id);
+    let pulls = sioul_sync::remote::State::load(&memory_path());
+    let now = jiff::Timestamp::now().as_second();
+    let news = (pulls.fetching() && pulls.confirmed > 0 && !pulls.url.is_empty()).then(|| pulls.said.is_empty() && (now - 2 * 60..=now).contains(&pulls.last));
     // Every device in the folder, heard of by its notes, its entry or its last record (`others_heard`).
-    Some(Others { claims, heard: share::heard(&memory_path(), &here.id), others: share::others_heard(&folder, &key, &here.id), entries, unread })
+    Some(Others { claims, heard: share::heard(&memory_path(), &here.id), others: share::others_heard(&folder, &key, &here.id), entries, unread, news })
 }
 
 /// This device's id, and the folder and key when sharing is on: where its
@@ -2449,6 +2474,23 @@ mod tests {
         assert!(carried_on_phone(None, true) && !carried_on_phone(None, false));
         assert!(!carried_on_phone(Some(false), true), "not carried, as you said, though it looked so");
         assert!(carried_on_phone(Some(true), false), "carried, as you said, though it did not look so");
+    }
+
+    /// R12 of the review of 10 October 2026: your answer on a phone's notes
+    /// folder is for that folder: the notes moved, it is asked again, the
+    /// guess holding meanwhile; an answer from before, untied, counts for
+    /// the notes folder of then.
+    #[test]
+    fn the_answer_on_the_notes_folder_is_for_that_folder() {
+        let notes = Path::new(STORAGE).join("Notes");
+        let moved = Path::new(STORAGE).join("Documents/Notes");
+        let mut here = share::Here { notes_carried: Some(false), ..share::Here::default() };
+        assert_eq!(here.notes_said(&notes), Some(false), "an answer from before: for the notes of then");
+        here.notes_carried_for = Some(notes.display().to_string());
+        assert_eq!(here.notes_said(&notes), Some(false));
+        assert_eq!(here.notes_said(&moved), None, "moved: asked again");
+        assert!(carried_on_phone(here.notes_said(&moved), true), "the guess meanwhile: in the sharing folder's top folder, carried");
+        assert!(!carried_on_phone(here.notes_said(&notes), true), "where it was said: as said");
     }
 
     #[test]

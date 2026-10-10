@@ -483,15 +483,18 @@ impl Health {
     /// broken (review of 5 October 2026, F23). Each move is kept with its mark
     /// (`HealthState::moved`), which travels apart: a medicine whose start is
     /// one a mark moved it from goes again where that mark moved it, its
-    /// other changes kept. Returns whether one moved.
+    /// other changes kept. Two moves from one start (the second marked on a
+    /// device the first had not reached yet): the latest mark's, by when it
+    /// was taken (review of 10 October 2026, R10). Returns whether one moved.
     pub fn mend_shifts(&mut self, state: &HealthState) -> bool {
         let mut mended = false;
         for medicine in &mut self.medicines {
             let Schedule::Hours { from, .. } = &mut medicine.schedule else { continue };
-            let moves: Vec<[i64; 2]> = state.moved.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id)).map(|(_, moved)| *moved).collect();
+            // Each move with when its mark was taken (none known: the earliest).
+            let moves: Vec<([i64; 2], i64)> = state.moved.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id)).map(|(key, moved)| (*moved, state.taken.get(key).copied().unwrap_or(i64::MIN))).collect();
             // Moved several times since: each from where the one before left it.
             for _ in 0..moves.len() {
-                let Some([_, after]) = moves.iter().find(|[before, after]| *before == *from && after != before) else { break };
+                let Some(([_, after], _)) = moves.iter().filter(|([before, after], _)| *before == *from && after != before).max_by_key(|(_, taken)| *taken) else { break };
                 *from = *after;
                 mended = true;
             }
@@ -728,8 +731,11 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
         // Closed before the dose, it may open again around it to mark it: the
         // news of its opening comes after a while, as measured on its last
         // openings (`Peer::wake`), and it is known closed only once that while
-        // went by. None measured yet: as before, at once.
-        let woke = peer.wake.is_none_or(|wake| now - due >= wake);
+        // went by, and `SKEW` more (a lead of its clock measured here is that
+        // lead less the quickest news seen: its openings timed short by as
+        // much; review of 10 October 2026, R8). None measured yet: as before,
+        // at once.
+        let woke = peer.wake.is_none_or(|wake| now - due >= wake + SKEW);
         let Some(said) = &peer.said else {
             let closed = peer.closed && peer.heard <= peer.known_until;
             let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN) && (peer.known_until >= due + SKEW || woke);
@@ -821,7 +827,7 @@ pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer
 /// it is not known by `until`. For what is shown ahead of time (a phone's home
 /// screen card): "check" until then.
 pub fn known_from(due: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> Option<i64> {
-    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w)).filter(|t| *t >= from && *t < until).collect();
+    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w + SKEW)).filter(|t| *t >= from && *t < until).collect();
     moments.sort_unstable();
     moments.dedup();
     moments.into_iter().find(|t| doubts_now(due, *t, record_lost, peers).is_empty())
@@ -891,7 +897,7 @@ thread_local! {
 }
 
 /// Whether a record of the doses was written here before (`witnesses`).
-pub(crate) fn witnessed(path: &Path) -> bool {
+pub fn witnessed(path: &Path) -> bool {
     witnesses(path).iter().any(|witness| witness.exists())
 }
 
@@ -899,7 +905,7 @@ pub(crate) fn witnessed(path: &Path) -> bool {
 /// before it takes its name (a phone's file system may keep the name of a
 /// file whose bytes a crash lost: a record of no bytes), then its folder's
 /// change made to last; its witnesses made when missing.
-pub(crate) fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let parent = path.parent().unwrap_or(Path::new("."));
@@ -1294,33 +1300,35 @@ mod tests {
     /// may be picked up at its time to mark it, its sync slow to wake; how
     /// late the news of its opening comes here is measured on its last
     /// openings (`Peer::wake`): known closed only once that while went by
-    /// after the dose; closed after the dose, at once; none measured, as before.
+    /// after the dose, and `SKEW` more (R8 of the review of 10 October 2026);
+    /// closed after the dose, at once; none measured, as before.
     #[test]
     fn a_device_closed_before_the_dose_is_known_once_its_opening_could_have_come() {
         let closed = phone(Said { started: DUE - 7_200, closed: DUE - 3_600, working: false, exported: DUE - 3_605, ..Said::default() }, DUE - 3_500);
         let doubt = vec![Doubt::Unheard { device: the_phone(), until: DUE - 3_600, closed: true }];
         assert!(doubts_now(DUE, DUE + 10, None, std::slice::from_ref(&closed)).is_empty(), "none measured: as before");
-        // Its openings came here within 40 s lately: known 40 s after the dose, not before.
+        // Its openings came here within 40 s lately: known 40 s and `SKEW` after the dose, not before.
         let quick = Peer { wake: Some(40), ..closed.clone() };
         assert_eq!(doubts_now(DUE, DUE + 10, None, std::slice::from_ref(&quick)), doubt);
-        assert!(doubts_now(DUE, DUE + 40, None, std::slice::from_ref(&quick)).is_empty());
-        // A phone whose sync woke four minutes late once: four minutes.
+        assert_eq!(doubts_now(DUE, DUE + 40 + SKEW - 1, None, std::slice::from_ref(&quick)), doubt);
+        assert!(doubts_now(DUE, DUE + 40 + SKEW, None, std::slice::from_ref(&quick)).is_empty());
+        // A phone whose sync woke four minutes late once: four minutes, and `SKEW`.
         let slow = Peer { wake: Some(240), ..closed.clone() };
-        assert_eq!(doubts_now(DUE, DUE + 200, None, std::slice::from_ref(&slow)), doubt);
-        assert!(doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&slow)).is_empty());
-        assert_eq!(known_from(DUE, DUE - 600, DUE + 86_400, None, std::slice::from_ref(&slow)), Some(DUE + 240), "a dose seen ahead: known from then");
-        assert_eq!(known_until(DUE, DUE + 240, DUE + 86_400, None, std::slice::from_ref(&slow)), DUE + 86_400);
+        assert_eq!(doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&slow)), doubt);
+        assert!(doubts_now(DUE, DUE + 240 + SKEW, None, std::slice::from_ref(&slow)).is_empty());
+        assert_eq!(known_from(DUE, DUE - 600, DUE + 86_400, None, std::slice::from_ref(&slow)), Some(DUE + 240 + SKEW), "a dose seen ahead: known from then");
+        assert_eq!(known_until(DUE, DUE + 240 + SKEW, DUE + 86_400, None, std::slice::from_ref(&slow)), DUE + 86_400);
         // Closed after the dose, all it wrote read: its last export holds its answer, at once.
         let after = Peer { wake: Some(240), ..phone(Said { started: DUE - 600, closed: DUE + 600, working: false, exported: DUE + 595, ..Said::default() }, DUE + 620) };
         assert!(doubts_now(DUE, DUE + 630, None, &[after]).is_empty());
         // An older Sioul known by its claims, closed before, its steady news quick: the same wait.
         let older = Peer { name: "laptop".into(), id: "laptop-id".into(), known_until: DUE - 3_600, closed: true, delay: Some(30), heard: DUE - 3_600, wake: Some(120), ..Peer::default() };
         assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&older)).len(), 1);
-        assert!(doubts_now(DUE, DUE + 120, None, std::slice::from_ref(&older)).is_empty());
+        assert!(doubts_now(DUE, DUE + 120 + SKEW, None, std::slice::from_ref(&older)).is_empty());
         // Not sharing its doses, closed before: the same wait, then known.
         let apart = Peer { said: slow.said.clone().map(|s| Said { doses: false, ..s }), ..slow };
         assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&apart)), doubt);
-        assert!(doubts_now(DUE, DUE + 240, None, &[apart]).is_empty());
+        assert!(doubts_now(DUE, DUE + 240 + SKEW, None, &[apart]).is_empty());
     }
 
     #[test]
@@ -1906,5 +1914,32 @@ mod tests {
         health.medicines[0].schedule = Schedule::Hours { hours: 8, from: start };
         assert!(health.mend_shifts(&state));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == next + 3600 + 8 * 3600), "both moves");
+    }
+
+    /// R10 of the review of 10 October 2026: two moves from one start (the
+    /// second dose marked on a device the first move had not reached): the
+    /// mend goes where the latest mark moved it, whatever the keys' order.
+    #[test]
+    fn two_moves_from_one_start_mend_to_the_latest_mark() {
+        let start = at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second();
+        let medicine = Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: "1 tablet".into(), schedule: Schedule::Hours { hours: 8, from: start }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+        let mut state = HealthState::default();
+        // The dose of 08:00 taken at 09:30 on the phone; the one of 16:00 taken at 16:45 on the desk, which still had 08:00 as its start.
+        let (first, second) = (format!("antibiotic@{start}"), format!("antibiotic@{}", start + 8 * 3600));
+        state.moved.insert(first.clone(), [start, start + 90 * 60 + 8 * 3600]);
+        state.moved.insert(second.clone(), [start, start + 8 * 3600 + 45 * 60 + 8 * 3600]);
+        state.taken.insert(first, start + 90 * 60);
+        state.taken.insert(second, start + 8 * 3600 + 45 * 60);
+        let mut health = Health { medicines: vec![medicine.clone()], ..Health::default() };
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start + 8 * 3600 + 45 * 60 + 8 * 3600), "the latest mark's move");
+        // Marked in the other order: the same.
+        let (a, b) = (state.taken.values().copied().min().unwrap(), state.taken.values().copied().max().unwrap());
+        for taken in state.taken.values_mut() {
+            *taken = if *taken == a { b } else { a };
+        }
+        let mut health = Health { medicines: vec![medicine], ..Health::default() };
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start + 90 * 60 + 8 * 3600), "the latest mark's move, whatever its key");
     }
 }

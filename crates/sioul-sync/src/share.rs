@@ -1286,6 +1286,12 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
             keep()?;
         }
         match new {
+            // The doses' records as the window writes them (`write_witnessed`):
+            // their bytes on the disk before they take the name, and their
+            // witnesses made, so that a power cut after a mark received here
+            // leaves a record lost, said, never a sound empty one (review of
+            // 10 October 2026, R6).
+            Some(bytes) if of_the_doses(store) => sioul_core::health::write_witnessed(path, &bytes)?,
             Some(bytes) => write_atomically(path, &bytes)?,
             None => match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
@@ -1294,6 +1300,12 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
         }
         Ok(written)
     })
+}
+
+/// The doses' two records: the marks (`health-state.toml`) and each dose's
+/// record (`health-doses.toml`).
+fn of_the_doses(store: &Store) -> bool {
+    matches!(store.name.as_str(), "state/health-state.toml" | "state/health-doses.toml")
 }
 
 /// What a file holds once entries are written into it; none when it goes.
@@ -1841,6 +1853,13 @@ pub struct Here {
     /// (the app's `notes_carried`). Never shared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes_carried: Option<bool>,
+    /// The notes folder that answer was given for: it counts for that folder
+    /// alone; the notes moved (into a folder a sync app carries, or out of
+    /// one), it is asked again, guessed meanwhile (review of 10 October 2026,
+    /// R12). None: an answer given before, taken for the notes folder of
+    /// then (the app writes it in at its next start).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes_carried_for: Option<String>,
 }
 
 impl Here {
@@ -1874,6 +1893,12 @@ impl Here {
     /// The folder shared through, `~` expanded.
     pub fn folder_path(&self) -> Option<PathBuf> {
         self.folder.as_deref().filter(|f| !f.is_empty()).map(sioul_core::config::expand_home)
+    }
+
+    /// What you said of the notes folder `notes` (`notes_carried`), when you
+    /// said it of that folder.
+    pub fn notes_said(&self, notes: &Path) -> Option<bool> {
+        self.notes_carried.filter(|_| self.notes_carried_for.as_deref().is_none_or(|said| Path::new(said) == notes))
     }
 }
 
@@ -1932,6 +1957,12 @@ struct Memory {
     /// full round.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     continues: u64,
+    /// A full round is owed: the last round after lost lines of this
+    /// computer's (its file cut short) could not restate all it holds (a file
+    /// not readable then), and a reader that had not read those lines waits
+    /// for a full round. Written as soon as all reads again (`new_round`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    owed: bool,
     /// This memory enters a round only once the one before was read to its
     /// end (`Turn`). One kept before (10 October 2026) may have moved past
     /// the end of a round not read whole: every other computer's kept rounds
@@ -1977,6 +2008,14 @@ struct Memory {
     /// everything it said until then is known here (docs/health.md, "Knowing").
     #[serde(default)]
     read_n: BTreeMap<String, (u32, u64)>,
+    /// The last line of each other computer met here, read or found damaged
+    /// (its number then inferred: the one after the line met before): its
+    /// round and number. A round continuing the one before is entered once
+    /// that one was met to its last line (`Turn`), whatever was lost in it,
+    /// which `read_n` keeps said for the doses. Missing (a memory kept before
+    /// 10 October 2026): as `read_n`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    met: BTreeMap<String, (u32, u64)>,
     /// When a line of another computer's could not be read here (Unix seconds): what it said is lost.
     #[serde(default)]
     broken: BTreeMap<String, i64>,
@@ -2410,6 +2449,29 @@ struct Turn {
 
 fn is_zero_u64(n: &u64) -> bool {
     *n == 0
+}
+
+/// A sealed line's change and its round's turn (`Turn`), read in one pass.
+#[derive(Deserialize)]
+struct Opened {
+    k: String,
+    v: Option<String>,
+    #[serde(default)]
+    b: String,
+    #[serde(default)]
+    build: String,
+    #[serde(default)]
+    f: u32,
+    #[serde(default)]
+    p: u64,
+    #[serde(default)]
+    full: bool,
+}
+
+impl Opened {
+    fn parts(self) -> (Change, Turn) {
+        (Change { k: self.k, v: self.v, b: self.b, build: self.build, f: self.f }, Turn { p: self.p, full: self.full })
+    }
 }
 
 /// A change as it is sealed in a line: the change, and on a round's first
@@ -3744,24 +3806,41 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // others never read a number twice, nor miss one), and every file is read
     // again from all the records, its own too: what it marked after its memory's
     // time comes back here.
+    let mut restate = false;
     if let Some((round, n, size)) = last_own(sharing.folder, sharing.computer)
         && (round, n) > (memory.round, memory.seq)
     {
         outcome.problems.push("share-own-ahead".into());
-        // Again within hours: another device writes under this one's name (a
-        // disk or a state folder copied to it), each finding the other's lines
-        // in its own file; a memory restored finds them once. Said, for you
-        // to stop sharing on one of them and start it again there, which gives
-        // it a name of its own (review of 5 October 2026, F22). Meanwhile the
-        // others meet gaps in that name's records: the doses say the doubt.
-        if memory.ahead_at > 0 && now_ms - memory.ahead_at < TWIN_WITHIN {
-            outcome.problems.push("share-twin".into());
+        // Lines this device did not append (`appended`: its own last append,
+        // noted before it was made, where a process stopped before saving its
+        // memory left it) again within hours: another device writes under this
+        // one's name (a disk or a state folder copied to it), each finding the
+        // other's lines in its own file; a memory restored finds them once.
+        // Said, for you to stop sharing on one of them and start it again
+        // there, which gives it a name of its own (review of 5 October 2026,
+        // F22). Meanwhile the others meet gaps in that name's records: the
+        // doses say the doubt.
+        if appended(sharing.memory, sharing.computer) != Some((round, n)) {
+            if memory.ahead_at > 0 && now_ms - memory.ahead_at < TWIN_WITHIN {
+                outcome.problems.push("share-twin".into());
+            }
+            memory.ahead_at = now_ms;
         }
-        memory.ahead_at = now_ms;
         memory.round = round;
         memory.seq = n;
         memory.own_size = size;
         memory.round_base = 0;
+        // Where its rounds stood is read from the folder, not from the memory
+        // (`Turn`): a round found without a line (its first writing lost, a
+        // placeholder) continues the round before as that round ends; with
+        // none before it, a full round follows, restating all it holds.
+        memory.continues = 0;
+        if n == 0 && round > 1 {
+            match last_line(sharing.folder, sharing.computer, round - 1) {
+                Some(last) if last > 0 => memory.continues = last,
+                _ => restate = true,
+            }
+        }
         // Which of its rounds was full is not known: none taken out until
         // the next full round (`remove_old_rounds` keeps every round from 1).
         memory.full_round = 1;
@@ -4068,13 +4147,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             // Only whole lines: one still arriving is read next time. Each line on
             // its own: one that is not text (a disk's damage), or longer than any
             // record, is one broken line, not the end of everything after it.
-            let opens = |line: &[u8]| {
-                let record = std::str::from_utf8(line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok())?;
+            let record_of = |line: &[u8]| std::str::from_utf8(line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok());
+            let opens = |record: &Line| {
                 let plain = open(sharing.key, &bound(computer, round, record.n, record.c), &record.s)?;
-                let change = serde_json::from_slice::<Change>(&plain).ok()?;
-                // Where its round stands, on its first line (`Turn`); an older Sioul says nothing.
-                let turn = serde_json::from_slice::<Turn>(&plain).unwrap_or_default();
-                Some((record, change, turn))
+                // The change and, on its round's first line, where the round stands
+                // (`Turn`; an older Sioul says nothing): one reading.
+                serde_json::from_slice::<Opened>(&plain).ok().map(Opened::parts)
             };
             // The last line of this round that opened in this reading: its number,
             // and its clock (none for where an earlier reading stopped).
@@ -4083,25 +4161,29 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             let mut next = lines.next();
             while let Some((line, length)) = next.take() {
                 next = lines.next();
-                let Some(record) = std::str::from_utf8(&line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else {
+                let Some(record) = record_of(&line) else {
                     // Never passed over in silence: it may have been a dose marked taken.
                     offset += length;
-                    if !own && let Some(at) = lost_line(memory.read_n.get(computer).copied(), round, good, next.as_ref().map(|(n, _)| n.as_slice()), now_ms) {
-                        outcome.problems.push(format!("share-other-line:{computer}"));
-                        memory.broken.insert(computer.clone(), at);
+                    if !own {
+                        if let Some(at) = lost_line(memory.read_n.get(computer).copied(), round, good, next.as_ref().map(|(n, _)| n.as_slice()), now_ms) {
+                            outcome.problems.push(format!("share-other-line:{computer}"));
+                            memory.broken.insert(computer.clone(), at);
+                        }
+                        lost_here(&mut memory, computer, round, None);
                     }
                     continue;
                 };
-                let Some((_, change, turn)) = opens(&line) else {
+                let Some((change, turn)) = opens(&record) else {
                     outcome.problems.push(format!("share-other-seal:{computer}"));
                     // One line that does not open while the next does: a damaged line,
                     // lost and said. None opening: another key, or a seal not here
                     // yet (the sync app is slow): read again from there next time.
-                    if !own && next.as_ref().is_some_and(|(next, _)| opens(next).is_some()) {
+                    if !own && next.as_ref().and_then(|(next, _)| record_of(next)).is_some_and(|next| opens(&next).is_some()) {
                         offset += length;
                         if let Some(at) = lost_line(memory.read_n.get(computer).copied(), round, good, next.as_ref().map(|(n, _)| n.as_slice()), now_ms) {
                             memory.broken.insert(computer.clone(), at);
                         }
+                        lost_here(&mut memory, computer, round, Some(record.n));
                         continue;
                     }
                     if !own {
@@ -4116,23 +4198,28 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     }
                     break 'rounds;
                 };
-                if !own {
-                    // The turn of a round (`Turn`): one continuing the round before is
-                    // entered only once that round was read here to its last line.
-                    // Its end still on its way (a sync app brings a round before the
-                    // end of the one before), this round waits for it, unless a
-                    // later full round restates it all; the round before gone from
-                    // the folder, what it held past here is lost: a gap, said below.
-                    let last = memory.read_n.get(computer).copied();
-                    let continued = round.checked_sub(1).map(|before| (before, turn.p));
-                    if record.n == 1 && turn.p > 0 && last.is_some_and(|last| continued.is_some_and(|c| last < c)) {
-                        if let Some(full) = later_full(sharing, computer, their_rounds, round) {
-                            from_round = full;
-                            continue 'rounds;
-                        }
-                        if continued.is_some_and(|(before, _)| their_rounds.contains(&before)) {
-                            break 'rounds;
-                        }
+                // The turn of a round (`Turn`): one continuing the round before is
+                // entered only once that round was met here to its last line, read
+                // or found damaged (`Memory::met`; a line lost on the way stays said
+                // for the doses through `read_n` and `broken`). Its end, or the
+                // whole round before, still on its way (each file travels on its
+                // own, in any order), this round waits for it, unless a later full
+                // round restates it all. Rounds go from the folder oldest first
+                // (`remove_old_rounds`): the round before missing while an earlier
+                // one is kept has not come yet; missing with every earlier one, it
+                // was taken out, and what it held past here is lost: a gap, said below.
+                if !own
+                    && record.n == 1
+                    && turn.p > 0
+                    && let Some(before) = round.checked_sub(1)
+                    && memory.met.get(computer).or_else(|| memory.read_n.get(computer)).is_some_and(|met| *met < (before, turn.p))
+                {
+                    if let Some(full) = later_full(sharing, computer, their_rounds, round) {
+                        from_round = full;
+                        continue 'rounds;
+                    }
+                    if their_rounds.iter().any(|r| *r <= before) {
+                        break 'rounds;
                     }
                 }
                 offset += length;
@@ -4171,6 +4258,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 // Sioul's says neither, and follows as before. A device read here for
                 // the first time, from a round continuing one gone, knows where it
                 // stands at its computer's next full round, with nothing said.
+                if memory.met.get(computer).is_none_or(|met| (round, record.n) > *met) {
+                    memory.met.insert(computer.clone(), (round, record.n));
+                }
                 let last = memory.read_n.get(computer).copied();
                 if last.is_none_or(|last| (round, record.n) > last) {
                     let follows = match last {
@@ -4499,9 +4589,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // send it back). What it said past that point is lost for whoever had not
     // read it: a new file opens on every entry this computer has the last word on.
     let own = |memory: &Memory| std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
-    if memory.own_size > own(&memory) {
-        outcome.problems.push("share-own-cut".into());
-        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
+    if memory.own_size > own(&memory) || restate {
+        if !restate {
+            outcome.problems.push("share-own-cut".into());
+        }
+        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, true)?;
         memory.round_base = own(&memory);
     }
     // Past `SEGMENT`, what comes goes into a new round continuing this one,
@@ -4574,8 +4666,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // rounds before it can go. Waits while the connection is metered or slow,
     // and while a bulk import goes on (`set_importing`).
     let waits = if importing(sharing.memory) { memory.grown <= IMPORT_ROUND_SIZE } else { frugal(sharing.memory) && memory.grown <= FRUGAL_ROUND_SIZE };
-    if memory.grown > ROUND_SIZE && !waits {
-        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
+    // One owed (a round after lost lines that could not restate all, R7): as
+    // soon as all reads again.
+    let owed = memory.owed && restatement(sharing, &memory, stores, &found).1 == 0;
+    if (memory.grown > ROUND_SIZE && !waits) || owed {
+        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
         memory.round_base = own(&memory);
     }
     memory.own_size = own(&memory);
@@ -4798,18 +4893,56 @@ impl LineReader {
     }
 }
 
+/// A line of another computer's round found damaged here (it does not read,
+/// or does not open), said and dated already (`lost_line`): its number, as
+/// the line says it (one that does not open), or the one after the line met
+/// before in its round (one that does not read). Met (`Memory::met`), so that
+/// a round continuing this one is entered (until 10 October 2026, round
+/// turns aside, a damaged line was one line and the next ones read on);
+/// following what was read, counted in `read_n` too: lost, said, its time in
+/// doubt for the doses (`broken`), what comes after it follows. A round's
+/// first line damaged is not counted: where its round stands is not known.
+fn lost_here(memory: &mut Memory, computer: &str, round: u32, n: Option<u64>) {
+    let met = memory.met.get(computer).or_else(|| memory.read_n.get(computer)).copied();
+    let n = n.unwrap_or(match met {
+        Some((r, m)) if r == round => m + 1,
+        _ => 1,
+    });
+    if met.is_none_or(|met| (round, n) > met) {
+        memory.met.insert(computer.to_string(), (round, n));
+    }
+    if n > 1 && memory.read_n.get(computer) == Some(&(round, n - 1)) {
+        memory.read_n.insert(computer.to_string(), (round, n));
+    }
+}
+
 /// The first of another computer's rounds after `round` that opens full
 /// (`Turn`): it restates all that computer held, so a reader waiting for the
 /// end of an earlier round, which may never come (an older copy of it put
 /// back), reads on from there. Each round's first line read alone.
 fn later_full(sharing: &Sharing, computer: &str, rounds: &[u32], round: u32) -> Option<u32> {
     rounds.iter().copied().filter(|r| *r > round).find(|r| {
+        // A round's first line never changes (records only grow): read once per process.
+        let at = (sharing.folder.to_path_buf(), computer.to_string(), *r);
+        if let Some(full) = FIRST_LINES.lock().ok().and_then(|seen| seen.get(&at).copied()) {
+            return full;
+        }
         let Ok(file) = open_round(sharing.folder, computer, *r) else { return false };
         let Some((line, _)) = LineReader::new(file).next() else { return false };
         let Some(record) = std::str::from_utf8(&line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else { return false };
-        record.n == 1 && open(sharing.key, &bound(computer, *r, record.n, record.c), &record.s).and_then(|plain| serde_json::from_slice::<Turn>(&plain).ok()).is_some_and(|turn| turn.full)
+        let Some(turn) = open(sharing.key, &bound(computer, *r, record.n, record.c), &record.s).and_then(|plain| serde_json::from_slice::<Turn>(&plain).ok()) else { return false };
+        let full = record.n == 1 && turn.full;
+        if let Ok(mut seen) = FIRST_LINES.lock() {
+            seen.insert(at, full);
+        }
+        full
     })
 }
+
+/// Whether each round's first line read by `later_full` opens a full round,
+/// by folder, computer and round: a reader waiting for a round's end looks at
+/// the later rounds once, not at each exchange.
+static FIRST_LINES: std::sync::Mutex<BTreeMap<(PathBuf, String, u32), bool>> = std::sync::Mutex::new(BTreeMap::new());
 
 /// A line of another computer's round lost here (it does not read, or does
 /// not open): when its computer wrote it, about, in seconds (the clock of the
@@ -5327,6 +5460,9 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
         text.push('\n');
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    // Where this append ends, noted on the disk before it is made: its own
+    // lines told from another device's under its name (`appended`).
+    let _ = write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes());
     // A line left half written (Sioul stopped, a full disk): cut back to the
     // last whole line, so that the next record is not glued to it and lost.
     if let Some(whole) = unfinished(&path) {
@@ -5342,6 +5478,21 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     make_private(&path);
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
+}
+
+/// Where this device's last append ended (its round and last number), as
+/// noted before it was made (`append`): its own records found ahead of its
+/// memory there were its own, its memory not saved after (a process stopped,
+/// a full disk), not another device's under its name (`share-twin`).
+fn appended(memory: &Path, computer: &str) -> Option<(u32, u64)> {
+    #[derive(Deserialize)]
+    struct Appended {
+        computer: String,
+        round: u32,
+        n: u64,
+    }
+    let text = read_small(&memory.with_file_name("appended.toml"))?;
+    toml::from_str::<Appended>(&text).ok().filter(|a| a.computer == computer).map(|a| (a.round, a.n))
 }
 
 /// Where a file's last whole line ends, when it does not end one: its end
@@ -5373,9 +5524,20 @@ fn unfinished(path: &Path) -> Option<u64> {
 
 /// This computer's last record in the folder: its round, number, and that file's size.
 fn last_own(folder: &Path, computer: &str) -> Option<(u32, u64, u64)> {
-    use std::io::{Read, Seek};
     let round = *rounds(folder).get(computer)?.last()?;
-    let mut file = std::fs::File::open(round_file(folder, computer, round)).ok()?;
+    let (n, size) = last_of(&round_file(folder, computer, round))?;
+    Some((round, n, size))
+}
+
+/// The number of the last line of one of a computer's rounds (0 for none).
+fn last_line(folder: &Path, computer: &str, round: u32) -> Option<u64> {
+    last_of(&round_file(folder, computer, round)).map(|(n, _)| n)
+}
+
+/// A round file's last line's number (0 for none) and its size.
+fn last_of(path: &Path) -> Option<(u64, u64)> {
+    use std::io::{Read, Seek};
+    let mut file = std::fs::File::open(path).ok()?;
     let size = file.metadata().ok()?.len();
     // The tail is enough: lines are short; a line longer than that was a whole round's opening.
     let from = size.saturating_sub(64 * 1024);
@@ -5383,16 +5545,17 @@ fn last_own(folder: &Path, computer: &str) -> Option<(u32, u64, u64)> {
     file.seek(std::io::SeekFrom::Start(from)).ok()?;
     file.read_to_end(&mut tail).ok()?;
     let n = tail.split(|b| *b == b'\n').rev().find_map(|line| std::str::from_utf8(line).ok().and_then(|t| serde_json::from_str::<Line>(t).ok())).map_or(0, |l| l.n);
-    Some((round, n, size))
+    Some((n, size))
 }
 
-/// A new file for this computer, opening on every entry it holds the last
-/// word on, with their clocks; entries taken out long ago are forgotten. A
-/// file sealed apart missing from the folder (taken out there by hand) is put back first.
-fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &Found, hurried: &dyn Fn() -> bool, now_ms: i64) -> Result<(), String> {
-    let oldest = ((now_ms - TOMBSTONE_DAYS * 86_400_000).max(0) as u64) << 16;
-    memory.entries.retain(|_, known| !known.h.is_empty() || known.c >= oldest);
-    let ours: Vec<(String, Option<String>, u64, String)> = memory
+/// What a full round restates: every entry this computer holds the last
+/// word on, with its value as it reads now, and how many of them it could
+/// not restate (their file not readable now, a settings file held empty
+/// (`EMPTIED_WAIT`), a change found and not sent yet: their value here is not
+/// the one this computer last said).
+fn restatement(sharing: &Sharing, memory: &Memory, stores: &[Store], found: &Found) -> (Vec<(String, Option<String>, u64, String)>, usize) {
+    let mut omitted = 0usize;
+    let ours = memory
         .entries
         .iter()
         .filter(|(_, known)| known.w == sharing.computer)
@@ -5402,24 +5565,56 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
             }
             // A file sealed apart from its last look, never read through for this.
             let value = match found.values.get(key) {
-                Some(value) => value.clone(),
-                None if key.starts_with(FILES) => found.files.get(file_of(key)).and_then(|stat| stat.entries.first().map(|(_, h)| reference(h, stat.size, stat.modified)))?,
-                None => value_of(stores, key)?,
+                Some(value) => Some(value.clone()),
+                None if key.starts_with(FILES) => found.files.get(file_of(key)).and_then(|stat| stat.entries.first().map(|(_, h)| reference(h, stat.size, stat.modified))),
+                None => value_of(stores, key),
             };
-            (value_hash(key, &value) == known.h).then(|| (key.clone(), Some(value), known.c, known.b.clone()))
+            match value {
+                Some(value) if value_hash(key, &value) == known.h => Some((key.clone(), Some(value), known.c, known.b.clone())),
+                _ => {
+                    omitted += 1;
+                    None
+                }
+            }
         })
         .collect();
+    (ours, omitted)
+}
+
+/// A new file for this computer, opening on every entry it holds the last
+/// word on, with their clocks; entries taken out long ago are forgotten. A
+/// file sealed apart missing from the folder (taken out there by hand) is
+/// put back first. `cut`: the round before lost lines (its file cut short,
+/// or found without a line), which a reader that had not read them waits for
+/// until a full round restates all.
+fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &Found, hurried: &dyn Fn() -> bool, now_ms: i64, cut: bool) -> Result<(), String> {
+    let oldest = ((now_ms - TOMBSTONE_DAYS * 86_400_000).max(0) as u64) << 16;
+    memory.entries.retain(|_, known| !known.h.is_empty() || known.c >= oldest);
+    let (ours, omitted) = restatement(sharing, memory, stores, found);
     let mut problems = Vec::new();
     for (key, value, _, _) in ours.iter().filter(|_| sharing.files && !hurried()) {
         if let Some(value) = value {
             seal_apart(sharing, stores, key, value, &mut memory.sealed, &mut problems, now_ms);
         }
     }
+    // Restating all: a full round, which a reader waiting for the end of an
+    // earlier round may read on from (`later_full`). One that could not
+    // restate all (a file not readable now: the doses' record held empty) is
+    // not (review of 10 October 2026, R7): it continues the round before,
+    // whose rounds are kept; after lost lines, a full round follows once all
+    // reads again (`Memory::owed`).
+    let previous = memory.seq;
     memory.round += 1;
     memory.seq = 0;
-    memory.full_round = memory.round;
-    memory.continues = 0;
     memory.grown = 0;
+    if omitted == 0 {
+        memory.full_round = memory.round;
+        memory.continues = 0;
+        memory.owed = false;
+    } else {
+        memory.continues = previous;
+        memory.owed |= cut;
+    }
     append(sharing, memory, &ours)
 }
 

@@ -1489,11 +1489,8 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     let knowledge = know();
     let doubt = doubt_unread(&knowledge, due, stamp, missed.as_ref());
     if !doubt.is_empty() && waiting {
-        // Asked again as soon as it may be known (a device closed before the
-        // dose, once the news of an opening had the time to come), a minute
-        // apart at least, within the wait for news.
         let known = sioul_core::health::known_from(due, stamp + 1, due + WAIT_FOR_NEWS, knowledge.record_lost, &knowledge.peers);
-        return answer(false, "", "", known.map_or(due + WAIT_FOR_NEWS, |at| at.max(stamp + 60).min(due + WAIT_FOR_NEWS)));
+        return answer(false, "", "", alarm_again(due, stamp, known));
     }
     let named = named(&dose);
     let (title, body) = if doubt.is_empty() { (named, dose.at.strftime("%H:%M").to_string()) } else { (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M"))) };
@@ -1613,6 +1610,21 @@ fn card_known_until(knowledge: &Knowledge, due: i64, from: i64, until: i64) -> i
 /// How long a dose not known here waits for news from your other devices
 /// before it is reminded all the same, the doubt said.
 const WAIT_FOR_NEWS: i64 = 10 * 60;
+
+/// When a dose's alarm in doubt within the wait for news asks again: as soon
+/// as it may be known (`known`: a device closed before the dose, once the
+/// news of an opening had the time to come), a minute apart at least; known
+/// already by what was read (`known` now), in doubt only because no news came
+/// since the alarm began, nothing tells when news comes: at the end of the
+/// wait, as for a doubt that has no end in view, then reminded with the doubt
+/// said if none came (until 10 October 2026 it asked each minute, a pull each
+/// time: R9 of that day's review).
+fn alarm_again(due: i64, stamp: i64, known: Option<i64>) -> i64 {
+    match known {
+        Some(at) if at > stamp + 1 => at.max(stamp + 60).min(due + WAIT_FOR_NEWS),
+        _ => due + WAIT_FOR_NEWS,
+    }
+}
 
 /// The doses' record found broken or gone here, kept on this computer only
 /// (`$XDG_STATE_HOME/sioul/health-doubt.toml`): the doses due before stay
@@ -1865,8 +1877,24 @@ fn is_zero(n: &i64) -> bool {
 /// for this many more, then goes.
 const WAKES: usize = 10;
 
-/// How late the news of a device's opening came here, kept (`PeerSeen::wakes`).
-fn note_wake(seen: &mut PeerSeen, delay: i64) {
+/// The longest an opening's news counts as late when this device cannot
+/// tell whether its own news came in time (a sync app carries the folder:
+/// paused, or stopped, unseen from here): a longer wait is as likely this
+/// device's own outage, and would hold the doses of a closed device in doubt
+/// that long, for its next `WAKES` openings (review of 10 October 2026, R8).
+const UNSURE_WAKE: i64 = 60 * 60;
+
+/// How late the news of a device's opening came here, kept (`PeerSeen::wakes`),
+/// when this device's own news was flowing then (`news`: its own pull went
+/// through lately; none when a sync app alone carries the folder, the delay
+/// then counted up to `UNSURE_WAKE`). Its own pull stale or failing: the
+/// delay is its own outage, not timed.
+fn note_wake(seen: &mut PeerSeen, delay: i64, news: Option<bool>) {
+    let delay = match news {
+        Some(false) => return,
+        Some(true) => delay,
+        None => delay.min(UNSURE_WAKE),
+    };
     seen.wakes.push(delay.max(0));
     let keep = seen.wakes.len().saturating_sub(WAKES);
     seen.wakes.drain(..keep);
@@ -1911,7 +1939,7 @@ fn know() -> Knowledge {
     // Read, learned, written under its lock: a phone's background service learns too, in its own process.
     let kept = sioul_core::filelock::with_lock(&peers_path(), || {
         let mut kept = load_peers();
-        learn(&mut kept, &others.claims, &others.entries, &others.heard, now);
+        learn_with(&mut kept, &others.claims, &others.entries, &others.heard, others.news, now);
         save_peers(&kept);
         kept
     });
@@ -1950,9 +1978,17 @@ fn save_peers(kept: &Peers) -> String {
 
 /// What the others' claims say, learned: each one's name, how late its news
 /// comes, and until when everything it wrote is read here.
+#[cfg(test)]
 fn learn(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[sioul_sync::devices::Entry], heard: &sioul_sync::share::Heard, now: i64) {
+    learn_with(kept, claims, entries, heard, None, now);
+}
+
+/// The same, `news` saying whether this device's own news was flowing now
+/// (`share::Others::news`), for timing the others' openings.
+fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[sioul_sync::devices::Entry], heard: &sioul_sync::share::Heard, news: Option<bool>, now: i64) {
     // How late a device's opening comes is timed only while this device
-    // looked a moment before (review of 5 October 2026, F21).
+    // looked a moment before (review of 5 October 2026, F21), and its own
+    // news came in time (`note_wake`).
     let watching = kept.looked > 0 && now - kept.looked <= 2 * 60;
     kept.looked = now;
     for claim in claims {
@@ -1962,7 +1998,7 @@ fn learn(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[sioul
         // Its claim begun again, open (an older Sioul's opening): how late its news came.
         if claim.since != seen.since {
             if seen.since > 0 && watching && !claim.closed {
-                note_wake(seen, now - claim.since);
+                note_wake(seen, now - claim.since, news);
             }
             seen.since = claim.since;
         }
@@ -2020,7 +2056,7 @@ fn learn(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[sioul
             // came, its clock's lead taken off (a clock behind only adds to it).
             if watching && seen.entry.as_ref().is_some_and(|last| entry.started > last.started) {
                 let ahead = seen.aheads.iter().copied().max().unwrap_or(0).max(0);
-                note_wake(seen, now - entry.started + ahead);
+                note_wake(seen, now - entry.started + ahead, news);
             }
             seen.entry = Some(entry.clone());
         }
@@ -3527,7 +3563,7 @@ mod tests {
 
     /// F21 on the phone's home screen card: a dose to come, a computer closed
     /// before it whose opening's news comes within two minutes: "check" from
-    /// its time for those two minutes, then said as known; a dose due an hour
+    /// its time for those two minutes and `SKEW` more, then said as known; a dose due an hour
     /// ago, known at once. The card's Java shows each piece in its own time.
     #[test]
     fn the_card_says_check_while_a_closed_device_may_have_opened() {
@@ -3545,7 +3581,8 @@ mod tests {
         let doses = doses_for_card(&health, &HealthState::default(), &DoseRecords::default(), true, &knowledge, &now);
         let (eight, midnight) = (s("2026-10-06T20:00[Europe/Paris]"), s("2026-10-07T00:00[Europe/Paris]"));
         let pieces: Vec<(&str, i64, i64, i64)> = doses.iter().map(|d| (d.time.as_str(), d.at, d.until, d.known_until)).collect();
-        assert_eq!(pieces, [("12:30", s("2026-10-06T12:30[Europe/Paris]"), midnight, midnight), ("20:00", eight, eight + 120, 0), ("20:00", eight + 120, midnight, midnight)]);
+        let woke = eight + 120 + sioul_core::health::SKEW;
+        assert_eq!(pieces, [("12:30", s("2026-10-06T12:30[Europe/Paris]"), midnight, midnight), ("20:00", eight, woke, 0), ("20:00", woke, midnight, midnight)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -3601,11 +3638,51 @@ mod tests {
         learn(&mut kept, &[], &[phone(1_600, false, 2_250)], &heard_of("phone-id", 5), 2_260);
         learn(&mut kept, &[], &[phone(2_300, true, 2_250)], &heard_of("phone-id", 5), 2_330);
         assert_eq!(kept.peers["phone-id"].peer.wake, Some(240));
-        // A dose due at 3 000, the phone closed at 2 900: in doubt for those 240 s, then known.
+        // A dose due at 3 000, the phone closed at 2 900: in doubt for those 240 s and `SKEW`, then known.
         learn(&mut kept, &[], &[phone(2_300, false, 2_900)], &heard_of("phone-id", 5), 2_910);
         let peers = vec![kept.peers["phone-id"].peer.clone()];
-        assert_eq!(sioul_core::health::doubts_now(3_000, 3_200, None, &peers).len(), 1);
-        assert!(sioul_core::health::doubts_now(3_000, 3_240, None, &peers).is_empty());
+        let skew = sioul_core::health::SKEW;
+        assert_eq!(sioul_core::health::doubts_now(3_000, 3_239 + skew, None, &peers).len(), 1);
+        assert!(sioul_core::health::doubts_now(3_000, 3_240 + skew, None, &peers).is_empty());
+    }
+
+    /// R9 of the review of 10 October 2026: a dose's alarm in doubt asks again
+    /// when the doubt may end, a minute apart at least; in doubt only for the
+    /// news missed since it began, at the end of the wait for news, not each
+    /// minute.
+    #[test]
+    fn an_alarm_in_doubt_asks_again_when_the_doubt_may_end() {
+        let due = 1_800_000_000;
+        assert_eq!(alarm_again(due, due + 5, Some(due + 300)), due + 300, "a closed device's opening could have come by then");
+        assert_eq!(alarm_again(due, due + 5, Some(due + 30)), due + 65, "a minute apart at least");
+        assert_eq!(alarm_again(due, due + 5, Some(due + 6)), due + WAIT_FOR_NEWS, "known by what was read: only the news missed");
+        assert_eq!(alarm_again(due, due + 5, None), due + WAIT_FOR_NEWS);
+        assert_eq!(alarm_again(due, due + 5, Some(due + 2 * WAIT_FOR_NEWS)), due + WAIT_FOR_NEWS);
+    }
+
+    /// R8 of the review of 10 October 2026: an opening is timed only while
+    /// this device's own news flows. Its own pull stale (a desktop whose
+    /// pulls failed for hours): the delay is its outage, not timed. A sync
+    /// app alone carrying the folder (nothing tells here whether it paused):
+    /// timed up to an hour, never more.
+    #[test]
+    fn an_opening_is_not_timed_by_this_devices_own_outage() {
+        use sioul_sync::devices::Entry;
+        let phone = |started: i64, working: bool, closed: i64| Entry { id: "phone-id".into(), name: "FP3".into(), kind: "phone".into(), started, closed, working, exported: started.max(closed), wrote: Some((1, 5)), doses: true, ..Entry::default() };
+        let opened_late = |news: Option<bool>| {
+            let mut kept = Peers::default();
+            learn_with(&mut kept, &[], &[phone(900, false, 1_000)], &heard_of("phone-id", 5), news, 1_020);
+            learn_with(&mut kept, &[], &[phone(900, false, 1_000)], &heard_of("phone-id", 5), news, 1_080);
+            // Opened at 1 100, its news seen here five hours later, this device looking each minute.
+            for now in (1_140..19_100).step_by(60) {
+                learn_with(&mut kept, &[], &[phone(900, false, 1_000)], &heard_of("phone-id", 5), news, now);
+            }
+            learn_with(&mut kept, &[], &[phone(1_100, true, 1_000)], &heard_of("phone-id", 5), news, 19_100);
+            kept.peers["phone-id"].peer.wake
+        };
+        assert_eq!(opened_late(Some(false)), None, "its own pull stale: its outage, not the phone's");
+        assert_eq!(opened_late(Some(true)), Some(18_000), "its own pull went through: the phone's news was late");
+        assert_eq!(opened_late(None), Some(UNSURE_WAKE), "a sync app alone: an hour at most");
     }
 
     #[test]

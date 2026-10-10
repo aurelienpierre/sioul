@@ -290,6 +290,16 @@ pub fn balance_of(bank: &Bank, account: &BankAccount) -> Option<(Date, Money)> {
     bank.accounts.iter().filter(|a| account.owns(&a.id)).filter_map(|a| a.balance).max_by_key(|(day, _)| *day)
 }
 
+/// Whether a card's names cannot all be one account: two of them with
+/// balances on the same day that differ. One card then covers two real
+/// accounts: the newest balance alone is shown (`balance_of`), and movements
+/// the banks gave equal ids are read as one (review of 10 October 2026, R11).
+/// Said calmly on the card, for you to give each account a card of its own.
+pub fn two_accounts_in_one(bank: &Bank, account: &BankAccount) -> bool {
+    let balances: Vec<(Date, Money)> = bank.accounts.iter().filter(|a| account.owns(&a.id)).filter_map(|a| a.balance).collect();
+    balances.iter().enumerate().any(|(at, (day, money))| balances[at + 1..].iter().any(|(other_day, other)| other_day == day && other != money))
+}
+
 /// A bank account's movements under every name its exports gave it, each
 /// once: the same movement read under two names (the bank's own id) is one.
 pub fn movements_of<'a>(bank: &'a Bank, account: &BankAccount) -> Vec<&'a Movement> {
@@ -824,5 +834,22 @@ mod tests {
         assert_eq!(bank.balance_in(&ledger), Some((day("2026-10-02"), Money(40000))), "the money watch's total too");
         assert_eq!(movements_of(&bank, card).iter().filter(|m| m.id == "m1").count(), 1);
         assert_eq!(place(&ledger, &bank, crate::words::Words::builtin_ref()).iter().filter(|p| p.movement.id == "m1").count(), 1, "placed once");
+        assert!(!two_accounts_in_one(&bank, card), "one account under two names, balances on other days");
+    }
+
+    /// R11 of the review of 10 October 2026: two names of one card whose
+    /// balances on the same day differ cannot be one account: said, so that
+    /// each real account gets its own card. The same balance under both
+    /// names that day is one account read twice.
+    #[test]
+    fn one_card_for_two_real_accounts_is_noticed() {
+        let ledger = ledger();
+        let card = &ledger.bank_accounts[0];
+        let (day_of, money) = bank().accounts.iter().find(|a| card.owns(&a.id)).and_then(|a| a.balance).unwrap();
+        let mut bank = bank();
+        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), balance: Some((day_of, money)) });
+        assert!(!two_accounts_in_one(&bank, card), "the same balance the same day: one account");
+        bank.accounts.last_mut().unwrap().balance = Some((day_of, Money(money.cents() + 12_345)));
+        assert!(two_accounts_in_one(&bank, card), "two balances the same day: two accounts");
     }
 }

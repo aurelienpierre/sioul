@@ -3310,6 +3310,7 @@ bank-account-remove = Take it out
 bank-account-remove-yes = Take it out for good
 bank-account-remove-ask = Its movements stay in sioul-bank.toml and its rules in the budget file; its budgets no longer count them.
 bank-account-no-export = No export taken in yet: "Take in an export…".
+bank-account-two-in-one = Two of its exports give different balances on the same day: they seem to come from two accounts, and only the newest balance is shown. To count both, make a new bank account for the second one and take its exports in there.
 bank-account-fills-line = Fills { $budgets }.
 bank-account-fills-none = It fills no budget yet: its movements count nowhere. "Edit" to choose.
 bank-account-topped = Topped up by { $reserves }.

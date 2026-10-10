@@ -181,6 +181,16 @@ ColumnLayout {
                     wrapMode: Text.Wrap
                     color: card.modelData.balance !== "" ? section.theme.text : section.theme.muted
                 }
+                // Two real accounts under one: said, calmly.
+                Label {
+                    visible: card.modelData.two_accounts === true
+                    Layout.fillWidth: true
+                    text: section.sioul.text("bank-account-two-in-one")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: section.theme.muted
+                }
                 Label {
                     Layout.fillWidth: true
                     text: card.modelData.fills.length > 0 ? section.sioul.textWith("bank-account-fills-line", "budgets", card.modelData.fills.map(b => b.title).join(", ")) : section.sioul.text("bank-account-fills-none")
