@@ -1486,7 +1486,7 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     if !keeper.mine && waiting {
         return answer(false, "", "", due + WAIT_FOR_NEWS);
     }
-    let doubt = doubt_unread(&know(), due, stamp, missed);
+    let doubt = doubt_unread(&know(), due, stamp, missed.as_ref());
     if !doubt.is_empty() && waiting {
         return answer(false, "", "", due + WAIT_FOR_NEWS);
     }
@@ -2192,12 +2192,13 @@ fn doubt_of(knowledge: &Knowledge, due: i64, now: i64) -> String {
     doubt_unread(knowledge, due, now, None)
 }
 
-/// The same, at an alarm that read none of the others' news since `missed`
-/// (`share::news_missed`): a device known closed by what was read before is
-/// said in doubt, as last heard (`sioul_core::health::doubts_unread`).
-fn doubt_unread(knowledge: &Knowledge, due: i64, now: i64, missed: Option<i64>) -> String {
+/// The same, at an alarm whose pull did not go through since it began
+/// (`share::news_missed`: when, and the devices whose own entry or claim came
+/// since): any other known closed by what was read before is said in doubt,
+/// as last heard (`sioul_core::health::doubts_unread`).
+fn doubt_unread(knowledge: &Knowledge, due: i64, now: i64, missed: Option<&(i64, std::collections::BTreeSet<String>)>) -> String {
     let doubts = match missed {
-        Some(since) => sioul_core::health::doubts_unread(due, now, knowledge.record_lost, &knowledge.peers, since),
+        Some((since, heard)) => sioul_core::health::doubts_unread(due, now, knowledge.record_lost, &knowledge.peers, *since, heard),
         None => sioul_core::health::doubts(due, now, knowledge.record_lost, &knowledge.peers),
     };
     if doubts.is_empty() { String::new() } else { say("dose-doubt", &[("why", why(&doubts))]) }
@@ -3464,7 +3465,7 @@ mod tests {
         let laptop = Peer { id: "laptop-id".into(), name: "laptop".into(), said: Some(said), complete: true, seen: due - 3_500, heard: due - 3_605, ..Peer::default() };
         let peers = vec![laptop];
         assert!(sioul_core::health::doubts(due, due + 60, None, &peers).is_empty(), "news read: known");
-        let doubts = sioul_core::health::doubts_unread(due, due + 60, None, &peers, due + 30);
+        let doubts = sioul_core::health::doubts_unread(due, due + 60, None, &peers, due + 30, &Default::default());
         let words = why_in(&doubts, &english);
         assert!(words.starts_with("laptop closed") && words.contains("its news can be slow to come") && !words.to_lowercase().contains("not taken"), "{words}");
     }
