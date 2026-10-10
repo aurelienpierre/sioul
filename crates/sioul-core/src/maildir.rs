@@ -391,10 +391,10 @@ mod tests {
             assert_eq!(read_messages(&dir).len(), 3);
             // Read, its flags moved: the same message.
             let first = dir.join("new").join("175940000.U1700000000-0.sioul");
-            std::fs::rename(&first, dir.join("cur").join("175940000.U1700000000-0.sioul:2,S")).unwrap();
+            std::fs::rename(&first, dir.join("cur").join(format!("175940000.U1700000000-0.sioul{INFO}2,S"))).unwrap();
             let again = read_messages(&dir);
             assert_eq!(again.len(), 3);
-            assert!(again.iter().any(|c| c.path.as_ref().is_some_and(|p| p.to_string_lossy().ends_with(":2,S")) && c.subject == "Hello 0"), "its path as it is now");
+            assert!(again.iter().any(|c| c.path.as_ref().is_some_and(|p| p.to_string_lossy().ends_with(&format!("{INFO}2,S"))) && c.subject == "Hello 0"), "its path as it is now");
             assert_eq!(parsed() - before, 3, "parsed once each");
         }
         assert_eq!(read_messages(&dir).len(), 3);
