@@ -2837,6 +2837,7 @@ share-files-unreadable = Notes and papers wait: without Android's access to all 
 share-backup-switch = Also fetch them from the server
 share-backup-help = When your sync app is late bringing your other devices' files, Sioul also reads them on the server that holds this folder (Nextcloud, Murena, ownCloud), with your account there. It only reads, and only a folder sealed as this one.
 share-backup-on = Also fetched directly from { $host }, last at { $when }.
+share-backup-left = Some records of your other devices are too large to fetch directly: your sync app brings them, and Sioul asks it to look until it has.
 share-backup-soon = Found on { $host }: fetched from there too at the next exchange.
 share-backup-failing = Fetched directly from { $host } until { $when }; not since: { $why }. Tried again at the next exchange.
 share-backup-failing-never = Found on { $host }, not fetched yet: { $why }. Tried again at the next exchange.

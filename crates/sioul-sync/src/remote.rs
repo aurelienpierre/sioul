@@ -253,6 +253,48 @@ impl State {
         })
     }
 
+    /// What a pull found, written over the state as it is now, under its lock:
+    /// two processes pull (the window's or an alarm's, and the background
+    /// step's), and neither undoes the other. The pull begun later says when
+    /// a pull was tried and how it went; the latest that went through is kept;
+    /// what was fetched and looked through, each file's and folder's latest;
+    /// what is left to the sync app (`left`): as it is now, with what this
+    /// pull found left added and what it found brought taken out, from what it
+    /// knew when it began (`loaded_left`): another pull's finding meanwhile is
+    /// never erased, only a look that finds it brought clears it; the rest
+    /// (your choices, the place) as it is now. A place changed meanwhile
+    /// (found elsewhere): what this pull found is not that place's, left out.
+    /// `ended`: this pull's last moment by the clock it began by (Unix
+    /// seconds); one said begun after that began after this pull ended,
+    /// which no pull of the other process can: the clock was set back since,
+    /// and this pull is the later.
+    fn save_pulled(&self, memory: &Path, ended: i64, loaded_left: &BTreeMap<String, u64>) -> Result<(), String> {
+        let path = state_path(memory);
+        sioul_core::filelock::with_lock(&path, || {
+            let mut merged = State::load(memory);
+            if (merged.url.as_str(), merged.folder.as_str(), merged.account.as_str()) != (self.url.as_str(), self.folder.as_str(), self.account.as_str()) && !merged.url.is_empty() {
+                return Ok(());
+            }
+            let ours_later = self.tried >= merged.tried || merged.tried > ended;
+            let (later, earlier) = if ours_later { (self.clone(), merged.clone()) } else { (merged.clone(), self.clone()) };
+            merged.url = later.url.clone();
+            merged.folder = later.folder.clone();
+            merged.account = later.account.clone();
+            merged.tried = later.tried;
+            merged.last = later.last.max(earlier.last);
+            merged.said = later.said.clone();
+            merged.confirmed = later.confirmed;
+            merged.sealed = later.sealed.max(earlier.sealed);
+            merged.files = earlier.files.into_iter().chain(later.files).collect();
+            merged.folders = earlier.folders.into_iter().chain(later.folders).collect();
+            let brought: Vec<&String> = loaded_left.keys().filter(|name| !self.left.contains_key(*name)).collect();
+            merged.left.retain(|name, _| !brought.contains(&name));
+            merged.left.extend(self.left.iter().filter(|(name, _)| !loaded_left.contains_key(*name)).map(|(name, size)| (name.clone(), *size)));
+            merged.own_entry = [earlier.own_entry, later.own_entry].into_iter().flatten().max_by_key(|(_, at)| *at);
+            merged.write(memory)
+        })
+    }
+
     /// What you choose (the switch, the place given by hand), changed under its lock.
     pub fn choose(memory: &Path, change: impl FnOnce(&mut State)) -> Result<State, String> {
         let path = state_path(memory);
@@ -284,11 +326,13 @@ impl State {
         self.mode != MIRROR && self.fetching() && self.confirmed_for(folder) && self.last > 0 && self.said.is_empty() && self.left.is_empty()
     }
 
-    /// A pull begun at or after `since` (Unix seconds) went through, with
-    /// nothing left on the server that only the sync app brings: what a
-    /// dose's or a waking's alarm trusts alone (`alarm_news`).
-    pub fn went_through_since(&self, folder: &Path, since: i64) -> bool {
-        self.pulls_well(folder) && self.last >= since
+    /// A pull begun at or after `since` and not after `now` (Unix seconds)
+    /// went through, with nothing left on the server that only the sync app
+    /// brings: what a dose's or a waking's alarm trusts alone (`alarm_news`).
+    /// A pull said begun after now is one from before the clock was set back:
+    /// not since, pulled again.
+    pub fn went_through_since(&self, folder: &Path, since: i64, now: i64) -> bool {
+        self.pulls_well(folder) && (since..=now).contains(&self.last)
     }
 
     /// Sending this device's own files there too (`send`): with the backup
@@ -1020,7 +1064,8 @@ pub struct Pace {
 /// Asked for news, twenty seconds after the last.
 pub fn due(state: &State, now: i64, pace: Pace) -> bool {
     let since = now - state.tried;
-    if state.tried < state.confirmed {
+    // Tried "later" than now: the clock was set back since; never a reason to wait.
+    if state.tried < state.confirmed || since < 0 {
         return true;
     }
     if pace.urgent {
@@ -1058,33 +1103,42 @@ pub const ALARM_TIMES: AlarmTimes = AlarmTimes { alone: Duration::from_secs(5), 
 pub enum AlarmNews {
     /// A pull begun since the alarm went through: what it read is trusted alone.
     Pulled,
-    /// The sync app asked, and waited for, as before Sioul's own pull.
+    /// No pull since went through; the sync app, asked and waited for as
+    /// before Sioul's own pull, brought something of the others meanwhile.
     SyncApp,
+    /// Neither: no pull since went through, and nothing of the others came
+    /// into the folder while the sync app was waited for. What this device
+    /// knows of them is from before the alarm: a device known closed then may
+    /// have opened since and answered (`sioul_core::health::doubts_unread`).
+    Nothing,
 }
 
 /// What a dose's or a waking's alarm reads before it decides, `since` its
-/// start (Unix seconds), on a phone whose own pull works (`State::pulls_well`;
-/// docs/android.md, "Doses while Sioul is away"). Sioul's own pull alone is
-/// trusted only once a pull begun since the alarm went through
-/// (`State::went_through_since`): this one, or another's that ran meanwhile in
-/// this process (`lock`, one pull at a time: another alarm's, the window's),
-/// waited for, never passed over. A pull that fails, or has not gone through
-/// within `times.alone`: the sync app asked as before (`ask`, which asks it
-/// and says how long its wait still runs: twenty seconds, less when another
-/// alarm asked it a moment ago), and waited for, that wait ended as soon as
-/// a pull since the alarm goes through; `times.most` in all at most. `clock`
-/// gives the time a pull is said begun at (Unix seconds).
-pub fn alarm_news(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, clock: Box<dyn Fn() -> i64 + Send>, ask: &mut dyn FnMut() -> Duration) -> AlarmNews {
+/// start (Unix seconds), on a phone whose folder is found on the server
+/// (`State::fetching`; docs/android.md, "Doses while Sioul is away"). Sioul's
+/// own pull alone is trusted only once a pull begun since the alarm went
+/// through (`State::went_through_since`; in this process, by its steady clock:
+/// `PULLED`): this one, or another's that ran meanwhile in this process
+/// (`lock`, one pull at a time: another alarm's, the window's), waited for,
+/// never passed over. A pull that fails, or has not gone through within
+/// `times.alone`: the sync app asked as before (`ask`, which asks it and says
+/// how long its wait still runs: twenty seconds, less when another alarm
+/// asked it a moment ago), and waited for, that wait ended as soon as a pull
+/// since the alarm goes through; `times.most` in all at most. `clock` gives
+/// the time now (Unix seconds).
+pub fn alarm_news(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration) -> AlarmNews {
     alarm_news_with(memory, folder, own, login, lock, since, ALARM_TIMES, clock, ask, LIMITS)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, times: AlarmTimes, clock: Box<dyn Fn() -> i64 + Send>, ask: &mut dyn FnMut() -> Duration, limits: Limits) -> AlarmNews {
+pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Option<Login>, lock: &'static Mutex<()>, since: i64, times: AlarmTimes, clock: std::sync::Arc<dyn Fn() -> i64 + Send + Sync>, ask: &mut dyn FnMut() -> Duration, limits: Limits) -> AlarmNews {
     let begun = Instant::now();
     let until = begun + times.most;
+    // The others' files as they stand now: what the sync app brings changes them.
+    let before = others_stamp(folder, own);
     let mut pulling = {
-        let (memory, folder, own) = (memory.to_path_buf(), folder.to_path_buf(), own.to_string());
-        Some(std::thread::spawn(move || pull_since_with(&memory, &folder, &own, login.as_ref(), lock, since, until, &*clock, limits)))
+        let (memory, folder, own, clock) = (memory.to_path_buf(), folder.to_path_buf(), own.to_string(), std::sync::Arc::clone(&clock));
+        Some(std::thread::spawn(move || pull_since_with(&memory, &folder, &own, login.as_ref(), lock, since, begun, until, &*clock, limits)))
     };
     let mut went = None;
     let mut asked: Option<Instant> = None;
@@ -1102,19 +1156,38 @@ pub(crate) fn alarm_news_with(memory: &Path, folder: &Path, own: &str, login: Op
         }
         if asked.is_some_and(|end| now >= end) || now >= until {
             // A pull since, through at the last moment, counts all the same.
-            return if State::load(memory).went_through_since(folder, since) { AlarmNews::Pulled } else { AlarmNews::SyncApp };
+            if through_since(memory, folder, since, begun, clock()) {
+                return AlarmNews::Pulled;
+            }
+            return if others_stamp(folder, own) == before { AlarmNews::Nothing } else { AlarmNews::SyncApp };
         }
         std::thread::sleep(Duration::from_millis(50));
     }
 }
 
-/// A pull begun since `since` (Unix seconds) gone through: one that ran
-/// meanwhile, waited for (`lock`: one pull at a time in this process), else
-/// this one, begun before `until`. False when a pull begun since failed, or
-/// none could begin in time.
+/// Whether a pull begun since the alarm (`since`, Unix seconds; `begun`, on
+/// this process's steady clock) went through. The last one gone through in
+/// this process, when it is the one the state says, is judged by the steady
+/// clock (`PULLED`), which no setting of the clock moves; another process's
+/// by its saved time, within `since` and `now`.
+fn through_since(memory: &Path, folder: &Path, since: i64, begun: Instant, now: i64) -> bool {
+    let state = State::load(memory);
+    if !state.pulls_well(folder) {
+        return false;
+    }
+    match PULLED.lock().ok().and_then(|all| all.get(memory).copied()) {
+        Some((at, last)) if last == state.last => at >= begun,
+        _ => state.went_through_since(folder, since, now),
+    }
+}
+
+/// A pull begun since the alarm (`since`, Unix seconds; `begun`, this
+/// process's steady clock) gone through: one that ran meanwhile, waited for
+/// (`lock`: one pull at a time in this process), else this one, begun before
+/// `until`. False when a pull begun since failed, or none could begin in time.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Option<&Login>, lock: &Mutex<()>, since: i64, until: Instant, clock: &dyn Fn() -> i64, limits: Limits) -> bool {
-    let through = || State::load(memory).went_through_since(folder, since);
+pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Option<&Login>, lock: &Mutex<()>, since: i64, begun: Instant, until: Instant, clock: &dyn Fn() -> i64, limits: Limits) -> bool {
+    let through = || through_since(memory, folder, since, begun, clock());
     let _one = loop {
         match lock.try_lock() {
             Ok(held) => break held,
@@ -1126,13 +1199,44 @@ pub(crate) fn pull_since_with(memory: &Path, folder: &Path, own: &str, login: Op
     if through() {
         return true;
     }
-    // One begun since that failed (another alarm's): the sync app, not another try within this alarm.
-    if State::load(memory).tried >= since || Instant::now() >= until {
+    // One begun since that failed (another alarm's): the sync app, not another
+    // try within this alarm. Tried "later" than now: the clock was set back,
+    // tried again; one gone through before this alarm began: pulled again.
+    let state = State::load(memory);
+    if (!state.said.is_empty() && (since..=clock()).contains(&state.tried)) || Instant::now() >= until {
         return false;
     }
     let Some(login) = login else { return false };
     let _ = pull_with(memory, folder, own, login, clock(), limits);
     through()
+}
+
+/// The other devices' files in the folder and in what was fetched beside it
+/// (records, notes, entries, claims), each by its size and time: what the sync
+/// app or a pull brings changes it.
+pub(crate) fn others_stamp(folder: &Path, own: &str) -> BTreeMap<PathBuf, (u64, u64)> {
+    let mut out = BTreeMap::new();
+    let mut look = |dir: &Path| {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.starts_with(own) {
+                continue;
+            }
+            if let Ok(meta) = entry.metadata()
+                && meta.is_file()
+            {
+                out.insert(entry.path(), (meta.len(), crate::share::modified_ns(&meta)));
+            }
+        }
+    };
+    for root in std::iter::once(folder.to_path_buf()).chain(overlay(folder)) {
+        look(&root);
+        look(&root.join("devices"));
+        for part in std::fs::read_dir(root.join("leases")).into_iter().flatten().filter_map(Result::ok) {
+            look(&part.path());
+        }
+    }
+    out
 }
 
 /// What a pull did.
@@ -1214,7 +1318,9 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
         pulled.problem = Some(state.said);
         return pulled;
     }
+    let loaded_left = state.left.clone();
     state.tried = now;
+    let begun = Instant::now();
     let host = state.host();
     let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None }.run());
     match outcome {
@@ -1229,10 +1335,24 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
         Err(Stop::Failed(e)) => state.said = code(&e, &host),
     }
     tidy_cache(&state, folder, &cache, own);
-    let _ = state.save(memory);
+    if state.said.is_empty() {
+        // Gone through, begun at this moment of this process (`went_through_since`).
+        if let Ok(mut all) = PULLED.lock()
+            && all.get(memory).is_none_or(|(at, _)| *at < begun)
+        {
+            all.insert(memory.to_path_buf(), (begun, state.last));
+        }
+    }
+    let _ = state.save_pulled(memory, now + begun.elapsed().as_secs() as i64 + 1, &loaded_left);
     pulled.problem = (!state.said.is_empty()).then(|| state.said.clone());
     pulled
 }
+
+/// The last pull of each memory gone through in this process: when it began
+/// on the process's own steady clock, and its time as saved (`State::last`).
+/// A clock set back makes a pull's saved time later than the moment; an
+/// alarm in this process tells by this one whether that pull began before it.
+static PULLED: Mutex<BTreeMap<PathBuf, (Instant, i64)>> = Mutex::new(BTreeMap::new());
 
 /// What is no longer needed in the cache, gone, without the network: this
 /// device's own files (never fetched, never read from there), records the
@@ -3664,7 +3784,7 @@ mod tests {
             w.restore(&aside);
             assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "minute {minute}");
             let mut ask = || -> Duration { panic!("minute {minute}: the pull went through, the sync app is not asked") };
-            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, now + 20, QUICK, Box::new(move || now + 20), &mut ask, TEST);
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, now + 20, QUICK, Arc::new(move || now + 20), &mut ask, TEST);
             assert_eq!(came, AlarmNews::Pulled, "minute {minute}");
             w.phone.exchange(&w.phone_folder, now + 25);
             let alone = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
@@ -3709,7 +3829,7 @@ mod tests {
             w.down();
             Duration::from_millis(200)
         };
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         assert_eq!((came, asked), (AlarmNews::SyncApp, 1), "the pull failed: the sync app asked, once");
         w.phone.exchange(&w.phone_folder, DUE + 65);
         let taken = w.phone.read("health-state.toml").contains("dose@0");
@@ -3748,7 +3868,7 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(pause));
                     let begun = Instant::now();
                     let mut ask = || -> Duration { panic!("the pull went through: the sync app is not asked") };
-                    (alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST), begun.elapsed())
+                    (alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST), begun.elapsed())
                 })
             };
             let (first, second) = (alarm(0), alarm(150));
@@ -3787,7 +3907,7 @@ mod tests {
             });
             std::thread::sleep(Duration::from_millis(200));
             let mut ask = || -> Duration { panic!("a pull went through: the sync app is not asked") };
-            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 61), &mut ask, TEST);
+            let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 61), &mut ask, TEST);
             assert!(window.join().unwrap().problem.is_none());
             came
         });
@@ -3821,13 +3941,124 @@ mod tests {
             Duration::from_millis(300)
         };
         let begun = Instant::now();
-        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Box::new(|| DUE + 60), &mut ask, TEST);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
         let waited = begun.elapsed();
         assert_eq!((came, asked), (AlarmNews::SyncApp, 1), "not through in time: the sync app asked, once");
         assert!(waited < QUICK.most, "never past the alarm's wait: {waited:?}");
         w.phone.exchange(&w.phone_folder, DUE + 65);
         assert!(w.phone.read("health-state.toml").contains("dose@0"), "what the sync app brought is read");
         w.fake.clear_faults();
+    }
+
+    /// The scene of the review's F2: the desk closed an hour before the dose,
+    /// heard through a good pull (`pulled_at`, by the phone's clock then);
+    /// then, if `opens`, it opens a minute before the dose, the dose is marked
+    /// taken there and shared.
+    fn alarm_scene(name: &str, pulled_at: i64, opens: bool) -> World {
+        let w = World::new(name);
+        assert!(w.find(DUE - 3_000).confirmed_for(&w.phone_folder));
+        w.desk.exchange(&w.server, DUE - 3_600);
+        w.desk.session(&w.server, |e| e.close(DUE - 3_590));
+        assert!(w.pull(pulled_at).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE - 2_990);
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder));
+        if opens {
+            w.desk.session(&w.server, |e| e.start(DUE - 60));
+            w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+            w.desk.exchange(&w.server, DUE + 30);
+        }
+        w
+    }
+
+    /// The phone's clock an hour ahead when it last pulled, then set right
+    /// (review of battery part B, S1). That pull, said begun after the alarm,
+    /// is never taken for one since it: pulled again (refused here), the sync
+    /// app asked; nothing came, so the doubt is said (S2). The clock set back
+    /// never stops the background pulls either.
+    #[test]
+    fn an_alarm_never_takes_a_pull_from_before_the_clock_was_set_back() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = alarm_scene("alarm-clock", DUE + 600, true);
+        w.fake.fault(|_| Some(Fault::Status(503)));
+        let mut asked = 0;
+        let mut ask = || {
+            asked += 1;
+            Duration::from_millis(200)
+        };
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        assert_eq!((came, asked), (AlarmNews::Nothing, 1), "the old pull not taken: pulled again, refused; the sync app asked, nothing came");
+        w.phone.exchange(&w.phone_folder, DUE + 65);
+        assert!(!w.phone.read("health-state.toml").contains("dose@0"));
+        let peer = w.phone.sees(&w.phone_folder, &w.desk, DUE + 70);
+        assert!(doubts_now(DUE, DUE + 70, None, std::slice::from_ref(&peer)).is_empty(), "what was read before the alarm says the desk closed");
+        assert!(!sioul_core::health::doubts_unread(DUE, DUE + 70, None, std::slice::from_ref(&peer), DUE + 60).is_empty(), "nothing read since the alarm: the doubt said, never known");
+        let state = State::load(&w.phone.memory);
+        assert!(!state.pulls_well(&w.phone_folder), "the refused pull is the later one, whatever the clock said: {state:?}");
+        let pace = Pace { phone: true, shown: false, in_use: false, urgent: false, step: 5 * 60 };
+        assert!(due(&State { tried: DUE + 600, ..state }, DUE + 120, pace), "tried \"later\" than now: due at once");
+        w.fake.clear_faults();
+    }
+
+    /// Neither route brings anything at an alarm (the server out of reach, the
+    /// sync app bringing nothing): the desk, known closed before the dose by
+    /// what was read before, may have opened since and answered; the doubt is
+    /// said, never "not taken" (review of battery part B, S2). An alarm whose
+    /// pull went through is not doubted by that rule: the desk still closed,
+    /// the dose known.
+    #[test]
+    fn an_alarm_that_reads_no_news_says_the_doubt_and_one_that_pulls_does_not() {
+        static ONE_PULL: Mutex<()> = Mutex::new(());
+        let w = alarm_scene("alarm-nothing", DUE - 3_000, true);
+        w.fake.fault(|_| Some(Fault::Status(503)));
+        let mut ask = || Duration::from_millis(200);
+        let came = alarm_news_with(&w.phone.memory, &w.phone_folder, &w.phone.id, Some(w.fake.login()), &ONE_PULL, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut ask, TEST);
+        assert_eq!(came, AlarmNews::Nothing);
+        w.phone.exchange(&w.phone_folder, DUE + 65);
+        let peer = w.phone.sees(&w.phone_folder, &w.desk, DUE + 70);
+        assert!(!w.phone.read("health-state.toml").contains("dose@0"));
+        let doubts = sioul_core::health::doubts_unread(DUE, DUE + 70, None, std::slice::from_ref(&peer), DUE + 60);
+        assert!(matches!(doubts.as_slice(), [Doubt::Unheard { closed: true, until, .. }] if *until == DUE - 3_590), "the desk as last heard, closed: {doubts:?}");
+        w.fake.clear_faults();
+        // The desk stays closed; the alarm's pull goes through: known, no doubt.
+        static ANOTHER: Mutex<()> = Mutex::new(());
+        let quiet = alarm_scene("alarm-pulled", DUE - 3_000, false);
+        let mut never = || -> Duration { panic!("the pull went through: the sync app is not asked") };
+        let came = alarm_news_with(&quiet.phone.memory, &quiet.phone_folder, &quiet.phone.id, Some(quiet.fake.login()), &ANOTHER, DUE + 60, QUICK, Arc::new(|| DUE + 60), &mut never, TEST);
+        assert_eq!(came, AlarmNews::Pulled);
+        quiet.phone.exchange(&quiet.phone_folder, DUE + 65);
+        assert!(doubts_now(DUE, DUE + 70, None, &[quiet.phone.sees(&quiet.phone_folder, &quiet.desk, DUE + 70)]).is_empty(), "pulled since the alarm, the desk closed: known");
+    }
+
+    /// Two pulls at once in two processes (the window's or an alarm's, and the
+    /// background step's), here two threads without a common lock: neither
+    /// undoes the other (review of battery part B, S3). The one begun later says
+    /// when a pull was tried and went through; a round left to the sync app,
+    /// found by the slower one, stays left after the other's save.
+    #[test]
+    fn two_pulls_at_once_keep_what_each_found() {
+        let w = World::new("two-pulls");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 1\n");
+        w.desk.exchange(&w.server, DUE + 10);
+        w.fake.fault(once(|r| r.method == "PROPFIND", Fault::Late(Duration::from_millis(450))));
+        std::thread::scope(|scope| {
+            let slow = scope.spawn(|| pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 50, TEST));
+            std::thread::sleep(Duration::from_millis(100));
+            // This one's look (begun later, done first): rounds past 64 bytes are left to the sync app.
+            ROUND_CAP.with(|cap| cap.set(Some(64)));
+            // Begun a moment later by the same clock (within the slower one's run, as a real one would).
+            let quick = pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 51, TEST);
+            ROUND_CAP.with(|cap| cap.set(None));
+            assert!(quick.problem.is_none() && quick.left >= 1, "{quick:?}");
+            let slow = slow.join().unwrap();
+            assert!(slow.problem.is_none(), "{slow:?}");
+        });
+        let state = State::load(&w.phone.memory);
+        assert_eq!((state.tried, state.last), (DUE + 51, DUE + 51), "the later begun says when");
+        assert!(!state.left.is_empty() && !state.pulls_well(&w.phone_folder), "found left by the other, never erased by the slower one's save: {:?}", state.left);
+        // A look that finds it brought (the slower one fetched it) clears it.
+        assert!(w.pull(DUE + 120).problem.is_none());
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder));
     }
 
     /// A round on the server past what a pull brings (`LARGEST`; a small cap
@@ -3844,7 +4075,7 @@ mod tests {
         let pulled = w.pull(DUE + 20);
         assert!(pulled.problem.is_none() && pulled.left >= 1, "{pulled:?}");
         let state = State::load(&w.phone.memory);
-        assert!(!state.left.is_empty() && !state.pulls_well(&w.phone_folder) && !state.went_through_since(&w.phone_folder, DUE + 20), "{:?}", state.left);
+        assert!(!state.left.is_empty() && !state.pulls_well(&w.phone_folder) && !state.went_through_since(&w.phone_folder, DUE + 20, DUE + 20), "{:?}", state.left);
         // The sync app brings it: nothing left there that is not here.
         w.down();
         let pulled = w.pull(DUE + 100);
