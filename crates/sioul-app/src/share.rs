@@ -1034,14 +1034,14 @@ fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool, found: b
 thread_local! {
     /// An alarm on this thread whose pull did not go through since it began
     /// (`remote::AlarmNews::SyncApp`): when it began (Unix seconds), and the
-    /// devices whose own entry or claim came since.
+    /// devices whose entry or health claim says more since.
     static NEWS_MISSED: std::cell::Cell<Option<(i64, std::collections::BTreeSet<String>)>> = const { std::cell::Cell::new(None) };
 }
 
 /// Whether the last alarm's exchange on this thread (`exchange_here(true)`)
 /// had no pull go through since it began: then since when, and the devices of
-/// which news came all the same (their own entry or claim, brought by the sync
-/// app). Of the others, what was read before is not taken as knowledge
+/// which news came all the same (their entry or health claim, later by its own
+/// times, brought by the sync app). Of the others, what was read before is not taken as knowledge
 /// (`sioul_core::health::doubts_unread`).
 pub(crate) fn news_missed() -> Option<(i64, std::collections::BTreeSet<String>)> {
     NEWS_MISSED.with(std::cell::Cell::take)
@@ -1196,7 +1196,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             Some(at) => {
                 let state = sioul_sync::remote::State::load(&memory);
                 let login = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of);
-                let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, login, &FETCHING, since, std::sync::Arc::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
+                let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, key, login, &FETCHING, since, std::sync::Arc::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
                 match came {
                     sioul_sync::remote::AlarmNews::Pulled => log_backup("alarm: the others' news pulled since it began".into()),
                     sioul_sync::remote::AlarmNews::SyncApp { heard } => {
