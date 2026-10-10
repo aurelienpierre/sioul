@@ -9,6 +9,7 @@
 //! import (`set_importing`), the folder's leftovers cleaned once a day.
 //! Fiction only.
 
+use super::format_tests::announce;
 use super::tests::{Computer, MINUTE, NOW, quick_key, scratch};
 use super::*;
 
@@ -335,4 +336,233 @@ fn leftovers_among_the_sealed_files_are_cleaned_once_a_day() {
     background(&phone, &folder, &key, NOW + 25 * HOUR_MS);
     assert!(!second.exists(), "a day on: cleaned");
     let _ = std::fs::remove_dir_all(&base);
+}
+
+// ---------------------------------------------------------------- against a whole exchange
+
+const DESK: &str = "11111111-1111-4111-8111-111111111111";
+const PHONE: &str = "22222222-2222-4222-8222-222222222222";
+const DIFF_FILES: [&str; 3] = ["state/health-state.toml", "config/safe-senders.txt", "config/known-senders.txt"];
+
+/// One of two identical worlds: a desk and a phone sharing a folder; in one, the quiet exchange allowed.
+struct Twin {
+    folder: PathBuf,
+    key: [u8; 32],
+    devices: [Computer; 2],
+    quiet: bool,
+}
+
+impl Twin {
+    fn new(base: &Path, name: &str, quiet: bool) -> Twin {
+        let root = base.join(name);
+        let folder = root.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let mut desk = Computer::new(&root, "desk");
+        desk.id = DESK.into();
+        let mut phone = Computer::new(&root, "phone");
+        phone.id = PHONE.into();
+        Twin { folder, key, devices: [desk, phone], quiet }
+    }
+
+    fn exchange(&self, d: usize, files: bool, now: i64) -> Outcome {
+        let c = &self.devices[d];
+        if !self.quiet {
+            QUIET.lock().unwrap().remove(&c.memory);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(3));
+        exchange(&Sharing { folder: &self.folder, computer: &c.id, key: &self.key, memory: &c.memory, files, hurry: None }, &stores(&Config::default(), &c.roots), now).unwrap()
+    }
+
+    fn session(&self, d: usize, up: bool, now: i64) {
+        let c = &self.devices[d];
+        let id = c.id.clone();
+        crate::devices::change(&crate::devices::own_path(&c.roots.state), Some((&self.folder, &self.key)), |e| {
+            e.id = id;
+            e.kind = if d == 0 { crate::devices::COMPUTER.into() } else { crate::devices::PHONE.into() };
+            e.doses = true;
+            e.format = 2;
+            if up { e.start(now / 1000) } else { e.close(now / 1000) }
+        })
+        .unwrap();
+    }
+
+    fn state(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for c in &self.devices {
+            for f in DIFF_FILES {
+                out.push(format!("{}:{f}={:?}", c.id, c.read(f)));
+            }
+            let m = Memory::load(&c.memory, &c.id);
+            out.push(format!("{}: round {} seq {} format {} read_n {:?} newer {:?} waiting {}", c.id, m.round, m.seq, m.format, m.read_n, m.newer.keys().collect::<Vec<_>>(), m.waiting.len()));
+        }
+        out
+    }
+}
+
+/// A small generator: the same script for both worlds, at each run.
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+}
+
+/// One seed's script, `steps` long, in both worlds: what each did and holds, compared at every step.
+fn run(seed: u64, steps: usize) -> (u32, usize) {
+    let base = scratch(&format!("quiet-diff-{seed}"));
+    let worlds = [Twin::new(&base, "a", true), Twin::new(&base, "b", false)];
+    let mut rng = Rng(seed * 2_654_435_761 + 7);
+    let mut now = NOW;
+    let mut lines: [[Vec<String>; 3]; 2] = Default::default();
+    let mut long_jumps = 0;
+    let quiet_before = QUIETED.with(std::cell::Cell::get);
+    let mut exchanges = 0;
+    for w in &worlds {
+        w.session(0, true, now);
+        w.session(1, true, now);
+    }
+    for step in 0..steps {
+        let action = rng.below(100);
+        match action {
+            // An edit on one device.
+            0..=17 => {
+                let d = rng.below(2) as usize;
+                let f = rng.below(3) as usize;
+                let shared_key = rng.below(5) == 0;
+                let n = rng.below(40);
+                let entry = if f == 0 { format!("\"{}@{n}\" = {n}", if shared_key { "both" } else if d == 0 { "desk" } else { "phone" }) } else { format!("{}{n}@example.org", if d == 0 { "d" } else { "p" }) };
+                let list = &mut lines[d][f];
+                if let Some(at) = list.iter().position(|l| *l == entry) {
+                    list.remove(at);
+                } else {
+                    list.push(entry);
+                }
+                let text = if f == 0 { format!("[taken]\n{}\n", list.join("\n")) } else { format!("{}\n", list.join("\n")) };
+                for w in &worlds {
+                    w.devices[d].write(DIFF_FILES[f], &text);
+                }
+            }
+            // Background exchanges (the quiet path), many.
+            18..=69 => {
+                let d = rng.below(2) as usize;
+                let outs: Vec<Outcome> = worlds.iter().map(|w| w.exchange(d, false, now)).collect();
+                exchanges += 1;
+                let key = |o: &Outcome| (o.sent, o.received, o.pending, o.wrote, o.problems.clone(), o.written.clone());
+                assert_eq!(key(&outs[0]), key(&outs[1]), "seed {seed} step {step}: background exchange of device {d} differs (quiet {})", outs[0].quiet);
+                // What it read is now in the stores: the local lists follow what came in.
+                for (f, file) in DIFF_FILES.iter().enumerate() {
+                    let text = worlds[0].devices[d].read(file);
+                    lines[d][f] = text.lines().map(str::trim).filter(|l| !l.is_empty() && *l != "[taken]").map(str::to_string).collect();
+                }
+            }
+            // A window's exchange (notes and papers read: never quiet).
+            70..=77 => {
+                let d = rng.below(2) as usize;
+                let outs: Vec<Outcome> = worlds.iter().map(|w| w.exchange(d, true, now)).collect();
+                exchanges += 1;
+                assert_eq!((outs[0].sent, outs[0].received, outs[0].wrote), (outs[1].sent, outs[1].received, outs[1].wrote), "seed {seed} step {step}: window exchange differs");
+                for (f, file) in DIFF_FILES.iter().enumerate() {
+                    let text = worlds[0].devices[d].read(file);
+                    lines[d][f] = text.lines().map(str::trim).filter(|l| !l.is_empty() && *l != "[taken]").map(str::to_string).collect();
+                }
+            }
+            // A session up or down.
+            78..=83 => {
+                let (d, up) = (rng.below(2) as usize, rng.below(2) == 0);
+                for w in &worlds {
+                    w.session(d, up, now);
+                }
+            }
+            // A device says it reads format 2 (as announce does in the switch tests).
+            84..=86 => {
+                let d = rng.below(2) as usize;
+                for w in &worlds {
+                    announce(&w.folder, &w.key, &w.devices[d], 2, now);
+                }
+            }
+            // Full rounds' rules.
+            87..=89 => {
+                let (d, on, which) = (rng.below(2) as usize, rng.below(2) == 0, rng.below(2));
+                for w in &worlds {
+                    if which == 0 { set_frugal(&w.devices[d].memory, on) } else { set_importing(&w.devices[d].memory, on) }
+                }
+            }
+            // A sync app puts back a shorter copy of the other device's latest round (cut at a line), in both worlds.
+            90..=91 => {
+                let d = rng.below(2) as usize;
+                let other = &worlds[0].devices[1 - d].id;
+                let cut = rng.below(3);
+                for w in &worlds {
+                    let round = Memory::load(&w.devices[1 - d].memory, other).round.max(1);
+                    let file = round_file(&w.folder, other, round);
+                    if let Ok(bytes) = std::fs::read(&file) {
+                        let ends: Vec<usize> = bytes.iter().enumerate().filter(|(_, b)| **b == b'\n').map(|(i, _)| i + 1).collect();
+                        if ends.len() > 2 {
+                            let keep = ends[ends.len() - 2 - (cut as usize).min(ends.len() - 3)];
+                            std::fs::write(&file, &bytes[..keep]).unwrap();
+                        }
+                    }
+                }
+            }
+            // Time.
+            _ => {
+                let jump = match rng.below(10) {
+                    0 if long_jumps < 2 => {
+                        long_jumps += 1;
+                        25 * 60 * MINUTE
+                    }
+                    1..=2 => 61 * MINUTE,
+                    _ => (1 + rng.below(5) as i64) * MINUTE,
+                };
+                now += jump;
+            }
+        }
+        now += 1_000;
+        let (a, b) = (worlds[0].state(), worlds[1].state());
+        if a != b {
+            for (x, y) in a.iter().zip(&b) {
+                if x != y {
+                    eprintln!("A: {x}\nB: {y}");
+                }
+            }
+            panic!("seed {seed} step {step} (action {action}): the worlds differ");
+        }
+    }
+    for w in &worlds {
+        for c in &w.devices {
+            set_frugal(&c.memory, false);
+            set_importing(&c.memory, false);
+        }
+    }
+    let quieted = QUIETED.with(std::cell::Cell::get) - quiet_before;
+    let formats: Vec<u32> = worlds[0].devices.iter().map(|c| Memory::load(&c.memory, &c.id).format).collect();
+    eprintln!("seed {seed}: formats {formats:?}, quiet {quieted} of {exchanges}");
+    let _ = std::fs::remove_dir_all(&base);
+    (quieted, exchanges)
+}
+
+/// The quiet exchange against a whole one (review of battery part B, F7):
+/// two identical worlds driven by the same random script, edits on both
+/// devices, background (`files: false`) and window exchanges, sessions up and
+/// down, devices announcing format 2 (the switch included), full rounds held
+/// back or not, time jumps of minutes, an hour and a day, a sync app cutting
+/// the other device's latest round at a line. In one world the quiet exchange
+/// is allowed, in the other never used: every outcome and every store the
+/// same, at every step.
+#[test]
+fn a_quiet_exchange_is_the_same_as_a_whole_one_through_the_switch() {
+    let (mut quiet, mut total) = (0, 0);
+    for seed in 1..=12 {
+        let (q, n) = run(seed, 300);
+        quiet += q;
+        total += n;
+    }
+    eprintln!("quiet against whole: {quiet} quiet exchanges in world A out of {total} exchanges, outcomes and stores the same");
+    assert!(quiet > 20, "the quiet path ran too seldom to mean anything: {quiet}");
 }
