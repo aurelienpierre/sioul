@@ -265,7 +265,7 @@ Item {
                     // Narrow beside an open card, or on a phone: the icon alone, its name on hover.
                     display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: text
+                    ToolTip.text: page.theme.plain(text)
                     Accessible.name: text
                     onClicked: page.startNew()
                 }
@@ -278,7 +278,7 @@ Item {
                     display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: text
+                    ToolTip.text: page.theme.plain(text)
                     onClicked: page.mapShown = !page.mapShown
                 }
                 // Duplicates, in the place of a card.
@@ -291,7 +291,7 @@ Item {
                     display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: text
+                    ToolTip.text: page.theme.plain(text)
                     onClicked: {
                         if (page.duplicatesShown)
                             page.duplicatesShown = false
@@ -313,7 +313,7 @@ Item {
                 visible: names.length > 0 && !page.mapShown
                 Layout.fillWidth: true
                 Layout.maximumWidth: 320
-                model: [page.sioul.text("contacts-category-all")].concat(names)
+                model: [page.sioul.text("contacts-category-all")].concat(names.map(n => page.theme.plain(n)))
                 currentIndex: page.shown.category ? Math.max(0, names.indexOf(page.shown.category) + 1) : 0
                 Accessible.name: page.sioul.text("contact-categories")
                 onActivated: index => page.sioul.showContactsCategory(index === 0 ? "" : names[index - 1])
@@ -666,7 +666,7 @@ Item {
                                     Layout.leftMargin: 18
                                     flat: true
                                     objectName: "personSheetButton"
-                                    text: page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : "")
+                                    text: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : ""))
                                     icon.name: "go-next"
                                     icon.color: page.theme.text
                                     onClicked: page.window.openPersonSheet(page.openKey, "")
@@ -760,6 +760,7 @@ Item {
                                             readonly property bool link: urlCell.index % 2 === 1 && /^https?:\/\//i.test(urlCell.modelData)
 
                                             Layout.fillWidth: urlCell.index % 2 === 1
+                                            // rich on purpose: a link, its address escaped; any other line is plain text.
                                             text: urlCell.link ? '<a style="color:' + page.theme.accent + '" href="' + page.escaped(urlCell.modelData) + '">' + page.escaped(urlCell.modelData) + '</a>' : urlCell.modelData
                                             textFormat: urlCell.link ? Text.RichText : Text.PlainText
                                             elide: Text.ElideRight

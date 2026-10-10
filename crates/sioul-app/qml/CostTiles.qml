@@ -347,6 +347,7 @@ ColumnLayout {
                     // Its own width, not its wrapped text's (a binding loop otherwise).
                     Layout.preferredWidth: 1
                     text: tile.owner.title(tile.name)
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.weight: Font.DemiBold
                     color: tile.owner.theme.text
@@ -355,6 +356,7 @@ ColumnLayout {
                 Label {
                     visible: !tile.owner.beside
                     text: tile.owner.word(tile.name, tile.drawn)
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     color: tile.owner.theme.muted
                     opacity: tile.faintShown ? 0.6 : 1
@@ -362,6 +364,7 @@ ColumnLayout {
                 Label {
                     Layout.minimumWidth: number.advanceWidth
                     text: tile.drawn === null ? "" : String(tile.drawn)
+                    textFormat: Text.PlainText
                     font.weight: Font.DemiBold
                     color: tile.faintShown ? tile.owner.theme.muted : tile.owner.theme.text
                     opacity: tile.faintShown ? 0.6 : 1
@@ -453,6 +456,7 @@ ColumnLayout {
                     visible: tile.owner.beside
                     Layout.preferredWidth: tile.owner.wordRoom
                     text: tile.owner.word(tile.name, tile.drawn)
+                    textFormat: Text.PlainText
                     font.pixelSize: 13
                     color: tile.owner.theme.muted
                     opacity: tile.faintShown ? 0.6 : 1
@@ -465,6 +469,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 text: tile.owner.ask(tile.name)
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pixelSize: 12
                 color: tile.owner.theme.muted

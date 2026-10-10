@@ -158,6 +158,7 @@ ScrollView {
         Label {
             Layout.fillWidth: true
             text: column.words ? column.words.help : ""
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: column.theme.muted
@@ -204,7 +205,7 @@ ScrollView {
                         id: fieldBox
 
                         Layout.fillWidth: true
-                        model: column.words ? column.words.fields : []
+                        model: column.words ? column.words.fields.map(f => Object.assign({}, f, { label: column.theme.plain(f.label) })) : []
                         textRole: "label"
                         valueRole: "id"
                         Accessible.name: row.fieldInfo ? row.fieldInfo.label : ""
@@ -240,7 +241,7 @@ ScrollView {
                         // narrower before a day, whose field needs the room.
                         Layout.fillWidth: row.kind === "nothing"
                         Layout.preferredWidth: row.kind === "nothing" ? -1 : row.kind === "date" || row.kind === "dates" ? 96 : 128
-                        model: row.fieldInfo ? row.fieldInfo.tests : []
+                        model: row.fieldInfo ? row.fieldInfo.tests.map(t => Object.assign({}, t, { label: column.theme.plain(t.label) })) : []
                         textRole: "label"
                         valueRole: "id"
                         Accessible.name: row.fieldInfo ? row.fieldInfo.label : ""
@@ -289,7 +290,7 @@ ScrollView {
 
                         visible: choiceBox.choices.length > 0
                         Layout.fillWidth: true
-                        model: choiceBox.choices
+                        model: choiceBox.choices.map(c => Object.assign({}, c, { label: column.theme.plain(c.label) }))
                         textRole: "label"
                         valueRole: "id"
                         Accessible.name: row.fieldInfo ? row.fieldInfo.label : ""

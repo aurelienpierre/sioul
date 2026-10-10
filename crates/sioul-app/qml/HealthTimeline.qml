@@ -701,7 +701,7 @@ ColumnLayout {
                     width: 14
                     height: 14
                     ToolTip.visible: tip.dose !== null
-                    ToolTip.text: tip.dose ? tip.dose.name : ""
+                    ToolTip.text: timeline.theme.plain(tip.dose ? tip.dose.name : "")
                     ToolTip.delay: 400
                 }
 

@@ -194,7 +194,7 @@ ColumnLayout {
                 required property string modelData
 
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                text: setup.sioul.textWith("calls-setup-dial", "code", code.modelData)
+                text: setup.theme.plain(setup.sioul.textWith("calls-setup-dial", "code", code.modelData))
                 onClicked: setup.act("dial", { number: code.modelData })
             }
         }

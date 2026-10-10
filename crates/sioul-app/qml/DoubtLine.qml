@@ -52,7 +52,7 @@ ColumnLayout {
                 required property var modelData
 
                 flat: true
-                text: offButton.modelData.label
+                text: line.theme.plain(offButton.modelData.label)
                 font.pixelSize: 13
                 onClicked: {
                     line.sioul.deviceOff(offButton.modelData.id, true)

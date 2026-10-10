@@ -185,7 +185,7 @@ Dialog {
             text: chooser.sioul.text("bitwarden-choose-empty")
             Accessible.name: empty.text
             ToolTip.visible: empty.hovered
-            ToolTip.text: empty.text
+            ToolTip.text: chooser.theme.plain(empty.text)
             ToolTip.delay: 400
             onClicked: {
                 input.clear()
@@ -260,6 +260,7 @@ Dialog {
                   : chooser.shown.found.length === 0 ? chooser.sioul.text("bitwarden-choose-nothing")
                   : chooser.shown.more > 0 ? chooser.sioul.textWith("bitwarden-choose-more", "count", String(chooser.shown.more))
                   : ""
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: chooser.theme.muted
         }
@@ -330,7 +331,7 @@ Dialog {
 
     footer: DialogButtonBox {
         Button {
-            text: chooser.takeText
+            text: chooser.theme.plain(chooser.takeText)
             highlighted: true
             enabled: chooser.shown.found.length > 0
             onClicked: chooser.takeCurrent()

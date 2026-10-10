@@ -22,13 +22,13 @@ Button {
 
     // As wide as its content: the style's buttons are 100 pixels at least.
     implicitWidth: action.implicitContentWidth + action.leftPadding + action.rightPadding
-    text: action.label
+    text: action.theme.plain(action.label)
     icon.name: action.iconName
     icon.color: action.theme.text
     display: action.compact ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
     flat: true
     ToolTip.visible: action.compact && action.hovered
-    ToolTip.text: action.label
+    ToolTip.text: action.theme.plain(action.label)
     ToolTip.delay: 300
     Accessible.name: action.label
 

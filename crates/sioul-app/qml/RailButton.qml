@@ -52,7 +52,7 @@ Button {
         if (rail.sayTip !== null)
             rail.sayTip(rail, shown, ms)
         else if (shown)
-            rail.ToolTip.show(rail.tip, ms)
+            rail.ToolTip.show(rail.theme.plain(rail.tip), ms)
         else
             rail.ToolTip.hide()
     }

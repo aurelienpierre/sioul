@@ -29,6 +29,8 @@ Item {
         property color text: "#2d2a26"
         property color warm: "#8f6330"
         property string mono: "monospace"
+        // As Theme.qml's: words from outside drawn as words.
+        function plain(text) { return text === undefined || text === null ? "" : String(text).replace(/</g, "<\u2060") }
     }
 
     Column {

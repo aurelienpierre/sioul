@@ -848,7 +848,9 @@ fn code(error: &SyncError, host: &str) -> String {
 /// Where an account's files are on its server, Nextcloud's way
 /// (`…/remote.php/dav/files/<user>/`, the user as the server names it in its
 /// principal), from the address its calendars were found at; none for a
-/// server of another kind.
+/// server of another kind. On that server only: a principal named on another
+/// is refused (`SyncError::Elsewhere`), since every request there would carry
+/// the account's login.
 pub(crate) fn files_root(server: &Server, login: &Login) -> Result<Option<String>, SyncError> {
     let Some(at) = login.url.find("/remote.php/") else { return Ok(None) };
     let base = format!("{}/remote.php/dav/", &login.url[..at]);
@@ -859,11 +861,15 @@ pub(crate) fn files_root(server: &Server, login: &Login) -> Result<Option<String
     let body = response.body_mut().with_config().limit(LISTING).read_to_string().map_err(|e| failed(&e))?;
     let (responses, _) = dav::multistatus(&body)?;
     let principal = responses.iter().find_map(|r| r.prop(DAV, "current-user-principal").and_then(|p| p.hrefs.first().cloned()));
-    Ok(principal.and_then(|href| {
+    let root = principal.and_then(|href| {
         let at = href.find("/principals/users/")?;
         let user = href[at + "/principals/users/".len()..].trim_end_matches('/');
         (!user.is_empty() && !user.contains('/')).then(|| dav::absolute(&base, &format!("{}/files/{user}/", &href[..at])))
-    }))
+    });
+    match root {
+        Some(root) if dav::origin(&root).is_none() || dav::origin(&root) != dav::origin(&base) => Err(SyncError::Elsewhere(root)),
+        root => Ok(root),
+    }
 }
 
 // ---------------------------------------------------------------- finding it
@@ -3251,6 +3257,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// A server whose principal it names on another server: the files are
+    /// not looked for there, and nothing is asked there with the login.
+    #[test]
+    fn the_files_stay_on_the_account_s_server() {
+        use crate::dav::stand_in::{Reply, Request, Server as StandIn, serve};
+        /// Notes what it is asked, and with what login.
+        struct Noted(std::sync::Mutex<Vec<String>>);
+        impl StandIn for Noted {
+            fn misbehaves(&self, _: &Request) -> Option<crate::dav::stand_in::Fault> {
+                None
+            }
+            fn answer(&self, request: &Request) -> Reply {
+                self.0.lock().unwrap().push(format!("{} {} {}", request.method, request.path, request.header("Authorization").unwrap_or("")));
+                Reply::new(404, "")
+            }
+        }
+        /// Names its principal at the address it is given.
+        struct Pointing(String);
+        impl StandIn for Pointing {
+            fn misbehaves(&self, _: &Request) -> Option<crate::dav::stand_in::Fault> {
+                None
+            }
+            fn answer(&self, _: &Request) -> Reply {
+                Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/remote.php/dav/</d:href><d:propstat><d:prop><d:current-user-principal><d:href>{}</d:href></d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#, self.0))
+            }
+        }
+        let noted = Arc::new(Noted(std::sync::Mutex::new(Vec::new())));
+        let there = serve(noted.clone());
+        let here = serve(Arc::new(Pointing(format!("{there}/remote.php/dav/principals/users/jane/"))));
+        let login = Login { account: "cloud".into(), url: format!("{here}/remote.php/dav/calendars/jane/"), user: "jane".into(), password: Some("secret".into()) };
+        let found = files_root(&Server::new(&login, TEST).unwrap(), &login);
+        assert!(matches!(&found, Err(SyncError::Elsewhere(root)) if root.starts_with(&there)), "{found:?}");
+        assert!(noted.0.lock().unwrap().is_empty());
+        // Named on its own server, as Nextcloud does: the files are there.
+        let own = serve(Arc::new(Pointing("/remote.php/dav/principals/users/jane/".into())));
+        let login = Login { url: format!("{own}/remote.php/dav/calendars/jane/"), ..login };
+        assert_eq!(files_root(&Server::new(&login, TEST).unwrap(), &login).unwrap(), Some(format!("{own}/remote.php/dav/files/jane/")));
     }
 
     fn put(dir: &Path, relative: &str, text: &str) {

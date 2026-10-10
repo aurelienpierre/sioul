@@ -57,6 +57,7 @@ ColumnLayout {
             required property string modelData
 
             Layout.fillWidth: true
+            // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
             text: line.theme.spaced(modelData.replace(/<a href=/g, '<a style="color:' + line.theme.accent + '" href='))
             textFormat: TextEdit.RichText
             readOnly: true
@@ -69,7 +70,7 @@ ColumnLayout {
     Button {
         visible: line.shown !== null && line.shown.close
         flat: true
-        text: line.shown ? line.shown.button : ""
+        text: line.theme.plain(line.shown ? line.shown.button : "")
         onClicked: line.window.reviewDay("night")
     }
 }

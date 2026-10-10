@@ -192,6 +192,7 @@ Item {
                 visible: page.problem !== ""
                 Layout.fillWidth: true
                 text: page.problem
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: page.theme.warm
             }
@@ -216,6 +217,7 @@ Item {
                         visible: row.newGroup
                         Layout.fillWidth: true
                         text: row.modelData.group
+                        textFormat: Text.PlainText
                         font.pixelSize: 17
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight

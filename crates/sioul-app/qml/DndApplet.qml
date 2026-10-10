@@ -112,7 +112,7 @@ LineButton {
                 visible: applet.on
                 height: visible ? implicitHeight : 0
                 enabled: false
-                text: applet.dnd.why_line
+                text: applet.theme.plain(applet.dnd.why_line)
             }
             Repeater {
                 model: applet.on ? applet.dnd.details : []
@@ -121,7 +121,7 @@ LineButton {
                     required property string modelData
 
                     enabled: false
-                    text: modelData
+                    text: applet.theme.plain(modelData)
                 }
             }
             // Off, while this device's own system still silences it; the last "off" made in a system.
@@ -129,13 +129,13 @@ LineButton {
                 visible: !applet.on && (applet.dnd.system_line || "") !== ""
                 height: visible ? implicitHeight : 0
                 enabled: false
-                text: applet.dnd.system_line || ""
+                text: applet.theme.plain(applet.dnd.system_line || "")
             }
             MenuItem {
                 visible: !applet.on && (applet.dnd.last_off || "") !== ""
                 height: visible ? implicitHeight : 0
                 enabled: false
-                text: applet.dnd.last_off || ""
+                text: applet.theme.plain(applet.dnd.last_off || "")
             }
             MenuItem {
                 visible: applet.hereOff
@@ -149,7 +149,7 @@ LineButton {
                 delegate: MenuItem {
                     required property var modelData
 
-                    text: modelData.label
+                    text: applet.theme.plain(modelData.label)
                     onTriggered: applet.sioul.openDnd(modelData.key)
                 }
             }
@@ -172,7 +172,7 @@ LineButton {
             MenuItem {
                 visible: applet.dnd.end_time !== ""
                 height: visible ? implicitHeight : 0
-                text: applet.sioul.textWith("dnd-until-time", "time", applet.dnd.end_time)
+                text: applet.theme.plain(applet.sioul.textWith("dnd-until-time", "time", applet.dnd.end_time))
                 onTriggered: applet.sioul.dndToggle(true, -1)
             }
             MenuItem {

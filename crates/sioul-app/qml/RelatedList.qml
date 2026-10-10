@@ -51,6 +51,7 @@ ColumnLayout {
     Label {
         visible: related.title !== ""
         text: related.title
+        textFormat: Text.PlainText
         font.weight: Font.DemiBold
         color: related.theme.text
         Layout.bottomMargin: 2

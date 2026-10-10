@@ -34,7 +34,7 @@ Sioul does not encrypt the files on your device itself: your system does that be
 
 ### Every connection encrypted {#every-connection-encrypted}
 
-Your mail, calendars, contacts, your Bitwarden vault and the lookups of encryption keys always travel encrypted, and each server's certificate is checked against your system's. There is no setting to send them in clear. Google's sign-in happens on Google's own page, in your usual browser, with whatever Google asks there (your password, your security key, a passkey): Sioul never sees your Google password, and receives Google's answer on your own device only.
+Your mail, calendars, contacts, your Bitwarden vault and the lookups of encryption keys always travel encrypted, and each server's certificate is checked against your system's. There is no setting to send them in clear. The password of your calendars and contacts goes only to your provider's servers: an address on another server, named in their answers, is never asked. Google's sign-in happens on Google's own page, in your usual browser, with whatever Google asks there (your password, your security key, a passkey): Sioul never sees your Google password, and receives Google's answer on your own device only.
 
 ### Every message checked {#every-message-checked}
 
@@ -56,6 +56,8 @@ The results are kept with the message, under a name only your copy of Sioul uses
 ### Reading safely {#reading-safely}
 
 **HTML mail** is shown with its paragraphs, lists, bold text and links only: no images, no styles, no scripts, no forms. Nothing loads from the network, ever, and no setting makes it: no tracking image learns that you opened a message. Sioul never sends a read receipt either.
+
+**Names and titles** that come with your mail and your calendars (a sender's name, a subject, an event's title from a shared calendar or an invitation, a contact's or a folder's name) are shown as plain words wherever they appear: a picture's tag hidden in one shows as it is written, and loads nothing. A message, however large or strangely built, opens on its own, the window saying so meanwhile, and never holds the window.
 
 **Links** show their full address before they open: under the pointer, or after a first tap on a touch screen. Only web and mail links open. A mail link starts a message to its address alone, without the subject or text it would fill in for you.
 

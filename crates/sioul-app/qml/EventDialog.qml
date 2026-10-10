@@ -306,7 +306,7 @@ Dialog {
                 }
                 ComboBox {
                     Layout.fillWidth: true
-                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
                     onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginMinutes[index] })
                 }
@@ -318,7 +318,7 @@ Dialog {
                 }
                 ComboBox {
                     Layout.fillWidth: true
-                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
                     onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
                 }
@@ -333,7 +333,7 @@ Dialog {
                 ComboBox {
                     Layout.fillWidth: true
                     textRole: "label"
-                    model: dialog.reminds
+                    model: dialog.reminds.map(c => ({ value: c.value, label: dialog.theme.plain(c.label) }))
                     currentIndex: Math.max(0, dialog.reminds.findIndex(c => c.value === dialog.remind))
                     onActivated: index => dialog.remind = dialog.reminds[index].value
                 }

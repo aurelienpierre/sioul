@@ -68,7 +68,7 @@ Item {
             icon.color: field.theme.text
             Accessible.name: field.pickLabel
             ToolTip.visible: hovered
-            ToolTip.text: field.pickLabel
+            ToolTip.text: field.theme.plain(field.pickLabel)
             onClicked: {
                 const shown = field.date ? new Date(field.date + "T12:00:00") : new Date()
                 field.shownYear = shown.getFullYear()
@@ -106,7 +106,7 @@ Item {
                             text: "◂"
                             Accessible.name: field.arrowName(-1)
                             ToolTip.visible: hovered
-                            ToolTip.text: field.arrowName(-1)
+                            ToolTip.text: field.theme.plain(field.arrowName(-1))
                             onClicked: {
                                 if (field.shownMonth === 0) {
                                     field.shownMonth = 11
@@ -127,7 +127,7 @@ Item {
                             text: "▸"
                             Accessible.name: field.arrowName(1)
                             ToolTip.visible: hovered
-                            ToolTip.text: field.arrowName(1)
+                            ToolTip.text: field.theme.plain(field.arrowName(1))
                             onClicked: {
                                 if (field.shownMonth === 11) {
                                     field.shownMonth = 0

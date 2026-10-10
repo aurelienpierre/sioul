@@ -699,6 +699,7 @@ Item {
                             textFormat: TextEdit.RichText
                             wrapMode: TextEdit.Wrap
                             // Links in the theme's colour: rich text would draw them pure blue. Lines get air.
+                            // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
                             text: page.note && page.kind === "text" ? page.theme.spaced(page.fitted(page.note.html, width - 8).replace(/<a href=/g, '<a style="color:' + page.theme.accent + '" href=')) : ""
                             color: page.theme.text
                             font.family: page.theme.readingFamily || font.family
@@ -991,7 +992,7 @@ Item {
                 property string verb: ""
 
                 function ask(title, current, action, verb) {
-                    folderNameForm.title = title
+                    folderNameForm.title = page.theme.plain(title)
                     folderNameForm.action = action
                     folderNameForm.verb = verb
                     folderNameForm.problem = ""
@@ -1008,7 +1009,7 @@ Item {
                 // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
                 footer: DialogButtonBox {
                     Button {
-                        text: folderNameForm.verb
+                        text: page.theme.plain(folderNameForm.verb)
                         highlighted: true
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                     }

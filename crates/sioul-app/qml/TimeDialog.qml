@@ -193,6 +193,7 @@ Dialog {
 
                 visible: minutes > 0
                 text: Math.floor(minutes / 60) > 0 ? Math.floor(minutes / 60) + " h " + String(minutes % 60).padStart(2, "0") : minutes + " min"
+                textFormat: Text.PlainText
                 color: dialog.theme.muted
             }
         }

@@ -136,7 +136,7 @@ LineButton {
                         readonly property string title: applet.sioul.text("sounds-" + noise.modelData)
 
                         Layout.fillWidth: true
-                        text: noise.title
+                        text: applet.theme.plain(noise.title)
                         highlighted: applet.playingTitle === noise.title
                         onClicked: applet.play(applet.sioul.noiseUrl(noise.modelData), noise.title)
                     }
@@ -157,7 +157,7 @@ LineButton {
                         readonly property string title: applet.sioul.text("sounds-" + nature.modelData)
 
                         Layout.fillWidth: true
-                        text: nature.title
+                        text: applet.theme.plain(nature.title)
                         highlighted: applet.playingTitle === nature.title
                         onClicked: applet.play(applet.sioul.noiseUrl(nature.modelData), nature.title)
                     }

@@ -68,7 +68,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
-    title: dialog.block !== null ? dialog.block.name + "  ·  " + dialog.block.from + "–" + dialog.block.to : dialog.sioul.text("stopped-title")
+    title: dialog.theme.plain(dialog.block !== null ? dialog.block.name + "  ·  " + dialog.block.from + "–" + dialog.block.to : dialog.sioul.text("stopped-title"))
 
     contentItem: ColumnLayout {
         spacing: 10
@@ -80,7 +80,7 @@ Dialog {
             spacing: 8
 
             Button {
-                text: dialog.sioul.textWith("need-later-n", "minutes", String(dialog.sioul.needsLater()))
+                text: dialog.theme.plain(dialog.sioul.textWith("need-later-n", "minutes", String(dialog.sioul.needsLater())))
                 onClicked: dialog.move(0, "")
             }
             RowLayout {

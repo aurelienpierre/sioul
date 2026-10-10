@@ -259,7 +259,7 @@ ColumnLayout {
                         required property string modelData
 
                         // "&" marks a shortcut in a menu: "&&" is one.
-                        text: usedLine.modelData.replace(/&/g, "&&")
+                        text: form.theme.plain(usedLine.modelData.replace(/&/g, "&&"))
                         onTriggered: form.addCategory(usedLine.modelData)
                     }
                     onObjectAdded: (index, object) => menu.insertItem(index, object)

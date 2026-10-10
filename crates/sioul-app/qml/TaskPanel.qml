@@ -456,7 +456,7 @@ Panel {
                     // Its own title as it was given (or kept, just saved); "Untitled" when it has none.
                     text: panel.detail ? panel.detail.edit.title : ""
                     readOnly: !panel.canEdit
-                    placeholderText: panel.making ? panel.sioul.text("task-new-title") : panel.card ? panel.card.title : ""
+                    placeholderText: panel.theme.plain(panel.making ? panel.sioul.text("task-new-title") : panel.card ? panel.card.title : "")
                     font.pixelSize: 20
                     wrapMode: TextInput.Wrap
                     // Like every field, a border: light, darker when it has the focus.
@@ -616,7 +616,7 @@ Panel {
                                     delegate: MenuItem {
                                         required property int modelData
 
-                                        text: modelData === 2 ? panel.sioul.text("focus-two") : modelData === 0 ? panel.sioul.text("focus-open-ended") : panel.sioul.textWith("focus-for", "minutes", String(modelData))
+                                        text: panel.theme.plain(modelData === 2 ? panel.sioul.text("focus-two") : modelData === 0 ? panel.sioul.text("focus-open-ended") : panel.sioul.textWith("focus-for", "minutes", String(modelData)))
                                         onTriggered: panel.focusRequested(panel.uid, modelData)
                                     }
                                 }
@@ -757,7 +757,7 @@ Panel {
                     visible: panel.form && panel.canEdit && panel.keeps("categories")
                     width: 170
                     editable: true
-                    model: newTag.others
+                    model: newTag.others.map(c => panel.theme.plain(c))
                     currentIndex: -1
                     displayText: ""
                     Accessible.name: panel.sioul.text("task-tag-add")
@@ -788,6 +788,7 @@ Panel {
 
                 visible: text !== ""
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: panel.theme.warm
             }
@@ -1157,7 +1158,7 @@ Panel {
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("estimate")
                     opacity: panel.keeps("estimate") ? 1 : 0.45
-                    model: minutes.map(m => panel.minutesText(m))
+                    model: minutes.map(m => panel.theme.plain(panel.minutesText(m)))
                     currentIndex: panel.detail ? Math.max(0, minutes.indexOf(panel.detail.edit.estimate)) : 0
                     onActivated: index => panel.change("estimate", minutes[index])
                 }
@@ -1173,7 +1174,7 @@ Panel {
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("margins")
                     opacity: panel.keeps("margins") ? 1 : 0.45
-                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.minutesText(m))
+                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.theme.plain(panel.minutesText(m)))
                     currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.before)) : 0
                     onActivated: index => panel.changeMargin("before", panel.marginMinutes[index])
                 }
@@ -1188,7 +1189,7 @@ Panel {
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("margins")
                     opacity: panel.keeps("margins") ? 1 : 0.45
-                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.minutesText(m))
+                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.theme.plain(panel.minutesText(m)))
                     currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.after)) : 0
                     onActivated: index => panel.changeMargin("after", panel.marginMinutes[index])
                 }
@@ -1403,7 +1404,7 @@ Panel {
                             id: toDay
 
                             implicitWidth: 120
-                            model: fromDay.model
+                            model: [1, 2, 3, 4, 5, 6, 7].map(d => panel.sioul.text("weekday-" + d))
                             currentIndex: officeTimes.parts ? Math.max(0, officeTimes.days.indexOf(officeTimes.parts[2] || officeTimes.parts[1])) : 4
                             onActivated: officeTimes.save()
                         }
@@ -1531,7 +1532,7 @@ Panel {
                         required property int index
 
                         width: listChoice.width
-                        text: modelData.replace(/&/g, "&&")
+                        text: panel.theme.plain(modelData.replace(/&/g, "&&"))
                         enabled: listChoice.choices[index] ? listChoice.choices[index].tasks : true
                         highlighted: listChoice.highlightedIndex === index
                     }
@@ -1783,7 +1784,7 @@ Panel {
                             id: lengthField
 
                             Layout.fillWidth: true
-                            model: doAtForm.shown.map(m => panel.minutesText(m))
+                            model: doAtForm.shown.map(m => panel.theme.plain(panel.minutesText(m)))
                             Accessible.name: panel.sioul.text("task-do-at-length")
                         }
                     }

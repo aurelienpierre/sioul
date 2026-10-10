@@ -20,9 +20,10 @@
 #    names belong to the test build alone);
 # 4. every message in every language, and French typography
 #    (tools/check-messages.py);
-# 5. the QML: qmllint (tools/lint-qml.sh, which reads the types of the newest
-#    debug build: `cargo build -p sioul-app` first) and the QML tests
-#    (tools/qml-test.sh);
+# 5. the QML: words from outside drawn as plain text (tools/check-plain-text.py),
+#    qmllint (tools/lint-qml.sh, which reads the types of the newest build:
+#    `cargo build --release -p sioul-app` first, and runs the plain-text check
+#    again) and the QML tests (tools/qml-test.sh);
 # 6. rustdoc for each crate, its private items included, warnings as errors
 #    (the website's API reference).
 # Builds without incremental files (CARGO_INCREMENTAL=0: they double target/),
@@ -131,6 +132,10 @@ tail -3 "$out/check-messages.log"
 [[ $status -eq 0 ]] || failed+=(check-messages)
 
 # 5. The QML.
+python3 tools/check-plain-text.py > "$out/plain-text.log" 2>&1
+status=$?
+echo "$(date +%H:%M:%S) $(tail -1 "$out/plain-text.log")"
+[[ $status -eq 0 ]] || { head -5 "$out/plain-text.log"; failed+=(plain-text); }
 bash tools/lint-qml.sh > "$out/lint-qml.log" 2>&1
 status=$?
 echo "$(date +%H:%M:%S) lint-qml exit $status, $(grep -c '^Warning' "$out/lint-qml.log") warnings"

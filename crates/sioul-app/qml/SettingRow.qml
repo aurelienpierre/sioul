@@ -36,6 +36,7 @@ ColumnLayout {
         visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action"
         Layout.fillWidth: true
         text: field.setting.label
+        textFormat: Text.PlainText
         font.weight: Font.DemiBold
         wrapMode: Text.Wrap
         color: field.theme.text
@@ -46,6 +47,7 @@ ColumnLayout {
         visible: field.setting.kind === "note"
         Layout.fillWidth: true
         text: field.setting.label
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         lineHeight: 1.25
         color: field.theme.text
@@ -65,6 +67,7 @@ ColumnLayout {
                 Label {
                     Layout.fillWidth: true
                     text: field.setting.kind === "link" ? field.setting.help : ""
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     lineHeight: 1.25
                     color: field.theme.text
@@ -72,7 +75,7 @@ ColumnLayout {
                 Button {
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     flat: true
-                    text: field.setting.label
+                    text: field.theme.plain(field.setting.label)
                     icon.name: "go-next"
                     icon.color: field.theme.text
                     // The window shows it, as a reminder's "Open" does (main.qml, openThing).
@@ -92,7 +95,7 @@ ColumnLayout {
         sourceComponent: Component {
             Button {
                 implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                text: field.setting.kind === "action" ? field.setting.label : ""
+                text: field.theme.plain(field.setting.kind === "action" ? field.setting.label : "")
                 onClicked: field.save(field.setting.key, true, field.setting.value)
             }
         }
@@ -150,6 +153,7 @@ ColumnLayout {
 
                         visible: false
                         text: modelData.label
+                        textFormat: Text.PlainText
                     }
                 }
                 Repeater {
@@ -161,7 +165,7 @@ ColumnLayout {
                         required property var modelData
 
                         visible: false
-                        text: modelData.label
+                        text: field.theme.plain(modelData.label)
                     }
                 }
                 Repeater {
@@ -181,6 +185,7 @@ ColumnLayout {
                             Layout.preferredWidth: radios.narrow ? -1 : radios.nameWidth
                             Layout.topMargin: radios.narrow ? 6 : 0
                             text: radioRow.modelData.label
+                            textFormat: Text.PlainText
                             color: field.theme.text
                         }
                         Flow {
@@ -197,7 +202,7 @@ ColumnLayout {
                                     readonly property string cell: radioRow.modelData.value + ":" + radio.modelData.value
 
                                     width: radios.narrow ? implicitWidth : radios.choiceWidth
-                                    text: radio.modelData.label
+                                    text: field.theme.plain(radio.modelData.label)
                                     checked: radios.chosen.indexOf(radio.cell) >= 0
                                     Accessible.name: radioRow.modelData.label + ", " + radio.modelData.label
                                     onClicked: {
@@ -285,6 +290,7 @@ ColumnLayout {
                 }
                 Label {
                     text: field.setting.unit
+                    textFormat: Text.PlainText
                     color: field.theme.muted
                 }
             }
@@ -320,6 +326,7 @@ ColumnLayout {
                 // A share as a percentage ("95%", "95 %"), else the number and its unit.
                 Label {
                     text: field.setting.unit === "%" ? field.sioul.textWith("spam-percent", "n", String(Math.round(slider.value * 100))) : slider.value.toLocaleString(Qt.locale(field.sioul.text("qt-locale")), "f", field.setting.step < 1 ? 1 : 0) + " " + field.setting.unit
+                    textFormat: Text.PlainText
                     color: field.theme.text
                 }
             }
@@ -385,7 +392,7 @@ ColumnLayout {
 
                         required property var modelData
 
-                        text: pick.modelData.label
+                        text: field.theme.plain(pick.modelData.label)
                         checked: picks.on.indexOf(pick.modelData.value) >= 0
                         onToggled: {
                             field.save(field.setting.key, field.setting.choices.map(c => c.value).filter(v => v === pick.modelData.value ? pick.checked : picks.on.indexOf(v) >= 0), field.setting.value)
@@ -405,7 +412,7 @@ ColumnLayout {
 
         sourceComponent: Component {
             ComboBox {
-                model: field.setting.kind === "choice" ? field.setting.choices.map(c => c.label) : []
+                model: field.setting.kind === "choice" ? field.setting.choices.map(c => field.theme.plain(c.label)) : []
                 currentIndex: field.setting.kind === "choice" ? Math.max(0, field.setting.choices.findIndex(c => field.same(c.value, field.setting.value))) : -1
                 Accessible.name: field.setting.label
                 onActivated: index => field.save(field.setting.key, field.setting.choices[index].value, field.setting.value)
@@ -535,7 +542,7 @@ ColumnLayout {
             ComboBox {
                 readonly property var families: [""].concat(Qt.fontFamilies())
 
-                model: field.setting.kind === "font" ? families.map(f => f === "" ? field.sioul.text("set-font-desktop") : f) : []
+                model: field.setting.kind === "font" ? families.map(f => f === "" ? field.sioul.text("set-font-desktop") : field.theme.plain(f)) : []
                 currentIndex: field.setting.kind === "font" ? Math.max(0, families.indexOf(field.setting.value)) : -1
                 Accessible.name: field.setting.label
                 onActivated: index => field.save(field.setting.key, families[index], field.setting.value)
@@ -754,7 +761,7 @@ ColumnLayout {
                             // Google's calendars change on its own pages only: greyed, with why.
                             enabled: !named.modelData.locked
                             ToolTip.visible: !enabled && hovered
-                            ToolTip.text: named.modelData.locked || ""
+                            ToolTip.text: field.theme.plain(named.modelData.locked || "")
                             Accessible.name: field.setting.label
                             onEditingFinished: {
                                 const name = text.trim()
@@ -765,6 +772,7 @@ ColumnLayout {
                         Label {
                             visible: (named.modelData.detail || "") !== ""
                             text: named.modelData.detail || ""
+                            textFormat: Text.PlainText
                             font.pixelSize: 12
                             color: field.theme.muted
                         }
@@ -844,6 +852,7 @@ ColumnLayout {
                         Label {
                             Layout.fillWidth: true
                             text: off.modelData.from + " → " + off.modelData.until + (off.modelData.label ? "  ·  " + off.modelData.label : "")
+                            textFormat: Text.PlainText
                             elide: Text.ElideRight
                             color: field.theme.text
                         }
@@ -994,7 +1003,7 @@ ColumnLayout {
 
                         Layout.fillWidth: true
                         sioul: field.sioul
-                        placeholderText: field.setting.label
+                        placeholderText: field.theme.plain(field.setting.label)
                         Accessible.name: field.setting.label
                         onAccepted: if (keepSecret.enabled) keepSecret.clicked()
                     }
@@ -1124,6 +1133,7 @@ ColumnLayout {
         visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         lineHeight: 1.25

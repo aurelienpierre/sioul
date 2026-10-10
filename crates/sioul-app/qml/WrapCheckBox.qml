@@ -16,6 +16,7 @@ CheckBox {
         leftPadding: box.indicator && !box.mirrored ? box.indicator.width + box.spacing : 0
         rightPadding: box.indicator && box.mirrored ? box.indicator.width + box.spacing : 0
         text: box.text
+        textFormat: Text.PlainText
         font: box.font
         color: box.palette.windowText
         wrapMode: Text.Wrap

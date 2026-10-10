@@ -258,6 +258,10 @@ pub enum SyncError {
     NotFiled(String),
     /// The message could not be written (no recipient, an attachment gone): said as is.
     Message(String),
+    /// A server's answer named an address on another server (a calendar, an
+    /// item, the account's principal): it was not asked, and the login was
+    /// not sent there.
+    Elsewhere(String),
 }
 
 impl SyncError {
@@ -281,6 +285,7 @@ impl SyncError {
             SyncError::Refused(_) => "send-error-refused",
             SyncError::NotFiled(_) => "send-error-not-filed",
             SyncError::Message(_) => "send-error-message",
+            SyncError::Elsewhere(_) => "sync-error-elsewhere",
         }
     }
 
@@ -298,7 +303,8 @@ impl SyncError {
             | SyncError::Disk(d)
             | SyncError::Refused(d)
             | SyncError::NotFiled(d)
-            | SyncError::Message(d) => d,
+            | SyncError::Message(d)
+            | SyncError::Elsewhere(d) => d,
         }
     }
 

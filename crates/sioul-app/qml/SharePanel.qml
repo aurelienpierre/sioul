@@ -190,7 +190,7 @@ ColumnLayout {
 
             Layout.fillWidth: true
             flat: true
-            text: modelData
+            text: panel.theme.plain(modelData)
             onClicked: panel.choose(modelData)
         }
     }
@@ -258,7 +258,7 @@ ColumnLayout {
             visible: panel.byServer
             Layout.columnSpan: 2
             Layout.fillWidth: true
-            model: panel.status.servers || []
+            model: (panel.status.servers || []).map(s => Object.assign({}, s, { label: panel.theme.plain(s.label) }))
             textRole: "label"
             valueRole: "id"
             Accessible.name: panel.sioul.text("share-server-account")
@@ -711,12 +711,14 @@ ColumnLayout {
                 Label {
                     Layout.fillWidth: true
                     text: part.modelData.name
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: panel.theme.text
                 }
                 Label {
                     Layout.fillWidth: true
                     text: part.modelData.carries
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.pixelSize: 13
                     color: panel.theme.muted
@@ -725,6 +727,7 @@ ColumnLayout {
                     visible: text !== ""
                     Layout.fillWidth: true
                     text: part.modelData.last
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.pixelSize: 12
                     color: panel.theme.muted
@@ -901,6 +904,7 @@ ColumnLayout {
                     Layout.topMargin: 6
                     Layout.fillWidth: true
                     text: keptPart.modelData.name
+                    textFormat: Text.PlainText
                     font.weight: Font.DemiBold
                     wrapMode: Text.Wrap
                     color: panel.theme.text
@@ -909,6 +913,7 @@ ColumnLayout {
                     visible: text !== ""
                     Layout.fillWidth: true
                     text: keptPart.modelData.more
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     font.pixelSize: 13
                     color: panel.theme.muted
@@ -961,6 +966,7 @@ ColumnLayout {
                                     Label {
                                         Layout.fillWidth: true
                                         text: version.modelData.when + "  ·  " + version.modelData.size
+                                        textFormat: Text.PlainText
                                         wrapMode: Text.Wrap
                                         color: panel.theme.text
                                     }

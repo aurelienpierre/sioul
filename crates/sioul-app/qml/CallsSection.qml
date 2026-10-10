@@ -218,7 +218,7 @@ ColumnLayout {
                             icon.color: section.theme.text
                             display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                             ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: text
+                            ToolTip.text: section.theme.plain(text)
                             Accessible.name: text
                             onClicked: {
                                 const answer = section.act("listen", { path: line.modelData.message.path, sound: line.modelData.message.sound })
@@ -238,7 +238,7 @@ ColumnLayout {
                             icon.color: section.theme.text
                             display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                             ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: text
+                            ToolTip.text: section.theme.plain(text)
                             Accessible.name: text
                             onClicked: Qt.openUrlExternally("sms:" + line.modelData.dial)
                         }
@@ -250,7 +250,7 @@ ColumnLayout {
                             icon.color: section.theme.text
                             display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                             ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: text
+                            ToolTip.text: section.theme.plain(text)
                             Accessible.name: text
                             onClicked: Qt.openUrlExternally("tel:" + line.modelData.dial)
                         }
@@ -263,7 +263,7 @@ ColumnLayout {
                             icon.color: section.theme.text
                             display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                             ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: text
+                            ToolTip.text: section.theme.plain(text)
                             Accessible.name: text
                             onClicked: {
                                 section.window.copy(line.modelData.number)

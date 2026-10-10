@@ -78,7 +78,7 @@ ColumnLayout {
     }
     Button {
         flat: true
-        text: "+  " + rows.addText
+        text: rows.theme.plain("+  " + rows.addText)
         onClicked: rows.model.append({ label: "", value: "" })
     }
 }

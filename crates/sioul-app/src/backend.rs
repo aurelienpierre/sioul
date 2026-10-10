@@ -119,9 +119,11 @@ pub mod qobject {
         #[qinvokable]
         fn done(self: Pin<&mut Sioul>);
 
-        /// A message laid out for reading, as JSON (`view::MessageView`); empty if it cannot be read.
+        /// Reads a message for the reading pane off the window's thread, so
+        /// that a large or hostile one never holds the window (and the
+        /// doses' reminders with it): `message_read` brings it.
         #[qinvokable]
-        fn message(self: &Sioul, key: &QString) -> QString;
+        fn read_message(self: Pin<&mut Sioul>, key: &QString);
 
         /// Has the antivirus check an attachment, then opens it with the desktop's application.
         #[qinvokable]
@@ -458,10 +460,6 @@ pub mod qobject {
         /// Makes a contact of a sender.
         #[qinvokable]
         fn add_sender(self: Pin<&mut Sioul>, name: &QString, address: &QString);
-
-        /// The invitation a message carries, as JSON; empty when none.
-        #[qinvokable]
-        fn invitation(self: &Sioul, key: &QString) -> QString;
 
         /// Answers an invitation: "accepted", "tentative", "declined"; "add" or "remove" for events sent without a question.
         #[qinvokable]
@@ -1722,6 +1720,13 @@ pub mod qobject {
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
         fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
+
+        /// A message read for the reading pane (`read_message`): its key, the
+        /// message laid out for reading as JSON (`view::MessageView`; empty
+        /// if it cannot be read), and the invitation it carries (JSON; empty
+        /// when none).
+        #[qsignal]
+        fn message_read(self: Pin<&mut Sioul>, key: QString, reading: QString, invitation: QString);
 
         /// Sharing through a folder Sioul keeps in step with a server itself
         /// (`start_sharing_on_server`): "" when it started, else why not.
@@ -3094,6 +3099,26 @@ struct FoundView {
     google_key: bool,
 }
 
+/// A message laid out for reading, as JSON (`view::MessageView`); empty if it
+/// cannot be read. Read on a thread of its own (`read_message`).
+fn message_json(key: &str) -> String {
+    let world = World::load();
+    let own = mail::own_addresses(&world.config);
+    let shown = world.judge(key).and_then(|(path, triaged)| {
+        let raw = std::fs::read(&path).ok()?;
+        crypto::learn_autocrypt(&raw, &triaged);
+        let (opened, protection) = match crypto::open(&raw) {
+            Some((opened, protection)) => (opened, Some(protection)),
+            None => (None, None),
+        };
+        let mut shown = view::message_from(opened.as_deref().unwrap_or(&raw), &path, &triaged, &own, tr(), protection)?;
+        shown.role = mail::locate(key).and_then(|(account, file)| sioul_sync::mailbox::folder_of(&account, &file)).map(|f| f.role);
+        shown.unsubscribe = mail::unsubscribe_view(&world.config, &triaged);
+        Some(shown)
+    });
+    shown.map_or_else(String::new, |m| json(&m))
+}
+
 impl qobject::Sioul {
     pub(crate) fn shared(&self) -> Arc<Shared> {
         Arc::clone(&self.rust().shared)
@@ -3213,22 +3238,14 @@ impl qobject::Sioul {
         show(&self.qt_thread(), &shared);
     }
 
-    fn message(&self, key: &QString) -> QString {
-        let world = World::load();
-        let own = mail::own_addresses(&world.config);
-        let shown = world.judge(&key.to_string()).and_then(|(path, triaged)| {
-            let raw = std::fs::read(&path).ok()?;
-            crypto::learn_autocrypt(&raw, &triaged);
-            let (opened, protection) = match crypto::open(&raw) {
-                Some((opened, protection)) => (opened, Some(protection)),
-                None => (None, None),
-            };
-            let mut shown = view::message_from(opened.as_deref().unwrap_or(&raw), &path, &triaged, &own, tr(), protection)?;
-            shown.role = mail::locate(&key.to_string()).and_then(|(account, file)| sioul_sync::mailbox::folder_of(&account, &file)).map(|f| f.role);
-            shown.unsubscribe = mail::unsubscribe_view(&world.config, &triaged);
-            Some(shown)
+    fn read_message(self: Pin<&mut Self>, key: &QString) {
+        let (qt, key) = (self.qt_thread(), key.to_string());
+        std::thread::spawn(move || {
+            // A message that makes the reading fail is one that cannot be read: the pane says so, never waits.
+            let reading = std::panic::catch_unwind(|| message_json(&key)).unwrap_or_default();
+            let invitation = std::panic::catch_unwind(|| pim::invitation(&key)).unwrap_or_default();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().message_read(QString::from(&key), QString::from(&reading), QString::from(&invitation)));
         });
-        QString::from(&shown.map_or_else(String::new, |m| json(&m)))
     }
 
     fn open_attachment(mut self: Pin<&mut Self>, key: &QString, index: i32) {
@@ -3797,10 +3814,6 @@ impl qobject::Sioul {
         if let Err(e) = pim::add_sender(&self.qt_thread(), &self.shared(), &name.to_string(), &address.to_string()) {
             self.as_mut().set_status(QString::from(&e));
         }
-    }
-
-    fn invitation(&self, key: &QString) -> QString {
-        QString::from(&pim::invitation(&key.to_string()))
     }
 
     fn answer_invitation(mut self: Pin<&mut Self>, key: &QString, answer: &QString) {

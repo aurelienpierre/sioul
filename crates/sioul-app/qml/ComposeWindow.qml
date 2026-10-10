@@ -271,7 +271,7 @@ SioulWindow {
 
                     visible: compose.draft !== null && compose.draft.accounts.length > 1
                     Layout.fillWidth: true
-                    model: compose.draft ? compose.draft.accounts : []
+                    model: compose.draft ? compose.draft.accounts.map(a => Object.assign({}, a, { label: compose.theme.plain(a.label) })) : []
                     textRole: "label"
                     valueRole: "id"
                     Component.onCompleted: from.currentIndex = compose.draft ? from.indexOfValue(compose.draft.account) : 0
@@ -396,6 +396,7 @@ SioulWindow {
 
                     TextEdit {
                         width: previewScroll.availableWidth
+                        // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
                         text: compose.previewing ? compose.sioul.preview(body.text).replace(/<a href=/g, '<a style="color:' + compose.theme.accent + '" href=') : ""
                         textFormat: TextEdit.RichText
                         readOnly: true
@@ -635,7 +636,7 @@ SioulWindow {
 
                                     // An old one says so: "less than three months old" is often asked.
                                     // "&" marks a shortcut in a menu: "&&" is one.
-                                    text: (paperLine.modelData.standing === "old" || paperLine.modelData.standing === "ended" ? paperLine.modelData.title + " — " + paperLine.modelData.line : paperLine.modelData.title).replace(/&/g, "&&")
+                                    text: compose.theme.plain((paperLine.modelData.standing === "old" || paperLine.modelData.standing === "ended" ? paperLine.modelData.title + " — " + paperLine.modelData.line : paperLine.modelData.title).replace(/&/g, "&&"))
                                     // Its path made an address as the file dialog's are: "#", "%" in a
                                     // name stay in it, and Windows' "C:\…" is read back whole.
                                     onTriggered: compose.attach([compose.theme.fileUrl(paperLine.modelData.file)])

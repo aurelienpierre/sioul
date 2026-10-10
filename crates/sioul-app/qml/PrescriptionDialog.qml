@@ -291,7 +291,7 @@ Dialog {
                             visible: !medicine.removed && form.width < 480 && !medicine.unfolded
                             flat: true
                             implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                            text: [medicine.generic, medicine.strength].filter(t => t.trim() !== "").join(" ") || form.sioul.text("health-row-precise") + "…"
+                            text: form.theme.plain([medicine.generic, medicine.strength].filter(t => t.trim() !== "").join(" ") || form.sioul.text("health-row-precise") + "…")
                             onClicked: {
                                 medicine.unfolded = true
                                 genericField.forceActiveFocus()

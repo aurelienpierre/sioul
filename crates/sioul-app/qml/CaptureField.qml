@@ -37,7 +37,7 @@ ColumnLayout {
         id: line
 
         Layout.fillWidth: true
-        placeholderText: capture.placeholder
+        placeholderText: capture.theme.plain(capture.placeholder)
         Accessible.name: capture.placeholder
         Keys.onEscapePressed: line.clear()
         onAccepted: {
@@ -76,6 +76,7 @@ ColumnLayout {
 
                     anchors.centerIn: parent
                     text: capture.sioul.text("chip-" + chip.modelData.kind) + "  " + (chip.modelData.kind === "kind" ? capture.sioul.text("task-kind-" + chip.modelData.value) : chip.modelData.value)
+                    textFormat: Text.PlainText
                     font.pixelSize: 12
                     color: capture.theme.text
                 }

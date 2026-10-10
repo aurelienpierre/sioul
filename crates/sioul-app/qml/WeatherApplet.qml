@@ -197,7 +197,7 @@ LineButton {
                     // Credited where shown, as its licence asks.
                     Label {
                         Layout.topMargin: 4
-                        text: "<a href=\"https://open-meteo.com/\">" + (applet.shown ? applet.shown.credit : "") + "</a>"
+                        text: "<a href=\"https://open-meteo.com/\">" + applet.theme.escaped(applet.shown ? applet.shown.credit : "") + "</a>"
                         textFormat: Text.RichText
                         font.pixelSize: 11
                         color: applet.theme.muted

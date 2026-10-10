@@ -92,7 +92,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(440, (parent ? parent.width : 440) - 2 * form.theme.gap)
-    title: form.mode === "add" ? (form.day ? form.sioul.textWith("need-add-title", "day", form.day.title) : "") : form.item && form.day ? form.item.name + "  ·  " + form.day.title : ""
+    title: form.theme.plain(form.mode === "add" ? (form.day ? form.sioul.textWith("need-add-title", "day", form.day.title) : "") : form.item && form.day ? form.item.name + "  ·  " + form.day.title : "")
 
     contentItem: GridLayout {
         columns: 2

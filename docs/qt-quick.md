@@ -215,6 +215,31 @@ A *resource file* (`.qrc`) lists files that the build compiles into the program;
 ## Words
 A page holds no sentence of its own (proper names and credits aside, such as `© OpenStreetMap`): every text is asked of Rust by its message's name, `sioul.text("stopped-done")`, `sioul.textWith("stopped-at", "when", card.stopped.when)`, `sioul.textArgs(…)`. The Qt way, `qsTr()`, is not used. How the messages are written: [fluent.md](fluent.md).
 
+## Words from outside, as plain text
+Qt guesses rich text. A `Text` or a `Label` left at `Text.AutoText`, the default, draws as HTML any string whose first tag looks like one; the controls (`Button`, `MenuItem`, `CheckBox`, `RadioButton`, `ItemDelegate`, `TabButton`, an `Action`, a `ToolTip`), the title of a `Dialog` or a `Menu`, a text field's `placeholderText` and a `ComboBox`'s list draw their words through such an item, with no `textFormat` to say otherwise. A name, a subject or an event's title holding `<img src="http://…">` then loads that picture from the network, which tells whoever chose the address that it was seen, when and from where; and a button holding it crashed the window (Qt 6.11). Words from outside are everywhere: a sender's name, a contact's or a list's, an event's title from a shared calendar, a folder's name from a server, a site's, a caller's. So every binding that draws words shows one of:
+- **fixed words**: a string, a number, a translation (`sioul.text(…)`), or `sioul.textWith(…)`/`sioul.textArgs(…)` whose values are fixed words themselves;
+- **words made plain**: `theme.plain(…)` (`Theme.qml`) puts a word joiner, U+2060, after each "<", so that Qt never takes one for a tag, and nothing shows of it; where a file has no theme, the same replacement is written out (`Icon.qml`, the menus of usual sites). In rich text on purpose (a link), words are escaped instead: `theme.escaped(…)`;
+- **a `Text` or a `Label` told `textFormat: Text.PlainText`**, the simplest for them, whatever its binding.
+
+Examples, as the pages write them:
+
+```qml
+Label {
+    text: row.modelData.name
+    textFormat: Text.PlainText
+}
+Button {
+    text: page.theme.plain(page.sioul.textWith("overlap-open", "title", openOne.modelData.title))
+}
+ComboBox {
+    textRole: "label"
+    valueRole: "id"
+    model: column.words.fields.map(f => Object.assign({}, f, { label: column.theme.plain(f.label) }))
+}
+```
+
+What a person types (a `TextField`, a `TextArea`) is plain text already, and kept as typed. Code that saves or sends reads the data, never the words a control draws (a `ComboBox`'s `currentText`): the word joiner would go with them (the form that makes a task list takes its account by its place in the list, `TasksPage.qml`). The few views that are rich on purpose (a message's HTML, made safe in Rust by `reading::safe_html`; Markdown made HTML by `compose::markdown_html`, which shows HTML written in it as words and a picture from elsewhere as a link) say why in a comment holding "rich on purpose:", on their line or the line above. `tools/check-plain-text.py` holds every page to this ("Checking QML", below), and `tst_plaintext.qml` shows Sioul's components such words while a stand-in web server notes what is asked of it: nothing is fetched, nothing crashes.
+
 ## A computer and a phone
 The same files serve both. What differs:
 - **The width**: `main.qml`'s `compact` is true below 720 pixels (a phone, or a narrow window). The places then come over the pages from the left (☰), and each page shows one pane at a time; a page that opened something (a message, a task) says so with `canGoBack`, and its `back()` closes it, which Android's Back calls. `theme.compact` narrows the margins.
@@ -255,7 +280,8 @@ The same files serve both. What differs:
 - **Every object made costs something later**: with Qt 6.11, each item shown, hidden or restacked makes Qt walk the window's whole tree at the next frame ([android.md](android.md#pages-and-scrolling)). Make as little as the page needs.
 
 ## Checking QML
-- **qmllint**, Qt's linter: `tools/lint-qml.sh`, after `cargo build -p sioul-app`. It lints the pages as one module, with the `qmldir` and the type description (`plugin.qmltypes`) the build wrote, so that qmllint knows Sioul's own types. Qt's documentation: [qmllint](https://doc.qt.io/qt-6/qtqml-tooling-qmllint.html).
+- **qmllint**, Qt's linter: `tools/lint-qml.sh`, after `cargo build --release -p sioul-app`. It lints the pages as one module, with the `qmldir` and the type description (`plugin.qmltypes`) the build wrote, so that qmllint knows Sioul's own types. Qt's documentation: [qmllint](https://doc.qt.io/qt-6/qtqml-tooling-qmllint.html).
+- **Words from outside drawn as plain text**: `tools/check-plain-text.py`, which `tools/lint-qml.sh` and `tools/final-pass.sh` run, needs no build. It reads each binding that draws words (`text:`, `title:`, `ToolTip.text:`, `placeholderText:`, a `ComboBox`'s `model:` by its `textRole`, `ToolTip.show(…)`, and words given in JavaScript, `label.text = …`, to an item named by its id) with a small parser of the JavaScript the pages use: a ternary is safe when both its branches are, `a + b` when both are, `x.map(v => …)` when what it maps to is, a comparison always; any other name or call is someone's words until made plain. A custom component is followed to its root type: a `Button` with a `contentItem` of its own draws its words itself, and is checked inside. It prints each binding that fails, `file:line: Type.property: expression`, and exits with 1 when there is one ("Words from outside, as plain text", above).
 - **Tests**: `tools/qml-test.sh` runs the QML tests of `crates/sioul-app/tests/qml/`, each component on a stand-in for Sioul, with Qt's QtTest; no build needed ([building.md](building.md#the-checks-before-a-commit)).
 - **Images of every page**: `tools/demo/run.sh <folder> en pages` starts the window on the demo profile, in a sandbox, shows each page in turn, saves it and quits (`SIOUL_GRAB`); another step list in place of `pages` acts in the window. It is the one way to start the window for a check ([building.md](building.md#running-the-window-for-a-check)).
 - **Qt's messages** (QML errors, warnings, `console.info`): Fedora's Qt sends them to the system journal; `QT_FORCE_STDERR_LOGGING=1` brings them back to the terminal. Each page's making time is logged as `sioul-perf: … made in … ms`.

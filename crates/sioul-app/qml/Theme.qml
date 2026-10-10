@@ -104,6 +104,11 @@ QtObject {
         return text === undefined || text === null ? "" : String(text).replace(/</g, "<\u2060")
     }
 
+    // Words put into rich text on purpose (a link): escaped, so that they stay words.
+    function escaped(text) {
+        return text === undefined || text === null ? "" : String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+
     // A file's path as a file:// address, each part escaped: "#", "?" or "%"
     // in a name stay in it; a Windows path ("C:\…") becomes file:///C:/…, a
     // network folder ("\\server\share") file://server/share, as the backend's

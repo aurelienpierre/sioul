@@ -257,6 +257,7 @@ Dialog {
                     visible: sheet.previewing
                     anchors.fill: parent
                     anchors.margins: 12
+                    // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
                     text: sheet.previewing ? sheet.theme.spaced(sheet.sioul.preview(memo.text).replace(/<a href=/g, '<a style="color:' + sheet.theme.accent + '" href=')) : ""
                     textFormat: TextEdit.RichText
                     readOnly: true
@@ -311,6 +312,7 @@ Dialog {
                             required property string modelData
 
                             Layout.fillWidth: true
+                            // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
                             text: sheet.theme.spaced(modelData.replace(/<a href=/g, '<a style="color:' + sheet.theme.accent + '" href='))
                             textFormat: TextEdit.RichText
                             readOnly: true
@@ -340,7 +342,7 @@ Dialog {
             Button {
                 id: closeButton
 
-                text: sheet.view ? sheet.view.close : ""
+                text: sheet.theme.plain(sheet.view ? sheet.view.close : "")
                 highlighted: true
                 onClicked: sheet.closeIt()
                 Keys.onReturnPressed: sheet.closeIt()

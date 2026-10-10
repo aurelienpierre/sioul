@@ -282,7 +282,7 @@ Rectangle {
                         text: number.modelData.number + "  " + number.modelData.label
                         Accessible.name: number.modelData.label + " " + number.modelData.number
                         ToolTip.visible: hovered && number.modelData.about !== ""
-                        ToolTip.text: number.modelData.about
+                        ToolTip.text: cover.theme.plain(number.modelData.about)
                         ToolTip.delay: 800
                         onClicked: Qt.openUrlExternally(number.modelData.url)
 
@@ -371,7 +371,7 @@ Rectangle {
                 Button {
                     visible: !cover.lightened
                     flat: true
-                    text: cover.back ? cover.back.lighten : ""
+                    text: cover.theme.plain(cover.back ? cover.back.lighten : "")
                     onClicked: {
                         cover.sioul.lightenTomorrow()
                         cover.lightened = true
@@ -383,7 +383,7 @@ Rectangle {
                 Layout.topMargin: 10
                 Layout.alignment: Qt.AlignHCenter
                 padding: 12
-                text: cover.back ? cover.back.go : ""
+                text: cover.theme.plain(cover.back ? cover.back.go : "")
                 onClicked: {
                     cover.back = null
                     cover.done()

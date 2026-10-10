@@ -631,7 +631,7 @@ Item {
                     display: AbstractButton.IconOnly
                     Accessible.name: page.sioul.text(page.byCategory ? "site-sort-category" : "site-sort-own")
                     ToolTip.visible: hovered
-                    ToolTip.text: Accessible.name
+                    ToolTip.text: page.theme.plain(Accessible.name)
                     ToolTip.delay: 600
                     onToggled: {
                         page.byCategory = checked
@@ -642,7 +642,7 @@ Item {
                     text: page.narrow ? "»" : "«"
                     Accessible.name: page.narrow ? page.sioul.text("site-column-widen") : page.sioul.text("site-column-narrow")
                     ToolTip.visible: hovered
-                    ToolTip.text: Accessible.name
+                    ToolTip.text: page.theme.plain(Accessible.name)
                     ToolTip.delay: 600
                     onClicked: {
                         page.narrow = !page.narrow
@@ -659,6 +659,7 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     text: page.filterWords
+                    textFormat: Text.PlainText
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
                     color: page.theme.muted
@@ -722,7 +723,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 6
                                 flat: true
-                                text: page.narrow ? "⋯" : page.sioul.textWith("site-later", "count", String(entry.modelData.count || 0)) + (page.laterShown ? "  ▾" : "  ▸")
+                                text: page.theme.plain(page.narrow ? "⋯" : page.sioul.textWith("site-later", "count", String(entry.modelData.count || 0)) + (page.laterShown ? "  ▾" : "  ▸"))
                                 font.pixelSize: 13
                                 onClicked: page.laterShown = !page.laterShown
                             }
@@ -756,7 +757,7 @@ Item {
                                     }
                                 }
                                 ToolTip.visible: page.narrow && hovered
-                                ToolTip.text: row.modelData.name || ""
+                                ToolTip.text: page.theme.plain(row.modelData.name || "")
                                 ToolTip.delay: 400
                                 Accessible.name: row.modelData.name || ""
 
@@ -808,6 +809,7 @@ Item {
                                         visible: !page.narrow
                                         Layout.fillWidth: true
                                         text: row.modelData.name || ""
+                                        textFormat: Text.PlainText
                                         elide: Text.ElideRight
                                         color: page.theme.text
                                     }
@@ -901,6 +903,7 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     text: page.opened ? page.opened.name : ""
+                    textFormat: Text.PlainText
                     font.pixelSize: 18
                     elide: Text.ElideRight
                     color: page.theme.text
@@ -1342,7 +1345,7 @@ Item {
                     }
                     ComboBox {
                         Layout.fillWidth: true
-                        model: deviceRow.names.map(n => n === "" ? page.sioul.text("site-device-system") : n)
+                        model: deviceRow.names.map(n => n === "" ? page.sioul.text("site-device-system") : page.theme.plain(n))
                         currentIndex: Math.max(0, deviceRow.names.indexOf(deviceRow.chosen))
                         onActivated: index => page.setCallDevice(deviceRow.which, deviceRow.names[index])
                     }
@@ -1499,7 +1502,7 @@ Item {
                 readonly property bool head: filterLine.modelData.head !== undefined
 
                 // Your categories may hold "&", a shortcut's mark in a menu: "&&" is one.
-                text: (filterLine.head ? filterLine.modelData.head : filterLine.modelData.text).replace(/&/g, "&&")
+                text: page.theme.plain((filterLine.head ? filterLine.modelData.head : filterLine.modelData.text).replace(/&/g, "&&"))
                 font.pixelSize: filterLine.head ? 12 : 15
                 enabled: !filterLine.head
                 checkable: !filterLine.head
@@ -1543,7 +1546,7 @@ Item {
 
                         required property var modelData
 
-                        title: regionsMenu.modelData.regions_name
+                        title: page.theme.plain(regionsMenu.modelData.regions_name)
 
                         Instantiator {
                             model: regionsMenu.modelData.regions
@@ -1917,7 +1920,7 @@ Item {
                     readonly property var choices: [{ code: "-", name: page.sioul.text("site-presets-everyone") }].concat(adding.offered.countries)
 
                     Layout.fillWidth: true
-                    model: choices.map(c => c.name)
+                    model: choices.map(c => page.theme.plain(c.name))
                     currentIndex: Math.max(0, choices.findIndex(c => c.code === (adding.offered.country || "-")))
                     onActivated: index => adding.load(choices[index].code, "")
                 }
@@ -1928,7 +1931,7 @@ Item {
 
                     visible: adding.country !== null && adding.country.regions.length > 0
                     Layout.fillWidth: true
-                    model: choices.map(r => r.name)
+                    model: choices.map(r => page.theme.plain(r.name))
                     currentIndex: Math.max(0, choices.findIndex(r => r.code === adding.offered.region))
                     onActivated: index => adding.load(adding.offered.country, choices[index].code)
                 }
@@ -1936,7 +1939,7 @@ Item {
                     readonly property var choices: [{ id: "", name: page.sioul.text("site-presets-all") }].concat(adding.offered.types.map(t => ({ id: "type:" + t, name: page.sioul.text("site-kind-" + t) }))).concat(adding.offered.categories.map(c => ({ id: "category:" + c, name: c })))
 
                     Layout.fillWidth: true
-                    model: choices.map(c => c.name)
+                    model: choices.map(c => page.theme.plain(c.name))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === adding.category))
                     onActivated: index => adding.category = choices[index].id
                 }
@@ -1986,6 +1989,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: preset.modelData.name
+                                textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 font.weight: Font.DemiBold
                                 color: page.theme.text
@@ -1993,6 +1997,7 @@ Item {
                             Label {
                                 Layout.fillWidth: true
                                 text: [preset.modelData.about, preset.modelData.categories.join(", "), preset.modelData.host, preset.modelData.calls === true ? page.sioul.text("site-presets-calls") : "", preset.modelData.kept ? page.sioul.text("site-presets-kept") : ""].filter(t => t !== "").join(" · ")
+                                textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 font.pixelSize: 12
                                 color: page.theme.muted

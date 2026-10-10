@@ -109,6 +109,7 @@ Popup {
 
             visible: text !== ""
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: popup.theme.warm
         }
