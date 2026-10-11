@@ -1190,7 +1190,7 @@ mod tests {
         // A phone screening calls: the calls' rows, voicemail, and the system's line.
         let phone = Reach { phone: true, calls: true, messages: true, screens: true, ..Reach::default() };
         let leisure = card_lines(&usual, &config, Column::Leisure, phone);
-        has(&leisure, "Mail, calls and messages from your safe senders come at once.");
+        has(&leisure, "Mail from your safe senders and calls and messages from your safe and neutral senders come at once.");
         assert!(leisure.iter().any(|l| l.starts_with("Calls from") && l.contains("voicemail")), "{leisure:#?}");
         assert_eq!(system_line(&usual, &config, Column::Leisure, phone), "The phone is not silenced.");
         let pause = system_line(&usual, &config, Column::Pause, phone);

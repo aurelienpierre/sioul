@@ -1499,14 +1499,14 @@ mod tests {
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from), "{frames:?}");
         let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), through: None, frames: Vec::new() }) };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
-        // The usual Calls matrix: safe all but sleep and the pause; neutral work and admin; restricted work; strangers never; hidden work and admin.
+        // The usual Calls matrix: safe all but sleep and the pause; neutral work, admin, leisure and meals; restricted work; strangers never; hidden work and admin.
         for (time, column, ringing) in [
             ("03:00", "sleep", vec![]),
-            ("08:00", "meals", vec!["safe"]),
+            ("08:00", "meals", vec!["safe", "neutral"]),
             ("10:00", "work", vec!["safe", "neutral", "restricted", "hidden"]),
-            ("12:30", "meals", vec!["safe"]),
+            ("12:30", "meals", vec!["safe", "neutral"]),
             ("14:10", "sleep", vec![]),
-            ("18:00", "leisure", vec!["safe"]),
+            ("18:00", "leisure", vec!["safe", "neutral"]),
             ("22:30", "sleep", vec![]),
         ] {
             let f = at_(time);
