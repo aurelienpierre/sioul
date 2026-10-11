@@ -64,8 +64,8 @@ Deux interrupteurs de plus ont chacun une ligne sous les cartes : **Laisser pa
 ## D’où vous partez {#presets}
 
 - **Comme Sioul le fait maintenant** : ce que décrit cette page.
-- **Plus calme** : le courrier de vos expéditeurs sûrs affiché sans notification pendant les loisirs et les repas ; les appels de vos contacts neutres et des numéros masqués sur la messagerie pendant les démarches ; les messages de vos expéditeurs sûrs retenus pendant le temps libre ; les rappels de dates, et les sites en temps réel, attendent pendant les loisirs et les repas.
-- **Plus joignable** : le courrier, les appels et les messages de vos contacts neutres tout de suite pendant les loisirs et les repas ; le courrier des inconnus affiché pendant les loisirs ; les numéros masqués sonnent pendant les loisirs ; les automates des autres applications tout de suite pendant le travail et les démarches.
+- **Plus calme** : le courrier de vos expéditeurs sûrs affiché sans notification pendant les loisirs et les repas ; les appels de vos contacts neutres sur la messagerie pendant les démarches, les loisirs et les repas, et leurs messages retenus pendant les loisirs et les repas ; les appels des numéros masqués sur la messagerie pendant les démarches ; les messages de vos expéditeurs sûrs retenus pendant le temps libre ; les rappels de dates, et les sites en temps réel, attendent pendant les loisirs et les repas.
+- **Plus joignable** : le courrier de vos contacts neutres tout de suite pendant les loisirs et les repas (leurs appels et leurs messages viennent déjà alors) ; le courrier des inconnus affiché pendant les loisirs ; les numéros masqués sonnent pendant les loisirs ; les automates des autres applications tout de suite pendant le travail et les démarches.
 
 Un préréglage ne touche jamais une case fixe. En choisir un alors que vous avez des changements à vous demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. »
 

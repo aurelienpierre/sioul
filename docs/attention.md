@@ -120,7 +120,7 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 - **Under do-not-disturb from its switch**: Sioul's reminder before an event comes (●); mail from someone Always through is told at once, at critical urgency on a computer; a safe sender's who is not on the list is shown, not told (◑); a safe caller goes to voicemail, the list's people ring.
 
 ## 3. The usual matrix
-What Sioul does unless you change it (`attention::usual`; the test `the_usual_matrix_as_decided` writes it out). W A L M S P F: Work, Admin, Leisure, Meals, Sleep, Pause, Free time; Y: Time for you; D: Do not disturb. **Bold**: fixed.
+What Sioul does unless you change it (`attention::usual`; since 11 October 2026, people of your address books (Neutral) call and write in your leisure and meals too: a friend's text on a weekend is not held until Monday; the test `the_usual_matrix_as_decided` writes it out). W A L M S P F: Work, Admin, Leisure, Meals, Sleep, Pause, Free time; Y: Time for you; D: Do not disturb. **Bold**: fixed.
 
 | Mail | W | A | L | M | S | P | F | Y | D |
 |---|---|---|---|---|---|---|---|---|---|
@@ -135,7 +135,7 @@ What Sioul does unless you change it (`attention::usual`; the test `the_usual_ma
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutral | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Strangers | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Hidden numbers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
@@ -145,7 +145,7 @@ What Sioul does unless you change it (`attention::usual`; the test `the_usual_ma
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutral | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Strangers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Groups | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
@@ -181,8 +181,8 @@ Each says only how it differs from **As Sioul does now** (`attention::Preset`):
 
 | Preset | Mail | Calls | Messages | Sioul's own |
 |---|---|---|---|---|
-| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral and hidden numbers: ○ in admin | safe: ○ in Free time | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
-| **More reachable** (« Plus joignable ») | neutral: ● in leisure and meals; strangers: ◑ in leisure | neutral: ● in leisure and meals; hidden numbers: ● in leisure | neutral: ● in leisure and meals | automatons: ● in work and admin |
+| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral: ○ in admin, leisure and meals; hidden numbers: ○ in admin | neutral: ○ in leisure and meals; safe: ○ in Free time | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
+| **More reachable** (« Plus joignable ») | neutral: ● in leisure and meals; strangers: ◑ in leisure | hidden numbers: ● in leisure | as usual | automatons: ● in work and admin |
 
 Choosing one writes every row as it says (`apply_preset`), never a lock. The tab asks first when your own changes would give way, and says "Yours: 3 changes from As Sioul does now", one press from going back.
 

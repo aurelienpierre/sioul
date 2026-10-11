@@ -472,7 +472,11 @@ pub fn usual(row: Row, column: Column) -> Level {
             _ => Later,
         },
         Row::People(Channel::Calls | Channel::Messages, Person::Safe) => if matches!(column, Sleep | Pause | Dnd) { Later } else { Now },
-        Row::People(Channel::Calls | Channel::Messages, Person::Neutral | Person::Hidden | Person::Groups) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
+        // People in your address books: at work and in your admin, and in your
+        // leisure and meals too (a friend's text on a weekend is not held until
+        // Monday); held while you sleep, pause or take free time.
+        Row::People(Channel::Calls | Channel::Messages, Person::Neutral) => if matches!(column, Work | Admin | Leisure | Meals | Slot) { Now } else { Later },
+        Row::People(Channel::Calls | Channel::Messages, Person::Hidden | Person::Groups) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
         Row::People(Channel::Messages, Person::Stranger) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
         Row::People(Channel::Calls | Channel::Messages, Person::Restricted) => if matches!(column, Work | Slot) { Now } else { Later },
         Row::People(Channel::Calls, Person::Stranger) => if column == Slot { Now } else { Later },
@@ -1467,7 +1471,8 @@ impl Preset {
             Preset::Usual => &[],
             Preset::Quieter => &[
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
-                (Row::People(Channel::Calls, Person::Neutral), &[Admin], Later),
+                (Row::People(Channel::Calls, Person::Neutral), &[Admin, Leisure, Meals], Later),
+                (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
                 (Row::People(Channel::Calls, Person::Hidden), &[Admin], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
                 (Row::Own(Kind::Dates), &[Leisure, Meals], Later),
@@ -2320,14 +2325,14 @@ mod tests {
             ("mail.blocked", "–––––––––"),
             ("calls.always", "●●●●●●●●●"),
             ("calls.safe", "●●●●○○●●○"),
-            ("calls.neutral", "●●○○○○○●○"),
+            ("calls.neutral", "●●●●○○○●○"),
             ("calls.restricted", "●○○○○○○●○"),
             ("calls.stranger", "○○○○○○○●○"),
             ("calls.hidden", "●●○○○○○●○"),
             ("calls.blocked", "–––––––––"),
             ("messages.always", "●●●●●●●●●"),
             ("messages.safe", "●●●●○○●●○"),
-            ("messages.neutral", "●●○○○○○●○"),
+            ("messages.neutral", "●●●●○○○●○"),
             ("messages.restricted", "●○○○○○○●○"),
             ("messages.stranger", "●●○○○○○●○"),
             ("messages.groups", "●●○○○○○●○"),
@@ -2588,7 +2593,8 @@ mod tests {
         // Q13: a chat site naming someone your cards know: their row, which may only hold more.
         let site = |named: Option<Who>, now: &Now| a.decide(&Event::of(Source::Site { call: false, live: true, named }), now);
         assert!(site(None, &Now::time(Column::Leisure)).told);
-        assert!(!site(Some(Who::Neutral), &Now::time(Column::Leisure)).told, "a neutral person in your leisure waits");
+        assert!(site(Some(Who::Neutral), &Now::time(Column::Leisure)).told, "someone of your address books comes in your leisure");
+        assert!(!site(Some(Who::Neutral), &Now::time(Column::Sleep)).told, "and waits while you sleep");
         assert!(site(Some(Who::Safe), &Now::time(Column::Leisure)).told);
         assert_eq!(site(Some(Who::Blocked), &Now::time(Column::Work)).level, Level::Never);
     }
@@ -2673,8 +2679,9 @@ mod tests {
     fn declined_calls_are_listed_by_their_calls_row() {
         let a = Attention::usual();
         let (work, admin, leisure) = (Now::time(Column::Work), Now::time(Column::Admin), Now::time(Column::Leisure));
-        // The neutral when they may ring; before, in work and admin time too, by their Mail row (the same here).
-        assert!(a.listed(Person::Neutral, false, &work) && a.listed(Person::Neutral, false, &admin) && !a.listed(Person::Neutral, false, &leisure));
+        // The neutral when they may ring: work, admin, and your leisure too.
+        assert!(a.listed(Person::Neutral, false, &work) && a.listed(Person::Neutral, false, &admin) && a.listed(Person::Neutral, false, &leisure));
+        assert!(!a.listed(Person::Neutral, false, &Now::time(Column::Sleep)));
         // The safe in leisure, as they ring then; Always through at any time; the blocked never.
         assert!(a.listed(Person::Safe, false, &leisure) && a.listed(Person::Stranger, true, &Now::time(Column::Sleep)));
         assert!(!a.listed(Person::Blocked, true, &work));

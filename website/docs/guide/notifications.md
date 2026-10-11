@@ -64,8 +64,8 @@ Two more switches have a line each under the cards: **Let every call through**, 
 ## Where you start from {#presets}
 
 - **As Sioul does now**: what this page describes.
-- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; neutral contacts' and hidden numbers' calls to voicemail in admin time; your safe senders' messages held in Free time; reminders of dates, and sites in real time, wait in leisure and meals.
-- **More reachable**: neutral contacts' mail, calls and messages at once in leisure and meals; strangers' mail shown in leisure; hidden numbers ring in leisure; other apps' automatons at once in work and admin.
+- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; neutral contacts' calls to voicemail in admin time, leisure and meals, and their messages held in leisure and meals; hidden numbers' calls to voicemail in admin time; your safe senders' messages held in Free time; reminders of dates, and sites in real time, wait in leisure and meals.
+- **More reachable**: neutral contacts' mail at once in leisure and meals (their calls and messages come then already); strangers' mail shown in leisure; hidden numbers ring in leisure; other apps' automatons at once in work and admin.
 
 A preset never touches a fixed cell. Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are."
 
