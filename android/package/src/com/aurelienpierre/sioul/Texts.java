@@ -43,7 +43,9 @@ import org.json.JSONObject;
  * and a text to send (TextSend), whether the phone's texts changed since the
  * last look and whether it charges (`changes`). Heard: a new text, which
  * brings a step soon. The background service watches Android's provider of
- * texts (`watch`): the import asks Android only when they changed.
+ * texts (`watch`): the import asks Android only when they changed, and a
+ * message received (a multimedia one too, once downloaded) brings a step
+ * soon, as a new text does.
  */
 public final class Texts
 {
@@ -57,6 +59,9 @@ public final class Texts
     private static final AtomicBoolean changed = new AtomicBoolean(true);
     /** Android's provider of texts watched in this process (the background service's); null: not watched here. */
     private static ContentObserver watching;
+    /** The newest message received, by the provider's id, of each table (SMS, MMS), as the watch last saw it; -1: not read yet. */
+    private static long newestSms = -1;
+    private static long newestMms = -1;
 
     private Texts()
     {
@@ -65,17 +70,23 @@ public final class Texts
     /**
      * Android's provider of texts watched in this process (the background
      * service's), once READ_SMS is given: a text received, sent, deleted or
-     * read marks them changed. Asked again at each step until it holds.
+     * read marks them changed, read at the next step; a message received (its
+     * newest id grown, a multimedia one once downloaded) brings a step soon,
+     * as SMS_RECEIVED does (`Heard`), so that it reaches your computers
+     * within the minute. Asked again at each step until it holds.
      */
     static synchronized void watch(Context context)
     {
         if (watching != null || !allowed(context, Manifest.permission.READ_SMS))
             return;
+        final Context app = context.getApplicationContext();
         ContentObserver observer = new ContentObserver(null) {
             @Override
             public void onChange(boolean self)
             {
                 changed.set(true);
+                if (arrived(app))
+                    StepService.soon(app);
             }
         };
         try {
@@ -84,9 +95,48 @@ public final class Texts
                 resolver.registerContentObserver(uri, true, observer);
             watching = observer;
             changed.set(true);
+            // The messages there now: none of them brings a step.
+            arrived(app);
         } catch (RuntimeException e) {
             context.getContentResolver().unregisterContentObserver(observer);
             Log.w(TAG, "Texts: the texts cannot be watched: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Whether a message was received since the watch last looked: the newest
+     * id of either inbox grew (`grew`); the newest ones kept. Nothing of them
+     * is read but their ids.
+     */
+    static boolean arrived(Context context)
+    {
+        long sms = newest(context, Telephony.Sms.Inbox.CONTENT_URI);
+        long mms = newest(context, Telephony.Mms.Inbox.CONTENT_URI);
+        synchronized (Texts.class) {
+            boolean grown = grew(newestSms, sms) || grew(newestMms, mms);
+            newestSms = Math.max(newestSms, sms);
+            newestMms = Math.max(newestMms, mms);
+            return grown;
+        }
+    }
+
+    /**
+     * Whether an inbox's newest id grew: read before (not -1), larger now (a
+     * box that could not be read now says -1: no). Pure:
+     * android/jvm-checks/StepsCheck.java.
+     */
+    static boolean grew(long before, long now)
+    {
+        return before >= 0 && now > before;
+    }
+
+    /** The newest id in an inbox (the provider's own order), 0 when it is empty, -1 when it cannot be read. */
+    private static long newest(Context context, Uri box)
+    {
+        try (Cursor cursor = context.getContentResolver().query(box, new String[] { "_id" }, null, null, "_id DESC")) {
+            return cursor != null && cursor.moveToFirst() ? cursor.getLong(0) : 0;
+        } catch (RuntimeException e) {
+            return -1;
         }
     }
 

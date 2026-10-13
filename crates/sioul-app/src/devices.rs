@@ -19,12 +19,19 @@
 //!   the session: a phone's background service exporting in its own process
 //!   never undoes the window's.
 //!
+//! - A computer also says whether a person is at it (`active`): input within
+//!   ten minutes and its session unlocked, as its system says, or a press in
+//!   Sioul's window or of do-not-disturb's switch, which counts at once. A
+//!   phone's background steps slow down while nobody is at any computer
+//!   (`others_in_use`); where the system says nothing of it, Sioul running
+//!   counts, as before.
+//!
 //! A crash leaves it up: your other devices then say they cannot tell what
 //! was marked here, until it starts again or you say it is off.
 
 use sioul_sync::devices::{COMPUTER, Entry, PHONE};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 /// The sessions open in this process: the window's, and receivers at work.
 struct Sessions {
@@ -127,14 +134,73 @@ pub(crate) fn window_opened() {
     raise();
 }
 
-/// Up, said; a session found up already owes an export.
+/// Up, said; a session found up already owes an export. A computer says
+/// too whether someone is at it (`active_here`).
 fn raise() {
+    let active = active_here();
     write(|entry| {
         if entry.working {
             recorded();
         }
         entry.start(now());
+        entry.active = active;
     });
+}
+
+/// When a press was last made in Sioul on this computer: in its window, or
+/// of do-not-disturb's switch (Unix seconds; 0, none in this process).
+static PRESSED: AtomicI64 = AtomicI64::new(0);
+/// This computer's entry last said nobody is at it (`Entry::active` false).
+static AWAY: AtomicBool = AtomicBool::new(false);
+
+/// A press in Sioul's window (cpp/application.cpp), or of do-not-disturb's
+/// switch (`everywhere::press`), on this computer: a person is at it, whatever
+/// its system says of input, for ten minutes (`sioul_sync::power::present_of`).
+/// Its entry said nobody was: an exchange now says someone is, at once
+/// (`share::exchange_soon`), so that a phone's steps quicken from its next look.
+pub(crate) fn pressed() {
+    PRESSED.fetch_max(now(), Ordering::SeqCst);
+    if AWAY.swap(false, Ordering::SeqCst) {
+        crate::share::exchange_soon();
+    }
+}
+
+/// A press in Sioul's window, from its event filter (cpp/application.cpp),
+/// a few seconds apart at most: `pressed`.
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub extern "C" fn sioul_window_pressed() {
+    let _ = std::panic::catch_unwind(pressed);
+}
+
+/// Whether a person is at this device now, for its entry (`Entry::active`):
+/// on a phone, unsaid (in use only while Sioul is on its screen); on a
+/// computer, as `active_of` reads its session (asked at most every thirty
+/// seconds) and the last press in Sioul.
+fn active_here() -> Option<bool> {
+    if cfg!(target_os = "android") {
+        return None;
+    }
+    static ASKED: Mutex<Option<(std::time::Instant, sioul_sync::power::Session)>> = Mutex::new(None);
+    let kept = ASKED.lock().ok().and_then(|asked| asked.filter(|(at, _)| at.elapsed() < std::time::Duration::from_secs(30)).map(|(_, session)| session));
+    let session = kept.unwrap_or_else(|| {
+        let session = sioul_sync::power::session();
+        if let Ok(mut asked) = ASKED.lock() {
+            *asked = Some((std::time::Instant::now(), session));
+        }
+        session
+    });
+    active_of(false, session, PRESSED.load(Ordering::SeqCst), now())
+}
+
+/// `active_here`, from what was read: a phone, its session as its system
+/// says it, when Sioul was last pressed here (Unix seconds, 0 never), now.
+fn active_of(phone: bool, session: sioul_sync::power::Session, pressed: i64, now: i64) -> Option<bool> {
+    if phone {
+        return None;
+    }
+    let ago = (pressed > 0).then(|| std::time::Duration::from_secs(now.saturating_sub(pressed).max(0) as u64));
+    sioul_sync::power::present_of(session, ago)
 }
 
 /// Down, said, the last step of a session, once all it recorded went out;
@@ -218,10 +284,15 @@ pub(crate) fn exported(outcome: &sioul_sync::share::Outcome) {
         return;
     }
     EXPORTED.fetch_max(outcome.looked, Ordering::SeqCst);
+    // A computer says whether someone is at it now: nobody, and its entry goes
+    // out every few minutes only (`sioul_sync::devices::AWAY_RESTATED`).
+    let active = active_here();
+    AWAY.store(active == Some(false), Ordering::SeqCst);
     let first = std::sync::atomic::AtomicBool::new(false);
     write(|entry| {
         first.store(entry.working && entry.exported < entry.started, std::sync::atomic::Ordering::Relaxed);
         entry.exported(outcome.looked, outcome.wrote, now());
+        entry.active = active;
     });
     if first.load(std::sync::atomic::Ordering::Relaxed) && !in_receiver() {
         crate::share::nudge_carriers();
@@ -237,12 +308,12 @@ pub(crate) fn left() {
 }
 
 /// Whether another device says it is in use, with an export dated lately
-/// (`FRESH` and `SKEW`): for the rhythm of a phone's background service only;
-/// the doses' knowing is `health::know`'s.
+/// (`FRESH` and `SKEW`), and, a computer, with someone at it
+/// (`sioul_sync::devices::others_in_use`): for the rhythm of a phone's
+/// background service only; the doses' knowing is `health::know`'s.
 pub(crate) fn others_in_use() -> bool {
     let Some((id, Some((folder, key)))) = crate::share::vault() else { return false };
-    let now = now();
-    sioul_sync::devices::all(&folder, &key).0.iter().any(|e| e.id != id && e.working && !e.left && now - e.exported <= sioul_core::health::FRESH + sioul_core::health::SKEW)
+    sioul_sync::devices::others_in_use(&sioul_sync::devices::all(&folder, &key).0, &id, now())
 }
 
 /// A device's kind ("phone", "computer") and name, from its entry in the
@@ -272,5 +343,33 @@ mod tests {
         assert!(!doses_said(true, true), "held: its doses said not shared");
         assert!(may_lower(went_out(recorded, exported), false) && doses_said(true, false), "not held: as before");
         assert!(!may_lower(went_out(5, 3), false), "an answer recorded and not exported keeps it up, as before");
+    }
+
+    /// A press in Sioul (its window, do-not-disturb's switch) makes this
+    /// computer active at once, whatever its system says of input, for ten
+    /// minutes; its session locked, nobody; its system saying nothing,
+    /// unsaid (Sioul running counts, as before); a phone says nothing of it.
+    #[test]
+    fn a_press_makes_this_computer_active_at_once() {
+        use sioul_sync::power::Session;
+        let now = 1_800_000_000;
+        let idle = Session { since_input: Some(std::time::Duration::from_secs(2 * 3600)), locked: false };
+        assert_eq!(active_of(false, idle, 0, now), Some(false), "two hours without input: nobody");
+        assert_eq!(active_of(false, idle, now - 2, now), Some(true), "a press two seconds ago: someone, at once");
+        assert_eq!(active_of(false, idle, now - 600, now), Some(false), "ten minutes on: the system's word again");
+        assert_eq!(active_of(false, Session { since_input: Some(std::time::Duration::from_secs(30)), locked: false }, 0, now), Some(true));
+        assert_eq!(active_of(false, Session { locked: true, ..idle }, now, now), Some(false), "locked: nobody");
+        assert_eq!(active_of(false, Session::default(), 0, now), None, "the system says nothing: unsaid");
+        assert_eq!(active_of(true, idle, now, now), None, "a phone says nothing of it");
+        // `pressed` keeps the time, nothing else at hand (no window, no exchange asked).
+        pressed();
+        assert!(super::now() - PRESSED.load(Ordering::SeqCst) < 5);
+        // Do-not-disturb's switch and the window's presses both say it (read from the sources).
+        let source = |path: &str| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
+        let everywhere = source("src/everywhere.rs");
+        let press_via = everywhere.split("fn press_via(").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(press_via.contains("crate::devices::pressed();"), "a press of the switch counts at once");
+        let application = source("cpp/application.cpp");
+        assert!(application.contains("installEventFilter(new Presses(application))") && application.contains("sioul_window_pressed();"), "a press in the window counts at once");
     }
 }

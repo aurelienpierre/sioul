@@ -175,7 +175,7 @@ fn decide(json: &str) -> String {
     let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
     let hash = appnotes::key_hash(&posted.key);
     let path = Ledger::default_path();
-    let decision = sioul_core::filelock::with_lock(&path, || {
+    let (decision, released) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let returning = ledger.returning(&hash, stamp);
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
@@ -192,29 +192,42 @@ fn decide(json: &str) -> String {
                 held.again = again;
             }
         }
+        // Back at its time and let come: one released, said in the log with what is still held.
+        let mut released = None;
         if returning && decision.until.is_none() {
+            let kind = ledger.held.get(&hash).map_or("other apps", kind_of);
             ledger.came_back(&hash, stamp);
+            let mut counted = vec![Counted { kind, until: None, why: decision.why }];
+            counted.extend(ledger.held.values().filter(|h| h.until > stamp).map(|h| Counted::held(h, h.until)));
+            released = Some(counted);
         }
         ledger.note(&posted, &kind, who, admitted, area, &decision, stamp);
         ledger.forget_old(stamp, &choices);
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        decision
+        (decision, released)
     });
     // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`).
     let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
-    json!({ "hold": hold, "why": decision.why.id(), "shared": shared }).to_string()
+    let mut answer = json!({ "hold": hold, "why": decision.why.id(), "shared": shared });
+    if let Some(counted) = released {
+        answer["line"] = json!(log_line("release", &counted, &columns_now(&live, &now, slot(&now), gate.is_some()), &now));
+    }
+    answer.to_string()
 }
 
 /// What Android holds for Sioul now, worked out again (`AppNotes.review`):
-/// {"snooze": [{"key", "ms"}]}, those whose time moved by more than a minute
-/// (1 s: it may come now). Marks of notifications Android no longer holds
+/// {"snooze": [{"key", "ms"}], "line"}, those whose time moved by more than a
+/// minute (1 s: it may come now), and the line the listener writes in the
+/// phone's log (`log_line`). Marks of notifications Android no longer holds
 /// (their app took them away, or they came back unseen) are let go.
 fn review(json: &str) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
     let keys: Vec<String> = asked["snoozed"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    // Why the review runs, as Java says it ("files", "connected"): a word of its own, never a name.
+    let reason: String = asked["reason"].as_str().unwrap_or_default().chars().filter(char::is_ascii_lowercase).take(16).collect();
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let now = Zoned::now();
@@ -228,17 +241,20 @@ fn review(json: &str) -> String {
     let attention = sioul_core::attention::Attention::of(&config);
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     let path = Ledger::default_path();
-    let again = sioul_core::filelock::with_lock(&path, || {
+    let (again, counted) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let present: std::collections::BTreeSet<String> = keys.iter().map(|k| appnotes::key_hash(k)).collect();
         ledger.held.retain(|hash, held| present.contains(hash) || stamp - held.since < 60);
         let mut again = Vec::new();
+        let mut counted = Vec::new();
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
-            let until = appnotes::again(&held, &choices, &ask).until.unwrap_or(stamp);
+            let decided = appnotes::again(&held, &choices, &ask);
+            let until = decided.until.unwrap_or(stamp);
+            counted.push(Counted { why: decided.why, ..Counted::held(&held, until) });
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
                     kept.until = until;
@@ -250,9 +266,91 @@ fn review(json: &str) -> String {
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        again
+        (again, counted)
     });
-    json!({ "snooze": again }).to_string()
+    let event = if reason.is_empty() { "review".to_string() } else { format!("review ({reason})") };
+    let line = log_line(&event, &counted, &columns_now(&live, &now, slot(&now), gate.is_some()), &now);
+    json!({ "snooze": again, "line": line }).to_string()
+}
+
+// ---------------------------------------------------------------- the log
+
+/// A notification Sioul holds, as the listener's log line counts it
+/// (`log_line`): the kind of its channel, until when it waits (none, or a
+/// time past: it comes now), and why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Counted {
+    kind: &'static str,
+    until: Option<i64>,
+    why: Why,
+}
+
+impl Counted {
+    /// As the ledger keeps it, waiting until `until`: held for good (the
+    /// blocked, a conversation set to never) or until its time.
+    fn held(held: &appnotes::Held, until: i64) -> Counted {
+        Counted { kind: kind_of(held), until: Some(until), why: if held.kind == "never" { Why::Never } else { Why::Waiting } }
+    }
+}
+
+/// The kind of channel a held notification came on, as the log says it:
+/// calls, messages, mail, or other apps (an automaton's, an app set to come
+/// at once); never its app nor who wrote.
+fn kind_of(held: &appnotes::Held) -> &'static str {
+    match held.via.as_str() {
+        "calls" => "calls",
+        "messages" => "messages",
+        "mail" => "mail",
+        _ => "other apps",
+    }
+}
+
+/// What reaches you now, as the matrix reads it: the time's column (or two,
+/// work and admin at once), then its layers, a slot of time for you and
+/// do-not-disturb (its switch or a focus session).
+fn columns_now(live: &Live, now: &Zoned, slot: bool, dnd: bool) -> Vec<&'static str> {
+    use sioul_core::attention::Column;
+    let moment = sioul_core::attention::Now::of(&live.clock.mode(now)).layers(slot, dnd);
+    let mut columns: Vec<&'static str> = moment.times.iter().map(|c| c.id()).collect();
+    if moment.slot {
+        columns.push(Column::Slot.id());
+    }
+    if moment.dnd {
+        columns.push(Column::Dnd.id());
+    }
+    columns
+}
+
+/// The listener's line in the phone's log (`adb logcat -s sioul`), at each
+/// review of what is held and at each release (docs/android.md,
+/// "Notifications from other apps"): how many notifications are held, and how
+/// many come now, by the kind of their channel; why, the matrix's column now
+/// and its layers ("leisure + dnd"), or Always through when that let one come;
+/// when the next one comes back. Never a name, a number, an app nor a word of
+/// a message: kinds, counts and times only.
+fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> String {
+    let stamp = now.timestamp().as_second();
+    let (released, held): (Vec<&Counted>, Vec<&Counted>) = counted.iter().partition(|c| c.until.is_none_or(|until| until <= stamp));
+    let by_kind = |items: &[&Counted]| {
+        let kinds: Vec<String> = ["calls", "messages", "mail", "other apps"].iter().map(|kind| (kind, items.iter().filter(|c| c.kind == *kind).count())).filter(|(_, n)| *n > 0).map(|(kind, n)| format!("{kind} {n}")).collect();
+        if kinds.is_empty() { items.len().to_string() } else { format!("{} ({})", items.len(), kinds.join(", ")) }
+    };
+    let why = if released.iter().any(|c| c.why == Why::Always) {
+        "Always through".to_string()
+    } else if columns.is_empty() {
+        "unknown".to_string()
+    } else {
+        columns.join(" + ")
+    };
+    // Held for good (the blocked, a conversation set to never) comes back at no time of the matrix's.
+    let next = held.iter().filter(|c| c.why != Why::Never).filter_map(|c| c.until).min();
+    let next = match next.and_then(|at| jiff::Timestamp::from_second(at).ok()).map(|t| t.to_zoned(now.time_zone().clone())) {
+        None => "none".to_string(),
+        Some(at) if at.date() == now.date() => at.strftime("%H:%M").to_string(),
+        Some(at) if now.date().tomorrow().is_ok_and(|tomorrow| tomorrow == at.date()) => at.strftime("tomorrow %H:%M").to_string(),
+        Some(at) => at.strftime("%Y-%m-%d %H:%M").to_string(),
+    };
+    format!("Notes: {event}: held {}; released {}; why: {why}; next release {next}.", by_kind(&held), by_kind(&released))
 }
 
 /// `decide`, for Java (android/main.cpp); a panic answers "null", and the
@@ -607,6 +705,44 @@ mod tests {
         // Nothing seen, nothing set: no table.
         let (none, more) = by_time(&sioul_core::attention::Attention::usual(), &Ledger::default(), &Choices::default());
         assert!(none["rows"].as_array().unwrap().is_empty() && !more);
+    }
+
+    /// The listener's line in the phone's log: how many are held and how many
+    /// come now, by the kind of their channel, why (the matrix's column and
+    /// layers, or Always through), and the next release; never a name, a
+    /// number, an app nor a conversation, whatever the ledger holds.
+    #[test]
+    fn the_log_line_says_kinds_counts_and_times_only() {
+        let now: Zoned = "2026-10-11T21:30:00+02:00[Europe/Paris]".parse().unwrap();
+        let stamp = now.timestamp().as_second();
+        let held = |app: &str, label: &str, via: &str, who: &str, conversation: &str, kind: &str, until: i64| appnotes::Held { app: app.into(), label: label.into(), kind: kind.into(), via: via.into(), who: who.into(), conversation: conversation.into(), since: stamp - 3_600, until, ..Default::default() };
+        let ledger = [
+            held("org.example.chat", "Chat de Noa", "messages", "safe", "c0ffee12", "people", stamp + 30 * 60),
+            held("org.example.chat", "Chat de Noa", "messages", "neutral", "c0ffee13", "people", stamp + 9 * 3_600 + 30 * 60),
+            held("org.example.mail", "Courrier 01 99 00", "mail", "stranger", "", "people", stamp + 10 * 3_600),
+            held("org.example.news", "Actualités", "", "", "", "gathered", stamp + 11 * 3_600),
+            held("org.example.spam", "Bloqué", "messages", "blocked", "", "never", stamp + 7 * 86_400),
+        ];
+        let counted: Vec<Counted> = ledger.iter().map(|h| Counted::held(h, h.until)).collect();
+        let review = log_line("review (files)", &counted, &["leisure", "dnd"], &now);
+        assert_eq!(review, "Notes: review (files): held 5 (messages 3, mail 1, other apps 1); released 0; why: leisure + dnd; next release 22:00.");
+        // One come back by Always through, the rest still held; the next release tomorrow (held for good aside).
+        let mut released = vec![Counted { kind: "messages", until: None, why: Why::Always }];
+        released.extend(counted.iter().skip(1).copied());
+        let release = log_line("release", &released, &["sleep"], &now);
+        assert_eq!(release, "Notes: release: held 4 (messages 2, mail 1, other apps 1); released 1 (messages 1); why: Always through; next release tomorrow 07:00.");
+        // A review that lets one come at its time (a pause over): released now, the column why.
+        let mut over = counted.clone();
+        over[3].until = Some(stamp);
+        assert!(log_line("review (files)", &over, &["leisure"], &now).contains("released 1 (other apps 1); why: leisure;"));
+        // Nothing held: said so, with the columns now.
+        assert_eq!(log_line("review (connected)", &[], &["work", "admin"], &now), "Notes: review (connected): held 0; released 0; why: work + admin; next release none.");
+        // Never a name, a number, an app, a conversation nor who wrote.
+        for line in [review, release] {
+            for private in ["org.example", "Noa", "Courrier", "01 99 00", "Actualités", "Bloqué", "c0ffee", "safe", "neutral", "stranger", "blocked"] {
+                assert!(!line.contains(private), "{line} says {private}");
+            }
+        }
     }
 
     #[test]
