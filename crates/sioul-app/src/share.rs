@@ -2168,7 +2168,7 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
         phone,
         // On the phone's screen: the window's process only, the background service's never.
         shown: !crate::steps::in_service() && SHOWN.load(std::sync::atomic::Ordering::Relaxed),
-        in_use: phone && crate::devices::others_in_use(),
+        in_use: phone && crate::devices::others_in_use(asleep),
         urgent,
         step: if asleep { crate::steps::STEP_ASLEEP } else { crate::steps::STEP_AWAKE },
     };

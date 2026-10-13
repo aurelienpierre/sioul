@@ -19,14 +19,14 @@
 //!
 //! Written into the folder only when the others need it (`change`): at each
 //! export while the device is in use (`working`: the doses need its exports
-//! fresh, `sioul_core::health::FRESH`), every few minutes only while a
-//! computer in use says nobody is at it (`active`, `AWAY_RESTATED`), when
+//! fresh, `sioul_core::health::FRESH`), whether someone is at it or not, so
+//! that the server, which sees when the file changes, cannot tell when
+//! someone sits at a computer (`active` is sealed with the rest); when
 //! anything else it says changes (its session, how far it wrote, whether it
-//! shares its doses, whether someone is at it, its build), when the folder's
-//! copy is not the one it wrote, and once an hour (`RESTATED`). A device put
-//! away whose exchanges find nothing new writes nothing there: a phone's
-//! background step every few minutes would otherwise rewrite it, and its sync
-//! app send it, each time.
+//! shares its doses, its build), when the folder's copy is not the one it
+//! wrote, and once an hour (`RESTATED`). A device put away whose exchanges
+//! find nothing new writes nothing there: a phone's background step every few
+//! minutes would otherwise rewrite it, and its sync app send it, each time.
 //!
 //! The identity is the sharing's own (`share::Here::id`, a UUID made once per
 //! machine), never the host name, which can change or be another's too.
@@ -89,9 +89,9 @@ pub struct Entry {
     /// within ten minutes, its session unlocked, or a press in Sioul:
     /// `power::present_of`). None when unsaid: a phone (in use only while
     /// Sioul is on its screen), a computer whose system says nothing of it, an
-    /// older Sioul; then Sioul running counts as someone at it, as before. A
-    /// phone's background steps slow down while nobody is at any computer
-    /// (`others_in_use`); the doses never read it (`said`).
+    /// older Sioul; then Sioul running counts as someone at it, as before.
+    /// While you sleep, a phone's background steps slow down when nobody is
+    /// at any computer (`others_in_use`); the doses never read it (`said`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active: Option<bool>,
     /// It stopped sharing: it counts no more.
@@ -236,26 +236,19 @@ pub(crate) fn in_use(memory: &Path) -> bool {
 /// far it wrote, both written at once.
 pub const RESTATED: i64 = 60 * 60;
 
-/// How long a computer in use with nobody at it (`Entry::active` false)
-/// leaves its entry in the folder as it is, at most, while only the times of
-/// its exchanges change (seconds). Its window exports each minute, so the
-/// entry goes out every three minutes or so, within the doses' freshness: a
-/// device in use is known only while its export is at most
-/// `sioul_core::health::FRESH` (five minutes) old where it is read. With
-/// someone at it, every export goes out, as before.
-pub const AWAY_RESTATED: i64 = 150;
-
 /// Whether another device than `own` is in use, for the rhythm of a phone's
 /// background steps (`steps::next_step`) and of its pulls: in use, still
-/// sharing, its export dated lately (`FRESH`, `SKEW`), and someone at it. A
-/// computer that says nobody is at it (`Entry::active`) does not count: left
-/// on at night with Sioul in its tray, it no longer makes the phone step every
-/// two minutes. One that says nothing of it (an older Sioul, a system that
-/// cannot tell) counts by Sioul running, as before. The doses' knowing is
-/// `sioul_core::health`'s, never this.
-pub fn others_in_use(entries: &[Entry], own: &str, now: i64) -> bool {
+/// sharing, its export dated lately (`FRESH`, `SKEW`). While you are awake, a
+/// computer counts while its Sioul runs, whoever is at it, as before; while
+/// you sleep (`asleep`), only with someone at it: one that says nobody is
+/// (`Entry::active`) does not count, so that a computer left on at night with
+/// Sioul in its tray no longer makes the phone step every two minutes. One
+/// that says nothing of it (an older Sioul, a system that cannot tell) counts
+/// by Sioul running, as before. The doses' knowing is `sioul_core::health`'s,
+/// never this.
+pub fn others_in_use(entries: &[Entry], own: &str, now: i64, asleep: bool) -> bool {
     use sioul_core::health::{FRESH, SKEW};
-    entries.iter().any(|e| e.id != own && e.working && !e.left && now - e.exported <= FRESH + SKEW && e.active != Some(false))
+    entries.iter().any(|e| e.id != own && e.working && !e.left && now - e.exported <= FRESH + SKEW && (!asleep || e.active != Some(false)))
 }
 
 /// What this device last wrote into the folder, kept beside its own entry and
@@ -321,18 +314,11 @@ pub(crate) fn change_at(path: &Path, vault: Option<(&Path, &[u8; 32])>, now: i64
             let said = steady(&entry);
             let there = folder.display().to_string();
             let last: Option<Published> = std::fs::read_to_string(published_path(path)).ok().and_then(|t| toml::from_str(&t).ok());
-            // How long the folder's copy may stay as it is while only the times of the
-            // exchanges change: in use, with someone at it or unsaid, not at all (every
-            // export goes out); in use with nobody at it, `AWAY_RESTATED`; put away, `RESTATED`.
-            let every = match (entry.working, entry.active) {
-                (true, Some(false)) => AWAY_RESTATED,
-                (true, _) => 0,
-                (false, _) => RESTATED,
-            };
-            // As the others last read it: the same words, the folder's copy the one written, within that while.
+            // As the others last read it: the same words, the folder's copy the one written, within the hour.
             let mark = sealed_with(key);
-            let current = last.is_some_and(|last| last.said == said && last.folder == there && last.key == mark && stamp_of(&file) == Some((last.size, last.modified)) && (0..every).contains(&(now - last.at)));
-            if !current {
+            let current = last.is_some_and(|last| last.said == said && last.folder == there && last.key == mark && stamp_of(&file) == Some((last.size, last.modified)) && (0..RESTATED).contains(&(now - last.at)));
+            // In use, every export goes out, someone at it or not: one cadence, which says nothing of who is there.
+            if entry.working || !current {
                 publish(folder, key, &entry)?;
                 let (size, modified) = stamp_of(&file).unwrap_or_default();
                 let published = Published { said, folder: there, key: mark, size, modified, at: now };
@@ -537,36 +523,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A computer counts as in use for a phone's rhythm while its Sioul runs,
-    /// its news fresh, and someone is at it; one that says nothing of it (an
-    /// older Sioul, a system that cannot tell) counts by Sioul running, as before.
+    /// A computer counts as in use for a phone's rhythm while its Sioul runs
+    /// and its news is fresh; while you sleep, only with someone at it (review
+    /// of battery part C: the sleep column alone). One that says nothing of it
+    /// (an older Sioul, a system that cannot tell) counts by Sioul running, as
+    /// before, asleep too.
     #[test]
     fn a_computer_counts_in_use_for_a_phones_rhythm_while_someone_is_at_it() {
         use sioul_core::health::{FRESH, SKEW};
         let now = DUE;
         let desk = |active: Option<bool>| Entry { id: "desk".into(), kind: COMPUTER.into(), working: true, started: now - 3_600, exported: now - 60, active, ..Entry::default() };
-        assert!(others_in_use(&[desk(Some(true))], "phone", now));
-        assert!(others_in_use(&[desk(None)], "phone", now), "unsaid: Sioul running counts, as before");
-        assert!(!others_in_use(&[desk(Some(false))], "phone", now), "left on, nobody at it");
-        assert!(!others_in_use(&[Entry { exported: now - FRESH - SKEW - 1, ..desk(Some(true)) }], "phone", now), "its news stale");
-        assert!(!others_in_use(&[Entry { working: false, ..desk(Some(true)) }], "phone", now), "closed");
-        assert!(!others_in_use(&[Entry { left: true, ..desk(None) }], "phone", now), "no longer sharing");
-        assert!(!others_in_use(&[desk(Some(true))], "desk", now), "itself");
-        assert!(others_in_use(&[desk(Some(false)), Entry { id: "laptop".into(), ..desk(Some(true)) }], "phone", now), "someone at another computer");
-        assert!(!others_in_use(&[], "phone", now), "no other device");
+        for asleep in [false, true] {
+            assert!(others_in_use(&[desk(Some(true))], "phone", now, asleep));
+            assert!(others_in_use(&[desk(None)], "phone", now, asleep), "unsaid: Sioul running counts, as before");
+            assert!(!others_in_use(&[Entry { exported: now - FRESH - SKEW - 1, ..desk(Some(true)) }], "phone", now, asleep), "its news stale");
+            assert!(!others_in_use(&[Entry { working: false, ..desk(Some(true)) }], "phone", now, asleep), "closed");
+            assert!(!others_in_use(&[Entry { left: true, ..desk(None) }], "phone", now, asleep), "no longer sharing");
+            assert!(!others_in_use(&[desk(Some(true))], "desk", now, asleep), "itself");
+            assert!(others_in_use(&[desk(Some(false)), Entry { id: "laptop".into(), ..desk(Some(true)) }], "phone", now, asleep), "someone at another computer");
+            assert!(!others_in_use(&[], "phone", now, asleep), "no other device");
+        }
+        // Left on, nobody at it: in use while you are awake, as 0.0.5 had it; not while you sleep.
+        assert!(others_in_use(&[desk(Some(false))], "phone", now, false), "awake: Sioul running counts");
+        assert!(!others_in_use(&[desk(Some(false))], "phone", now, true), "asleep: nobody at it, not in use");
     }
 
-    /// A computer in use with nobody at it (its Sioul in the tray at night)
-    /// writes its entry every three minutes, not at each minute's export:
-    /// said at once when nobody is at it, and again when someone comes back.
-    /// Meanwhile the folder's copy is never older than the doses' freshness:
-    /// a phone looking at any moment knows a dose due meanwhile once an export
+    /// A computer in use writes its entry at each export, someone at it or
+    /// not (review of battery part C, F5): the server, which sees when the
+    /// file changes, cannot tell when someone sits at it; whether someone is
+    /// travels sealed with the rest, its size padded as every writing's. A
+    /// phone looking at any moment knows a dose due meanwhile once an export
     /// after it is read, as before, and a computer stopped without closing is
     /// doubted once `FRESH` has passed (docs/health.md, "Knowing").
     #[test]
-    fn a_computer_nobody_is_at_restates_its_entry_within_the_doses_freshness() {
+    fn a_computer_writes_its_entry_at_one_cadence_whoever_is_at_it() {
         use sioul_core::health::{FRESH, SKEW};
-        let dir = scratch("away");
+        let dir = scratch("one-cadence");
         let (folder, state) = (dir.join("shared"), dir.join("state"));
         let own = own_path(&state);
         let vault = Some((folder.as_path(), &KEY));
@@ -591,22 +583,24 @@ mod tests {
             .unwrap();
             std::fs::read(&file).unwrap() != before
         };
-        // Someone at it: every export goes out, as before.
-        assert!((1..=10).all(|n| export(t + n * 60, Some(true))));
-        // Nobody at it: said at once, then every three minutes (a third as often), never later.
-        assert!(export(t + 11 * 60, Some(false)), "said at once");
-        // A phone looking every seventy seconds meanwhile: when it saw the entry change, as `health::know` keeps it.
+        // Someone at it, then nobody, then unsaid: every export goes out, the same.
         let mut written = Vec::new();
         let mut watched: Option<((i64, i64, bool, i64, bool), i64)> = None;
-        for at in (t + 12 * 60..=t + 72 * 60).step_by(10) {
-            if (at - t) % 60 == 0 && export(at, Some(false)) {
+        for at in (t + 60..=t + 90 * 60).step_by(10) {
+            let active = match (at - t) / 60 {
+                0..=10 => Some(true),
+                11..=80 => Some(false),
+                _ => None,
+            };
+            if (at - t) % 60 == 0 && export(at, active) {
                 written.push(at);
             }
+            // A phone looking every seventy seconds: when it saw the entry change, as `health::know` keeps it.
             if (at - t) % 70 != 0 {
                 continue;
             }
             let entry = all(&folder, &KEY).0.into_iter().find(|e| e.id == id).unwrap();
-            assert!(at - entry.exported <= FRESH, "the folder's copy at most FRESH old: {} s at {at}", at - entry.exported);
+            assert!(at - entry.exported < 60, "the folder's copy from the last export: {} s at {at}", at - entry.exported);
             let state = (entry.started, entry.closed, entry.working, entry.exported, entry.left);
             if watched.is_none_or(|(last, _)| last != state) {
                 watched = Some((state, at));
@@ -619,18 +613,12 @@ mod tests {
                 assert!(matches!(doubts.as_slice(), [Doubt::Working { .. }]), "not shared since the dose: in doubt at {at}");
             }
         }
-        assert_eq!(written.len(), 20, "{written:?}");
-        assert!(written.windows(2).all(|w| w[1] - w[0] == 180) && written[0] == t + 14 * 60);
+        assert_eq!(written, (1..=90).map(|n| t + n * 60).collect::<Vec<_>>(), "one writing a minute, whoever is at it");
         // Stopped without closing (a crash) after its last export: the doubt once FRESH has passed.
         let entry = all(&folder, &KEY).0.into_iter().find(|e| e.id == id).unwrap();
         let stopped = entry.exported + FRESH + 1;
         let peer = Peer { id: id.clone(), said: Some(entry.said()), complete: true, seen: entry.exported, heard: entry.exported, ..Peer::default() };
         assert!(matches!(doubts_now(DUE, stopped, None, &[peer]).as_slice(), [Doubt::Working { .. }]));
-        // Someone back: said at once, and every export again.
-        assert!(export(t + 73 * 60, Some(true)), "said at once");
-        assert!(export(t + 74 * 60, Some(true)) && export(t + 75 * 60, Some(true)));
-        // A system that says nothing of it (unsaid): every export, as before.
-        assert!(export(t + 76 * 60, None) && export(t + 77 * 60, None));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -692,7 +680,7 @@ mod tests {
         std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), plain.as_bytes())).unwrap();
         let (entries, _) = all(&folder, &KEY);
         assert_eq!(entries[0].active, None);
-        assert!(others_in_use(&entries, "phone", 1_100));
+        assert!(others_in_use(&entries, "phone", 1_100, false) && others_in_use(&entries, "phone", 1_100, true));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

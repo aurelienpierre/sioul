@@ -15,6 +15,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Telephony;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
@@ -62,6 +65,11 @@ public final class Texts
     /** The newest message received, by the provider's id, of each table (SMS, MMS), as the watch last saw it; -1: not read yet. */
     private static long newestSms = -1;
     private static long newestMms = -1;
+    /** How long after the provider's last word the watch looks for a message received: a burst of changes, one look. */
+    private static final long LOOK_MS = 1_000;
+    /** Where that look runs (the process's main thread, which the service leaves free), and the look itself; null: not watched. */
+    private static Handler looks;
+    private static Runnable look;
 
     private Texts()
     {
@@ -73,20 +81,27 @@ public final class Texts
      * read marks them changed, read at the next step; a message received (its
      * newest id grown, a multimedia one once downloaded) brings a step soon,
      * as SMS_RECEIVED does (`Heard`), so that it reaches your computers
-     * within the minute. Asked again at each step until it holds.
+     * within the minute. The look for it comes a second after the provider's
+     * last word: one message tells it several times (its text, its row, its
+     * conversation), one look. Asked again at each step until it holds.
      */
     static synchronized void watch(Context context)
     {
         if (watching != null || !allowed(context, Manifest.permission.READ_SMS))
             return;
         final Context app = context.getApplicationContext();
+        final Handler later = new Handler(Looper.getMainLooper());
+        final Runnable once = () -> {
+            if (arrived(app))
+                StepService.soon(app);
+        };
         ContentObserver observer = new ContentObserver(null) {
             @Override
             public void onChange(boolean self)
             {
                 changed.set(true);
-                if (arrived(app))
-                    StepService.soon(app);
+                later.removeCallbacks(once);
+                later.postDelayed(once, LOOK_MS);
             }
         };
         try {
@@ -94,6 +109,8 @@ public final class Texts
             for (Uri uri : new Uri[] { Telephony.Sms.CONTENT_URI, Telephony.Mms.CONTENT_URI, Telephony.MmsSms.CONTENT_URI })
                 resolver.registerContentObserver(uri, true, observer);
             watching = observer;
+            looks = later;
+            look = once;
             changed.set(true);
             // The messages there now: none of them brings a step.
             arrived(app);
@@ -130,10 +147,18 @@ public final class Texts
         return before >= 0 && now > before;
     }
 
-    /** The newest id in an inbox (the provider's own order), 0 when it is empty, -1 when it cannot be read. */
+    /**
+     * The newest id in an inbox (the provider's own order), 0 when it is
+     * empty, -1 when it cannot be read: asked for that row alone (a provider
+     * that takes no limit gives its ids in that order all the same, and only
+     * the first is read).
+     */
     private static long newest(Context context, Uri box)
     {
-        try (Cursor cursor = context.getContentResolver().query(box, new String[] { "_id" }, null, null, "_id DESC")) {
+        Bundle asked = new Bundle();
+        asked.putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "_id DESC");
+        asked.putInt(ContentResolver.QUERY_ARG_LIMIT, 1);
+        try (Cursor cursor = context.getContentResolver().query(box, new String[] { "_id" }, asked, null)) {
             return cursor != null && cursor.moveToFirst() ? cursor.getLong(0) : 0;
         } catch (RuntimeException e) {
             return -1;
@@ -145,7 +170,11 @@ public final class Texts
     {
         if (watching != null)
             context.getContentResolver().unregisterContentObserver(watching);
+        if (looks != null && look != null)
+            looks.removeCallbacks(look);
         watching = null;
+        looks = null;
+        look = null;
         changed.set(true);
     }
 

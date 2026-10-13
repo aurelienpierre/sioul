@@ -155,9 +155,10 @@ static AWAY: AtomicBool = AtomicBool::new(false);
 
 /// A press in Sioul's window (cpp/application.cpp), or of do-not-disturb's
 /// switch (`everywhere::press`), on this computer: a person is at it, whatever
-/// its system says of input, for ten minutes (`sioul_sync::power::present_of`).
-/// Its entry said nobody was: an exchange now says someone is, at once
-/// (`share::exchange_soon`), so that a phone's steps quicken from its next look.
+/// its system says of input, for ten minutes, and whatever the session's
+/// last reading said of its lock when the press is newer than it
+/// (`sioul_sync::power::present_since`). Its entry said nobody was: an
+/// exchange now says someone is, at once (`share::exchange_soon`).
 pub(crate) fn pressed() {
     PRESSED.fetch_max(now(), Ordering::SeqCst);
     if AWAY.swap(false, Ordering::SeqCst) {
@@ -175,32 +176,30 @@ pub extern "C" fn sioul_window_pressed() {
 
 /// Whether a person is at this device now, for its entry (`Entry::active`):
 /// on a phone, unsaid (in use only while Sioul is on its screen); on a
-/// computer, as `active_of` reads its session (asked at most every thirty
-/// seconds) and the last press in Sioul.
+/// computer, as `active_of` reads the session's last reading and the last
+/// press in Sioul. The session is read on a thread of its own every thirty
+/// seconds (`sioul_sync::power::watch_session`): an exchange, a start or a
+/// close only read the value kept, and never wait on the system's bus (a bus
+/// that never answers once held the exchanges for good: review of battery
+/// part C, F3). No reading yet, or one two minutes old: unsaid (Sioul running
+/// counts), a recent press aside.
 fn active_here() -> Option<bool> {
     if cfg!(target_os = "android") {
         return None;
     }
-    static ASKED: Mutex<Option<(std::time::Instant, sioul_sync::power::Session)>> = Mutex::new(None);
-    let kept = ASKED.lock().ok().and_then(|asked| asked.filter(|(at, _)| at.elapsed() < std::time::Duration::from_secs(30)).map(|(_, session)| session));
-    let session = kept.unwrap_or_else(|| {
-        let session = sioul_sync::power::session();
-        if let Ok(mut asked) = ASKED.lock() {
-            *asked = Some((std::time::Instant::now(), session));
-        }
-        session
-    });
-    active_of(false, session, PRESSED.load(Ordering::SeqCst), now())
+    sioul_sync::power::watch_session();
+    active_of(false, sioul_sync::power::kept_session(), PRESSED.load(Ordering::SeqCst), now())
 }
 
-/// `active_here`, from what was read: a phone, its session as its system
-/// says it, when Sioul was last pressed here (Unix seconds, 0 never), now.
-fn active_of(phone: bool, session: sioul_sync::power::Session, pressed: i64, now: i64) -> Option<bool> {
+/// `active_here`, from what was read: a phone; the session's last reading
+/// and how long ago it was made (none: none fresh); when Sioul was last
+/// pressed here (Unix seconds, 0 never); now.
+fn active_of(phone: bool, reading: Option<(sioul_sync::power::Session, std::time::Duration)>, pressed: i64, now: i64) -> Option<bool> {
     if phone {
         return None;
     }
     let ago = (pressed > 0).then(|| std::time::Duration::from_secs(now.saturating_sub(pressed).max(0) as u64));
-    sioul_sync::power::present_of(session, ago)
+    sioul_sync::power::present_since(reading, ago)
 }
 
 /// Down, said, the last step of a session, once all it recorded went out;
@@ -284,8 +283,8 @@ pub(crate) fn exported(outcome: &sioul_sync::share::Outcome) {
         return;
     }
     EXPORTED.fetch_max(outcome.looked, Ordering::SeqCst);
-    // A computer says whether someone is at it now: nobody, and its entry goes
-    // out every few minutes only (`sioul_sync::devices::AWAY_RESTATED`).
+    // A computer says whether someone is at it now (sealed in its entry, written at
+    // the same cadence either way): while you sleep, a phone steps slower when nobody is.
     let active = active_here();
     AWAY.store(active == Some(false), Ordering::SeqCst);
     let first = std::sync::atomic::AtomicBool::new(false);
@@ -307,13 +306,19 @@ pub(crate) fn left() {
     });
 }
 
+/// This device's id and every device's entry, as the folder and the last
+/// pull's copy hold them (`sioul_sync::devices::all`); none while sharing is off.
+pub(crate) fn entries() -> Option<(String, Vec<Entry>)> {
+    let Some((id, Some((folder, key)))) = crate::share::vault() else { return None };
+    Some((id, sioul_sync::devices::all(&folder, &key).0))
+}
+
 /// Whether another device says it is in use, with an export dated lately
-/// (`FRESH` and `SKEW`), and, a computer, with someone at it
-/// (`sioul_sync::devices::others_in_use`): for the rhythm of a phone's
-/// background service only; the doses' knowing is `health::know`'s.
-pub(crate) fn others_in_use() -> bool {
-    let Some((id, Some((folder, key)))) = crate::share::vault() else { return false };
-    sioul_sync::devices::others_in_use(&sioul_sync::devices::all(&folder, &key).0, &id, now())
+/// (`FRESH` and `SKEW`), and, while you sleep (`asleep`), a computer only with
+/// someone at it (`sioul_sync::devices::others_in_use`): for the rhythm of a
+/// phone's background service only; the doses' knowing is `health::know`'s.
+pub(crate) fn others_in_use(asleep: bool) -> bool {
+    entries().is_some_and(|(id, entries)| sioul_sync::devices::others_in_use(&entries, &id, now(), asleep))
 }
 
 /// A device's kind ("phone", "computer") and name, from its entry in the
@@ -352,15 +357,25 @@ mod tests {
     #[test]
     fn a_press_makes_this_computer_active_at_once() {
         use sioul_sync::power::Session;
+        use std::time::Duration;
         let now = 1_800_000_000;
-        let idle = Session { since_input: Some(std::time::Duration::from_secs(2 * 3600)), locked: false };
-        assert_eq!(active_of(false, idle, 0, now), Some(false), "two hours without input: nobody");
-        assert_eq!(active_of(false, idle, now - 2, now), Some(true), "a press two seconds ago: someone, at once");
-        assert_eq!(active_of(false, idle, now - 600, now), Some(false), "ten minutes on: the system's word again");
-        assert_eq!(active_of(false, Session { since_input: Some(std::time::Duration::from_secs(30)), locked: false }, 0, now), Some(true));
-        assert_eq!(active_of(false, Session { locked: true, ..idle }, now, now), Some(false), "locked: nobody");
-        assert_eq!(active_of(false, Session::default(), 0, now), None, "the system says nothing: unsaid");
-        assert_eq!(active_of(true, idle, now, now), None, "a phone says nothing of it");
+        // The session as read on its own thread, ten seconds ago.
+        let read = |session: Session| Some((session, Duration::from_secs(10)));
+        let idle = Session { since_input: Some(Duration::from_secs(2 * 3600)), locked: false, disputed: false };
+        assert_eq!(active_of(false, read(idle), 0, now), Some(false), "two hours without input: nobody");
+        assert_eq!(active_of(false, read(idle), now - 2, now), Some(true), "a press two seconds ago: someone, at once");
+        assert_eq!(active_of(false, read(idle), now - 600, now), Some(false), "ten minutes on: the system's word again");
+        assert_eq!(active_of(false, read(Session { since_input: Some(Duration::from_secs(30)), ..idle }), 0, now), Some(true));
+        // Locked when read: nobody; a press made since the reading wins over its lock (review of
+        // battery part C, F4: someone unlocked the computer to make it).
+        let locked = Session { locked: true, ..idle };
+        assert_eq!(active_of(false, read(locked), now - 60, now), Some(false), "pressed before the reading that says locked");
+        assert_eq!(active_of(false, read(locked), now - 2, now), Some(true), "pressed after it: someone");
+        // No reading kept (none yet, or it stopped coming): unsaid, Sioul running counts; a recent press still says someone.
+        assert_eq!(active_of(false, None, 0, now), None, "nothing read: unsaid");
+        assert_eq!(active_of(false, None, now - 30, now), Some(true));
+        assert_eq!(active_of(false, read(Session::default()), 0, now), None, "the system says nothing: unsaid");
+        assert_eq!(active_of(true, read(idle), now, now), None, "a phone says nothing of it");
         // `pressed` keeps the time, nothing else at hand (no window, no exchange asked).
         pressed();
         assert!(super::now() - PRESSED.load(Ordering::SeqCst) < 5);
@@ -371,5 +386,21 @@ mod tests {
         assert!(press_via.contains("crate::devices::pressed();"), "a press of the switch counts at once");
         let application = source("cpp/application.cpp");
         assert!(application.contains("installEventFilter(new Presses(application))") && application.contains("sioul_window_pressed();"), "a press in the window counts at once");
+    }
+
+    /// An exchange, a start or a close never wait on the system's bus: this
+    /// computer's activity is read from the value the session's own thread
+    /// keeps, at once, whatever the bus does (review of battery part C, F3:
+    /// a bus that never answered once held the exchanges for good).
+    #[test]
+    fn the_activity_is_read_without_waiting_on_the_bus() {
+        let start = std::time::Instant::now();
+        for _ in 0..100 {
+            let _ = active_here();
+        }
+        assert!(start.elapsed() < std::time::Duration::from_millis(200), "{:?}", start.elapsed());
+        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/devices.rs")).unwrap();
+        let body = source.split("fn active_here() -> Option<bool> {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(body.contains("kept_session()") && !body.contains("power::session()"), "the kept reading, never one of its own");
     }
 }
