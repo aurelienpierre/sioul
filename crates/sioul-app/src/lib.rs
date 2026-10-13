@@ -406,6 +406,28 @@ pub fn run() -> i32 {
     code
 }
 
+/// For the test of the bundled icons (tests/icons.rs): Sioul's icons set up
+/// as at its start (`desktop::icons`), then for colours chosen `dark` or
+/// light, as the window asks when its colours change (`desktop::follow`);
+/// returns the names among `names` that the icon theme then in use lacks,
+/// each by its very name. The application must be made first, on this
+/// thread; with SIOUL_THEME set, nothing of yours is read.
+#[doc(hidden)]
+pub fn icons_lacking(names: &[String], dark: bool) -> Vec<String> {
+    // SAFETY: CXX-Qt's own initializer (resources, types), which does its work once (std::call_once).
+    unsafe { cxx_qt_init_crate_sioul_app() };
+    desktop::icons();
+    desktop::follow(dark, true);
+    names.iter().filter(|name| !desktop::has_icon(name)).cloned().collect()
+}
+
+/// For the test of the bundled icons: the icon theme in use, as Qt names it
+/// ("sioul" for light colours, "sioul-dark" for dark ones).
+#[doc(hidden)]
+pub fn icon_theme() -> String {
+    desktop::theme_in_use()
+}
+
 /// A widgets application (QApplication), as the QGuiApplication CXX-Qt works
 /// with, which it is: made by cpp/application.cpp from the program's
 /// arguments, as `QGuiApplication::new` makes its own.

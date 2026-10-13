@@ -131,6 +131,11 @@ jobs:
         run: |
           windeployqt --release --qmldir crates\sioul-app\qml target\release\sioul-app.exe
           Copy-Item "$env:SystemRoot\System32\vcruntime140.dll", "$env:SystemRoot\System32\vcruntime140_1.dll", "$env:SystemRoot\System32\msvcp140.dll" target\release\
+          # Qt's SVG plugins: Sioul's own icons are SVG, and without the icon
+          # engine Qt reads no SVG of an icon theme (every icon blank).
+          foreach ($plugin in "iconengines\qsvgicon.dll", "imageformats\qsvg.dll") {
+            if (-not (Test-Path "target\release\$plugin")) { throw "windeployqt left out $plugin" }
+          }
       - name: Inno Setup
         run: choco install innosetup --no-progress -y
       - name: Installer
@@ -195,6 +200,11 @@ jobs:
               packaging/macos/Info.plist > "$app/Contents/Info.plist"
           cp packaging/macos/sioul.icns "$app/Contents/Resources/"
           macdeployqt "$app" -qmldir=crates/sioul-app/qml
+          # Qt's SVG plugins: Sioul's own icons are SVG, and without the icon
+          # engine Qt reads no SVG of an icon theme (every icon blank).
+          for plugin in iconengines/libqsvgicon.dylib imageformats/libqsvg.dylib; do
+            test -f "$app/Contents/PlugIns/$plugin" || { echo "macdeployqt left out $plugin" >&2; exit 1; }
+          done
           codesign --force --deep --sign - "$app"
           for try in 1 2 3; do
             hdiutil create -volname Sioul -srcfolder "$app" -ov -format UDZO "bundle/Sioul-${version}-macos-universal.dmg" && break
@@ -255,10 +265,15 @@ jobs:
       # The programs, the desktop file and the icon in an AppDir; linuxdeploy
       # and its Qt plugin add Qt (Qt WebEngine's process and resources, the
       # QML modules the pages import, Wayland and X11), then make the AppImage.
+      # Qt SVG's plugins asked for by name (EXTRA_QT_MODULES): the program does
+      # not link Qt SVG, and linuxdeploy's Qt plugin left its icon engine out
+      # of 0.0.5 and before, without which Qt reads no SVG of an icon theme
+      # (every icon blank).
       - name: AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           QML_SOURCES_PATHS: ${{ github.workspace }}/crates/sioul-app/qml
+          EXTRA_QT_MODULES: svg
         run: |
           version=${{ needs.version.outputs.version }}
           export LDAI_OUTPUT="Sioul-${version}-x86_64.AppImage"
@@ -278,6 +293,9 @@ jobs:
           curl -fsSLO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-*.AppImage
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/sioul-app --desktop-file AppDir/usr/share/applications/com.aurelienpierre.Sioul.desktop --icon-file data/icons/hicolor/256x256/apps/com.aurelienpierre.Sioul.png --plugin qt --output appimage
+          for plugin in iconengines/libqsvgicon.so imageformats/libqsvg.so; do
+            test -f "AppDir/usr/plugins/$plugin" || { echo "linuxdeploy left out $plugin" >&2; exit 1; }
+          done
           ls -la "$LDAI_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:

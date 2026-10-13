@@ -11,6 +11,7 @@
 //! Fiction only: example.org, invented amounts.
 
 use super::format_tests::{announce, into_format_2, writes};
+use super::switch_more_tests::seeds;
 use super::tests::{Computer, MINUTE, NOW, quick_key, scratch};
 use super::*;
 
@@ -618,26 +619,29 @@ fn converge_with(run: &str, seed: u64, lag: i64, with_words: bool, phone_from: i
 /// Desk on the server's folder, phone behind eDrive (size only, never
 /// deleting), both updated at once, one of them editing lines and sessions
 /// each minute through the switch: once everything is carried, both hold the
-/// same lines and sessions (R10).
+/// same lines and sessions (R10). Seeds 1 to 12 in the wide sweep, the first
+/// three otherwise (`switch_more_tests::seeds`).
 #[test]
 fn lines_and_sessions_converge_through_the_switch_under_edrive() {
-    let failed: Vec<String> = (1..=12u64).flat_map(|seed| [1, 7, 30].map(|lag| converge(seed, lag, false))).filter_map(Result::err).collect();
+    let failed: Vec<String> = seeds(1..=12, 3, &[]).into_iter().flat_map(|seed| [1, 7, 30].map(|lag| converge(seed, lag, false))).filter_map(Result::err).collect();
     assert!(failed.is_empty(), "{} runs parted the devices:\n{}", failed.len(), failed.join("\n\n"));
 }
 
 /// The same, words added and taken away too (R10).
 #[test]
 fn words_converge_through_the_switch_under_edrive() {
-    let failed: Vec<String> = (1..=12u64).flat_map(|seed| [1, 7, 30].map(|lag| converge(seed, lag, true))).filter_map(Result::err).collect();
+    let failed: Vec<String> = seeds(1..=12, 3, &[]).into_iter().flat_map(|seed| [1, 7, 30].map(|lag| converge(seed, lag, true))).filter_map(Result::err).collect();
     assert!(failed.is_empty(), "{} runs parted the devices:\n{}", failed.len(), failed.join("\n\n"));
 }
 
 /// The same, both devices editing each minute, the phone updated at minute 20
 /// or 45 (the mixed window of an upgrade): the same lines and sessions (R10).
+/// Seeds 1 to 10 in the wide sweep; otherwise the first three, and 6, 7 and
+/// 9, which parted the devices before R11 was fixed.
 #[test]
 fn both_devices_editing_each_minute_converge_when_the_phone_is_updated_late() {
     let mut failed = Vec::new();
-    for seed in 1..=10u64 {
+    for seed in seeds(1..=10, 3, &[6, 7, 9]) {
         for lag in [7, 30] {
             for phone_from in [20, 45] {
                 if let Err(e) = converge_with("late", seed, lag, false, phone_from, true) {
@@ -649,11 +653,13 @@ fn both_devices_editing_each_minute_converge_when_the_phone_is_updated_late() {
     assert!(failed.is_empty(), "{} runs parted the devices:\n{}", failed.len(), failed.join("\n\n"));
 }
 
-/// The same with words (R10, R2, R3).
+/// The same with words (R10, R2, R3). Seeds 1 to 10 in the wide sweep;
+/// otherwise the first three, and 4 to 9, which parted the devices before R2
+/// and R3 were fixed.
 #[test]
 fn words_edited_on_both_each_minute_converge_when_the_phone_is_updated_late() {
     let mut failed = Vec::new();
-    for seed in 1..=10u64 {
+    for seed in seeds(1..=10, 3, &[4, 5, 6, 7, 8, 9]) {
         for lag in [7, 30] {
             for phone_from in [20, 45] {
                 if let Err(e) = converge_with("late-words", seed, lag, true, phone_from, true) {
@@ -666,22 +672,25 @@ fn words_edited_on_both_each_minute_converge_when_the_phone_is_updated_late() {
 }
 
 /// No phase of the switch parts the devices on lines and sessions: the phone
-/// updated at once, at minute 20, or at 45 (R10, R11).
+/// updated at once, at minute 20, or at 45 (R10, R11). Seeds 1 to 10 in the
+/// wide sweep; otherwise the first three, and 6, 7 and 9, which parted the
+/// devices at minute 20 and 45 before R11 was fixed.
 #[test]
 fn no_phase_of_the_switch_parts_the_devices() {
     let mut report = Vec::new();
     let mut any = false;
+    let seeds = seeds(1..=10, 3, &[6, 7, 9]);
     for phone_from in [0, 20, 45] {
         let mut parted = Vec::new();
-        for seed in 1..=10u64 {
+        for seed in &seeds {
             for lag in [7, 30] {
-                if converge_with("phases", seed, lag, false, phone_from, true).is_err() {
+                if converge_with("phases", *seed, lag, false, phone_from, true).is_err() {
                     parted.push(format!("{seed}/{lag}"));
                 }
             }
         }
         any |= !parted.is_empty();
-        report.push(format!("phone updated at {phone_from}: {} of 20 parted {parted:?}", parted.len()));
+        report.push(format!("phone updated at {phone_from}: {} of {} parted {parted:?}", parted.len(), seeds.len() * 2));
     }
     assert!(!any, "{}", report.join("\n"));
 }

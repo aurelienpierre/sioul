@@ -257,6 +257,23 @@ fn a_split_naming_a_preset_by_place_ends_the_same_on_each_device() {
 
 // ---------------------------------------------------------------- S5: simulations, more seeds
 
+/// The seeds a simulated sweep runs. On every system, the first `few` of
+/// `all`, and those of `kept`, which once found a bug. With SIOUL_SWEEP=wide,
+/// every seed of `all` (and of `kept`), as the reviews ran them. Linux's
+/// tests on GitHub run the wide sweep, which takes minutes there; Windows
+/// took about fifteen times as long for the same simulations, and runs the
+/// few (docs/building.md, "The tests on GitHub").
+pub(super) fn seeds(all: std::ops::RangeInclusive<u64>, few: usize, kept: &[u64]) -> Vec<u64> {
+    let wide = std::env::var("SIOUL_SWEEP").is_ok_and(|sweep| sweep == "wide");
+    let mut seeds: Vec<u64> = if wide { all.collect() } else { all.take(few).collect() };
+    for seed in kept {
+        if !seeds.contains(seed) {
+            seeds.push(*seed);
+        }
+    }
+    seeds
+}
+
 #[derive(Default)]
 struct SizeOnly {
     known: BTreeMap<String, (String, String)>,
@@ -492,12 +509,13 @@ pub(super) fn converge3(seed: u64, lag: i64, phone_from: i64, laptop_at: Option<
 /// Many seeds under eDrive, both devices acting each minute (lines,
 /// sessions, words, sites), the phone updated at once, at minute 20 or 45:
 /// both switch and hold the same, one session of each kind noted, every
-/// session recorded once (second review, S5).
+/// session recorded once (second review, S5). Seeds 1 to 40 in the wide
+/// sweep, the first three otherwise (`seeds`).
 #[test]
 fn many_seeds_converge_through_the_switch() {
     let mut failed = Vec::new();
     let mut runs = 0;
-    for seed in 1..=40u64 {
+    for seed in seeds(1..=40, 3, &[]) {
         for lag in [1, 7, 30] {
             for phone_from in [0, 20, 45] {
                 runs += 1;
@@ -622,12 +640,13 @@ fn a_switch_stopped_half_way_doubles_nothing() {
 }
 
 /// A third device joining in the middle of the switch converges with the
-/// others (S5b).
+/// others (S5b). Seeds 1 to 25 in the wide sweep; otherwise the first three,
+/// and 7, which found S5b.
 #[test]
 fn a_third_device_joining_mid_switch_converges() {
     let mut failed = Vec::new();
     let mut runs = 0;
-    for seed in 1..=25u64 {
+    for seed in seeds(1..=25, 3, &[7]) {
         for lag in [7, 30] {
             for (phone_from, laptop_at) in [(20, 10), (45, 30), (0, 1)] {
                 runs += 1;

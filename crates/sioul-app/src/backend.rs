@@ -1659,6 +1659,12 @@ pub mod qobject {
         #[qinvokable]
         fn forced_theme(self: &Sioul) -> QString;
 
+        /// The icons in the window's colours, each time these change
+        /// (main.qml, its Theme): `dark` as the window draws them, `chosen`
+        /// when they are chosen in Sioul rather than the system's (desktop.rs, `follow`).
+        #[qinvokable]
+        fn follow_icons(self: &Sioul, dark: bool, chosen: bool);
+
         /// Real time on or off: every folder of every address fetched each minute, and the Porch open.
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
@@ -5576,6 +5582,10 @@ impl qobject::Sioul {
 
     fn forced_theme(&self) -> QString {
         QString::from(&std::env::var("SIOUL_THEME").unwrap_or_default())
+    }
+
+    fn follow_icons(&self, dark: bool, chosen: bool) {
+        crate::desktop::follow(dark, chosen);
     }
 
     fn set_realtime_mode(mut self: Pin<&mut Self>, on: bool) {

@@ -19,6 +19,14 @@ path = "src/lib.rs"
 name = "sioul-app"
 path = "src/main.rs"
 
+# Every icon the window names is in its bundled themes, as Qt reads them with
+# no system theme (Windows, macOS and phones have none). Its own `main`, not
+# the test harness: Qt wants its application on the program's first thread.
+[[test]]
+name = "icons"
+path = "tests/icons.rs"
+harness = false
+
 [dependencies]
 sioul-core = { path = "../sioul-core" }
 sioul-sync = { path = "../sioul-sync" }
