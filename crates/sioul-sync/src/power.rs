@@ -98,12 +98,19 @@ pub struct Session {
     /// How long since the last input (keyboard, pointer, touch): the shortest
     /// any source gave (the newest touch wins); none when no source said.
     pub since_input: Option<Duration>,
-    /// Its session locked (a screen locker on), as any source says it.
+    /// Its session locked (a screen locker on): a source says so, and none
+    /// says it is not.
     pub locked: bool,
+    /// Its sources disagree on the lock (one says locked, another not: a
+    /// stale hint of logind's, another session's): what it says of the lock
+    /// is not taken, and whether someone is at it stays unknown (`present_of`).
+    pub disputed: bool,
 }
 
 /// The session's facts alone (`Session`): a few questions to the system, a
-/// second each at most. Nothing said on a system not read here (a phone).
+/// second each at most once connected. Nothing said on a system not read here
+/// (a phone). The connection's own setup has no limit: a bus that takes it
+/// and never answers holds the caller for good; `session_within` bounds it.
 pub fn session() -> Session {
     imp::session()
 }
@@ -111,19 +118,113 @@ pub fn session() -> Session {
 /// How long without input a person no longer counts as at this computer (`present_of`).
 pub const PRESENT: Duration = Duration::from_secs(10 * 60);
 
-/// Whether a person is at this computer now: its session locked, no; else
-/// a press in Sioul (its window, do-not-disturb's switch) less than `PRESENT`
-/// ago (`pressed`), yes, whatever the system says of input; else input less
-/// than `PRESENT` ago, as the session says; nothing said of input, unknown:
-/// then Sioul running counts as someone at it, as before (`devices::others_in_use`).
+/// Whether a person is at this computer now: its sources disagreeing on the
+/// lock, unknown (a press in Sioul less than `PRESENT` ago aside, which says
+/// someone); its session locked, no; else a press in Sioul (its window,
+/// do-not-disturb's switch) less than `PRESENT` ago (`pressed`), yes, whatever
+/// the system says of input; else input less than `PRESENT` ago, as the
+/// session says; nothing said of input, unknown. Unknown is never "nobody":
+/// Sioul running then counts as someone at it, as before (`devices::others_in_use`).
 pub fn present_of(session: Session, pressed: Option<Duration>) -> Option<bool> {
+    let pressed = pressed.is_some_and(|ago| ago < PRESENT);
+    if session.disputed {
+        return pressed.then_some(true);
+    }
     if session.locked {
         return Some(false);
     }
-    if pressed.is_some_and(|ago| ago < PRESENT) {
+    if pressed {
         return Some(true);
     }
     session.since_input.map(|since| since < PRESENT)
+}
+
+/// `present_of`, from the session as last read (`kept_session`: the reading
+/// and how long ago it was made; none when there is none fresh enough) and
+/// the last press in Sioul (how long ago): a press made since the reading
+/// counts whatever the reading said, its lock included (someone unlocked the
+/// computer to make it); an older one as `present_of` reads it. No reading, a
+/// press within `PRESENT` says someone, and nothing else says anything
+/// (unknown: Sioul running counts).
+pub fn present_since(reading: Option<(Session, Duration)>, pressed: Option<Duration>) -> Option<bool> {
+    let recent = pressed.filter(|ago| *ago < PRESENT);
+    match reading {
+        Some((_, read)) if recent.is_some_and(|ago| ago <= read) => Some(true),
+        Some((session, _)) => present_of(session, pressed),
+        None => recent.map(|_| true),
+    }
+}
+
+/// How often the session is read on its own thread (`watch_session`).
+pub const EVERY: Duration = Duration::from_secs(30);
+/// How long a reading may take (`session_within`): a few questions to the
+/// system, a second each at most, and the connections' setup.
+pub const WAIT: Duration = Duration::from_secs(10);
+/// How long a reading is kept for (`kept_session`): past it, none (a bus that
+/// stopped answering), and Sioul running counts, as when nothing is said.
+pub const KEPT_FOR: Duration = Duration::from_secs(120);
+
+/// The session as last read on its own thread, and when.
+static KEPT: std::sync::Mutex<Option<(std::time::Instant, Session)>> = std::sync::Mutex::new(None);
+/// A reading of the session not come back yet (`session_within`).
+static READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Starts, once in this process, the thread that reads the session every
+/// `EVERY`, each reading waited for `WAIT` at most (`session_within`), and
+/// keeps the last (`kept_session`). Whoever needs it reads the kept value and
+/// never waits on the system: an exchange, Sioul closing.
+pub fn watch_session() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let _ = std::thread::Builder::new().name("sioul-session".into()).spawn(|| {
+            loop {
+                if let Some(session) = session_within(WAIT)
+                    && let Ok(mut kept) = KEPT.lock()
+                {
+                    *kept = Some((std::time::Instant::now(), session));
+                }
+                std::thread::sleep(EVERY);
+            }
+        });
+    });
+}
+
+/// The session as last read on its own thread (`watch_session`) and how long
+/// ago; none before the first reading, or once it is `KEPT_FOR` old (a bus
+/// that stopped answering). Never waits on the system.
+pub fn kept_session() -> Option<(Session, Duration)> {
+    let kept = *KEPT.lock().ok()?;
+    kept.map(|(at, session)| (session, at.elapsed())).filter(|(_, age)| *age < KEPT_FOR)
+}
+
+/// `session`, waited for `limit` at most: read on a thread of its own, so
+/// that a bus that takes the connection and never answers (its setup has no
+/// limit of its own) holds that thread alone, never the caller; none when it
+/// does not come back in time, and none at once while an earlier reading has
+/// not come back (one thread at most held by a stuck bus).
+pub fn session_within(limit: Duration) -> Option<Session> {
+    within(limit, &READING, session)
+}
+
+/// `work` on a thread of its own, waited for `limit` at most: its answer, or
+/// none when it does not come in time, and none at once, nothing started,
+/// while an earlier one under the same `held` flag has not come back.
+fn within<T: Send + 'static>(limit: Duration, held: &'static std::sync::atomic::AtomicBool, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    use std::sync::atomic::Ordering;
+    if held.swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    let (sender, answer) = std::sync::mpsc::channel();
+    let started = std::thread::Builder::new().name("sioul-session-read".into()).spawn(move || {
+        let out = work();
+        held.store(false, Ordering::SeqCst);
+        let _ = sender.send(out);
+    });
+    if started.is_err() {
+        held.store(false, Ordering::SeqCst);
+        return None;
+    }
+    answer.recv_timeout(limit).ok()
 }
 
 /// What a Linux or BSD desktop's services answered of its session
@@ -150,13 +251,16 @@ struct LinuxAnswers {
 }
 
 /// The session as a Linux or BSD desktop's answers say it, `now` the real
-/// clock since the epoch: locked when any locker says so; the shortest time
-/// since input any of them gave.
+/// clock since the epoch: locked when a locker says so and none says
+/// otherwise, disputed when they disagree (logind's hint left locked by a
+/// locker that died, while the desktop's own screen saver says unlocked); the
+/// shortest time since input any of them gave.
 #[cfg_attr(not(all(unix, not(any(target_os = "macos", target_os = "android")))), allow(dead_code))]
 fn linux_session(answers: &LinuxAnswers, now: Duration) -> Session {
-    let locked = [answers.saver_active, answers.gnome_active, answers.locked_hint].contains(&Some(true));
+    let lockers = [answers.saver_active, answers.gnome_active, answers.locked_hint];
+    let (locked, unlocked) = (lockers.contains(&Some(true)), lockers.contains(&Some(false)));
     let times = [answers.saver_idle_ms.map(|ms| Duration::from_millis(u64::from(ms))), answers.mutter_idle_ms.map(Duration::from_millis), answers.idle_since_us.map(|us| now.saturating_sub(Duration::from_micros(us)))];
-    Session { since_input: times.into_iter().flatten().min(), locked }
+    Session { since_input: times.into_iter().flatten().min(), locked: locked && !unlocked, disputed: locked && unlocked }
 }
 
 /// The session as Windows' answers say it: the tick counts now and at the
@@ -166,7 +270,7 @@ fn linux_session(answers: &LinuxAnswers, now: Duration) -> Session {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn windows_session(ticks: Option<(u32, u32)>, wts: Option<&[u8]>) -> Session {
     let since_input = ticks.map(|(now, input)| Duration::from_millis(u64::from(now.wrapping_sub(input))));
-    Session { since_input, locked: wts.and_then(windows_flags).and_then(windows_locked) == Some(true) }
+    Session { since_input, locked: wts.and_then(windows_flags).and_then(windows_locked) == Some(true), disputed: false }
 }
 
 /// Windows' word on a session's lock (`WTSINFOEX_LEVEL1_W::SessionFlags`):
@@ -198,7 +302,7 @@ fn windows_flags(answer: &[u8]) -> Option<i32> {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn macos_session(seconds: f64, locked: bool) -> Session {
     let since_input = if seconds.is_finite() && seconds >= 0.0 { Duration::try_from_secs_f64(seconds).ok() } else { None };
-    Session { since_input, locked }
+    Session { since_input, locked, disputed: false }
 }
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
@@ -519,7 +623,7 @@ mod tests {
     /// of input says nothing: Sioul running counts, as before.
     #[test]
     fn a_person_is_at_a_computer_as_its_session_says() {
-        let session = |since: Option<u64>, locked: bool| Session { since_input: since.map(minutes), locked };
+        let session = |since: Option<u64>, locked: bool| Session { since_input: since.map(minutes), locked, disputed: false };
         assert_eq!(present_of(session(Some(0), false), None), Some(true));
         assert_eq!(present_of(session(Some(9), false), None), Some(true));
         assert_eq!(present_of(session(Some(10), false), None), Some(false), "ten minutes without input: nobody");
@@ -537,8 +641,9 @@ mod tests {
     }
 
     /// Linux and the BSDs, from stand-in answers of the session's services:
-    /// any locker locks; the newest touch any of them gave wins; logind's idle
-    /// time is the real clock less its hint; none answering, nothing said.
+    /// a locker locks unless another says unlocked; the newest touch any of
+    /// them gave wins; logind's idle time is the real clock less its hint;
+    /// none answering, nothing said.
     #[test]
     fn a_linux_session_read_from_its_services() {
         let now = Duration::from_secs(1_800_000_000);
@@ -546,13 +651,14 @@ mod tests {
         assert_eq!(linux_session(&none, now), Session::default(), "no service answered: nothing said");
         // KDE: its screen saver alone.
         let kde = LinuxAnswers { saver_active: Some(false), saver_idle_ms: Some(30_000), ..none };
-        assert_eq!(linux_session(&kde, now), Session { since_input: Some(Duration::from_secs(30)), locked: false });
+        assert_eq!(linux_session(&kde, now), Session { since_input: Some(Duration::from_secs(30)), locked: false, disputed: false });
         assert_eq!(present_of(linux_session(&kde, now), None), Some(true));
         assert_eq!(linux_session(&LinuxAnswers { saver_active: Some(true), ..kde }, now).locked, true, "KDE's locker on");
         // GNOME: Mutter's idle monitor and its shield; the freedesktop name not there.
         let gnome = LinuxAnswers { mutter_idle_ms: Some(11 * 60_000), gnome_active: Some(false), locked_hint: Some(false), ..none };
         assert_eq!(present_of(linux_session(&gnome, now), None), Some(false), "eleven minutes without input");
-        assert!(linux_session(&LinuxAnswers { gnome_active: Some(true), ..gnome }, now).locked);
+        assert!(linux_session(&LinuxAnswers { gnome_active: Some(true), locked_hint: Some(true), ..gnome }, now).locked, "GNOME locked: its shield and logind say so");
+        assert!(linux_session(&LinuxAnswers { gnome_active: Some(true), ..gnome }, now).disputed, "its shield up, logind saying unlocked: disputed");
         // Several monitors: the newest touch wins.
         let both = LinuxAnswers { saver_idle_ms: Some(20 * 60_000), mutter_idle_ms: Some(60_000), ..none };
         assert_eq!(linux_session(&both, now).since_input, Some(minutes(1)));
@@ -579,7 +685,7 @@ mod tests {
         let locked = wts(1, 0, 360);
         let unlocked = wts(1, 1, 360);
         assert_eq!(windows_flags(&locked), Some(0));
-        assert_eq!(windows_session(Some((70_000, 10_000)), Some(&unlocked)), Session { since_input: Some(minutes(1)), locked: false });
+        assert_eq!(windows_session(Some((70_000, 10_000)), Some(&unlocked)), Session { since_input: Some(minutes(1)), locked: false, disputed: false });
         assert!(windows_session(Some((70_000, 10_000)), Some(&locked)).locked);
         assert_eq!(present_of(windows_session(Some((70_000, 10_000)), Some(&locked)), None), Some(false));
         // Unknown, another level, an answer too short, none at all: not said locked.
@@ -595,12 +701,130 @@ mod tests {
     /// that is no time says nothing), and the screen's lock.
     #[test]
     fn a_macos_session_read_from_its_answers() {
-        assert_eq!(macos_session(42.5, false), Session { since_input: Some(Duration::from_millis(42_500)), locked: false });
+        assert_eq!(macos_session(42.5, false), Session { since_input: Some(Duration::from_millis(42_500)), locked: false, disputed: false });
         assert_eq!(present_of(macos_session(42.5, false), None), Some(true));
         assert_eq!(present_of(macos_session(42.5, true), None), Some(false));
         assert_eq!(present_of(macos_session(900.0, false), None), Some(false));
         for odd in [f64::NAN, f64::INFINITY, -1.0, f64::MAX] {
             assert_eq!(macos_session(odd, false).since_input, None, "{odd}");
         }
+    }
+
+    /// Lock answers that disagree (logind's hint left locked by a locker that
+    /// died, or naming another session, while the desktop's own screen saver
+    /// says unlocked, input five seconds ago) are not taken: unknown, Sioul
+    /// running counts, never "nobody" (review of battery part C, F4). A press
+    /// in Sioul still says someone.
+    #[test]
+    fn lock_answers_that_disagree_say_nothing_of_who_is_there() {
+        let now = Duration::from_secs(1_800_000_000);
+        let answers = LinuxAnswers { saver_active: Some(false), saver_idle_ms: Some(5_000), locked_hint: Some(true), ..LinuxAnswers::default() };
+        let session = linux_session(&answers, now);
+        assert!(session.disputed && !session.locked);
+        assert_eq!(present_of(session, None), None, "unknown: Sioul running counts");
+        assert_eq!(present_of(Session { since_input: Some(minutes(120)), ..session }, None), None, "never nobody, idle or not");
+        assert_eq!(present_of(session, Some(Duration::from_secs(3))), Some(true), "a press says someone");
+        // Agreeing lockers: locked; agreeing unlocked: by input, as before.
+        let both_locked = LinuxAnswers { saver_active: Some(true), locked_hint: Some(true), ..LinuxAnswers::default() };
+        assert_eq!(present_of(linux_session(&both_locked, now), None), Some(false));
+        let both_unlocked = LinuxAnswers { saver_active: Some(false), saver_idle_ms: Some(5_000), locked_hint: Some(false), ..LinuxAnswers::default() };
+        assert_eq!(present_of(linux_session(&both_unlocked, now), None), Some(true));
+        // The spam training reads a disputed lock as unlocked, by input alone.
+        assert_eq!(idle_of(session.locked, Some(minutes(20))), Some(true));
+    }
+
+    /// A press in Sioul made after the session was last read wins over what
+    /// that reading said, its lock included: someone unlocked the computer
+    /// to make it (review of battery part C, F4). A press older than the
+    /// reading counts as `present_of` says; no reading, a recent press says
+    /// someone and nothing else says anything.
+    #[test]
+    fn a_press_newer_than_the_reading_wins_over_its_lock() {
+        let locked = Session { since_input: Some(minutes(40)), locked: true, disputed: false };
+        let secs = Duration::from_secs;
+        assert_eq!(present_since(Some((locked, secs(20))), Some(secs(2))), Some(true), "read locked 20 s ago, pressed 2 s ago");
+        assert_eq!(present_since(Some((locked, secs(20))), Some(secs(30))), Some(false), "pressed before the reading that says locked");
+        assert_eq!(present_since(Some((locked, secs(20))), None), Some(false));
+        let away = Session { since_input: Some(minutes(40)), locked: false, disputed: false };
+        assert_eq!(present_since(Some((away, secs(20))), Some(secs(30))), Some(true), "unlocked, pressed within ten minutes");
+        assert_eq!(present_since(Some((away, secs(20))), Some(minutes(11))), Some(false));
+        assert_eq!(present_since(None, Some(secs(30))), Some(true), "no reading: a press says someone");
+        assert_eq!(present_since(None, Some(minutes(11))), None, "no reading: unknown");
+        assert_eq!(present_since(None, None), None);
+    }
+
+    /// A reading that does not come back (a bus that takes the connection and
+    /// never answers: its setup has no limit of its own) never holds its
+    /// caller past the limit; while it is held, the next asks nothing and
+    /// answers none at once (one thread held at most); once it comes back,
+    /// readings go on (review of battery part C, F3).
+    #[test]
+    fn a_reading_that_does_not_come_back_never_holds_its_caller() {
+        static HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let start = std::time::Instant::now();
+        let first = within(Duration::from_millis(300), &HELD, move || {
+            let _ = wait.recv();
+            7
+        });
+        assert_eq!(first, None);
+        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
+        let start = std::time::Instant::now();
+        assert_eq!(within(Duration::from_secs(5), &HELD, || 8), None, "an earlier one still held: nothing asked");
+        assert!(start.elapsed() < Duration::from_millis(100));
+        release.send(()).unwrap();
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        while HELD.load(std::sync::atomic::Ordering::SeqCst) && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(within(Duration::from_secs(5), &HELD, || 9), Some(9), "come back: readings go on");
+    }
+
+    /// The kept reading: none before the first, then the last and its age,
+    /// none again once it is `KEPT_FOR` old (a reading that stopped coming).
+    #[test]
+    fn the_kept_reading_ages_out() {
+        let reading = Session { since_input: Some(Duration::from_secs(4)), locked: false, disputed: false };
+        *KEPT.lock().unwrap() = Some((std::time::Instant::now(), reading));
+        assert_eq!(kept_session().map(|(session, _)| session), Some(reading));
+        if let Some(old) = std::time::Instant::now().checked_sub(KEPT_FOR + Duration::from_secs(1)) {
+            *KEPT.lock().unwrap() = Some((old, reading));
+            assert_eq!(kept_session(), None, "too old: none, Sioul running counts");
+        }
+        *KEPT.lock().unwrap() = None;
+    }
+
+    /// A session bus that takes the connection and never answers (a wedged
+    /// broker): `session_within` comes back within its limit (the review of
+    /// battery part C saw `session` blocked over nine minutes). Sets the
+    /// process's bus addresses: run alone, by name:
+    /// `cargo test --release -p sioul-sync power::tests::a_wedged_session_bus -- --ignored --test-threads=1`.
+    #[test]
+    #[ignore = "sets the process's bus addresses: run alone, by name"]
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    fn a_wedged_session_bus_never_holds_the_reading_past_its_limit() {
+        use std::os::unix::net::UnixListener;
+        let dir = std::env::temp_dir().join(format!("sioul-wedged-bus-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bus");
+        let listener = UnixListener::bind(&path).unwrap();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming().flatten() {
+                held.push(stream);
+            }
+        });
+        // SAFETY: run alone, by name, before any other use of D-Bus in this process.
+        unsafe {
+            std::env::set_var("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}", path.display()));
+            std::env::set_var("DBUS_SYSTEM_BUS_ADDRESS", format!("unix:path={}", dir.join("none").display()));
+        }
+        let start = std::time::Instant::now();
+        let said = session_within(Duration::from_secs(2));
+        let took = start.elapsed();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(said, None);
+        assert!(took < Duration::from_secs(3), "{took:?}");
     }
 }

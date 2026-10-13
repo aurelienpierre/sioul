@@ -29,9 +29,10 @@
 //!    what a mail filter moves out of the inbox or marks read;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
 //!    changed, and the notification's "Let every call through";
-//! 5. when to look next: two minutes while another device is in use (a
-//!    computer with someone at it: `sioul_sync::devices::others_in_use`), five
-//!    otherwise, fifteen while you sleep.
+//! 5. when to look next: two minutes while the phone keeps close
+//!    (`keeps_close`, read again after the step's pull: another device in
+//!    use; while you sleep, a computer only with someone at it, or any while
+//!    a dose is due and not marked), five otherwise, fifteen while you sleep.
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
 
@@ -183,11 +184,10 @@ static POKED: Mutex<(String, String)> = Mutex::new((String::new(), String::new()
 /// When mail was last fetched in the background (Unix seconds).
 static MAILED: AtomicI64 = AtomicI64::new(0);
 
-/// How long until the next step (seconds): two minutes while another device
-/// is in use (its news stays fresh, the doses' too, and do-not-disturb pressed
-/// there comes within them), fifteen while you sleep, five otherwise. A
-/// computer left on with nobody at it is not in use (`devices::others_in_use`):
-/// its Sioul in the tray all night no longer makes the phone step every two minutes.
+/// How long until the next step (seconds): two minutes while the phone keeps
+/// close (`keeps_close`: another device in use, its news fresh, the doses'
+/// too, and do-not-disturb pressed there comes within them), fifteen while
+/// you sleep, five otherwise.
 fn next_step(in_use: bool, asleep: bool) -> i64 {
     if in_use {
         STEP_IN_USE
@@ -320,6 +320,28 @@ pub(crate) fn tell_note() {
     java("note", &note().0.to_string());
 }
 
+/// Whether the phone keeps its two-minute steps (docs/android.md, "Its
+/// rhythm"), as the devices' entries read now (the folder and the last
+/// pull's copy): another device in use (`sioul_sync::devices::others_in_use`:
+/// while you are awake, a computer whose Sioul runs; while you sleep, only one
+/// someone is at); or, while you sleep, a dose due and not marked while
+/// another device runs (`health::dose_open_now`): a mark made there comes
+/// within the two minutes, not at the phone's next slow look (docs/health.md,
+/// "Knowing"). Read before the step's pull, for whether it pulls at once, and
+/// again after it, for when the next step comes (`step`).
+fn keeps_close(asleep: bool) -> bool {
+    let Some((own, entries)) = crate::devices::entries() else { return false };
+    keeps_close_of(&entries, &own, jiff::Timestamp::now().as_second(), asleep, crate::health::dose_open_now)
+}
+
+/// `keeps_close`, from what was read: the devices' entries, this phone's
+/// id, now, you asleep, and whether a dose is due and not marked (asked only
+/// when it decides).
+fn keeps_close_of(entries: &[sioul_sync::devices::Entry], own: &str, now: i64, asleep: bool, dose_open: impl FnOnce() -> bool) -> bool {
+    use sioul_sync::devices::others_in_use;
+    others_in_use(entries, own, now, asleep) || (asleep && others_in_use(entries, own, now, false) && dose_open())
+}
+
 /// One step of the background service (see the module's words): its answer
 /// for Java, {next (seconds), folder, own, title, text, channel, calls, stop},
 /// or {skip} for a folder's step with nothing new (the alarm left as it is).
@@ -342,11 +364,13 @@ fn step(reason: &str) -> serde_json::Value {
     }
     // 1. The others' news: at an alarm, Sioul's own pull from the server while it
     // works, else the sync app asked first and given twenty seconds
-    // (`share::exchange_here`), unless you sleep and no other device is in use
-    // (nothing is coming: the pull's own pace is enough); a file the sync app just wrote, read at once.
+    // (`share::exchange_here`), unless you sleep and the phone need not keep
+    // close (nothing is coming: the pull's own pace is enough); a file the sync
+    // app just wrote, read at once. Whether it keeps close, as the last pull left
+    // the others' entries: read again after this step's pull, for the next step.
     let (asleep, paused) = crate::everywhere::rest_now();
     let asleep = asleep && !paused;
-    let in_use = crate::devices::others_in_use();
+    let in_use = keeps_close(asleep);
     // 3, begun now: mail at its rhythm, fetched beside the exchange, so that the
     // step's network comes in one burst; then what waited and may come now
     // ("The Porch opens"), at the mail's rhythm. Waited for before the answer.
@@ -407,11 +431,15 @@ fn step(reason: &str) -> serde_json::Value {
     while !wanted.is_finished() && std::time::Instant::now() < until {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
+    // Whether the phone keeps close, read again now that this step's pull brought
+    // the others' entries: someone back at a computer, a dose marked there, seen
+    // from this step on, not one slow step later (review of battery part C, F1).
+    let close = keeps_close(asleep);
     // The notification's words now; the next step no later than the end of what now is for,
     // so that its title changes with the time.
     let now = jiff::Timestamp::now().as_second();
     let (note, until) = note();
-    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(next_step(in_use, asleep), |s| s.min(next_step(in_use, asleep)));
+    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(next_step(close, asleep), |s| s.min(next_step(close, asleep)));
     let words = words();
     serde_json::json!({
         "next": next,
@@ -532,14 +560,14 @@ mod tests {
     const DESK_ID: &str = "0b5e11a2-0000-4000-8000-000000000002";
 
     /// What one hour of the background service does on the network, as its
-    /// steps pace it (`next_step`, `mail_due`, `remote::due`, the in-use rule
-    /// of `sioul_sync::devices::others_in_use`): its alarm steps, the pulls
-    /// among them, the mail rounds fetched in their bursts (one burst a step:
-    /// pull, send and mail together, on one connection), the steps a message
-    /// for your computers or a text brings (twenty seconds after it, a burst
-    /// of their own unless an alarm step comes within those seconds), the
-    /// bursts in all (the modem woken once each), and the longest wait between
-    /// two pulls (seconds): how late a computer's do-not-disturb may come.
+    /// steps pace it (`next_step`, `mail_due`, `remote::due`, `keeps_close_of`):
+    /// its alarm steps, the pulls among them, the mail rounds fetched in their
+    /// bursts (one burst a step: pull, send and mail together, on one
+    /// connection), the steps a message for your computers or a text brings
+    /// (twenty seconds after it, a burst of their own unless an alarm step
+    /// comes within those seconds), the bursts in all (the modem woken once
+    /// each), and the longest wait between two pulls (seconds): how late a
+    /// computer's do-not-disturb may come.
     #[derive(Debug, Default, PartialEq, Eq)]
     struct Hour {
         steps: u32,
@@ -550,41 +578,49 @@ mod tests {
         longest: i64,
     }
 
-    /// An hour from `start`, the desk as its entry reads in the folder at each
-    /// moment (`desk`; none: no computer running), you asleep or not, messages
-    /// for your computers (or texts) heard at `heard` (seconds into the hour).
-    fn an_hour(desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool, heard: &[i64]) -> Hour {
+    /// An hour from `start`, after an hour run the same way (its rhythm
+    /// settled), the desk as the server holds its entry at each moment
+    /// (`desk`; none: no computer running), you asleep or not, a dose due and
+    /// not marked or not, messages for your computers (or texts) heard at
+    /// `heard` (seconds into the hour). In `step`'s order: whether the phone
+    /// keeps close is read from the entry the last pull brought, before the
+    /// step's pull (whether it pulls at once), and again after it (when the
+    /// next step comes).
+    fn an_hour(desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool, dose: bool, heard: &[i64]) -> Hour {
         use sioul_sync::remote::{Pace, State, due};
         let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
         let start = 1_800_000_000;
-        let mut state = State { confirmed: start - 86_400, tried: start - 3_600, last: start - 3_600, ..State::default() };
-        let (mut hour, mut mailed, mut at) = (Hour::default(), start - 3_600, start);
-        let mut alarms = Vec::new();
+        let warm = start - 3_600;
+        let mut state = State { confirmed: warm - 86_400, tried: warm - 3_600, last: warm - 3_600, ..State::default() };
+        let (mut hour, mut mailed, mut at) = (Hour::default(), warm - 3_600, warm);
+        let (mut known, mut pulls, mut alarms): (Vec<Entry>, Vec<i64>, Vec<i64>) = (Vec::new(), Vec::new(), Vec::new());
         while at < start + 3_600 {
-            let entries: Vec<Entry> = desk(at).into_iter().collect();
-            let in_use = sioul_sync::devices::others_in_use(&entries, PHONE_ID, at);
-            let fetch_first = in_use || !asleep;
+            let close = keeps_close_of(&known, PHONE_ID, at, asleep, || dose);
+            let fetch_first = close || !asleep;
+            let in_use = sioul_sync::devices::others_in_use(&known, PHONE_ID, at, asleep);
             let pace = Pace { phone: true, shown: false, in_use, urgent: fetch_first, step: if asleep { STEP_ASLEEP } else { STEP_AWAKE } };
             let pulled = due(&state, at, pace);
             if pulled {
-                if state.tried >= start {
-                    hour.longest = hour.longest.max(at - state.tried);
-                }
                 (state.tried, state.last) = (at, at);
+                known = desk(at).into_iter().collect();
+                pulls.push(at);
             }
             let mail = mail_due(&config, at, mailed, asleep, false);
             if mail {
                 mailed = at;
             }
-            hour.steps += 1;
-            hour.pulls += u32::from(pulled);
-            hour.mail += u32::from(mail);
-            hour.wakes += u32::from(pulled || mail);
-            alarms.push(at);
-            at += next_step(in_use, asleep);
+            if at >= start {
+                hour.steps += 1;
+                hour.pulls += u32::from(pulled);
+                hour.mail += u32::from(mail);
+                hour.wakes += u32::from(pulled || mail);
+                alarms.push(at);
+            }
+            at += next_step(keeps_close_of(&known, PHONE_ID, at, asleep, || dose), asleep);
         }
-        // The wait from the hour's last pull to the next step's.
-        hour.longest = hour.longest.max(at - state.tried);
+        // The longest wait between two pulls in the hour, the wait from its last one to the next step included.
+        pulls.push(at);
+        hour.longest = pulls.windows(2).filter(|w| w[1] > start).map(|w| w[1] - w[0]).max().unwrap_or(0);
         // A message's step, twenty seconds on (`StepService.SOON_MS`), the one
         // after it joining it (`Later.of`); an alarm step within them takes it along.
         let mut waiting: Option<i64> = None;
@@ -602,47 +638,176 @@ mod tests {
         hour
     }
 
-    /// The desk's entry as it reads in the folder at `at`: in use since well
-    /// before, someone at it or not (`active`; none: unsaid, as an older Sioul's
-    /// or where its system says nothing), its last export there as often as
-    /// it writes it (each minute; every few minutes with nobody at it).
+    /// The desk's entry as the server holds it at `at`: in use since well
+    /// before, someone at it or not (`active`; none: unsaid, as an older
+    /// Sioul's or where its system says nothing), written at each export,
+    /// each minute, whoever is at it.
     fn desk(active: Option<bool>) -> impl Fn(i64) -> Option<Entry> {
-        move |at: i64| {
-            let every = if active == Some(false) { (sioul_sync::devices::AWAY_RESTATED + 59) / 60 * 60 } else { 60 };
-            Some(Entry { id: DESK_ID.into(), kind: COMPUTER.into(), working: true, started: at - 86_400, exported: at - at.rem_euclid(every), active, ..Entry::default() })
-        }
+        move |at: i64| Some(Entry { id: DESK_ID.into(), kind: COMPUTER.into(), working: true, started: at - 86_400, exported: at - at.rem_euclid(60), active, ..Entry::default() })
     }
 
     /// The phone's network wakes in an hour, from the code, before and after
-    /// battery part C (13 October 2026): with no computer running, a
-    /// computer left on with nobody at it (the night), and a person at a
-    /// computer. "Before" is the desk's entry as it was, saying nothing of
-    /// anyone at it (as an older Sioul's still does): Sioul running counted.
+    /// battery part C (13 October 2026, and its review): with no computer
+    /// running, a computer left on with nobody at it, a person at a computer,
+    /// and a dose due and not marked. "Before" is the desk's entry as it was,
+    /// saying nothing of anyone at it (as an older Sioul's still does): Sioul
+    /// running counted. Only the sleep column changed: awake, a computer whose
+    /// Sioul runs counts, as before.
     #[test]
     fn the_phone_wakes_as_often_as_someone_may_be_at_a_computer() {
         let none = |_: i64| None;
         let (before, nobody, someone) = (desk(None), desk(Some(false)), desk(Some(true)));
-        let wakes = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, &[]);
+        let wakes = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, false, &[]);
         // No computer running: unchanged, every five minutes awake, every fifteen asleep.
         assert_eq!(wakes(&none, false), Hour { steps: 12, pulls: 12, mail: 4, messages: 0, wakes: 12, longest: 300 });
         assert_eq!(wakes(&none, true), Hour { steps: 4, pulls: 4, mail: 0, messages: 0, wakes: 4, longest: 900 });
         // A computer left on, nobody at it: thirty wakes an hour before, day and night alike;
-        // now as with no computer running.
+        // now thirty while you are awake, as before, and four while you sleep.
         assert_eq!(wakes(&before, true), Hour { steps: 30, pulls: 30, mail: 0, messages: 0, wakes: 30, longest: 120 });
         assert_eq!(wakes(&before, false), Hour { steps: 30, pulls: 30, mail: 4, messages: 0, wakes: 30, longest: 120 });
-        assert_eq!(wakes(&nobody, true), wakes(&none, true));
-        assert_eq!(wakes(&nobody, false), wakes(&none, false));
-        // Someone at a computer: as before, every two minutes; its do-not-disturb, pressed there,
-        // comes within them. Pressed after a while away, the press says someone is there at once
-        // (`devices::pressed`), and the phone's next look, five minutes away at most (fifteen while
-        // you sleep), brings it and the two-minute steps.
+        assert_eq!(wakes(&nobody, false), wakes(&before, false), "awake: Sioul running counts, as before");
+        assert_eq!(wakes(&nobody, true), wakes(&none, true), "asleep: as with no computer running");
+        // A dose due and not marked, a computer running: two-minute steps, while you sleep too;
+        // with no other device, nothing to keep close to.
+        assert_eq!(an_hour(&nobody, true, true, &[]), wakes(&before, true));
+        assert_eq!(an_hour(&none, true, true, &[]), wakes(&none, true));
+        // Someone at a computer: as before, every two minutes, asleep too.
         assert_eq!(wakes(&someone, false), wakes(&before, false));
         assert_eq!(wakes(&someone, true), wakes(&before, true));
-        assert_eq!(wakes(&someone, true).longest, STEP_IN_USE);
         // A message for your computers (or a text) brings a step twenty seconds on, a burst of
         // its own unless an alarm step comes within them; two heard together go as one.
-        assert_eq!(an_hour(&none, true, &[100, 110, 1_000]).wakes, 4 + 2);
-        assert_eq!(an_hour(&someone, true, &[100, 110]).wakes, 30, "taken along by the alarm step at 120 s");
+        assert_eq!(an_hour(&none, true, false, &[100, 110, 1_000]).wakes, 4 + 2);
+        assert_eq!(an_hour(&someone, true, false, &[100, 110]).wakes, 30, "taken along by the alarm step at 120 s");
+    }
+
+    /// One press at the desk at `press` (do-not-disturb's switch, or a dose
+    /// marked there), nobody at the desk before and someone from it on, its
+    /// entry reaching the server `upload` seconds after each export (each
+    /// minute, and at once at the press): as `step` runs it (`keeps_close_of`
+    /// before its pull and again after it, `remote::due`, `next_step`), how
+    /// long until the phone pulls it (`came`); how far on the step that pulled
+    /// it sets the next (`then`: how late a second press, made just after, may
+    /// come); from the press, when the phone's steps are two minutes apart
+    /// again (`two`); and how long, meanwhile, a dose due an hour before reads
+    /// known not marked elsewhere (`plain`: the card's plain line while the
+    /// mark waits at the desk). Adapted from the review of battery part C (F1, F2).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Press {
+        came: i64,
+        then: i64,
+        two: i64,
+        plain: i64,
+    }
+
+    fn a_press(asleep: bool, dose: bool, press: i64, upload: i64) -> Press {
+        use sioul_core::health::{Peer, doubts_now};
+        use sioul_sync::remote::{Pace, State, due};
+        let server = |t: i64| {
+            let at = t - upload;
+            let (active, exported) = if at >= press { (Some(true), (at - at.rem_euclid(60)).max(press)) } else { (Some(false), at - at.rem_euclid(60)) };
+            Entry { id: DESK_ID.into(), kind: COMPUTER.into(), working: true, started: -86_400, exported, active, doses: true, ..Entry::default() }
+        };
+        let first = 0;
+        let mut state = State { confirmed: first - 86_400, tried: first - 3_600, last: first - 3_600, ..State::default() };
+        let mut known: Vec<Entry> = Vec::new();
+        let (mut seen, mut next_at) = (first, first);
+        let mut out = Press { came: -1, then: -1, two: -1, plain: 0 };
+        let mut t = first;
+        while t < press + 6 * 3_600 && (out.came < 0 || out.two < 0) {
+            if t == next_at {
+                // Whether a dose waits: until the mark made at the desk is pulled.
+                let open = dose && out.came < 0;
+                let close = keeps_close_of(&known, PHONE_ID, t, asleep, || open);
+                let fetch_first = close || !asleep;
+                let in_use = sioul_sync::devices::others_in_use(&known, PHONE_ID, t, asleep);
+                let pace = Pace { phone: true, shown: false, in_use, urgent: fetch_first, step: if asleep { STEP_ASLEEP } else { STEP_AWAKE } };
+                let mut brought = false;
+                if due(&state, t, pace) {
+                    (state.tried, state.last) = (t, t);
+                    let fresh = server(t);
+                    let state_of = |e: &Entry| (e.started, e.closed, e.working, e.exported, e.left);
+                    if known.first().is_none_or(|k| state_of(k) != state_of(&fresh)) {
+                        seen = t;
+                    }
+                    known = vec![fresh];
+                    if out.came < 0 && t - upload >= press {
+                        out.came = t - press;
+                        brought = true;
+                    }
+                }
+                let next = next_step(keeps_close_of(&known, PHONE_ID, t, asleep, || dose && out.came < 0), asleep);
+                if brought {
+                    out.then = next;
+                }
+                if out.came >= 0 && out.two < 0 && next == STEP_IN_USE {
+                    out.two = t + next - press;
+                }
+                next_at = t + next;
+            }
+            // The card between looks: the dose marked at the desk at `press`, not pulled yet.
+            if t >= press
+                && out.came < 0
+                && let Some(entry) = known.first()
+            {
+                let peer = Peer { id: DESK_ID.into(), name: "desk".into(), said: Some(entry.said()), complete: true, seen, heard: entry.exported, ..Peer::default() };
+                if doubts_now(press - 3_600, t, None, std::slice::from_ref(&peer)).is_empty() {
+                    out.plain += 1;
+                }
+            }
+            t += 1;
+        }
+        out
+    }
+
+    /// The worst of each measure over presses made every seven seconds across
+    /// two whole cycles of the phone's slowest steps, its rhythm settled hours before.
+    fn worst(asleep: bool, dose: bool, upload: i64) -> Press {
+        let presses: Vec<Press> = (4 * 3_600..4 * 3_600 + 2 * 900).step_by(7).map(|p| a_press(asleep, dose, p, upload)).collect();
+        let max = |f: &dyn Fn(&Press) -> i64| presses.iter().map(f).max().unwrap();
+        Press { came: max(&|p| p.came), then: max(&|p| p.then), two: max(&|p| p.two), plain: max(&|p| p.plain) }
+    }
+
+    /// Do-not-disturb pressed at a desk after a while away from it reaches the
+    /// phone at its next look, and the step that brings it brings the
+    /// two-minute steps with it: the step reads the others' entries again
+    /// after its own pull (review of battery part C, F1; before, it went on at
+    /// the slow pace, and while you slept never came back to two minutes).
+    /// Awake, a computer whose Sioul runs counts whoever is at it: two minutes
+    /// throughout, as before.
+    #[test]
+    fn a_press_at_a_desk_brings_the_two_minute_steps_from_the_look_that_reads_it() {
+        for upload in [0, 30] {
+            let awake = worst(false, false, upload);
+            assert!(awake.came <= STEP_IN_USE + upload && awake.then == STEP_IN_USE && awake.two <= 2 * STEP_IN_USE + upload, "awake: {awake:?}");
+            let asleep = worst(true, false, upload);
+            assert!(asleep.came <= STEP_ASLEEP + upload, "asleep: within the night's step: {asleep:?}");
+            assert_eq!(asleep.then, STEP_IN_USE, "asleep: the step that brings it brings the two-minute steps: {asleep:?}");
+            assert!(asleep.two >= 0 && asleep.two <= STEP_ASLEEP + upload + STEP_IN_USE, "asleep: {asleep:?}");
+        }
+        // The step reads them again after its pull, for its next (read from the source).
+        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/steps.rs")).unwrap();
+        let body = source.split("\nfn step(reason: &str)").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        let (pull, again, next) = (body.find("exchange_here(fetch_first)").unwrap(), body.find("let close = keeps_close(asleep);").unwrap(), body.find("next_step(close, asleep)").unwrap());
+        assert!(pull < again && again < next, "the next step from what this step's pull brought");
+    }
+
+    /// A dose due and not marked, a computer running with nobody at it, you
+    /// asleep: the phone keeps its two-minute steps, so that a mark made at
+    /// the desk reaches it within them, and the card's plain line ("not marked
+    /// elsewhere") lasts two minutes at most past the mark, the desk's upload
+    /// aside, not the five that the doses' freshness allows (review of
+    /// battery part C, F2). Without a dose waiting, the night's pace, the
+    /// doses' rule bounding the plain line by `FRESH` all the same.
+    #[test]
+    fn a_dose_due_keeps_the_phone_close_while_a_computer_runs() {
+        use sioul_core::health::FRESH;
+        for upload in [0, 30] {
+            let watched = worst(true, true, upload);
+            assert!(watched.came <= STEP_IN_USE + upload, "{watched:?}");
+            assert!(watched.plain <= STEP_IN_USE + upload, "the card's plain line past the mark: {watched:?}");
+            let night = worst(true, false, upload);
+            assert!(night.plain <= FRESH + upload, "{night:?}");
+        }
     }
 
     #[test]
@@ -676,7 +841,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for path in ["crates/sioul-app/src/calls.rs", "android/package/src/com/aurelienpierre/sioul/Calls.java", "android/package/src/com/aurelienpierre/sioul/CallScreen.java"] {
             let source = std::fs::read_to_string(root.join(path)).unwrap();
-            for word in ["others_in_use", "present_of", "AWAY_RESTATED", ".active"] {
+            for word in ["others_in_use", "keeps_close", "present_of", "present_since", ".active"] {
                 assert!(!source.contains(word), "{path} reads {word}");
             }
         }

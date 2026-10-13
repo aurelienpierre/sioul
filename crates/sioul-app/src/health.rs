@@ -1531,6 +1531,36 @@ pub(crate) fn alarm_taken(key: &str) -> String {
     })
 }
 
+// ---------------------------------------------------------------- a phone's steps while a dose is due
+
+/// Whether a dose's time has come and it is not marked yet, as the Porch
+/// still asks about it (until the day's end, twelve hours at most): while one
+/// is and another device runs Sioul, a phone in the background keeps its
+/// two-minute steps, while you sleep too, so that a mark made there comes
+/// within them, not at its next slow look (docs/health.md, "Knowing";
+/// `steps::keeps_close`). Read only, nothing repaired here; a record that does
+/// not read counts as a dose open, never as none.
+pub(crate) fn dose_open_now() -> bool {
+    let health = load();
+    if health.medicines.is_empty() {
+        return false;
+    }
+    match (HealthState::read(&HealthState::default_path()), DoseRecords::read(&DoseRecords::default_path())) {
+        (Ok(state), Ok(records)) => dose_open(&health, &state, &records, &Zoned::now()),
+        _ => true,
+    }
+}
+
+/// `dose_open_now`, from what was read: a dose of today's, its time come
+/// (twelve hours back at most), answered nowhere this device knows.
+fn dose_open(health: &Health, state: &HealthState, records: &DoseRecords, now: &Zoned) -> bool {
+    let midnight = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
+    let back = now.checked_sub(Span::new().hours(MISSED_HOURS)).unwrap_or_else(|_| now.clone());
+    let start = if back > midnight { back } else { midnight };
+    let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
+    health.doses(&start, &end).into_iter().any(|d| sioul_core::doses::answered(&d.key, state, records) == Answered::Open)
+}
+
 // ---------------------------------------------------------------- the home screen's card
 
 /// Today's doses for the card on a phone's home screen (`homecard`): those
@@ -3495,6 +3525,39 @@ mod tests {
         note_minute(&mut state, std::slice::from_ref(&a), &[], &[], at("2026-10-06T08:05[Europe/Paris]").timestamp().as_second());
         let rows = missed_rows(&health, &state, &alone, &noon, &english);
         assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A dose is open, for a phone's steps (`steps::keeps_close`), from its
+    /// time until it is marked (here, or in the records come from another
+    /// device) or its day ends: while one is and another device runs, the
+    /// phone keeps its two-minute steps, at night too (review of battery part
+    /// C, F2).
+    #[test]
+    fn a_dose_is_open_from_its_time_until_marked_or_its_day_ends() {
+        let dir = std::env::temp_dir().join(format!("sioul-dose-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        std::fs::write(&path, "[[medicine]]\nid = \"mag\"\nname = \"Magnesium\"\ndose = \"300 mg\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"22:00\"]\n").unwrap();
+        let health = Health::load(&path);
+        let at = |text: &str| text.parse::<Zoned>().unwrap();
+        let s = |text: &str| at(text).timestamp().as_second();
+        let (state, none) = (HealthState::default(), DoseRecords::default());
+        assert!(!dose_open(&health, &state, &none, &at("2026-10-06T21:59[Europe/Paris]")), "not its time yet");
+        assert!(dose_open(&health, &state, &none, &at("2026-10-06T22:00[Europe/Paris]")), "its time: open");
+        assert!(dose_open(&health, &state, &none, &at("2026-10-06T23:30[Europe/Paris]")), "not marked, the night begun");
+        assert!(!dose_open(&health, &state, &none, &at("2026-10-07T00:30[Europe/Paris]")), "its day over: no longer asked about");
+        // Marked here; or at the desk, its record come before its mark: closed.
+        let key = format!("mag@{}", s("2026-10-06T22:00[Europe/Paris]"));
+        let mut taken = HealthState::default();
+        taken.taken.insert(key.clone(), s("2026-10-06T22:05[Europe/Paris]"));
+        assert!(!dose_open(&health, &taken, &none, &at("2026-10-06T22:10[Europe/Paris]")));
+        let mut records = DoseRecords::default();
+        let marked = s("2026-10-06T22:07[Europe/Paris]");
+        records.answer(&key, "desk", Answer { state: sioul_core::doses::TAKEN.into(), at: marked, noted: marked, name: "desk".into(), kind: "computer".into() });
+        assert!(!dose_open(&health, &state, &records, &at("2026-10-06T22:10[Europe/Paris]")), "marked at the desk");
+        assert!(!dose_open(&Health::default(), &state, &none, &at("2026-10-06T22:10[Europe/Paris]")), "no medicine");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
