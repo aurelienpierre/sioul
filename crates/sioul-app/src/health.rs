@@ -2979,6 +2979,51 @@ pub(crate) fn save_needs(edit: &str, shown: &str) -> String {
     .unwrap_or_default()
 }
 
+/// A dose's reminder tried again after its first try could not go out
+/// (`sioul_sync::notify::Again`): its words as `tick` words them now (the
+/// doubt said first when there is one), or none when it is no longer to
+/// remind (`late_reminder_wanted`).
+fn still_to_remind(key: &str) -> Option<(String, String)> {
+    let _held = state_held();
+    let state = record();
+    if !late_reminder_wanted(&state, &records(), key) {
+        return None;
+    }
+    let now = Zoned::now();
+    let start = now.checked_sub(Span::new().hours(MISSED_HOURS)).unwrap_or_else(|_| now.clone());
+    let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
+    let dose = load().doses(&start, &end).into_iter().find(|d| d.key == key)?;
+    let doubt = doubt_of(&know(), dose.at.timestamp().as_second(), now.timestamp().as_second());
+    let named = named(&dose);
+    Some(if doubt.is_empty() { (named, dose.at.strftime("%H:%M").to_string()) } else { (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M"))) })
+}
+
+/// Whether a dose's reminder that could not be shown may still be shown,
+/// late: neither marked here (taken, or said not taken) nor answered on
+/// another device, nor reminded since (another device took it up: a phone's
+/// alarm rang): what the phone did is never contradicted, and nothing is
+/// ever said of it but a reminder.
+fn late_reminder_wanted(state: &HealthState, records: &DoseRecords, key: &str) -> bool {
+    !state.taken.contains_key(key) && !state.not_taken.contains_key(key) && !state.reminded.contains_key(key) && sioul_core::doses::answered(key, state, records) == Answered::Open
+}
+
+/// A dose's reminder shown late (`sioul_sync::notify::Again::shown`):
+/// recorded a reminder then (`late_reminded`).
+fn shown_late(key: &str) {
+    let _held = state_held();
+    let now = Timestamp::now().as_second();
+    let _ = change(|record| late_reminded(record, key, now));
+}
+
+/// `shown_late`'s record: a reminder at `now`, unless reminded or marked
+/// meanwhile (the earlier word kept); the `unshown` of its first try stays,
+/// a reminder outweighing it (`HealthState::reminder_unshown`).
+fn late_reminded(record: &mut HealthState, key: &str, now: i64) {
+    if !record.reminded.contains_key(key) && !record.taken.contains_key(key) && !record.not_taken.contains_key(key) {
+        record.reminded.insert(key.to_string(), now);
+    }
+}
+
 /// Each minute: a dose due is reminded once, quietly, with "Taken"; a refill
 /// or a renewal coming becomes a task in a list kept on this computer.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
@@ -3022,6 +3067,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     }
     let mut reminded: Vec<String> = Vec::new();
     let mut unshown: Vec<String> = Vec::new();
+    // Each dose's reminder under way, what became of it waited for below.
+    let mut sending: Vec<(String, sioul_sync::notify::Sending)> = Vec::new();
     // On a phone, Android's alarm clock reminds, Sioul shown or not (`alarms`).
     crate::alarms::schedule();
     // Asleep with "Doses during sleep: stay silent" (Settings ▸ Reminders and
@@ -3067,13 +3114,13 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             // Recorded reminded only when shown: else another device reminds it,
             // and the question on the past still asks about it, saying that its
             // reminder could not be shown (`unshown`), never that Sioul was closed.
-            match sioul_sync::notify::remind(&title, &body, Some((tr().text("health-taken", None), taken))) {
-                Ok(()) => reminded.push(dose.key.clone()),
-                Err(e) => {
-                    unshown.push(dose.key.clone());
-                    tell(qt, shared, e);
-                }
-            }
+            // What became of it is waited for below; while the bus or the server
+            // could not take it, it is tried again until its grace ends, and shown
+            // late only while still to remind (`still_to_remind`, `shown_late`).
+            let (still_key, late_key) = (dose.key.clone(), dose.key.clone());
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(u64::try_from(due + window * 60 - stamp).unwrap_or(0));
+            let again = sioul_sync::notify::Again { until, still: Box::new(move || still_to_remind(&still_key)), shown: Box::new(move || shown_late(&late_key)) };
+            sending.push((dose.key.clone(), sioul_sync::notify::remind_dose(&title, &body, (tr().text("health-taken", None), taken), again)));
         }
     }
     // Doses due while Sioul ran nowhere, or whose reminder could not be shown:
@@ -3128,6 +3175,24 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             }
         }
     }
+    // What became of each dose's reminder: waited for here, ten seconds at most
+    // in all (`notify::FIRST_TRY`), the record let go meanwhile (the page and the
+    // notifications' buttons mark doses meanwhile). Shown: a reminder; not
+    // (no connection, no notification server, one that did not answer in
+    // time or refused it): `unshown`, so that the phone's alarm rings and the
+    // question on the past asks about it (review of battery part C, H1).
+    drop(_held);
+    let deadline = std::time::Instant::now() + sioul_sync::notify::FIRST_TRY;
+    for (key, sent) in sending {
+        match sent.outcome(deadline.saturating_duration_since(std::time::Instant::now())) {
+            Ok(()) => reminded.push(key),
+            Err(e) => {
+                unshown.push(key);
+                tell(qt, shared, e);
+            }
+        }
+    }
+    let _held = state_held();
     // What this minute did, written over nothing anyone else wrote meanwhile.
     let problem = change(|record| note_minute(record, &reminded, &unshown, &made, stamp));
     if !problem.is_empty() && (!reminded.is_empty() || !unshown.is_empty() || !made.is_empty()) {
@@ -3532,6 +3597,55 @@ mod tests {
         let rows = missed_rows(&health, &state, &alone, &noon, &english);
         assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str()]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A dose's reminder is recorded as given only once shown (review of
+    /// battery part C, H1): the tick waits for each notice's first try
+    /// (`remind_dose`, `Sending::outcome`, `FIRST_TRY` at most in all, the
+    /// record let go meanwhile) and records `unshown` when it did not go out,
+    /// so that the phone's alarm rings and the question on the past asks
+    /// about it; tried again and shown late, it becomes a reminder then, only
+    /// while nothing was said of it meanwhile: marked here, answered on
+    /// another device, or reminded by one (the phone's alarm) leaves it as
+    /// it is, never contradicted.
+    #[test]
+    fn a_dose_reminder_counts_once_shown_and_late_only_if_still_to_remind() {
+        let key = "mag@1791360000".to_string();
+        let (state, none) = (HealthState::default(), DoseRecords::default());
+        assert!(late_reminder_wanted(&state, &none, &key), "nothing said of it: shown late");
+        let mut taken = HealthState::default();
+        taken.taken.insert(key.clone(), 1_791_360_100);
+        assert!(!late_reminder_wanted(&taken, &none, &key), "taken meanwhile");
+        let mut skipped = HealthState::default();
+        skipped.not_taken.insert(key.clone(), 1_791_360_100);
+        assert!(!late_reminder_wanted(&skipped, &none, &key), "said not taken");
+        let mut phone = HealthState::default();
+        phone.unshown.insert(key.clone(), 1_791_360_005);
+        phone.reminded.insert(key.clone(), 1_791_360_600);
+        assert!(!late_reminder_wanted(&phone, &none, &key), "the phone's alarm reminded it meanwhile: its turn kept");
+        let mut records = DoseRecords::default();
+        records.answer(&key, "phone", Answer { state: sioul_core::doses::TAKEN.into(), at: 1_791_360_300, noted: 1_791_360_300, name: "phone".into(), kind: "phone".into() });
+        assert!(!late_reminder_wanted(&state, &records, &key), "answered on the phone, its mark not here yet");
+        // Shown late: a reminder then, its unshown first try kept; nothing over an earlier word.
+        let mut first = HealthState::default();
+        first.unshown.insert(key.clone(), 1_791_360_005);
+        assert!(first.reminder_unshown(&key));
+        late_reminded(&mut first, &key, 1_791_360_040);
+        assert_eq!(first.reminded.get(&key), Some(&1_791_360_040));
+        assert!(!first.reminder_unshown(&key), "a reminder now: not asked as one that could not be shown");
+        let mut earlier = phone.clone();
+        late_reminded(&mut earlier, &key, 1_791_360_700);
+        assert_eq!(earlier.reminded.get(&key), Some(&1_791_360_600), "the phone's reminder kept");
+        let mut marked = taken.clone();
+        late_reminded(&mut marked, &key, 1_791_360_700);
+        assert!(marked.reminded.is_empty(), "nothing recorded over a mark");
+        // The tick: each reminder's outcome waited for, unshown when it did not go out (read from the source).
+        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/health.rs")).unwrap();
+        let tick = source.split("pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(tick.contains("sioul_sync::notify::remind_dose(") && !tick.contains("sioul_sync::notify::remind(&title, &body"), "a dose's reminder says what became of it");
+        let waited = tick.split("drop(_held);").nth(1).unwrap();
+        assert!(waited.contains("sent.outcome(deadline.saturating_duration_since(") && waited.contains("Err(e) => {\n                unshown.push(key);"), "waited for, the record let go; not shown: unshown");
+        assert!(waited.find("let _held = state_held();").unwrap() < waited.find("note_minute(record, &reminded, &unshown").unwrap(), "recorded under the record's lock again");
     }
 
     /// A dose is open, for a phone's steps (`steps::keeps_close`), from its

@@ -300,6 +300,19 @@ pub fn kept_power() -> Option<Power> {
     fresh(SHARED.lock().ok()?.reading, Instant::now()).map(|reading| reading.power)
 }
 
+/// Whether the reading thread kept a reading yet in this process, its first
+/// waited for `limit` at most while there is none (the window's first
+/// exchange, `metered`: a connection not read yet counts as metered).
+pub fn read_once_within(limit: Duration) -> bool {
+    ever_read_within(&SHARED, &BELL, limit)
+}
+
+/// `read_once_within`, on `shared` and its `bell`.
+fn ever_read_within(shared: &Mutex<Shared>, bell: &Condvar, limit: Duration) -> bool {
+    let Ok(guard) = shared.lock() else { return false };
+    bell.wait_timeout_while(guard, limit, |shared| shared.reading.is_none()).is_ok_and(|(guard, _)| guard.reading.is_some())
+}
+
 /// What a Linux or BSD desktop's services answered of its session
 /// (`imp::session`), each none when it did not answer: the desktop's screen
 /// saver (KDE's, and others of the freedesktop name), GNOME's idle monitor
@@ -1019,6 +1032,33 @@ mod tests {
         assert!(came.is_some_and(|reading| reading.session.since_input == Some(Duration::from_secs(1))));
         assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
         keeper.join().unwrap();
+    }
+
+    /// Whether a reading was ever kept: none, waited for its limit and said
+    /// no; one rung meanwhile, yes at once; afterwards, yes without waiting,
+    /// however old it is (the window's first exchange: review of battery part
+    /// C, L3).
+    #[test]
+    fn the_first_reading_is_waited_for_once() {
+        static SHARED_HERE: Mutex<Shared> = Mutex::new(Shared { reading: None, asked: None });
+        static BELL_HERE: Condvar = Condvar::new();
+        let start = Instant::now();
+        assert!(!ever_read_within(&SHARED_HERE, &BELL_HERE, Duration::from_millis(150)));
+        assert!(start.elapsed() >= Duration::from_millis(150));
+        let keeper = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(100));
+            SHARED_HERE.lock().unwrap().reading = Some(Reading { began: Instant::now(), session: Session::default(), power: Power { metered: Some(true), ..Power::default() } });
+            BELL_HERE.notify_all();
+        });
+        let start = Instant::now();
+        assert!(ever_read_within(&SHARED_HERE, &BELL_HERE, Duration::from_secs(10)));
+        assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
+        keeper.join().unwrap();
+        // Read once: at once from then on, the reading aged or not.
+        SHARED_HERE.lock().unwrap().reading = Some(Reading { began: Instant::now() - KEPT_FOR.min(Duration::from_secs(1)), session: Session::default(), power: Power::default() });
+        let start = Instant::now();
+        assert!(ever_read_within(&SHARED_HERE, &BELL_HERE, Duration::from_secs(10)));
+        assert!(start.elapsed() < Duration::from_millis(100));
     }
 
     /// Nothing but the reading thread asks the system for these facts: the

@@ -19,7 +19,8 @@
 //! `SETUP` at most: such a bus then holds that one thread, never the caller
 //! and never another connection. While a setup to a bus has been under way
 //! longer than its limit, none more is tried there: the next is refused at
-//! once, until the bus answers it.
+//! once, until the bus answers it, or another bus answers at the same place
+//! (a socket file made anew: `socket_of`).
 //!
 //! The connection made is the same as before in every other way: private,
 //! not closing the program when the bus goes, its name given by the bus.
@@ -43,16 +44,50 @@ static UNDER_WAY: Mutex<Vec<Setup>> = Mutex::new(Vec::new());
 #[derive(Debug, Clone)]
 struct Setup {
     address: String,
+    /// The socket file it went to, as it was then (`socket_of`): another bus
+    /// started at the same place is another socket file.
+    socket: Option<(u64, u64)>,
     began: Instant,
     limit: Duration,
     number: u64,
 }
 
-/// Whether a new setup to `address` is refused at `now`: one under way there
-/// has been so longer than its limit (the bus takes connections and does not
-/// answer them).
-fn refused(under_way: &[Setup], address: &str, now: Instant) -> bool {
-    under_way.iter().any(|setup| setup.address == address && now.saturating_duration_since(setup.began) >= setup.limit)
+/// Whether a new setup to `address`, whose socket file is `socket` now, is
+/// refused at `now`: one under way to the same bus (the same address, the
+/// same socket file) has been so longer than its limit (the bus takes
+/// connections and does not answer them). A bus started again at that path,
+/// the old one hung but alive, is another bus, tried at once.
+fn refused(under_way: &[Setup], address: &str, socket: Option<(u64, u64)>, now: Instant) -> bool {
+    under_way.iter().any(|setup| setup.address == address && setup.socket == socket && now.saturating_duration_since(setup.began) >= setup.limit)
+}
+
+/// The socket file of a `unix:path=` address (its first one), as it is now:
+/// its device and inode; none for another kind of address (an abstract
+/// socket's name, TCP), or no file there.
+fn socket_of(address: &str) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let found = std::fs::metadata(unix_path(address)?).ok()?;
+    Some((found.dev(), found.ino()))
+}
+
+/// The path a `unix:path=` address names, its escapes undone (`escaped`).
+fn unix_path(address: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let first = address.split(';').next()?.strip_prefix("unix:")?;
+    let value = first.split(',').find_map(|pair| pair.strip_prefix("path="))?;
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut rest = value.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = std::str::from_utf8(after.get(..2)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            rest = &after[2..];
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(bytes)))
 }
 
 /// A connection to the bus at `address` (a D-Bus address, as
@@ -67,12 +102,13 @@ pub fn connect(address: &str) -> Result<Channel, dbus::Error> {
 pub fn connect_within(address: &str, limit: Duration) -> Result<Channel, dbus::Error> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let number = NEXT.fetch_add(1, Ordering::Relaxed);
+    let socket = socket_of(address);
     {
         let mut under_way = UNDER_WAY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if refused(&under_way, address, Instant::now()) {
+        if refused(&under_way, address, socket, Instant::now()) {
             return Err(dbus::Error::new_failed("the bus did not answer a connection in time"));
         }
-        under_way.push(Setup { address: address.to_string(), began: Instant::now(), limit, number });
+        under_way.push(Setup { address: address.to_string(), socket, began: Instant::now(), limit, number });
     }
     let (sender, answer) = std::sync::mpsc::channel();
     let target = address.to_string();
@@ -207,24 +243,38 @@ mod tests {
 
     /// A setup under way longer than its limit refuses the next ones to the
     /// same bus at once (the bus takes connections and does not answer them:
-    /// one thread held, never one more); within its limit, or to another
-    /// bus, they go ahead.
+    /// one thread held, never one more); within its limit, to another bus, or
+    /// to another bus started at the same path (another socket file), they go
+    /// ahead (review of battery part C, L1).
     #[test]
     fn a_setup_stuck_past_its_limit_refuses_the_next_ones() {
         let began = Instant::now();
-        let stuck = Setup { address: "unix:path=/run/a".into(), began, limit: SETUP, number: 1 };
+        let old = Some((44, 1001));
+        let stuck = Setup { address: "unix:path=/run/a".into(), socket: old, began, limit: SETUP, number: 1 };
         let under_way = [stuck];
-        assert!(!refused(&under_way, "unix:path=/run/a", began + SETUP - Duration::from_millis(1)), "within its limit: another may go");
-        assert!(refused(&under_way, "unix:path=/run/a", began + SETUP), "past it: refused");
-        assert!(!refused(&under_way, "unix:path=/run/b", began + SETUP * 3), "another bus goes ahead");
-        assert!(!refused(&[], "unix:path=/run/a", began));
+        assert!(!refused(&under_way, "unix:path=/run/a", old, began + SETUP - Duration::from_millis(1)), "within its limit: another may go");
+        assert!(refused(&under_way, "unix:path=/run/a", old, began + SETUP), "past it: refused");
+        assert!(!refused(&under_way, "unix:path=/run/b", None, began + SETUP * 3), "another bus goes ahead");
+        assert!(!refused(&under_way, "unix:path=/run/a", Some((44, 2002)), began + SETUP * 3), "a bus started again at the same path: tried");
+        assert!(!refused(&under_way, "unix:path=/run/a", None, began + SETUP * 3), "no socket there now: tried (and fails at once)");
+        assert!(!refused(&[], "unix:path=/run/a", old, began));
+        // An address without a file (an abstract socket): refused while stuck, as before.
+        let abstract_bus = [Setup { address: "unix:abstract=sioul".into(), socket: None, began, limit: SETUP, number: 2 }];
+        assert!(refused(&abstract_bus, "unix:abstract=sioul", None, began + SETUP));
     }
 
-    /// The buses' addresses as libdbus finds them, a path written as an address writes it.
+    /// The buses' addresses as libdbus finds them, a path written as an
+    /// address writes it, and read back from one.
     #[test]
     fn addresses_are_written_as_d_bus_writes_them() {
         assert_eq!(escaped(std::path::Path::new("/run/user/1000/bus")), "/run/user/1000/bus");
         assert_eq!(escaped(std::path::Path::new("/tmp/a b,c;é")), "/tmp/a%20b%2cc%3b%c3%a9");
+        let odd = std::path::Path::new("/tmp/a b,c;é");
+        assert_eq!(unix_path(&format!("unix:path={}", escaped(odd))).as_deref(), Some(odd));
+        assert_eq!(unix_path("unix:path=/run/user/1000/bus,guid=0123abcd;unix:path=/other").as_deref(), Some(std::path::Path::new("/run/user/1000/bus")));
+        assert_eq!(unix_path("unix:abstract=/tmp/dbus-abc"), None);
+        assert_eq!(unix_path("tcp:host=localhost,port=4444"), None);
+        assert_eq!(unix_path("unix:path=/tmp/broken%2"), None, "a broken escape reads as no path");
     }
 
     /// A bus that does not exist is refused at once, nothing held.
@@ -236,46 +286,147 @@ mod tests {
         assert!(UNDER_WAY.lock().unwrap().iter().all(|setup| setup.address != "unix:path=/nonexistent/sioul-no-bus"), "nothing left under way");
     }
 
-    /// No file of Sioul's outside this one reaches a bus through libdbus's own
-    /// registration (`dbus_bus_get*`, `dbus_bus_register`, the `dbus`
+    /// Whether `text` names `name` as code does: a whole word, not a part of
+    /// a longer name, wherever it stands (a call, a function used as a value,
+    /// a space before its parenthesis, a comment).
+    fn named(text: &str, name: &str) -> bool {
+        let part = |c: char| c.is_alphanumeric() || c == '_';
+        text.match_indices(name).any(|(at, _)| !text[..at].chars().next_back().is_some_and(part) && !text[at + name.len()..].chars().next().is_some_and(part))
+    }
+
+    /// Whether `text` reaches `name` as a method or a path's last part
+    /// (`.name`, `::name`, spaces allowed before it).
+    fn reached(text: &str, name: &str) -> bool {
+        let part = |c: char| c.is_alphanumeric() || c == '_';
+        text.match_indices(name).any(|(at, _)| {
+            let before = text[..at].trim_end();
+            !text[at + name.len()..].chars().next().is_some_and(part) && (before.ends_with('.') || before.ends_with("::"))
+        })
+    }
+
+    /// No source of Sioul's outside this file reaches a bus through libdbus's
+    /// own registration, nor opens a connection itself: none names the `dbus`
     /// crate's `new_session`, `new_system`, `new_address`, `get_private`,
-    /// `register`) nor opens a connection itself; notify-rust, which does, is
-    /// built for Windows and macOS alone; and Sioul's C++ uses no Qt D-Bus
-    /// connection (Qt reaches the buses through the same registration).
+    /// `open_private` or calls a `register`, nor libdbus's own functions, nor
+    /// the older `ffidisp` side, nor the Secret Service's crate (the keyring
+    /// reaches it inside the `keyring` crate alone, as it does until a review
+    /// decides: docs/android.md), in any way of writing them; Sioul's C and
+    /// C++ use no Qt D-Bus (Qt reaches the buses through the same
+    /// registration), and no build script asks for Qt's D-Bus module; the
+    /// manifests give notify-rust (which registers so) to Windows and macOS
+    /// alone and the `dbus` crate to sioul-sync alone, and the lock has no
+    /// other crate reaching libdbus than those and the keyring's (review of
+    /// battery part C, L2).
     #[test]
     fn nothing_but_this_file_reaches_a_bus() {
-        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let mut files = Vec::new();
-        let mut folders = vec![crates.clone()];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let (mut sources, mut manifests) = (Vec::new(), Vec::new());
+        let mut folders = vec![root.join("crates")];
         while let Some(folder) = folders.pop() {
             for entry in std::fs::read_dir(&folder).unwrap().flatten() {
                 let path = entry.path();
+                let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_string();
                 if path.is_dir() {
                     if !path.ends_with("target") {
                         folders.push(path);
                     }
-                } else if path.extension().is_some_and(|e| e == "rs" || e == "cpp" || e == "h") {
-                    files.push(path);
+                } else if ["rs", "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "hxx"].contains(&extension.as_str()) {
+                    sources.push(path);
+                } else if path.ends_with("Cargo.toml") {
+                    manifests.push(path);
                 }
             }
         }
-        assert!(files.len() > 100, "{} files", files.len());
-        let own = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bus.rs");
-        // Written apart, so that this test does not find them in itself.
-        let forbidden = [["new_", "session("], ["new_", "system("], ["new_", "address("], ["get_", "private("], [".regis", "ter()"], ["dbus_bus_", "get"], ["dbus_bus_", "register"], ["open_", "private("], ["QDBusConn", "ection"], ["notify_rust::", "get_capabilities"]];
-        for file in &files {
-            if file.ends_with("sioul-sync/src/bus.rs") || *file == own {
+        assert!(sources.len() > 100 && manifests.len() >= 5, "{} sources, {} manifests", sources.len(), manifests.len());
+        let words = ["new_session", "new_system", "new_address", "get_private", "open_private", "dbus_bus_get", "dbus_bus_get_private", "dbus_bus_register", "dbus_connection_open", "dbus_connection_open_private", "ffidisp", "libdbus_sys", "dbus_secret_service"];
+        for source in &sources {
+            if source.ends_with("sioul-sync/src/bus.rs") {
                 continue;
             }
-            let text = std::fs::read_to_string(file).unwrap_or_default();
-            for [first, rest] in forbidden {
-                let word = format!("{first}{rest}");
-                assert!(!text.contains(&word), "{}: {word} (connections through sioul_sync::bus alone)", file.display());
+            let text = std::fs::read_to_string(source).unwrap_or_default();
+            for word in words {
+                assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", source.display());
+            }
+            assert!(!reached(&text, "register"), "{}: a register call (libdbus's own registration)", source.display());
+            if !source.extension().is_some_and(|e| e == "rs") {
+                assert!(!text.contains("QDBus") && !text.contains("QtDBus"), "{}: Qt's D-Bus", source.display());
+            }
+            if source.ends_with("build.rs") {
+                assert!(!text.contains("\"DBus\""), "{}: Qt's D-Bus module", source.display());
             }
         }
-        let manifest = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
-        let notify = manifest.split("notify-rust.workspace = true").next().and_then(|before| before.lines().rev().find(|line| line.starts_with("[target."))).unwrap();
-        assert_eq!(notify, "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]", "notify-rust for Windows and macOS alone");
+        // The manifests: notify-rust for Windows and macOS alone, the dbus crate in sioul-sync alone.
+        manifests.push(root.join("Cargo.toml"));
+        for manifest in &manifests {
+            let text = std::fs::read_to_string(manifest).unwrap();
+            let own = manifest.ends_with("sioul-sync/Cargo.toml");
+            let workspace = *manifest == root.join("Cargo.toml");
+            for (index, line) in text.lines().enumerate() {
+                let line = line.trim();
+                if line.starts_with('#') {
+                    continue;
+                }
+                let section = text.lines().take(index).map(str::trim).filter(|l| l.starts_with('[')).last().unwrap_or_default();
+                if line.starts_with("notify-rust") {
+                    let allowed = (own && section == "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]") || (workspace && section == "[workspace.dependencies]");
+                    assert!(allowed, "{}: notify-rust under {section}", manifest.display());
+                }
+                if line.starts_with("dbus ") || line.starts_with("dbus=") || line.starts_with("dbus.") || line.starts_with("libdbus") {
+                    assert!(own, "{}: {line}", manifest.display());
+                }
+            }
+        }
+        // The lock: who reaches libdbus's crates.
+        let lock = std::fs::read_to_string(root.join("Cargo.lock")).unwrap();
+        let mut reaching: Vec<(String, String)> = Vec::new();
+        for package in lock.split("[[package]]").skip(1) {
+            let name = package.lines().find_map(|line| line.strip_prefix("name = \"")).and_then(|rest| rest.strip_suffix('"')).unwrap_or_default().to_string();
+            for line in package.lines() {
+                let dependency = line.trim().trim_end_matches(',').trim_matches('"');
+                let dependency = dependency.split(' ').next().unwrap_or_default();
+                if ["dbus", "libdbus-sys"].contains(&dependency) {
+                    reaching.push((dependency.to_string(), name.clone()));
+                }
+            }
+        }
+        reaching.sort();
+        let expected: Vec<(String, String)> = [("dbus", "dbus-secret-service"), ("dbus", "notify-rust"), ("dbus", "sioul-sync"), ("libdbus-sys", "dbus")].iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        assert_eq!(reaching, expected, "the crates that reach libdbus (the keyring's, notify-rust's for Windows and macOS, and this one)");
+    }
+
+    /// A setup stuck on a bus that hangs alive (its socket open, never
+    /// answering) refuses the next ones; another bus started at the same
+    /// path (the socket file made anew) is tried, and answers, while the old
+    /// one still hangs (review of battery part C, L1). Starts `dbus-daemon`:
+    /// run alone, by name:
+    /// `cargo test --release -p sioul-sync bus::tests::a_bus_started_again_at_the_same_path_is_tried -- --ignored --exact`.
+    #[test]
+    #[ignore = "starts a stand-in dbus-daemon: run alone, by name"]
+    fn a_bus_started_again_at_the_same_path_is_tried() {
+        let mut stand_ins = StandIns::new("stand-in-again");
+        let path = stand_ins.dir.join("bus");
+        let address = format!("unix:path={}", escaped(&path));
+        // The old bus: takes connections, never answers, stays alive.
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let held: std::sync::Arc<Mutex<Vec<std::os::unix::net::UnixStream>>> = std::sync::Arc::default();
+        let keep = std::sync::Arc::clone(&held);
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                keep.lock().unwrap().push(stream);
+            }
+        });
+        let limit = Duration::from_secs(1);
+        assert!(connect_within(&address, limit).is_err(), "the old bus never answers");
+        assert!(connect_within(&address, limit).is_err(), "and, its setup stuck past its limit, refuses the next at once");
+        // Another bus at the same path (its file made anew), the old one still hanging.
+        std::fs::remove_file(&path).unwrap();
+        let (_, again) = stand_ins.start("bus");
+        assert_eq!(again, address);
+        let start = Instant::now();
+        let made = connect_within(&address, limit);
+        assert!(made.is_ok(), "the bus started again is tried, and answers: {:?}", made.err());
+        assert!(start.elapsed() < limit, "{:?}", start.elapsed());
+        held.lock().unwrap().clear();
     }
 
     /// Two stand-in buses (`StandIns`), the session's stopped (SIGSTOP)
