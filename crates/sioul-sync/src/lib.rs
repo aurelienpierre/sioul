@@ -104,6 +104,10 @@ pub mod android;
 pub mod antivirus;
 pub mod bitwarden;
 pub mod blobs;
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub mod bus;
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub mod colord;
 pub mod dav;
 pub mod devices;
 pub mod discover;

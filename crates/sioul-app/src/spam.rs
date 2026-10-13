@@ -414,7 +414,7 @@ mod training {
         let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
         let window_trains = RUN.lock().unwrap_or_else(PoisonError::into_inner).cancel.is_some();
         let focus = sioul_core::timelog::running().is_some();
-        let facts = auto::facts(&dirs, config.spam.trains_by_itself(), &sioul_sync::lease::host_name(), window_trains, focus, now, sioul_sync::power::read);
+        let facts = auto::facts(&dirs, config.spam.trains_by_itself(), &sioul_sync::lease::host_name(), window_trains, focus, now, crate::devices::power_now);
         let started = match auto::decide(&facts, now) {
             auto::Decision::Train { fetch } => start_apart(fetch),
             auto::Decision::Wait(_) => false,

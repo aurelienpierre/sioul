@@ -80,7 +80,8 @@ mail-auth = { version = "0.13", default-features = false, features = ["ring", "a
 mail-send = { version = "0.6", default-features = false, features = ["ring", "tls12"] }
 # Passwords: the Secret Service (KWallet, GNOME Keyring), with Rust's own crypto.
 keyring = { version = "3.6", default-features = false }
-# Notifications through the same D-Bus library as the keyring.
+# Notifications on Windows and macOS (sioul-sync's notify.rs; Linux and the BSDs send their
+# own over D-Bus since 13 October 2026, so its D-Bus side, "d", is built nowhere).
 notify-rust = { version = "4.18", default-features = false, features = ["d"] }
 rpassword = "7"
 cxx = "1.0"

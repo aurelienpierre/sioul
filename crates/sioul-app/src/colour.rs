@@ -421,6 +421,33 @@ pub unsafe extern "C" fn sioul_colour_profile_name(profile: *const u8, length: u
     end
 }
 
+/// colord's checksums of the profiles it keeps for the output X11 names
+/// `output` ("eDP-1"), for `cpp/screencolours.cpp`: one per line in `out`,
+/// cut to `capacity` bytes, their whole length returned (more than
+/// `capacity`: asked again with room enough); 0, none (colord does not know
+/// the output); -1, colord did not answer. Read by `sioul_sync::colord`, on a
+/// connection of Sioul's own (`sioul_sync::bus`), never Qt's.
+///
+/// # Safety
+/// `output` is null or a C string; `out` has room for `capacity` bytes.
+#[cfg(target_os = "linux")]
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_colord_checksums(output: *const std::ffi::c_char, out: *mut u8, capacity: usize) -> isize {
+    if output.is_null() {
+        return -1;
+    }
+    // SAFETY: as the caller says.
+    let output = unsafe { std::ffi::CStr::from_ptr(output) }.to_string_lossy().into_owned();
+    let Some(sums) = std::panic::catch_unwind(|| sioul_sync::colord::checksums(&output)).ok().flatten() else { return -1 };
+    let text = sums.join("\n");
+    if !out.is_null() {
+        // SAFETY: at most `capacity` bytes, as the caller says.
+        unsafe { std::ptr::copy_nonoverlapping(text.as_ptr(), out, text.len().min(capacity)) };
+    }
+    isize::try_from(text.len()).unwrap_or(isize::MAX)
+}
+
 /// What the screen Sioul's window is on gets: 0 converted (to the profile
 /// `name`, UTF-8, may be null), 1 by the desktop, 2 nothing (no profile),
 /// 3 turned off.

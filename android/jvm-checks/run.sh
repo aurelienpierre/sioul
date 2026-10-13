@@ -46,8 +46,9 @@
 # - StepsCheck: the background service's steps asked for later
 #   (StepService.Later.of: a folder's never in place of a message's), the
 #   files that bring a step (StepService.othersFile), whether the texts'
-#   import asks Android (Texts.changedSince), and whether a message received
-#   brings a step soon (Texts.grew).
+#   import asks Android (Texts.changedSince), whether a message received
+#   brings a step soon (Texts.grew), and how an inbox's newest id is asked
+#   for (Texts.newestBy: the limit in the sort, else the plain sort).
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #

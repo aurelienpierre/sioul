@@ -19,6 +19,7 @@
 #include <QScreen>
 #include <QtCore/qfloat16.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <optional>
@@ -34,11 +35,6 @@
 #endif
 
 #if defined(Q_OS_LINUX)
-#include <QDBusArgument>
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QDBusObjectPath>
-#include <QDBusVariant>
 #define SIOUL_COLORD 1
 #endif
 
@@ -46,6 +42,10 @@
 extern "C" int sioul_colour_tables(const unsigned char *profile, size_t length, int calmer, size_t cube_size, float *cube, size_t curve_size, float *curve);
 extern "C" size_t sioul_colour_profile_name(const unsigned char *profile, size_t length, unsigned char *out, size_t capacity);
 extern "C" void sioul_colour_said(int state, const char *name);
+#ifdef SIOUL_COLORD
+// colour.rs: colord's checksums for an output, one per line (sioul_sync::colord).
+extern "C" std::ptrdiff_t sioul_colord_checksums(const char *output, unsigned char *out, size_t capacity);
+#endif
 
 namespace {
 
@@ -171,51 +171,23 @@ struct Xcb {
 #ifdef SIOUL_COLORD
 // colord's checksums (MD5) of the profiles it keeps for an output, named as
 // X11 names it ("eDP-1"); an empty list when colord does not know the output,
-// nothing when colord does not answer. Read only, over the system bus.
+// nothing when colord does not answer. Read only, over the system bus, by
+// Rust on a connection of its own (sioul_sync::colord, sioul_sync::bus):
+// never Qt's, which reaches the bus through libdbus's own registration and
+// its process-wide locks.
 std::optional<QStringList> colordChecksums(const QString &output)
 {
-    QDBusConnection bus = QDBusConnection::systemBus();
-    if (!bus.isConnected())
-        return std::nullopt;
-    const QString service = QStringLiteral("org.freedesktop.ColorManager");
-    QDBusMessage find = QDBusMessage::createMethodCall(service, QStringLiteral("/org/freedesktop/ColorManager"), service, QStringLiteral("FindDeviceByProperty"));
-    find << QStringLiteral("XRANDR_name") << output;
-    const QDBusMessage device = bus.call(find, QDBus::Block, 400);
-    if (device.type() != QDBusMessage::ReplyMessage) {
-        // colord answered that it does not know this output; anything else: no colord.
-        if (device.errorName().startsWith(service))
-            return QStringList();
-        return std::nullopt;
+    const QByteArray name = output.toUtf8();
+    QByteArray said(4096, '\0');
+    std::ptrdiff_t length = sioul_colord_checksums(name.constData(), reinterpret_cast<unsigned char *>(said.data()), size_t(said.size()));
+    if (length > said.size()) {
+        said.resize(length);
+        length = sioul_colord_checksums(name.constData(), reinterpret_cast<unsigned char *>(said.data()), size_t(said.size()));
     }
-    auto get = [&](const QString &path, const QString &interface, const QString &name) -> QVariant {
-        QDBusMessage ask = QDBusMessage::createMethodCall(service, path, QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        ask << interface << name;
-        const QDBusMessage answer = bus.call(ask, QDBus::Block, 400);
-        if (answer.type() != QDBusMessage::ReplyMessage || answer.arguments().isEmpty())
-            return {};
-        return answer.arguments().first().value<QDBusVariant>().variant();
-    };
-    const QString path = device.arguments().value(0).value<QDBusObjectPath>().path();
-    const QVariant listed = get(path, QStringLiteral("org.freedesktop.ColorManager.Device"), QStringLiteral("Profiles"));
-    QList<QDBusObjectPath> profiles;
-    if (listed.metaType() == QMetaType::fromType<QDBusArgument>())
-        listed.value<QDBusArgument>() >> profiles;
-    else
-        profiles = listed.value<QList<QDBusObjectPath>>();
-    QStringList sums;
-    for (const QDBusObjectPath &profile : std::as_const(profiles)) {
-        // "icc-<MD5 of the file>", as colord names a profile it read from a file.
-        const QString id = get(profile.path(), QStringLiteral("org.freedesktop.ColorManager.Profile"), QStringLiteral("ProfileId")).toString();
-        if (id.startsWith(QLatin1String("icc-")))
-            sums << id.mid(4).toLower();
-        const QVariant metadata = get(profile.path(), QStringLiteral("org.freedesktop.ColorManager.Profile"), QStringLiteral("Metadata"));
-        QMap<QString, QString> values;
-        if (metadata.metaType() == QMetaType::fromType<QDBusArgument>())
-            metadata.value<QDBusArgument>() >> values;
-        if (const QString sum = values.value(QStringLiteral("FILE_checksum")); !sum.isEmpty())
-            sums << sum.toLower();
-    }
-    return sums;
+    if (length < 0 || length > said.size())
+        return std::nullopt;
+    said.truncate(length);
+    return QString::fromUtf8(said).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 }
 #endif
 

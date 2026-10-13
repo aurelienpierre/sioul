@@ -1444,16 +1444,6 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     want(|soon, now| soon.ask(now));
 }
 
-/// An exchange wanted now from where the window's handles are not at hand (a
-/// press in Sioul's window after nobody was at this computer: `devices::pressed`),
-/// once the worker runs; nothing before it does (the window's first exchange
-/// comes at its start).
-pub(crate) fn exchange_soon() {
-    if WORKER.get().is_some() {
-        want(|soon, now| soon.ask(now));
-    }
-}
-
 /// The minute's scheduled exchange: left out when one started less than 50
 /// seconds ago (a save's), which did its work (`trigger::Soon::tick`).
 pub(crate) fn exchange_tick(qt: &QtThread, shared: &Arc<Shared>) {
@@ -1779,20 +1769,18 @@ fn log_send(line: String) {
     eprintln!("sioul: backup: {line}");
 }
 
-/// The connection is metered (NetworkManager: yes, or guessed yes), asked at
-/// most every five minutes; on a phone, not known here (measured instead:
-/// `Sending::slow`).
+/// The connection is metered (NetworkManager: yes, or guessed yes), as the
+/// system's reading thread last read it (`devices::watch_system`, every
+/// thirty seconds): never asked here, never waited for, so that an exchange
+/// never waits on the system's bus (review of battery part C, G1); none read
+/// yet, or too old, not metered. On a phone, not known here (measured
+/// instead: `Sending::slow`).
 fn metered() -> bool {
-    static ASKED: Mutex<(i64, bool)> = Mutex::new((0, false));
     if cfg!(target_os = "android") {
         return false;
     }
-    let now = jiff::Timestamp::now().as_second();
-    let Ok(mut asked) = ASKED.lock() else { return false };
-    if now - asked.0 >= 300 {
-        *asked = (now, sioul_sync::power::read().metered == Some(true));
-    }
-    asked.1
+    crate::devices::watch_system();
+    sioul_sync::power::kept_power().is_some_and(|power| power.metered == Some(true))
 }
 
 /// The connection metered or measured slow: the sharing's full rounds wait

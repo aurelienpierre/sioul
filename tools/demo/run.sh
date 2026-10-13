@@ -24,7 +24,10 @@
 # - no network (a network namespace of its own), and SIOUL_DEMO=1, which keeps
 #   Sioul from fetching or sending anything by itself;
 # - no display (DISPLAY and WAYLAND_DISPLAY unset; offscreen, software
-#   rendering), a D-Bus session of its own (dbus-run-session), a runtime
+#   rendering), a D-Bus session of its own (dbus-run-session), whose bus
+#   stands in for the system's too (DBUS_SYSTEM_BUS_ADDRESS, the system's own
+#   socket folder /run/dbus hidden): nothing in the window reads the session
+#   or the system of whoever runs it (logind's lock and idle hints), a runtime
 #   folder of its own (/tmp/sioul-run.*, removed after: a short path, since a
 #   socket's path holds 108 bytes at most, and past them Qt's audio waited
 #   half a minute at each step), and the session's own runtime folder hidden
@@ -92,10 +95,14 @@ env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$shots" SIOUL_GRAB_STEP
 if [[ -n "$phone" ]]; then
     env+=(SIOUL_GRAB_PHONE=1)
 fi
-# The session's runtime folder (/run/user/<uid>) hidden: its D-Bus, Wayland and audio sockets.
+# The session's runtime folder (/run/user/<uid>) hidden: its D-Bus, Wayland and audio sockets;
+# and the system's bus (/run/dbus): the sandbox's own session bus stands in for it.
 hide=()
 if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "$XDG_RUNTIME_DIR" ]]; then
     hide=(--tmpfs "$XDG_RUNTIME_DIR")
+fi
+if [[ -d /run/dbus ]]; then
+    hide+=(--tmpfs /run/dbus)
 fi
 echo "run.sh: $steps, in $language, at $now (TZ=$zone), $build build, into $out"
 status=0
@@ -106,7 +113,7 @@ env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS
     --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \
     env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
         XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
-        timeout 400 dbus-run-session -- "$app" > "$shots/log" 2>&1 || status=$?
+        timeout 400 dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$shots/log" 2>&1 || status=$?
 
 grep -E "qml:|TypeError|ReferenceError|OVERFLOW|WIDE|rror" "$shots/log" | grep -v "sioul-perf" | head -40 || true
 pictures=$(find "$shots" -name '*.png' | wc -l)

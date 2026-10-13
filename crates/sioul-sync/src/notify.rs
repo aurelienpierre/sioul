@@ -6,11 +6,19 @@
 //! reminder; new mail at the times it may come, once per batch
 //! (docs/porch.md, "Notifications"); and the time running, while a focus
 //! session runs (docs/tasks.md).
+//!
+//! On Linux and the BSDs each notification goes to the session's
+//! notification server over a D-Bus connection of its own, made by
+//! `crate::bus` within `bus::SETUP`: a session bus that takes it and never
+//! answers holds one thread of its own, never the caller nor libdbus's
+//! process-wide locks (review of battery part C, G1). Its call is the one
+//! notify-rust's `Notification` made before 13 October 2026, argument for
+//! argument (`send`), but for its urgency, said once (notify-rust's hints are
+//! a set, where a mail's normal urgency and the critical one it started from
+//! were two, sent in no fixed order). Windows and macOS: notify-rust.
 
-#[cfg(not(target_os = "android"))]
+#[cfg(any(windows, target_os = "macos"))]
 use notify_rust::{Notification, Timeout};
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-use notify_rust::{Hint, Urgency};
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
@@ -42,45 +50,14 @@ fn as_sioul() {
 /// notification then lives on its own thread, which waits for the button.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn code(title: &str, body: &str, copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    let Some((label, on_copy)) = copy else {
-        return build(title, body, None).show().map(drop).map_err(|e| e.to_string());
-    };
-    let (title, body) = (title.to_string(), body.to_string());
-    // The D-Bus handle cannot change threads, so it is made where it waits.
-    std::thread::spawn(move || {
-        let Ok(handle) = build(&title, &body, Some(&label)).show() else { return };
-        let mut on_copy = Some(on_copy);
-        let _ = handle.wait_for_action(|action: &str| {
-            if action == "copy"
-                && let Some(run) = on_copy.take()
-            {
-                run();
-            }
-        });
-    });
-    Ok(())
+    one_button(Notice::new(title, body, "dialog-password", CRITICAL), copy)
 }
 
 /// A gentle reminder (a dose to take): one notification, no sound, with one
 /// button whose action runs when pressed.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    let Some((label, on_press)) = action else {
-        return build(title, body, None).icon("appointment-soon").show().map(drop).map_err(|e| e.to_string());
-    };
-    let (title, body) = (title.to_string(), body.to_string());
-    std::thread::spawn(move || {
-        let Ok(handle) = build(&title, &body, Some(&label)).icon("appointment-soon").show() else { return };
-        let mut on_press = Some(on_press);
-        let _ = handle.wait_for_action(|action: &str| {
-            if action == "copy"
-                && let Some(run) = on_press.take()
-            {
-                run();
-            }
-        });
-    });
-    Ok(())
+    one_button(Notice::new(title, body, "appointment-soon", CRITICAL), action)
 }
 
 /// New mail at the times it may come (docs/porch.md, "Notifications"): one
@@ -91,23 +68,7 @@ pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() 
 /// (docs/attention.md, Q10).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    let urgency = if through { Urgency::Critical } else { Urgency::Normal };
-    let Some((label, on_press)) = action else {
-        return build(title, body, None).icon("mail-unread").urgency(urgency).show().map(drop).map_err(|e| e.to_string());
-    };
-    let (title, body) = (title.to_string(), body.to_string());
-    std::thread::spawn(move || {
-        let Ok(handle) = build(&title, &body, Some(&label)).icon("mail-unread").urgency(urgency).show() else { return };
-        let mut on_press = Some(on_press);
-        let _ = handle.wait_for_action(|action: &str| {
-            if action == "copy"
-                && let Some(run) = on_press.take()
-            {
-                run();
-            }
-        });
-    });
-    Ok(())
+    one_button(Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL }), action)
 }
 
 /// Windows and macOS: the mail's words alone; their notifications carry no button here.
@@ -131,22 +92,20 @@ pub fn remind_choices(title: &str, body: &str, choices: Vec<(String, Box<dyn FnO
     if choices.is_empty() {
         return remind(title, body, None);
     }
-    let (title, body) = (title.to_string(), body.to_string());
-    std::thread::spawn(move || {
-        let mut notification = build(&title, &body, None);
-        notification.icon("appointment-soon");
-        for (index, (label, _)) in choices.iter().enumerate() {
-            notification.action(&format!("choice-{index}"), label);
-        }
-        let Ok(handle) = notification.show() else { return };
-        let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = choices.into_iter().map(|(_, run)| Some(run)).collect();
-        let _ = handle.wait_for_action(|action: &str| {
-            if let Some(run) = action.strip_prefix("choice-").and_then(|n| n.parse::<usize>().ok()).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
+    let mut notice = Notice::new(title, body, "appointment-soon", CRITICAL);
+    let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = Vec::new();
+    for (index, (label, run)) in choices.into_iter().enumerate() {
+        notice.buttons.push((format!("choice-{index}"), label));
+        runs.push(Some(run));
+    }
+    notify(
+        notice,
+        Some(Box::new(move |key: &str| {
+            if let Some(run) = key.strip_prefix("choice-").and_then(|n| n.parse::<usize>().ok()).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
                 run();
             }
-        });
-    });
-    Ok(())
+        })),
+    )
 }
 
 /// Elsewhere, as a reminder without buttons (`remind`).
@@ -206,6 +165,141 @@ const LISTENED: Duration = Duration::from_millis(500);
 /// after Sioul) is asked again this often.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const ASKED_AGAIN: Duration = Duration::from_secs(60);
+
+/// How long the server may take to answer about a notification (notify-rust's own wait).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const ASKED: Duration = Duration::from_secs(2);
+
+/// Urgencies, as the specification numbers them: normal, and critical (what
+/// Sioul sends always gets through: it filters its own notifications already).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const NORMAL: u8 = 1;
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const CRITICAL: u8 = 2;
+
+/// A notification as Sioul sends it on Linux and the BSDs (`send`): its
+/// words, its icon (a theme's name), its urgency, its buttons as (key, label).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+struct Notice {
+    title: String,
+    body: String,
+    icon: &'static str,
+    urgency: u8,
+    buttons: Vec<(String, String)>,
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+impl Notice {
+    fn new(title: &str, body: &str, icon: &'static str, urgency: u8) -> Notice {
+        Notice { title: title.to_string(), body: body.to_string(), icon, urgency, buttons: Vec::new() }
+    }
+}
+
+/// `notice` with one button at most, keyed "copy" (`code`, `remind`,
+/// `mail`): its action runs when it is pressed.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    let Some((label, run)) = button else { return notify(notice, None) };
+    notice.buttons.push(("copy".to_string(), label));
+    notify(
+        notice,
+        Some(Box::new(move |key: &str| {
+            if key == "copy" {
+                run();
+            }
+        })),
+    )
+}
+
+/// Shows `notice`. Without `pressed`, on the caller's thread, the server's
+/// refusal said. With it, on a thread of its own, which keeps the connection
+/// that showed it (the server tells a press to that connection: Plasma
+/// addresses it) and waits there: `pressed` runs with the key of the first
+/// button pressed, and the wait ends then, or when the notification closes.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn notify(notice: Notice, pressed: Option<Box<dyn FnOnce(&str) + Send>>) -> Result<(), String> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let Some(pressed) = pressed else {
+        let bus = session().map_err(|e| said(&e))?;
+        return send(&bus, &notice).map(drop).map_err(|e| said(&e));
+    };
+    // The D-Bus connection cannot change threads, so it is made where it waits.
+    std::thread::spawn(move || {
+        let Ok(bus) = session() else { return };
+        let heard: Rc<RefCell<Vec<Heard>>> = Rc::default();
+        if listened(&bus, &heard).is_err() {
+            return;
+        }
+        let Ok(id) = send(&bus, &notice) else { return };
+        loop {
+            for item in std::mem::take(&mut *heard.borrow_mut()) {
+                match item {
+                    Heard::Pressed(at, key) if at == id => {
+                        pressed(&key);
+                        return;
+                    }
+                    Heard::Closed(at) if at == id => return,
+                    _ => {}
+                }
+            }
+            if bus.process(Duration::from_secs(1)).is_err() {
+                return;
+            }
+        }
+    });
+    Ok(())
+}
+
+/// The call notify-rust's `Notification` made, argument for argument:
+/// "Sioul", no notification replaced, the icon, the title as it is, the body
+/// as the server reads it (`body_text`, after asking what it reads), the
+/// buttons, the hints (no sound, Sioul's desktop file, the urgency, each
+/// once), ten minutes (`SHOWN`). The server's number for it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn send(bus: &dbus::blocking::LocalConnection, notice: &Notice) -> Result<u32, dbus::Error> {
+    use dbus::arg::{PropMap, RefArg, Variant};
+    let server = bus.with_proxy(SERVER, SERVER_PATH, ASKED);
+    let capabilities: Vec<String> = server.method_call(SERVER, "GetCapabilities", ()).map(|(found,): (Vec<String>,)| found).unwrap_or_default();
+    let mut hints = PropMap::new();
+    hints.insert("suppress-sound".into(), Variant(Box::new(true) as Box<dyn RefArg>));
+    hints.insert("desktop-entry".into(), Variant(Box::new(DESKTOP_ENTRY.to_string()) as Box<dyn RefArg>));
+    hints.insert("urgency".into(), Variant(Box::new(notice.urgency) as Box<dyn RefArg>));
+    let buttons: Vec<&str> = notice.buttons.iter().flat_map(|(key, label)| [key.as_str(), label.as_str()]).collect();
+    let timeout = i32::try_from(SHOWN).unwrap_or(i32::MAX);
+    let (id,): (u32,) = server.method_call(SERVER, "Notify", ("Sioul", 0u32, notice.icon, notice.title.as_str(), body_text(&notice.body, &capabilities), buttons, hints, timeout))?;
+    Ok(id)
+}
+
+/// What the server says of notifications, heard on `bus` from now on:
+/// buttons pressed, notifications closed (`Heard`), kept in `heard`.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn listened(bus: &dbus::blocking::LocalConnection, heard: &std::rc::Rc<std::cell::RefCell<Vec<Heard>>>) -> Result<(), dbus::Error> {
+    use dbus::blocking::LocalConnection;
+    use dbus::message::MatchRule;
+    let (pressed, closed) = (std::rc::Rc::clone(heard), std::rc::Rc::clone(heard));
+    bus.add_match(MatchRule::new_signal(SERVER, "ActionInvoked").with_path(SERVER_PATH), move |(id, key): (u32, String), _: &LocalConnection, _: &dbus::Message| {
+        pressed.borrow_mut().push(Heard::Pressed(id, key));
+        true
+    })?;
+    bus.add_match(MatchRule::new_signal(SERVER, "NotificationClosed").with_path(SERVER_PATH), move |(id, _why): (u32, u32), _: &LocalConnection, _: &dbus::Message| {
+        closed.borrow_mut().push(Heard::Closed(id));
+        true
+    })?;
+    Ok(())
+}
+
+/// A connection to the session's bus, made by `crate::bus` (`bus::SETUP` at most).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn session() -> Result<dbus::blocking::LocalConnection, dbus::Error> {
+    crate::bus::session().map(dbus::blocking::LocalConnection::from)
+}
+
+/// A D-Bus error in a few words: its message, else its name.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn said(e: &dbus::Error) -> String {
+    e.message().or(e.name()).unwrap_or("D-Bus").to_string()
+}
 
 /// The notification of something going on, the time running while a focus
 /// session runs (docs/tasks.md): shown until it is closed, changed in place,
@@ -278,26 +372,12 @@ impl Ongoing {
 /// says heard, until it is taken away.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn serve(mut said: Said, asked: &Receiver<Change>, on_action: &dyn Fn(&str)) {
-    use dbus::blocking::LocalConnection;
-    use dbus::message::MatchRule;
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::sync::mpsc::TryRecvError;
-    let Ok(connection) = LocalConnection::new_session() else { return };
+    let Ok(connection) = session() else { return };
     let heard: Rc<RefCell<Vec<Heard>>> = Rc::default();
-    let (pressed, closed) = (Rc::clone(&heard), Rc::clone(&heard));
-    let listened = connection
-        .add_match(MatchRule::new_signal(SERVER, "ActionInvoked").with_path(SERVER_PATH), move |(id, key): (u32, String), _: &LocalConnection, _: &dbus::Message| {
-            pressed.borrow_mut().push(Heard::Pressed(id, key));
-            true
-        })
-        .and_then(|_| {
-            connection.add_match(MatchRule::new_signal(SERVER, "NotificationClosed").with_path(SERVER_PATH), move |(id, _why): (u32, u32), _: &LocalConnection, _: &dbus::Message| {
-                closed.borrow_mut().push(Heard::Closed(id));
-                true
-            })
-        });
-    if listened.is_err() {
+    if listened(&connection, &heard).is_err() {
         return;
     }
     let server = connection.with_proxy(SERVER, SERVER_PATH, Duration::from_secs(2));
@@ -388,25 +468,6 @@ impl Ongoing {
     pub fn close(self, _wait: Duration) {}
 }
 
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn build(title: &str, body: &str, copy_label: Option<&str>) -> Notification {
-    let mut notification = Notification::new();
-    notification
-        .appname("Sioul")
-        .summary(title)
-        .body(&body_text(body, &notify_rust::get_capabilities().unwrap_or_default()))
-        .icon("dialog-password")
-        .hint(Hint::SuppressSound(true))
-        .hint(Hint::DesktopEntry(DESKTOP_ENTRY.to_string()))
-        // Sioul filters its own notifications already: what it sends always gets through.
-        .urgency(Urgency::Critical)
-        .timeout(Timeout::Milliseconds(SHOWN));
-    if let Some(label) = copy_label {
-        notification.action("copy", label);
-    }
-    notification
-}
-
 /// A body as the notification server reads it. Most read markup there
 /// ("body-markup": `<b>`, `<a href>`, `<img src>`), and bodies carry a mail's
 /// or a site's words: there, `&`, `<` and `>` are written as entities, so
@@ -451,13 +512,182 @@ mod tests {
         assert_eq!(body_text("a < b & c", &["actions".to_string()]), "a < b & c");
     }
 
+    /// A connection to the test's own session bus (dbus-run-session) owning
+    /// the notification server's name, a stand-in of a test before given two
+    /// seconds to leave it; none where a server is there already (the
+    /// desktop's): never in a server's place, no replacing it, no waiting in line.
+    fn stand_in_bus() -> Option<dbus::blocking::LocalConnection> {
+        use dbus::blocking::stdintf::org_freedesktop_dbus::RequestNameReply;
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let bus = session().ok().filter(|bus| matches!(bus.request_name(SERVER, false, false, true), Ok(RequestNameReply::PrimaryOwner)));
+            if bus.is_some() || std::time::Instant::now() >= until {
+                return bus;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// The hints' names a call carries, each as many times as it is there
+    /// (a dictionary read as such would keep one of each).
+    fn hint_names(call: &dbus::Message) -> Vec<String> {
+        use dbus::arg::ArgType;
+        let mut args = call.iter_init();
+        for _ in 0..6 {
+            args.next();
+        }
+        let mut names = Vec::new();
+        if let Some(mut entries) = args.recurse(ArgType::Array) {
+            while entries.arg_type() == ArgType::DictEntry {
+                if let Some(mut entry) = entries.recurse(ArgType::DictEntry) {
+                    names.extend(entry.get::<String>());
+                }
+                entries.next();
+            }
+        }
+        names.sort();
+        names
+    }
+
+    /// Codes, reminders and mail, against a notification server of the test's
+    /// own on a bus of its own (run under dbus-run-session; skipped where a
+    /// server is there already: nothing here may reach the desktop's). Each
+    /// goes as notify-rust's `Notification` sent it (`send`): "Sioul", the
+    /// icon, the title, the body as a server reading markup takes it, the
+    /// buttons, no sound, Sioul's desktop file, ten minutes; its urgency said
+    /// once (a mail at normal urgency, unless someone Always through is in
+    /// it). A button pressed at the server runs its action, here, once.
+    #[test]
+    fn notifications_go_as_before_and_hear_their_button() {
+        use dbus::blocking::LocalConnection;
+        use dbus::channel::{MatchingReceiver, Sender as _};
+        use dbus::message::MatchRule;
+        use std::sync::mpsc::channel;
+
+        /// What the stand-in server was sent.
+        #[derive(Debug, PartialEq)]
+        struct Sent {
+            app: String,
+            replaces: u32,
+            icon: String,
+            title: String,
+            body: String,
+            buttons: Vec<String>,
+            hints: Vec<String>,
+            sound_off: bool,
+            entry: String,
+            urgency: u8,
+            timeout: i32,
+        }
+        let _alone = crate::bus::NOTIFICATION_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+        let (told, sent) = channel::<Sent>();
+        let (ready, started) = channel::<bool>();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stopped = std::sync::Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let Some(bus) = stand_in_bus() else {
+                let _ = ready.send(false);
+                return;
+            };
+            let mut next = 20u32;
+            bus.start_receive(
+                MatchRule::new_method_call(),
+                Box::new(move |call: dbus::Message, bus: &LocalConnection| {
+                    let mut press = None;
+                    let reply = match call.member().as_deref() {
+                        Some("GetCapabilities") => call.method_return().append1(vec!["actions", "body", "body-markup"]),
+                        Some("Notify") => {
+                            let (app, replaces, icon, title, body, buttons, hints, timeout): (String, u32, String, String, String, Vec<String>, dbus::arg::PropMap, i32) = call.read_all().unwrap();
+                            next += 1;
+                            // The last button, pressed once shown.
+                            if buttons.len() >= 2 {
+                                press = Some(buttons[buttons.len() - 2].clone());
+                            }
+                            let _ = told.send(Sent {
+                                app,
+                                replaces,
+                                icon,
+                                title,
+                                body,
+                                buttons,
+                                hints: hint_names(&call),
+                                sound_off: dbus::arg::prop_cast::<bool>(&hints, "suppress-sound").copied().unwrap_or(false),
+                                entry: dbus::arg::prop_cast::<String>(&hints, "desktop-entry").cloned().unwrap_or_default(),
+                                urgency: dbus::arg::prop_cast::<u8>(&hints, "urgency").copied().unwrap_or(9),
+                                timeout,
+                            });
+                            call.method_return().append1(next)
+                        }
+                        _ => return true,
+                    };
+                    let _ = bus.send(reply);
+                    if let Some(key) = press {
+                        let mut signal = dbus::Message::new_signal(SERVER_PATH, SERVER, "ActionInvoked").unwrap().append2(next, key);
+                        // To the connection that showed it alone, as Plasma does.
+                        signal.set_destination(call.sender().map(|s| s.into_static()));
+                        let _ = bus.send(signal);
+                    }
+                    true
+                }),
+            );
+            let _ = ready.send(true);
+            let until = std::time::Instant::now() + Duration::from_secs(30);
+            while !stopped.load(std::sync::atomic::Ordering::Relaxed) && std::time::Instant::now() < until {
+                let _ = bus.process(Duration::from_millis(100));
+            }
+        });
+        if !started.recv_timeout(Duration::from_secs(5)).unwrap_or(false) {
+            eprintln!("No bus of the test's own (dbus-run-session), or a notification server on it already: skipped.");
+            return;
+        }
+        let wait = Duration::from_secs(5);
+        let as_before = |icon: &str, title: &str, body: &str, buttons: &[&str], urgency: u8| Sent {
+            app: "Sioul".into(),
+            replaces: 0,
+            icon: icon.into(),
+            title: title.into(),
+            body: body.into(),
+            buttons: buttons.iter().map(|b| b.to_string()).collect(),
+            hints: vec!["desktop-entry".into(), "suppress-sound".into(), "urgency".into()],
+            sound_off: true,
+            entry: DESKTOP_ENTRY.into(),
+            urgency,
+            timeout: 600_000,
+        };
+        // A code with its button: pressed at the server, copied here.
+        let (copied, copies) = channel::<()>();
+        code("Code from example.org", "482913 <b>now</b> & then", Some(("Copy".into(), Box::new(move || {
+            let _ = copied.send(());
+        })))).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("dialog-password", "Code from example.org", "482913 &lt;b&gt;now&lt;/b&gt; &amp; then", &["copy", "Copy"], CRITICAL));
+        assert_eq!(copies.recv_timeout(wait), Ok(()));
+        // Mail: normal urgency, said once; critical when someone Always through is in it.
+        mail("New mail", "From Noa", false, None).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], NORMAL));
+        mail("New mail", "From Noa", true, None).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], CRITICAL));
+        // A reminder; and one with choices, the one pressed run alone.
+        remind("Magnesium", "300 mg", None).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "Magnesium", "300 mg", &[], CRITICAL));
+        let (chose, choices) = channel::<&str>();
+        let other = chose.clone();
+        remind_choices("The night", "Close the day?", vec![("Close the day".into(), Box::new(move || {
+                let _ = chose.send("close");
+            })), ("Options…".into(), Box::new(move || {
+                let _ = other.send("options");
+            }))]).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "The night", "Close the day?", &["choice-0", "Close the day", "choice-1", "Options…"], CRITICAL));
+        assert_eq!(choices.recv_timeout(wait), Ok("options"));
+        assert!(choices.recv_timeout(Duration::from_millis(300)).is_err(), "one choice run");
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// The time running, against a notification server of the test's own on a
     /// bus of its own: run under dbus-run-session. Where a server is there
     /// already (the desktop's), skipped: nothing here may reach it.
     #[test]
     fn a_lasting_notification_changes_in_place_hears_its_buttons_and_goes() {
         use dbus::blocking::LocalConnection;
-        use dbus::blocking::stdintf::org_freedesktop_dbus::RequestNameReply;
         use dbus::channel::{MatchingReceiver, Sender as _};
         use dbus::message::MatchRule;
         use std::sync::mpsc::channel;
@@ -468,11 +698,12 @@ mod tests {
             Notify { replaces: u32, title: String, body: String, actions: Vec<String>, resident: bool, urgency: u8, timeout: i32 },
             Close(u32),
         }
+        let _alone = crate::bus::NOTIFICATION_SERVER.lock().unwrap_or_else(|e| e.into_inner());
         let (told, asked) = channel::<Asked>();
         let (ready, started) = channel::<bool>();
         std::thread::spawn(move || {
             // Never in a server's place: no replacing it, no waiting in line.
-            let Some(bus) = LocalConnection::new_session().ok().filter(|bus| matches!(bus.request_name(SERVER, false, false, true), Ok(RequestNameReply::PrimaryOwner))) else {
+            let Some(bus) = stand_in_bus() else {
                 let _ = ready.send(false);
                 return;
             };
