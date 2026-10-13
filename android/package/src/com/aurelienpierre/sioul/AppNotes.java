@@ -488,11 +488,16 @@ public final class AppNotes extends NotificationListenerService
             String answer = nativeDecide(said);
             if (answer == null || answer.isEmpty() || "null".equals(answer))
                 return;
-            long hold = new JSONObject(answer).optLong("hold", 0);
+            JSONObject decided = new JSONObject(answer);
+            long hold = decided.optLong("hold", 0);
             if (hold > 0)
                 snooze(sbn.getKey(), hold);
+            // One held come back at its time: Rust's calm line for the log, kinds and counts only (`log_line`).
+            String line = decided.optString("line", "");
+            if (!line.isEmpty())
+                Log.i(TAG, line);
             // A line written for your computers (crates/sioul-app/src/phonemsgs.rs): shared at a step soon.
-            if (new JSONObject(answer).optBoolean("shared", false))
+            if (decided.optBoolean("shared", false))
                 StepService.soon(getApplicationContext());
         } catch (Throwable e) {
             // Sioul's library that does not load, Rust that fails: the notification stays as it came.
@@ -511,7 +516,14 @@ public final class AppNotes extends NotificationListenerService
         }
     }
 
-    /** What is held, worked out again; Android told the new times. On the worker thread. */
+    /**
+     * What is held, worked out again; Android told the new times. On the
+     * worker thread. One calm line in the log each time (`adb logcat -s
+     * sioul`): how many are held and released, by kind, why, and the next
+     * release (Rust's `log_line`: kinds, counts and times, never a name, a
+     * number, an app or a message's words); or, when Rust could not answer,
+     * that in plain words.
+     */
     private void review(String reason)
     {
         if (!connected)
@@ -524,16 +536,22 @@ public final class AppNotes extends NotificationListenerService
                     keys.put(sbn.getKey());
             DoseAlarms.load(getApplicationContext());
             String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).toString());
-            if (answer == null || answer.isEmpty() || "null".equals(answer))
+            if (answer == null || answer.isEmpty() || "null".equals(answer)) {
+                Log.w(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.");
                 return;
-            JSONArray again = new JSONObject(answer).optJSONArray("snooze");
+            }
+            JSONObject reviewed = new JSONObject(answer);
+            JSONArray again = reviewed.optJSONArray("snooze");
             for (int i = 0; again != null && i < again.length(); i++) {
                 JSONObject one = again.optJSONObject(i);
                 if (one != null && !one.optString("key", "").isEmpty())
                     snooze(one.optString("key"), one.optLong("ms", 1000));
             }
+            String line = reviewed.optString("line", "");
+            if (!line.isEmpty())
+                Log.i(TAG, line);
         } catch (Throwable e) {
-            Log.e(TAG, "Notes: what is held was not worked out again (" + reason + ")", e);
+            Log.e(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.", e);
         }
     }
 

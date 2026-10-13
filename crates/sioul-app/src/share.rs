@@ -1444,6 +1444,16 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     want(|soon, now| soon.ask(now));
 }
 
+/// An exchange wanted now from where the window's handles are not at hand (a
+/// press in Sioul's window after nobody was at this computer: `devices::pressed`),
+/// once the worker runs; nothing before it does (the window's first exchange
+/// comes at its start).
+pub(crate) fn exchange_soon() {
+    if WORKER.get().is_some() {
+        want(|soon, now| soon.ask(now));
+    }
+}
+
 /// The minute's scheduled exchange: left out when one started less than 50
 /// seconds ago (a save's), which did its work (`trigger::Soon::tick`).
 pub(crate) fn exchange_tick(qt: &QtThread, shared: &Arc<Shared>) {

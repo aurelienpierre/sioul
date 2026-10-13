@@ -29,7 +29,8 @@
 //!    what a mail filter moves out of the inbox or marks read;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
 //!    changed, and the notification's "Let every call through";
-//! 5. when to look next: two minutes while another device is in use, five
+//! 5. when to look next: two minutes while another device is in use (a
+//!    computer with someone at it: `sioul_sync::devices::others_in_use`), five
 //!    otherwise, fifteen while you sleep.
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
@@ -183,8 +184,10 @@ static POKED: Mutex<(String, String)> = Mutex::new((String::new(), String::new()
 static MAILED: AtomicI64 = AtomicI64::new(0);
 
 /// How long until the next step (seconds): two minutes while another device
-/// is in use (its news stays fresh, the doses' too), fifteen while you sleep,
-/// five otherwise.
+/// is in use (its news stays fresh, the doses' too, and do-not-disturb pressed
+/// there comes within them), fifteen while you sleep, five otherwise. A
+/// computer left on with nobody at it is not in use (`devices::others_in_use`):
+/// its Sioul in the tray all night no longer makes the phone step every two minutes.
 fn next_step(in_use: bool, asleep: bool) -> i64 {
     if in_use {
         STEP_IN_USE
@@ -522,6 +525,126 @@ mod tests {
         assert_eq!(next_step(false, false), 300);
     }
 
+    use sioul_sync::devices::{COMPUTER, Entry};
+
+    /// The phone's id in the wake counts below.
+    const PHONE_ID: &str = "7c41d09e-0000-4000-8000-000000000001";
+    const DESK_ID: &str = "0b5e11a2-0000-4000-8000-000000000002";
+
+    /// What one hour of the background service does on the network, as its
+    /// steps pace it (`next_step`, `mail_due`, `remote::due`, the in-use rule
+    /// of `sioul_sync::devices::others_in_use`): its alarm steps, the pulls
+    /// among them, the mail rounds fetched in their bursts (one burst a step:
+    /// pull, send and mail together, on one connection), the steps a message
+    /// for your computers or a text brings (twenty seconds after it, a burst
+    /// of their own unless an alarm step comes within those seconds), the
+    /// bursts in all (the modem woken once each), and the longest wait between
+    /// two pulls (seconds): how late a computer's do-not-disturb may come.
+    #[derive(Debug, Default, PartialEq, Eq)]
+    struct Hour {
+        steps: u32,
+        pulls: u32,
+        mail: u32,
+        messages: u32,
+        wakes: u32,
+        longest: i64,
+    }
+
+    /// An hour from `start`, the desk as its entry reads in the folder at each
+    /// moment (`desk`; none: no computer running), you asleep or not, messages
+    /// for your computers (or texts) heard at `heard` (seconds into the hour).
+    fn an_hour(desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool, heard: &[i64]) -> Hour {
+        use sioul_sync::remote::{Pace, State, due};
+        let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
+        let start = 1_800_000_000;
+        let mut state = State { confirmed: start - 86_400, tried: start - 3_600, last: start - 3_600, ..State::default() };
+        let (mut hour, mut mailed, mut at) = (Hour::default(), start - 3_600, start);
+        let mut alarms = Vec::new();
+        while at < start + 3_600 {
+            let entries: Vec<Entry> = desk(at).into_iter().collect();
+            let in_use = sioul_sync::devices::others_in_use(&entries, PHONE_ID, at);
+            let fetch_first = in_use || !asleep;
+            let pace = Pace { phone: true, shown: false, in_use, urgent: fetch_first, step: if asleep { STEP_ASLEEP } else { STEP_AWAKE } };
+            let pulled = due(&state, at, pace);
+            if pulled {
+                if state.tried >= start {
+                    hour.longest = hour.longest.max(at - state.tried);
+                }
+                (state.tried, state.last) = (at, at);
+            }
+            let mail = mail_due(&config, at, mailed, asleep, false);
+            if mail {
+                mailed = at;
+            }
+            hour.steps += 1;
+            hour.pulls += u32::from(pulled);
+            hour.mail += u32::from(mail);
+            hour.wakes += u32::from(pulled || mail);
+            alarms.push(at);
+            at += next_step(in_use, asleep);
+        }
+        // The wait from the hour's last pull to the next step's.
+        hour.longest = hour.longest.max(at - state.tried);
+        // A message's step, twenty seconds on (`StepService.SOON_MS`), the one
+        // after it joining it (`Later.of`); an alarm step within them takes it along.
+        let mut waiting: Option<i64> = None;
+        for heard in heard.iter().map(|h| start + h) {
+            if waiting.is_some_and(|at| heard <= at) {
+                continue;
+            }
+            let at = heard + 20;
+            waiting = Some(at);
+            if !alarms.iter().any(|alarm| (heard..=at).contains(alarm)) {
+                hour.messages += 1;
+                hour.wakes += 1;
+            }
+        }
+        hour
+    }
+
+    /// The desk's entry as it reads in the folder at `at`: in use since well
+    /// before, someone at it or not (`active`; none: unsaid, as an older Sioul's
+    /// or where its system says nothing), its last export there as often as
+    /// it writes it (each minute; every few minutes with nobody at it).
+    fn desk(active: Option<bool>) -> impl Fn(i64) -> Option<Entry> {
+        move |at: i64| {
+            let every = if active == Some(false) { (sioul_sync::devices::AWAY_RESTATED + 59) / 60 * 60 } else { 60 };
+            Some(Entry { id: DESK_ID.into(), kind: COMPUTER.into(), working: true, started: at - 86_400, exported: at - at.rem_euclid(every), active, ..Entry::default() })
+        }
+    }
+
+    /// The phone's network wakes in an hour, from the code, before and after
+    /// battery part C (13 October 2026): with no computer running, a
+    /// computer left on with nobody at it (the night), and a person at a
+    /// computer. "Before" is the desk's entry as it was, saying nothing of
+    /// anyone at it (as an older Sioul's still does): Sioul running counted.
+    #[test]
+    fn the_phone_wakes_as_often_as_someone_may_be_at_a_computer() {
+        let none = |_: i64| None;
+        let (before, nobody, someone) = (desk(None), desk(Some(false)), desk(Some(true)));
+        let wakes = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, &[]);
+        // No computer running: unchanged, every five minutes awake, every fifteen asleep.
+        assert_eq!(wakes(&none, false), Hour { steps: 12, pulls: 12, mail: 4, messages: 0, wakes: 12, longest: 300 });
+        assert_eq!(wakes(&none, true), Hour { steps: 4, pulls: 4, mail: 0, messages: 0, wakes: 4, longest: 900 });
+        // A computer left on, nobody at it: thirty wakes an hour before, day and night alike;
+        // now as with no computer running.
+        assert_eq!(wakes(&before, true), Hour { steps: 30, pulls: 30, mail: 0, messages: 0, wakes: 30, longest: 120 });
+        assert_eq!(wakes(&before, false), Hour { steps: 30, pulls: 30, mail: 4, messages: 0, wakes: 30, longest: 120 });
+        assert_eq!(wakes(&nobody, true), wakes(&none, true));
+        assert_eq!(wakes(&nobody, false), wakes(&none, false));
+        // Someone at a computer: as before, every two minutes; its do-not-disturb, pressed there,
+        // comes within them. Pressed after a while away, the press says someone is there at once
+        // (`devices::pressed`), and the phone's next look, five minutes away at most (fifteen while
+        // you sleep), brings it and the two-minute steps.
+        assert_eq!(wakes(&someone, false), wakes(&before, false));
+        assert_eq!(wakes(&someone, true), wakes(&before, true));
+        assert_eq!(wakes(&someone, true).longest, STEP_IN_USE);
+        // A message for your computers (or a text) brings a step twenty seconds on, a burst of
+        // its own unless an alarm step comes within them; two heard together go as one.
+        assert_eq!(an_hour(&none, true, &[100, 110, 1_000]).wakes, 4 + 2);
+        assert_eq!(an_hour(&someone, true, &[100, 110]).wakes, 30, "taken along by the alarm step at 120 s");
+    }
+
     #[test]
     fn mail_comes_at_its_rhythm_never_asleep_nor_paused() {
         let mut config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
@@ -541,6 +664,48 @@ mod tests {
         config.reminders.mail = true;
         config.accounts.clear();
         assert!(!mail_due(&config, now, 0, false, false), "no account");
+    }
+
+    /// Calls are untouched by whether someone is at a computer: the calls'
+    /// table and its screening (calls.rs, Calls.java, CallScreen.java) read
+    /// neither the in-use rule nor what an entry says of it, and "Let every
+    /// call through" pressed on the notification still steps at once, its
+    /// exchange not waiting for a pull (read from the sources).
+    #[test]
+    fn calls_are_untouched_by_whether_someone_is_at_a_computer() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for path in ["crates/sioul-app/src/calls.rs", "android/package/src/com/aurelienpierre/sioul/Calls.java", "android/package/src/com/aurelienpierre/sioul/CallScreen.java"] {
+            let source = std::fs::read_to_string(root.join(path)).unwrap();
+            for word in ["others_in_use", "present_of", "AWAY_RESTATED", ".active"] {
+                assert!(!source.contains(word), "{path} reads {word}");
+            }
+        }
+        let step = std::fs::read_to_string(root.join("crates/sioul-app/src/steps.rs")).unwrap();
+        assert!(step.contains("let pressed = reason == \"calls\";") && step.contains("&& !pressed && (in_use || !asleep);"), "a press on the calls' notification: at once, no pull waited for");
+    }
+
+    /// Mail at night: a round only when the matrix of what reaches you tells
+    /// some mail then (as usual it tells none while you sleep: no round, no
+    /// wake); your Always through set to come at night keeps its rhythm, a
+    /// round every fifteen minutes in the night's steps, and no IDLE.
+    #[test]
+    fn mail_at_night_only_when_the_matrix_tells_some_then() {
+        let accounts = "[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n";
+        let usual: Config = toml::from_str(accounts).unwrap();
+        let now = 1_800_000_000;
+        assert!(!mail_due(&usual, now, 0, true, false), "asleep, as usual: no round");
+        let always: Config = toml::from_str(&format!("{accounts}[attention]\n\"mail.always\" = [\"sleep\"]\n")).unwrap();
+        assert!(mail_due(&always, now, 0, true, false), "Always through told at night: fetched");
+        assert!(!mail_due(&always, now, now - 60, true, false) && mail_due(&always, now, now - MAIL_EVERY, true, false), "at its rhythm");
+        // Its rounds fall in the night's steps (every fifteen minutes): four an hour, no wake of their own.
+        let mut mailed = now - 3_600;
+        let mut rounds = 0;
+        for at in (0..4).map(|n| now + n * STEP_ASLEEP) {
+            if mail_due(&always, at, mailed, true, false) {
+                (mailed, rounds) = (at, rounds + 1);
+            }
+        }
+        assert_eq!(rounds, 4);
     }
 
     /// A file the sync app wrote that the pull brought already, the same

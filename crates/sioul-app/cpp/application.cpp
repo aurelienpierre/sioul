@@ -15,15 +15,53 @@
 // Sioul goes on while windows other than its own close: a draft, the focus
 // window, the routine player, its window hidden in the tray. Its window's
 // closing quits it (main.qml's onClosing), not the last window's.
+//
+// A press in any of Sioul's windows (a click, a key, a touch) tells Rust that
+// a person is at this computer (devices.rs, `pressed`), five seconds apart at
+// most: its entry among your devices says so, and a phone's background steps
+// follow it. The press itself goes on as it came; nothing is taken from it.
 
 #include <QApplication>
 #include <QByteArray>
+#include <QElapsedTimer>
+#include <QEvent>
 #include <QList>
 #include <QObject>
 
 #include <vector>
 
+extern "C" void sioul_window_pressed();
+
 namespace {
+// Presses in Sioul's windows, watched for the whole application.
+class Presses : public QObject
+{
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::KeyPress:
+        case QEvent::TouchBegin:
+        case QEvent::TabletPress:
+            if (!said.isValid() || said.hasExpired(5000)) {
+                said.start();
+                sioul_window_pressed();
+            }
+            break;
+        default:
+            break;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QElapsedTimer said;
+};
+
 // The arguments, alive with the application, which may take some out (Qt's own).
 class Arguments : public QObject
 {
@@ -50,6 +88,7 @@ extern "C" QGuiApplication *sioul_new_application(int count, const char *const *
     auto *application = new QApplication(arguments->size, arguments->pointers.data());
     arguments->setParent(application);
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    application->installEventFilter(new Presses(application));
     return application;
 }
 

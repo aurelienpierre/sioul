@@ -14,7 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * - StepService.othersFile: which files written in the sharing folder bring
  *   a step (another device's; never a hidden one, never this phone's own);
  * - Texts.changedSince: whether the import asks Android (the texts watched in
- *   the service's process, as marked; not watched: always).
+ *   the service's process, as marked; not watched: always);
+ * - Texts.grew: whether a message was received since the watch last looked
+ *   (an inbox's newest id grown), which brings a step soon.
  */
 public final class StepsCheck
 {
@@ -69,6 +71,14 @@ public final class StepsCheck
         mark.set(true);
         expect("asked without clearing", Texts.changedSince(true, mark, false), true);
         expect("still marked", mark.get(), true);
+
+        // A message received: an inbox's newest id grown, since a look that read it.
+        expect("a new message", Texts.grew(41, 42), true);
+        expect("the same newest", Texts.grew(42, 42), false);
+        expect("one deleted since", Texts.grew(42, 40), false);
+        expect("never read before: the first look brings no step", Texts.grew(-1, 42), false);
+        expect("an inbox that cannot be read now", Texts.grew(42, -1), false);
+        expect("the first message in an empty inbox", Texts.grew(0, 1), true);
 
         System.out.println("StepsCheck: " + (checked - failed) + " of " + checked + " checks passed");
         if (failed > 0)
