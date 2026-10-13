@@ -1771,17 +1771,30 @@ fn log_send(line: String) {
 
 /// The connection is metered (NetworkManager: yes, or guessed yes), as the
 /// system's reading thread last read it (`devices::watch_system`, every
-/// thirty seconds): never asked here, never waited for, so that an exchange
-/// never waits on the system's bus (review of battery part C, G1); none read
-/// yet, or too old, not metered. On a phone, not known here (measured
-/// instead: `Sending::slow`).
+/// thirty seconds): never asked here, so that an exchange never waits on the
+/// system's bus (review of battery part C, G1). Before this process's first
+/// reading (the window's first exchange, a moment after its start), that
+/// reading is waited for `FIRST_READING` at most, once, and none come by
+/// then, the connection counts as metered: a phone's hotspot is not spent on
+/// a full round at each start (L3). Read once, a reading too old to keep
+/// says nothing: not metered. On a phone, not known here (measured instead:
+/// `Sending::slow`).
 fn metered() -> bool {
     if cfg!(target_os = "android") {
         return false;
     }
+    static WAITED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     crate::devices::watch_system();
+    let limit = if WAITED.swap(true, std::sync::atomic::Ordering::SeqCst) { std::time::Duration::ZERO } else { FIRST_READING };
+    if !sioul_sync::power::read_once_within(limit) {
+        return true;
+    }
     sioul_sync::power::kept_power().is_some_and(|power| power.metered == Some(true))
 }
+
+/// How long the window's first exchange waits for the first reading of the
+/// connection's cost (`metered`).
+const FIRST_READING: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// The connection metered or measured slow: the sharing's full rounds wait
 /// (`share::set_frugal`), large files go at most every ten minutes.

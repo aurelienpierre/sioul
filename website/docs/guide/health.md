@@ -73,7 +73,7 @@ One desktop notification per dose, within half an hour of its time, without soun
 
 If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about on the Porch at the next start, and on this page: with **Taken…** (when you took it) and **Not taken**. It is a question about the past, never a reminder to take one now.
 
-If Sioul was open but could not show the reminder (on a computer whose notifications were not working), the dose is asked about in the same way, under its own heading: "Due while Sioul ran, but their reminder could not be shown". Sioul never counts a reminder that did not appear.
+If Sioul was open but could not show the reminder (on a computer whose notifications were not working), the dose is asked about in the same way, under its own heading: "Due while Sioul ran, but their reminder could not be shown". Sioul never counts a reminder that did not appear: your phone then reminds you. Meanwhile the computer tries again for the dose's half hour; shown late, the reminder counts from then, unless your phone reminded you first.
 
 **On the Porch** too, each dose of the day not marked yet waits from its time on, whether its notification reached you or not: its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). It shows whatever your hours, and stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, it waits for your waking.
 

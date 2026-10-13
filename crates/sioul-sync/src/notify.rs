@@ -16,6 +16,12 @@
 //! argument (`send`), but for its urgency, said once (notify-rust's hints are
 //! a set, where a mail's normal urgency and the critical one it started from
 //! were two, sent in no fixed order). Windows and macOS: notify-rust.
+//!
+//! A dose's reminder (`remind_dose`) says what became of its first try, so
+//! that one not shown is recorded `unshown`, never as a reminder (the phone's
+//! alarm and the question on the past then take it up: docs/health.md); and
+//! while the bus or the server could not take it, it is tried again until
+//! the dose's grace ends, so that a bus that stalls shows it late.
 
 #[cfg(any(windows, target_os = "macos"))]
 use notify_rust::{Notification, Timeout};
@@ -26,6 +32,50 @@ use std::time::Duration;
 /// How long the notification stays: about the life of a code.
 #[cfg(not(target_os = "android"))]
 const SHOWN: u32 = 10 * 60 * 1000;
+
+/// How long a notice's first try may take, its connection and all: the
+/// connection's setup (`bus::SETUP`, five seconds), the server's two answers
+/// (`ASKED`, two seconds each), and a second more. A dose's reminder is
+/// waited for this long at most (`remind_dose`, `Sending::outcome`).
+pub const FIRST_TRY: Duration = Duration::from_secs(10);
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const _: () = assert!(FIRST_TRY.as_secs() > crate::bus::SETUP.as_secs() + 2 * ASKED.as_secs());
+
+/// What a dose's reminder does when its first try did not go out
+/// (`remind_dose`): tried again on its own thread until `until` (the end of
+/// the dose's grace), five seconds apart, then half a minute (`again_in`),
+/// while the bus or the notification server could not take it; never once
+/// the server was asked and did not answer, which may show it late (a dose
+/// reminded twice could be taken twice). Before each try, `still` gives the
+/// words to show then, or none: no longer to remind (marked, or reminded
+/// since by another device: a phone's alarm). Once shown that late, `shown`.
+/// Linux and the BSDs; elsewhere the first try is the only one.
+pub struct Again {
+    pub until: std::time::Instant,
+    pub still: Box<dyn FnMut() -> Option<(String, String)> + Send>,
+    pub shown: Box<dyn FnOnce() + Send>,
+}
+
+/// A dose's reminder under way (`remind_dose`): what became of its first try.
+pub struct Sending(std::sync::mpsc::Receiver<Result<(), String>>);
+
+impl Sending {
+    /// A first try whose outcome is known at once.
+    #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+    fn known(outcome: Result<(), String>) -> Sending {
+        let (said, sending) = std::sync::mpsc::channel();
+        let _ = said.send(outcome);
+        Sending(sending)
+    }
+
+    /// Whether the first try went out (the notification server took the
+    /// notice), waited for `wait` at most: not said by then, it did not; its
+    /// thread may still show it later (`Again::shown`).
+    pub fn outcome(&self, wait: Duration) -> Result<(), String> {
+        self.0.recv_timeout(wait).unwrap_or_else(|_| Err("the notification was not taken in time".to_string()))
+    }
+}
 
 /// Sioul's bundle id on macOS, as `packaging/macos/Info.plist` names it
 /// (`CFBundleIdentifier`). macOS shows a notification as coming from the
@@ -58,6 +108,81 @@ pub fn code(title: &str, body: &str, copy: Option<(String, Box<dyn FnOnce() + Se
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     one_button(Notice::new(title, body, "appointment-soon", CRITICAL), action)
+}
+
+/// A dose's reminder (docs/health.md, "Knowing"): what `remind` shows with
+/// its button ("Taken"), on a thread of its own; what became of its first
+/// try is said back (`Sending::outcome`, `FIRST_TRY` at most), so that one
+/// not shown is never recorded as a reminder; and while the bus or the
+/// server could not take it, it is tried again (`Again`).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + Send>), again: Again) -> Sending {
+    let mut notice = Notice::new(title, body, "appointment-soon", CRITICAL);
+    let (label, run) = button;
+    notice.buttons.push(("copy".to_string(), label));
+    let pressed: Box<dyn FnOnce(&str) + Send> = Box::new(move |key: &str| {
+        if key == "copy" {
+            run();
+        }
+    });
+    let (said, sending) = std::sync::mpsc::channel();
+    // The D-Bus connection cannot change threads, so it is made where it waits.
+    std::thread::spawn(move || {
+        let failure = match show(&notice, true) {
+            Ok(shown) => {
+                let _ = said.send(Ok(()));
+                return wait_for_press(&shown, pressed);
+            }
+            Err(failure) => failure,
+        };
+        let _ = said.send(Err(failure.said));
+        if failure.again {
+            show_again(notice, again, pressed);
+        }
+    });
+    Sending(sending)
+}
+
+/// Elsewhere, the reminder as `remind` shows it, its outcome known at once;
+/// no try after the first.
+#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + Send>), _again: Again) -> Sending {
+    Sending::known(remind(title, body, Some(button)))
+}
+
+/// A dose's reminder tried again after its first try (`Again`): the bus
+/// first (a stalled one refuses at once, `bus`, and nothing else is read
+/// meanwhile), then its words as they are now, then the server.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn show_again(mut notice: Notice, mut again: Again, pressed: Box<dyn FnOnce(&str) + Send>) {
+    let mut tries = 0;
+    loop {
+        let wait = again_in(tries);
+        tries += 1;
+        if std::time::Instant::now() + wait >= again.until {
+            return;
+        }
+        std::thread::sleep(wait);
+        let Ok(bus) = session() else { continue };
+        let Some((title, body)) = (again.still)() else { return };
+        (notice.title, notice.body) = (title, body);
+        match show_on(bus, &notice, true) {
+            Ok(shown) => {
+                (again.shown)();
+                return wait_for_press(&shown, pressed);
+            }
+            Err(failure) if failure.again => {}
+            Err(_) => return,
+        }
+    }
+}
+
+/// How long a dose's reminder waits before its try after `tries` others:
+/// five seconds for two minutes (a bus that stalled a while: shown soon after
+/// it answers), then half a minute.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn again_in(tries: u32) -> Duration {
+    if tries < 24 { Duration::from_secs(5) } else { Duration::from_secs(30) }
 }
 
 /// New mail at the times it may come (docs/porch.md, "Notifications"): one
@@ -214,41 +339,86 @@ fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Sen
 /// Shows `notice`. Without `pressed`, on the caller's thread, the server's
 /// refusal said. With it, on a thread of its own, which keeps the connection
 /// that showed it (the server tells a press to that connection: Plasma
-/// addresses it) and waits there: `pressed` runs with the key of the first
-/// button pressed, and the wait ends then, or when the notification closes.
+/// addresses it) and waits there (`wait_for_press`).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn notify(notice: Notice, pressed: Option<Box<dyn FnOnce(&str) + Send>>) -> Result<(), String> {
-    use std::cell::RefCell;
-    use std::rc::Rc;
     let Some(pressed) = pressed else {
-        let bus = session().map_err(|e| said(&e))?;
-        return send(&bus, &notice).map(drop).map_err(|e| said(&e));
+        return show(&notice, false).map(drop).map_err(|failure| failure.said);
     };
     // The D-Bus connection cannot change threads, so it is made where it waits.
     std::thread::spawn(move || {
-        let Ok(bus) = session() else { return };
-        let heard: Rc<RefCell<Vec<Heard>>> = Rc::default();
-        if listened(&bus, &heard).is_err() {
-            return;
-        }
-        let Ok(id) = send(&bus, &notice) else { return };
-        loop {
-            for item in std::mem::take(&mut *heard.borrow_mut()) {
-                match item {
-                    Heard::Pressed(at, key) if at == id => {
-                        pressed(&key);
-                        return;
-                    }
-                    Heard::Closed(at) if at == id => return,
-                    _ => {}
-                }
-            }
-            if bus.process(Duration::from_secs(1)).is_err() {
-                return;
-            }
+        if let Ok(shown) = show(&notice, true) {
+            wait_for_press(&shown, pressed);
         }
     });
     Ok(())
+}
+
+/// A notice shown: the connection that showed it (kept: the server tells a
+/// press to it), what it heard (when `listen`), the server's number for it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+struct Shown {
+    bus: dbus::blocking::LocalConnection,
+    heard: std::rc::Rc<std::cell::RefCell<Vec<Heard>>>,
+    id: u32,
+}
+
+/// Why a notice did not go out, said in a few words, and whether a later try
+/// may show it (`again`): no connection, no notification server (Plasma's
+/// starting again); never once the server was asked and did not answer in
+/// time (it may show it late) or refused it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+struct Failure {
+    said: String,
+    again: bool,
+}
+
+/// `notice` shown on a connection of its own, made now; heard on it when `listen`.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn show(notice: &Notice, listen: bool) -> Result<Shown, Failure> {
+    let bus = session().map_err(|e| Failure { said: said(&e), again: true })?;
+    show_on(bus, notice, listen)
+}
+
+/// `notice` shown on `bus`, heard there first when `listen` (a press is not
+/// missed while the call is under way).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn show_on(bus: dbus::blocking::LocalConnection, notice: &Notice, listen: bool) -> Result<Shown, Failure> {
+    let heard = std::rc::Rc::default();
+    if listen {
+        listened(&bus, &heard).map_err(|e| Failure { said: said(&e), again: true })?;
+    }
+    let id = send(&bus, notice).map_err(|e| Failure { said: said(&e), again: nobody_took(&e) })?;
+    Ok(Shown { bus, heard, id })
+}
+
+/// Whether a call refused never reached a notification server: none on the
+/// bus (it may start again: plasmashell), or the connection gone before it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn nobody_took(e: &dbus::Error) -> bool {
+    matches!(e.name(), Some("org.freedesktop.DBus.Error.ServiceUnknown" | "org.freedesktop.DBus.Error.NameHasNoOwner" | "org.freedesktop.DBus.Error.Disconnected"))
+}
+
+/// A shown notice's button waited for on its connection: `pressed` runs with
+/// the key of the first one pressed, and the wait ends then, or when the
+/// notification closes, or the connection goes.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn wait_for_press(shown: &Shown, pressed: Box<dyn FnOnce(&str) + Send>) {
+    loop {
+        for item in std::mem::take(&mut *shown.heard.borrow_mut()) {
+            match item {
+                Heard::Pressed(at, key) if at == shown.id => {
+                    pressed(&key);
+                    return;
+                }
+                Heard::Closed(at) if at == shown.id => return,
+                _ => {}
+            }
+        }
+        if shown.bus.process(Duration::from_secs(1)).is_err() {
+            return;
+        }
+    }
 }
 
 /// The call notify-rust's `Notification` made, argument for argument:
@@ -369,16 +539,53 @@ impl Ongoing {
 }
 
 /// A lasting notification's thread: what Sioul asks shown, what the server
-/// says heard, until it is taken away.
+/// says heard, until it is taken away. Its connection is made again while
+/// the bus does not give one (a stall: `bus` refuses at once meanwhile, five
+/// seconds apart, `bus::SETUP`) and once it is lost, rather than the
+/// notification being lost for the session (review of battery part C, L4);
+/// what Sioul asks meanwhile is kept, the last of it, and a close ends it.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn serve(mut said: Said, asked: &Receiver<Change>, on_action: &dyn Fn(&str)) {
+    use std::sync::mpsc::RecvTimeoutError;
+    loop {
+        if let Ok(connection) = session()
+            && let Served::Done = served(&mut said, asked, on_action, &connection)
+        {
+            return;
+        }
+        match asked.recv_timeout(crate::bus::SETUP) {
+            Ok(Change::Show(next)) => said = next,
+            Ok(Change::Close(done)) => {
+                if let Some(done) = done {
+                    let _ = done.send(());
+                }
+                return;
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return,
+        }
+    }
+}
+
+/// What became of a lasting notification on one connection (`served`):
+/// taken away, or its connection lost (made again, the notification shown
+/// again).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+enum Served {
+    Done,
+    Lost,
+}
+
+/// A lasting notification on `connection`: what Sioul asks shown, what the
+/// server says heard, until it is taken away or the connection is lost.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn served(said: &mut Said, asked: &Receiver<Change>, on_action: &dyn Fn(&str), connection: &dbus::blocking::LocalConnection) -> Served {
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::sync::mpsc::TryRecvError;
-    let Ok(connection) = session() else { return };
     let heard: Rc<RefCell<Vec<Heard>>> = Rc::default();
-    if listened(&connection, &heard).is_err() {
-        return;
+    if listened(connection, &heard).is_err() {
+        return Served::Lost;
     }
     let server = connection.with_proxy(SERVER, SERVER_PATH, Duration::from_secs(2));
     // Asked again while not known: a server starting after Sioul answers later.
@@ -400,30 +607,33 @@ fn serve(mut said: Said, asked: &Receiver<Change>, on_action: &dyn Fn(&str)) {
         // What Sioul asked meanwhile: the last of it counts.
         loop {
             match asked.try_recv() {
-                Ok(Change::Show(next)) => (said, fresh) = (next, true),
+                Ok(Change::Show(next)) => (*said, fresh) = (next, true),
                 Ok(Change::Close(done)) => {
                     close_lasting(&server, id);
                     if let Some(done) = done {
                         let _ = done.send(());
                     }
-                    return;
+                    return Served::Done;
                 }
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return close_lasting(&server, id),
+                Err(TryRecvError::Disconnected) => {
+                    close_lasting(&server, id);
+                    return Served::Done;
+                }
             }
         }
         if fresh || refused.is_some_and(|at| at.elapsed() >= ASKED_AGAIN) {
             if capabilities.is_empty() {
                 capabilities = server.method_call(SERVER, "GetCapabilities", ()).map(|(found,): (Vec<String>,)| found).unwrap_or_default();
             }
-            match show_lasting(&server, id, &said, &capabilities) {
+            match show_lasting(&server, id, said, &capabilities) {
                 Ok(shown) => (id, refused) = (shown, None),
                 Err(_) => refused = Some(std::time::Instant::now()),
             }
             fresh = false;
         }
         if connection.process(LISTENED).is_err() {
-            return;
+            return Served::Lost;
         }
     }
 }
@@ -547,6 +757,202 @@ mod tests {
         }
         names.sort();
         names
+    }
+
+    /// A stand-in notification server on the bus at `address`, on a thread of
+    /// its own until `stop`: "answers" answers and presses "copy" on each
+    /// notice that has it, to the connection that showed it; "silent" takes
+    /// each call and never answers. Each Notify's title said on `told`, when
+    /// it came. Whether it got the name.
+    fn notice_server(address: &str, mode: &'static str, told: std::sync::mpsc::Sender<(std::time::Instant, String)>, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> bool {
+        use dbus::blocking::LocalConnection;
+        use dbus::blocking::stdintf::org_freedesktop_dbus::RequestNameReply;
+        use dbus::channel::{MatchingReceiver, Sender as _};
+        use dbus::message::MatchRule;
+        let (ready, started) = std::sync::mpsc::channel::<bool>();
+        let address = address.to_string();
+        std::thread::spawn(move || {
+            let Some(bus) = crate::bus::connect(&address).ok().map(LocalConnection::from).filter(|bus| matches!(bus.request_name(SERVER, false, false, true), Ok(RequestNameReply::PrimaryOwner))) else {
+                let _ = ready.send(false);
+                return;
+            };
+            let mut next = 40u32;
+            bus.start_receive(
+                MatchRule::new_method_call(),
+                Box::new(move |call: dbus::Message, bus: &LocalConnection| {
+                    let notify = call.member().as_deref() == Some("Notify");
+                    if notify && let Ok((_, _, _, title)) = call.read4::<String, u32, String, String>() {
+                        let _ = told.send((std::time::Instant::now(), title));
+                    }
+                    if mode == "silent" {
+                        return true;
+                    }
+                    let reply = if notify {
+                        next += 1;
+                        call.method_return().append1(next)
+                    } else if call.member().as_deref() == Some("GetCapabilities") {
+                        call.method_return().append1(vec!["actions", "body"])
+                    } else {
+                        return true;
+                    };
+                    let _ = bus.send(reply);
+                    let buttons: Vec<String> = if notify { call.read_all::<(String, u32, String, String, String, Vec<String>, dbus::arg::PropMap, i32)>().map(|all| all.5).unwrap_or_default() } else { Vec::new() };
+                    if buttons.iter().any(|key| key == "copy") {
+                        let mut press = dbus::Message::new_signal(SERVER_PATH, SERVER, "ActionInvoked").unwrap().append2(next, "copy");
+                        press.set_destination(call.sender().map(|s| s.into_static()));
+                        let _ = bus.send(press);
+                    }
+                    true
+                }),
+            );
+            let _ = ready.send(true);
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = bus.process(Duration::from_millis(100));
+            }
+        });
+        started.recv_timeout(Duration::from_secs(5)).unwrap_or(false)
+    }
+
+    /// Dose reminders and the focus session's lasting notification against a
+    /// stand-in session bus (`bus::StandIns`, never the session of whoever
+    /// runs this) and a stand-in notification server on it (review of
+    /// battery part C, H1 and L4, the review's own scenarios):
+    /// - the bus stopped (SIGSTOP) at the dose's minute, let go 8 s later: the
+    ///   first try says it did not go out, within `FIRST_TRY`; tried again,
+    ///   the reminder shows once the bus answers, said shown late, and its
+    ///   button works;
+    /// - stopped, reminders at 1, 10 and 20 s, let go at 30 s: each says it
+    ///   did not go out, and all three show once the bus answers;
+    /// - a server that never answers: not gone out once its two questions
+    ///   were given up, and never sent again (it may show it late);
+    /// - no server, then one (plasmashell starting again): shown once it is
+    ///   there; and none at all once the dose is no longer to remind;
+    /// - the lasting notification, its connection stalled at first: shown
+    ///   once the bus answers, not lost for the session.
+    /// Sets this process's session bus address: run alone, by name:
+    /// `cargo test --release -p sioul-sync notify::tests::reminders_say_their_outcome_and_show_late_after_a_stall -- --ignored --exact --nocapture`.
+    #[test]
+    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
+    fn reminders_say_their_outcome_and_show_late_after_a_stall() {
+        use crate::bus::StandIns;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc::channel;
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+        let mut stand_ins = StandIns::new("stand-in-notices");
+        let (pid, address) = stand_ins.start("session");
+        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
+        let (told, notices) = channel::<(Instant, String)>();
+        let stop = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "answers", told.clone(), Arc::clone(&stop)), "the stand-in server");
+        // A dose's reminder: its button's action and its late show said on channels.
+        let (pressed, presses) = channel::<String>();
+        let (late, lates) = channel::<String>();
+        // Whether the doses are still to remind (none once marked).
+        let to_remind = Arc::new(Mutex::new(true));
+        let dose = |name: &str, until: Duration| {
+            let (pressed, late, to_remind) = (pressed.clone(), late.clone(), Arc::clone(&to_remind));
+            let (pressed_name, still_name, shown_name) = (name.to_string(), name.to_string(), name.to_string());
+            remind_dose(
+                name,
+                "22:00",
+                ("Taken".into(), Box::new(move || drop(pressed.send(pressed_name.clone())))),
+                Again { until: Instant::now() + until, still: Box::new(move || to_remind.lock().unwrap().then(|| (still_name.clone(), "22:00".to_string()))), shown: Box::new(move || drop(late.send(shown_name.clone()))) },
+            )
+        };
+        let titles = |within: Duration| -> Vec<String> {
+            let until = Instant::now() + within;
+            let mut seen = Vec::new();
+            while let Ok((_, title)) = notices.recv_timeout(until.saturating_duration_since(Instant::now())) {
+                seen.push(title);
+            }
+            seen
+        };
+
+        // Healthy: shown at once, its button pressed.
+        let start = Instant::now();
+        assert_eq!(dose("Magnesium · 300 mg", Duration::from_secs(60)).outcome(FIRST_TRY), Ok(()));
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert_eq!(presses.recv_timeout(Duration::from_secs(5)).as_deref(), Ok("Magnesium · 300 mg"));
+        assert_eq!(titles(Duration::from_millis(300)), ["Magnesium · 300 mg"]);
+
+        // One stall: stopped at 0, the reminder at 1 s, let go at 9 s.
+        StandIns::signal(pid, "-STOP");
+        std::thread::sleep(Duration::from_secs(1));
+        let start = Instant::now();
+        let sent = dose("Magnesium · 300 mg", Duration::from_secs(60));
+        let outcome = sent.outcome(FIRST_TRY);
+        let took = start.elapsed();
+        assert!(outcome.is_err() && took <= FIRST_TRY, "not gone out, said within FIRST_TRY: {outcome:?} after {took:?}");
+        std::thread::sleep(Duration::from_secs(8).saturating_sub(start.elapsed() + Duration::from_secs(1)));
+        StandIns::signal(pid, "-CONT");
+        assert_eq!(lates.recv_timeout(Duration::from_secs(20)).as_deref(), Ok("Magnesium · 300 mg"), "shown late once the bus answers");
+        assert_eq!(presses.recv_timeout(Duration::from_secs(5)).as_deref(), Ok("Magnesium · 300 mg"), "its button works");
+        assert_eq!(titles(Duration::from_millis(500)), ["Magnesium · 300 mg"], "once");
+
+        // Three reminders over 30 s, the bus stopped all along.
+        StandIns::signal(pid, "-STOP");
+        let start = Instant::now();
+        let mut sending = Vec::new();
+        for (at, name) in [(1, "First"), (10, "Second"), (20, "Third")] {
+            std::thread::sleep(Duration::from_secs(at).saturating_sub(start.elapsed()));
+            let sent = dose(name, Duration::from_secs(90));
+            assert!(sent.outcome(FIRST_TRY).is_err(), "{name}: not gone out");
+            sending.push(sent);
+        }
+        std::thread::sleep(Duration::from_secs(30).saturating_sub(start.elapsed()));
+        StandIns::signal(pid, "-CONT");
+        let mut shown: Vec<String> = (0..3).filter_map(|_| lates.recv_timeout(Duration::from_secs(25)).ok()).collect();
+        shown.sort();
+        assert_eq!(shown, ["First", "Second", "Third"], "all three shown once the bus answers");
+        let mut seen = titles(Duration::from_secs(2));
+        seen.sort();
+        assert_eq!(seen, ["First", "Second", "Third"]);
+        for _ in 0..3 {
+            let _ = presses.recv_timeout(Duration::from_secs(5));
+        }
+
+        // A server that never answers: not gone out, never sent again.
+        stop.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+        let quiet = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "silent", told.clone(), Arc::clone(&quiet)), "the silent server");
+        let start = Instant::now();
+        let outcome = dose("Magnesium · 300 mg", Duration::from_secs(60)).outcome(FIRST_TRY);
+        assert!(outcome.is_err() && start.elapsed() < FIRST_TRY, "{outcome:?} after {:?}", start.elapsed());
+        assert_eq!(titles(Duration::from_secs(15)), ["Magnesium · 300 mg"], "asked once, never again");
+        assert!(lates.try_recv().is_err());
+
+        // No server, then one: shown once it is there; none once no longer to remind.
+        quiet.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+        let outcome = dose("Magnesium · 300 mg", Duration::from_secs(60)).outcome(FIRST_TRY);
+        assert!(outcome.is_err(), "no server: {outcome:?}");
+        std::thread::sleep(Duration::from_secs(6));
+        let back = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "answers", told.clone(), Arc::clone(&back)));
+        assert_eq!(lates.recv_timeout(Duration::from_secs(15)).as_deref(), Ok("Magnesium · 300 mg"), "shown once the server is there");
+        let _ = presses.recv_timeout(Duration::from_secs(5));
+        let _ = titles(Duration::from_millis(500));
+        back.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+        let outcome = dose("Magnesium · 300 mg", Duration::from_secs(60)).outcome(FIRST_TRY);
+        assert!(outcome.is_err());
+        *to_remind.lock().unwrap() = false;
+        let again = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "answers", told.clone(), Arc::clone(&again)));
+        assert!(titles(Duration::from_secs(12)).is_empty(), "marked meanwhile: never shown");
+        assert!(lates.try_recv().is_err());
+
+        // The lasting notification, its connection stalled at first: shown once the bus answers.
+        StandIns::signal(pid, "-STOP");
+        let lasting = ongoing("Write to the bank", "Since 14:02, for 25 min", vec![("stop".to_string(), "Stop".to_string())], Box::new(|_: &str| {}));
+        std::thread::sleep(Duration::from_secs(8));
+        StandIns::signal(pid, "-CONT");
+        assert_eq!(titles(Duration::from_secs(20)).first().map(String::as_str), Some("Write to the bank"), "not lost for the session");
+        lasting.close(Duration::from_secs(3));
+        again.store(true, Ordering::Relaxed);
     }
 
     /// Codes, reminders and mail, against a notification server of the test's
