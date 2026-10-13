@@ -182,10 +182,10 @@ fn main() {
     // Qt Widgets on computers only: Plasma's system tray makes its menu of widgets
     // (cpp/application.cpp). A phone has no tray, and its build never carries them.
     let builder = if android { builder } else { builder.qt_module("Widgets") };
-    // colour: the sites' colours: their shader (tools/make-shaders.sh), and on Linux colord,
-    // read over D-Bus to know which screen a profile belongs to (docs/colour.md).
+    // colour: the sites' colours: their shader (tools/make-shaders.sh). colord, which says on
+    // Linux which screen a profile belongs to, is read by Rust (sioul_sync::colord), never
+    // through Qt's D-Bus (docs/colour.md).
     let builder = if android { builder } else { builder.qrc("shaders/shaders.qrc") };
-    let builder = if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") { builder.qt_module("DBus") } else { builder };
     builder
         // The Breeze icons Sioul uses, for systems without them (tools/bundle-icons.py).
         .qrc("icons/icons.qrc")

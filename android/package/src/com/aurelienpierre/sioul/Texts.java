@@ -15,7 +15,6 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Telephony;
@@ -148,21 +147,48 @@ public final class Texts
     }
 
     /**
-     * The newest id in an inbox (the provider's own order), 0 when it is
-     * empty, -1 when it cannot be read: asked for that row alone (a provider
-     * that takes no limit gives its ids in that order all the same, and only
-     * the first is read).
+     * The newest id in an inbox, 0 when it is empty, -1 when it cannot be
+     * read (`newestBy`).
      */
     private static long newest(Context context, Uri box)
     {
-        Bundle asked = new Bundle();
-        asked.putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "_id DESC");
-        asked.putInt(ContentResolver.QUERY_ARG_LIMIT, 1);
-        try (Cursor cursor = context.getContentResolver().query(box, new String[] { "_id" }, asked, null)) {
-            return cursor != null && cursor.moveToFirst() ? cursor.getLong(0) : 0;
-        } catch (RuntimeException e) {
-            return -1;
+        return newestBy(order -> {
+            try (Cursor cursor = context.getContentResolver().query(box, new String[] { "_id" }, null, null, order)) {
+                return cursor != null && cursor.moveToFirst() ? cursor.getLong(0) : 0;
+            }
+        });
+    }
+
+    /** An inbox's newest id asked in an order (`NEWEST`); a refusal throws. */
+    interface Look
+    {
+        long newest(String order);
+    }
+
+    /**
+     * How the newest row is asked for: the limit in the sort, since Android's
+     * own SMS and MMS providers pass no ContentResolver.QUERY_ARG_LIMIT on and
+     * would give every id each time; then, from a provider that refuses a
+     * limit there, the plain sort, its ids in that order and only the first
+     * read.
+     */
+    static final String[] NEWEST = { "_id DESC LIMIT 1", "_id DESC" };
+
+    /**
+     * The newest id as `look` gives it, asked in each order of NEWEST until
+     * one is taken; -1 when none is (the inbox cannot be read). Pure:
+     * android/jvm-checks/StepsCheck.java.
+     */
+    static long newestBy(Look look)
+    {
+        for (String order : NEWEST) {
+            try {
+                return look.newest(order);
+            } catch (RuntimeException e) {
+                // Refused: the next order.
+            }
         }
+        return -1;
     }
 
     /** No longer watched (the service ending). */

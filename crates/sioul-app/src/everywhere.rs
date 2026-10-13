@@ -390,8 +390,8 @@ pub(crate) fn press(on: bool, until: Option<i64>) -> Result<(), String> {
 /// A press here, saying where it came from (`rules::VIA_SYSTEM`: this
 /// device's own do-not-disturb, heard as it changed; "": the switch).
 fn press_via(on: bool, until: Option<i64>, via: &str) -> Result<(), String> {
-    // Someone at this computer, said at once in its entry among your devices:
-    // a phone's steps follow it, and the press reaches it within minutes (`devices::pressed`).
+    // Someone at this computer, said in its entry among your devices at the next
+    // export (the press's own exchange carries it): a phone's steps follow it (`devices::pressed`).
     crate::devices::pressed();
     let here = here_id();
     let now = jiff::Timestamp::now().as_millisecond();

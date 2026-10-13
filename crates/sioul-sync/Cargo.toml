@@ -58,9 +58,11 @@ icu_normalizer = { version = "2", default-features = false, features = ["compile
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs"] }
 
-# Notifications through the system's own (D-Bus, Windows, macOS); none on Android yet.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# Notifications through Windows' and macOS' own; Linux and the BSDs send theirs over D-Bus
+# themselves (notify.rs, bus.rs); none on Android yet.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 notify-rust.workspace = true
+[target.'cfg(not(target_os = "android"))'.dependencies]
 # Security keys (OpenPGP cards: a YubiKey, a Nitrokey) through the system's
 # smart card service, PC/SC (securitykey/pcsc.rs): the card protocol, its
 # transport, PC/SC itself for its typed errors (a key held by GnuPG), and the
@@ -76,8 +78,8 @@ secrecy = "=0.10.3"
 # Windows Credential Manager, the macOS Keychain, Android's KeyStore.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
 keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
-# The notification of the time running (notify.rs): changed in place, its buttons
-# pressed any number of times, heard on the connection that showed it.
+# Every D-Bus connection (bus.rs: never libdbus's own registration): the notifications
+# (notify.rs), the desktop's do-not-disturb (dnd.rs), the system's reading (power.rs), colord.
 dbus = "0.9"
 [target.'cfg(windows)'.dependencies]
 keyring = { workspace = true, features = ["windows-native"] }

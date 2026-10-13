@@ -31,7 +31,7 @@
 
 use sioul_sync::devices::{COMPUTER, Entry, PHONE};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 
 /// The sessions open in this process: the window's, and receivers at work.
 struct Sessions {
@@ -150,20 +150,16 @@ fn raise() {
 /// When a press was last made in Sioul on this computer: in its window, or
 /// of do-not-disturb's switch (Unix seconds; 0, none in this process).
 static PRESSED: AtomicI64 = AtomicI64::new(0);
-/// This computer's entry last said nobody is at it (`Entry::active` false).
-static AWAY: AtomicBool = AtomicBool::new(false);
 
 /// A press in Sioul's window (cpp/application.cpp), or of do-not-disturb's
 /// switch (`everywhere::press`), on this computer: a person is at it, whatever
 /// its system says of input, for ten minutes, and whatever the session's
 /// last reading said of its lock when the press is newer than it
-/// (`sioul_sync::power::present_since`). Its entry said nobody was: an
-/// exchange now says someone is, at once (`share::exchange_soon`).
+/// (`sioul_sync::power::present_since`). Kept for the next export, at the
+/// minute's cadence: never an exchange of its own, which would tell the
+/// server when someone came back to this computer (review of battery part C, G2).
 pub(crate) fn pressed() {
     PRESSED.fetch_max(now(), Ordering::SeqCst);
-    if AWAY.swap(false, Ordering::SeqCst) {
-        crate::share::exchange_soon();
-    }
 }
 
 /// A press in Sioul's window, from its event filter (cpp/application.cpp),
@@ -177,18 +173,41 @@ pub extern "C" fn sioul_window_pressed() {
 /// Whether a person is at this device now, for its entry (`Entry::active`):
 /// on a phone, unsaid (in use only while Sioul is on its screen); on a
 /// computer, as `active_of` reads the session's last reading and the last
-/// press in Sioul. The session is read on a thread of its own every thirty
-/// seconds (`sioul_sync::power::watch_session`): an exchange, a start or a
-/// close only read the value kept, and never wait on the system's bus (a bus
-/// that never answers once held the exchanges for good: review of battery
-/// part C, F3). No reading yet, or one two minutes old: unsaid (Sioul running
-/// counts), a recent press aside.
+/// press in Sioul. The system is read on a thread of its own every thirty
+/// seconds (`watch_system`): an exchange, a start or a close only read the
+/// value kept, and never wait on the system's bus (a bus that never answers
+/// once held the exchanges for good: review of battery part C, F3 and G1).
+/// No reading yet, or one two minutes old: unsaid (Sioul running counts), a
+/// recent press aside.
 fn active_here() -> Option<bool> {
     if cfg!(target_os = "android") {
         return None;
     }
-    sioul_sync::power::watch_session();
+    watch_system();
     active_of(false, sioul_sync::power::kept_session(), PRESSED.load(Ordering::SeqCst), now())
+}
+
+/// The system's reading thread started and asked for readings
+/// (`sioul_sync::power::watch`): this computer's session, its power supply,
+/// its connection's cost, read on connections of its own and kept; the one
+/// way this program has them read. In this crate's tests, on a stand-in bus
+/// of their own that never answers (`tests::stand_in_bus`): never the
+/// session or the system of whoever runs them.
+pub(crate) fn watch_system() {
+    #[cfg(test)]
+    tests::stand_in_bus();
+    sioul_sync::power::watch();
+}
+
+/// Every fact of this computer's (`sioul_sync::power::read`, through
+/// `watch_system`): may wait for a fresh reading ten seconds at most, so only
+/// on a thread of its own (the spam filter's training by itself), never in
+/// an exchange (`share::metered` reads what is kept). A computer's alone: a
+/// phone never trains.
+#[cfg(not(target_os = "android"))]
+pub(crate) fn power_now() -> sioul_sync::power::Power {
+    watch_system();
+    sioul_sync::power::read()
 }
 
 /// `active_here`, from what was read: a phone; the session's last reading
@@ -286,7 +305,6 @@ pub(crate) fn exported(outcome: &sioul_sync::share::Outcome) {
     // A computer says whether someone is at it now (sealed in its entry, written at
     // the same cadence either way): while you sleep, a phone steps slower when nobody is.
     let active = active_here();
-    AWAY.store(active == Some(false), Ordering::SeqCst);
     let first = std::sync::atomic::AtomicBool::new(false);
     write(|entry| {
         first.store(entry.working && entry.exported < entry.started, std::sync::atomic::Ordering::Relaxed);
@@ -376,11 +394,16 @@ mod tests {
         assert_eq!(active_of(false, None, now - 30, now), Some(true));
         assert_eq!(active_of(false, read(Session::default()), 0, now), None, "the system says nothing: unsaid");
         assert_eq!(active_of(true, read(idle), now, now), None, "a phone says nothing of it");
-        // `pressed` keeps the time, nothing else at hand (no window, no exchange asked).
+        // `pressed` keeps the time, nothing else: no exchange of its own, which
+        // would tell the server when someone came back (review of battery part C, G2).
         pressed();
         assert!(super::now() - PRESSED.load(Ordering::SeqCst) < 5);
-        // Do-not-disturb's switch and the window's presses both say it (read from the sources).
         let source = |path: &str| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
+        let devices = source("src/devices.rs");
+        let press = devices.split("pub(crate) fn pressed() {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert_eq!(press.trim(), "PRESSED.fetch_max(now(), Ordering::SeqCst);", "a press asks no exchange");
+        assert!(!source("src/share.rs").contains("fn exchange_soon"), "nothing left to ask one");
+        // Do-not-disturb's switch and the window's presses both say it (read from the sources).
         let everywhere = source("src/everywhere.rs");
         let press_via = everywhere.split("fn press_via(").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
         assert!(press_via.contains("crate::devices::pressed();"), "a press of the switch counts at once");
@@ -388,19 +411,76 @@ mod tests {
         assert!(application.contains("installEventFilter(new Presses(application))") && application.contains("sioul_window_pressed();"), "a press in the window counts at once");
     }
 
+    /// A bus for this crate's tests that takes connections and never answers
+    /// (a Linux abstract socket of their own, its listener holding each
+    /// connection, nothing written to disk): the system's reading thread,
+    /// started on it for both buses (`watch_system`), is held in its first
+    /// connection, as by a wedged bus, and never reads the session or the
+    /// system of whoever runs the tests. Elsewhere, no bus at all (Windows and
+    /// macOS read no D-Bus).
+    pub(super) fn stand_in_bus() {
+        static MADE: std::sync::Once = std::sync::Once::new();
+        MADE.call_once(|| {
+            let address = silent_bus();
+            sioul_sync::power::watch_on(address.clone(), address);
+        });
+    }
+
+    /// `stand_in_bus`'s socket: its D-Bus address, none where there is none.
+    fn silent_bus() -> Option<String> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::linux::net::SocketAddrExt;
+            let name = format!("sioul-app-tests-{}", std::process::id());
+            let address = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes()).ok()?;
+            let listener = std::os::unix::net::UnixListener::bind_addr(&address).ok()?;
+            std::thread::spawn(move || {
+                let mut held = Vec::new();
+                for stream in listener.incoming().flatten() {
+                    held.push(stream);
+                }
+            });
+            Some(format!("unix:abstract={name}"))
+        }
+        #[cfg(not(target_os = "linux"))]
+        None
+    }
+
     /// An exchange, a start or a close never wait on the system's bus: this
-    /// computer's activity is read from the value the session's own thread
-    /// keeps, at once, whatever the bus does (review of battery part C, F3:
-    /// a bus that never answered once held the exchanges for good).
+    /// computer's activity is read from the value the system's own thread
+    /// keeps, at once, whatever the bus does (review of battery part C, F3
+    /// and G1: a bus that never answered once held the exchanges for good).
+    /// Here that thread is held for good by a stand-in bus that never answers
+    /// (`stand_in_bus`), as by a wedged one, and the activity comes at once,
+    /// unsaid; never read from the real session or system of whoever runs it.
     #[test]
     fn the_activity_is_read_without_waiting_on_the_bus() {
+        let _ = active_here();
+        std::thread::sleep(std::time::Duration::from_millis(300));
         let start = std::time::Instant::now();
         for _ in 0..100 {
             let _ = active_here();
         }
         assert!(start.elapsed() < std::time::Duration::from_millis(200), "{:?}", start.elapsed());
-        let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/devices.rs")).unwrap();
-        let body = source.split("fn active_here() -> Option<bool> {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
-        assert!(body.contains("kept_session()") && !body.contains("power::session()"), "the kept reading, never one of its own");
+        assert!(sioul_sync::power::kept_session().is_none(), "the stand-in never answers: nothing read");
+        let source = |path: &str| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
+        let devices = source("src/devices.rs");
+        let body = devices.split("fn active_here() -> Option<bool> {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(body.contains("watch_system();") && body.contains("kept_session()"), "the kept reading, never one of its own");
+        let watch = devices.split("pub(crate) fn watch_system() {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(watch.contains("#[cfg(test)]\n    tests::stand_in_bus();\n    sioul_sync::power::watch();"), "tests start it on their stand-in first");
+        // The system read through `watch_system` alone, and an exchange reads what is kept.
+        for file in std::fs::read_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")).unwrap().flatten() {
+            let path = file.path();
+            if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("devices.rs") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                for direct in ["power::read(", "power::supply(", "power::watch(", "power::watch_on("] {
+                    assert!(!text.contains(direct), "{}: {direct} (through devices::watch_system)", path.display());
+                }
+            }
+        }
+        let share = source("src/share.rs");
+        let metered = share.split("fn metered() -> bool {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+        assert!(metered.contains("kept_power()") && metered.contains("watch_system()"), "the cost of the connection as kept");
     }
 }

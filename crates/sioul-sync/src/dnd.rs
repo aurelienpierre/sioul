@@ -15,6 +15,10 @@
 //! (`watch_inhibited`), each change told once it held a second and Sioul's
 //! own change settled; dconf's changes of a key told as they come
 //! (`watch_dconf_told`), for GNOME's switch.
+//!
+//! Every connection here is made by `crate::bus` (`session`), within
+//! `bus::SETUP`: a session bus that takes it and never answers holds one
+//! thread of its own, never the caller nor libdbus's process-wide locks.
 
 use dbus::arg::PropMap;
 use dbus::blocking::LocalConnection;
@@ -63,7 +67,7 @@ pub struct Server {
 /// The session's notification server; none without a session bus, or when no
 /// server is running (asking would start one: D-Bus activation).
 pub fn server() -> Option<Server> {
-    let bus = LocalConnection::new_session().ok()?;
+    let bus = session().ok()?;
     if !has_owner(&bus, SERVER) {
         return None;
     }
@@ -77,6 +81,11 @@ pub fn server() -> Option<Server> {
         inhibits = proxy.introspect().is_ok_and(|xml| xml.contains("name=\"Inhibit\""));
     }
     Some(Server { name, vendor, version, capabilities, inhibits })
+}
+
+/// A connection to the session's bus, made by `crate::bus` (`bus::SETUP` at most).
+fn session() -> Result<LocalConnection, dbus::Error> {
+    crate::bus::session().map(LocalConnection::from)
 }
 
 /// Whether a name has an owner on the bus, without starting one.
@@ -94,7 +103,7 @@ fn owner_of(bus: &LocalConnection, name: &str) -> Option<String> {
 /// application's inhibition, a full-screen window, mirrored screens). None
 /// without a server, or one that does not say it.
 pub fn inhibited() -> Option<bool> {
-    let bus = LocalConnection::new_session().ok()?;
+    let bus = session().ok()?;
     if !has_owner(&bus, SERVER) {
         return None;
     }
@@ -155,7 +164,7 @@ pub fn watch_inhibited(quiet: Arc<Mutex<Instant>>, told: Box<dyn Fn(bool) + Send
 }
 
 fn follow_inhibited(seen: &Mutex<Option<bool>>, quiet: &Mutex<Instant>, told: &dyn Fn(bool), stopped: &Receiver<()>, ready: &Sender<Result<(), String>>) {
-    let bus = match LocalConnection::new_session() {
+    let bus = match session() {
         Ok(bus) => bus,
         Err(e) => {
             let _ = ready.send(Err(said(&e)));
@@ -272,7 +281,7 @@ pub fn inhibit(desktop_entry: &str, reason: &str) -> Result<Inhibition, String> 
 /// An inhibition's thread: asked for, held, asked again when the server
 /// starts again (a new server holds none), lifted when Sioul says or goes.
 fn hold(entry: &str, reason: &str, asked: &Receiver<Sender<Result<(), String>>>, ready: &Sender<Result<u32, String>>) {
-    let bus = match LocalConnection::new_session() {
+    let bus = match session() {
         Ok(bus) => bus,
         Err(e) => {
             let _ = ready.send(Err(said(&e)));
@@ -389,7 +398,7 @@ fn watch(key: &str, told: Option<Box<dyn Fn() + Send>>) -> Result<Changes, Strin
 }
 
 fn listen(key: &str, heard: &Arc<Mutex<Vec<Instant>>>, told: Option<Box<dyn Fn() + Send>>, stopped: &Receiver<()>, ready: &Sender<Result<(), String>>) {
-    let bus = match LocalConnection::new_session() {
+    let bus = match session() {
         Ok(bus) => bus,
         Err(e) => {
             let _ = ready.send(Err(said(&e)));
@@ -463,7 +472,7 @@ mod tests {
 
     /// The tests that use the bus, one at a time: each stand-in needs the
     /// server's name to itself.
-    static ON_THE_BUS: Mutex<()> = Mutex::new(());
+    use crate::bus::NOTIFICATION_SERVER as ON_THE_BUS;
 
     /// A stand-in for Plasma's notification server, on a bus of the test's
     /// own (dbus-run-session), recording what it is asked; its cookies start
@@ -489,7 +498,7 @@ mod tests {
             // a stand-in of the test before may take a moment to leave.
             let until = Instant::now() + Duration::from_secs(2);
             let owner = loop {
-                let bus = LocalConnection::new_session().ok().filter(|bus| matches!(bus.request_name(SERVER, false, false, true), Ok(RequestNameReply::PrimaryOwner)));
+                let bus = session().ok().filter(|bus| matches!(bus.request_name(SERVER, false, false, true), Ok(RequestNameReply::PrimaryOwner)));
                 if bus.is_some() || Instant::now() >= until {
                     break bus;
                 }
@@ -555,7 +564,7 @@ mod tests {
 
     /// Whether a connection is still on the bus (the stand-in's view of Sioul's).
     fn connected(name: &str) -> bool {
-        LocalConnection::new_session().is_ok_and(|bus| has_owner(&bus, name))
+        session().is_ok_and(|bus| has_owner(&bus, name))
     }
 
     /// Plasma's inhibition, against a stand-in server on a bus of the test's
@@ -700,7 +709,7 @@ mod tests {
             }
             !has_owner(bus, SERVER)
         };
-        let Some(bus) = LocalConnection::new_session().ok().filter(|bus| free(bus)) else {
+        let Some(bus) = session().ok().filter(|bus| free(bus)) else {
             eprintln!("No bus of the test's own (dbus-run-session): skipped.");
             return;
         };
@@ -735,7 +744,7 @@ mod tests {
             }
             !has_owner(bus, SERVER)
         };
-        let Some(bus) = LocalConnection::new_session().ok().filter(|bus| free(bus)) else {
+        let Some(bus) = session().ok().filter(|bus| free(bus)) else {
             eprintln!("No bus of the test's own (dbus-run-session): skipped.");
             return;
         };

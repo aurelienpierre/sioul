@@ -16,7 +16,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * - Texts.changedSince: whether the import asks Android (the texts watched in
  *   the service's process, as marked; not watched: always);
  * - Texts.grew: whether a message was received since the watch last looked
- *   (an inbox's newest id grown), which brings a step soon.
+ *   (an inbox's newest id grown), which brings a step soon;
+ * - Texts.newestBy: an inbox's newest id asked with the limit in the sort
+ *   (Android's own providers pass no QUERY_ARG_LIMIT on), the plain sort
+ *   from a provider that refuses it, -1 when neither is taken.
  */
 public final class StepsCheck
 {
@@ -79,6 +82,21 @@ public final class StepsCheck
         expect("never read before: the first look brings no step", Texts.grew(-1, 42), false);
         expect("an inbox that cannot be read now", Texts.grew(42, -1), false);
         expect("the first message in an empty inbox", Texts.grew(0, 1), true);
+
+        // The newest id: the limit in the sort first; refused, the plain sort; neither, unread.
+        java.util.List<String> asked = new java.util.ArrayList<>();
+        expect("the limit taken", Texts.newestBy(order -> { asked.add(order); return 42; }), 42);
+        expect("asked once, the limit in the sort", asked, "[_id DESC LIMIT 1]");
+        asked.clear();
+        expect("the limit refused: the plain sort", Texts.newestBy(order -> {
+            asked.add(order);
+            if (order.contains("LIMIT"))
+                throw new IllegalArgumentException("Invalid token LIMIT");
+            return 41;
+        }), 41);
+        expect("then the plain sort", asked, "[_id DESC LIMIT 1, _id DESC]");
+        expect("an empty inbox", Texts.newestBy(order -> 0), 0);
+        expect("neither taken: unread", Texts.newestBy(order -> { throw new SecurityException("no permission"); }), -1);
 
         System.out.println("StepsCheck: " + (checked - failed) + " of " + checked + " checks passed");
         if (failed > 0)
