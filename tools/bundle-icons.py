@@ -4,20 +4,24 @@
 
 """Bundles the Breeze icons Sioul uses into its window, as Qt resources.
 
-Linux desktops have an icon theme; Windows and macOS have none, and some Linux
-desktops lack Breeze's names. Every quoted name in the QML and Rust sources
-that is a Breeze icon is copied, light and dark, into
+Linux desktops have an icon theme; Windows, macOS and phones have none, and
+some Linux desktops lack Breeze's names. Every quoted name in the window's QML
+and JavaScript and in the Rust sources (every folder of them) that is a Breeze
+icon is copied, light and dark, into
 crates/sioul-app/icons/{sioul,sioul-dark}/<size>/, with an index.theme each
 and icons.qrc listing them. One folder per size, not Breeze's per kind and
 size: Qt looks for each icon in every folder of a theme, and on a phone,
-eighteen folders made a tenth of the start. Breeze is LGPL-3.0-or-later
+eighteen folders made a tenth of the start. Breeze draws most icons at 16, 22
+and 32 pixels; one it draws at other sizes only is taken at the size nearest
+22. Breeze is LGPL-3.0-or-later
 (https://invent.kde.org/frameworks/breeze-icons): its licence goes along.
 
 Sioul's own icons, drawn for it and kept in the same folders (`OWN`), are
 never removed: they stay, and icons.qrc lists them. Nothing else in the folder
 is touched; a Breeze icon no longer used goes, as icons.qrc listed it.
 
-Run again after using a new icon: tools/bundle-icons.py
+Run again after using a new icon: tools/bundle-icons.py. The test of the
+bundled icons (crates/sioul-app/tests/icons.rs) fails on a name it missed.
 """
 
 import re
@@ -28,7 +32,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "crates" / "sioul-app"
 OUT = APP / "icons"
-SOURCES = list((APP / "qml").glob("*.qml")) + list(ROOT.glob("crates/*/src/*.rs"))
+# The window's pages (the phone's and the desktop's own too), its JavaScript,
+# and the Rust of every crate, in every folder.
+SOURCES = (
+    list((APP / "qml").rglob("*.qml"))
+    + list((APP / "qml-desktop").rglob("*.qml"))
+    + list((APP / "src").rglob("*.js"))
+    + list(ROOT.glob("crates/*/src/**/*.rs"))
+)
 THEMES = {"sioul": Path("/usr/share/icons/breeze"), "sioul-dark": Path("/usr/share/icons/breeze-dark")}
 SIZES = ["16", "22", "32"]
 # Sioul's own icons, not Breeze's: kept as they are, in each theme and size they are in.
@@ -38,8 +49,8 @@ names = set()
 for source in SOURCES:
     text = source.read_text(encoding="utf-8")
     names.update(re.findall(r'"([a-z][a-z0-9]*(?:-[a-z0-9]+)+)"', text))
-    # Names of one word ("chronometer") where an icon is named.
-    names.update(re.findall(r'icon(?:\.name|Name)\s*:\s*"([a-z][a-z0-9]*)"', text))
+    # Names of one word ("chronometer") where an icon is named: icon.name, iconName, an object's icon.
+    names.update(re.findall(r'(?:icon(?:\.name|Name)|\bicon)\s*:\s*"([a-z][a-z0-9]*)"', text))
 
 # What the last run bundled, as its icons.qrc listed it: what is no longer
 # bundled goes, and only that. The folder itself is never emptied.
@@ -61,7 +72,12 @@ for theme, base in THEMES.items():
     for name in sorted(names):
         found = [p for size in SIZES for p in sorted(base.glob(f"*/{size}/{name}.svg"))]
         # Breeze draws some icons at 48 pixels only: the weather's, some applications' (the browser).
-        for path in found or sorted(base.glob(f"applets/48/{name}.svg")) or sorted(base.glob(f"apps/48/{name}.svg")):
+        found = found or sorted(base.glob(f"applets/48/{name}.svg")) or sorted(base.glob(f"apps/48/{name}.svg"))
+        # And a few at one other size only (24, 64): the one nearest 22.
+        if not found:
+            sized = [p for p in base.glob(f"*/*/{name}.svg") if p.parent.name.isdigit()]
+            found = sorted(sized, key=lambda p: (abs(int(p.parent.name) - 22), str(p)))[:1]
+        for path in found:
             size = path.parent.name
             target = OUT / theme / size / path.name
             # A name Breeze draws for two kinds (an action and a place): the first kind's.

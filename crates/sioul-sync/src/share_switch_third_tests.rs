@@ -8,7 +8,7 @@
 //! finding, and now holds what the fix gives. Fiction only.
 
 use super::format_tests::{announce, into_format_2, writes};
-use super::switch_more_tests::{change_words, converge, converge3, list_of, rounds, rounds_announced, sessions, sites, two_devices};
+use super::switch_more_tests::{change_words, converge, converge3, list_of, rounds, rounds_announced, seeds, sessions, sites, two_devices};
 use super::tests::{Computer, MINUTE, NOW, scratch};
 use super::*;
 
@@ -76,12 +76,14 @@ fn a_device_read_long_ago_whose_files_are_gone_stops_counting() {
 }
 
 /// More seeds than `many_seeds_converge_through_the_switch`, two devices and
-/// three: every run converges (third review, T5; seed 77 found T7).
+/// three: every run converges (third review, T5; seed 77 found T7, and is
+/// kept). Seeds 41 to 100 and 26 to 60 in the wide sweep, the first three of
+/// each otherwise (`seeds`).
 #[test]
 fn more_seeds_converge_with_two_and_three_devices() {
     let mut failed = Vec::new();
     let mut runs = 0;
-    for seed in 41..=100u64 {
+    for seed in seeds(41..=100, 3, &[77]) {
         for lag in [7, 30] {
             for phone_from in [0, 20, 45] {
                 runs += 1;
@@ -91,7 +93,7 @@ fn more_seeds_converge_with_two_and_three_devices() {
             }
         }
     }
-    for seed in 26..=60u64 {
+    for seed in seeds(26..=60, 3, &[]) {
         for lag in [7, 30] {
             for (phone_from, laptop_at) in [(20, 10), (45, 30), (0, 1)] {
                 runs += 1;
@@ -284,12 +286,13 @@ fn a_device_joining_mid_switch_keeps_a_site_unpinned_before_it() {
 }
 
 /// Three devices, a laptop joining at minute 1, 10 or 30, over fresh seeds:
-/// every run converges (fourth review, the sweep that found T7b).
+/// every run converges (fourth review, the sweep that found T7b with seed 77,
+/// kept). Seeds 61 to 100 in the wide sweep, the first three otherwise.
 #[test]
 fn a_third_device_joining_converges_over_more_seeds() {
     let mut failed = Vec::new();
     let mut runs = 0;
-    for seed in 61..=100u64 {
+    for seed in seeds(61..=100, 3, &[77]) {
         for lag in [7, 30] {
             for (phone_from, laptop_at) in [(20, 10), (45, 30), (0, 1)] {
                 runs += 1;

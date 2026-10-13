@@ -700,6 +700,12 @@ SioulWindow {
         readingFamily: sioul.reading ? JSON.parse(sioul.reading).family : ""
         readingSize: sioul.reading ? JSON.parse(sioul.reading).size : 16
         readingSpacing: sioul.reading ? JSON.parse(sioul.reading).spacing : 1.5
+
+        // The icons drawn for these colours, light or dark, whenever they
+        // change: the system's turning dark at night, a choice in Settings
+        // (desktop.rs, `follow`; Icon.qml reads its name again).
+        onDarkChanged: sioul.followIcons(dark, chosen !== "")
+        onChosenChanged: sioul.followIcons(dark, chosen !== "")
     }
 
     Sioul {

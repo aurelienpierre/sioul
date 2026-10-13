@@ -71,9 +71,14 @@ jobs:
           - name: macOS
             os: macos-15
     runs-on: ${{ matrix.os }}
-    # Windows runs the tests slowest: over two hours since the sharing's simulations
-    # grew. This room lets them finish while they are shortened.
-    timeout-minutes: 300
+    # Windows runs the tests slowest: the sharing's simulations read and write
+    # files at every simulated minute, and took about fifteen times as long on
+    # Windows as on Linux. They run a few seeds each on Windows and macOS,
+    # every seed on Linux (SIOUL_SWEEP, in the tests' step): from the timings
+    # measured, the Windows job should take under an hour, against more than
+    # three before (docs/building.md, "The tests on GitHub"). This room is for
+    # a slow runner; a stuck job still ends.
+    timeout-minutes: 150
     steps:
       # Git on the Windows runners turns LF into CRLF at checkout: the files built
       # into the programs (locales, presets, scripts) would differ from Linux's.
@@ -91,12 +96,15 @@ jobs:
       # through pkg-config); pcsc-lite's client library for security keys
       # (pcsc-sys, through pkg-config); Vulkan and xkbcommon headers, which Qt's
       # own Linux binaries include; lld, which CXX-Qt picks over GNU ld (it
-      # cannot link Qt).
+      # cannot link Qt). And the libraries Qt WebEngine loads with (NSS, ALSA,
+      # X11's extensions, GBM), for the test of the icons, the one test that
+      # runs a program linked with it: most come with the runner's browsers.
       - name: Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev libvulkan-dev libxkbcommon-dev lld
+          sudo apt-get install -y --no-install-recommends libnss3 libasound2t64 libxkbfile1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libgbm1 libxshmfence1
 
       # Modules: the window links WebEngineQuick (build.rs); the pages import
       # QtWebEngine (with its QtWebChannel and QtPositioning), QtMultimedia,
@@ -172,6 +180,11 @@ jobs:
           Copy-Item target\release\sioul-app.exe, target\release\sioul.exe bundle\Sioul\
           windeployqt --release --qmldir crates\sioul-app\qml bundle\Sioul\sioul-app.exe
           Copy-Item "$env:SystemRoot\System32\vcruntime140.dll", "$env:SystemRoot\System32\vcruntime140_1.dll", "$env:SystemRoot\System32\msvcp140.dll" bundle\Sioul\
+          # Qt's SVG plugins: Sioul's own icons are SVG, and without the icon
+          # engine Qt reads no SVG of an icon theme (every icon blank).
+          foreach ($plugin in "iconengines\qsvgicon.dll", "imageformats\qsvg.dll") {
+            if (-not (Test-Path "bundle\Sioul\$plugin")) { throw "windeployqt left out $plugin" }
+          }
 
       # A bundle with what macOS asks of an application that records and calls:
       # without the usage descriptions, macOS ends the program at the first use of
@@ -212,6 +225,11 @@ jobs:
           </plist>
           EOF
           macdeployqt "$app" -qmldir=crates/sioul-app/qml
+          # Qt's SVG plugins: Sioul's own icons are SVG, and without the icon
+          # engine Qt reads no SVG of an icon theme (every icon blank).
+          for plugin in iconengines/libqsvgicon.dylib imageformats/libqsvg.dylib; do
+            test -f "$app/Contents/PlugIns/$plugin" || { echo "macdeployqt left out $plugin" >&2; exit 1; }
+          done
           codesign --force --deep --sign - "$app"
           # hdiutil is sometimes busy on the runners: a few tries.
           for try in 1 2 3; do
@@ -232,8 +250,22 @@ jobs:
 
       # Last, so a failing test still leaves the programs above. In release, to
       # reuse what the build compiled (a debug build would compile everything again).
+      # The sharing's simulations run every seed the reviews ran on Linux, where
+      # they take minutes, and a few on Windows and macOS (SIOUL_SWEEP; the
+      # seeds that once found a bug run everywhere).
       - name: Tests (core, sync, command line)
+        env:
+          SIOUL_SWEEP: ${{ runner.os == 'Linux' && 'wide' || '' }}
         run: cargo test --release --locked -p sioul-core -p sioul-sync -p sioul-cli
+
+      # Every icon the window names is in its bundled themes, as Qt reads them
+      # with no theme of the system's, and every bundled icon draws
+      # (crates/sioul-app/tests/icons.rs): a name missing there shows nothing on
+      # Windows, macOS and phones, while a Linux desktop draws it from its own
+      # theme. After the tests, whose outcome it does not wait for.
+      - name: Icons (the bundled themes alone)
+        if: ${{ !cancelled() }}
+        run: cargo test --release --locked -p sioul-app --test icons
 
       # The code's own comments as rustdoc reads them, private items included, as
       # the website's API reference makes them (pages.yml, website/build.sh --api):

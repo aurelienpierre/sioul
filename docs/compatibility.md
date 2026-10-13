@@ -213,7 +213,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | | Linux | Windows | macOS | Android |
 |---|---|---|---|---|
 | Packages | AppImage (x86-64), Flatpak (KDE runtime 6.10), sources (Qt 6.9 or newer) | installer (Inno Setup), Windows 10 and 11, 64-bit | one disk image, Apple silicon and Intel, macOS 13 and later; signed ad hoc, not notarised | an APK, 64-bit ARM, Android 9 and later; by hand, in no store |
-| Tested | developed and used on Fedora (Qt 6.11.2); the CI's tests on Ubuntu 24.04 | built, and the core, sync and command line tested, on GitHub's Windows Server 2022 at each change; not run by a person | the same on GitHub's macOS 15; not run by a person | a 2019 phone, /e/OS 4.0, Android 12 ([android.md](android.md)) |
+| Tested | developed and used on Fedora (Qt 6.11.2); the CI's tests on Ubuntu 24.04, the sharing's simulations with every seed | built, and the core, sync and command line tested, on GitHub's Windows Server 2022 at each change, the sharing's simulations with fewer seeds ([building.md](building.md#the-tests-on-github)); every icon the window names read from the bundled themes alone; not run by a person | the same on GitHub's macOS 15; not run by a person | a 2019 phone, /e/OS 4.0, Android 12 ([android.md](android.md)) |
 | Keyring | Secret Service (GNOME Keyring, KWallet) | Credential Manager | Keychain | KeyStore (`android-keyring`) |
 | Reminders with the window closed | `sioul remind --watch`, started with the session (XDG autostart) | not yet | a launch agent | doses and the wake alarm, by Android's alarms |
 | Notifications | the desktop's, with buttons; the time running | Windows' | macOS', given as Sioul's by its bundle id (`notify::BUNDLE_ID`) | doses, the time running, the wake alarm |

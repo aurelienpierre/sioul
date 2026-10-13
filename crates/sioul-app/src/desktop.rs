@@ -3,9 +3,10 @@
 
 //! The desktop's icon theme. Plasma, GNOME and others name one and say where
 //! icons live; elsewhere (a bare session, the offscreen platform, Windows,
-//! macOS) Qt knows of neither, and icons would be blank. The Breeze icons
-//! Sioul uses ship inside it (`tools/bundle-icons.py`), light and dark, and
-//! stand in for whatever the desktop lacks.
+//! macOS, a phone) Qt knows of neither, and icons would be blank. The Breeze
+//! icons Sioul uses ship inside it (`tools/bundle-icons.py`), a set for light
+//! colours and one for dark, and stand in for whatever the desktop lacks. The
+//! set follows the window's colours, as Sioul starts and whenever they change.
 //!
 //! And where the desktop puts a window's buttons, for the title bar Sioul
 //! draws itself on a computer (qml/TitleBar.qml): KDE Plasma says it in
@@ -58,19 +59,68 @@ pub mod ffi {
         #[Self = "QIcon"]
         #[rust_name = "set_theme_search_paths"]
         fn setThemeSearchPaths(paths: &QStringList);
+
+        #[Self = "QIcon"]
+        #[rust_name = "has_theme_icon"]
+        fn hasThemeIcon(name: &QString) -> bool;
     }
 }
 
 use cxx_qt_lib::{QList, QString, QStringList};
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
-/// The bundled icons stand in for those the desktop's theme lacks, and for the
-/// theme itself when the desktop names none; the folders of the XDG base
-/// directory specification are searched too.
+// SAFETY: declared as cpp/palette.cpp defines it: extern "C", no arguments, a C++ bool.
+unsafe extern "C" {
+    /// Whether the window draws dark colours when none are chosen in Sioul:
+    /// the application's palette, as main.qml reads it (cpp/palette.cpp).
+    fn sioul_window_dark() -> bool;
+}
+
+/// The icon theme the desktop named as Sioul started ("breeze"); empty where
+/// it names none.
+static DESKTOP_THEME: OnceLock<String> = OnceLock::new();
+
+/// What the icons follow now: the window's colours dark, and chosen in Sioul.
+static FOLLOWED: Mutex<Option<(bool, bool)>> = Mutex::new(None);
+
+/// The icons as Sioul starts, before its window loads: the bundled set drawn
+/// for the colours the window is about to take, those chosen in Sioul
+/// (SIOUL_THEME, else the setting), else the system's as the window reads
+/// them (`sioul_window_dark`). Where the system says dark but its palette is
+/// light (Windows 10's style), the window is light, and so are its icons: a
+/// set for dark colours there drew light icons on a light window.
 pub fn icons() {
-    // Colours chosen in Sioul (or by SIOUL_THEME) take the bundled icons drawn for them.
     let chosen = std::env::var("SIOUL_THEME").ok().filter(|t| !t.is_empty()).or_else(|| crate::backend::load_config().theme).filter(|t| t == "dark" || t == "light");
-    let bundled = QString::from(if chosen.as_ref().map_or_else(dark, |t| t == "dark") { "sioul-dark" } else { "sioul" });
+    // SAFETY: the application is made before (lib.rs, `run`); on its thread.
+    let dark = chosen.as_ref().map_or_else(|| unsafe { sioul_window_dark() }, |t| t == "dark");
+    DESKTOP_THEME.get_or_init(|| ffi::QIcon::theme_name().to_string());
+    follow(dark, chosen.is_some());
+}
+
+/// The icons in the window's colours, `dark` or light, and `chosen` in Sioul
+/// or the system's: as Sioul starts (`icons`), then each time the window's
+/// colours change (main.qml, through `followIcons`), the system's turning
+/// dark at night or a choice made in Settings. The bundled set drawn for them
+/// is the icon theme where the desktop names none, or where the colours are
+/// chosen in Sioul; elsewhere the desktop's theme stays, drawn as the desktop
+/// draws it, and the set stands in for what it lacks. The folders of the XDG
+/// base directory specification are searched too.
+pub fn follow(dark: bool, chosen: bool) {
+    let mut followed = FOLLOWED.lock().unwrap_or_else(PoisonError::into_inner);
+    if *followed == Some((dark, chosen)) {
+        return;
+    }
+    *followed = Some((dark, chosen));
+    let bundled = QString::from(if dark { "sioul-dark" } else { "sioul" });
+    let desktop = DESKTOP_THEME.get().map(String::as_str).unwrap_or_default();
+    // Named before the folders: when Sioul's own name is taken back, Qt looks
+    // in the system's folders alone again, and ours are added below.
+    if desktop.is_empty() || chosen {
+        ffi::QIcon::set_theme_name(&bundled);
+    } else {
+        ffi::QIcon::set_theme_name(&QString::default());
+    }
     // Each folder once: Qt looks for every icon in each, and has ":/icons" already.
     let mut paths: QList<QString> = QList::default();
     let qt = ffi::QIcon::theme_search_paths();
@@ -82,32 +132,17 @@ pub fn icons() {
     }
     ffi::QIcon::set_theme_search_paths(&QStringList::from(&paths));
     ffi::QIcon::set_fallback_theme_name(&bundled);
-    if ffi::QIcon::theme_name().is_empty() || chosen.is_some() {
-        ffi::QIcon::set_theme_name(&bundled);
-    }
 }
 
-/// Whether the system shows its windows dark, where Qt has no icon theme to follow it.
-fn dark() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("defaults").args(["read", "-g", "AppleInterfaceStyle"]).output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "Dark")
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize, AppsUseLightTheme = 0;
-        // asked without a console window flashing up (CREATE_NO_WINDOW).
-        std::process::Command::new("reg")
-            .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "/v", "AppsUseLightTheme"])
-            .creation_flags(0x0800_0000)
-            .output()
-            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("0x0"))
-    }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        false
-    }
+/// Whether the icon theme in use holds an icon of this very name (no
+/// shorter name standing in for it): for the test of the bundled icons.
+pub fn has_icon(name: &str) -> bool {
+    ffi::QIcon::has_theme_icon(&QString::from(name))
+}
+
+/// The icon theme in use, as Qt names it: for the test of the bundled icons.
+pub fn theme_in_use() -> String {
+    ffi::QIcon::theme_name().to_string()
 }
 
 /// `$XDG_DATA_HOME/icons`, then `<dir>/icons` for each of `$XDG_DATA_DIRS`.

@@ -17,19 +17,20 @@ SioulMenu {
     required property var window
 
 
-    // [kind, words, icon].
+    // Each kind, its words and its icon (named `icon`, as the test of the
+    // bundled icons reads them: crates/sioul-app/tests/icons.rs).
     readonly property var kinds: [
-        ["mail", "new-mail", "mail-message-new"],
-        ["task", "new-task", "view-task"],
-        ["event", "new-event", "view-calendar-day"],
-        ["contact", "new-contact", "contact-new"],
-        ["note", "new-note", "view-pim-notes"],
-        ["movement", "new-movement", "view-financial-account-add"],
-        ["paper", "new-paper", "document-new"],
-        ["time", "new-time", "chronometer-start"],
-        ["project", "new-project", "folder-new"],
+        { kind: "mail", words: "new-mail", icon: "mail-message-new" },
+        { kind: "task", words: "new-task", icon: "view-task" },
+        { kind: "event", words: "new-event", icon: "view-calendar-day" },
+        { kind: "contact", words: "new-contact", icon: "contact-new" },
+        { kind: "note", words: "new-note", icon: "view-pim-notes" },
+        { kind: "movement", words: "new-movement", icon: "view-financial-account-add" },
+        { kind: "paper", words: "new-paper", icon: "document-new" },
+        { kind: "time", words: "new-time", icon: "chronometer-start" },
+        { kind: "project", words: "new-project", icon: "folder-new" },
         // One line on where you stopped, for when you are back.
-        ["stopped", "new-stopped", "bookmarks-organize"]
+        { kind: "stopped", words: "new-stopped", icon: "bookmarks-organize" }
     ]
 
     Repeater {
@@ -38,9 +39,9 @@ SioulMenu {
         delegate: MenuItem {
             required property var modelData
 
-            text: newMenu.sioul.text(modelData[1])
-            icon.name: modelData[2]
-            onTriggered: newMenu.window.newThing(modelData[0])
+            text: newMenu.sioul.text(modelData.words)
+            icon.name: modelData.icon
+            onTriggered: newMenu.window.newThing(modelData.kind)
         }
     }
 }

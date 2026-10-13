@@ -162,8 +162,8 @@ fn main() {
     // colour: the effect drawing a site in the screen's colours (docs/colour.md), on computers only, as the Sites page.
     let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
-    // icon; text and images made ready at the start.
-    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp"];
+    // icon; text and images made ready at the start; whether the palette is dark, for the icons.
+    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp"];
     if !android {
         cpp.push("cpp/webengine.cpp");
         // SIGTERM and its kin end Sioul as its window's close does.
