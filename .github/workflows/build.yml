@@ -71,7 +71,9 @@ jobs:
           - name: macOS
             os: macos-15
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    # Windows runs the tests slowest: over two hours since the sharing's simulations
+    # grew. This room lets them finish while they are shortened.
+    timeout-minutes: 300
     steps:
       # Git on the Windows runners turns LF into CRLF at checkout: the files built
       # into the programs (locales, presets, scripts) would differ from Linux's.
