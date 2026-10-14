@@ -135,7 +135,7 @@ On the **Sites** page, **Usual sites ▾** lists about 400 of them by country, o
 
 ## Keep Sioul open
 
-On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. Its icon in the system tray shows or hides the window: closing the window hides it there, and Sioul goes on behind it, mail, reminders and medicines included. **Quit Sioul** is in the icon's menu, or ++ctrl+q++. Without a system tray (GNOME without its extension), closing the window quits.
+On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. Its icon in the system tray shows or hides the window: closing the window hides it there, and Sioul goes on behind it, mail, reminders and medicines included. **Quit Sioul** is in the icon's menu, or ++ctrl+q++; the menu also has **Close the work day** and **Close the whole day**. Without a system tray (GNOME without its extension), closing the window quits.
 
 While its window is open, Sioul keeps each inbox open on the server: a code or a sign-in link you asked a site for reaches you within seconds, as one quiet notification, whatever the hour.
 

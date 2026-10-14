@@ -1559,7 +1559,7 @@ set-ai-projects-group = Projects open to AI agents
 set-ai-projects-note = Each project is closed to agents until you open it, here or on its page. Open, an agent reads its mail, tasks, notes, time, invoices and letters, and adds to it.
 set-ai-projects-none = No project yet. Each project you make starts closed to agents.
 set-theme = Colours
-set-theme-help = Light or dark, or as the system has them. The icons follow at the next start.
+set-theme-help = Light or dark, or as the system has them: Sioul then turns dark or light with it, its icons too.
 set-theme-system = The system's
 set-theme-light = Light
 set-theme-dark = Dark
@@ -3925,6 +3925,7 @@ review-offer-night = Before sleep, the day can be closed.
 # One quiet notice at the end of the day's last work or admin hours, once.
 review-notice-title = Work hours are over
 review-notice-text = The work day can be closed, with a word on how it went if you like.
+review-channel = End of the day
 review-closed-night = The day is closed.
 review-kept = Your words are kept.
 # On the Health page's day.

@@ -334,6 +334,74 @@ pub fn remind_choices(title: &str, body: &str, _choices: Vec<(String, Box<dyn Fn
     remind(title, body, None)
 }
 
+/// A gentle reminder with its buttons wherever the system carries them, each
+/// its label and its action (the end of work's notice and the night's:
+/// docs/reviews.md). On Linux and the BSDs as `remind` (one button) or
+/// `remind_choices` (several) show them. On macOS with NSUserNotification's
+/// own: the action button, or "Options" and its list when there are several;
+/// a click on the notice itself is its first button's. Sent and waited for on
+/// a thread of its own, until a press or until the notice leaves the
+/// Notification Center (macOS hands the press to the main thread, which Qt's
+/// loop runs). The doses' reminders stay as `remind` shows them. On Windows,
+/// the words alone (the window shows these through Sioul's icon in the tray
+/// instead, a click opening the first button's); on Android, none (Java's).
+pub fn remind_offering(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    {
+        let mut choices = choices;
+        if choices.len() == 1 {
+            return remind(title, body, choices.pop());
+        }
+        remind_choices(title, body, choices)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        as_sioul();
+        let (title, body) = (title.to_string(), body.to_string());
+        let labels: Vec<String> = choices.iter().map(|(label, _)| label.clone()).collect();
+        let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = choices.into_iter().map(|(_, run)| Some(run)).collect();
+        // Made, sent and waited for on its own thread: notify-rust sends a
+        // macOS notice from its handle, and its wait blocks until an answer.
+        std::thread::spawn(move || {
+            let mut notification = Notification::new();
+            notification.appname("Sioul").summary(&title).body(&body).timeout(Timeout::Milliseconds(SHOWN));
+            for (index, label) in labels.iter().enumerate() {
+                notification.action(&format!("choice-{index}"), label);
+            }
+            match notification.show() {
+                Ok(handle) => handle.wait_for_action(|action| {
+                    if let Some(run) = pressed_choice(action).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
+                        run();
+                    }
+                }),
+                Err(e) => eprintln!("{e}"),
+            }
+        });
+        Ok(())
+    }
+    #[cfg(windows)]
+    {
+        drop(choices);
+        remind(title, body, None)
+    }
+    #[cfg(target_os = "android")]
+    {
+        drop(choices);
+        let _ = (title, body);
+        Err("notifications are made through Java on Android".to_string())
+    }
+}
+
+/// Which of a notice's buttons a press names (`remind_offering`): "choice-1"
+/// the second; a click on the notice itself ("default") the first; none when
+/// it closed unanswered ("__closed") or for anything else.
+pub fn pressed_choice(action: &str) -> Option<usize> {
+    if action == "default" {
+        return Some(0);
+    }
+    action.strip_prefix("choice-")?.parse().ok()
+}
+
 /// Windows and macOS: the reminder is in the text; no button here.
 #[cfg(any(windows, target_os = "macos"))]
 pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
@@ -1251,6 +1319,19 @@ mod bundle {
         let plist = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/macos/Info.plist")).unwrap();
         let declared = plist.split("<key>CFBundleIdentifier</key>").nth(1).and_then(|rest| rest.split("<string>").nth(1)).and_then(|rest| rest.split("</string>").next()).unwrap();
         assert_eq!(super::BUNDLE_ID, declared.trim());
+    }
+
+    /// macOS's answer to a closing notice (`remind_offering`), read on every
+    /// system: a button by its key, a click on the notice as its first
+    /// button, nothing when it closed unanswered.
+    #[test]
+    fn a_press_names_its_button_and_a_click_the_first() {
+        assert_eq!(super::pressed_choice("choice-0"), Some(0));
+        assert_eq!(super::pressed_choice("choice-1"), Some(1));
+        assert_eq!(super::pressed_choice("default"), Some(0));
+        assert_eq!(super::pressed_choice("__closed"), None);
+        assert_eq!(super::pressed_choice("choice-"), None);
+        assert_eq!(super::pressed_choice("Options"), None);
     }
 }
 

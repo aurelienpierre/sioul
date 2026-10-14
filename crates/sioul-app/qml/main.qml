@@ -427,11 +427,47 @@ SioulWindow {
             window.lastDone = uid
             window.lastDoneSaid = sioul.status
         }
+
+        // On Windows, the end of work's or the night's notice, through Sioul's
+        // icon in the tray, whose message has no button: a click on it opens
+        // what it offers (reviews.rs, `show_notice`). Without a tray that
+        // shows messages, the system's own notice, its words alone.
+        function onTrayNotice(title, body, kind, key) {
+            window.noticed = { kind: kind, key: key, until: Date.now() + window.noticeKept }
+            const tray = trayLoader.item
+            if (tray !== null && tray.available && tray.supportsMessages)
+                tray.showMessage(title, body)
+            else
+                sioul.plainNotice(title, body)
+        }
     }
 
     // The task just done, and the status line that said so.
     property string lastDone: ""
     property string lastDoneSaid: ""
+
+    // What the tray's last notice offers ({kind, key, until}, `onTrayNotice`):
+    // a click on its message opens it, once, until then.
+    property var noticed: null
+    // Clicked later than this, a notice opens nothing: its sheet would close another day.
+    readonly property int noticeKept: 6 * 3600 * 1000
+
+    // The tray's message clicked (Tray.qml): what its notice offered while it
+    // holds; the window brought back in any case.
+    function trayMessageClicked() {
+        const noticed = window.noticed
+        window.noticed = null
+        if (noticed !== null && noticed.kind !== "" && Date.now() < noticed.until)
+            window.openThing({ kind: noticed.kind, uri: "", key: noticed.key })
+        window.bringBack()
+    }
+
+    // The tray's menu (Tray.qml): the work day ("work") or the whole day
+    // ("night") closed at any hour, on its sheet in the window.
+    function reviewFromTray(kind) {
+        window.reviewDay(kind)
+        window.bringBack()
+    }
 
     // How a task just done was: its ratings as felt, if you want to say (HowWasIt.qml, made the first time).
     function howWasIt(uid) {
@@ -683,7 +719,8 @@ SioulWindow {
         clipboard.text = ""
     }
 
-    // The desktop's colours say whether it is dark.
+    // The desktop's colours: with high contrast, or where the system names no
+    // colour scheme, they say whether it is dark.
     SystemPalette {
         id: system
     }
@@ -694,9 +731,12 @@ SioulWindow {
         compact: window.compact
         touch: Qt.platform.os === "android" || window.phoneGrab
         // SIOUL_THEME=dark or light forces one, for the window's images.
-        // SIOUL_THEME for the window's images, else the setting, else the system's colours.
+        // SIOUL_THEME for the window's images, else the setting, else the system's
+        // colour scheme, followed as it changes (Windows 10's dark mode included),
+        // else the system's colours (Theme.darkFrom).
         readonly property string chosen: sioul.forcedTheme() || (sioul.reading ? JSON.parse(sioul.reading).theme : "")
-        dark: chosen !== "" ? chosen === "dark" : system.window.hslLightness < 0.5
+        readonly property bool highContrast: Qt.styleHints.accessibility.contrastPreference === Qt.ContrastPreference.HighContrast
+        dark: theme.darkFrom(chosen, Qt.styleHints.colorScheme, system.window.hslLightness, highContrast)
         readingFamily: sioul.reading ? JSON.parse(sioul.reading).family : ""
         readingSize: sioul.reading ? JSON.parse(sioul.reading).size : 16
         readingSpacing: sioul.reading ? JSON.parse(sioul.reading).spacing : 1.5
@@ -2498,7 +2538,8 @@ SioulWindow {
                 () => tasksPage.closeStop(),
                 () => {},
                 () => grabber.save("review-status"),
-                () => window.reviewDay("night"),
+                // As the tray's menu opens it (Tray.qml): the sheet, the window brought back.
+                () => window.reviewFromTray("night"),
                 () => {},
                 () => grabber.savePopup(dayReview.item, "review-night"),
                 () => dayReview.item.backShown = true,

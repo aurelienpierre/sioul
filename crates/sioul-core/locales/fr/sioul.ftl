@@ -1577,7 +1577,7 @@ set-ai-projects-group = Projets ouverts aux agents d’IA
 set-ai-projects-note = Chaque projet est fermé aux agents jusqu’à ce que vous l’ouvriez, ici ou sur sa page. Ouvert, un agent lit son courrier, ses tâches, ses notes, son temps, ses factures et ses lettres, et y ajoute.
 set-ai-projects-none = Pas encore de projet. Chaque projet que vous créez commence fermé aux agents.
 set-theme = Couleurs
-set-theme-help = Claires ou sombres, ou comme celles du système. Les icônes suivent au prochain démarrage.
+set-theme-help = Claires ou sombres, ou comme celles du système : Sioul devient alors sombre ou clair avec lui, ses icônes aussi.
 set-theme-system = Celles du système
 set-theme-light = Claires
 set-theme-dark = Sombres
@@ -3943,6 +3943,7 @@ review-offer-night = Avant de dormir, la journée peut être close.
 # Une notification discrète à la fin des dernières heures de travail ou de démarches du jour, une fois.
 review-notice-title = Les heures de travail sont finies
 review-notice-text = La journée de travail peut être close, avec un mot sur elle si vous voulez.
+review-channel = Fin de journée
 review-closed-night = La journée est close.
 review-kept = Vos mots sont gardés.
 # Sur la journée de la page Santé.

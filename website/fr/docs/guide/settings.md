@@ -20,7 +20,7 @@ La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affi
 ## Affichage {#display}
 
 - **Langue** : celle du système, English ou Français. Toutes les phrases de Sioul la suivent.
-- **Couleurs** : claires, sombres, ou celles du système. Les icônes suivent au prochain démarrage.
+- **Couleurs** : claires, sombres, ou celles du système. Celles du système, Sioul devient sombre ou clair avec lui, aussitôt, ses icônes aussi (le mode sombre de Windows 10 compris) ; avec le contraste élevé, selon la clarté des couleurs propres du système.
 - **Afficher le nom des lieux à côté de leur icône** : les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large, pour qui lit plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules ; le nom de chacun s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Il suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md). Le bouton à l’extrémité gauche de la barre de titre, au-dessus des lieux, ou ++f9++, le change aussi.
 - **Afficher les mots de passe pendant la saisie** : chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil. Sans ce réglage, l’œil au bout de chaque champ affiche ou masque ce que vous avez tapé, à tout moment.
 <!-- colour: the sites' colours (docs/colour.md). -->

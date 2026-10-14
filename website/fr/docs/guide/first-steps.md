@@ -135,7 +135,7 @@ Sur la page **Sites**, **Sites courants ▾** en liste environ 400, par pays, ou
 
 ## Garder Sioul ouvert {#keep-sioul-open}
 
-Sur un ordinateur, Sioul s’ouvre agrandi ; ++f11++ le met en plein écran, et l’en sort. Son icône dans la zone de notification affiche ou masque la fenêtre : fermer la fenêtre la masque là, et Sioul continue derrière, courrier, rappels et médicaments compris. **Quitter Sioul** est dans le menu de l’icône, ou ++ctrl+q++. Sans zone de notification (GNOME sans son extension), fermer la fenêtre quitte Sioul.
+Sur un ordinateur, Sioul s’ouvre agrandi ; ++f11++ le met en plein écran, et l’en sort. Son icône dans la zone de notification affiche ou masque la fenêtre : fermer la fenêtre la masque là, et Sioul continue derrière, courrier, rappels et médicaments compris. **Quitter Sioul** est dans le menu de l’icône, ou ++ctrl+q++ ; ce menu a aussi **Clore la journée de travail** et **Clore toute la journée**. Sans zone de notification (GNOME sans son extension), fermer la fenêtre quitte Sioul.
 
 Tant que sa fenêtre est ouverte, Sioul garde chaque boîte de réception ouverte sur le serveur : un code ou un lien de connexion que vous avez demandé à un site vous parvient en quelques secondes, en une seule notification discrète, à n’importe quelle heure.
 

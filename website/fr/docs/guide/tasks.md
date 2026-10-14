@@ -191,9 +191,9 @@ Puis un écran court, lu en dix secondes, dit :
 
 Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’ouvre sur cette première étape. D’ici là, le travail se repose ([le calme](hours.md#quiet-time)). Une pensée qui vient le soir peut se noter en une ligne ; elle attend, hors de vue, le retour du travail.
 
-**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
+**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Sous Linux, sur un Mac et sur un téléphone, la notification a aussi **Clore la journée de travail** ; sous Windows elle n’a pas de bouton, et un clic dessus ouvre la même feuille. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
 
-**À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un téléphone dans le tiroir des lieux.
+**À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un téléphone dans le tiroir des lieux. Sur un ordinateur, le menu de l’icône de Sioul dans la zone de notification (sur un Mac, dans la barre des menus) a les deux mêmes.
 
 **Avant de dormir**, **Clore toute la journée** revient sur toute la journée : travail, démarches et loisirs ([Santé](health.md#before-sleep)).
 

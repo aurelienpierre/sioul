@@ -191,9 +191,9 @@ Then a short screen, read in ten seconds, says:
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
-**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. A day that ends without the button closes as usual; its review stays offered until the evening.
+**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux, on a Mac and on a phone, the notification has **Close the work day** too; on Windows it has no button, and a click on it opens the same sheet. A day that ends without the button closes as usual; its review stays offered until the evening.
 
-**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a phone in the places' drawer.
+**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a phone in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
 
 **Before sleep**, **Close the whole day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
 

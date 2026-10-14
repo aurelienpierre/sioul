@@ -73,7 +73,8 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 // SAFETY: declared as cpp/palette.cpp defines it: extern "C", no arguments, a C++ bool.
 unsafe extern "C" {
     /// Whether the window draws dark colours when none are chosen in Sioul:
-    /// the application's palette, as main.qml reads it (cpp/palette.cpp).
+    /// the system's colour scheme, else (or with high contrast) the
+    /// application's palette, as main.qml decides it (cpp/palette.cpp).
     fn sioul_window_dark() -> bool;
 }
 
@@ -86,10 +87,10 @@ static FOLLOWED: Mutex<Option<(bool, bool)>> = Mutex::new(None);
 
 /// The icons as Sioul starts, before its window loads: the bundled set drawn
 /// for the colours the window is about to take, those chosen in Sioul
-/// (SIOUL_THEME, else the setting), else the system's as the window reads
+/// (SIOUL_THEME, else the setting), else the system's as the window decides
 /// them (`sioul_window_dark`). Where the system says dark but its palette is
-/// light (Windows 10's style), the window is light, and so are its icons: a
-/// set for dark colours there drew light icons on a light window.
+/// light (Windows 10's style), the window follows the system, dark, and so do
+/// its icons; until 14 October 2026 the window followed the palette, light.
 pub fn icons() {
     let chosen = std::env::var("SIOUL_THEME").ok().filter(|t| !t.is_empty()).or_else(|| crate::backend::load_config().theme).filter(|t| t == "dark" || t == "light");
     // SAFETY: the application is made before (lib.rs, `run`); on its thread.

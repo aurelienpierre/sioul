@@ -34,7 +34,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 | TLS | `rustls` and `tokio-rustls` with `ring`; `rustls-native-certs` | Apache-2.0, ISC or MIT |
 | Mozilla's certificate list, when a system has none | `webpki-roots` | CDLA-Permissive-2.0 (data) |
 | HTTPS: finding servers, CalDAV and CardDAV, Google, GitHub, Bitwarden, the weather | `ureq` | MIT or Apache-2.0 |
-| Notifications | `notify-rust` on Windows and macOS; on Linux and the BSDs, `dbus`, on connections of Sioul's own (`sioul_sync::bus`, as every D-Bus connection: never libdbus's own registration, whose process-wide locks a bus stuck at setup would hold) | MIT or Apache-2.0 |
+| Notifications | `notify-rust` on Windows and macOS (on Windows, the end of work's and the night's notices are messages of Sioul's icon in the tray, through Qt); on Linux and the BSDs, `dbus`, on connections of Sioul's own (`sioul_sync::bus`, as every D-Bus connection: never libdbus's own registration, whose process-wide locks a bus stuck at setup would hold) | MIT or Apache-2.0 |
 | Editing the configuration in place | `toml_edit` | MIT or Apache-2.0 |
 | Password prompt | `rpassword` | Apache-2.0 |
 | The command line's arguments | `clap` | MIT or Apache-2.0 |

@@ -114,7 +114,7 @@ Name each as you like, choose its weekdays, and turn its notices off if you woul
 
 A meal that would fall in an event moves after it by itself, on that day, with the time to come back from it (the event's **After**); not one whose time you set for that day.
 
-**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. On Linux, each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back; elsewhere, the same moves are on the page's day. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
+**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. On Linux, each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back; elsewhere, the same moves are on the page's day, and the night's own notice has **Options…** on a Mac and on a phone too. On a phone, of these notices, only the night's own comes, at its start. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
 
 **While you sleep**, from winding down to waking and during a nap, nothing disturbs: no notification but doses (above, "Reminders"). The night's own notice still comes at its start. Without a night set, nothing keeps notifications away at night: the Porch asks for it in a card. See [Hours](hours.md#sleep). On an Android phone, the night can also end with an alarm: [The wake-up alarm](#the-wake-up-alarm).
 
@@ -122,7 +122,7 @@ Nothing about what you eat or how you sleep is asked or recorded: no counts, no 
 
 ## Before sleep {#before-sleep}
 
-When the wind-down begins, the night's notice has **Close the whole day** beside **Options…** (on Linux), as long as that day is not closed. In the evening, from three hours before the wind-down, the status line offers it too; and on this page, under today, **Close the whole day** in the evening and during the night.
+When the wind-down begins, the night's notice has **Close the whole day** beside **Options…**, as long as that day is not closed: as buttons on Linux, on a Mac and on a phone; on Windows the notification has no button, and a click on it opens the sheet. In the evening, from three hours before the wind-down, the status line offers it too; and on this page, under today, **Close the whole day** in the evening and during the night.
 
 It opens the same sheet as at the end of work, over the whole day: what you said of the morning, the end of work as you said it then, tomorrow's first step if one was named, and what the day asked and gave, in words only ("Thinking: heavy for you.", "Some time gave back."). Then how the day felt, its mix, and a note, each optional. **Close the whole day** keeps them; **Not now** changes nothing.
 
