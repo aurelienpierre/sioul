@@ -609,6 +609,11 @@ pub struct Peer {
     /// only for this opening or a later one it read (the seventh review's M1).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub acknowledged: i64,
+    /// The latest opening of it ever read here (its entry's `started`), never
+    /// lowered: an older copy of its entry put back cannot make a phone's word
+    /// on it go back (the eighth review's N3).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub latest_opening: i64,
 }
 
 fn is_zero_i64(n: &i64) -> bool {

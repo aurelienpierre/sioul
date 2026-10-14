@@ -35,6 +35,11 @@ pub const KEPT_DAYS: i64 = 2;
 /// A promise without end (`Tried::quiet`): no notice of the dose from this device again.
 pub const NEVER: i64 = i64::MAX;
 
+/// How long after its dose any device takes another device's entry out (a
+/// device forgotten, reinstalled under a new id, gone without a word): far
+/// past `KEPT_DAYS`, beyond any clock's error (the eighth review's L6).
+pub const STALE_DAYS: i64 = 30;
+
 /// What each device did to remind each dose, by the dose's key, then the device's id.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DoseReminders {
@@ -105,9 +110,11 @@ impl DoseReminders {
     /// would empty the others' else: the sixth review's L3, R8). Use
     /// `update`: it holds the lock.
     fn save(&mut self, path: &Path, now: i64, me: &str) -> Result<(), String> {
-        let oldest = now - KEPT_DAYS * 86_400;
+        let (oldest, stale) = (now - KEPT_DAYS * 86_400, now - STALE_DAYS * 86_400);
         for (key, devices) in &mut self.dose {
-            if due_of(key) < oldest {
+            if due_of(key) < stale {
+                devices.clear();
+            } else if due_of(key) < oldest {
                 devices.remove(me);
             }
         }
@@ -116,10 +123,12 @@ impl DoseReminders {
         crate::health::write_witnessed(path, text.as_bytes())
     }
 
-    /// The entries of devices gone (stopped sharing, or forgotten), taken out
-    /// by any device once it knows them gone: the one exception to "each its
-    /// own", so that a device's last entries do not stay forever (the
-    /// seventh review's L5). Whether any was.
+    /// The entries of devices that stopped sharing (their own entry says so),
+    /// taken out by any device that reads it: the one exception to "each its
+    /// own" but `STALE_DAYS` (the seventh review's L5). A device only
+    /// forgotten here keeps them: forgetting is one device's view, and its
+    /// entries may still be today's for the others (the eighth review's L6).
+    /// Whether any was.
     pub fn forget(&mut self, gone: &[String]) -> bool {
         let mut changed = false;
         for devices in self.dose.values_mut() {
