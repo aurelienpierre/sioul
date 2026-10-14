@@ -118,6 +118,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
     let doses = doses_said(crate::share::shares("health"), crate::share::holds_doses());
     // A phone's notification access, as Android says it now: what it may hold of other apps.
     let notifications = crate::appnotes::access_here();
+    // A phone's word on each computer's opening it read (none on a computer: `health::acknowledged_openings`).
+    let acked = crate::health::acknowledged_openings();
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.id = id;
         entry.name = name();
@@ -130,6 +132,7 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         if notifications.is_some() {
             entry.notifications = notifications;
         }
+        entry.acked = acked;
         change(entry);
     });
     match written {
@@ -169,6 +172,14 @@ fn raise() {
     }) {
         PUBLISHED.store(0, Ordering::SeqCst);
     }
+}
+
+/// This computer came back after a gap in its own running (asleep, the
+/// machine frozen): a new opening, as a start, so that every phone's word on
+/// it is asked anew before it is a dose's first (`health::tick`; the seventh
+/// review's C1).
+pub(crate) fn resumed() {
+    raise();
 }
 
 /// When a press was last made in Sioul on this computer: in its window, or

@@ -599,6 +599,16 @@ pub struct Peer {
     /// files one by one: the sixth review's R1d).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub claimed: i64,
+    /// You forgot it here (it left the list of your devices): it owes this
+    /// device no word on its openings (`off` counts it out of the doses too).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forgotten: bool,
+    /// The opening of it (its entry's `started`) this device said it read, in
+    /// its own sealed entry (`devices::Entry::acked`; a phone's word on a
+    /// computer); 0 none. A phone takes that computer's "closed" as its word
+    /// only for this opening or a later one it read (the seventh review's M1).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub acknowledged: i64,
 }
 
 fn is_zero_i64(n: &i64) -> bool {

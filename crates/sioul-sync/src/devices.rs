@@ -97,6 +97,15 @@ pub struct Entry {
     /// It stopped sharing: it counts no more.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// A phone's word on each computer it counts now: the opening (`started`)
+    /// of that computer's entry it read, by the computer's id. A computer
+    /// reminds a dose plainly as its first only once every phone's entry says
+    /// its current opening here, sealed with the rest (docs/health.md, "What
+    /// became of a reminder"; review of battery part C, the seventh review's
+    /// C1 and M1). Written by phones only, of computers only; a computer the
+    /// phone stops counting (said off, forgotten, silent a week) goes from it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub acked: std::collections::BTreeMap<String, i64>,
     /// Its size changed at each writing (`share::pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pad: String,
@@ -1091,29 +1100,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// The handshake (review of battery part C, the sixth review's C1): a
-    /// device's notes in the folder say the opening of each other device's
-    /// entry it read (`share::acknowledged`), written at its exchange, again
-    /// once that opening changes: the desk reads there that the phone read
-    /// its current opening, and not before the phone did.
+    /// The handshake (review of battery part C, the sixth and seventh
+    /// reviews): a phone's word on a computer's opening travels in its own
+    /// sealed entry (`Entry::acked`), read by the computer with the rest of
+    /// it; a word written in the folder otherwise (a file not sealed with the
+    /// key, another device's name) is no entry at all.
     #[test]
-    fn each_device_says_which_opening_of_the_others_it_read() {
+    fn a_phones_word_on_an_opening_travels_sealed_in_its_entry() {
         let base = scratch("acknowledged");
         let folder = base.join("shared");
         std::fs::create_dir_all(&folder).unwrap();
         let desk = Device::new(&base, "desk", COMPUTER);
         let phone = Device::new(&base, "phone", PHONE);
-        desk.session(&folder, |e| e.start(DUE - 3_600));
-        phone.session(&folder, |e| e.start(DUE - 3_600));
-        desk.exchange(&folder, DUE - 3_500);
-        phone.exchange(&folder, DUE - 3_450);
-        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 3_600)), "the phone read the desk's opening");
-        // The desk opens again: not said until the phone read it.
         desk.session(&folder, |e| e.start(DUE - 30));
-        desk.exchange(&folder, DUE - 25);
-        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 3_600)), "its new opening not read yet");
-        phone.exchange(&folder, DUE + 120);
-        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 30)), "read, said at once");
+        let desk_id = desk.id.clone();
+        phone.session(&folder, |e| {
+            e.start(DUE - 3_600);
+            e.acked.insert(desk_id.clone(), DUE - 30);
+        });
+        let read = |id: &str| all(&folder, &KEY).0.into_iter().find(|e| e.id == id);
+        assert_eq!(read(&phone.id).and_then(|e| e.acked.get(&desk.id).copied()), Some(DUE - 30), "the phone's word, sealed");
+        // Forged in the folder without the key: no entry read, so no word.
+        let forged = Entry { id: phone.id.clone(), kind: PHONE.into(), working: true, acked: [(desk.id.clone(), i64::MAX)].into_iter().collect(), ..Entry::default() };
+        std::fs::write(file_of(&folder, &phone.id), serde_json::to_vec(&forged).unwrap()).unwrap();
+        assert!(read(&phone.id).is_none() && all(&folder, &KEY).1.contains(&phone.id), "unsealed: unread");
         let _ = std::fs::remove_dir_all(&base);
     }
 
