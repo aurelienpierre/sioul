@@ -170,12 +170,19 @@ pub(crate) fn waking() -> Option<i64> {
 /// waking, and are reminded now; the same for a pause holding doses, at
 /// coming back (docs/pauses.md). None otherwise.
 pub(crate) fn woke_from() -> Option<i64> {
+    woken().map(|(from, _)| from)
+}
+
+/// The same sleep (or pause): when it began, the earliest, and when it
+/// ended, the latest (Unix seconds). A phone's alarm held by it waits for a
+/// computer's news from then (`health::alarm_decide`).
+pub(crate) fn woken() -> Option<(i64, i64)> {
     let attention = attention();
     let held_in = |column: Column| attention.cell(Row::Own(Kind::Doses), column) != Level::Now;
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
     let overrides = Overrides::load(&Overrides::default_path());
-    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
+    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60);
     if !held_in(Column::Sleep) {
         return paused;
     }
@@ -184,7 +191,7 @@ pub(crate) fn woke_from() -> Option<i64> {
     if blocks.at(stamp, &["sleep", "nap"]).is_some() {
         return None;
     }
-    blocks.kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.end <= stamp && stamp - k.end < 30 * 60).map(|k| k.start).chain(paused).min()
+    blocks.kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.end <= stamp && stamp - k.end < 30 * 60).map(|k| (k.start, k.end)).chain(paused).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
 }
 
 /// Whether a night is set (Health): without one, nothing keeps notifications away at night.

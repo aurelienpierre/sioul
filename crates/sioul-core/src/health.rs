@@ -664,6 +664,18 @@ pub const FRESH: i64 = 5 * 60;
 /// to within seconds.
 pub const SKEW: i64 = 2 * 60;
 
+/// How long after a dose's time a phone's alarm rings when a computer keeps
+/// the doses (its wait for news, sioul-app's `WAIT_FOR_NEWS`): a phone put
+/// away is opened then by its own alarm (docs/health.md, "On a phone").
+pub const ALARM_AFTER: i64 = 10 * 60;
+
+/// When a phone put away before a dose may last have been opened for it, at
+/// `now`: by its own alarm (`ALARM_AFTER`) once that rang, else at the dose's
+/// time (picked up to mark it); a computer's opening is the dose's time.
+fn opened_for(due: i64, now: i64, phone: bool) -> i64 {
+    if phone && now >= due + ALARM_AFTER { due + ALARM_AFTER } else { due }
+}
+
 /// A device in use not seen changing for this long may have stopped without
 /// closing (a crash): said so. Only the words change.
 pub const QUIET: i64 = 60 * 60;
@@ -734,8 +746,11 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
         // went by, and `SKEW` more (a lead of its clock measured here is that
         // lead less the quickest news seen: its openings timed short by as
         // much; review of 10 October 2026, R8). None measured yet: as before,
-        // at once.
-        let woke = peer.wake.is_none_or(|wake| now - due >= wake + SKEW);
+        // at once. A phone put away is opened by its own alarm too, after the
+        // dose (`ALARM_AFTER`): from then on, counted from its alarm, never
+        // from the dose's time (review of battery part C, H2).
+        let phone = peer.said.as_ref().is_some_and(|s| s.phone);
+        let woke = peer.wake.is_none_or(|wake| now - opened_for(due, now, phone) >= wake + SKEW);
         let Some(said) = &peer.said else {
             let closed = peer.closed && peer.heard <= peer.known_until;
             let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN) && (peer.known_until >= due + SKEW || woke);
@@ -827,7 +842,9 @@ pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer
 /// it is not known by `until`. For what is shown ahead of time (a phone's home
 /// screen card): "check" until then.
 pub fn known_from(due: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> Option<i64> {
-    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w + SKEW)).filter(|t| *t >= from && *t < until).collect();
+    let phone = |p: &Peer| p.said.as_ref().is_some_and(|s| s.phone);
+    let after_alarm = peers.iter().filter(|p| phone(p)).filter_map(|p| p.wake).map(|w| due + ALARM_AFTER + w + SKEW);
+    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w + SKEW)).chain(after_alarm).filter(|t| *t >= from && *t < until).collect();
     moments.sort_unstable();
     moments.dedup();
     moments.into_iter().find(|t| doubts_now(due, *t, record_lost, peers).is_empty())
@@ -849,6 +866,10 @@ pub fn known_until(due: i64, from: i64, until: i64, record_lost: Option<i64>, pe
                 let margin = SKEW + peer.ahead.max(0);
                 ends.push(peer.seen + FRESH + 1);
                 ends.push(said.exported + FRESH + margin + 1);
+                // A phone put away, opened by its alarm: unknown again from then.
+                if said.phone && peer.wake.is_some() {
+                    ends.push(due + ALARM_AFTER);
+                }
             }
             None => ends.push(peer.known_until + FRESH + 1),
         }
@@ -972,13 +993,34 @@ pub struct HealthState {
     /// Doses already reminded, by key; kept a week.
     #[serde(default)]
     pub reminded: BTreeMap<String, i64>,
-    /// Doses whose reminder could not be shown while Sioul ran (a desktop
-    /// without a notification server), by key, when it was tried; kept a
-    /// week. Not a reminder: such a dose is still asked about afterwards,
-    /// under its own heading, since Sioul ran (`unanswered`). Written only
-    /// when there is one: an older Sioul's file stays as it was.
+    /// Doses whose reminder was not shown while Sioul ran, by key, when it
+    /// was tried; kept a week. Not a reminder: such a dose is still asked
+    /// about afterwards, under its own heading, since Sioul ran
+    /// (`unanswered`), and another device reminds it (a phone's alarm). Alone,
+    /// it surely did not go out (no connection, no notification server,
+    /// nothing sent in time: `reminder_unshown`); with `maybe` beside it, it
+    /// may have (format note in `maybe`). Written only when there is one: an
+    /// older Sioul's file stays as it was.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unshown: BTreeMap<String, i64>,
+    /// Doses whose reminder was sent but not known shown, by key, when it was
+    /// sent: the notification server did not answer in time, or the bus
+    /// stalled under it (since 14 October 2026). It may be on the screen: a
+    /// phone's alarm still reminds the dose, but says first that another
+    /// device may have shown its reminder, "check before taking it"
+    /// (`reminder_maybe`). A late answer makes it a reminder (`reminded`).
+    /// Format note: each such dose is written in `unshown` too, which an
+    /// older Sioul (0.0.4, 0.0.5) reads as a reminder not shown, never as one
+    /// given: its alarm reminds it, plainly, as it always did, and its
+    /// rewrites of the record keep `unshown` (they drop `maybe`, which they
+    /// do not know: the doubt is then not said, the reminder still comes).
+    /// 0.0.3 knows neither table: the dose is not reminded there either, and
+    /// its alarm reminds it plainly.
+    /// Since this table, `unshown` alone means "surely not shown"; until then,
+    /// a reminder unanswered in time was written there too (4f4aadd). Kept a
+    /// week; written only when there is one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub maybe: BTreeMap<String, i64>,
     /// Doses answered "not taken" when asked afterwards, by key; kept a week.
     #[serde(default)]
     pub not_taken: BTreeMap<String, i64>,
@@ -1078,6 +1120,7 @@ impl HealthState {
         self.taken.retain(|_, at| *at >= week);
         self.reminded.retain(|_, at| *at >= week);
         self.unshown.retain(|_, at| *at >= week);
+        self.maybe.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
         write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
@@ -1101,11 +1144,19 @@ impl HealthState {
         health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
     }
 
-    /// Whether Sioul ran when `key` fell due but could not show its reminder
-    /// (no notification server), here or on another device that shares its
-    /// doses: its question then says so, never "while Sioul was closed".
+    /// Whether Sioul ran when `key` fell due but surely could not show its
+    /// reminder (no notification server, no connection), here or on another
+    /// device that shares its doses: its question then says so, never "while
+    /// Sioul was closed".
     pub fn reminder_unshown(&self, key: &str) -> bool {
-        self.unshown.contains_key(key) && !self.reminded.contains_key(key)
+        self.unshown.contains_key(key) && !self.reminded.contains_key(key) && !self.maybe.contains_key(key)
+    }
+
+    /// Whether `key`'s reminder was sent and may have shown, not known shown
+    /// (`maybe`): another device that reminds it says the doubt first, and
+    /// its question says the reminder may not have been shown.
+    pub fn reminder_maybe(&self, key: &str) -> bool {
+        self.maybe.contains_key(key) && !self.reminded.contains_key(key)
     }
 
     /// Today's doses from their time on, not marked yet (taken, or said not
@@ -1317,7 +1368,9 @@ mod tests {
         assert_eq!(doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&slow)), doubt);
         assert!(doubts_now(DUE, DUE + 240 + SKEW, None, std::slice::from_ref(&slow)).is_empty());
         assert_eq!(known_from(DUE, DUE - 600, DUE + 86_400, None, std::slice::from_ref(&slow)), Some(DUE + 240 + SKEW), "a dose seen ahead: known from then");
-        assert_eq!(known_until(DUE, DUE + 240 + SKEW, DUE + 86_400, None, std::slice::from_ref(&slow)), DUE + 86_400);
+        // Then its own alarm opens it (`ALARM_AFTER`): unknown again until the news of that opening had the time to come.
+        assert_eq!(known_until(DUE, DUE + 240 + SKEW, DUE + 86_400, None, std::slice::from_ref(&slow)), DUE + ALARM_AFTER);
+        assert_eq!(known_from(DUE, DUE + ALARM_AFTER, DUE + 86_400, None, std::slice::from_ref(&slow)), Some(DUE + ALARM_AFTER + 240 + SKEW));
         // Closed after the dose, all it wrote read: its last export holds its answer, at once.
         let after = Peer { wake: Some(240), ..phone(Said { started: DUE - 600, closed: DUE + 600, working: false, exported: DUE + 595, ..Said::default() }, DUE + 620) };
         assert!(doubts_now(DUE, DUE + 630, None, &[after]).is_empty());
@@ -1329,6 +1382,34 @@ mod tests {
         let apart = Peer { said: slow.said.clone().map(|s| Said { doses: false, ..s }), ..slow };
         assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&apart)), doubt);
         assert!(doubts_now(DUE, DUE + 240 + SKEW, None, &[apart]).is_empty());
+    }
+
+    /// A phone put away before the dose is opened by its own alarm when a
+    /// computer keeps the doses, `ALARM_AFTER` after the dose: it may mark the
+    /// dose then, or remind it. Known closed from the dose's time until then
+    /// (once the news of an opening at the dose had the time to come), then
+    /// known again only once the news of its alarm's opening had the time to
+    /// come: never from the dose's time (review of battery part C, H2: the
+    /// computer, a minute after the phone's alarm, took the phone as known
+    /// and reminded the dose plainly a second time). None measured: as before.
+    #[test]
+    fn a_phone_put_away_is_known_from_its_alarm_once_that_rang() {
+        let put_away = Peer { wake: Some(30), ..phone(Said { started: DUE - 7_200, closed: DUE - 3_600, working: false, exported: DUE - 3_600, imported: DUE - 3_600, ..Said::default() }, DUE - 3_600) };
+        let doubt = vec![Doubt::Unheard { device: the_phone(), until: DUE - 3_600, closed: true }];
+        let at = |now: i64| doubts_now(DUE, now, None, std::slice::from_ref(&put_away));
+        assert_eq!(at(DUE + 60), doubt, "picked up at the dose: its news not come yet");
+        assert!(at(DUE + 30 + SKEW).is_empty(), "known before its alarm");
+        assert_eq!(at(DUE + ALARM_AFTER), doubt, "its alarm rang");
+        assert_eq!(at(DUE + ALARM_AFTER + 60), doubt, "a minute after its alarm: the review's moment");
+        assert!(at(DUE + ALARM_AFTER + 30 + SKEW).is_empty(), "the news of its alarm's opening had the time to come");
+        assert_eq!(known_until(DUE, DUE + 200, DUE + 86_400, None, std::slice::from_ref(&put_away)), DUE + ALARM_AFTER);
+        assert_eq!(known_from(DUE, DUE + ALARM_AFTER, DUE + 86_400, None, std::slice::from_ref(&put_away)), Some(DUE + ALARM_AFTER + 30 + SKEW));
+        // A computer put away has no alarm: as before.
+        let laptop = Peer { name: "laptop".into(), id: "laptop-id".into(), said: put_away.said.clone().map(|s| Said { phone: false, ..s }), ..put_away.clone() };
+        assert!(doubts_now(DUE, DUE + ALARM_AFTER + 60, None, &[laptop]).is_empty());
+        // None measured yet: at once, its alarm or not.
+        let unmeasured = Peer { wake: None, ..put_away };
+        assert!(doubts_now(DUE, DUE + ALARM_AFTER + 1, None, &[unmeasured]).is_empty());
     }
 
     #[test]
@@ -1477,6 +1558,50 @@ mod tests {
         assert!(state.to_remind(&health, &at("2026-10-03T13:00[Europe/Paris]"), 10).is_empty(), "past its window, no second reminder");
     }
 
+    /// The record with `maybe`, as an older Sioul (0.0.4, 0.0.5: no such
+    /// table) reads it: the dose is not reminded there, and its reminder not
+    /// shown (`unshown`, written beside it): its alarm reminds it, its
+    /// question asks about it, never "reminded"; written back by it, `unshown`
+    /// stays. 0.0.3, which knows neither table, does not read it reminded
+    /// either. A record without the table reads as before.
+    #[test]
+    fn an_older_sioul_reads_a_reminder_that_may_have_shown_as_one_to_give() {
+        /// The record's tables as 0.0.5 knows them.
+        #[derive(Debug, Default, Serialize, Deserialize)]
+        struct Older {
+            #[serde(default)]
+            taken: BTreeMap<String, i64>,
+            #[serde(default)]
+            reminded: BTreeMap<String, i64>,
+            #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+            unshown: BTreeMap<String, i64>,
+            #[serde(default)]
+            not_taken: BTreeMap<String, i64>,
+        }
+        let key = "levo@1791360000".to_string();
+        let mut new = HealthState::default();
+        new.unshown.insert(key.clone(), 1_791_360_004);
+        new.maybe.insert(key.clone(), 1_791_360_002);
+        let text = toml::to_string(&new).unwrap();
+        assert!(text.contains("[maybe]") && text.contains("[unshown]"));
+        let older: Older = toml::from_str(&text).unwrap();
+        assert!(!older.reminded.contains_key(&key) && older.unshown.contains_key(&key), "to remind and to ask about, never reminded");
+        let rewritten: HealthState = toml::from_str(&toml::to_string(&older).unwrap()).unwrap();
+        assert!(rewritten.unshown.contains_key(&key) && rewritten.maybe.is_empty(), "its rewrite keeps unshown, drops maybe: the doubt not said, the reminder still given");
+        assert!(rewritten.reminder_unshown(&key));
+        /// The record's tables as 0.0.3 knows them.
+        #[derive(Debug, Default, Deserialize)]
+        struct Oldest {
+            #[serde(default)]
+            reminded: BTreeMap<String, i64>,
+        }
+        let oldest: Oldest = toml::from_str(&text).unwrap();
+        assert!(!oldest.reminded.contains_key(&key), "0.0.3: to remind, never reminded");
+        let plain: HealthState = toml::from_str("[taken]\n[reminded]\n").unwrap();
+        assert!(plain.maybe.is_empty());
+        assert!(!toml::to_string(&HealthState::default()).unwrap().contains("maybe"), "written only when there is one");
+    }
+
     /// A reminder that could not be shown (no notification server) is no
     /// reminder: the dose is still asked about afterwards, and told apart from
     /// one due while Sioul was closed; the record keeps it a week, and a file
@@ -1501,6 +1626,17 @@ mod tests {
         later.reminded.insert(key("2026-10-03T08:00[Europe/Paris]"), at("2026-10-03T08:05[Europe/Paris]").timestamp().as_second());
         assert!(!later.reminder_unshown(&key("2026-10-03T08:00[Europe/Paris]")));
         assert_eq!(later.unanswered(&health, &now, 12, 30).len(), 1);
+        // Sent, not known shown (`maybe`, written with `unshown` beside it): asked about, under
+        // its own heading, never as surely not shown; a late answer makes it a reminder.
+        let mut sent = HealthState::default();
+        let nine = key("2026-10-03T09:00[Europe/Paris]");
+        sent.unshown.insert(nine.clone(), at("2026-10-03T09:00[Europe/Paris]").timestamp().as_second() + 4);
+        sent.maybe.insert(nine.clone(), at("2026-10-03T09:00[Europe/Paris]").timestamp().as_second() + 2);
+        assert!(sent.reminder_maybe(&nine) && !sent.reminder_unshown(&nine));
+        assert!(sent.unanswered(&health, &now, 12, 30).iter().any(|d| d.key == nine), "asked about");
+        let mut answered_late = sent.clone();
+        answered_late.reminded.insert(nine.clone(), at("2026-10-03T09:01[Europe/Paris]").timestamp().as_second());
+        assert!(!answered_late.reminder_maybe(&nine) && !answered_late.reminder_unshown(&nine));
         // Kept as written, a week; an older Sioul's file has no table, and gets none.
         let dir = std::env::temp_dir().join(format!("sioul-unshown-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

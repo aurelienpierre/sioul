@@ -71,7 +71,7 @@ fn socket_of(address: &str) -> Option<(u64, u64)> {
 }
 
 /// The path a `unix:path=` address names, its escapes undone (`escaped`).
-fn unix_path(address: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn unix_path(address: &str) -> Option<std::path::PathBuf> {
     use std::os::unix::ffi::OsStringExt;
     let first = address.split(';').next()?.strip_prefix("unix:")?;
     let value = first.split(',').find_map(|pair| pair.strip_prefix("path="))?;
@@ -305,78 +305,100 @@ mod tests {
     }
 
     /// No source of Sioul's outside this file reaches a bus through libdbus's
-    /// own registration, nor opens a connection itself: none names the `dbus`
-    /// crate's `new_session`, `new_system`, `new_address`, `get_private`,
-    /// `open_private` or calls a `register`, nor libdbus's own functions, nor
-    /// the older `ffidisp` side, nor the Secret Service's crate (the keyring
-    /// reaches it inside the `keyring` crate alone, as it does until the owner
-    /// decides: docs/android.md), in any way of writing them; Sioul's C and
-    /// C++ use no Qt D-Bus (Qt reaches the buses through the same
-    /// registration), and no build script asks for Qt's D-Bus module; the
-    /// manifests give notify-rust (which registers so) to Windows and macOS
-    /// alone and the `dbus` crate to sioul-sync alone, and the lock has no
-    /// other crate reaching libdbus than those and the keyring's (review of
-    /// battery part C, L2).
+    /// own registration, nor opens a connection itself: no file under crates/
+    /// (whatever its kind, folders named "target" there included; Qt's
+    /// compiled resources aside) names the `dbus` crate's `new_session`,
+    /// `new_system`, `new_address`, `get_private`, `open_private` or calls a
+    /// `register`, nor libdbus's own functions, nor the older `ffidisp` side,
+    /// nor another way to a bus (`zbus`, the Secret Service's crates: the
+    /// keyring reaches it inside the `keyring` crate alone, as it does until
+    /// the owner decides: docs/android.md), nor notify-rust (which registers
+    /// so) but notify.rs, in any way of writing them; no C or C++ uses Qt's
+    /// D-Bus, and no build script asks for its module. The manifests, read
+    /// as TOML (tables, renamed packages, targets): notify-rust for Windows
+    /// and macOS alone, the `dbus` crate in sioul-sync alone, no other D-Bus
+    /// crate; and the lock has no other crate reaching libdbus than those and
+    /// the keyring's (review of battery part C, L2 of the third and fourth
+    /// reviews).
     #[test]
     fn nothing_but_this_file_reaches_a_bus() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let (mut sources, mut manifests) = (Vec::new(), Vec::new());
+        let (mut files, mut manifests) = (Vec::new(), Vec::new());
         let mut folders = vec![root.join("crates")];
         while let Some(folder) = folders.pop() {
             for entry in std::fs::read_dir(&folder).unwrap().flatten() {
                 let path = entry.path();
-                let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_string();
                 if path.is_dir() {
-                    if !path.ends_with("target") {
-                        folders.push(path);
-                    }
-                } else if ["rs", "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "hxx"].contains(&extension.as_str()) {
-                    sources.push(path);
+                    folders.push(path);
                 } else if path.ends_with("Cargo.toml") {
                     manifests.push(path);
+                } else if !path.to_string_lossy().ends_with("_rc.py") {
+                    files.push(path);
                 }
             }
         }
-        assert!(sources.len() > 100 && manifests.len() >= 5, "{} sources, {} manifests", sources.len(), manifests.len());
-        let words = ["new_session", "new_system", "new_address", "get_private", "open_private", "dbus_bus_get", "dbus_bus_get_private", "dbus_bus_register", "dbus_connection_open", "dbus_connection_open_private", "ffidisp", "libdbus_sys", "dbus_secret_service"];
-        for source in &sources {
-            if source.ends_with("sioul-sync/src/bus.rs") {
+        assert!(files.len() > 500 && manifests.len() >= 5, "{} files, {} manifests", files.len(), manifests.len());
+        let words = ["new_session", "new_system", "new_address", "get_private", "open_private", "dbus_bus_get", "dbus_bus_get_private", "dbus_bus_register", "dbus_connection_open", "dbus_connection_open_private", "ffidisp", "libdbus_sys", "dbus_secret_service", "secret_service", "zbus"];
+        for file in &files {
+            if file.ends_with("sioul-sync/src/bus.rs") {
                 continue;
             }
-            let text = std::fs::read_to_string(source).unwrap_or_default();
+            let Ok(text) = std::fs::read_to_string(file) else { continue };
             for word in words {
-                assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", source.display());
+                assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", file.display());
             }
-            assert!(!reached(&text, "register"), "{}: a register call (libdbus's own registration)", source.display());
-            if !source.extension().is_some_and(|e| e == "rs") {
-                assert!(!text.contains("QDBus") && !text.contains("QtDBus"), "{}: Qt's D-Bus", source.display());
+            assert!(!reached(&text, "register"), "{}: a register call (libdbus's own registration)", file.display());
+            if !file.ends_with("sioul-sync/src/notify.rs") {
+                assert!(!named(&text, "notify_rust"), "{}: notify-rust (registers through libdbus)", file.display());
             }
-            if source.ends_with("build.rs") {
-                assert!(!text.contains("\"DBus\""), "{}: Qt's D-Bus module", source.display());
+            if !file.extension().is_some_and(|e| e == "rs") {
+                assert!(!text.contains("QDBus") && !text.contains("QtDBus"), "{}: Qt's D-Bus", file.display());
+            }
+            if file.ends_with("build.rs") {
+                assert!(!text.contains("\"DBus\""), "{}: Qt's D-Bus module", file.display());
             }
         }
-        // The manifests: notify-rust for Windows and macOS alone, the dbus crate in sioul-sync alone.
+        // The manifests, as TOML: each dependency by its package's name, wherever it is declared.
         manifests.push(root.join("Cargo.toml"));
         for manifest in &manifests {
-            let text = std::fs::read_to_string(manifest).unwrap();
+            let table: toml::Table = std::fs::read_to_string(manifest).unwrap().parse().unwrap();
             let own = manifest.ends_with("sioul-sync/Cargo.toml");
             let workspace = *manifest == root.join("Cargo.toml");
-            for (index, line) in text.lines().enumerate() {
-                let line = line.trim();
-                if line.starts_with('#') {
-                    continue;
+            let mut declared: Vec<(String, String)> = Vec::new();
+            let mut sections: Vec<(String, &toml::Table)> = Vec::new();
+            for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                if let Some(deps) = table.get(kind).and_then(toml::Value::as_table) {
+                    sections.push((format!("[{kind}]"), deps));
                 }
-                let section = text.lines().take(index).map(str::trim).filter(|l| l.starts_with('[')).last().unwrap_or_default();
-                if line.starts_with("notify-rust") {
-                    let allowed = (own && section == "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]") || (workspace && section == "[workspace.dependencies]");
-                    assert!(allowed, "{}: notify-rust under {section}", manifest.display());
+                if let Some(deps) = table.get("workspace").and_then(|w| w.get(kind)).and_then(toml::Value::as_table) {
+                    sections.push((format!("[workspace.{kind}]"), deps));
                 }
-                if line.starts_with("dbus ") || line.starts_with("dbus=") || line.starts_with("dbus.") || line.starts_with("libdbus") {
-                    assert!(own, "{}: {line}", manifest.display());
+            }
+            if let Some(targets) = table.get("target").and_then(toml::Value::as_table) {
+                for (target, inner) in targets {
+                    for kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                        if let Some(deps) = inner.get(kind).and_then(toml::Value::as_table) {
+                            sections.push((format!("[target.'{target}'.{kind}]"), deps));
+                        }
+                    }
+                }
+            }
+            for (section, deps) in sections {
+                for (name, spec) in deps {
+                    let package = spec.get("package").and_then(toml::Value::as_str).unwrap_or(name);
+                    declared.push((section.clone(), package.to_string()));
+                }
+            }
+            for (section, package) in &declared {
+                match package.as_str() {
+                    "notify-rust" => assert!((own && section == "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]") || (workspace && section == "[workspace.dependencies]"), "{}: notify-rust under {section}", manifest.display()),
+                    "dbus" => assert!(own && section.contains("not(any(target_os = \"macos\", target_os = \"android\"))"), "{}: dbus under {section}", manifest.display()),
+                    "zbus" | "secret-service" | "dbus-secret-service" | "libdbus-sys" | "dbus-tokio" | "dbus-crossroads" | "zbus_names" | "ashpd" => panic!("{}: {package} under {section} (connections through sioul_sync::bus alone)", manifest.display()),
+                    _ => {}
                 }
             }
         }
-        // The lock: who reaches libdbus's crates.
+        // The lock: who reaches libdbus's crates, and the other ways to a bus.
         let lock = std::fs::read_to_string(root.join("Cargo.lock")).unwrap();
         let mut reaching: Vec<(String, String)> = Vec::new();
         for package in lock.split("[[package]]").skip(1) {
