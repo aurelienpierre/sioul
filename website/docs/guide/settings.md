@@ -20,7 +20,7 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 ## Display
 
 - **Language**: the system's, English or French. Every sentence Sioul says follows it.
-- **Colours**: light, dark, or as the system has them. The icons follow at the next start.
+- **Colours**: light, dark, or as the system has them. As the system's, Sioul turns dark or light with it, at once, its icons too (Windows 10's dark mode included); with high contrast on, by the lightness of the system's own colours.
 - **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the left end of the title bar, over the places, or ++f9++, changes it too.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
 <!-- colour: the sites' colours (docs/colour.md). -->

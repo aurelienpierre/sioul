@@ -26,10 +26,16 @@ const BACK_DAYS: i64 = 14;
 /// Today's last hours of work or admin end then; none on a day without them,
 /// or in time off.
 fn work_end(config: &sioul_core::config::Config, now: &Zoned) -> Option<Zoned> {
-    if sioul_core::quiet::time_off_on(&config.time_off, now.date()).is_some() {
+    work_end_on(config, now.date(), now.time_zone())
+}
+
+/// `date`'s last hours of work or admin end then, in `zone`; none on a day
+/// without them, or in time off.
+fn work_end_on(config: &sioul_core::config::Config, date: Date, zone: &jiff::tz::TimeZone) -> Option<Zoned> {
+    if sioul_core::quiet::time_off_on(&config.time_off, date).is_some() {
         return None;
     }
-    sioul_core::window::hours_on(&config.week_hours(), now.date(), now.time_zone()).map(|(_, closing)| closing)
+    sioul_core::window::hours_on(&config.week_hours(), date, zone).map(|(_, closing)| closing)
 }
 
 /// The night going on or coming next, as Health keeps it: (winding down from, bed at).
@@ -283,47 +289,162 @@ fn mark_told(date: Date) {
     }
 }
 
-/// Each minute: at the end of the day's last work or admin hours, one quiet
-/// notice, "Work hours are over", with "Close the work day"; once, from the
-/// device you are at, within ten minutes of the hours' end; at the times the
-/// matrix of what reaches you lets it come (as usual, never while you sleep or
-/// work), never during a meeting, nor once the day was closed or its review
-/// given. Off the window's thread.
+/// What the end-of-work notice does at a moment (`work_notice`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkNotice {
+    /// It comes now, for that day.
+    Comes(Date),
+    /// Kept here only lately: asked again in a minute, once the others know.
+    Soon,
+    /// Not now, or not from here.
+    No,
+}
+
+/// The end-of-work notice at `now`: at the end of the day's last work or
+/// admin hours, within ten minutes of it, once on this device (`told`); at
+/// the times the matrix of what reaches you lets it come (as usual, never
+/// while you sleep or work); never during a meeting, nor once the day was
+/// closed or its review given; from the device you are at, as `keeper` says
+/// it (the "notices" lease), asked last. The window's minute and a phone's
+/// alarm both decide it here (`tick`, `decide_work`).
+pub(crate) fn work_notice(now: &Zoned, keeper: impl FnOnce() -> sioul_sync::lease::Keeper) -> WorkNotice {
+    let stamp = now.timestamp().as_second();
+    let Some(end) = work_end(&load_config(), now) else { return WorkNotice::No };
+    if !still_due(stamp, end.timestamp().as_second()) || told(now.date()) {
+        return WorkNotice::No;
+    }
+    let mode = crate::hours::mode_at(now);
+    let Some(Offer { kind: Kind::Work, date }) = notice_at(now, &mode) else { return WorkNotice::No };
+    // In a meeting, nothing is said: the status line still offers it.
+    if meeting(stamp) {
+        mark_told(date);
+        return WorkNotice::No;
+    }
+    let keeper = keeper();
+    // Kept here only lately: the next minute, once the others know.
+    if keeper.mine && !keeper.settled {
+        return WorkNotice::Soon;
+    }
+    mark_told(date);
+    if keeper.mine { WorkNotice::Comes(date) } else { WorkNotice::No }
+}
+
+/// Each minute: the end-of-work notice when it comes (`work_notice`), "Work
+/// hours are over", with "Close the work day". On a phone its own alarm says
+/// it, Sioul shown or not (`decide_work`). Off the window's thread.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
+    if cfg!(target_os = "android") {
+        return;
+    }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         static BUSY: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        let now = Zoned::now();
-        let stamp = now.timestamp().as_second();
-        let Some(end) = work_end(&load_config(), &now) else { return };
-        if !(0..NOTICE_GRACE).contains(&(stamp - end.timestamp().as_second())) || told(now.date()) {
-            return;
-        }
-        let mode = crate::hours::mode_at(&now);
-        let Some(Offer { kind: Kind::Work, date }) = notice_at(&now, &mode) else { return };
-        // In a meeting, nothing is said: the status line still offers it.
-        if meeting(stamp) {
-            mark_told(date);
-            return;
-        }
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
-        let (keeper, _) = crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false);
-        // Kept here only lately: the next minute, once the others know.
-        if keeper.mine && !keeper.settled {
-            return;
-        }
-        mark_told(date);
-        if !keeper.mine {
-            return;
-        }
-        let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-            let _ = qt.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("review"), QString::default(), QString::from("work")));
-        });
-        if let Err(e) = sioul_sync::notify::remind(&tr().text("review-notice-title", None), &tr().text("review-notice-text", None), Some((tr().text("review-close-work", None), open))) {
-            eprintln!("{e}");
+        let keeper = || crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
+        if let WorkNotice::Comes(_) = work_notice(&Zoned::now(), keeper) {
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: "work".into() };
+            if let Err(e) = show_notice(&qt, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close]) {
+                eprintln!("{e}");
+            }
         }
     });
+}
+
+/// A button of a closing notice: its words, and what it opens in the window
+/// (`reminder_opened`: "review" with "work" or "night", "need" with a block's key).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Offered {
+    pub label: String,
+    pub kind: &'static str,
+    pub key: String,
+}
+
+/// A closing notice (the end of work's, the night's), as the system shows it
+/// (docs/reviews.md, "The notices"): on Linux and macOS with its buttons
+/// (`notify::remind_offering`), each opening what it offers; on Windows
+/// through Sioul's icon in the tray (main.qml's `onTrayNotice`, Tray.qml),
+/// whose message carries no button: a click opens what the first one offers.
+/// A phone's are its alarm's (`decide_work`, `health::decide_night`).
+pub(crate) fn show_notice(qt: &QtThread, title: &str, body: &str, offered: Vec<Offered>) -> Result<(), String> {
+    if cfg!(windows) {
+        let (kind, key) = offered.into_iter().next().map(|first| (first.kind, first.key)).unwrap_or(("", String::new()));
+        let (title, body) = (title.to_string(), body.to_string());
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().tray_notice(QString::from(&title), QString::from(&body), QString::from(kind), QString::from(&key)));
+        return Ok(());
+    }
+    let choices = offered
+        .into_iter()
+        .map(|offer| {
+            let qt = qt.clone();
+            let open: Box<dyn FnOnce() + Send> = Box::new(move || {
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(offer.kind), QString::default(), QString::from(&offer.key)));
+            });
+            (offer.label, open)
+        })
+        .collect();
+    sioul_sync::notify::remind_offering(title, body, choices)
+}
+
+/// A phone's notice stays in the shade this long after it comes, then goes:
+/// pressed later, its sheet would close another day.
+pub(crate) const PHONE_NOTICE_KEPT: i64 = 6 * 3600;
+
+/// Whether the end-of-work notice may still come at `stamp`, the hours
+/// having ended at `end` (Unix seconds): within its ten minutes, never before.
+fn still_due(stamp: i64, end: i64) -> bool {
+    (0..NOTICE_GRACE).contains(&(stamp - end))
+}
+
+/// When the end-of-work notice may come in the next days, for a phone's
+/// alarms (`eventalarms::coming`): at the end of each day's last work or
+/// admin hours, today's while it may still come; each (`day:work:<date>`,
+/// Unix seconds). A time just past stays as it was, so that the list stays
+/// the same from one minute to the next: Android rings it at once.
+pub(crate) fn coming_work(now: &Zoned) -> Vec<(String, i64)> {
+    let config = load_config();
+    let stamp = now.timestamp().as_second();
+    let mut out = Vec::new();
+    let mut date = now.date();
+    for _ in 0..3 {
+        if let Some(end) = work_end_on(&config, date, now.time_zone()) {
+            let at = end.timestamp().as_second();
+            if stamp - at < NOTICE_GRACE && !told(date) {
+                out.push((format!("day:work:{date}"), at));
+            }
+        }
+        let Ok(next) = date.tomorrow() else { break };
+        date = next;
+    }
+    out
+}
+
+/// A phone's alarm at the end of work (`eventalarms`, "day:work:…"): the
+/// notice as the window's minute decides it on a computer (`work_notice`),
+/// who keeps the notices read, never claimed, from there: Sioul may be put
+/// away, or not running (`share::looked`). Shown in Android's notifications
+/// with "Close the work day", which opens Sioul on the sheet. {"shown": true}
+/// once shown; {"again_at": ms} rung early, kept here only lately, or not
+/// yet (the matrix holding it) while its ten minutes last, asked each
+/// minute as a computer's minute asks it; {} when it does not come.
+pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
+    let stamp = now.timestamp().as_second();
+    let end = work_end(&load_config(), now).map(|end| end.timestamp().as_second());
+    if let Some(end) = end
+        && (1..3600).contains(&(end - stamp))
+    {
+        return serde_json::json!({ "again_at": end * 1000 });
+    }
+    match work_notice(now, || crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou)) {
+        WorkNotice::Comes(date) => {
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: "work".into() };
+            crate::eventalarms::day_note(&format!("day:work:{date}"), &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), &[close], stamp + PHONE_NOTICE_KEPT);
+            serde_json::json!({ "shown": true })
+        }
+        WorkNotice::Soon => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
+        WorkNotice::No if end.is_some_and(|end| still_due(stamp + 60, end)) && !told(now.date()) => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
+        WorkNotice::No => serde_json::json!({}),
+    }
 }
 
 /// Whether the night's review of the night `bed` belongs to is still to give:
@@ -361,5 +482,18 @@ mod tests {
         let fr = Translator::new("fr");
         let some = DayBalance { date: "2026-10-04".into(), costs: vec![scale("emotional", "heavy")], gain: GainBalance { level: "around", good_hours: 1.2, minimum: 1.0 }, said: Vec::new() };
         assert_eq!(balance_words(&some, &fr), ["Émotions\u{202f}: charge lourde pour vous.", "Du temps vous a ressourcé."]);
+    }
+
+    /// The end-of-work notice comes within ten minutes of the hours' end,
+    /// never before them: a phone's alarm rung hours early (an old day's,
+    /// after a restart) is not asked again each minute until then.
+    #[test]
+    fn the_end_of_work_notice_comes_within_its_ten_minutes_only() {
+        let end = 1_792_000_000;
+        assert!(still_due(end, end));
+        assert!(still_due(end + NOTICE_GRACE - 1, end));
+        assert!(!still_due(end + NOTICE_GRACE, end));
+        assert!(!still_due(end - 1, end));
+        assert!(!still_due(end - 8 * 3600, end), "hours before: not due, not asked again");
     }
 }

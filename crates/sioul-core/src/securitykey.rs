@@ -1000,10 +1000,12 @@ pub fn check(cert: &Cert, card: &CardInfo) -> Result<CertCheck, Mismatch> {
 
 /// The certificate of the security key `card` among `bytes` (armored or
 /// binary, one certificate or several), with what it is; else why none is.
+/// Read as GnuPG writes it (`pgp::minimal_mpis`).
 pub fn certificate_in(bytes: &[u8], card: &CardInfo) -> Result<(Cert, CertCheck), Mismatch> {
     use openpgp::parse::Parse;
     let mut why = Mismatch::Missing;
-    let parser = openpgp::cert::CertParser::from_bytes(bytes).map_err(|e| Mismatch::Invalid(e.to_string()))?;
+    let bytes = crate::pgp::minimal_mpis(bytes);
+    let parser = openpgp::cert::CertParser::from_bytes(&bytes).map_err(|e| Mismatch::Invalid(e.to_string()))?;
     for cert in parser.filter_map(Result::ok) {
         match check(&cert, card) {
             Ok(found) => return Ok((cert.strip_secret_key_material(), found)),
@@ -1137,10 +1139,11 @@ pub fn parts(cert: &Cert) -> Vec<Part> {
     out
 }
 
-/// The parts of the first certificate among `bytes` (`gpg --export`): none when there is none.
+/// The parts of the first certificate among `bytes` (`gpg --export`): none
+/// when there is none. Read as GnuPG writes it (`pgp::minimal_mpis`).
 pub fn parts_in(bytes: &[u8]) -> Vec<Part> {
     use openpgp::parse::Parse;
-    openpgp::cert::CertParser::from_bytes(bytes).ok().and_then(|mut certs| certs.find_map(Result::ok)).map(|cert| parts(&cert)).unwrap_or_default()
+    openpgp::cert::CertParser::from_bytes(&crate::pgp::minimal_mpis(bytes)).ok().and_then(|mut certs| certs.find_map(Result::ok)).map(|cert| parts(&cert)).unwrap_or_default()
 }
 
 /// "B81A…BF8C": a fingerprint as it is told apart at a glance.

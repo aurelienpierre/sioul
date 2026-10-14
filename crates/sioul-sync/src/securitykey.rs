@@ -821,8 +821,11 @@ mod tests {
         // Exported, then checked against the key as "Import from GnuPG" does: the key's own.
         let exported = gnupg.export(&fingerprint).unwrap();
         assert!(String::from_utf8_lossy(&exported).starts_with("-----BEGIN PGP PUBLIC KEY BLOCK-----"));
-        // Once on CI (Ubuntu's GnuPG), 0 in 60 here: what GnuPG kept, if it happens again.
-        let (_, check) = securitykey::certificate_in(&exported, &card.info).unwrap_or_else(|e| panic!("{e:?}; the import said: {imported}; GnuPG holds: {}", home.gpg(&["--with-colons", "--list-keys"])));
+        // Failed once on CI, never here: GnuPG 2.4.4 (Ubuntu 24.04's) writes
+        // about one key signature in 128 with a number one octet long, which
+        // Sequoia alone refuses; read as its value since (`pgp::minimal_mpis`).
+        // What GnuPG kept, should it happen again.
+        let (_, check) = securitykey::certificate_in(&exported, &card.info).unwrap_or_else(|e| panic!("{e:?}; the import said: {imported}; GnuPG holds: {}; exported: {}", home.gpg(&["--with-colons", "--list-keys"]), String::from_utf8_lossy(&exported)));
         assert_eq!(check.addresses, vec!["me@example.org".to_string()]);
         // A key GnuPG does not hold, or a fingerprint that is none: said so, nothing run with it.
         assert_eq!(gnupg.export("0123456789ABCDEF0123456789ABCDEF01234567"), Err(GnupgProblem::NoSuchKey));
@@ -865,6 +868,11 @@ mod tests {
     /// expired long ago (made in 2022 for a year, in a GnuPG home made for
     /// the test): GnuPG's "*" leaves them so; each said exactly; then
     /// "Renew for two years" names each subkey, and every part is renewed.
+    /// Each step of GnuPG's must succeed (`ThrowawayHome::gpg`). It failed on
+    /// CI now and then, a part or every part missing: GnuPG 2.4.4 (Ubuntu
+    /// 24.04's) wrote one of the key's signatures with a number one octet
+    /// long, which Sequoia alone refuses (`pgp::minimal_mpis`). Run 300 times
+    /// against that GnuPG on 14 October 2026: 8 failures before, none after.
     #[test]
     fn subkeys_expired_are_said_and_renewed_one_by_one() {
         let _alone = ON_CARD_TESTS.lock().unwrap_or_else(|e| e.into_inner());
@@ -879,9 +887,10 @@ mod tests {
         home.gpg(&["--quick-set-expire", &primary, "2y", "*"]);
         let gnupg = home.gnupg();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
-        let parts = securitykey::parts_in(&gnupg.export(&primary).unwrap());
+        let exported = gnupg.export(&primary).unwrap();
+        let parts = securitykey::parts_in(&exported);
         let roles: Vec<(securitykey::Role, bool)> = parts.iter().map(|p| (p.role, p.expires.is_some_and(|at| at <= now))).collect();
-        assert_eq!(roles, [(securitykey::Role::Primary, false), (securitykey::Role::Encryption, true), (securitykey::Role::Authentication, true)]);
+        assert_eq!(roles, [(securitykey::Role::Primary, false), (securitykey::Role::Encryption, true), (securitykey::Role::Authentication, true)], "GnuPG exported: {}", String::from_utf8_lossy(&exported));
         let tr = Translator::new("en");
         let said = securitykey::expired_parts(&tr, &parts, now);
         assert_eq!(said.len(), 2, "{said:?}");

@@ -3,7 +3,11 @@
 
 // Sioul in the system tray, on a desktop (main.qml): a click shows the window
 // or hides it, Sioul going on behind it (reminders, medicines, mail at its
-// hours, the sharing); its menu shows or hides the window, or quits. Without
+// hours, the sharing); its menu shows or hides the window, closes the work
+// day or the whole day on its sheet in the window (docs/reviews.md), or
+// quits. On macOS it is in the menu bar. On Windows the end of work's notice
+// and the night's come as its messages, and a click on one opens what it
+// offers (main.qml's `onTrayNotice`). Without
 // a tray (`available` false: GNOME without its extension, a bare window
 // manager), closing the window quits, as before. Plasma's tray menu is made of
 // widgets: on a computer Sioul is a widgets application (cpp/application.cpp),
@@ -38,6 +42,18 @@ Platform.SystemTrayIcon {
             onTriggered: tray.window.toggleShown()
         }
         Platform.MenuSeparator {}
+        // At any hour, as the places' two buttons: each on its sheet, the window brought back.
+        Platform.MenuItem {
+            objectName: "closeWorkDay"
+            text: tray.sioul.text("review-close-work")
+            onTriggered: tray.window.reviewFromTray("work")
+        }
+        Platform.MenuItem {
+            objectName: "closeWholeDay"
+            text: tray.sioul.text("review-close-night")
+            onTriggered: tray.window.reviewFromTray("night")
+        }
+        Platform.MenuSeparator {}
         Platform.MenuItem {
             text: tray.sioul.text("tray-quit")
             onTriggered: tray.window.quitSioul()
@@ -48,4 +64,7 @@ Platform.SystemTrayIcon {
         if (reason === Platform.SystemTrayIcon.Trigger)
             tray.window.toggleShown()
     }
+    // One of its messages clicked: what the last notice offered (Windows),
+    // else the window (main.qml's `trayMessageClicked`).
+    onMessageClicked: tray.window.trayMessageClicked()
 }

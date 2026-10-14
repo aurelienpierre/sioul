@@ -1665,6 +1665,12 @@ pub mod qobject {
         #[qinvokable]
         fn follow_icons(self: &Sioul, dark: bool, chosen: bool);
 
+        /// A notice said as the system's own, its words alone, off the
+        /// window's thread: the tray's notice (`tray_notice`) where no tray
+        /// shows messages (main.qml).
+        #[qinvokable]
+        fn plain_notice(self: &Sioul, title: &QString, body: &QString);
+
         /// Real time on or off: every folder of every address fetched each minute, and the Porch open.
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
@@ -1744,6 +1750,12 @@ pub mod qobject {
         /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
         #[qsignal]
         fn reminder_opened(self: Pin<&mut Sioul>, kind: QString, uri: QString, key: QString);
+
+        /// On Windows, the end of work's or the night's notice, said through
+        /// Sioul's icon in the tray (main.qml, Tray.qml): a click on it opens
+        /// `kind` and `key` as `reminder_opened` does (reviews.rs, `show_notice`).
+        #[qsignal]
+        fn tray_notice(self: Pin<&mut Sioul>, title: QString, body: QString, kind: QString, key: QString);
 
         /// An attachment passed the antivirus: the desktop opens it.
         #[qsignal]
@@ -5586,6 +5598,15 @@ impl qobject::Sioul {
 
     fn follow_icons(&self, dark: bool, chosen: bool) {
         crate::desktop::follow(dark, chosen);
+    }
+
+    fn plain_notice(&self, title: &QString, body: &QString) {
+        let (title, body) = (title.to_string(), body.to_string());
+        std::thread::spawn(move || {
+            if let Err(e) = sioul_sync::notify::remind(&title, &body, None) {
+                eprintln!("{e}");
+            }
+        });
     }
 
     fn set_realtime_mode(mut self: Pin<&mut Self>, on: bool) {

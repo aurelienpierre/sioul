@@ -19,6 +19,24 @@ QtObject {
     // Dark or light: the desktop's, unless forced (for the window's images).
     property bool dark: false
 
+    // Whether the window is dark: the colours chosen in Settings (`chosen`,
+    // "dark" or "light"); else, with high contrast on, the system's own
+    // colours, by their lightness (`lightness`, the palette's window colour);
+    // else the system's colour scheme when it says one (`scheme`,
+    // Qt.styleHints.colorScheme: Windows 10's style draws a light palette in
+    // dark mode); else the palette's lightness again. Pure, tried by
+    // tests/qml/tst_theme.qml; cpp/palette.cpp says the same for the icons
+    // chosen as Sioul starts (docs/qt-quick.md).
+    function darkFrom(chosen: string, scheme: int, lightness: real, highContrast: bool): bool {
+        if (chosen !== "")
+            return chosen === "dark"
+        if (!highContrast && scheme === Qt.ColorScheme.Dark)
+            return true
+        if (!highContrast && scheme === Qt.ColorScheme.Light)
+            return false
+        return lightness < 0.5
+    }
+
     readonly property color background: dark ? "#1e1f1c" : "#f5f2ec"
     readonly property color surface: dark ? "#272824" : "#fbfaf7"
     readonly property color text: dark ? "#e6e2da" : "#2d2a26"

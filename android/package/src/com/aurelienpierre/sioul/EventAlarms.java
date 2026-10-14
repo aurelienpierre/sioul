@@ -40,7 +40,9 @@ import java.util.Set;
  * yours to change in Android's settings. A tap opens the event in Sioul
  * (ReminderOpener). Rust silent, the words given with the list are shown
  * instead: never nothing. Apart from the doses: its own list, alarms,
- * channels and receiver.
+ * channels and receiver. The list also holds when the end of work's notice
+ * and the night's may come (kind "day"): Rust decides those at their alarm
+ * and shows them through DayNotes, or nothing; no words are kept for them.
  */
 final class EventAlarms
 {
@@ -341,13 +343,32 @@ final class EventAlarms
         done(context, key);
     }
 
-    /** The words given with the list, said when Rust cannot be asked at a reminder's time: never nothing. */
+    /**
+     * The words given with the list, said when Rust cannot be asked at a
+     * reminder's time: never nothing. Not the end of work's notice nor the
+     * night's (kind "day"): said by Rust alone, or not at all, as on a
+     * computer (Rust's notice may not come: the day closed, a meeting, the
+     * notice told on another device).
+     */
     static void fallback(Context context, String key)
     {
         JSONObject reminder = kept(context, key);
-        if (reminder == null)
+        if (reminder == null || isDay(reminder.optString("kind")))
             return;
         post(context, key, isAlarm(reminder.optString("kind"), key), reminder.optString("title"), reminder.optString("body"), "", 0);
+    }
+
+    /**
+     * Whether an entry of the list is the end of work's notice or the
+     * night's (DayNotes), which have no words kept. Pure, checked on a JVM
+     * (android/jvm-checks/DayNotesCheck.java).
+     *
+     * @param kind the entry's kind, as Rust gave it
+     * @return whether it is one of the day's
+     */
+    static boolean isDay(String kind)
+    {
+        return "day".equals(kind);
     }
 
     /** A reminder said for nothing (by the fallback) taken away. */
@@ -395,6 +416,7 @@ final class EventAlarms
         { "alarms-pause", "An event's alarms during a pause", "Alarmes des événements pendant une pause" },
         { "mail", "New mail", "Nouveau courrier" },
         { "mail-through", "New mail from people always let through", "Courrier des personnes qui passent toujours" },
+        { "day", "End of the day", "Fin de journée" },
         { "open", "Open", "Ouvrir" },
     };
 

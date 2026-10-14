@@ -9,7 +9,8 @@
 // alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java); the time
 // running's notification (TimeNote.java); the alarm at waking
 // (WakeAlarms.java); the events' reminders and new mail's notification
-// (EventAlarms.java, MailNotes.java); the pauses' do-not-disturb (PauseMode.java); do-not-disturb
+// (EventAlarms.java, MailNotes.java); the end of work's notice and the
+// night's (DayNotes.java); the pauses' do-not-disturb (PauseMode.java); do-not-disturb
 // on every device and the phone kept in step in the background (StepService.java,
 // DndReceiver.java, DndContacts.java); other apps' notifications held until
 // their time (AppNotes.java, in a process of its own); and your
@@ -139,6 +140,7 @@ jclass pauseMode = nullptr;
 jclass mailShortcuts = nullptr;
 jclass eventAlarms = nullptr;
 jclass mailNotes = nullptr;
+jclass dayNotes = nullptr;
 jclass stepService = nullptr;
 jclass appNotes = nullptr;
 
@@ -376,6 +378,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
         eventAlarms = appClass(env, "com/aurelienpierre/sioul/EventAlarms");
     if (!mailNotes)
         mailNotes = appClass(env, "com/aurelienpierre/sioul/MailNotes");
+    if (!dayNotes)
+        dayNotes = appClass(env, "com/aurelienpierre/sioul/DayNotes");
     if (!stepService)
         stepService = appClass(env, "com/aurelienpierre/sioul/StepService");
     if (!appNotes)
@@ -839,6 +843,23 @@ extern "C" void sioul_android_mail_note(const char *json)
         threw(env);
     }
     askNotifications();
+}
+
+// The end of work's notice or the night's, with their buttons, "End of the
+// day" (crates/sioul-app/src/eventalarms.rs `day_note`, DayNotes.java): from
+// Rust's answer at their alarm, in whichever process it rang. Any thread.
+extern "C" void sioul_android_day_note(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json || !dayNotes)
+        return;
+    const LocalFrame frame(env);
+    const jmethodID show = env->GetStaticMethodID(dayNotes, "show", "(Landroid/content/Context;Ljava/lang/String;)V");
+    if (threw(env) || !show)
+        return;
+    env->CallStaticVoidMethod(dayNotes, show, context, javaText(env, json));
+    threw(env);
 }
 
 // What a tapped reminder or mail notification opens, once (kept by
