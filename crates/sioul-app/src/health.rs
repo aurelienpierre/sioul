@@ -3029,12 +3029,15 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
 }
 
 /// The night's own notice's buttons (docs/reviews.md): "Close the whole
-/// day" while that night's review is to give (`open`), then "Options…", the
-/// block's question.
-fn night_offered(block: &Kept, open: bool) -> Vec<crate::reviews::Offered> {
-    let close = crate::reviews::Offered { label: tr().text("review-close-night", None), kind: "review", key: "night".into() };
+/// day" while that night's review is to give at `now`, its press carrying
+/// the night's day ("night:2026-10-14"), then "Options…", the block's
+/// question.
+fn night_offered(block: &Kept, now: &Zoned) -> Vec<crate::reviews::Offered> {
     let options = crate::reviews::Offered { label: tr().text("need-open", None), kind: "need", key: block.key.clone() };
-    if open { vec![close, options] } else { vec![options] }
+    match sioul_core::reviews::night_day(block.at, now.time_zone()).filter(|_| crate::reviews::night_open(block.at, now)) {
+        Some(day) => vec![crate::reviews::Offered { label: tr().text("review-close-night", None), kind: "review", key: format!("night:{day}") }, options],
+        None => vec![options],
+    }
 }
 
 /// Each minute, from the computer you are at (`needs_now`): a block's
@@ -3062,7 +3065,7 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
             // The night's own notice: closing the day is offered beside its
             // options while that night's review is to give, as each system
             // shows buttons (docs/reviews.md).
-            crate::reviews::show_notice(qt, &name, &hm(block.start), night_offered(&block, crate::reviews::night_open(block.at, now)))
+            crate::reviews::show_notice(qt, &name, &hm(block.start), night_offered(&block, now))
         } else {
             sioul_sync::notify::remind(&name, &hm(block.start), action)
         };
@@ -3125,7 +3128,7 @@ pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
         return serde_json::json!({});
     };
     let date = Timestamp::from_second(block.start).map(|t| t.to_zoned(now.time_zone().clone()).date()).unwrap_or(now.date());
-    let offered = night_offered(&block, crate::reviews::night_open(block.at, now));
+    let offered = night_offered(&block, now);
     crate::eventalarms::day_note(&format!("day:night:{date}"), &name_of(&block), &clock(block.start, now.time_zone()), &offered, block.end.min(stamp + crate::reviews::PHONE_NOTICE_KEPT));
     serde_json::json!({ "shown": true })
 }

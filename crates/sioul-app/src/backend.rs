@@ -1403,14 +1403,16 @@ pub mod qobject {
         fn done_for_the_day(self: Pin<&mut Sioul>) -> QString;
 
         /// The end of the work day ("work") or of the day before sleep
-        /// ("night"): the review's sheet, as JSON (`reviews::view`).
+        /// ("night"), or a notice's press for a day ("work:2026-10-14"): the
+        /// review's sheet, as JSON, "null" for a day it no longer closes (`reviews::view`).
         #[qinvokable]
         fn day_review(self: &Sioul, kind: &QString) -> QString;
 
-        /// The review kept, each answer optional ("" for none); the work day
-        /// then closed as "Done for today": the screen after it, as JSON, else "".
+        /// The review kept for `date`, the day its sheet showed, each answer
+        /// optional ("" for none); the work day then closed as "Done for
+        /// today" when it is still today's: the screen after it, as JSON, else "".
         #[qinvokable]
-        fn close_review(self: Pin<&mut Sioul>, kind: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString;
+        fn close_review(self: Pin<&mut Sioul>, kind: &QString, date: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString;
 
         /// A day's words on the Health page, and today the button to close it (`reviews::line`).
         #[qinvokable]
@@ -5125,8 +5127,8 @@ impl qobject::Sioul {
         QString::from(&crate::reviews::view(&kind.to_string()))
     }
 
-    fn close_review(self: Pin<&mut Self>, kind: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString {
-        crate::reviews::close(self, &kind.to_string(), &felt.to_string(), &mix.to_string(), &memo.to_string())
+    fn close_review(self: Pin<&mut Self>, kind: &QString, date: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString {
+        crate::reviews::close(self, &kind.to_string(), &date.to_string(), &felt.to_string(), &mix.to_string(), &memo.to_string())
     }
 
     fn day_review_line(&self, date: &QString) -> QString {

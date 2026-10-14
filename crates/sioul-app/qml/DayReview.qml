@@ -32,7 +32,8 @@ Dialog {
     property bool backShown: false
 
     // "work" or "night": the sheet for it, with the answers already given, or
-    // those being given when it was left with "Not now" the same day.
+    // those being given when it was left with "Not now" the same day; or a
+    // notice's press for a day ("work:2026-10-14"), nothing once the day turned.
     function show(kind) {
         const view = JSON.parse(sheet.sioul.dayReview(kind) || "null")
         if (!view)
@@ -48,11 +49,12 @@ Dialog {
         sheet.open()
     }
 
-    // Kept; the work day closed as "Done for today" closes it, its screen after.
+    // Kept for the day the sheet shows, though the day turned while it was
+    // open; the work day closed as "Done for today" closes it, its screen after.
     function closeIt() {
         if (sheet.view === null)
             return
-        const closing = sheet.sioul.closeReview(sheet.view.kind, sheet.felt, sheet.mix, memo.text)
+        const closing = sheet.sioul.closeReview(sheet.view.kind, sheet.view.date, sheet.felt, sheet.mix, memo.text)
         // Given: the next time starts from what is kept.
         sheet.view = null
         sheet.close()
