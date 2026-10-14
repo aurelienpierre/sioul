@@ -1091,6 +1091,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// The handshake (review of battery part C, the sixth review's C1): a
+    /// device's notes in the folder say the opening of each other device's
+    /// entry it read (`share::acknowledged`), written at its exchange, again
+    /// once that opening changes: the desk reads there that the phone read
+    /// its current opening, and not before the phone did.
+    #[test]
+    fn each_device_says_which_opening_of_the_others_it_read() {
+        let base = scratch("acknowledged");
+        let folder = base.join("shared");
+        std::fs::create_dir_all(&folder).unwrap();
+        let desk = Device::new(&base, "desk", COMPUTER);
+        let phone = Device::new(&base, "phone", PHONE);
+        desk.session(&folder, |e| e.start(DUE - 3_600));
+        phone.session(&folder, |e| e.start(DUE - 3_600));
+        desk.exchange(&folder, DUE - 3_500);
+        phone.exchange(&folder, DUE - 3_450);
+        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 3_600)), "the phone read the desk's opening");
+        // The desk opens again: not said until the phone read it.
+        desk.session(&folder, |e| e.start(DUE - 30));
+        desk.exchange(&folder, DUE - 25);
+        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 3_600)), "its new opening not read yet");
+        phone.exchange(&folder, DUE + 120);
+        assert_eq!(crate::share::acknowledged(&folder, &desk.id).get(&phone.id), Some(&(DUE - 30)), "read, said at once");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// What each device did to remind a dose (`health-reminders.toml`, review
     /// of battery part C, the fifth review): each device's entry comes whole
     /// to the others; an older Sioul, which knows no such file, takes none of
@@ -1114,7 +1140,7 @@ mod tests {
         old_exchange(DUE - 3_400);
         // The desk's first try did not go out, then it promised quiet past the phone's alarm.
         let promised = Tried { unshown: DUE + 5, quiet: DUE + 900, ..Tried::default() };
-        DoseReminders::update(&reminders(&desk), DUE + 5, |all| *all.entry(DOSE, &desk.id) = promised).unwrap();
+        DoseReminders::update(&reminders(&desk), DUE + 5, &desk.id, |all| *all.entry(DOSE, &desk.id) = promised).unwrap();
         desk.exchange(&folder, DUE + 420);
         for n in 0..3 {
             old_exchange(DUE + 430 + n);
@@ -1127,7 +1153,7 @@ mod tests {
         phone.exchange(&folder, DUE + 600);
         assert_eq!(DoseReminders::read(&reminders(&phone)).unwrap().of(DOSE, &desk.id), Some(promised), "whole, as the desk wrote it");
         // The phone's alarm shows it: its own entry, read back on the desk.
-        DoseReminders::update(&reminders(&phone), DUE + 601, |all| all.entry(DOSE, &phone.id).shown = DUE + 601).unwrap();
+        DoseReminders::update(&reminders(&phone), DUE + 601, &phone.id, |all| all.entry(DOSE, &phone.id).shown = DUE + 601).unwrap();
         phone.exchange(&folder, DUE + 610);
         desk.exchange(&folder, DUE + 620);
         let read = DoseReminders::read(&reminders(&desk)).unwrap();

@@ -2573,6 +2573,13 @@ struct Seen {
     /// older Sioul passes it over (review of 10 October 2026).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     full: BTreeMap<String, u32>,
+    /// Each other device's last opening read here (its entry's `started`,
+    /// `devices::Entry`): a computer reminds a dose plainly as its first only
+    /// once every phone said so of its current opening, before the dose's
+    /// time (docs/health.md, "What became of a reminder"; review of battery
+    /// part C, the sixth review's C1). An older Sioul writes none: never said.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    opened: BTreeMap<String, i64>,
     /// Its size changed at each writing (`pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pad: String,
@@ -5951,18 +5958,21 @@ fn seen_path(folder: &Path, computer: &str) -> PathBuf {
 /// Returns when they are due again (milliseconds).
 fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32>>, now_ms: i64) -> i64 {
     let again = if crate::devices::in_use(sharing.memory) { 15 * 60 } else { 24 * 3600 };
+    // Each other device's opening as its entry says it here: said at once when it changes.
+    let opened = crate::devices::all(sharing.folder, sharing.key).0.into_iter().filter(|e| e.id != sharing.computer && e.started > 0).map(|e| (e.id, e.started)).collect();
     let mut seen = Seen {
         at: now_ms / 1000,
         round: memory.round,
         read: memory.read.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, (round, _))| (c.clone(), *round)).collect(),
         full: full_asked(memory, all),
+        opened,
         pad: String::new(),
     };
-    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && old.full == seen.full && seen.at - old.at < again) {
+    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && old.full == seen.full && old.opened == seen.opened && seen.at - old.at < again) {
         return (old.at + again) * 1000;
     }
     let path = seen_path(sharing.folder, sharing.computer);
-    let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), full: seen.full.clone(), ..*seen }).unwrap_or_default();
+    let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), full: seen.full.clone(), opened: seen.opened.clone(), ..*seen }).unwrap_or_default();
     seen.pad = ".".repeat(pad_for(&path, |pad| text(&seen, pad).len() as u64));
     if let Ok(text) = toml::to_string(&seen) {
         let _ = write_atomically(&path, text.as_bytes());
@@ -5990,6 +6000,13 @@ fn asked_for_full(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
         .filter_map(|c| read_seen(sharing.folder, c))
         .filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400)
         .any(|s| s.full.get(sharing.computer).is_some_and(|round| (last_full..=memory.round).contains(round)))
+}
+
+/// What each other device's notes say of `computer`'s opening: the
+/// `started` of its entry they last read (`Seen::opened`), by device. A device
+/// whose notes say nothing of it (an older Sioul, notes not come yet) is not in it.
+pub fn acknowledged(folder: &Path, computer: &str) -> BTreeMap<String, i64> {
+    computers(folder).into_iter().filter(|c| c != computer).filter_map(|c| read_seen(folder, &c).and_then(|seen| seen.opened.get(computer).copied()).map(|started| (c, started))).collect()
 }
 
 fn read_seen_in(folder: &Path, computer: &str) -> Option<Seen> {

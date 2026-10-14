@@ -88,20 +88,30 @@ impl DoseReminders {
     }
 
     /// The entries changed by `change`, one writer at a time, read again just
-    /// before, so that nothing written meanwhile is written over.
-    pub fn update<T>(path: &Path, now: i64, change: impl FnOnce(&mut DoseReminders) -> T) -> Result<T, Problem> {
+    /// before, so that nothing written meanwhile is written over; `me`, this
+    /// device's id: its own entries past `KEPT_DAYS` dropped.
+    pub fn update<T>(path: &Path, now: i64, me: &str, change: impl FnOnce(&mut DoseReminders) -> T) -> Result<T, Problem> {
         crate::filelock::with_lock(path, || {
             let mut all = DoseReminders::read(path).map_err(Problem::Unsound)?;
             let out = change(&mut all);
-            all.save(path, now).map_err(Problem::Write)?;
+            all.save(path, now, me).map_err(Problem::Write)?;
             Ok(out)
         })
     }
 
-    /// Saved, entries past `KEPT_DAYS` dropped. Use `update`: it holds the lock.
-    fn save(&mut self, path: &Path, now: i64) -> Result<(), String> {
+    /// Saved, this device's own entries past `KEPT_DAYS` dropped, by its
+    /// clock: never another device's, whatever this clock says (each device
+    /// takes its own out, and the sharing carries that; a clock days ahead
+    /// would empty the others' else: the sixth review's L3, R8). Use
+    /// `update`: it holds the lock.
+    fn save(&mut self, path: &Path, now: i64, me: &str) -> Result<(), String> {
         let oldest = now - KEPT_DAYS * 86_400;
-        self.dose.retain(|key, _| due_of(key) >= oldest);
+        for (key, devices) in &mut self.dose {
+            if due_of(key) < oldest {
+                devices.remove(me);
+            }
+        }
+        self.dose.retain(|_, devices| !devices.is_empty());
         let text = format!("# What each device did to remind each dose (docs/health.md, \"What became of a reminder\").\n{}", toml::to_string(self).map_err(|e| e.to_string())?);
         crate::health::write_witnessed(path, text.as_bytes())
     }
@@ -127,6 +137,12 @@ impl DoseReminders {
         self.dose.get(key)?.iter().filter(|(device, t)| device.as_str() != me && t.maybe > 0 && t.shown == 0).map(|(_, t)| t.maybe).max()
     }
 
+    /// The device whose notice of the dose went latest, not known shown, other
+    /// than `me`, and when; none.
+    pub fn maybe_by(&self, key: &str, me: &str) -> Option<(String, i64)> {
+        self.dose.get(key)?.iter().filter(|(device, t)| device.as_str() != me && t.maybe > 0 && t.shown == 0).max_by_key(|(_, t)| t.maybe).map(|(device, t)| (device.clone(), t.maybe))
+    }
+
     /// When a device's notice of the dose went without being known shown: a
     /// reminder that may not have shown (its question on the past says so).
     pub fn maybe_anywhere(&self, key: &str) -> Option<i64> {
@@ -149,6 +165,11 @@ pub enum Elsewhere {
     Unshown { device: crate::health::Named, at: i64 },
     /// In use around the dose's time, and no word of its own on this dose read here.
     Unknown { device: crate::health::Named },
+    /// Closed then, as last heard, and no word of its own on this dose read
+    /// here; not taken as its word that it did not remind it: this device's
+    /// own pull did not go through since the dose, or something it wrote
+    /// later was read (a claim, an entry: it opened since).
+    Closed { device: crate::health::Named, at: i64 },
     /// Another phone: its own alarm may remind it too.
     Alarm { device: crate::health::Named },
     /// The reminders' file does not read here: what the others did is not known.
@@ -184,13 +205,18 @@ pub const QUIET_AFTER: i64 = crate::health::ALARM_AFTER + 5 * 60;
 /// - its first try not gone out, no promise covering `at`: it may have tried since;
 /// - no word of its own on the dose: a computer closed cleanly, everything it
 ///   wrote read here, did not remind it, until `QUIET_AFTER` past `since`
-///   (opened since, it promises that much before it may); a computer in use,
-///   or an older Sioul, may have; another phone's own alarm may remind it.
+///   (opened since, it is never the first before every phone acknowledged its
+///   opening, and promises that much before it may remind), but only when
+///   this device's own pull went through since the dose (`pulled`) and
+///   nothing it wrote after its close was read (a claim renewed while open,
+///   an entry of the reminders: the sixth review's C1); a computer in use, or
+///   an older Sioul, may have; another phone's own alarm may remind it.
 ///
 /// `entries`: none when the file does not read here (nothing known).
 /// `me_phone`: the device reading is a phone (a phone is then named, never
 /// "the phone", when two count, it among them).
-pub fn others(key: &str, since: i64, at: i64, me: &str, me_phone: bool, entries: Option<&DoseReminders>, peers: &[crate::health::Peer]) -> Others {
+#[allow(clippy::too_many_arguments)]
+pub fn others(key: &str, since: i64, at: i64, me: &str, me_phone: bool, entries: Option<&DoseReminders>, peers: &[crate::health::Peer], pulled: bool) -> Others {
     use crate::health::{Named, SKEW, counts};
     let Some(entries) = entries else { return Others::Doubt(vec![Elsewhere::Unread]) };
     if entries.shown(key) {
@@ -209,12 +235,16 @@ pub fn others(key: &str, since: i64, at: i64, me: &str, me_phone: bool, entries:
             Some(tried) if tried.quiet == NEVER || tried.quiet.saturating_sub(margin) >= at => {}
             Some(tried) if tried.unshown > 0 => doubts.push(Elsewhere::Unshown { device, at: tried.unshown }),
             _ if phone => doubts.push(Elsewhere::Alarm { device }),
-            _ => {
-                let closed = peer.complete && peer.said.as_ref().is_some_and(|s| !s.working && s.closed >= s.started);
-                if !(closed && at <= since + QUIET_AFTER - margin) {
-                    doubts.push(Elsewhere::Unknown { device });
+            _ => match peer.said.as_ref().filter(|s| peer.complete && !s.working && s.closed >= s.started) {
+                Some(said) => {
+                    // Anything it wrote after its close: it opened since.
+                    let later = peer.claimed > said.closed || entries.dose.values().filter_map(|devices| devices.get(&peer.id)).any(|t| t.maybe.max(t.shown).max(t.unshown) > said.closed);
+                    if !(pulled && !later && at <= since + QUIET_AFTER - margin) {
+                        doubts.push(Elsewhere::Closed { device, at: said.closed });
+                    }
                 }
-            }
+                None => doubts.push(Elsewhere::Unknown { device }),
+            },
         }
     }
     if doubts.is_empty() { Others::First } else { Others::Doubt(doubts) }
@@ -259,38 +289,47 @@ mod tests {
         let at = DUE + 600;
         let desk = computer("desk", DUE + 540, true);
         // Shown on the desk: reminded.
-        assert_eq!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { maybe: DUE + 1, shown: DUE + 2, ..Tried::default() })), std::slice::from_ref(&desk)), Others::Reminded);
+        assert_eq!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { maybe: DUE + 1, shown: DUE + 2, ..Tried::default() })), std::slice::from_ref(&desk), true), Others::Reminded);
         // Sent, not known shown (a server answering late, a bus stalled under it): may be on the screen.
-        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { maybe: DUE + 1, ..Tried::default() })), std::slice::from_ref(&desk)), Others::Doubt(d) if matches!(d[..], [Elsewhere::Sent { at, .. }] if at == DUE + 1)));
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { maybe: DUE + 1, ..Tried::default() })), std::slice::from_ref(&desk), true), Others::Doubt(d) if matches!(d[..], [Elsewhere::Sent { at, .. }] if at == DUE + 1)));
         // Not gone out, then quiet past the alarm, promised: first.
         let quiet = Tried { unshown: DUE + 5, quiet: DUE + QUIET_AFTER, ..Tried::default() };
-        assert_eq!(others(KEY, DUE, at, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&desk)), Others::First);
+        assert_eq!(others(KEY, DUE, at, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&desk), true), Others::First);
         // The same, the alarm late (a phone off, turned on at +20 min): past the promise, a doubt.
-        assert!(matches!(others(KEY, DUE, DUE + 1_200, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&desk)), Others::Doubt(d) if matches!(d[..], [Elsewhere::Unshown { .. }])));
+        assert!(matches!(others(KEY, DUE, DUE + 1_200, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&desk), true), Others::Doubt(d) if matches!(d[..], [Elsewhere::Unshown { .. }])));
         // Not gone out, no promise read yet (its tries may go on): a doubt.
-        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { unshown: DUE + 5, ..Tried::default() })), std::slice::from_ref(&desk)), Others::Doubt(_)));
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&with("desk", Tried { unshown: DUE + 5, ..Tried::default() })), std::slice::from_ref(&desk), true), Others::Doubt(_)));
         // A clock ahead by three minutes: its promise read three minutes shorter.
         let ahead = Peer { ahead: 180, ..desk.clone() };
-        assert!(matches!(others(KEY, DUE, DUE + QUIET_AFTER - 200, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&ahead)), Others::Doubt(_)));
+        assert!(matches!(others(KEY, DUE, DUE + QUIET_AFTER - 200, "me", true, Some(&with("desk", quiet)), std::slice::from_ref(&ahead), true), Others::Doubt(_)));
         // In use, no word on this dose: may have reminded it.
-        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&desk)), Others::Doubt(d) if matches!(d[..], [Elsewhere::Unknown { .. }])));
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&desk), true), Others::Doubt(d) if matches!(d[..], [Elsewhere::Unknown { .. }])));
         // Closed before the dose, everything read: did not, until QUIET_AFTER.
         let closed = computer("desk", DUE - 600, false);
-        assert_eq!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&closed)), Others::First);
-        assert!(matches!(others(KEY, DUE, DUE + QUIET_AFTER, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&closed)), Others::Doubt(_)));
+        assert_eq!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&closed), true), Others::First);
+        assert!(matches!(others(KEY, DUE, DUE + QUIET_AFTER, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&closed), true), Others::Doubt(_)));
+        // Closed, but this phone's own pull did not go through since the dose: not its word (C1).
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&closed), false), Others::Doubt(d) if matches!(d[..], [Elsewhere::Closed { at, .. }] if at == DUE - 600)));
+        // Closed as its entry last came, its claim renewed later while open (R1d): opened since.
+        let claimed = Peer { claimed: DUE - 30, ..closed.clone() };
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), std::slice::from_ref(&claimed), true), Others::Doubt(d) if matches!(d[..], [Elsewhere::Closed { .. }])));
+        // Or an entry of its own on another dose, dated after its close.
+        let mut later = DoseReminders::default();
+        later.entry("iron@1800000000", "desk").maybe = DUE - 60;
+        assert!(matches!(others(KEY, DUE, at, "me", true, Some(&later), std::slice::from_ref(&closed), true), Others::Doubt(_)));
         // Never again, promised (its tries over): first, whenever.
-        assert_eq!(others(KEY, DUE, DUE + 7_200, "me", true, Some(&with("desk", Tried { unshown: DUE + 5, quiet: NEVER, ..Tried::default() })), std::slice::from_ref(&desk)), Others::First);
+        assert_eq!(others(KEY, DUE, DUE + 7_200, "me", true, Some(&with("desk", Tried { unshown: DUE + 5, quiet: NEVER, ..Tried::default() })), std::slice::from_ref(&desk), true), Others::First);
         // Another phone, whatever it wrote of nothing: its own alarm may ring too.
         let peers = [desk.clone(), phone("tablet")];
-        match others(KEY, DUE, at, "me", true, Some(&with("desk", quiet)), &peers) {
+        match others(KEY, DUE, at, "me", true, Some(&with("desk", quiet)), &peers, true) {
             Others::Doubt(d) => assert!(matches!(&d[..], [Elsewhere::Alarm { device }] if device.name == "tablet" && !device.phone), "{d:?}"),
             other => panic!("{other:?}"),
         }
         // Not read here: nothing known.
-        assert_eq!(others(KEY, DUE, at, "me", true, None, std::slice::from_ref(&desk)), Others::Doubt(vec![Elsewhere::Unread]));
+        assert_eq!(others(KEY, DUE, at, "me", true, None, std::slice::from_ref(&desk), true), Others::Doubt(vec![Elsewhere::Unread]));
         // A device of mine is not another; one said off does not count.
-        assert_eq!(others(KEY, DUE, at, "desk", true, Some(&DoseReminders::default()), std::slice::from_ref(&desk)), Others::First);
-        assert_eq!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), &[Peer { off: true, ..desk }]), Others::First);
+        assert_eq!(others(KEY, DUE, at, "desk", true, Some(&DoseReminders::default()), std::slice::from_ref(&desk), true), Others::First);
+        assert_eq!(others(KEY, DUE, at, "me", true, Some(&DoseReminders::default()), &[Peer { off: true, ..desk }], true), Others::First);
     }
 
     /// The file: each device's entry, written whole and kept two days; a file
@@ -303,8 +342,8 @@ mod tests {
         crate::health::APART.with(|apart| *apart.borrow_mut() = Some(dir.join("apart")));
         let path = dir.join(FILE);
         assert_eq!(DoseReminders::read(&path), Ok(DoseReminders::default()), "never written: empty");
-        DoseReminders::update(&path, DUE + 1, |all| all.entry(KEY, "desk").maybe = DUE + 1).unwrap();
-        DoseReminders::update(&path, DUE + 2, |all| all.entry(KEY, "phone").shown = DUE + 2).unwrap();
+        DoseReminders::update(&path, DUE + 1, "desk", |all| all.entry(KEY, "desk").maybe = DUE + 1).unwrap();
+        DoseReminders::update(&path, DUE + 2, "phone", |all| all.entry(KEY, "phone").shown = DUE + 2).unwrap();
         let read = DoseReminders::read(&path).unwrap();
         assert_eq!(read.of(KEY, "desk"), Some(Tried { maybe: DUE + 1, ..Tried::default() }));
         assert!(read.shown(KEY), "shown on the phone: reminded");
@@ -312,15 +351,18 @@ mod tests {
         assert_eq!(read.maybe_elsewhere(KEY, "desk"), None, "none but its own, as the desk reads it");
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("[dose.\"levo@1800000000\".desk]"), "{text}");
-        // Two days on, gone.
-        DoseReminders::update(&path, DUE + 3 * 86_400, |_| ()).unwrap();
-        assert!(DoseReminders::read(&path).unwrap().dose.is_empty());
+        // A clock three days ahead (R8): its own entries go, never another device's.
+        DoseReminders::update(&path, DUE + 3 * 86_400, "phone", |_| ()).unwrap();
+        let read = DoseReminders::read(&path).unwrap();
+        assert!(read.of(KEY, "phone").is_none() && read.of(KEY, "desk").is_some(), "the desk's entry is the desk's to take out");
+        DoseReminders::update(&path, DUE + 3 * 86_400, "desk", |_| ()).unwrap();
+        assert!(DoseReminders::read(&path).unwrap().dose.is_empty(), "each its own, two days on");
         // Lost after it was written: never empty.
         std::fs::remove_file(&path).unwrap();
         assert_eq!(DoseReminders::read(&path), Err(Unsound::Lost));
         std::fs::write(&path, "[dose.\"x\"").unwrap();
         assert_eq!(DoseReminders::read(&path), Err(Unsound::Unreadable));
-        assert!(DoseReminders::update(&path, DUE, |_| ()).is_err(), "nothing written over it");
+        assert!(DoseReminders::update(&path, DUE, "desk", |_| ()).is_err(), "nothing written over it");
         crate::health::APART.with(|apart| *apart.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
     }

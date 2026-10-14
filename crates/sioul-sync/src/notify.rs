@@ -641,11 +641,20 @@ fn listened_within(bus: &LocalConnection, heard: &Rc<RefCell<Vec<Heard>>>, each:
 
 /// An answer to a call of this connection's own sent without waiting
 /// (`dbus::channel::Sender::send`): its return, or the error the bus or the
-/// server gave, in a few words.
+/// server gave: whether it says the call reached nobody (`undelivered`), and
+/// in a few words.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 enum Reply {
     Return(dbus::Message),
-    Error(String),
+    Error { undelivered: bool, why: String },
+}
+
+/// Whether a D-Bus error says the call reached nobody: no server owns the
+/// name. Any other (no reply, the server gone, the server's own error) may
+/// come after the server took the notice and showed it (the sixth review's L2).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn undelivered(e: &dbus::Error) -> bool {
+    matches!(e.name(), Some("org.freedesktop.DBus.Error.ServiceUnknown" | "org.freedesktop.DBus.Error.NameHasNoOwner"))
 }
 
 /// The answers to this connection's calls sent without waiting, by serial,
@@ -667,8 +676,8 @@ fn heard_replies(bus: &LocalConnection) -> Replies {
             rule,
             Box::new(move |mut answer: dbus::Message, _: &LocalConnection| {
                 if let Some(serial) = answer.get_reply_serial() {
-                    let failed = answer.as_result().err().map(|e| said(&e));
-                    kept.borrow_mut().insert(serial, failed.map_or(Reply::Return(answer), Reply::Error));
+                    let failed = answer.as_result().err().map(|e| Reply::Error { undelivered: undelivered(&e), why: said(&e) });
+                    kept.borrow_mut().insert(serial, failed.unwrap_or(Reply::Return(answer)));
                 }
                 true
             }),
@@ -702,6 +711,9 @@ enum Tried {
     /// Sent, not answered in time: why; its connection kept (number 0 until
     /// its answer comes), and the serial of its Notify.
     Maybe(String, Shown, u32),
+    /// Sent, then refused otherwise than "no server" (no reply, the server
+    /// gone, its own error): it may have shown, and no answer will come.
+    Lost(String),
     /// Not sent: no longer to remind, as its words said just before it would
     /// have gone (`Again::late`).
     Done,
@@ -756,8 +768,9 @@ fn try_once(notice: &mut Notice, bus: Option<LocalConnection>, words: &mut dyn F
             shown.id = answer.read1::<u32>().unwrap_or(0);
             Tried::Shown(shown)
         }
-        // The bus said no (no server: plasmashell starting again) or the server did.
-        Some(Reply::Error(why)) => Tried::Unshown(why),
+        // No server (plasmashell starting again): it reached nobody.
+        Some(Reply::Error { undelivered: true, why }) => Tried::Unshown(why),
+        Some(Reply::Error { why, .. }) => Tried::Lost(why),
         None => Tried::Maybe("the notification server did not answer in time".to_string(), shown, serial),
     }
 }
@@ -799,7 +812,7 @@ fn first_try(mut notice: Notice, mut again: Again, pressed: Pressed, slot: &Arc<
     let outcome = match &tried {
         Tried::Shown(_) => Outcome::Shown,
         Tried::Unshown(why) => Outcome::Unshown(why.clone()),
-        Tried::Maybe(why, ..) => Outcome::Maybe(why.clone()),
+        Tried::Maybe(why, ..) | Tried::Lost(why) => Outcome::Maybe(why.clone()),
         Tried::Done => Outcome::Gone,
     };
     let waited = told(slot, outcome);
@@ -815,7 +828,9 @@ fn first_try(mut notice: Notice, mut again: Again, pressed: Pressed, slot: &Arc<
             }
             wait_for_press(&shown, pressed, Some(&mut *again.record));
         }
-        Tried::Maybe(_, shown, serial) => wait_late(shown, serial, &mut notice, again, pressed, late),
+        Tried::Maybe(_, shown, serial) => wait_late(shown, serial, notice, again, pressed, late),
+        // Taken, then refused otherwise than "no server": it may be on the screen; tried again, the doubt first.
+        Tried::Lost(_) => show_again(notice, again, pressed),
         Tried::Unshown(_) => {
             if went {
                 again.record.refused();
@@ -829,18 +844,23 @@ fn first_try(mut notice: Notice, mut again: Again, pressed: Pressed, slot: &Arc<
 
 /// A notice sent and not answered in time: its answer still heard on its
 /// connection, however late (`LISTEN_LATE`), never sent again; answered, it
-/// was shown, late (`shown_late`), and its button counts; refused, or its
-/// connection gone, it was not.
+/// was shown, late (`shown_late`), and its button counts. Refused late, or
+/// its connection gone (the server, or the bus, gone): it may have shown,
+/// its record says so still, and it is tried again, the doubt first, while
+/// its grace lasts (`show_again`: the sixth review's M2).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn wait_late(mut shown: Shown, serial: u32, notice: &mut Notice, mut again: Again, pressed: Pressed, late: Late) {
+fn wait_late(mut shown: Shown, serial: u32, mut notice: Notice, mut again: Again, pressed: Pressed, late: Late) {
     let until = Instant::now() + LISTEN_LATE;
     match answer_by(&shown.bus, &shown.replies, serial, until) {
         Some(Reply::Return(answer)) => {
             shown.id = answer.read1::<u32>().unwrap_or(0);
-            shown_late(&mut shown, notice, &mut *again.record, late);
+            shown_late(&mut shown, &mut notice, &mut *again.record, late);
             wait_for_press(&shown, pressed, Some(&mut *again.record));
         }
-        Some(Reply::Error(_)) | None => {}
+        Some(Reply::Error { .. }) | None => {
+            drop(shown);
+            show_again(notice, again, pressed);
+        }
     }
 }
 
@@ -922,8 +942,10 @@ fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed) {
             }
             Tried::Unshown(_) if went => again.record.refused(),
             Tried::Unshown(_) => {}
+            // Taken, then refused otherwise than "no server": it may have shown; tried again, the doubt first.
+            Tried::Lost(_) => {}
             Tried::Done => return,
-            Tried::Maybe(_, shown, serial) => return wait_late(shown, serial, &mut notice, again, pressed, Late::Retry),
+            Tried::Maybe(_, shown, serial) => return wait_late(shown, serial, notice, again, pressed, Late::Retry),
         }
     }
 }
@@ -1102,7 +1124,7 @@ fn served(lasting: &mut Lasting, asked: &Receiver<Change>, on_action: &dyn Fn(&s
                 Some(Reply::Return(answer)) => {
                     (lasting.id, lasting.refused, unanswered) = (answer.read1::<u32>().unwrap_or(0), None, None);
                 }
-                Some(Reply::Error(_)) => (lasting.refused, unanswered) = (Some(Instant::now()), None),
+                Some(Reply::Error { .. }) => (lasting.refused, unanswered) = (Some(Instant::now()), None),
                 None => {}
             }
         }
@@ -1297,7 +1319,10 @@ mod tests {
     /// replaced a number of its own (GNOME); "stall" answers as "answers",
     /// but its first GetCapabilities stops the bus (`bus_pid`, SIGSTOP)
     /// before its answer goes, for six seconds; "silent" takes each call and
-    /// never answers. A CloseNotification answered with NotificationClosed,
+    /// never answers; "late-error" refuses its first Notify three seconds
+    /// late, then answers; "exits-fast" and "exits-late" take their first
+    /// Notify and go away, half a second or three seconds later (the bus then
+    /// says no reply will come). A CloseNotification answered with NotificationClosed,
     /// as a server does. Each Notify said on `told`: when it came, its title,
     /// the number it replaces; each CloseNotification, `CLOSED` and its
     /// number. Whether it got the name.
@@ -1323,6 +1348,10 @@ mod tests {
             let later = Rc::clone(&due);
             let mut next = 40u32;
             let mut stalled = false;
+            // "late-error": its first Notify refused three seconds late; "exits-fast"/"exits-late": gone after its first Notify.
+            let mut first_notify = true;
+            let gone: Rc<RefCell<Option<std::time::Instant>>> = Rc::default();
+            let leaving = Rc::clone(&gone);
             bus.start_receive(
                 MatchRule::new_method_call(),
                 Box::new(move |call: dbus::Message, bus: &LocalConnection| {
@@ -1343,6 +1372,17 @@ mod tests {
                         }
                     }
                     if mode == "silent" {
+                        return true;
+                    }
+                    if member == "Notify" && first_notify && matches!(mode, "late-error" | "exits-fast" | "exits-late") {
+                        first_notify = false;
+                        let now = std::time::Instant::now();
+                        if mode == "late-error" {
+                            let refused = call.error(&dbus::strings::ErrorName::new("org.freedesktop.Notifications.Error.Failed").unwrap(), &std::ffi::CString::new("refused late").unwrap());
+                            later.borrow_mut().push((now + Duration::from_secs(3), refused));
+                        } else {
+                            *leaving.borrow_mut() = Some(now + if mode == "exits-fast" { Duration::from_millis(500) } else { Duration::from_secs(3) });
+                        }
                         return true;
                     }
                     if mode == "stall" && member == "GetCapabilities" && !stalled {
@@ -1397,6 +1437,10 @@ mod tests {
             );
             let _ = ready.send(true);
             while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                // Gone: its connection closed, the bus answers its callers that no reply will come.
+                if gone.borrow().is_some_and(|at| std::time::Instant::now() >= at) {
+                    return;
+                }
                 let _ = bus.process(Duration::from_millis(50));
                 let now = std::time::Instant::now();
                 let ready: Vec<dbus::Message> = {
@@ -1578,13 +1622,16 @@ mod tests {
             let _ = presses.recv_timeout(Duration::from_secs(5));
         }
 
-        // A server that never answers: sent, so maybe; never sent again.
+        // A server that never answers: sent, so maybe; never sent again while
+        // it is there (its tries over at 12 s: gone with it unanswered after
+        // that, nothing more; the tries again after a server gone are
+        // `reminders_go_on_after_a_late_refusal_or_a_lost_server`'s).
         stop.store(true, Ordering::Relaxed);
         std::thread::sleep(Duration::from_millis(500));
         let quiet = Arc::new(AtomicBool::new(false));
         assert!(notice_server(&address, "silent", told.clone(), Arc::clone(&quiet)), "the silent server");
         let start = Instant::now();
-        let outcome = dose("Magnesium · 300 mg", Duration::from_secs(60), &pressed, &late, words("Magnesium · 300 mg")).outcome(FIRST_TRY);
+        let outcome = dose("Magnesium · 300 mg", Duration::from_secs(12), &pressed, &late, words("Magnesium · 300 mg")).outcome(FIRST_TRY);
         assert!(matches!(outcome, Outcome::Maybe(_)) && start.elapsed() < FIRST_TRY, "{outcome:?} after {:?}", start.elapsed());
         assert_eq!(sent_within(&notices, Duration::from_secs(15)), [("Magnesium · 300 mg".to_string(), 0)], "asked once, never again");
         assert!(lates.try_recv().is_err());
@@ -1965,6 +2012,54 @@ mod tests {
         assert_eq!(seen.first().map(|(title, _)| title.as_str()), Some("Write to the bank"), "{seen:?}");
         assert!(seen.iter().any(|(title, id)| title == CLOSED && *id != 0), "closed by its number once answered: {seen:?}");
         late_server.store(true, Ordering::Relaxed);
+    }
+
+    /// A notice taken by the server, then refused late, or the server gone
+    /// with it unanswered (the sixth review's M2, L2): it may have shown, its
+    /// record says so still (never taken back), and it is tried again, the
+    /// doubt first, while its grace lasts, by the server there then.
+    /// Sets this process's session bus address: run alone, by name:
+    /// `cargo test --release -p sioul-sync notify::tests::reminders_go_on_after_a_late_refusal_or_a_lost_server -- --ignored --exact --nocapture`.
+    #[test]
+    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
+    fn reminders_go_on_after_a_late_refusal_or_a_lost_server() {
+        use crate::bus::StandIns;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc::channel;
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+        let mut stand_ins = StandIns::new("stand-in-lost");
+        let (_pid, address) = stand_ins.start("session");
+        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
+        let (told, notices) = channel::<(Instant, String, u32)>();
+        let (pressed, presses) = channel::<String>();
+        let (shown, shows) = channel::<String>();
+        let (log, logged) = channel::<String>();
+        let record = |name: &str| Box::new(StandIn { name: name.into(), late: Arc::new(Mutex::new(Some(format!("Check first: {name}")))), shown: shown.clone(), log: Some(log.clone()), recorded: false, settled: Arc::default() });
+        let again = |name: &str| Again { end: Instant::now() + Duration::from_secs(40), quiet: None, record: record(name) };
+        for (mode, name) in [("late-error", "Iron"), ("exits-late", "Zinc"), ("exits-fast", "Folate")] {
+            let stop = Arc::new(AtomicBool::new(false));
+            assert!(notice_server(&address, mode, told.clone(), Arc::clone(&stop)), "{mode}");
+            let outcome = dose_as(name, again(name), &pressed).outcome(FIRST_TRY);
+            assert!(matches!(outcome, Outcome::Maybe(_)), "{mode}: sent, its fate not known: {outcome:?}");
+            // A server there again for what comes next (the one gone, or the one refusing, answers now).
+            std::thread::sleep(Duration::from_secs(4));
+            let back = Arc::new(AtomicBool::new(false));
+            if mode != "late-error" {
+                assert!(notice_server(&address, "answers", told.clone(), Arc::clone(&back)), "{mode}: a server back");
+            }
+            assert_eq!(shows.recv_timeout(Duration::from_secs(20)).as_deref(), Ok(name), "{mode}: shown again, late");
+            let sent = sent_within(&notices, Duration::from_millis(500));
+            assert_eq!(sent.first(), Some(&(name.to_string(), 0)), "{mode}: {sent:?}");
+            assert_eq!(sent.last().map(|(title, _)| title.as_str()), Some(&*format!("Check first: {name}")), "{mode}: the doubt first: {sent:?}");
+            let seen: Vec<String> = logged.try_iter().collect();
+            assert!(!seen.contains(&"refused".to_string()), "{mode}: it may have shown: never taken back: {seen:?}");
+            let _ = presses.recv_timeout(Duration::from_secs(3));
+            stop.store(true, Ordering::Relaxed);
+            back.store(true, Ordering::Relaxed);
+            std::thread::sleep(Duration::from_millis(600));
+        }
     }
 
     /// The focus session's lasting notification against a server that shows
