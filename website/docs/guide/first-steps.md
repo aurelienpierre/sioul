@@ -77,7 +77,7 @@ What differs on a phone:
 
 Some providers want an **app password** instead of your usual one when two-step verification is on: you make it in your account's settings at the provider. Gmail and Google Workspace: below.
 
-Outlook.com, Hotmail and Microsoft 365 addresses cannot be added yet: Microsoft takes only its own sign-in page from other mail programs ([Works with](compatibility.md#mail)).
+Outlook.com, Hotmail, Live, MSN and Microsoft 365 take no password at all: you sign in on Microsoft's own page, below.
 
 Fetching changes nothing on your mail server. Sioul writes there only when you act: opening a message marks it read, as any mail program does; archiving, deleting and moving happen ten seconds after you asked, so that "Undo" can stop them.
 
@@ -91,6 +91,24 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
 Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On a phone, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
+
+### Outlook.com, Hotmail and Microsoft 365 {#outlook-and-microsoft-365}
+
+Microsoft takes no password from other mail programs, app passwords included. Sioul knows Microsoft's mail by its address (outlook.com, hotmail.com, live.com, msn.com and their country versions, such as hotmail.fr) or by the servers that receive your domain's mail (Microsoft 365), and signs it in on Microsoft's own page instead:
+
+1. After **Find the server**, choose **Sign in with Microsoft**. Microsoft's page opens in your browser, your address filled in. Choose your account if Microsoft asks which one, sign in as Microsoft asks (your password, your phone, your security key), and accept what Sioul asks: to read and send your mail, and to stay signed in.
+2. Sioul waits for Microsoft's answer for five minutes at most, then opens your mailbox with the access given before it keeps anything. The access stays in your system's keyring, and nothing goes to Sioul's developer.
+
+What each kind of address needs:
+
+- **Outlook.com, Hotmail, Live, MSN**: Outlook.com keeps mail programs out until you let them in, once. In Outlook.com's settings, under Mail ▸ Forwarding and IMAP, turn on "Let devices and apps use IMAP", then save; **Microsoft's page on it** opens Microsoft's own instructions. If Sioul says the mailbox stays closed while the switch is on, confirm the sign-in as yours at account.live.com/activity ("This was me").
+- **Microsoft 365, for work or school**: your organisation may have to approve Sioul once, since by default Microsoft lets employees approve mail access for only a few programs of its choosing. If Microsoft's page says that only an administrator can, unfold **What your administrator does**, copy it and send it to them: the link that approves Sioul for everyone in your organisation, and the two switches of your mailbox (IMAP, and Authenticated SMTP for sending).
+- **A Microsoft 365 address Sioul does not recognise** (your organisation's mail first goes through another service): when **Find the server** finds nothing, choose **This address is at Microsoft**.
+- **Your own Microsoft application**: in a copy of Sioul without one of its own, the form says so and asks for the Application (client) ID of yours. Register one, once, in Microsoft Entra (**How to register your application** unfolds the steps); it needs no secret. In a copy that carries one, **Use an application of my own** is there if you prefer yours.
+
+On a phone, come back to Sioul as soon as Microsoft's page says it is done: Microsoft's answer lasts about a minute. If it came too late, Sioul says so; signing in again is quicker the second time.
+
+Sioul does not reach Microsoft's calendars and contacts: Microsoft offers them through its own interface, not CalDAV or CardDAV.
 
 ## Add your calendars, tasks and contacts
 

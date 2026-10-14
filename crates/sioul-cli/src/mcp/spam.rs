@@ -40,7 +40,11 @@ fn answer(s: &Session, mut report: Report) -> Answer {
             Value::Array(items) => {
                 items.retain(|item| {
                     let uri = item.get("uri").and_then(Value::as_str).unwrap_or_default();
-                    let keep = !uri.starts_with("mid:") || consent.allows(uri);
+                    // A work or school account's message, kept whatever its projects, by its account too
+                    // (one the corpus alone holds has no file here); its numbers stay.
+                    let message = uri.starts_with("mid:") || item.get("subject").is_some() || item.get("from").is_some();
+                    let account_kept = message && item.get("account").and_then(Value::as_str).is_some_and(|a| consent.keeps_account(a));
+                    let keep = (!uri.starts_with("mid:") || consent.allows(uri)) && !account_kept;
                     if !keep {
                         let field = |name: &str| item.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
                         gone.push((field("from"), field("subject")));

@@ -120,6 +120,10 @@ jobs:
             -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON
 
       - name: Build the APK
+        # Sioul's own Microsoft application (docs/microsoft.md): an id, no
+        # secret, the same as the computers'; Cargo reads it through CMake.
+        env:
+          SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: cmake --build build-android --target apk
 
       # Signed for sideloading: with Sioul's key when the repository holds it

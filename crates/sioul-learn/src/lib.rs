@@ -131,6 +131,20 @@ impl Dirs {
     pub fn trained(&self) -> PathBuf {
         self.state.join("trained.toml")
     }
+
+    /// Forgets what the corpus keeps of one account (the start of each of its
+    /// messages), when the account is removed with its mail (Microsoft's
+    /// accounts, docs/microsoft.md). True when there was something; an id
+    /// that is not one plain name names nothing.
+    pub fn forget_account(&self, id: &str) -> std::io::Result<bool> {
+        let plain = matches!(std::path::Path::new(id).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
+        let folder = self.corpus().join(id);
+        if !plain || !folder.is_dir() {
+            return Ok(false);
+        }
+        std::fs::remove_dir_all(&folder)?;
+        Ok(true)
+    }
 }
 
 /// The steps of a long job, in order.
@@ -279,4 +293,26 @@ impl Rng {
 /// Now, in Unix seconds.
 pub(crate) fn now() -> i64 {
     jiff::Timestamp::now().as_second()
+}
+
+#[cfg(test)]
+mod forget_tests {
+    use super::*;
+
+    /// One account's corpus forgotten, the others' kept; an odd id names nothing.
+    #[test]
+    fn an_accounts_corpus_is_forgotten_alone() {
+        let root = std::env::temp_dir().join(format!("sioul-learn-forget-{}", std::process::id()));
+        let dirs = Dirs::under(&root);
+        for account in ["work", "home"] {
+            std::fs::create_dir_all(dirs.corpus().join(account)).unwrap();
+            std::fs::write(dirs.corpus().join(account).join("state.toml"), "x").unwrap();
+        }
+        assert!(dirs.forget_account("work").unwrap());
+        assert!(!dirs.corpus().join("work").exists() && dirs.corpus().join("home").is_dir());
+        assert!(!dirs.forget_account("work").unwrap(), "nothing left");
+        assert!(!dirs.forget_account("../corpus").unwrap() && !dirs.forget_account("").unwrap());
+        assert!(dirs.corpus().join("home").is_dir());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

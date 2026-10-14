@@ -57,6 +57,7 @@ nav = [
       { "Fonctionne avec" = "guide/compatibility.md" },
     ] },
     { "Politique de confidentialité" = "privacy.md" },
+    { "Conditions d’utilisation" = "terms.md" },
   ] },
 ]
 

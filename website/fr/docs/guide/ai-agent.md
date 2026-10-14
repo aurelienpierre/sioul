@@ -52,6 +52,8 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
 
 **Ce qui n’est dans aucun projet** a son propre interrupteur dans **Réglages ▸ Agents d’IA** : le reste du courrier du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels de votre téléphone, les papiers, les contrats, et les budgets qu’aucun projet n’utilise. Il est ouvert au départ, pour qu’un agent que vous connectez serve tout de suite. **Si vous voulez qu’un agent ne voie que les projets que vous ouvrez, fermez-le** : il voit alors ces projets, et à quoi sert le moment, rien d’autre.
 
+**Les comptes Microsoft professionnels et scolaires** restent fermés aux agents quels que soient leurs projets, jusqu’à ce que vous les ouvriez (**Réglages ▸ Agents d’IA**, **Comptes Microsoft professionnels et scolaires**, montré dès que vous en avez un) : les conditions de Microsoft laissent l’organisation, pas vous seul, permettre d’utiliser son courrier au-delà de la synchronisation. Ouvrez-les seulement si votre organisation le permet.
+
 ## Ce qu’un agent peut lire {#what-an-agent-can-read}
 
 - **Le Porche**, file par file, seulement dans vos heures, sauf si vous lui demandez de l’ouvrir. On lui dit qu’un code est arrivé, jamais le code.

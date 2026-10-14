@@ -4,8 +4,8 @@
 //! Sending: SMTP submission (RFC 6409), over TLS from the first byte (465,
 //! RFC 8314) or upgraded by STARTTLS (587), with the account's login and
 //! password, or an access token (`AUTH XOAUTH2`) for an account signed in
-//! with Google; then a copy into Sent with `APPEND`, except at Gmail, which
-//! files its own.
+//! with Google or Microsoft; then a copy into Sent with `APPEND`, except at
+//! Gmail and at Microsoft, which file their own.
 //!
 //! Building a message and sending it are two steps. A message signed with a
 //! key kept here is built when it leaves, at the end of its ten seconds
@@ -191,7 +191,8 @@ fn smtp_builder<'a>(account: &Account, host: &'a str, credentials: Option<(&'a s
 
 /// Sends the message, then files a copy in Sent. An account signed in with
 /// OAuth logs in with an access token (`password` unused): the one kept,
-/// then, refused, a fresh one, once.
+/// then, refused, a fresh one, once; a refusal no token changes (Microsoft's
+/// Authenticated SMTP switched off) is said at once.
 pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
     let host = account.smtp_host.clone().ok_or(SyncError::NoServer)?;
     let login = account.login().ok_or(SyncError::NoServer)?.to_string();
@@ -200,22 +201,10 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
         let mut client = match oauth {
             None => smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(smtp_error)?,
             Some(oauth) => {
-                let (mut signed_in, mut refusal) = (None, String::new());
-                for fresh in [false, true] {
-                    let token = oauth.token_async(&login, fresh).await?;
-                    let mut client = smtp_builder(account, &host, None)?.connect().await.map_err(smtp_error)?;
-                    match sasl::smtp_xoauth2(&mut client, &login, &token).await.map_err(smtp_error)? {
-                        Ok(()) => {
-                            signed_in = Some(client);
-                            break;
-                        }
-                        Err(said) => {
-                            refusal = said;
-                            let _ = client.quit().await;
-                        }
-                    }
-                }
-                signed_in.ok_or_else(|| oauth.refused(&refusal))?
+                // Microsoft's token to Microsoft's sending server alone, before any is asked.
+                oauth.may_reach(&host, true)?;
+                let connect = || async { smtp_builder(account, &host, None)?.connect().await.map_err(smtp_error) };
+                smtp_sign_in_with_tokens(&login, connect, |fresh| oauth.token_async(&login, fresh), oauth).await?
             }
         };
         let message = Message::new(outgoing.from.as_str(), outgoing.recipients.iter().map(String::as_str), outgoing.raw.as_slice());
@@ -223,11 +212,48 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
         let _ = client.quit().await;
         Ok(())
     })?;
-    if account.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP)) {
+    if files_its_own_sent(account) {
         return Ok(());
     }
     // Sent, but its copy may not be filed: that is said, the message is not sent twice.
     file_in_sent(account, password, &outgoing.raw).map_err(|e| SyncError::NotFiled(e.detail().to_string()))
+}
+
+/// AUTH XOAUTH2 on connections `connect` makes, with the tokens `token`
+/// gives: the one kept first; refused, a fresh one, once; refused again, the
+/// access must be given again. A refusal no token changes (Microsoft's
+/// Authenticated SMTP switched off) is said at once (`OAuth::smtp_refused`).
+async fn smtp_sign_in_with_tokens<T, C, CF, K, KF>(login: &str, connect: C, token: K, oauth: OAuth) -> Result<mail_send::SmtpClient<T>, SyncError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    C: Fn() -> CF,
+    CF: Future<Output = Result<mail_send::SmtpClient<T>, SyncError>>,
+    K: Fn(bool) -> KF,
+    KF: Future<Output = Result<String, SyncError>>,
+{
+    let mut refusal = String::new();
+    for fresh in [false, true] {
+        let token = token(fresh).await?;
+        let mut client = connect().await?;
+        match sasl::smtp_xoauth2(&mut client, login, &token).await.map_err(smtp_error)? {
+            Ok(()) => return Ok(client),
+            Err(said) => {
+                let _ = client.quit().await;
+                if let Some(lasting) = oauth.smtp_refused(&said) {
+                    return Err(lasting);
+                }
+                refusal = said;
+            }
+        }
+    }
+    Err(oauth.refused(&refusal))
+}
+
+/// Gmail and Microsoft (Outlook.com and Microsoft 365 alike) file a copy of
+/// each message sent through their SMTP server in Sent themselves: an APPEND
+/// would make it twice.
+fn files_its_own_sent(account: &Account) -> bool {
+    account.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP) || crate::microsoft::is_imap_host(h))
 }
 
 /// A copy in Sent, read.
@@ -259,6 +285,69 @@ mod tests {
     use super::*;
     use sioul_core::pgp::{Keys, SessionKeys, Unlock};
     use sioul_core::securitykey::{KnownCard, SoftCard, SoftReaders};
+
+    /// Part 8, 9: an SMTP server standing in for Microsoft's, without TLS:
+    /// `535 5.7.3` asks a fresh token, once; `535 5.7.139` (Authenticated
+    /// SMTP switched off) is said at once, no second token asked.
+    #[test]
+    fn microsoft_smtp_refusals() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            for (first, second, connections) in [("535 5.7.3 Authentication unsuccessful", Some("235 2.7.0 Authentication successful"), 2), ("535 5.7.139 Authentication unsuccessful, SmtpClientAuthentication is disabled for the Tenant. Visit https://aka.ms/smtp_auth_disabled for more information.", None, 1)] {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = tokio::spawn(async move {
+                    let mut heard = Vec::new();
+                    for answer in [Some(first), second].into_iter().flatten().take(connections) {
+                        let (stream, _) = listener.accept().await.unwrap();
+                        let (read, mut write) = stream.into_split();
+                        let mut lines = BufReader::new(read).lines();
+                        write.write_all(b"220 stand-in Microsoft ESMTP\r\n").await.unwrap();
+                        let _ehlo = lines.next_line().await.unwrap().unwrap();
+                        write.write_all(b"250-stand-in\r\n250-AUTH LOGIN XOAUTH2\r\n250 8BITMIME\r\n").await.unwrap();
+                        heard.push(lines.next_line().await.unwrap().unwrap());
+                        write.write_all(format!("{answer}\r\n").as_bytes()).await.unwrap();
+                        // QUIT after a refusal, or nothing more.
+                        if let Ok(Some(_)) = lines.next_line().await {
+                            let _ = write.write_all(b"221 bye\r\n").await;
+                        }
+                    }
+                    heard
+                });
+                let connect = || async move { mail_send::SmtpClientBuilder::new("127.0.0.1", port).unwrap().helo_host("[127.0.0.1]").connect_plain().await.map_err(smtp_error) };
+                let asked = std::sync::Mutex::new(Vec::new());
+                let token = |fresh: bool| {
+                    asked.lock().unwrap().push(fresh);
+                    async move { Ok::<_, SyncError>(if fresh { "fresh".to_string() } else { "kept".to_string() }) }
+                };
+                // The client dropped once signed in: the stand-in then hears its connection end.
+                let outcome = smtp_sign_in_with_tokens("you@example.org", connect, token, OAuth::Microsoft { personal: false }).await.map(drop);
+                let heard = server.await.unwrap();
+                match second {
+                    Some(_) => {
+                        assert!(outcome.is_ok(), "{:?}", outcome.err());
+                        assert_eq!(*asked.lock().unwrap(), vec![false, true], "the kept token, then a fresh one, once");
+                        assert_eq!(heard, vec![format!("AUTH XOAUTH2 {}", sasl::xoauth2_base64("you@example.org", "kept")), format!("AUTH XOAUTH2 {}", sasl::xoauth2_base64("you@example.org", "fresh"))]);
+                    }
+                    None => {
+                        assert_eq!(outcome.err(), Some(SyncError::Said(crate::microsoft::SMTP_OFF, first.to_string())));
+                        assert_eq!(*asked.lock().unwrap(), vec![false], "no second token: none would change it");
+                    }
+                }
+            }
+        });
+    }
+
+    /// Part 8, 10: Microsoft's servers file their own copy in Sent, as Gmail's do: no APPEND.
+    #[test]
+    fn microsoft_files_its_own_sent_copy() {
+        let mut account = Account::imap("work", "you@contoso.example", "outlook.office365.com", 993, Security::Tls, None);
+        account.auth = Some("microsoft".into());
+        assert!(files_its_own_sent(&account));
+        assert!(files_its_own_sent(&Account::imap("g", "you@gmail.com", "imap.gmail.com", 993, Security::Tls, None)));
+        assert!(!files_its_own_sent(&Account::imap("o", "you@example.org", "mail.example.org", 993, Security::Tls, None)));
+    }
 
     #[test]
     fn a_draft_your_security_key_signs_is_built_with_the_key() {

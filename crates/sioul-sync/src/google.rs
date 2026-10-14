@@ -17,15 +17,21 @@
 //! only to a key of your own until Sioul's has passed Google's review.
 
 use crate::SyncError;
+use crate::loopback::{self, Verdict};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+// The stand-ins of the tests below read and write their connections.
+#[cfg(test)]
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
+
+/// Percent-encoding, as other modules of this crate ask it of this one.
+pub(crate) use crate::loopback::encode;
 
 /// What Sioul asks, all at once (Google adds none later to a desktop app):
 /// who you are, your calendars, your contacts, your tasks.
@@ -138,12 +144,7 @@ pub fn own_key(email: &str) -> Option<(String, String)> {
 }
 
 fn random(bytes: usize) -> String {
-    let mut out = Vec::with_capacity(bytes);
-    while out.len() < bytes {
-        out.extend_from_slice(uuid::Uuid::new_v4().as_bytes());
-    }
-    out.truncate(bytes);
-    URL_SAFE_NO_PAD.encode(out)
+    loopback::random(bytes)
 }
 
 /// A sign-in under way: the page to open, and the door Google comes back to.
@@ -158,43 +159,7 @@ pub struct SignIn {
 }
 
 fn query(pairs: &[(&str, &str)]) -> String {
-    pairs.iter().map(|(k, v)| format!("{k}={}", encode(v))).collect::<Vec<_>>().join("&")
-}
-
-pub(crate) fn encode(text: &str) -> String {
-    text.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
-}
-
-fn decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' if i + 2 < bytes.len() => {
-                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok());
-                match hex {
-                    Some(b) => {
-                        out.push(b);
-                        i += 3;
-                    }
-                    None => {
-                        out.push(b'%');
-                        i += 1;
-                    }
-                }
-            }
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            b => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).to_string()
+    loopback::query(pairs)
 }
 
 /// Opens the door on this computer and makes the page to open: PKCE's
@@ -205,9 +170,8 @@ pub fn begin(client_id: &str, email: &str) -> Result<SignIn, SyncError> {
 
 /// `begin`, for a purpose: its scopes asked, its grant kept apart.
 pub fn begin_for(purpose: Purpose, client_id: &str, email: &str) -> Result<SignIn, SyncError> {
-    let listener = TcpListener::bind("127.0.0.1:0").or_else(|_| TcpListener::bind("[::1]:0")).map_err(|e| SyncError::Network(e.to_string()))?;
-    let address = listener.local_addr().map_err(|e| SyncError::Network(e.to_string()))?;
-    let redirect = if address.is_ipv6() { format!("http://[::1]:{}", address.port()) } else { format!("http://127.0.0.1:{}", address.port()) };
+    // 127.0.0.1, else [::1]: Google takes either (RFC 8252 §7.3).
+    let (listener, redirect) = loopback::open(true)?;
     let verifier = random(48);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = random(16);
@@ -228,54 +192,19 @@ pub fn begin_for(purpose: Purpose, client_id: &str, email: &str) -> Result<SignI
 }
 
 /// The answer Google's page sends back to this computer: its code, checked
-/// against the state. `stop` ends the wait (Cancel).
+/// against the state. `stop` ends the wait (Cancel). The door is shared with
+/// Microsoft's sign-in (`loopback.rs`); Google's words and outcomes are these.
 fn wait_for_code(sign_in: &SignIn, deadline: Duration, stop: &AtomicBool) -> Result<String, SyncError> {
-    sign_in.listener.set_nonblocking(true).map_err(|e| SyncError::Network(e.to_string()))?;
-    let until = Instant::now() + deadline;
-    loop {
-        if stop.load(Ordering::Relaxed) {
-            return Err(SyncError::Message("google-cancelled".into()));
+    let ends = loopback::Ends { cancelled: SyncError::Message("google-cancelled".into()), timed_out: SyncError::Message("google-timeout".into()) };
+    loopback::wait(&sign_in.listener, &sign_in.state, deadline, stop, ends, |answer| {
+        // On a phone, with the way back to Sioul, since the browser stays in front.
+        let granted = if cfg!(target_os = "android") { "google-page-granted-phone" } else { "google-page-granted" };
+        match (answer.state_ok, answer.get("code"), answer.get("error")) {
+            (true, Some(code), _) => Verdict::Done(granted, Ok(code.to_string())),
+            (_, _, Some(_)) => Verdict::Done("google-page-denied", Err(SyncError::Message("google-denied".into()))),
+            _ => Verdict::Done("google-page-foreign", Err(SyncError::Message("google-state".into()))),
         }
-        // An answer waiting is read before the time is called: a phone
-        // freezes Sioul while the browser is in front (its clock then jumps),
-        // and the browser's request waits meanwhile in the system's queue.
-        let (mut stream, _) = match sign_in.listener.accept() {
-            Ok(accepted) => accepted,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                if Instant::now() > until {
-                    return Err(SyncError::Message("google-timeout".into()));
-                }
-                std::thread::sleep(Duration::from_millis(200));
-                continue;
-            }
-            Err(e) => return Err(SyncError::Network(e.to_string())),
-        };
-        let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-        let mut line = String::new();
-        if BufReader::new(&stream).read_line(&mut line).is_err() {
-            continue;
-        }
-        // "GET /?state=…&code=…&scope=… HTTP/1.1"; anything else (a favicon) is not it.
-        let target = line.split_whitespace().nth(1).unwrap_or("");
-        let Some(params) = target.strip_prefix("/?") else {
-            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-            continue;
-        };
-        let params: HashMap<String, String> = params.split('&').filter_map(|p| p.split_once('=')).map(|(k, v)| (k.to_string(), decode(v))).collect();
-        let (said, result) = match (params.get("state"), params.get("code"), params.get("error")) {
-            (Some(state), Some(code), _) if subtle::ConstantTimeEq::ct_eq(state.as_bytes(), sign_in.state.as_bytes()).into() => ("google-page-granted", Ok(code.clone())),
-            (_, _, Some(_)) => ("google-page-denied", Err(SyncError::Message("google-denied".into()))),
-            _ => ("google-page-foreign", Err(SyncError::Message("google-state".into()))),
-        };
-        // The page your browser shows, in your language; on a phone, with the
-        // way back to Sioul, since the browser stays in front.
-        let said = if cfg!(target_os = "android") && said == "google-page-granted" { "google-page-granted-phone" } else { said };
-        let body = crate::translator().text(said, None).replace('&', "&amp;").replace('<', "&lt;");
-        let page = format!("<!doctype html><meta charset=utf-8><title>Sioul</title><p style=\"font:1.2em sans-serif;margin:3em\">{body}</p>");
-        let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len()).as_bytes());
-        return result;
-    }
+    })
 }
 
 fn post(url: &str, form: &[(&str, &str)]) -> Result<serde_json::Value, SyncError> {

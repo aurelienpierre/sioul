@@ -123,6 +123,10 @@ jobs:
         with:
           key: release-qt6
       - name: Build
+        # Sioul's own Microsoft application (docs/microsoft.md): an id, no
+        # secret; on the build steps of the packages alone, not in build.yml's.
+        env:
+          SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: cargo build --release --locked -p sioul-app -p sioul-cli
       # Qt beside the program (QtWebEngineProcess and its resources included),
       # and the MSVC runtime, for computers without it.
@@ -174,6 +178,10 @@ jobs:
         with:
           key: release-qt6-universal
       - name: Build for Apple silicon and for Intel
+        # Sioul's own Microsoft application (docs/microsoft.md): an id, no
+        # secret; on the build steps of the packages alone, not in build.yml's.
+        env:
+          SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: |
           cargo build --release --locked --target aarch64-apple-darwin -p sioul-app -p sioul-cli
           cargo build --release --locked --target x86_64-apple-darwin -p sioul-app -p sioul-cli
@@ -261,6 +269,10 @@ jobs:
         with:
           key: release-qt6-appimage
       - name: Build
+        # Sioul's own Microsoft application (docs/microsoft.md): an id, no
+        # secret; on the build steps of the packages alone, not in build.yml's.
+        env:
+          SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: cargo build --release --locked -p sioul-app -p sioul-cli
       # The programs, the desktop file and the icon in an AppDir; linuxdeploy
       # and its Qt plugin add Qt (Qt WebEngine's process and resources, the
@@ -316,6 +328,9 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag || github.ref }}
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        # Passed into the build by the manifest's secret-env, kept out of the manifest.
+        env:
+          SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         with:
           manifest-path: packaging/flatpak/com.aurelienpierre.Sioul.yml
           bundle: Sioul-${{ needs.version.outputs.version }}.flatpak

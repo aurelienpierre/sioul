@@ -204,7 +204,7 @@ pub fn lanes(config: &Config, store: Option<&ProjectStore>, tr: &Translator) -> 
         let address = address_of(&account.id);
         let minutes = account.fetch_minutes.or(config.fetch_minutes).unwrap_or(crate::config::DEFAULT_FETCH_MINUTES);
         let mut rules = vec![say("rule-public", &[("minutes", minutes.to_string())])];
-        if account.shield_ai {
+        if account.ai_reads() {
             rules.push(tr.text("rule-public-ai", None));
         }
         rules.push(tr.text("rule-where-shield", None));
@@ -816,6 +816,14 @@ pub struct AccountView {
     pub priority: &'static str,
     /// Signed in with Google (its tokens in the keyring): it can be signed in again.
     pub google: bool,
+    /// Signed in with Microsoft (its tokens in the keyring): it can be signed
+    /// in again, and asks no password (docs/microsoft.md).
+    pub microsoft: bool,
+    /// A personal Microsoft account (Outlook.com…), rather than a work or school one.
+    pub microsoft_personal: bool,
+    /// Its server is Microsoft's: signed in with Microsoft, or added with a
+    /// password Microsoft no longer takes, which "Sign in with Microsoft" replaces.
+    pub at_microsoft: bool,
     /// Its server, for its password's login in a vault (Bitwarden).
     pub host: Option<String>,
     /// The name it logs in with (`Account::login`: its user name, else its
@@ -859,6 +867,11 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 args.set("security", tr.text(&format!("security-{}", a.security.as_str()), None));
                 rows.push(Figure { label: tr.text("account-row-server", None), value: tr.text("account-server", Some(&args)) });
             }
+            // Signed in with Microsoft: how, and as which kind of account.
+            if a.is_microsoft() {
+                let how = if a.is_microsoft_work() { "account-signed-in-microsoft-work" } else { "account-signed-in-microsoft-personal" };
+                rows.push(Figure { label: tr.text("account-row-sign-in", None), value: tr.text(how, None) });
+            }
             if a.kind == AccountKind::Imap {
                 let checks = if a.trusted_authserv_ids.is_empty() {
                     tr.text("account-checks-learning", None)
@@ -891,9 +904,13 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 status_error,
                 priority: a.priority.as_str(),
                 google: a.auth.as_deref() == Some("google"),
+                microsoft: a.is_microsoft(),
+                microsoft_personal: a.is_microsoft() && !a.is_microsoft_work(),
+                at_microsoft: a.kind == AccountKind::Imap && a.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(crate::config::MICROSOFT_IMAP)),
                 host: a.host.clone(),
                 login: a.login().map(str::to_string),
-                password_wanted: wanted.contains(&a.id) && a.auth.as_deref() != Some("google"),
+                // Signed in with Google or Microsoft: no password; at Microsoft, none would work.
+                password_wanted: wanted.contains(&a.id) && a.auth.is_none() && !a.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(crate::config::MICROSOFT_IMAP)),
                 name: a.name.clone().unwrap_or_default(),
                 signature: a.signature.clone().unwrap_or_default(),
                 enabled: a.enabled,
@@ -1666,6 +1683,50 @@ auth = "google"
         assert!(mail.rows[0].value.starts_with("imap.gmail.com"), "{}", mail.rows[0].value);
         let calendars = views.iter().find(|v| v.id == "google").unwrap();
         assert_eq!((calendars.service, calendars.rows[0].value.as_str()), ("google", "Google"));
+    }
+
+    /// Mail signed in with Microsoft asks no password and says how it signs
+    /// in; one added with a password at Microsoft's server is offered
+    /// Microsoft's sign-in instead of a password, none of which would work.
+    #[test]
+    fn mail_signed_in_with_microsoft_asks_no_password() {
+        let config: Config = toml::from_str(
+            r#"
+[[account]]
+id = "home"
+kind = "imap"
+address = "you@outlook.com"
+host = "outlook.office365.com"
+auth = "microsoft"
+smtp_host = "smtp-mail.outlook.com"
+
+[[account]]
+id = "work"
+kind = "imap"
+address = "you@contoso.example"
+host = "outlook.office365.com"
+auth = "microsoft"
+smtp_host = "smtp.office365.com"
+
+[[account]]
+id = "old"
+kind = "imap"
+address = "old@hotmail.com"
+host = "outlook.office365.com"
+"#,
+        )
+        .unwrap();
+        let tr = Translator::new("en");
+        let wanted: BTreeSet<String> = ["home", "work", "old"].iter().map(|s| s.to_string()).collect();
+        let views = accounts(&config, &tr, &BTreeMap::new(), &wanted);
+        let view = |id: &str| views.iter().find(|v| v.id == id).unwrap();
+        assert_eq!((view("home").microsoft, view("home").microsoft_personal, view("home").password_wanted), (true, true, false));
+        assert_eq!((view("work").microsoft, view("work").microsoft_personal, view("work").password_wanted), (true, false, false));
+        assert_eq!((view("old").microsoft, view("old").at_microsoft, view("old").password_wanted), (false, true, false), "Microsoft's sign-in, not a password");
+        let signs_in = |id: &str| view(id).rows.iter().find(|r| r.label == tr.text("account-row-sign-in", None)).map(|r| r.value.clone());
+        assert_eq!(signs_in("home"), Some(tr.text("account-signed-in-microsoft-personal", None)));
+        assert_eq!(signs_in("work"), Some(tr.text("account-signed-in-microsoft-work", None)));
+        assert_eq!(signs_in("old"), None);
     }
 
     /// The password dialog looks in a vault for the name an account logs in

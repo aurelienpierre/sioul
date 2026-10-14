@@ -601,7 +601,7 @@ pub(crate) fn with_smtp(account: &Account) -> Result<Account, String> {
 /// the wait), finds the calendars and contacts, and syncs them. On a thread.
 pub(crate) fn add_google_account(qt: &QtThread, shared: &Arc<Shared>, address: String, client_id: String, client_secret: String, again: Option<String>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
-    shared.google_stop.store(false, Ordering::Relaxed);
+    shared.oauth_stop.store(false, Ordering::Relaxed);
     std::thread::spawn(move || {
         let config = load_config();
         let address = address.trim().to_ascii_lowercase();
@@ -622,7 +622,7 @@ pub(crate) fn add_google_account(qt: &QtThread, shared: &Arc<Shared>, address: S
             .and_then(|sign_in| {
                 let url = sign_in.url.clone();
                 let _ = qt.queue(move |mut sioul| sioul.as_mut().open_url(QString::from(&url)));
-                google::finish(sign_in, &client_id, &client_secret, &address, &shared.google_stop)
+                google::finish(sign_in, &client_id, &client_secret, &address, &shared.oauth_stop)
             })
             .and_then(|_| dav::test_google(&address))
             .map_err(|e| google_sentence(&e, &id))

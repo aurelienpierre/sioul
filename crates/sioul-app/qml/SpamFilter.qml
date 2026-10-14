@@ -106,7 +106,9 @@ ColumnLayout {
     Label {
         visible: filter.shown.trains && !filter.shown.running
         Layout.fillWidth: true
-        text: filter.sioul.text("spam-app-train-about")
+        // It names the addresses it learns from: pressing Train now consents to that.
+        text: filter.shown.train_about
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         font.pixelSize: 13
         lineHeight: 1.2

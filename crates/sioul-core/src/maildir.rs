@@ -287,6 +287,33 @@ pub fn message_ids(dir: &Path) -> std::collections::BTreeSet<String> {
     read_messages(dir).into_iter().filter_map(|card| card.message_id).collect()
 }
 
+/// What this device keeps of an account's mail, forgotten when the account
+/// is removed and you ask it (Microsoft's accounts, docs/microsoft.md): its
+/// folder of mail when it is Sioul's own (`<data>/mail/<id>`; a folder you
+/// chose with `maildir =` is yours and stays), and what the AI's reading kept
+/// of it. The folders forgotten come back; an error says what could not be.
+pub fn forget_account(account: &crate::config::Account) -> Result<Vec<PathBuf>, String> {
+    forget_account_under(account, &crate::config::data_dir().join("mail"), &crate::shield::AiCache::path(&account.id))
+}
+
+fn forget_account_under(account: &crate::config::Account, mail_root: &Path, ai_cache: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut gone = Vec::new();
+    // One plain name, nothing that climbs out of the folder (`..`, a separator).
+    let plain = matches!(Path::new(&account.id).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
+    if plain && account.maildir.is_none() {
+        let folder = mail_root.join(&account.id);
+        if folder.is_dir() && folder.parent() == Some(mail_root) {
+            std::fs::remove_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            gone.push(folder);
+        }
+    }
+    if plain && ai_cache.is_file() {
+        std::fs::remove_file(ai_cache).map_err(|e| format!("{}: {e}", ai_cache.display()))?;
+        gone.push(ai_cache.to_path_buf());
+    }
+    Ok(gone)
+}
+
 /// Maildir wants the flag letters in ASCII order.
 fn sorted(flags: &str) -> String {
     let mut letters: Vec<char> = flags.chars().collect();
@@ -298,6 +325,34 @@ fn sorted(flags: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An account's mail forgotten: Sioul's own folder of it and the AI's
+    /// answers; never a folder you chose, nor anything outside the folder of
+    /// mail an odd id could name.
+    #[test]
+    fn an_accounts_mail_is_forgotten_and_nothing_else() {
+        let root = std::env::temp_dir().join(format!("sioul-forget-{}", std::process::id()));
+        let mail = root.join("mail");
+        let cache = root.join("shield-work.toml");
+        for folder in ["work/cur", "work/new", "other/cur"] {
+            std::fs::create_dir_all(mail.join(folder)).unwrap();
+        }
+        std::fs::write(mail.join("work/cur/1:2,S"), "Subject: kept\r\n\r\nhello").unwrap();
+        std::fs::write(&cache, "x").unwrap();
+        let account = crate::config::Account::imap("work", "you@contoso.example", "outlook.office365.com", 993, crate::config::Security::Tls, None);
+        assert_eq!(forget_account_under(&account, &mail, &cache).unwrap(), vec![mail.join("work"), cache.clone()]);
+        assert!(!mail.join("work").exists() && mail.join("other").is_dir(), "that account's mail alone");
+        // A folder you chose stays; an id that climbs out names nothing.
+        let mut chosen = account.clone();
+        chosen.id = "other".into();
+        chosen.maildir = Some(mail.join("other").display().to_string());
+        assert!(forget_account_under(&chosen, &mail, &root.join("none.toml")).unwrap().is_empty());
+        let mut odd = account.clone();
+        odd.id = "../mail".into();
+        assert!(forget_account_under(&odd, &mail, &root.join("none.toml")).unwrap().is_empty());
+        assert!(mail.join("other").is_dir());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn stores_and_reads_back_with_its_origin() {

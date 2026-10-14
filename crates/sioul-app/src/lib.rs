@@ -142,6 +142,8 @@ mod mailsearch;
 mod mailnote;
 mod letters;
 mod map;
+// Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).
+mod outlook;
 mod outside;
 mod papers;
 mod pauses;

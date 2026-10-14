@@ -20,7 +20,7 @@ use sioul_core::i18n::{self, Translator};
 use sioul_core::porch::{self, KnownSenders, SenderList, Triaged};
 use sioul_core::state::{MoneyState, PorchState};
 use sioul_core::{maildir, reading, view};
-use crate::{crypto, gmail, mail, pim, securitykey, work};
+use crate::{crypto, gmail, mail, outlook, pim, securitykey, work};
 use sioul_sync::antivirus::{self, Verdict};
 use sioul_sync::{Control, Learned, Report, SyncError, notify, secret};
 use std::collections::{BTreeMap, BTreeSet};
@@ -223,6 +223,12 @@ pub mod qobject {
         #[qinvokable]
         fn discover(self: Pin<&mut Sioul>, address: &QString);
 
+        /// The same, for an address you say is at Microsoft (Microsoft 365)
+        /// when discovery found nothing: its mail first goes through another
+        /// service, so its domain's MX does not say it (docs/microsoft.md).
+        #[qinvokable]
+        fn discover_at_microsoft(self: Pin<&mut Sioul>, address: &QString);
+
         /// An account switched on or off: off, it keeps its settings and is
         /// neither synced nor shown. Returns what went wrong, if anything.
         #[qinvokable]
@@ -245,9 +251,11 @@ pub mod qobject {
         #[qinvokable]
         fn add_portal(self: Pin<&mut Sioul>, name: &QString, url: &QString);
 
-        /// Removes an account and its password; its mail stays on disk.
+        /// Removes an account and its password; its mail stays on disk. A
+        /// Microsoft account's sign-in is forgotten, and its mail on this
+        /// device too when `delete_mail` (docs/microsoft.md).
         #[qinvokable]
-        fn remove_account(self: Pin<&mut Sioul>, id: &QString);
+        fn remove_account(self: Pin<&mut Sioul>, id: &QString, delete_mail: bool);
 
         /// An account's password given on this device (one come from another
         /// device arrives without it): tested with its server, then kept;
@@ -497,6 +505,30 @@ pub mod qobject {
         /// access token (XOAUTH2): no password (docs/google.md, "Mail").
         #[qinvokable]
         fn add_google_mail(self: Pin<&mut Sioul>, address: &QString, client_id: &QString, client_secret: &QString, again: &QString);
+
+        /// Adds an address's Microsoft mail signed in on Microsoft's page, or
+        /// signs its account in again (`again`: its id). `kind`: what
+        /// discovery found ("personal", "work", "unknown"); `client_id` and
+        /// `tenant`: an application of your own, else the one kept here, else
+        /// Sioul's. IMAP and SMTP then take an access token: no password
+        /// (docs/microsoft.md).
+        #[qinvokable]
+        fn add_microsoft_mail(self: Pin<&mut Sioul>, address: &QString, kind: &QString, client_id: &QString, tenant: &QString, again: &QString);
+
+        /// Stops waiting for Microsoft's page.
+        #[qinvokable]
+        fn cancel_microsoft(self: Pin<&mut Sioul>);
+
+        /// Whether this build carries Sioul's own Microsoft application: then none of your own is needed.
+        #[qinvokable]
+        fn microsoft_built_in(self: &Sioul) -> bool;
+
+        /// What an organisation's administrator does, once, for Sioul to read
+        /// a work or school mailbox, with the link that approves the
+        /// application whose id is typed in the form; "" while it is not one.
+        /// (For the application kept here or Sioul's, discovery says it: FoundView.)
+        #[qinvokable]
+        fn microsoft_admin_text(self: &Sioul, address: &QString, client_id: &QString) -> QString;
 
         /// Your OpenPGP keys and others', as JSON.
         #[qinvokable]
@@ -1949,8 +1981,8 @@ pub(crate) struct Shared {
     pub(crate) weather_fetching: AtomicBool,
     /// Accounts whose older mail waits for room on the disk, already said.
     pub(crate) held_back: Mutex<std::collections::BTreeSet<String>>,
-    /// Cancel on the Google sign-in: its wait for the browser ends.
-    pub(crate) google_stop: AtomicBool,
+    /// Cancel on Google's or Microsoft's sign-in: its wait for the browser ends.
+    pub(crate) oauth_stop: AtomicBool,
     /// GitHub's issues being brought, when asked.
     pub(crate) github: Mutex<Option<Arc<sioul_sync::Control>>>,
     /// When you were last at this window (Unix seconds): reminders follow you.
@@ -2844,7 +2876,7 @@ fn retie_project(id: String) {
 /// before the Porch shows it again. Nothing is sent without a key.
 fn read_shielded(qt: &QtThread, id: &str) {
     let config = load_config();
-    if !config.account(id).is_some_and(|a| a.shield && a.shield_ai) {
+    if !config.account(id).is_some_and(|a| a.ai_reads()) {
         return;
     }
     if let Err(e) = sioul_sync::shield_ai::read_new(&config) {
@@ -3127,6 +3159,16 @@ struct FoundView {
     google: bool,
     /// A Google key of your own is kept on this device for this address.
     google_key: bool,
+    /// Microsoft keeps this address's mail (Outlook.com, Microsoft 365):
+    /// never a password there, Microsoft's own sign-in.
+    microsoft: bool,
+    /// "personal", "work" or "unknown", as discovery found it.
+    microsoft_kind: &'static str,
+    /// An application of your own is kept on this device for this address.
+    microsoft_key: bool,
+    /// What the organisation's administrator does, for the application kept
+    /// here or Sioul's (read here, off the window's thread: the keyring).
+    microsoft_admin: String,
 }
 
 /// A message laid out for reading, as JSON (`view::MessageView`); empty if it
@@ -3420,14 +3462,36 @@ impl qobject::Sioul {
         show(&self.qt_thread(), &self.shared());
     }
 
-    fn discover(mut self: Pin<&mut Self>, address: &QString) {
+    fn discover(self: Pin<&mut Self>, address: &QString) {
+        self.find_servers(address, false);
+    }
+
+    fn discover_at_microsoft(self: Pin<&mut Self>, address: &QString) {
+        self.find_servers(address, true);
+    }
+
+    /// `discover`, or, `at_microsoft`, Microsoft's servers for an address you say is there.
+    fn find_servers(mut self: Pin<&mut Self>, address: &QString, at_microsoft: bool) {
         let address = address.to_string().trim().to_ascii_lowercase();
         let qt = self.qt_thread();
         self.as_mut().set_form_busy(true);
         self.as_mut().set_form_error(QString::default());
         self.as_mut().set_found(QString::default());
         std::thread::spawn(move || {
-            let result = sioul_sync::discover(&address).map(|found| {
+            // An account at Microsoft already (signed in again, or switched from a password):
+            // Microsoft's, whatever discovery would find for its domain (one whose MX is a filtering service's).
+            // Said to be at Microsoft: the same, its kind left to the sign-in.
+            let said = at_microsoft.then_some(sioul_sync::discover::MicrosoftKind::Unknown);
+            let known = said.or_else(|| load_config().every_account().find(|a| a.kind == config::AccountKind::Imap && a.address.as_deref() == Some(address.as_str()) && a.host.as_deref().is_some_and(sioul_sync::microsoft::is_imap_host)).map(|a| match (a.is_microsoft(), a.is_microsoft_work()) {
+                (true, false) => sioul_sync::discover::MicrosoftKind::Personal,
+                (true, true) => sioul_sync::discover::MicrosoftKind::Work,
+                _ => sioul_sync::discover::MicrosoftKind::Unknown,
+            }));
+            let found = match known {
+                Some(kind) => Ok(sioul_sync::discover::microsoft_found(&address, kind)),
+                None => sioul_sync::discover(&address),
+            };
+            let result = found.map(|found| {
                 let server = say(
                     "account-server",
                     &[
@@ -3438,12 +3502,22 @@ impl qobject::Sioul {
                 );
                 // Gmail, or a domain whose mail Google keeps (its MX), or settings naming Google's server.
                 let google = found.by == sioul_sync::FoundBy::Google || found.host.eq_ignore_ascii_case(sioul_sync::discover::GOOGLE_IMAP);
+                // Outlook.com, Microsoft 365: by their domains, their MX, or settings naming their server.
+                let microsoft_kind = match found.by {
+                    sioul_sync::FoundBy::Microsoft(kind) => Some(kind),
+                    _ if sioul_sync::microsoft::is_imap_host(&found.host) => Some(sioul_sync::discover::MicrosoftKind::Unknown),
+                    _ => None,
+                };
                 json(&FoundView {
                     by: say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
                     hint: tr().text(if google { "account-gmail-hint" } else { "account-app-password-hint" }, None),
                     help_url: google.then_some(sioul_sync::GMAIL_APP_PASSWORDS),
                     google,
                     google_key: google && gmail::has_own_key(&address),
+                    microsoft: microsoft_kind.is_some(),
+                    microsoft_kind: microsoft_kind.map_or("", |k| k.as_str()),
+                    microsoft_key: microsoft_kind.is_some() && outlook::has_own_app(&address),
+                    microsoft_admin: if microsoft_kind.is_some_and(|k| k != sioul_sync::discover::MicrosoftKind::Personal) { outlook::admin_text(&address) } else { String::new() },
                     host: found.host,
                     port: found.port,
                     security: found.security.as_str(),
@@ -3566,7 +3640,7 @@ impl qobject::Sioul {
         give_password(&self.qt_thread(), &self.shared(), id.to_string(), password.to_string());
     }
 
-    fn remove_account(mut self: Pin<&mut Self>, id: &QString) {
+    fn remove_account(mut self: Pin<&mut Self>, id: &QString, delete_mail: bool) {
         let id = id.to_string();
         let shared = self.shared();
         if let Some(control) = shared.watchers.lock().ok().and_then(|mut w| w.remove(&id)) {
@@ -3579,6 +3653,8 @@ impl qobject::Sioul {
         // Switched off, an account can be removed all the same.
         let line = match config.every_account().find(|a| a.id == id) {
             None => say("account-unknown", &[("id", id.clone())]),
+            // Microsoft's: its sign-in forgotten here, its mail too when you said so (outlook.rs).
+            Some(account) if account.is_microsoft() => outlook::remove(account, delete_mail).unwrap_or_else(|e| e),
             Some(account) => {
                 if account.is_dav() {
                     pim::stop_dav_watcher(&shared, &id);
@@ -3894,7 +3970,7 @@ impl qobject::Sioul {
     }
 
     fn cancel_google(self: Pin<&mut Self>) {
-        self.shared().google_stop.store(true, Ordering::Relaxed);
+        self.shared().oauth_stop.store(true, Ordering::Relaxed);
     }
 
     fn add_google_mail(mut self: Pin<&mut Self>, address: &QString, client_id: &QString, client_secret: &QString, again: &QString) {
@@ -3902,6 +3978,25 @@ impl qobject::Sioul {
         self.as_mut().set_form_error(QString::default());
         let again = Some(again.to_string()).filter(|a| !a.is_empty());
         gmail::add_google_mail(&self.qt_thread(), &self.shared(), address.to_string(), client_id.to_string(), client_secret.to_string(), again);
+    }
+
+    fn add_microsoft_mail(mut self: Pin<&mut Self>, address: &QString, kind: &QString, client_id: &QString, tenant: &QString, again: &QString) {
+        self.as_mut().set_form_busy(true);
+        self.as_mut().set_form_error(QString::default());
+        let again = Some(again.to_string()).filter(|a| !a.is_empty());
+        outlook::add_microsoft_mail(&self.qt_thread(), &self.shared(), address.to_string(), kind.to_string(), client_id.to_string(), tenant.to_string(), again);
+    }
+
+    fn cancel_microsoft(self: Pin<&mut Self>) {
+        self.shared().oauth_stop.store(true, Ordering::Relaxed);
+    }
+
+    fn microsoft_built_in(&self) -> bool {
+        sioul_sync::microsoft::built_in().is_some()
+    }
+
+    fn microsoft_admin_text(&self, address: &QString, client_id: &QString) -> QString {
+        QString::from(&outlook::admin_text_for(&address.to_string(), &client_id.to_string()))
     }
 
     fn pgp_keys(&self) -> QString {
@@ -5670,7 +5765,7 @@ impl qobject::Sioul {
         // set: no server asked), "tray" the window hidden as to the tray and brought back,
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

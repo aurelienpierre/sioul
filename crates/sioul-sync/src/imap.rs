@@ -6,8 +6,8 @@
 //! TLS is rustls with the ring provider, checked against the system's
 //! certificates (Mozilla's list when a system has none). STARTTLS is done here,
 //! by hand, before the IMAP client starts: the login never travels in clear.
-//! An account signed in with Google gives an access token instead of a
-//! password (SASL XOAUTH2, `sasl.rs`).
+//! An account signed in with Google or Microsoft gives an access token
+//! instead of a password (SASL XOAUTH2, `sasl.rs`).
 
 use crate::SyncError;
 use crate::sasl::{ImapXoauth2, OAuth};
@@ -54,6 +54,8 @@ impl Server {
 /// signed in with OAuth, with an access token (the password is then unused).
 pub async fn open(server: &Server, password: &str) -> Result<Imap, SyncError> {
     if let Some(oauth) = server.oauth {
+        // Microsoft's token to Microsoft's server alone, before any is asked.
+        oauth.may_reach(&server.host, false)?;
         return sign_in_with_tokens(&server.login, || connect(server), |fresh| oauth.token_async(&server.login, fresh), oauth).await;
     }
     let client = connect(server).await?;
@@ -63,7 +65,8 @@ pub async fn open(server: &Server, password: &str) -> Result<Imap, SyncError> {
 /// AUTHENTICATE XOAUTH2 on connections `connect` makes, with the tokens
 /// `token` gives: the one kept first; refused, a fresh one, once (the one kept
 /// may have ended early: a password changed, the access withdrawn); refused
-/// again, the access must be given again.
+/// again, the access must be given again. A refusal no token changes
+/// (Microsoft's mailbox closed to IMAP) is said at once (`OAuth::not_connected`).
 pub(crate) async fn sign_in_with_tokens<T, C, CF, K, KF>(login: &str, connect: C, token: K, oauth: OAuth) -> Result<Session<T>, SyncError>
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
@@ -79,11 +82,24 @@ where
         let mut sasl = ImapXoauth2::new(login, &token);
         match within(COMMAND, client.authenticate("XOAUTH2", &mut sasl)).await? {
             Ok(session) => return Ok(session),
-            Err((async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m), _)) => refusal = sasl.refusal.clone().unwrap_or_else(|| m.trim().to_string()),
+            Err((async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m), _)) => {
+                refusal = sasl.refusal.clone().unwrap_or_else(|| server_words(&m));
+                if let Some(said) = oauth.not_connected(&refusal) {
+                    return Err(said);
+                }
+            }
             Err((other, _)) => return Err(SyncError::Network(other.to_string())),
         }
     }
     Err(oauth.refused(&refusal))
+}
+
+/// The words of a server's NO or BAD, as async-imap gives them
+/// (`code: None, info: Some("…")`): the text inside, else all of it.
+fn server_words(said: &str) -> String {
+    said.split_once("info: Some(\"")
+        .and_then(|(_, rest)| rest.rsplit_once("\")"))
+        .map_or_else(|| said.trim().to_string(), |(words, _)| words.replace("\\\"", "\"").trim().to_string())
 }
 
 /// Connects and encrypts, up to the server's greeting.
@@ -181,13 +197,16 @@ fn tls_error(e: std::io::Error) -> SyncError {
 
 /// A refused login; "application-specific password required" (Gmail) gets its own
 /// sentence, since the usual password will never work there. So does any
-/// password Google's server refuses: it takes app passwords only.
+/// password Google's server refuses: it takes app passwords only. Microsoft's
+/// takes no password at all, app passwords included: its own sign-in instead.
 fn login_error(e: async_imap::error::Error, host: &str) -> SyncError {
     match e {
         async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m) => {
             let detail = m.trim().to_string();
             let lower = detail.to_ascii_lowercase();
-            if lower.contains("application-specific password") || lower.contains("app password") || host.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP) {
+            if crate::microsoft::is_imap_host(host) {
+                SyncError::Login(crate::microsoft::PASSWORD.into())
+            } else if lower.contains("application-specific password") || lower.contains("app password") || host.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP) {
                 SyncError::AppPassword(detail)
             } else {
                 SyncError::Login(detail)
@@ -218,6 +237,20 @@ mod tests {
         // Google refusing a password: an app password, made at Google, is the way.
         let google = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Invalid credentials (Failure)".into());
         assert!(matches!(login_error(google, "imap.gmail.com"), SyncError::AppPassword(_)));
+        assert_eq!(server_words("code: None, info: Some(\"User is authenticated but not connected.\")"), "User is authenticated but not connected.");
+        assert_eq!(server_words(" AUTHENTICATE failed. "), "AUTHENTICATE failed.");
+        // Microsoft refusing a password: its own sign-in is the only way.
+        let microsoft = async_imap::error::Error::No("LOGIN failed.".into());
+        assert_eq!(login_error(microsoft, "outlook.office365.com"), SyncError::Login(crate::microsoft::PASSWORD.into()));
+    }
+
+    /// Microsoft's token goes to Microsoft's IMAP server alone: a
+    /// configuration naming another is refused before any token is asked.
+    #[test]
+    fn a_microsoft_token_reaches_no_other_server() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let elsewhere = Server { host: "imap.example.org".into(), port: 993, security: Security::Tls, login: "you@example.org".into(), oauth: Some(OAuth::Microsoft { personal: true }) };
+        assert_eq!(runtime.block_on(open(&elsewhere, "")).err(), Some(SyncError::Said(crate::microsoft::OTHER_HOST, "imap.example.org".into())));
     }
 
     /// Reaches real servers, so it runs only when asked: `cargo test -- --ignored`.

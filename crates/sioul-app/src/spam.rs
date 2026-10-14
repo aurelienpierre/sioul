@@ -102,6 +102,9 @@ fn chosen(judged: &[porch::Triaged], filter: &sioul_core::spam::Filter, action: 
 pub(crate) struct Status {
     /// This device trains (a computer); a phone only reads its table.
     trains: bool,
+    /// Under Train now: what it downloads, from which addresses (Microsoft's
+    /// among them: pressing it is the consent its terms ask, docs/microsoft.md).
+    train_about: String,
     /// The table in use: where it comes from, when, from what; else that there is none.
     table: String,
     /// What that table measured on the newest of your mail, at the spam threshold then; "" without numbers.
@@ -138,12 +141,19 @@ pub(crate) fn status() -> String {
 }
 
 fn status_now() -> Status {
-    let mut status = Status { trains: cfg!(not(target_os = "android")), fraction: -1.0, ..Status::default() };
+    let mut status = Status { trains: cfg!(not(target_os = "android")), fraction: -1.0, train_about: train_about(&crate::backend::load_config()), ..Status::default() };
     let (table, measured, refused) = table_lines(&sioul_core::spam::table_path(), status.trains);
     (status.table, status.measured, status.refused) = (table, measured, refused);
     #[cfg(not(target_os = "android"))]
     training::fill(&mut status);
     status
+}
+
+/// What Train now downloads from, named: every address whose mail Sioul fetches.
+fn train_about(config: &sioul_core::config::Config) -> String {
+    let addresses: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).map(|a| a.address.clone().unwrap_or_else(|| a.id.clone())).collect();
+    let named = if addresses.is_empty() { tr().text("spam-app-no-address", None) } else { addresses.join(", ") };
+    say("spam-app-train-about", &[("addresses", named)])
 }
 
 /// "Train now": the corpus brought up to date, then a training, on a thread of

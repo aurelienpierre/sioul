@@ -631,6 +631,36 @@ fn things_outside_projects_can_be_closed() {
     assert!(!home.root.join("store/notes/Outside.md").exists() && !Draft::all().iter().any(|d| d.subject == "Outside"), "nothing written");
 }
 
+/// A work or school Microsoft account's mail is kept from agents whatever
+/// its projects, counted, never named, unless `[mcp] work_accounts = true`
+/// opens it (Microsoft's terms: docs/microsoft.md).
+#[test]
+fn work_microsoft_accounts_are_kept_from_agents() {
+    let home = home();
+    let work = home.root.join("mail/work");
+    for sub in ["cur", "new", "tmp"] {
+        std::fs::create_dir_all(work.join(sub)).unwrap();
+    }
+    let plan = message("plan-1@contoso.example", "Boss <boss@contoso.example>", "Quarterly plan", "Hello Jane,\n\nThe plan for the quarter is below.", 1);
+    std::fs::write(work.join("cur").join(seen("1759300009.U3-1.test")), plan).unwrap();
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    let account = format!(
+        "\n[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"jane@contoso.example\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nsmtp_host = \"smtp.office365.com\"\nmaildir = \"{}\"\n",
+        work.display().to_string().replace('\\', "\\\\")
+    );
+    let kept = home.root.join("config/sioul/work-kept.toml");
+    std::fs::write(&kept, format!("{config}{account}")).unwrap();
+    let mut server = Server::new(&kept, "en");
+    let mail = call(&mut server, "search_mail", json!({}));
+    assert!(!text(&mail).contains("Quarterly plan") && text(&mail).contains("Your housing aid file"), "{mail}");
+    assert!(mail["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "counted, never named: {mail}");
+    assert_eq!(call(&mut server, "read_message", json!({ "message": "mid:plan-1@contoso.example" }))["isError"], true);
+    let opened = home.root.join("config/sioul/work-opened.toml");
+    std::fs::write(&opened, format!("{config}{account}\n[mcp]\nwork_accounts = true\n")).unwrap();
+    let mut server = Server::new(&opened, "en");
+    assert!(text(&call(&mut server, "search_mail", json!({}))).contains("Quarterly plan"), "opened by the person");
+}
+
 /// The phone's messages: the words where the phone sent them, a code its
 /// phone did not catch masked, one it caught said without it, a message held
 /// by the phone not given before its time, all framed as data; the calls.

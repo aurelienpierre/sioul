@@ -51,7 +51,7 @@ pub struct Read {
 /// Reads the new mail of every shielded address that allows the AI, up to
 /// `PER_ROUND` messages each, newest first. Nothing is sent without a key.
 pub fn read_new(config: &Config) -> Result<Read, SyncError> {
-    if !config.accounts.iter().any(|a| a.shield && a.shield_ai) {
+    if !config.accounts.iter().any(|a| a.ai_reads()) {
         return Ok(Read::default());
     }
     let Some(key) = api_key() else { return Ok(Read::default()) };
@@ -60,7 +60,8 @@ pub fn read_new(config: &Config) -> Result<Read, SyncError> {
 
 /// `read_new`, its questions sent to `endpoint` with `key`.
 fn read_with(config: &Config, endpoint: &str, key: &str) -> Result<Read, SyncError> {
-    let accounts: Vec<_> = config.accounts.iter().filter(|a| a.shield && a.shield_ai).collect();
+    // Never a work or school Microsoft account's mail (`Account::ai_reads`).
+    let accounts: Vec<_> = config.accounts.iter().filter(|a| a.ai_reads()).collect();
     // No redirect followed: the key is a header of its own, which would go along to any other address.
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).max_redirects(0).build().into();
     let mut done = Read::default();

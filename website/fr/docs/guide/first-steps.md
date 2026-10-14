@@ -77,7 +77,7 @@ Ce qui change sur un téléphone :
 
 Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous.
 
-Les adresses Outlook.com, Hotmail et Microsoft 365 ne peuvent pas encore être ajoutées : Microsoft n’accepte plus des autres logiciels de courrier que sa propre page de connexion ([Fonctionne avec](compatibility.md#mail)).
+Outlook.com, Hotmail, Live, MSN et Microsoft 365 ne prennent aucun mot de passe : vous vous connectez sur la page de Microsoft elle-même, ci-dessous.
 
 Relever le courrier ne change rien sur votre serveur de courrier. Sioul n’y écrit que lorsque vous agissez : ouvrir un message le marque comme lu, comme dans tout logiciel de courrier ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
@@ -91,6 +91,24 @@ Google refuse le mot de passe de votre compte dans les autres logiciels de courr
 - **Se connecter avec Google** : la page de Google elle-même s’ouvre dans votre navigateur. Pour le courrier, Google n’accepte qu’une clé Google à vous, pas celle de Sioul : un projet gratuit dans Google Cloud, fait une fois (**Faire votre clé Google** déplie les étapes), celui de vos agendas Google si vous l’avez fait. Google dit ensuite que l’application n’est pas validée : c’est la vôtre ; choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail. Publiez le projet (*Audience → Publier l’application*) : s’il reste en test, Google coupe l’accès tous les sept jours.
 
 Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur un téléphone, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
+
+### Outlook.com, Hotmail et Microsoft 365 {#outlook-and-microsoft-365}
+
+Microsoft ne prend aucun mot de passe des autres logiciels de courrier, mots de passe d’application compris. Sioul reconnaît le courrier de Microsoft à son adresse (outlook.com, hotmail.com, live.com, msn.com et leurs versions par pays, comme hotmail.fr) ou aux serveurs qui reçoivent le courrier de votre domaine (Microsoft 365), et le connecte plutôt sur la page de Microsoft elle-même :
+
+1. Après **Trouver le serveur**, choisissez **Se connecter avec Microsoft**. La page de Microsoft s’ouvre dans votre navigateur, votre adresse déjà remplie. Choisissez votre compte si Microsoft demande lequel, connectez-vous comme Microsoft le demande (votre mot de passe, votre téléphone, votre clé de sécurité), et acceptez ce que Sioul demande : lire et envoyer votre courrier, et rester connecté.
+2. Sioul attend la réponse de Microsoft cinq minutes au plus, puis ouvre votre boîte avec l’accès donné avant de rien garder. L’accès reste dans le trousseau de votre système, et rien ne part chez le développeur de Sioul.
+
+Ce que chaque sorte d’adresse demande :
+
+- **Outlook.com, Hotmail, Live, MSN** : Outlook.com garde les logiciels de courrier dehors tant que vous ne les laissez pas entrer, une fois. Dans les paramètres d’Outlook.com, sous Courrier ▸ Transfert et IMAP, activez l’accès IMAP des appareils et des applications, puis enregistrez ; **La page de Microsoft à ce sujet** ouvre les explications de Microsoft. Si Sioul dit que la boîte reste fermée alors que c’est activé, confirmez que la connexion est la vôtre sur account.live.com/activity.
+- **Microsoft 365, professionnel ou scolaire** : votre organisation doit peut-être approuver Sioul une fois, car par défaut Microsoft ne laisse les employés approuver l’accès au courrier que pour quelques logiciels de son choix. Si la page de Microsoft dit que seul un administrateur le peut, dépliez **Ce que fait votre administrateur**, copiez-le et envoyez-le-lui : le lien qui approuve Sioul pour toute votre organisation, et les deux interrupteurs de votre boîte (IMAP, et le SMTP authentifié pour l’envoi).
+- **Une adresse Microsoft 365 que Sioul ne reconnaît pas** (le courrier de votre organisation passe d’abord par un autre service) : quand **Trouver le serveur** ne trouve rien, choisissez **Cette adresse est chez Microsoft**.
+- **Votre propre application Microsoft** : dans une copie de Sioul qui n’en porte pas, le formulaire le dit et demande l’ID d’application (client) de la vôtre. Inscrivez-en une, une fois, dans Microsoft Entra (**Comment inscrire votre application** déplie les étapes) ; elle ne demande aucun secret. Dans une copie qui en porte une, **Utiliser une application à moi** est là si vous préférez la vôtre.
+
+Sur un téléphone, revenez à Sioul dès que la page de Microsoft dit que c’est fait : la réponse de Microsoft dure environ une minute. Si elle est arrivée trop tard, Sioul le dit ; se reconnecter va plus vite la deuxième fois.
+
+Sioul n’atteint pas les agendas et les contacts de Microsoft : Microsoft les propose par sa propre interface, pas par CalDAV ou CardDAV.
 
 ## Ajouter vos agendas, tâches et contacts {#add-your-calendars-tasks-and-contacts}
 

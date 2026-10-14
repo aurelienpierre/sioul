@@ -1,20 +1,20 @@
 ---
 title: Politique de confidentialité
-description: "La politique de confidentialité de Sioul : Sioul fonctionne sur votre appareil et n’a pas de serveur ; ce qu’il lit et écrit dans votre compte Google, où c’est gardé, ce qui est partagé, et comment retirer l’accès."
+description: "La politique de confidentialité de Sioul : Sioul fonctionne sur votre appareil et n’a pas de serveur ; ce qu’il lit et écrit dans votre compte Google et votre boîte Microsoft, où c’est gardé, ce qui est partagé, et comment retirer l’accès."
 ---
 
 # Politique de confidentialité {#privacy-policy}
 
 Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/privacy.html) fait foi.
 
-*Dernière mise à jour le 10 octobre 2026 (2026-10-10).*
+*Dernière mise à jour le 14 octobre 2026 (2026-10-14).*
 
-Sioul est une application de bureau libre et à code source ouvert, publiée par Aurélien Pierre sous la licence GPL-3.0-or-later. Cette politique dit ce que Sioul fait de vos données, et en particulier des données qu’il reçoit de Google quand vous vous connectez avec un compte Google.
+Sioul est une application de bureau libre et à code source ouvert, publiée par Aurélien Pierre sous la licence GPL-3.0-or-later. Cette politique dit ce que Sioul fait de vos données, et en particulier des données qu’il reçoit de Google quand vous vous connectez avec un compte Google, et de Microsoft quand vous vous connectez avec un compte Microsoft pour votre courrier.
 
 ## En bref {#in-short}
 
 - **Sioul fonctionne sur votre appareil. Il n’y a pas de serveur Sioul.**
-- Vos données restent sur votre appareil et dans vos propres comptes : votre fournisseur de courrier, votre serveur d’agendas, votre compte Google.
+- Vos données restent sur votre appareil et dans vos propres comptes : votre fournisseur de courrier, votre serveur d’agendas, votre compte Google, votre compte Microsoft.
 - Rien n’est envoyé au développeur de Sioul. Rien n’est vendu, rien ne sert à la publicité, rien ne sert à constituer des profils.
 - Les données ne quittent votre appareil que vers les services que vous ajoutez, et vers les quelques autres décrits plus bas, chacun pour une fonction que vous choisissez.
 
@@ -26,7 +26,7 @@ Sioul est fait et publié par Aurélien Pierre. Comme Sioul n’a pas de serveur
 
 ## Comment Sioul fonctionne {#how-sioul-works}
 
-Sioul se connecte, depuis votre appareil, aux services que vous lui ajoutez : votre fournisseur de courrier (IMAP et SMTP), votre serveur d’agendas et de contacts (CalDAV et CardDAV), Google. Il garde une copie de ce qu’il récupère dans des fichiers de vos propres dossiers d’utilisateur, pour pouvoir fonctionner sans attendre le réseau. Les mots de passe et les jetons d’accès vont dans le trousseau de votre système (le Secret Service sur Linux, le Gestionnaire d’identification sur Windows, le Trousseau d’accès sur macOS), jamais dans un fichier.
+Sioul se connecte, depuis votre appareil, aux services que vous lui ajoutez : votre fournisseur de courrier (IMAP et SMTP), votre serveur d’agendas et de contacts (CalDAV et CardDAV), Google, Microsoft. Il garde une copie de ce qu’il récupère dans des fichiers de vos propres dossiers d’utilisateur, pour pouvoir fonctionner sans attendre le réseau. Les mots de passe et les jetons d’accès vont dans le trousseau de votre système (le Secret Service sur Linux, le Gestionnaire d’identification sur Windows, le Trousseau d’accès sur macOS), jamais dans un fichier.
 
 ## Agendas, contacts et tâches Google {#google-calendars-contacts-and-tasks}
 
@@ -81,6 +81,51 @@ Retirer le compte laisse votre compte Google lui-même tel qu’il est. Les copi
 
 Si vous utilisez une clé Google à vous (votre propre projet Google Cloud, comme Sioul le permet), tout ce qui précède vaut de même : les données ne circulent qu’entre votre appareil et Google. Une telle clé permet aussi de vous connecter à Gmail par Google ([plus haut](#google-calendars-contacts-and-tasks)).
 
+## Le courrier Microsoft {#microsoft-mail}
+
+Quand vous ajoutez une adresse Outlook.com, Hotmail, Live, MSN ou Microsoft 365 dans Sioul (Comptes ▸ Ajouter un compte ▸ Ajouter un compte de courrier), vous vous connectez sur la page de Microsoft elle-même, dans votre navigateur : Microsoft ne prend aucun mot de passe des logiciels de courrier. Microsoft vous demande alors votre permission pour ces champs d’application :
+
+| Champ d’application | Ce que Sioul en fait |
+|---|---|
+| `https://outlook.office.com/IMAP.AccessAsUser.All` | Lit votre boîte par IMAP, comme tout logiciel de courrier : relève votre courrier sur votre appareil, et fait sur le serveur ce que vous faites dans Sioul (archiver, supprimer, déplacer, marquer comme lu), quand vous le faites. |
+| `https://outlook.office.com/SMTP.Send` | Envoie les messages que vous envoyez, par SMTP, quand vous appuyez sur Envoyer. |
+| `offline_access` | Vous garde connecté : Microsoft donne un jeton de renouvellement, pour que Sioul relève votre courrier sans vous demander de vous reconnecter à chaque fois. |
+| `openid`, `email`, `profile` | Lit avec quel compte vous vous êtes connecté, et s’il est personnel ou professionnel ou scolaire, pour vérifier que la boîte s’ouvre avec lui et choisir son serveur d’envoi. Rien d’autre. |
+
+Sioul ne demande rien de plus : ni vos agendas, ni vos contacts, ni vos fichiers.
+
+### Comment les données Microsoft sont utilisées {#how-microsoft-data-is-used}
+
+Seulement pour montrer votre courrier dans Sioul, sur votre appareil, et faire sur votre boîte ce que vous faites dans Sioul, quand vous le faites. Dans Sioul, elles servent les fonctions que vous voyez : le Porche, la vérification de qui a envoyé chaque message, les rappels, les liens que vous faites entre vos choses, et le filtre à indésirables que vous entraînez vous-même. Les données Microsoft ne servent pas à la publicité, ne sont pas vendues, ne servent pas à constituer des profils, et ne servent pas à développer, améliorer ou entraîner des modèles d’intelligence artificielle ou d’apprentissage automatique. Personne qui travaille sur Sioul ne peut les lire : elles ne lui parviennent jamais.
+
+### Où les données Microsoft sont gardées {#where-microsoft-data-is-kept}
+
+- **Sur votre appareil** : votre courrier, comme celui de tout compte, dans le dossier de données de Sioul (sur Linux, `~/.local/share/sioul/mail/`, dans un dossier au nom du compte).
+- **Dans votre propre boîte Microsoft**, où il est déjà.
+- **La connexion** : le jeton de renouvellement que donne Microsoft, avec l’identifiant de l’application et le répertoire de votre compte, dans le trousseau de votre système seulement, réparti sur quelques entrées quand il est trop long pour une seule. Microsoft donne un nouveau jeton de renouvellement chaque fois qu’on s’en sert : Sioul garde le plus récent à la place du précédent. Le jeton d’accès ne reste qu’en mémoire, environ une heure.
+
+Rien n’est gardé sur aucun serveur du développeur : il n’y en a pas.
+
+### Partage des données Microsoft {#sharing-of-microsoft-data}
+
+Sioul n’envoie les données reçues de Microsoft ni à son développeur, ni à aucun tiers. Elles ne quittent votre appareil que dans ces cas, chacun choisi par vous :
+
+1. **Vers Microsoft**, quand vous agissez sur votre courrier, et quand vous envoyez un message.
+2. **Vers vos autres appareils**, seulement si vous activez le [partage entre vos appareils](guide/sharing.md) : ce que Sioul garde à propos de vos choses, chiffré sur votre appareil avec votre phrase de passe. Chaque appareil relève lui-même le courrier chez Microsoft.
+3. **Vers Anthropic, par le bouclier par IA**, seulement pour une adresse Microsoft personnelle que vous protégez contre le harcèlement, et seulement une fois que vous avez activé **Laisser l’IA le lire d’abord** et donné votre propre clé de l’API d’Anthropic (plus bas, [Autres données](#other-data)). **Jamais pour une adresse Microsoft professionnelle ou scolaire** : son courrier est aussi celui de son organisation, et les conditions de Microsoft demandent l’accord de l’organisation avant qu’il aille chez une autre entreprise ; Sioul ne le propose pas là, quels que soient ses réglages.
+4. **Vers un agent d’IA que vous connectez vous-même**, seulement si vous le faites : le courrier d’une adresse Microsoft personnelle comme celui de toute autre, dans la mesure où vous l’ouvrez à l’agent. **Le courrier d’une adresse Microsoft professionnelle ou scolaire reste fermé aux agents** jusqu’à ce que vous l’ouvriez dans Réglages ▸ Agents d’IA, ce que vous ne devriez faire que si votre organisation le permet.
+
+Votre propre filtre à indésirables, sur votre ordinateur, apprend du courrier des adresses nommées sous **Entraîner maintenant**, une adresse Microsoft parmi elles, quand vous appuyez dessus : c’est votre accord, pour chacune. Ce qu’il garde reste sur cet ordinateur (plus bas, [Autres données](#other-data)).
+
+L’utilisation des API de Microsoft par Sioul respecte les [conditions d’utilisation des API de Microsoft](https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use) : il synchronise votre courrier avec votre appareil, et n’en fait pas plus que ce que vous choisissez, comme le dit cette politique. Le traitement de vos données par Microsoft lui-même est décrit dans la [déclaration de confidentialité de Microsoft](https://privacy.microsoft.com/privacystatement) ; cette politique ne protège pas moins.
+
+### Retirer l’accès de Microsoft {#taking-microsofts-access-back}
+
+- **Dans Sioul** : Comptes ▸ Vos comptes, sur la fiche de l’adresse, **Retirer**. Sioul oublie sa connexion sur cet appareil, et demande s’il faut supprimer le courrier qu’il garde sur cet appareil pour ce compte : oui, sauf si vous décochez (son dossier de courrier, ce que le bouclier par IA en a gardé, ce que le filtre à indésirables en garde).
+- **Chez Microsoft** : Microsoft n’offre aux applications aucun moyen de rendre un accès, si bien que Sioul reste parmi les applications que vous avez autorisées jusqu’à ce que vous l’y retiriez : pour un compte personnel, [account.live.com/consent/Manage](https://account.live.com/consent/Manage) ; pour un compte professionnel ou scolaire, [myapps.microsoft.com](https://myapps.microsoft.com), ou l’administrateur de votre organisation. Un mot de passe changé ou réinitialisé met le plus souvent fin à l’accès de Sioul aussi.
+
+Retirer le compte laisse votre boîte chez Microsoft telle quelle.
+
 ## Autres données {#other-data}
 
 Sioul lit et garde votre courrier, vos agendas, contacts, tâches, notes, budgets, papiers et les autres choses que vous lui confiez, sur votre appareil, comme décrit plus haut. En dehors de vos propres fournisseurs, il ne contacte d’autres services que pour une fonction que vous choisissez :
@@ -88,7 +133,7 @@ Sioul lit et garde votre courrier, vos agendas, contacts, tâches, notes, budget
 - **La météo**, si vous choisissez un lieu : Open-Meteo reçoit les coordonnées de ce lieu, arrondies à deux décimales, au plus une fois par demi-heure, ou le nom d’une ville que vous cherchez.
 - **La carte de vos contacts**, si vous le permettez : le géocodeur d’OpenStreetMap reçoit leurs adresses postales, une fois chacune ; les images de la carte viennent d’OpenStreetMap, ou de la source que vous avez choisie.
 - **Trouver la clé de chiffrement de quelqu’un**, quand vous le demandez : le Web Key Directory de son domaine, puis keys.openpgp.org, reçoivent l’adresse à laquelle vous écrivez.
-- **Le bouclier par IA**, seulement pour une adresse que vous protégez contre le harcèlement, et seulement une fois que vous avez activé **Laisser l’IA le lire d’abord** sur sa fiche dans Comptes et donné votre propre clé de l’API d’Anthropic : chaque message de la boîte de réception de cette adresse que l’IA n’a pas encore lu, de n’importe qui, y compris ceux qui s’y trouvent déjà quand vous l’activez, est envoyé à Anthropic, les plus récents d’abord, vingt à la fois, pour en dire le ton et le sujet. Pour chacun, Anthropic reçoit l’objet et les 4 000 premiers caractères de son texte, tels quels : rien n’est masqué, si bien qu’un code, un mot de passe ou un numéro de compte dans un tel message parvient aussi à Anthropic. Un message dont la réponse revient mal formée est envoyé de nouveau plus tard. La réponse (un ton, un sujet, une ligne neutre) reste sur votre appareil ; ce qu’Anthropic fait de ce qu’il reçoit relève de votre propre accord avec Anthropic. Pour l’arrêter, désactivez **Laisser l’IA le lire d’abord**, ou choisissez **Oublier la clé** dans Comptes. Il ne lit que le courrier, jamais les données Google.
+- **Le bouclier par IA**, seulement pour une adresse que vous protégez contre le harcèlement, et seulement une fois que vous avez activé **Laisser l’IA le lire d’abord** sur sa fiche dans Comptes et donné votre propre clé de l’API d’Anthropic : chaque message de la boîte de réception de cette adresse que l’IA n’a pas encore lu, de n’importe qui, y compris ceux qui s’y trouvent déjà quand vous l’activez, est envoyé à Anthropic, les plus récents d’abord, vingt à la fois, pour en dire le ton et le sujet. Pour chacun, Anthropic reçoit l’objet et les 4 000 premiers caractères de son texte, tels quels : rien n’est masqué, si bien qu’un code, un mot de passe ou un numéro de compte dans un tel message parvient aussi à Anthropic. Un message dont la réponse revient mal formée est envoyé de nouveau plus tard. La réponse (un ton, un sujet, une ligne neutre) reste sur votre appareil ; ce qu’Anthropic fait de ce qu’il reçoit relève de votre propre accord avec Anthropic. Pour l’arrêter, désactivez **Laisser l’IA le lire d’abord**, ou choisissez **Oublier la clé** dans Comptes. Il ne lit que le courrier, jamais les données Google, et jamais le courrier d’un compte Microsoft professionnel ou scolaire.
 - **GitHub**, si vous l’activez : vos tickets et vos demandes de fusion (pull requests) sont lus avec votre propre jeton. Rien n’est écrit sur GitHub.
 - **Bitwarden**, quand vous remplissez un identifiant depuis votre coffre : votre serveur Bitwarden, avec votre compte.
 - **Les sites que vous épinglez**, comme dans tout navigateur : chacun reçoit aussi une demande pour sa propre icône.
@@ -98,7 +143,7 @@ Sur un téléphone, si vous donnez à Sioul l’accès aux notifications d’And
 
 Sur un téléphone, si vous autorisez Sioul à lire et envoyer des SMS (Réglages ▸ Ce téléphone ▸ SMS) et activez **SMS** dans votre partage, le téléphone envoie à vos autres appareils tous ses SMS, avec les images, sons et vidéos de ses messages multimédias, chiffrés avec votre phrase de passe avant de quitter le téléphone, et gardés chiffrés sur chaque appareil qui les reçoit, comme une archive qui ne fait que grandir (un SMS effacé sur votre téléphone reste, marqué comme tel) ; un SMS que vous écrivez sur un ordinateur fait le même chemin jusqu’au téléphone, qui l’envoie par votre opérateur. Ils ne passent que par votre propre dossier ou serveur de partage, jamais par un autre service. Sioul ne devient jamais votre application de SMS, ne marque jamais un SMS comme lu et n’en efface aucun ([Les SMS](guide/texts.md)).
 
-**Votre propre filtre à indésirables**, sur un ordinateur : il apprend la première fois quand vous le demandez (**Entraîner maintenant**), puis de lui-même une fois par semaine, sur l’ordinateur qui l’a entraîné, quand cet ordinateur est branché et inactif, sauf si vous désactivez **Se réentraîner de lui-même une fois par semaine, quand cet ordinateur est branché et inactif**. Pour apprendre, Sioul lit chez votre fournisseur de courrier, sans rien y changer, les messages de chaque dossier sauf la corbeille, les brouillons et les envoyés (dans « Tous les messages » de Gmail, seulement le courrier archivé qu’aucun autre dossier ne contient, jamais vos propres messages), et garde sur cet ordinateur, pour chaque message, ses en-têtes, le nom et le type de ses parties et le début de son texte, jamais les pièces jointes elles-mêmes, avec le modèle de langue qu’il apprend. Pour vérifier chaque expéditeur comme il vérifie le courrier qu’il garde, il lit aussi chaque message de 2 Mo au plus en entier, en mémoire seulement, ne garde que les résultats des vérifications, et interroge le DNS de votre système sur les domaines des expéditeurs. Ce qu’il garde et le modèle de langue restent sur cet ordinateur, et Sioul ne les envoie nulle part : pour l’apprentissage, il ne parle qu’à vos propres fournisseurs de courrier, pour lire, et au DNS de votre système ; sur une connexion limitée, ou dont il ne peut rien savoir, l’apprentissage de lui-même ne télécharge rien. Seul le résultat, une table de nombres sans aucun mot de votre courrier en clair, va vers vos autres appareils, chiffrée avec votre phrase de passe, si vous partagez entre vos appareils, avec ce que vous avez dit indésirable ou pas sur chaque appareil (quel message, où et quand ; jamais un mot de lui). Si vous importez un apport extérieur pour l’apprentissage sur cet ordinateur (`sioul spam import` : du courrier étiqueté ailleurs, ses objets et ses textes), il y reste, à part de votre courrier, jamais partagé, jusqu’à ce que vous le retiriez. Rien n’en va au développeur ni à aucun autre service. Si vous connectez vous-même un agent d’IA, il peut se servir des outils du filtre, qui en donnent les chiffres et listent ses pires erreurs par expéditeur et par objet, les codes et les numéros de compte masqués ; l’entreprise derrière l’agent reçoit alors ce qu’il lit, sauf si vous gardez ces outils loin de lui ([Avec un agent d’IA](guide/ai-agent.md#the-spam-filters-tools)). Il n’apprend que de votre courrier : jamais des données reçues de Google ([Vie privée et sécurité](guide/privacy-security.md#your-own-spam-filter)).
+**Votre propre filtre à indésirables**, sur un ordinateur : il apprend la première fois quand vous le demandez (**Entraîner maintenant**), puis de lui-même une fois par semaine, sur l’ordinateur qui l’a entraîné, quand cet ordinateur est branché et inactif, sauf si vous désactivez **Se réentraîner de lui-même une fois par semaine, quand cet ordinateur est branché et inactif**. Pour apprendre, Sioul lit chez votre fournisseur de courrier, sans rien y changer, les messages de chaque dossier sauf la corbeille, les brouillons et les envoyés (dans « Tous les messages » de Gmail, seulement le courrier archivé qu’aucun autre dossier ne contient, jamais vos propres messages), et garde sur cet ordinateur, pour chaque message, ses en-têtes, le nom et le type de ses parties et le début de son texte, jamais les pièces jointes elles-mêmes, avec le modèle de langue qu’il apprend. Pour vérifier chaque expéditeur comme il vérifie le courrier qu’il garde, il lit aussi chaque message de 2 Mo au plus en entier, en mémoire seulement, ne garde que les résultats des vérifications, et interroge le DNS de votre système sur les domaines des expéditeurs. Ce qu’il garde et le modèle de langue restent sur cet ordinateur, et Sioul ne les envoie nulle part : pour l’apprentissage, il ne parle qu’à vos propres fournisseurs de courrier, pour lire, et au DNS de votre système ; sur une connexion limitée, ou dont il ne peut rien savoir, l’apprentissage de lui-même ne télécharge rien. Seul le résultat, une table de nombres sans aucun mot de votre courrier en clair, va vers vos autres appareils, chiffrée avec votre phrase de passe, si vous partagez entre vos appareils, avec ce que vous avez dit indésirable ou pas sur chaque appareil (quel message, où et quand ; jamais un mot de lui). Si vous importez un apport extérieur pour l’apprentissage sur cet ordinateur (`sioul spam import` : du courrier étiqueté ailleurs, ses objets et ses textes), il y reste, à part de votre courrier, jamais partagé, jusqu’à ce que vous le retiriez. Rien n’en va au développeur ni à aucun autre service. Si vous connectez vous-même un agent d’IA, il peut se servir des outils du filtre, qui en donnent les chiffres et listent ses pires erreurs par expéditeur et par objet, les codes et les numéros de compte masqués ; l’entreprise derrière l’agent reçoit alors ce qu’il lit, sauf si vous gardez ces outils loin de lui ([Avec un agent d’IA](guide/ai-agent.md#the-spam-filters-tools)). Il n’apprend que de votre courrier : jamais des données reçues de Google ([Vie privée et sécurité](guide/privacy-security.md#your-own-spam-filter)). Sous **Entraîner maintenant**, une phrase nomme les adresses dont il apprend : l’appuyer est votre accord, pour chacune, comme les conditions de Microsoft le demandent pour une adresse Microsoft.
 
 Sur un téléphone, si vous faites de Sioul l’appli numéro de l’appelant et spam d’Android, Android lui montre le numéro de chaque appel avant que le téléphone sonne ; Sioul décide là, sur le téléphone, et n’envoie aucun numéro à aucun serveur : aucune recherche. La liste des appels qu’il a filtrés ne va qu’à vos autres appareils, chiffrée avec votre phrase de passe, tant que la partie **Appels** de votre partage est activée. Il ne décroche jamais, n’enregistre jamais un appel et n’écoute jamais ([Les appels](guide/calls.md)).
 
@@ -108,7 +153,7 @@ Sioul n’a ni mesure d’audience, ni publicité, ni pistage, ni rapports de pl
 
 ## Sécurité {#security}
 
-Les connexions à Google passent par HTTPS. La connexion au compte suit les recommandations de Google pour les applications installées : la page de Google s’ouvre dans votre navigateur, et Sioul reçoit la réponse sur votre propre appareil seulement (une adresse de bouclage), vérifiée avec PKCE et une valeur d’état. Les mots de passe et les jetons sont gardés dans le trousseau de votre système. Ce que vous partagez entre vos appareils est chiffré sur votre appareil avant de le quitter.
+Les connexions à Google et à Microsoft passent par HTTPS. Chaque connexion au compte suit les recommandations du fournisseur pour les applications installées : sa page s’ouvre dans votre navigateur, et Sioul reçoit la réponse sur votre propre appareil seulement (une adresse de bouclage), vérifiée avec PKCE et une valeur d’état. Avec Microsoft, Sioul ne détient aucun secret, et ses jetons ne vont qu’au service de connexion de Microsoft et aux serveurs de courrier de Microsoft lui-même, nommés exactement, jamais ailleurs. Les mots de passe et les jetons sont gardés dans le trousseau de votre système. Ce que vous partagez entre vos appareils est chiffré sur votre appareil avant de le quitter.
 
 ## Ce site {#this-website}
 

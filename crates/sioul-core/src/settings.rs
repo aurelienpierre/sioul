@@ -152,7 +152,7 @@ impl Builder<'_> {
 
     /// The key for the AI, when an address allows it; whether one is kept is the window's to say.
     fn ai_key(&mut self, config: &Config) {
-        if config.accounts.iter().any(|a| a.shield && a.shield_ai) {
+        if config.accounts.iter().any(|a| a.ai_reads()) {
             self.push("ai_key", "ai-key", Kind::Secret, SettingValue::Bool(false));
         }
     }
@@ -237,7 +237,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push(&key("fetch_minutes"), "account-fetch", Kind::Int, SettingValue::Int(account.fetch_minutes.map_or(0, i64::from)));
             Builder::range(s, 0.0, 1440.0, 5.0, "min");
             b.push(&key("shield"), "account-shield", Kind::Bool, SettingValue::Bool(account.shield));
-            if account.shield {
+            // The AI's reading sends a message's text to Anthropic: not offered for a work or
+            // school Microsoft account, whose mail its organisation must allow to go there.
+            if account.shield && account.is_microsoft_work() {
+                b.note(tr.text("set-account-shield-ai-work", None), Vec::new());
+            } else if account.shield {
                 b.push(&key("shield_ai"), "account-shield-ai", Kind::Bool, SettingValue::Bool(account.shield_ai));
             }
         }
@@ -610,6 +614,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("mcp.outside_projects", "mcp-outside-projects", Kind::Bool, SettingValue::Bool(config.mcp.outside_projects));
             b.push("mcp.texts", "mcp-texts", Kind::Bool, SettingValue::Bool(config.mcp.texts));
             b.push("mcp.spam", "mcp-spam", Kind::Bool, SettingValue::Bool(config.mcp.spam));
+            // Shown when there is one: the mail of work and school Microsoft accounts, closed unless opened.
+            if config.every_account().any(|a| a.is_microsoft_work()) {
+                b.push("mcp.work_accounts", "mcp-work-accounts", Kind::Bool, SettingValue::Bool(config.mcp.work_accounts));
+            }
             b.group = tr.text("set-ai-projects-group", None);
             let projects = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
             b.note(tr.text(if projects.is_empty() { "set-ai-projects-none" } else { "set-ai-projects-note" }, None), Vec::new());
@@ -1249,6 +1257,29 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A work or school Microsoft account's shield has no AI to allow, said
+    /// in one sentence; a personal one's keeps its switch. Agents' switch for
+    /// work accounts shows once there is one, closed.
+    #[test]
+    fn microsoft_work_accounts_keep_their_mail_from_ais() {
+        let config: Config = toml::from_str(
+            "[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"you@outlook.com\"\nauth = \"microsoft\"\nsmtp_host = \"smtp-mail.outlook.com\"\nshield = true\nshield_ai = true\n\
+             [[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"you@contoso.example\"\nauth = \"microsoft\"\nsmtp_host = \"smtp.office365.com\"\nshield = true\nshield_ai = true\n",
+        )
+        .unwrap();
+        let tr = Translator::new("en");
+        let rows = |view: &str| for_view(view, &config, &tr, &[], None);
+        assert!(rows("account:home").iter().any(|s| s.key == "account.home.shield_ai"));
+        let work = rows("account:work");
+        assert!(!work.iter().any(|s| s.key == "account.work.shield_ai"), "no AI to allow on a work account");
+        assert!(work.iter().any(|s| s.kind == Kind::Note && s.label == tr.text("set-account-shield-ai-work", None)));
+        assert!(config.account("home").unwrap().ai_reads() && !config.account("work").unwrap().ai_reads(), "whatever the file says");
+        let agents = rows("parameters");
+        let switch = agents.iter().find(|s| s.key == "mcp.work_accounts").expect("shown once there is a work account");
+        assert_eq!(switch.value, SettingValue::Bool(false), "closed unless opened");
+        assert!(!switch.help.is_empty() && !switch.help.starts_with("set-"));
+    }
 
     #[test]
     fn each_page_has_its_own() {

@@ -10,6 +10,10 @@
 //! how many things it left out, never which: the agent knows something is
 //! there and does not invent it. A tool that reads one thing, or writes into
 //! one, refuses a closed one, saying so plainly.
+//!
+//! The mail of work and school Microsoft accounts is kept whatever its
+//! projects, unless the person opens it (`[mcp] work_accounts`): Microsoft's
+//! terms count the organisation among whom must allow it (docs/microsoft.md).
 
 use crate::Session;
 use sioul_core::consent::Consent;
@@ -26,7 +30,19 @@ pub const KEPT: &str = "(kept from agents)";
 /// client's project. The gate remembers its verdicts for the server's life.
 pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     let gate = sioul_core::porch::Gate::load(&s.config, jiff::Timestamp::now().as_second());
-    Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)))
+    let mut consent = Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)));
+    consent.keep_accounts(kept_accounts(&s.config), &loaded.mail);
+    consent
+}
+
+/// The accounts whose mail is kept from agents whatever its projects, with
+/// their mail folders: work and school Microsoft accounts (switched off ones
+/// too: their mail stays on disk), unless `[mcp] work_accounts` opens them.
+pub fn kept_accounts(config: &sioul_core::config::Config) -> Vec<(String, std::path::PathBuf)> {
+    if config.mcp.work_accounts {
+        return Vec::new();
+    }
+    config.every_account().filter(|a| a.is_microsoft_work()).map(|a| (a.id.clone(), a.maildir_path())).collect()
 }
 
 /// The same for mail alone, lighter: the projects, Sioul's own ties, and
@@ -42,14 +58,14 @@ pub fn for_mail(s: &Session, index: MailIndex) -> (Consent, MailIndex) {
 pub fn left_out(count: usize) -> Option<String> {
     (count > 0).then(|| {
         let things = if count == 1 { "1 more thing belongs".to_string() } else { format!("{count} more things belong") };
-        format!("({things} to projects the person keeps from agents, or to no project while those are kept from agents: left out on purpose. Do not guess what they are; ask the person if it matters.)")
+        format!("({things} to projects the person keeps from agents, to no project while those are kept from agents, or to a work or school account kept from agents: left out on purpose. Do not guess what they are; ask the person if it matters.)")
     })
 }
 
 /// A thing the agent asked for by its address, kept from agents.
 pub fn kept(what: &str) -> String {
     format!(
-        "{what} is kept from agents: it belongs to a project the person has not opened to agents, or to no project while things outside projects are closed to them. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents."
+        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, or to a work or school account kept from agents. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too."
     )
 }
 

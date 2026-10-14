@@ -15,7 +15,7 @@ Code: `crates/sioul-sync/src/imap.rs` (the session), `fetch.rs` (fetching, IDLE)
 |---|---|---|---|
 | IMAP | RFC 9051 (IMAP4rev2), RFC 3501 (IMAP4rev1) | everything below | — |
 | TLS from the first byte (993), or STARTTLS (143) | RFC 8314; RFC 9051 §6.2.1 | every connection; certificates checked against the system's store (rustls, Mozilla's list when the system has none) | no plain connection: refused. A certificate the system does not trust (Proton Mail Bridge's own, a self-signed one) is refused too |
-| LOGIN, with the password | RFC 9051 §6.2.3 | signing in | AUTHENTICATE XOAUTH2 for Google accounts signed in with Google (a key of the person's own: [google.md](google.md), "Mail"); OAUTHBEARER (RFC 7628) is not used. **Not supported**: Microsoft's Outlook.com and Hotmail (OAuth only since 16 September 2024) and Microsoft 365 (no Basic authentication for IMAP in Exchange Online): no Microsoft sign-in yet |
+| LOGIN, with the password | RFC 9051 §6.2.3 | signing in | AUTHENTICATE XOAUTH2 for Google accounts signed in with Google (a key of the person's own: [google.md](google.md), "Mail"), and for Microsoft's mail, which takes no password (Outlook.com, Hotmail, Live and MSN since 16 September 2024; Microsoft 365, no Basic authentication for IMAP in Exchange Online): signed in on Microsoft's page ([microsoft.md](microsoft.md)), **expected**, tried against stand-ins of Exchange only. OAUTHBEARER (RFC 7628) is not used |
 | EXAMINE; UID FETCH with BODY.PEEK[] | RFC 9051 §6.3.3, §6.4.5 | fetching without setting any flag | — |
 | UID SEARCH (SINCE, UID n:*); UIDVALIDITY, UIDNEXT | RFC 9051 | what is new, by UID; a new UIDVALIDITY fetches the folder again | without UIDNEXT, a folder empty in the first window is searched again by date |
 | RFC822.SIZE | RFC 9051 | older mail sized before it is fetched, against the disk's reserve ([client.md](client.md), rule 7) | — |
@@ -27,7 +27,7 @@ Code: `crates/sioul-sync/src/imap.rs` (the session), `fetch.rs` (fetching, IDLE)
 | Keywords `$Junk`, `$NotJunk` | IANA's IMAP keywords (RFC 5788) | told to the server's spam filter on Junk, Not junk and Not spam; kept at each sync in the file name (Dovecot's letters), for the Porch and the spam filter | a server that refuses keywords still gets the move; "Not spam" is then kept in this device's label log only |
 | CONDSTORE: SELECT (CONDSTORE), FETCH MODSEQ, UID STORE (UNCHANGEDSINCE) | RFC 7162 §3.1 | the inbox's filters only: their claim on a message, the keyword `$SioulFiltered`, is set (and a mark another device left is taken off) only if nothing changed the message since its flags were read, so that of two devices fetching it in the same instant, one acts ([client.md](client.md), "Filters"; `crates/sioul-sync/src/filters.rs`). **Expected**: this path has not been run against a server known to offer CONDSTORE | the flags are read, then the mark set: two devices would have to read within the same round trip. A server that keeps no keywords of its own (no `\*` in PERMANENTFLAGS: Exchange, Outlook.com) cannot carry the mark at all: each device acts on what it fetched |
 | CREATE, DELETE, STATUS (MESSAGES) | RFC 9051 | "New folder…"; deleting a folder only when it is empty and has no purpose | — |
-| APPEND | RFC 9051 | the copy in Sent (`\Seen`); a message moved to another account, with its `\Seen`, `\Flagged` and `\Answered` | at Gmail (`imap.gmail.com`) no copy: Gmail files its own |
+| APPEND | RFC 9051 | the copy in Sent (`\Seen`); a message moved to another account, with its `\Seen`, `\Flagged` and `\Answered` | at Gmail (`imap.gmail.com`) and Microsoft (`outlook.office365.com`) no copy: they file their own |
 | Modified UTF-7 folder names | RFC 3501 §5.1.3 | names typed with accents | — |
 
 Microsoft's rule for Outlook.com, "Basic Authentication no longer available to access any Outlook account" from 16 September 2024: [Modern Authentication Methods now needed to continue syncing Outlook Email in non-Microsoft email apps](https://support.microsoft.com/en-us/support/known-issues/modern-authentication-methods-now-needed-to-continue-syncing-outlook-email-in-non-microsoft-email-ap).
@@ -44,10 +44,10 @@ Microsoft's rule for Outlook.com, "Basic Authentication no longer available to a
 ## Mail: SMTP
 Code: `crates/sioul-sync/src/send.rs`, on `mail-send` 0.6.
 - **Submission** (RFC 6409) on 465 with TLS from the first byte (RFC 8314), or on 587 with STARTTLS (RFC 3207). A server that offers no STARTTLS on 587 is refused; there is no plain option.
-- **AUTH** (RFC 4954) with the password: PLAIN (RFC 4616), LOGIN, CRAM-MD5 (RFC 2195) or DIGEST-MD5, as the server offers them; no XOAUTH2 or OAUTHBEARER.
+- **AUTH** (RFC 4954) with the password: PLAIN (RFC 4616), LOGIN, CRAM-MD5 (RFC 2195) or DIGEST-MD5, as the server offers them. For accounts signed in with Google or Microsoft, `AUTH XOAUTH2` with an access token, written by hand (`sasl.rs`); no OAUTHBEARER. Microsoft's two sending servers are on 587 only, with STARTTLS.
 - **EHLO** with the address literal `[127.0.0.1]` (RFC 5321 §4.1.4), not the computer's name, which providers copy into the `Received` header everyone reads.
 - **The message**: MIME, `multipart/alternative` (the Markdown as text, and HTML); `In-Reply-To` and `References` (RFC 5322 §3.6.4); PGP/MIME when signed or encrypted (below); an `Autocrypt` header when you have a key.
-- **The copy in Sent**: IMAP APPEND, read, except at Gmail. A copy that could not be filed is said; the message is not sent again.
+- **The copy in Sent**: IMAP APPEND, read, except at Gmail and Microsoft, which file their own. A copy that could not be filed is said; the message is not sent again.
 
 ## Finding servers
 - **Mail** (`discover.rs`): Thunderbird's autoconfiguration format, HTTPS only: `https://autoconfig.<domain>/mail/config-v1.1.xml`, then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, then Mozilla's ISPDB (`autoconfig.thunderbird.net`, told the domain only), then a guess (`imap.<domain>`, `mail.<domain>`, port 993), said as a guess. **Not used**: SRV records (RFC 6186), which [architecture.md](architecture.md) names; Microsoft's Autodiscover.
@@ -140,6 +140,13 @@ Code and details: [google.md](google.md).
 - **Tasks**: the Google Tasks API v1 (`https://tasks.googleapis.com/tasks/v1`), each list kept here as a folder of VTODO files; `updatedMin` with deleted and hidden tasks; Google keeps a title, notes, done or not, a day, one level of steps; the rest is greyed in the form, kept in the file here, not sent.
 - **Gmail and Google Workspace** (Workspace recognised by its MX): IMAP and SMTP with an app password, or XOAUTH2 after signing in with Google with the person's own key. Gmail's scope is restricted, so Sioul's own key cannot ask for it ([google.md](google.md), "Mail"). Tested against stand-ins only.
 - **Tested**: the sign-in's pieces (unit tests); Google Tasks against `tools/google-tasks-stand-in.py`. **Not against Google itself**: the token exchange, its CalDAV and CardDAV answers, Google Tasks' own.
+
+## Microsoft
+Code and details: [microsoft.md](microsoft.md).
+- **Signing in**: OAuth 2.0 for native applications (RFC 8252), on Microsoft's identity platform (`https://login.microsoftonline.com/<tenant>/oauth2/v2.0/`): the system browser, the answer on `http://127.0.0.1:<random port>` (no IPv6 loopback, which Microsoft does not take), PKCE with S256 (RFC 7636), `state`, `prompt=select_account`; a public client, no secret. Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.office.com/SMTP.Send`, `offline_access`, `openid email profile`. Sioul's own application is read at build time (`SIOUL_MICROSOFT_CLIENT_ID`), else the person's own. Refresh tokens rotate: the newest is kept.
+- **Mail**: IMAP `outlook.office365.com:993`; SMTP `smtp-mail.outlook.com:587` (personal accounts) or `smtp.office365.com:587` (work and school), STARTTLS; SASL XOAUTH2 both. Recognised by Outlook.com's domains, by the domain's MX (`*.olc.protection.outlook.com`, `*.mail.protection.outlook.com`, `*.mx.microsoft`…), or by settings naming `outlook.office365.com`.
+- **Limits**: a work or school account needs its organisation's approval where the tenant keeps Microsoft's default consent policy; Outlook.com keeps IMAP off until the person turns it on; many tenants switch SMTP AUTH off. No calendars or contacts (Microsoft has no CalDAV or CardDAV; Graph is not built).
+- **Tested**: against stand-ins of the token endpoint and of Exchange's IMAP and SMTP answers. **Not against Microsoft itself.**
 
 ## GitHub
 Code and details: [github.md](github.md).
@@ -235,6 +242,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Daily use, mail, calendars, tasks (steps, waits, links) and contacts | Murena (Nextcloud): `mail.ecloud.global` and its CalDAV and CardDAV, on Linux and on an /e/OS phone, since 4 October 2026; Murena's DAVx⁵ fork on the phone reading tasks only | the owner, 6 October 2026 |
 | CalDAV and CardDAV both ways, an invitation answered | Radicale, on the computer; a stand-in in the tests (sync tokens, multigets, cut connections, slow answers, 412, an invitation answered on two devices) | [building.md](building.md); `dav::tests` |
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
+| Microsoft's sign-in, IMAP and SMTP | stand-ins of its token endpoint and of Exchange's IMAP and SMTP answers; Windows' Credential Manager in the Windows CI job, for a 4 KB refresh token | [microsoft.md](microsoft.md), "What was tested" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
 | OpenPGP | GnuPG 2.4, both ways | [client.md](client.md), "As built" |
 | Bitwarden | its key-derivation vectors; the live cloud with a made-up account; the owner's own vault, in daily use | [sites.md](sites.md), "Bitwarden"; the owner, 6 October 2026 |

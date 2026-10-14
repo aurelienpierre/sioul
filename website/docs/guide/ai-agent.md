@@ -52,6 +52,8 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 
 **Things in no project** have one switch of their own in **Settings ▸ AI agents**: the Porch's other mail, tasks and notes of no project, the agenda, contacts, your phone's messages and calls, papers, contracts, and the budgets no project uses. It is open at first, so that an agent you connect is of use at once. **If you want an agent to see only the projects you open, close it**: it then sees those projects, and what now is for, nothing else.
 
+**Work and school Microsoft accounts** are kept from agents whatever their projects, until you open them (**Settings ▸ AI agents**, **Work and school Microsoft accounts**, shown once you have one): Microsoft's terms let the organisation, not you alone, allow its mail to be used beyond syncing. Open them only if your organisation allows it.
+
 ## What an agent can read {#what-an-agent-can-read}
 
 - **The Porch**, lane by lane, in your hours only, unless you ask it to open it. It is told that a code came, never the code.

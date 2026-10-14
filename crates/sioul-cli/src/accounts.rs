@@ -5,6 +5,9 @@
 //!
 //! Passwords are typed at a prompt that does not echo them, and go to the
 //! system keyring; they never reach the configuration file or the screen.
+//! Microsoft's mail takes no password: its address is signed in on
+//! Microsoft's page, whose link is printed here, and the access goes to the
+//! keyring (docs/microsoft.md).
 
 use crate::{Session, load_store, print_right_now};
 use clap::{Subcommand, ValueEnum};
@@ -12,8 +15,10 @@ use jiff::Zoned;
 use sioul_core::config::{self, Account, AccountKind, Config, DEFAULT_SYNC_DAYS, Priority, Security};
 use sioul_core::porch::{self, KnownSenders, Triaged};
 use sioul_core::view;
-use sioul_sync::{Control, Found, Learned, Report, SyncError, notify, secret};
+use sioul_sync::discover::MicrosoftKind;
+use sioul_sync::{Control, Found, FoundBy, Learned, Report, SyncError, microsoft, notify, secret};
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
 #[derive(Subcommand)]
@@ -37,6 +42,26 @@ pub(crate) enum AccountCommand {
         /// Days of mail the first sync brings (default 14).
         #[arg(long)]
         days: Option<u32>,
+        /// `microsoft`: Microsoft's sign-in, whatever discovery finds (a
+        /// Microsoft 365 address whose mail first goes through another service).
+        #[arg(long, value_enum)]
+        auth: Option<AuthArg>,
+        /// Microsoft: the Application (client) ID of an application of your own; no secret.
+        #[arg(long)]
+        client_id: Option<String>,
+        /// Microsoft: its Directory (tenant) ID, when it is registered for one organisation alone.
+        #[arg(long)]
+        tenant: Option<String>,
+    },
+    /// Signs a Microsoft account in again on Microsoft's page (one added with a password before: switched to it).
+    SignIn {
+        id: String,
+        /// The Application (client) ID of an application of your own; no secret.
+        #[arg(long)]
+        client_id: Option<String>,
+        /// Its Directory (tenant) ID, when it is registered for one organisation alone.
+        #[arg(long)]
+        tenant: Option<String>,
     },
     /// A web-only mailbox (Proton without Bridge, a bank): it opens in your browser.
     Portal { id: String, url: String },
@@ -46,8 +71,17 @@ pub(crate) enum AccountCommand {
     Test { id: String },
     /// Replaces the password kept in the keyring (after changing it, or a new app password).
     Password { id: String },
-    /// Removes the account and its password. Its mail stays on disk.
-    Remove { id: String },
+    /// Removes the account and its password. Its mail stays on disk; a
+    /// Microsoft account's is deleted unless you say otherwise (asked).
+    Remove {
+        id: String,
+        /// A Microsoft account: keep the mail Sioul keeps on this device, without asking.
+        #[arg(long, conflicts_with = "delete_mail")]
+        keep_mail: bool,
+        /// A Microsoft account: delete the mail Sioul keeps on this device, without asking.
+        #[arg(long)]
+        delete_mail: bool,
+    },
     /// Ranks an account's mail against the others': above, average (the default) or below.
     /// Below, its mail skips the screener and waits folded at the bottom of the Porch.
     Priority {
@@ -62,6 +96,12 @@ pub(crate) enum PriorityArg {
     Above,
     Average,
     Below,
+}
+
+/// How an account signs in, when not with a password.
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum AuthArg {
+    Microsoft,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -81,15 +121,16 @@ impl From<SecurityArg> for Security {
 
 pub(crate) fn run(s: &Session, command: AccountCommand) -> Result<(), String> {
     match command {
-        AccountCommand::Add { address, id, host, port, security, username, days } => {
-            let wanted = Wanted { host, port, security: security.map(Security::from), username, days };
+        AccountCommand::Add { address, id, host, port, security, username, days, auth, client_id, tenant } => {
+            let wanted = Wanted { host, port, security: security.map(Security::from), username, days, microsoft: auth == Some(AuthArg::Microsoft), client_id, tenant };
             add(s, &address, id, wanted)
         }
+        AccountCommand::SignIn { id, client_id, tenant } => sign_in_again(s, &id, client_id.as_deref().unwrap_or(""), tenant.as_deref().unwrap_or("")),
         AccountCommand::Portal { id, url } => portal(s, &id, &url),
         AccountCommand::List => list(s),
         AccountCommand::Test { id } => test(s, &id),
         AccountCommand::Password { id } => password(s, &id),
-        AccountCommand::Remove { id } => remove(s, &id),
+        AccountCommand::Remove { id, keep_mail, delete_mail } => remove(s, &id, (keep_mail || delete_mail).then_some(delete_mail)),
         AccountCommand::Priority { id, priority } => {
             let priority = match priority {
                 PriorityArg::Above => Priority::Above,
@@ -108,6 +149,11 @@ struct Wanted {
     security: Option<Security>,
     username: Option<String>,
     days: Option<u32>,
+    /// Microsoft's sign-in, whatever discovery finds (`--auth microsoft`).
+    microsoft: bool,
+    /// Microsoft: an application of your own, and its directory.
+    client_id: Option<String>,
+    tenant: Option<String>,
 }
 
 fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result<(), String> {
@@ -130,6 +176,25 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
             found
         }
     };
+    // Microsoft's mail: its own sign-in, never a password (none works there).
+    let microsoft = match found.by {
+        FoundBy::Microsoft(kind) => Some(kind),
+        _ if wanted.microsoft || microsoft::is_imap_host(&found.host) => Some(MicrosoftKind::Unknown),
+        _ => None,
+    };
+    if let Some(kind) = microsoft {
+        let mut account = Account::imap(&id, &address, microsoft::IMAP_HOST, 993, Security::Tls, None);
+        account.sync_days = wanted.days;
+        let account = sign_in_with_microsoft(s, account, kind, wanted.client_id.as_deref().unwrap_or(""), wanted.tenant.as_deref().unwrap_or(""))?;
+        config::add_imap_account(&s.config_path, &account)?;
+        config::set_sign_in(&s.config_path, &account)?;
+        println!("{}", s.say("account-added", &[("id", id.clone()), ("path", account.maildir_path().display().to_string())]));
+        println!("{}", s.tr.text("ui-syncing", None));
+        let report = sioul_sync::sync(&account, "").map_err(|e| e.sentence(&s.tr, &id))?;
+        say_report(s, &account, &report);
+        learn_provider(s, &account, true);
+        return Ok(());
+    }
     let security = wanted.security.unwrap_or(found.security);
     let port = wanted.port.or((found.port != 0).then_some(found.port)).unwrap_or(if security == Security::Tls { 993 } else { 143 });
     let login = wanted.username.clone().unwrap_or(found.username);
@@ -157,6 +222,60 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
     let report = sioul_sync::sync(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;
     say_report(s, &account, &report);
     learn_provider(s, &account, true);
+    Ok(())
+}
+
+/// Microsoft's page, from the terminal: its link printed, to open in a
+/// browser on this computer (its answer comes back here, to a loopback
+/// port); Sioul waits five minutes, Ctrl+C stops. The mailbox is tried with
+/// the access given before anything is kept (`microsoft::sign_in`). A work
+/// account refused for want of its organisation's approval gets what its
+/// administrator does, to forward.
+fn sign_in_with_microsoft(s: &Session, account: Account, kind: MicrosoftKind, client_id: &str, tenant: &str) -> Result<Account, String> {
+    let address = account.address.clone().unwrap_or_default();
+    let label = address.clone();
+    let login = account.login().unwrap_or(&address).to_string();
+    let client = microsoft::app_for(&login, client_id).map_err(|e| e.sentence(&s.tr, &label))?.ok_or_else(|| s.tr.text("microsoft-cli-no-app", None))?;
+    let authority = microsoft::authority_for(&login, kind, tenant).map_err(|e| e.sentence(&s.tr, &label))?;
+    println!("{}", s.tr.text("microsoft-cli-open", None));
+    let stop = AtomicBool::new(false);
+    match microsoft::sign_in(account, &client, &authority, |url| println!("\n{url}\n"), &stop) {
+        Ok((account, grant)) => {
+            let kind = if grant.personal { "account-signed-in-microsoft-personal" } else { "account-signed-in-microsoft-work" };
+            println!("{}", s.say("microsoft-cli-signed-in", &[("account", label), ("how", s.tr.text(kind, None))]));
+            Ok(account)
+        }
+        Err(e) => {
+            let said = e.sentence(&s.tr, &label);
+            let organisation = matches!(&e, SyncError::Login(d) if d == microsoft::ADMIN) || matches!(&e, SyncError::Said(id, _) if *id == microsoft::DECLINED_WORK);
+            if organisation {
+                let domain = address.rsplit('@').next().unwrap_or("");
+                return Err(format!("{said}\n\n{}", s.say("microsoft-admin-steps", &[("link", microsoft::admin_consent_url(&client, domain))])));
+            }
+            Err(said)
+        }
+    }
+}
+
+/// `sioul account sign-in <id>`: a Microsoft account signed in again (its
+/// access ended, or another application of yours), or one added with a
+/// password at Microsoft's server switched to Microsoft's sign-in.
+fn sign_in_again(s: &Session, id: &str, client_id: &str, tenant: &str) -> Result<(), String> {
+    let account = s.config.every_account().find(|a| a.id == id && a.kind == AccountKind::Imap).ok_or_else(|| s.say("account-unknown", &[("id", id.to_string())]))?.clone();
+    let at_microsoft = account.host.as_deref().is_some_and(microsoft::is_imap_host);
+    if !account.is_microsoft() && !at_microsoft {
+        return Err(s.say("microsoft-cli-not-microsoft", &[("id", id.to_string())]));
+    }
+    let kind = if account.is_microsoft() && !account.is_microsoft_work() { MicrosoftKind::Personal } else if account.is_microsoft() { MicrosoftKind::Work } else { MicrosoftKind::Unknown };
+    let was_password = !account.is_microsoft();
+    let old = account.clone();
+    let account = sign_in_with_microsoft(s, account, kind, client_id, tenant)?;
+    config::set_sign_in(&s.config_path, &account)?;
+    // A password kept before, which Microsoft no longer took: gone from the keyring.
+    if was_password {
+        let _ = secret::forget(&old);
+    }
+    println!("{}", s.say("microsoft-cli-again", &[("account", id.to_string())]));
     Ok(())
 }
 
@@ -226,6 +345,7 @@ fn list(s: &Session) -> Result<(), String> {
 /// access the keyring keeps, no password), none yet, or what went wrong.
 fn secret_said(s: &Session, account: &Account, found: Result<String, SyncError>) -> String {
     match found {
+        Ok(_) if account.is_microsoft() => s.tr.text("account-signed-in-microsoft", None),
         Ok(_) if sioul_sync::sasl::OAuth::of(account).is_some() => s.tr.text("account-signed-in-google", None),
         Ok(_) => s.tr.text("account-has-password", None),
         Err(SyncError::NoPassword) => s.say("account-no-password", &[("id", account.id.clone())]),
@@ -246,6 +366,10 @@ fn test(s: &Session, id: &str) -> Result<(), String> {
 
 fn password(s: &Session, id: &str) -> Result<(), String> {
     let account = mail_account(s, id)?;
+    // Microsoft takes no password, app passwords included: its own sign-in instead.
+    if account.is_microsoft() || account.host.as_deref().is_some_and(microsoft::is_imap_host) {
+        return Err(s.say("microsoft-cli-no-password", &[("id", id.to_string())]));
+    }
     let typed = prompt_password(s, account.address.as_deref().unwrap_or(id))?;
     let password = sioul_sync::tidy_password(account.host.as_deref().unwrap_or(""), &typed);
     let messages = sioul_sync::test(account, &password).map_err(|e| e.sentence(&s.tr, id))?;
@@ -265,20 +389,54 @@ fn set_priority(s: &Session, id: &str, priority: Priority) -> Result<(), String>
     Ok(())
 }
 
-fn remove(s: &Session, id: &str) -> Result<(), String> {
+/// `delete_mail`: a Microsoft account's mail kept on this device deleted
+/// (Some(true)) or kept (Some(false)); None: asked, Yes by default (as
+/// Microsoft's terms ask an app to delete what it keeps of an account you
+/// leave). Other accounts' mail stays, as before.
+fn remove(s: &Session, id: &str, delete_mail: Option<bool>) -> Result<(), String> {
     // Switched off, an account can be removed all the same.
     let account = s.config.every_account().find(|a| a.id == id).ok_or_else(|| s.say("account-unknown", &[("id", id.to_string())]))?;
     // The keyring keeps one password per login and server: another account on the same keeps it.
     let shared_password = s.config.every_account().any(|a| a.id != id && a.host == account.host && a.login() == account.login());
+    if account.is_microsoft() {
+        let delete = delete_mail.map_or_else(|| ask_yes(s, &s.tr.text("ui-remove-microsoft-mail", None)), Ok)?;
+        // Nothing to give back to Microsoft: forgotten here, the consent withdrawn on Microsoft's page.
+        let page = microsoft::forget(account.login().unwrap_or(id), !account.is_microsoft_work()).map_err(|e| e.sentence(&s.tr, id))?;
+        config::remove_account(&s.config_path, id)?;
+        if delete {
+            sioul_core::maildir::forget_account(account)?;
+            sioul_learn::Dirs::standard().forget_account(&account.id).map_err(|e| e.to_string())?;
+            println!("{}", s.say("account-removed-microsoft-mail", &[("id", id.to_string()), ("page", page.to_string())]));
+        } else {
+            println!("{}", s.say("account-removed-microsoft", &[("id", id.to_string()), ("path", account.maildir_path().display().to_string()), ("page", page.to_string())]));
+        }
+        return Ok(());
+    }
     if account.auth.as_deref() == Some("google") {
-        // Google's access goes back to it, as the window does.
-        sioul_sync::google::revoke(account.address.as_deref().unwrap_or("")).map_err(|e| e.sentence(&s.tr, id))?;
+        // Google's access goes back to it, as the window does: the calendars' or the mail's, each its own.
+        let purpose = if account.is_dav() { sioul_sync::google::Purpose::Pim } else { sioul_sync::google::Purpose::Mail };
+        sioul_sync::google::revoke_for(purpose, account.address.as_deref().unwrap_or("")).map_err(|e| e.sentence(&s.tr, id))?;
     } else if (account.syncs() || account.is_dav()) && !shared_password {
         secret::forget(account).map_err(|e| e.sentence(&s.tr, id))?;
     }
     config::remove_account(&s.config_path, id)?;
     println!("{}", s.say("account-removed", &[("id", id.to_string()), ("path", account.maildir_path().display().to_string())]));
     Ok(())
+}
+
+/// A question answered Yes or No at the terminal, Yes when Enter alone is
+/// pressed; without a terminal to ask at, Yes.
+fn ask_yes(s: &Session, question: &str) -> Result<bool, String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Ok(true);
+    }
+    print!("{question} {} ", s.tr.text("cli-yes-no", None));
+    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line).map_err(|e| e.to_string())?;
+    let answer = line.trim().to_lowercase();
+    Ok(!(answer.starts_with('n')))
 }
 
 /// "example: two new messages.", or the first sync's "example: 212 messages from the last 14 days."
@@ -456,5 +614,19 @@ mod tests {
         assert_eq!(secret_said(&s, &account(Some("google")), Ok("google:2026-10-09".into())), "signed in with Google (the access in the keyring)");
         assert_eq!(secret_said(&s, &account(None), Ok("hunter2".into())), "password in the keyring");
         assert_eq!(secret_said(&s, &account(None), Err(SyncError::NoPassword)), "no password yet: `sioul account password me`");
+    }
+
+    /// `accounts list` says a Microsoft account signs in with Microsoft;
+    /// `account password` refuses one at Microsoft's server, saying what to do.
+    #[test]
+    fn a_microsoft_account_has_no_password() {
+        let s = Session { config: Config::default(), config_path: PathBuf::new(), tr: Translator::new("en") };
+        let mut account = Account::imap("me", "me@outlook.com", "outlook.office365.com", 993, Security::Tls, None);
+        account.auth = Some("microsoft".into());
+        assert_eq!(secret_said(&s, &account, Ok("microsoft:1760000000".into())), "signed in with Microsoft (the access in the keyring)");
+        let config: Config = toml::from_str("[[account]]\nid = \"me\"\nkind = \"imap\"\naddress = \"me@outlook.com\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\n").unwrap();
+        let s = Session { config, config_path: PathBuf::new(), tr: Translator::new("en") };
+        let refused = password(&s, "me").unwrap_err();
+        assert!(refused.contains("sioul account sign-in me"), "{refused}");
     }
 }

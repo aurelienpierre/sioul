@@ -84,6 +84,11 @@ modules:
         # pcsc-sys links the client built above (static=pcsclite).
         PCSC_LIB_DIR: /app/lib
         PCSC_LIB_NAME: static=pcsclite
+      # Sioul's own Microsoft application (docs/microsoft.md), when the
+      # builder's environment has it (release.yml's flatpak job): passed into
+      # the build, never written in the manifest. An id, no secret.
+      secret-env:
+        - SIOUL_MICROSOFT_CLIENT_ID
     build-commands:
       - sh packaging/flatpak/qt-both.sh
       - cargo build --release --locked -p sioul-app -p sioul-cli

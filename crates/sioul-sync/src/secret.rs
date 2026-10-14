@@ -114,6 +114,48 @@ pub fn forget_named(name: &str) -> Result<(), SyncError> {
     }
 }
 
+/// The most a keyring entry holds on every system: Windows' Credential
+/// Manager keeps 2560 bytes (`CRED_MAX_CREDENTIAL_BLOB_SIZE`), and a text
+/// kept as a password there takes two bytes a character (UTF-16). A secret
+/// kept as bytes (`save_named_bytes`) takes its UTF-8 length; this leaves a margin.
+pub const ENTRY_BYTES: usize = 2400;
+
+/// A secret kept as bytes under a name of Sioul's (`save_named_bytes`):
+/// None when there is none, Err when the keyring did not answer.
+pub fn named_bytes(name: &str) -> Result<Option<Vec<u8>>, SyncError> {
+    if testing() {
+        return Ok(None);
+    }
+    match Entry::new(SERVICE, name).and_then(|e| e.get_secret()) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(SyncError::Keyring(e.to_string())),
+    }
+}
+
+/// Keeps a secret as bytes (UTF-8 as it is, not Windows' UTF-16), replacing
+/// any older one: at most `ENTRY_BYTES`, which a longer secret is split
+/// into by its owner (`microsoft.rs` does for its long tokens).
+pub fn save_named_bytes(name: &str, secret: &[u8]) -> Result<(), SyncError> {
+    if testing() {
+        return Ok(());
+    }
+    if secret.len() > ENTRY_BYTES {
+        return Err(SyncError::Keyring(format!("{name}: {} bytes, more than an entry holds everywhere ({ENTRY_BYTES})", secret.len())));
+    }
+    Entry::new(SERVICE, name).and_then(|e| e.set_secret(secret)).map_err(|e| SyncError::Keyring(e.to_string()))
+}
+
+/// Forgets a secret kept under a name and the parts kept after it
+/// (`<name>#2`, `<name>#3`…, as many as `parts` says at most).
+pub fn forget_named_all(name: &str, parts: usize) -> Result<(), SyncError> {
+    forget_named(name)?;
+    for part in 2..=parts.max(1) {
+        forget_named(&format!("{name}#{part}"))?;
+    }
+    Ok(())
+}
+
 /// Forgets the account's password; nothing to do if there was none.
 pub fn forget(account: &Account) -> Result<(), SyncError> {
     if testing() {

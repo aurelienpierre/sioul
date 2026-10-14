@@ -17,8 +17,17 @@
 //! smtp.google.com, or aspmx.l.google.com and its kin), asked of the system's
 //! DNS. Google takes no account password there, only an app password or its
 //! own sign-in, so the form must know it (docs/google.md, "Mail").
+//!
+//! So is Microsoft's, which takes no password at all, only its own sign-in
+//! (docs/microsoft.md): Outlook.com's own domains (hotmail.com, live.fr…,
+//! the list Thunderbird's ISPDB gives them), a domain whose MX is
+//! Outlook.com's (`*.olc.protection.outlook.com`: a personal account) or
+//! Microsoft 365's (`*.mail.protection.outlook.com` and its older and newer
+//! forms: a work or school account), and settings that name Microsoft's
+//! IMAP server. The ID token settles the kind at sign-in.
 
 use crate::SyncError;
+pub use crate::microsoft::Kind as MicrosoftKind;
 use sioul_core::config::Security;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
@@ -54,6 +63,9 @@ pub enum FoundBy {
     Guess,
     /// Google keeps this address's mail: Gmail, or a domain whose MX is Google's.
     Google,
+    /// Microsoft keeps this address's mail: Outlook.com's domains, a domain
+    /// whose MX is Microsoft's, or settings naming its server; and of which kind.
+    Microsoft(MicrosoftKind),
 }
 
 impl FoundBy {
@@ -64,6 +76,7 @@ impl FoundBy {
             FoundBy::Ispdb => "account-by-ispdb",
             FoundBy::Guess => "account-by-guess",
             FoundBy::Google => "account-by-google",
+            FoundBy::Microsoft(_) => "account-by-microsoft",
         }
     }
 }
@@ -84,6 +97,10 @@ pub(crate) fn discover_with(address: &str, mx: impl Fn(&str) -> Option<Vec<Strin
     if is_google_domain(&domain) {
         return Ok(google_found(address));
     }
+    // Outlook.com's own domains: known here too.
+    if is_microsoft_consumer_domain(&domain) {
+        return Ok(microsoft_found(address, MicrosoftKind::Personal));
+    }
     // HTTPS to the end: a redirect to a plain address is not followed.
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(HTTP)).https_only(true).build().into();
     let sources = [
@@ -94,14 +111,83 @@ pub(crate) fn discover_with(address: &str, mx: impl Fn(&str) -> Option<Vec<Strin
     for (url, by) in sources {
         let Some(xml) = fetch(&agent, &url) else { continue };
         if let Some(found) = parse_config(&xml, address, by) {
-            return Ok(found);
+            return Ok(microsoft_if_named(found, address));
         }
     }
-    // Google Workspace: the domain's mail goes to Google, its servers are Google's.
-    if mx(&domain).is_some_and(|hosts| hosts.iter().any(|h| is_google_mx(h))) {
+    // Google Workspace, Outlook.com, Microsoft 365: the domain's mail goes
+    // there (one question to the DNS for both), its servers are theirs.
+    let exchangers = mx(&domain).unwrap_or_default();
+    if exchangers.iter().any(|h| is_google_mx(h)) {
         return Ok(google_found(address));
     }
+    if let Some(kind) = exchangers.iter().find_map(|h| microsoft_mx_kind(h)) {
+        return Ok(microsoft_found(address, kind));
+    }
     guess(&domain, address).ok_or(SyncError::NotFound(domain))
+}
+
+/// Settings that name Microsoft's IMAP server are Microsoft's mail: its own
+/// sign-in, its servers; a personal account's when they send through
+/// Outlook.com's server, else a work or school one's.
+fn microsoft_if_named(found: Found, address: &str) -> Found {
+    if !crate::microsoft::is_imap_host(&found.host) {
+        return found;
+    }
+    let personal = found.smtp.as_ref().is_some_and(|s| s.host.eq_ignore_ascii_case(crate::microsoft::SMTP_PERSONAL));
+    microsoft_found(address, if personal { MicrosoftKind::Personal } else { MicrosoftKind::Work })
+}
+
+/// Microsoft's servers for an address whose mail Microsoft keeps: IMAP on
+/// 993 encrypted from the first byte, submission on 587 with STARTTLS (no
+/// 465 at Microsoft), the sending server of its kind; the address as login.
+pub fn microsoft_found(address: &str, kind: MicrosoftKind) -> Found {
+    Found {
+        host: crate::microsoft::IMAP_HOST.into(),
+        port: 993,
+        security: Security::Tls,
+        username: address.trim().to_string(),
+        by: FoundBy::Microsoft(kind),
+        smtp: Some(Smtp { host: kind.smtp_host().into(), port: crate::microsoft::SMTP_PORT, security: Security::Starttls }),
+    }
+}
+
+/// Outlook.com's own domains, those of personal Microsoft accounts: the list
+/// Thunderbird's ISPDB gives (`autoconfig.thunderbird.net/v1.1/outlook.com`,
+/// read 13 October 2026), but for its exchangers' domain,
+/// olc.protection.outlook.com, which `microsoft_mx_kind` knows. Exact names only.
+const MICROSOFT_CONSUMER_DOMAINS: &[&str] = &[
+    "hotmail.com", "live.com", "msn.com", "outlook.com", "windowslive.com", "livemail.tw",
+    "outlook.at", "outlook.be", "outlook.cl", "outlook.cz", "outlook.de", "outlook.dk", "outlook.es", "outlook.fr", "outlook.hu", "outlook.ie", "outlook.in", "outlook.it", "outlook.jp", "outlook.kr", "outlook.lv", "outlook.my", "outlook.ph", "outlook.pt", "outlook.sa", "outlook.sg", "outlook.sk",
+    "outlook.co.id", "outlook.co.il", "outlook.co.th", "outlook.com.ar", "outlook.com.au", "outlook.com.br", "outlook.com.gr", "outlook.com.tr", "outlook.com.vn",
+    "hotmail.be", "hotmail.ca", "hotmail.cl", "hotmail.cz", "hotmail.de", "hotmail.dk", "hotmail.es", "hotmail.fi", "hotmail.fr", "hotmail.gr", "hotmail.hu", "hotmail.it", "hotmail.lt", "hotmail.lv", "hotmail.my", "hotmail.nl", "hotmail.no", "hotmail.ph", "hotmail.rs", "hotmail.se", "hotmail.sg", "hotmail.sk",
+    "hotmail.co.id", "hotmail.co.il", "hotmail.co.in", "hotmail.co.jp", "hotmail.co.kr", "hotmail.co.th", "hotmail.co.uk", "hotmail.co.za", "hotmail.com.ar", "hotmail.com.au", "hotmail.com.br", "hotmail.com.hk", "hotmail.com.tr", "hotmail.com.tw", "hotmail.com.vn",
+    "live.at", "live.be", "live.ca", "live.cl", "live.cn", "live.de", "live.dk", "live.fi", "live.fr", "live.hk", "live.ie", "live.in", "live.it", "live.jp", "live.nl", "live.no", "live.ru", "live.se",
+    "live.co.jp", "live.co.kr", "live.co.uk", "live.co.za", "live.com.ar", "live.com.au", "live.com.mx", "live.com.my", "live.com.ph", "live.com.pt", "live.com.sg",
+];
+
+/// Whether a domain is one of Outlook.com's own (personal Microsoft accounts).
+pub fn is_microsoft_consumer_domain(domain: &str) -> bool {
+    let domain = domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    MICROSOFT_CONSUMER_DOMAINS.contains(&domain.as_str())
+}
+
+/// Whether a mail exchanger is Microsoft's, and of which kind: Outlook.com's
+/// (`*.olc.protection.outlook.com`: personal accounts, and the addresses of a
+/// domain of your own Outlook.com receives), Microsoft 365's
+/// (`*.mail.protection.outlook.com`, older `*.mail.eo.outlook.com` and
+/// `*.mail.protection.outlook.de`, and `*.mx.microsoft` where the domain
+/// signs its mail exchange with DNSSEC). A whole label before each, so that
+/// names only made to look like these are not taken.
+pub fn microsoft_mx_kind(host: &str) -> Option<MicrosoftKind> {
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    let under = |suffix: &str| host.strip_suffix(suffix).is_some_and(|label| !label.is_empty() && !label.ends_with('.'));
+    if under(".olc.protection.outlook.com") {
+        Some(MicrosoftKind::Personal)
+    } else if [".mail.protection.outlook.com", ".mail.eo.outlook.com", ".mail.protection.outlook.de", ".mx.microsoft"].iter().any(|s| under(s)) {
+        Some(MicrosoftKind::Work)
+    } else {
+        None
+    }
 }
 
 /// Google's servers for an address whose mail Google keeps: IMAP on 993 and
@@ -212,6 +298,7 @@ pub(crate) fn parse_config(xml: &str, address: &str, by: FoundBy) -> Option<Foun
 }
 
 /// The SMTP server of an address: from its settings, else `smtp.<domain>`, then the IMAP host, on 465.
+/// An account at Microsoft is never sent here: its sending server is set when it is added.
 pub fn discover_smtp(address: &str, imap_host: Option<&str>) -> Result<Smtp, SyncError> {
     if let Ok(Found { smtp: Some(smtp), .. }) = discover(address) {
         return Ok(smtp);
@@ -360,6 +447,43 @@ mod tests {
         let found = google_found("you@new-workspace.example");
         assert_eq!((found.host.as_str(), found.port, found.security, found.username.as_str(), found.by), ("imap.gmail.com", 993, Security::Tls, "you@new-workspace.example", FoundBy::Google));
         assert_eq!(found.smtp, Some(Smtp { host: "smtp.gmail.com".into(), port: 465, security: Security::Tls }));
+    }
+
+    /// Part 8, 7: Microsoft's mail, by Outlook.com's own domains (no DNS
+    /// asked), else by the domain's MX; names only made to look like
+    /// Microsoft's are not taken; settings naming its server are Microsoft's.
+    #[test]
+    fn knows_microsoft_mail() {
+        let never = |domain: &str| -> Option<Vec<String>> { panic!("{domain}: Outlook.com's domains need no DNS") };
+        for address in ["someone@outlook.com", " Someone@Hotmail.FR ", "someone@live.co.uk", "someone@msn.com", "someone@hotmail.com.br", "someone@outlook.jp"] {
+            let found = discover_with(address, never).unwrap();
+            assert_eq!(found, microsoft_found(address, MicrosoftKind::Personal), "{address}");
+        }
+        assert_eq!(MICROSOFT_CONSUMER_DOMAINS.len(), 102, "the ISPDB's list, whole (its 103rd name, olc.protection.outlook.com, is an exchanger's)");
+        assert!(!is_microsoft_consumer_domain("outlook.com.evil.example") && !is_microsoft_consumer_domain("notoutlook.com"));
+        // Outlook.com's and Microsoft 365's exchangers, with the trailing dot DNS gives.
+        assert_eq!(microsoft_mx_kind("outlook-com.olc.protection.outlook.com."), Some(MicrosoftKind::Personal));
+        assert_eq!(microsoft_mx_kind("eur.olc.protection.outlook.com"), Some(MicrosoftKind::Personal));
+        for work in ["contoso-com.mail.protection.outlook.com", "contoso-com.o-v1.mx.microsoft", "x.mail.eo.outlook.com", "contoso-de.mail.protection.outlook.de"] {
+            assert_eq!(microsoft_mx_kind(work), Some(MicrosoftKind::Work), "{work}");
+        }
+        for lookalike in ["mail.protection.outlook.com.evil.example", "evilmx.microsoft.example", "mail.protection.outlook.com", ".mail.protection.outlook.com", "evilmail.protection.outlook.com", "olc.protection.outlook.com", "mx.microsoft"] {
+            assert_eq!(microsoft_mx_kind(lookalike), None, "{lookalike}");
+        }
+        // Settings naming Microsoft's server: Microsoft's, of the kind its sending server says.
+        let settings = parse_config(
+            "<clientConfig><emailProvider><incomingServer type=\"imap\"><hostname>outlook.office365.com</hostname><port>993</port><socketType>SSL</socketType></incomingServer>\
+             <outgoingServer type=\"smtp\"><hostname>smtp.office365.com</hostname><port>587</port><socketType>STARTTLS</socketType></outgoingServer></emailProvider></clientConfig>",
+            "you@contoso.example",
+            FoundBy::Provider,
+        )
+        .unwrap();
+        assert_eq!(microsoft_if_named(settings, "you@contoso.example"), microsoft_found("you@contoso.example", MicrosoftKind::Work));
+        // Microsoft's servers: 993 encrypted from the first byte, 587 with STARTTLS, the sending server by kind.
+        let found = microsoft_found("you@contoso.example", MicrosoftKind::Work);
+        assert_eq!((found.host.as_str(), found.port, found.security, found.by), ("outlook.office365.com", 993, Security::Tls, FoundBy::Microsoft(MicrosoftKind::Work)));
+        assert_eq!(found.smtp, Some(Smtp { host: "smtp.office365.com".into(), port: 587, security: Security::Starttls }));
+        assert_eq!(microsoft_found("you@hotmail.fr", MicrosoftKind::Personal).smtp.unwrap().host, "smtp-mail.outlook.com");
     }
 
     #[test]

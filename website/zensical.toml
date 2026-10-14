@@ -56,6 +56,7 @@ nav = [
       { "Works with" = "guide/compatibility.md" },
     ] },
     { "Privacy policy" = "privacy.md" },
+    { "Terms of use" = "terms.md" },
   ] },
   { "For developers" = [
     { "Overview" = "dev/index.md" },
@@ -138,6 +139,7 @@ nav = [
     { "Elsewhere" = [
       { "Compatibility" = "dev/compatibility.md" },
       { "Google" = "dev/google.md" },
+      { "Microsoft" = "dev/microsoft.md" },
       { "GitHub" = "dev/github.md" },
       { "Sites" = "dev/sites.md" },
       # colour: the sites' colours.
