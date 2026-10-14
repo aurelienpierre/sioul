@@ -179,6 +179,36 @@ public final class DayNotesCheck
         kept = EventAlarms.merged(kept, new JSONArray("[{\"key\":\"day:work:2026-10-14\",\"at\":1000}]"), 5000, armed);
         expect("asked again: not set over", armed.size(), 0);
         expect("its time kept", kept.getJSONObject(0).getLong("at"), 65000);
+        // Moved earlier by Rust, into the past, not done: set again, to ring at once. The end of
+        // work kept at 17:30, not rung; at 16:57 the hours are edited to end at 16:50.
+        long half = 1_792_000_000_000L;
+        armed.clear();
+        kept = EventAlarms.merged(new JSONArray(), new JSONArray().put(new JSONObject().put("key", "day:work:2026-10-14").put("at", half)), half - 3_600_000, armed);
+        armed.clear();
+        kept = EventAlarms.merged(kept, new JSONArray().put(new JSONObject().put("key", "day:work:2026-10-14").put("at", half - 2_400_000)), half - 1_980_000, armed);
+        expect("the end moved a few minutes into the past: set, at once", armed.size() == 1 && armed.get(0).at == half - 2_400_000, true);
+        armed.clear();
+        kept = EventAlarms.merged(kept, new JSONArray().put(new JSONObject().put("key", "day:work:2026-10-14").put("at", half - 2_400_000)), half - 1_970_000, armed);
+        expect("listed so again: not set again", armed.size(), 0);
+        // A reminder held (its alarm at the next quarter hour), its hold ended early: listed at
+        // Rust's second plus one, which Java may only see a second later: set, at once.
+        JSONArray held = EventAlarms.asked(EventAlarms.merged(new JSONArray(), new JSONArray().put(new JSONObject().put("key", "before:dentist").put("at", half + 900_000)), half, new ArrayList<>()), "before:dentist", half + 900_000);
+        armed.clear();
+        held = EventAlarms.merged(held, new JSONArray().put(new JSONObject().put("key", "before:dentist").put("at", half + 181_000)), half + 182_200, armed);
+        expect("a hold ended early, seen late: set, at once", armed.size() == 1 && armed.get(0).at == half + 181_000, true);
+        // Then listed a second from now at each second: a time that grows, set no more.
+        int again = 0;
+        for (long second = 183_000; second < 243_000; second += 1000) {
+            armed.clear();
+            held = EventAlarms.merged(held, new JSONArray().put(new JSONObject().put("key", "before:dentist").put("at", half + second)), half + second + 1200, armed);
+            again += armed.size();
+        }
+        expect("a second from now, each second for a minute: set no more", again, 0);
+        // Done with, then moved earlier into the past: left done, not set.
+        armed.clear();
+        JSONArray done = EventAlarms.answered(new JSONArray().put(new JSONObject().put("key", "day:night:2026-10-14").put("at", half).put(EventAlarms.GIVEN, half)), "day:night:2026-10-14");
+        EventAlarms.merged(done, new JSONArray().put(new JSONObject().put("key", "day:night:2026-10-14").put("at", half - 60_000)), half + 60_000, armed);
+        expect("done, moved earlier: not set", armed.size(), 0);
         // No words kept for the day's: Rust says them, or nothing.
         expect("the day's", EventAlarms.isDay("day"), true);
         expect("an event's", EventAlarms.isDay("event"), false);

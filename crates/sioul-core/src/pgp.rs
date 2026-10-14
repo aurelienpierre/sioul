@@ -417,6 +417,16 @@ fn packet_at(bytes: &[u8], at: usize) -> Option<(u8, std::ops::Range<usize>)> {
 /// octets) or do not read whole, or when a length is said too short: only
 /// ever shorter, as GnuPG's fault is.
 fn signature_shortened(body: &[u8]) -> Option<Vec<u8>> {
+    shortened_at(body, true)
+}
+
+/// `signature_shortened`, the signatures embedded in the unhashed area
+/// looked into only when `descend`: one level, never more. An embedded
+/// signature's own embedded ones stay as they came: Sequoia refuses a
+/// signature embedded in an embedded one, and each level looked into would
+/// take the stack of the thread reading a file from outside (a phone's
+/// import runs on Qt's own, about 1 MiB), a crafted one nesting thousands.
+fn shortened_at(body: &[u8], descend: bool) -> Option<Vec<u8>> {
     let numbers = match *body.get(2)? {
         // RSA.
         1 | 3 => 1,
@@ -429,9 +439,9 @@ fn signature_shortened(body: &[u8]) -> Option<Vec<u8>> {
     // area after its length: as it came.
     let unhashed = 4usize.checked_add(2 + length_at(4)?)?;
     let mut out = body.get(..unhashed)?.to_vec();
-    // The unhashed area, its embedded signatures shortened.
+    // The unhashed area, its embedded signatures shortened (one level).
     let area = body.get(unhashed + 2..unhashed + 2 + length_at(unhashed)?)?;
-    let (area_out, mut changed) = match embedded_shortened(area) {
+    let (area_out, mut changed) = match descend.then(|| embedded_shortened(area)).flatten() {
         Some(shorter) => (shorter, true),
         None => (area.to_vec(), false),
     };
@@ -458,9 +468,9 @@ fn signature_shortened(body: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// A signature's unhashed area (RFC 9580, 5.2.3.7) with each embedded
-/// signature (subpacket 32) shortened (`signature_shortened`), its length
-/// said again; none when none needed it, or when the area does not read as
-/// subpackets.
+/// signature (subpacket 32) shortened, its own unhashed area left as it came
+/// (`shortened_at`), its length said again; none when none needed it, or
+/// when the area does not read as subpackets.
 fn embedded_shortened(area: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(area.len());
     let mut changed = false;
@@ -474,7 +484,7 @@ fn embedded_shortened(area: &[u8]) -> Option<Vec<u8>> {
         // Its type (the critical bit aside), then its body.
         let subpacket = area.get(start..start.checked_add(length)?)?;
         let (&kind, inner) = subpacket.split_first()?;
-        match (kind & 0x7F == 32 && inner.first() == Some(&4)).then(|| signature_shortened(inner)).flatten() {
+        match (kind & 0x7F == 32 && inner.first() == Some(&4)).then(|| shortened_at(inner, false)).flatten() {
             Some(shorter) => {
                 put_subpacket_length(&mut out, 1 + shorter.len());
                 out.push(kind);
@@ -1659,5 +1669,56 @@ mod tests {
         assert!(checked > 0);
         let short_key = signatures_as(&dave, |body| short_first(body).unwrap_or_else(|| body.to_vec()));
         assert!(matches!(minimal_mpis(&short_key), std::borrow::Cow::Borrowed(_)));
+    }
+
+    /// A signature body (EdDSA) whose unhashed area holds `inner`, embedded,
+    /// if any, and whose two numbers are `numbers` (their lengths said).
+    fn nesting(inner: Option<&[u8]>, numbers: &[u8]) -> Vec<u8> {
+        let mut area = Vec::new();
+        if let Some(inner) = inner {
+            put_subpacket_length(&mut area, 1 + inner.len());
+            area.push(32);
+            area.extend_from_slice(inner);
+        }
+        let mut body = vec![4, 0x19, 22, 10, 0, 0];
+        body.extend_from_slice(&u16::try_from(area.len()).unwrap().to_be_bytes());
+        body.extend_from_slice(&area);
+        body.extend_from_slice(&[0xAB, 0xCD]);
+        body.extend_from_slice(numbers);
+        body
+    }
+
+    /// Signatures embedded in embedded signatures, thousands deep (made by
+    /// hand: no OpenPGP program writes them, Sequoia refuses them): looked
+    /// into one level only, so the file comes back at once, as it came, on
+    /// a thread with a small stack (a phone's import runs on Qt's, about
+    /// 1 MiB), though the deepest's numbers are written long. One level
+    /// down, a signature written long is still repaired (a back-signature);
+    /// two levels down, never.
+    #[test]
+    fn signatures_nested_deep_are_looked_into_one_level_only() {
+        // r and s, each the number 1: shortest, then one said in nine bits, a zero octet first.
+        let shortest: &[u8] = &[0, 1, 1, 0, 1, 1];
+        let long: &[u8] = &[0, 9, 0, 1, 0, 1, 1];
+        let packet = |body: &[u8]| {
+            let mut out = Vec::new();
+            put_packet(&mut out, 2, body);
+            out
+        };
+        let mut deep = nesting(None, long);
+        let mut levels = 0;
+        while deep.len() < 60_000 {
+            deep = nesting(Some(&deep), shortest);
+            levels += 1;
+        }
+        assert!(levels > 2_000, "{levels} levels");
+        let file = packet(&nesting(Some(&deep), shortest));
+        let read = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || matches!(minimal_mpis(&file), std::borrow::Cow::Borrowed(_))).unwrap();
+        assert!(read.join().unwrap(), "as it came, at once");
+        // One level down: repaired; two levels down: as it came.
+        let one = packet(&nesting(Some(&nesting(None, long)), shortest));
+        assert!(matches!(minimal_mpis(&one), std::borrow::Cow::Owned(_)));
+        let two = packet(&nesting(Some(&nesting(Some(&nesting(None, long)), shortest)), shortest));
+        assert!(matches!(minimal_mpis(&two), std::borrow::Cow::Borrowed(_)));
     }
 }

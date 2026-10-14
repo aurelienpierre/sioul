@@ -134,16 +134,23 @@ final class EventAlarms
     /** Whether a reminder of the list rang and was answered (`done`): kept while Rust lists it, never set again. */
     static final String DONE = "done";
 
+    /** The time Rust gave a reminder last (Unix ms), kept apart from its "at", the time its alarm is set for, which `again` moves. */
+    static final String GIVEN = "given";
+
     /**
      * The list kept once Rust gives `coming` (`set`), and the alarms to set
      * for it, put in `armed`: a reminder new to the list, at its time (one
      * past rings at once: Rust says whether it still makes sense); one kept
-     * already, at a time Rust moved into the future; never one kept already
-     * again in the past: it rang already, or rings at the time `again` gave
-     * it, and keeps that time and whether it is done. So a list given again
-     * and again with a past reminder in it (the end of work's, while its ten
-     * minutes last) never rings it again and again. Pure, checked on a JVM
-     * (android/jvm-checks/DayNotesCheck.java).
+     * already, at a time Rust moved into the future, or moved earlier than
+     * it said before while it is not done, though that be past (the hours
+     * edited so that today's end of work was a few minutes ago; a hold that
+     * ended early): it rings at once; never one kept already again in the
+     * past at the time Rust said before: it rang already, or rings at the
+     * time `again` gave it, and keeps that time and whether it is done. So a
+     * list given again and again with a past reminder in it (the end of
+     * work's, while its ten minutes last) never rings it again and again:
+     * Rust's times for it stay put, or only grow ("a second from now"). Pure,
+     * checked on a JVM (android/jvm-checks/DayNotesCheck.java).
      *
      * @param kept the list kept until now
      * @param coming the list Rust gives
@@ -167,15 +174,18 @@ final class EventAlarms
             String key = key(reminder);
             long at = reminder.optLong("at");
             JSONObject old = before.get(key);
-            if (old != null && at <= now) {
-                JSONObject carried = copied(reminder);
-                put(carried, "at", old.optLong("at"));
+            JSONObject listed = copied(reminder);
+            put(listed, GIVEN, at);
+            // Moved earlier than Rust said last; an entry an older Sioul kept says nothing of it.
+            boolean moved = old != null && old.has(GIVEN) && !old.optBoolean(DONE) && at < old.optLong(GIVEN);
+            if (old != null && at <= now && !moved) {
+                put(listed, "at", old.optLong("at"));
                 if (old.optBoolean(DONE))
-                    put(carried, DONE, true);
-                out.put(carried);
+                    put(listed, DONE, true);
+                out.put(listed);
                 continue;
             }
-            out.put(reminder);
+            out.put(listed);
             if (!key.isEmpty() && at > 0)
                 armed.add(new Arm(key, at));
         }
