@@ -29,6 +29,11 @@
 //! agent never sees a closed project's things, not even half of them. A
 //! project taken out of the manifest leaves its things in no project, as its
 //! page does.
+//!
+//! **Some accounts' mail is kept whatever its projects** (`keep_accounts`):
+//! work and school Microsoft accounts, unless you open them (`[mcp]
+//! work_accounts`), since Microsoft's terms count the organisation among
+//! whom must allow its mail to go further than syncing (docs/microsoft.md).
 
 use crate::card::Card;
 use crate::projects::Project;
@@ -51,12 +56,43 @@ pub struct Consent {
     tied: HashMap<String, BTreeSet<String>>,
     /// The Porch's checks, for mail (`porch::Gate`); none, every message as it stands.
     gate: Option<Arc<Gate>>,
+    /// Accounts whose mail is kept from agents whatever its projects, by id: their mail folders.
+    kept_accounts: BTreeMap<String, std::path::PathBuf>,
+    /// The messages found in those folders, by bare Message-ID.
+    kept_mail: BTreeSet<String>,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new() }
+    }
+
+    /// Keeps these accounts' mail from agents whatever its projects (by id,
+    /// with their mail folders): its messages in `mail` by their address, any
+    /// other by its file or its account.
+    pub fn keep_accounts(&mut self, accounts: impl IntoIterator<Item = (String, std::path::PathBuf)>, mail: &crate::mailindex::MailIndex) {
+        self.kept_accounts.extend(accounts);
+        if self.kept_accounts.is_empty() {
+            return;
+        }
+        let folders: Vec<&std::path::PathBuf> = self.kept_accounts.values().collect();
+        let kept: Vec<String> = mail.iter().filter(|(_, m)| folders.iter().any(|f| m.path.starts_with(f))).map(|(id, _)| id.clone()).collect();
+        self.kept_mail.extend(kept);
+    }
+
+    /// Whether an account's mail is kept from agents whatever its projects (`keep_accounts`).
+    pub fn keeps_account(&self, id: &str) -> bool {
+        self.kept_accounts.contains_key(id)
+    }
+
+    /// Whether a message is in an account kept from agents: by its address, its account, or its file.
+    fn kept_by_account(&self, message_id: Option<&str>, card: Option<&Card>) -> bool {
+        if self.kept_accounts.is_empty() {
+            return false;
+        }
+        message_id.is_some_and(|id| self.kept_mail.contains(&crate::mailindex::bare_id(id)))
+            || card.is_some_and(|c| c.account.as_deref().is_some_and(|a| self.keeps_account(a)) || c.path.as_ref().is_some_and(|p| self.kept_accounts.values().any(|f| p.starts_with(f))))
     }
 
     /// What everything Sioul reads belongs to, from the files read once
@@ -220,6 +256,9 @@ impl Consent {
 
     /// Whether a thing reaches an agent, by its address.
     pub fn allows(&self, uri: &str) -> bool {
+        if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
+            return false;
+        }
         self.allows_projects(self.projects_of(uri).iter().map(String::as_str))
     }
 
@@ -267,8 +306,12 @@ impl Consent {
         out
     }
 
-    /// Whether a message reaches an agent.
+    /// Whether a message reaches an agent: not in an account kept from
+    /// agents, and in projects that are all open (or in none, while those are).
     pub fn allows_mail(&self, message_id: Option<&str>, card: Option<&Card>) -> bool {
+        if self.kept_by_account(message_id.or(card.and_then(|c| c.message_id.as_deref())), card) {
+            return false;
+        }
         self.allows_projects(self.mail_projects(message_id, card).iter().map(String::as_str))
     }
 }
@@ -282,6 +325,35 @@ mod tests {
 
     fn project(id: &str, open: bool) -> Project {
         Project { id: id.into(), title: id.to_uppercase(), ai: open, ..Project::default() }
+    }
+
+    /// A work or school Microsoft account's mail is kept whatever its
+    /// projects: by its Message-ID (in the index, under its folder), by its
+    /// card's account, by its file; another account's stays as it was.
+    #[test]
+    fn an_accounts_mail_can_be_kept_whatever_its_projects() {
+        let open = project("lumen", true);
+        let mut mail = MailIndex::default();
+        mail.insert("w@contoso.example", MailRef { subject: "Plan".into(), path: "/data/mail/work/cur/1:2,S".into(), ..Default::default() });
+        mail.insert("h@example.org", MailRef { subject: "Hello".into(), path: "/data/mail/home/cur/2:2,S".into(), ..Default::default() });
+        let loaded = Loaded { mail, projects: vec![open], ..Loaded::default() };
+        let mut consent = Consent::of(&loaded, true, None);
+        assert!(consent.allows("mid:w@contoso.example") && consent.allows("mid:h@example.org"), "nothing kept yet");
+        consent.keep_accounts([("work".to_string(), std::path::PathBuf::from("/data/mail/work"))], &loaded.mail);
+        assert!(consent.keeps_account("work") && !consent.keeps_account("home"));
+        assert!(!consent.allows("mid:w@contoso.example") && !consent.allows(&links::mail_uri("<w@contoso.example>")), "by its address");
+        assert!(consent.allows("mid:h@example.org"));
+        assert!(!consent.allows_mail(Some("w@contoso.example"), None));
+        // A message the index does not hold: by its card's account, or its file.
+        let mut card = Card::from_bytes(b"Message-ID: <new@contoso.example>\r\nSubject: Today\r\n\r\nHello").unwrap();
+        assert!(consent.allows_mail(card.message_id.as_deref(), Some(&card)));
+        card.account = Some("work".into());
+        assert!(!consent.allows_mail(card.message_id.as_deref(), Some(&card)));
+        card.account = None;
+        card.path = Some("/data/mail/work/new/3".into());
+        assert!(!consent.allows_mail(card.message_id.as_deref(), Some(&card)));
+        card.path = Some("/data/mail/workshop/new/3".into());
+        assert!(consent.allows_mail(card.message_id.as_deref(), Some(&card)), "a folder whose name only begins the same");
     }
 
     #[test]

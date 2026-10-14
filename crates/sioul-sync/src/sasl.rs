@@ -10,9 +10,11 @@
 //! (`{"status":"401","schemes":"bearer mac","scope":"https://mail.google.com/"}`),
 //! answered with an empty line, then the refusal (`NO`, `535`).
 //!
-//! Who gives the tokens is [`OAuth`]: Google only, for now. Nothing here is
-//! Google's but that choice, so that another provider's sign-in is one more
-//! arm of it.
+//! Who gives the tokens is [`OAuth`]: Google, or Microsoft, whose refusal
+//! comes without a challenge (`NO AUTHENTICATE failed.`, `535 5.7.3`), and
+//! whose refusals that no token changes (a mailbox closed to IMAP, sending
+//! switched off) are said apart (`not_connected`, `smtp_refused`). Nothing
+//! else here is either provider's.
 
 use crate::SyncError;
 use base64::Engine;
@@ -85,10 +87,18 @@ where
         334 => {
             let why = STANDARD.decode(reply.message().trim()).map(|b| reason(&b)).unwrap_or_default();
             let end = client.cmd(b"\r\n").await?;
-            Ok(Err(format!("{} {} ({why})", end.code(), end.message()).trim().to_string()))
+            Ok(Err(format!("{} ({why})", said(end.code(), end.esc, end.message())).trim().to_string()))
         }
-        code => Ok(Err(format!("{code} {}", reply.message()))),
+        _ => Ok(Err(said(reply.code(), reply.esc, reply.message()))),
     }
+}
+
+/// A reply as the server wrote it: its code, its enhanced status code
+/// (RFC 3463, "5.7.139", which the parser keeps apart), its words.
+fn said(code: u16, esc: [u8; 3], message: &str) -> String {
+    let [class, subject, detail] = esc;
+    let enhanced = if class == 0 { String::new() } else { format!(" {class}.{subject}.{detail}") };
+    format!("{code}{enhanced} {message}").trim().to_string()
 }
 
 /// Who gives an account its access tokens, when it signs in with OAuth
@@ -97,15 +107,19 @@ where
 pub enum OAuth {
     /// Google's sign-in, the mail grant kept in the keyring (`google::Purpose::Mail`).
     Google,
+    /// Microsoft's sign-in (`microsoft.rs`); `personal`: an Outlook.com
+    /// account (its sending server says so), else a work or school one.
+    Microsoft { personal: bool },
 }
 
 impl OAuth {
-    /// The provider of a mail account that signs in with one (`auth = "google"`);
-    /// None: a password. Calendars signed in with Google are not mail: their
-    /// token is asked by the DAV client.
+    /// The provider of a mail account that signs in with one (`auth =
+    /// "google"`, `auth = "microsoft"`); None: a password. Calendars signed
+    /// in with Google are not mail: their token is asked by the DAV client.
     pub fn of(account: &Account) -> Option<OAuth> {
         match (account.auth.as_deref(), account.kind) {
             (Some("google"), AccountKind::Imap) => Some(OAuth::Google),
+            (Some("microsoft"), AccountKind::Imap) => Some(OAuth::Microsoft { personal: !account.is_microsoft_work() }),
             _ => None,
         }
     }
@@ -115,6 +129,7 @@ impl OAuth {
     pub fn token(self, login: &str, fresh: bool) -> Result<String, SyncError> {
         match self {
             OAuth::Google => crate::google::access_token_for(crate::google::Purpose::Mail, login, fresh),
+            OAuth::Microsoft { .. } => crate::microsoft::access_token(login, fresh),
         }
     }
 
@@ -124,12 +139,45 @@ impl OAuth {
         tokio::task::spawn_blocking(move || self.token(&login, fresh)).await.map_err(|e| SyncError::Network(e.to_string()))?
     }
 
+    /// Whether a server may be given this provider's token: Microsoft's
+    /// only to Microsoft's own servers, named exactly (a configuration that
+    /// names another is refused before any token is asked). Google's as before.
+    pub(crate) fn may_reach(self, host: &str, smtp: bool) -> Result<(), SyncError> {
+        match self {
+            OAuth::Google => Ok(()),
+            OAuth::Microsoft { .. } if (smtp && crate::microsoft::is_smtp_host(host)) || (!smtp && crate::microsoft::is_imap_host(host)) => Ok(()),
+            // A test build's stand-in token, for a local server (never in Sioul's builds).
+            OAuth::Microsoft { .. } if crate::microsoft::test_token().is_some() => Ok(()),
+            OAuth::Microsoft { .. } => Err(SyncError::Said(crate::microsoft::OTHER_HOST, host.to_string())),
+        }
+    }
+
     /// What a token refused even fresh says: the access must be given again
     /// (it was withdrawn, or the mail was not ticked on the provider's page).
     pub(crate) fn refused(self, detail: &str) -> SyncError {
         let _ = detail;
         match self {
             OAuth::Google => SyncError::Login(crate::google::SIGN_IN_AGAIN.into()),
+            OAuth::Microsoft { .. } => SyncError::Login(crate::microsoft::AGAIN.into()),
+        }
+    }
+
+    /// An IMAP refusal that a fresh token does not change, said for what it
+    /// is: Microsoft's "User is authenticated but not connected" (IMAP off for
+    /// the mailbox). None: try a fresh token.
+    pub(crate) fn not_connected(self, refusal: &str) -> Option<SyncError> {
+        match self {
+            OAuth::Google => None,
+            OAuth::Microsoft { personal } => crate::microsoft::not_connected(personal, refusal),
+        }
+    }
+
+    /// An SMTP refusal that a fresh token does not change: Microsoft's
+    /// Authenticated SMTP switched off (`5.7.139`). None: try a fresh token.
+    pub(crate) fn smtp_refused(self, refusal: &str) -> Option<SyncError> {
+        match self {
+            OAuth::Google => None,
+            OAuth::Microsoft { .. } => crate::microsoft::smtp_refused(refusal),
         }
     }
 
@@ -139,6 +187,8 @@ impl OAuth {
     pub(crate) fn mark(self, login: &str) -> Result<String, SyncError> {
         match self {
             OAuth::Google => crate::google::grant_for(crate::google::Purpose::Mail, login).map(|g| format!("google:{}", g.signed_in)).ok_or_else(|| SyncError::Login(crate::google::SIGN_IN_AGAIN.into())),
+            // The time of the sign-in on Microsoft's page: a refresh, which renews the token, does not change it.
+            OAuth::Microsoft { .. } => crate::microsoft::grant(login).map(|g| format!("microsoft:{}", g.signed_in)).ok_or_else(|| SyncError::Login(crate::microsoft::AGAIN.into())),
         }
     }
 }
@@ -257,6 +307,63 @@ mod tests {
             let never = || async move { Err::<async_imap::Client<tokio::net::TcpStream>, _>(SyncError::Network("not reached".into())) };
             assert_eq!(crate::imap::sign_in_with_tokens("you@example.org", never, none, OAuth::Google).await.err(), Some(SyncError::Login(crate::google::SIGN_IN_AGAIN.into())));
         });
+    }
+
+    /// Part 8, 8: an IMAP server standing in for Microsoft's (Exchange
+    /// Online), without TLS. A refused token gets `NO AUTHENTICATE failed.`,
+    /// no challenge before it: a fresh token, once, then sign in again. A
+    /// mailbox closed to IMAP answers `BAD User is authenticated but not
+    /// connected.`: said at once, no second token asked (it would change nothing).
+    #[test]
+    fn exchange_refusals_over_imap() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let cases = [
+                ("NO AUTHENTICATE failed.", 2, SyncError::Login(crate::microsoft::AGAIN.into()), vec![false, true]),
+                ("BAD User is authenticated but not connected.", 1, SyncError::Said(crate::microsoft::NOT_CONNECTED_PERSONAL, "User is authenticated but not connected.".into()), vec![false]),
+            ];
+            for (answer, connections, expected, tokens) in cases {
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = tokio::spawn(async move {
+                    let mut heard = Vec::new();
+                    for _ in 0..connections {
+                        let (stream, _) = listener.accept().await.unwrap();
+                        let (read, mut write) = stream.into_split();
+                        let mut lines = BufReader::new(read).lines();
+                        write.write_all(b"* OK The Microsoft Exchange IMAP4 service is ready.\r\n").await.unwrap();
+                        let command = lines.next_line().await.unwrap().unwrap();
+                        let tag = command.split(' ').next().unwrap().to_string();
+                        write.write_all(b"+ \r\n").await.unwrap();
+                        heard.push(lines.next_line().await.unwrap().unwrap());
+                        write.write_all(format!("{tag} {answer}\r\n").as_bytes()).await.unwrap();
+                    }
+                    heard
+                });
+                let connect = || async move {
+                    let tcp = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.map_err(|e| SyncError::Network(e.to_string()))?;
+                    let mut client = async_imap::Client::new(tcp);
+                    client.read_response().await.map_err(|e| SyncError::Network(e.to_string()))?;
+                    Ok(client)
+                };
+                let asked = std::sync::Mutex::new(Vec::new());
+                let token = |fresh: bool| {
+                    asked.lock().unwrap().push(fresh);
+                    async move { Ok::<_, SyncError>(if fresh { "fresh".to_string() } else { "kept".to_string() }) }
+                };
+                let refused = crate::imap::sign_in_with_tokens("you@outlook.com", connect, token, OAuth::Microsoft { personal: true }).await.err();
+                assert_eq!(refused, Some(expected), "{answer}");
+                assert_eq!(*asked.lock().unwrap(), tokens, "{answer}");
+                let heard = server.await.unwrap();
+                assert_eq!(heard[0], xoauth2_base64("you@outlook.com", "kept"), "Microsoft's format, Google's: one and the same");
+            }
+        });
+        // Mail signed in with Microsoft uses tokens; its kind is its sending server's.
+        let mut mail = Account::imap("o", "you@outlook.com", "outlook.office365.com", 993, sioul_core::config::Security::Tls, None);
+        mail.auth = Some("microsoft".into());
+        assert_eq!(OAuth::of(&mail), Some(OAuth::Microsoft { personal: false }), "not known yet: an organisation's, the cautious side");
+        mail.smtp_host = Some("smtp-mail.outlook.com".into());
+        assert_eq!(OAuth::of(&mail), Some(OAuth::Microsoft { personal: true }));
     }
 
     /// An SMTP server standing in for Gmail's, without TLS: the first token

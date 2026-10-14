@@ -57,7 +57,7 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 ### Removing one
 
-**Remove** asks first. A mail account's password leaves the keyring; its mail stays on your disk and on the server. For Google, the access is given back to Google: the mail's and the calendars' apart, so that removing one leaves the other its access.
+**Remove** asks first. A mail account's password leaves the keyring; its mail stays on your disk and on the server. For Google, the access is given back to Google: the mail's and the calendars' apart, so that removing one leaves the other its access. For Microsoft, its sign-in is forgotten on this device, and **Remove** also asks whether to delete the mail Sioul keeps on this device for that account: yes, unless you untick it. Microsoft offers apps no way to give an access back: the line Sioul then shows names Microsoft's page where you withdraw it.
 
 ### An account from your other device
 
@@ -69,11 +69,15 @@ From this page, your Bitwarden vault opens with its master password and a second
 
 Gmail or Google Workspace mail signed in with Google says when Google ends the access (your Google password changed, your own Google app deleted, a Google project left in testing). On its card, **Sign in again** opens Google's page again, in your browser; **App password…** gives it an app password instead. Sioul never asks for your Google account's password. See [First steps](first-steps.md#gmail-and-google-workspace).
 
+### Microsoft's mail {#microsofts-mail}
+
+Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft says when Microsoft ends the access (your password changed, ninety days unused, your organisation's rules), or when the mailbox stays closed to mail programs, with what to do. On its card, **Sign in again** opens Microsoft's page again, in your browser. An address added before with a password, at Microsoft's server, shows **Sign in with Microsoft** instead of **Password…**: Microsoft takes no password any more, app passwords included, and signing in forgets the one kept. Sioul never asks for your Microsoft password. Its card says **Signs in: with Microsoft**, and whether as a personal account or as a work or school one. See [First steps](first-steps.md#outlook-and-microsoft-365).
+
 ## Add an account
 
 Three forms, one after the other:
 
-- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password.
+- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password; for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**.
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 
@@ -81,7 +85,7 @@ On a phone, **From this phone's accounts…**, above them, opens Android's own l
 
 Step by step: [First steps](first-steps.md#add-your-mail). Passwords go to your system's keyring, nowhere else, and Sioul talks to your servers over encrypted connections only.
 
-Outlook.com, Hotmail and Microsoft 365 addresses cannot be added yet: Microsoft takes only its own sign-in page from other mail programs ([Works with](compatibility.md#mail)).
+Outlook.com, Hotmail, Live, MSN and Microsoft 365 addresses sign in on Microsoft's own page, in your browser: Microsoft takes no password from other mail programs. A work or school address may need its organisation's approval, once ([First steps](first-steps.md#outlook-and-microsoft-365); [Works with](compatibility.md#mail)).
 
 ## Who may reach you {#senders}
 
@@ -128,7 +132,7 @@ Sioul only uses the key: it never asks for its Admin PIN, never changes or unblo
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul cannot add Outlook.com, Hotmail or Microsoft 365 addresses, has no S/MIME, and needs a Google app of your own, or an app password, for Gmail's mail; its OpenPGP security key is not yet tried with a real key, nor available on phones.
+**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul has no S/MIME, needs a Google app of your own, or an app password, for Gmail's mail, and has not yet tried its Microsoft sign-in with a real Microsoft account; its OpenPGP security key is not yet tried with a real key, nor available on phones.
 
 As of October 2026, from each app's own documentation.
 
@@ -139,12 +143,12 @@ As of October 2026, from each app's own documentation.
     | | Sioul | Thunderbird | Gmail | Outlook | Apple Mail | Evolution |
     |---|---|---|---|---|---|---|
     | Google signed in on Google's own page | partly¹ | ✓ | — | ✓ | ? | ✓ |
-    | Outlook.com and Microsoft 365 addresses | ✗² | ✓ | ✓³ | ✓ | ? | ? |
+    | Outlook.com and Microsoft 365 addresses | partly² | ✓ | ✓³ | ✓ | ? | ? |
     | A password manager gives an account its password | ✓⁴ | ✗ | ✗ | ✗ | ? | ✗ |
     | One service of an account switched off, its settings kept | ✓ | partly⁵ | — | ? | ✓ | ✓ |
 
     1. Google's page opens in your browser. Gmail's mail needs a Google app of your own (a free Google Cloud project, about fifteen minutes, once) or an app password; so do calendars, in a copy of Sioul built without its own key.
-    2. Microsoft takes only its own sign-in page from other mail programs, and Sioul has none for mail yet ([Works with](compatibility.md#mail)).
+    2. Microsoft's page opens in your browser. Not yet tried with a real Microsoft account. In a copy of Sioul built without its own Microsoft application, an application of your own, registered once (the steps are in the form). A work or school address may need its organisation's approval, once ([Works with](compatibility.md#mail)).
     3. In the Gmail app on a phone.
     4. Bitwarden, read by Sioul itself. Bitwarden itself describes filling only in browsers and on phones.
     5. Calendars only.

@@ -659,11 +659,16 @@ pub struct McpSettings {
     /// carry other people's words.
     #[serde(default)]
     pub texts: bool,
+    /// The mail of work and school Microsoft accounts (docs/microsoft.md):
+    /// kept from agents whatever its projects unless set to true, since
+    /// Microsoft's terms count the organisation among whom must allow it.
+    #[serde(default)]
+    pub work_accounts: bool,
 }
 
 impl Default for McpSettings {
     fn default() -> Self {
-        McpSettings { spam: true, outside_projects: true, texts: false }
+        McpSettings { spam: true, outside_projects: true, texts: false, work_accounts: false }
     }
 }
 
@@ -792,6 +797,16 @@ impl Priority {
 /// Days of mail the first sync brings, when the account does not say.
 pub const DEFAULT_SYNC_DAYS: u32 = 14;
 
+/// Microsoft's IMAP server, for every mail account signed in with Microsoft
+/// (`auth = "microsoft"`, docs/microsoft.md): Outlook.com's and Microsoft 365's alike.
+pub const MICROSOFT_IMAP: &str = "outlook.office365.com";
+/// Microsoft's SMTP server for personal accounts (Outlook.com, Hotmail, Live,
+/// MSN). An account signed in with Microsoft keeps it as its sending server:
+/// that is how its kind is known without the keyring (`Account::is_microsoft_work`).
+pub const MICROSOFT_SMTP_PERSONAL: &str = "smtp-mail.outlook.com";
+/// Microsoft's SMTP server for work and school accounts (Microsoft 365).
+pub const MICROSOFT_SMTP_WORK: &str = "smtp.office365.com";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Account {
     pub id: String,
@@ -854,7 +869,10 @@ pub struct Account {
     /// How many days of mail the first sync brings.
     #[serde(default)]
     pub sync_days: Option<u32>,
-    /// How it signs in: "google" for Google's OAuth (its tokens in the keyring); a password otherwise.
+    /// How it signs in: "google" for Google's OAuth, "microsoft" for
+    /// Microsoft's (their tokens in the keyring); a password otherwise. An
+    /// older Sioul reading "microsoft" takes it for a password account,
+    /// whose login then fails, said as such.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<String>,
     /// Folders not kept here, by their server names: they stay on the server only.
@@ -945,6 +963,29 @@ impl Account {
     /// The name to log in with: `username`, else the address.
     pub fn login(&self) -> Option<&str> {
         self.username.as_deref().or(self.address.as_deref())
+    }
+
+    /// Mail signed in with Microsoft (`auth = "microsoft"`): its tokens in the
+    /// keyring, no password (docs/microsoft.md).
+    pub fn is_microsoft(&self) -> bool {
+        self.kind == AccountKind::Imap && self.auth.as_deref() == Some("microsoft")
+    }
+
+    /// Mail signed in with Microsoft that belongs to an organisation (a work
+    /// or school account, Microsoft 365), or whose kind is not known: its
+    /// sending server is not Outlook.com's. Microsoft's terms count the
+    /// organisation among whom must allow its mail to go further than
+    /// syncing, so the AI shield is not offered for it and agents leave it out
+    /// unless you open it to them (`[mcp] work_accounts`).
+    pub fn is_microsoft_work(&self) -> bool {
+        self.is_microsoft() && !self.smtp_host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(MICROSOFT_SMTP_PERSONAL))
+    }
+
+    /// Whether the AI reads this address's new mail first (its shield, and
+    /// the AI allowed): never a work or school Microsoft account's, whatever
+    /// the file says (docs/microsoft.md).
+    pub fn ai_reads(&self) -> bool {
+        self.shield && self.shield_ai && !self.is_microsoft_work()
     }
 
     /// The port to use: `port`, else the usual one for the encryption.
@@ -1160,7 +1201,7 @@ pub fn add_imap_account(path: &Path, account: &Account) -> Result<(), String> {
     if let Some(days) = account.sync_days {
         table["sync_days"] = value(i64::from(days));
     }
-    // Signed in with Google (its access token, not a password: docs/google.md, "Mail").
+    // Signed in with Google or Microsoft (an access token, not a password: docs/google.md, "Mail"; docs/microsoft.md).
     if let Some(auth) = &account.auth {
         table["auth"] = value(auth.as_str());
     }
@@ -1443,8 +1484,9 @@ pub fn set_trusted_ids(path: &Path, id: &str, ids: &[String]) -> Result<(), Stri
     set_account_item(path, id, "trusted_authserv_ids", value(ids.iter().map(String::as_str).collect::<Array>()))
 }
 
-/// How an account signs in: `Some("google")` for Google's sign-in (an access
-/// token), None for a password (an app password given instead).
+/// How an account signs in: `Some("google")` for Google's sign-in,
+/// `Some("microsoft")` for Microsoft's (an access token), None for a password
+/// (an app password given instead).
 pub fn set_auth(path: &Path, id: &str, auth: Option<&str>) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
@@ -1461,6 +1503,41 @@ pub fn set_auth(path: &Path, id: &str, auth: Option<&str>) -> Result<(), String>
                 write_document(path, &doc)
             }
         }
+    })
+}
+
+/// An account signed in again with Microsoft's sign-in (docs/microsoft.md),
+/// one added with a password before among them: how it signs in, its
+/// servers and its user name, written at once from `account`.
+pub fn set_sign_in(path: &Path, account: &Account) -> Result<(), String> {
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let id = account.id.as_str();
+        let table = doc
+            .get_mut("account")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+            .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+        match &account.auth {
+            Some(auth) => table["auth"] = value(auth.as_str()),
+            None => drop(table.remove("auth")),
+        }
+        if let Some(host) = &account.host {
+            table["host"] = value(host.as_str());
+        }
+        table["port"] = value(i64::from(account.port_or_default()));
+        table["security"] = value(account.security.as_str());
+        match &account.username {
+            Some(username) => table["username"] = value(username.as_str()),
+            None => drop(table.remove("username")),
+        }
+        if let Some(host) = &account.smtp_host {
+            table["smtp_host"] = value(host.as_str());
+            table["smtp_port"] = value(i64::from(account.smtp_port_or_default()));
+            table["smtp_security"] = value(account.smtp_security.as_str());
+        }
+        write_document(path, &doc)
     })
 }
 
@@ -2250,6 +2327,26 @@ mod tests {
         let gmail = config.account("gmail").unwrap();
         assert_eq!(gmail.port_or_default(), 993);
         assert!(gmail.syncs());
+    }
+
+    #[test]
+    fn an_account_signed_in_again_with_microsoft_is_written_at_once() {
+        let dir = std::env::temp_dir().join(format!("sioul-config-microsoft-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\n[[account]]\nid = \"old\"\nkind = \"imap\"\naddress = \"old@hotmail.com\"\nhost = \"outlook.office365.com\"\nport = 993\nusername = \"Old@Hotmail.com\"\nsmtp_host = \"smtp.example.org\"\n").unwrap();
+        let mut account = Config::load(&path).unwrap().account("old").unwrap().clone();
+        account.auth = Some("microsoft".into());
+        account.username = None;
+        account.smtp_host = Some(MICROSOFT_SMTP_PERSONAL.into());
+        account.smtp_port = Some(587);
+        account.smtp_security = Security::Starttls;
+        set_sign_in(&path, &account).unwrap();
+        let back = Config::load(&path).unwrap().account("old").unwrap().clone();
+        assert_eq!((back.auth.as_deref(), back.username.as_deref(), back.smtp_host.as_deref(), back.smtp_port, back.smtp_security), (Some("microsoft"), None, Some("smtp-mail.outlook.com"), Some(587), Security::Starttls));
+        assert!(back.is_microsoft() && !back.is_microsoft_work());
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("# mine"), "the file's comments stay");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

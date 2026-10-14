@@ -39,7 +39,7 @@ pub(crate) fn has_own_key(address: &str) -> bool {
 /// kept. On a thread; the form says how it went.
 pub(crate) fn add_google_mail(qt: &QtThread, shared: &Arc<Shared>, address: String, client_id: String, client_secret: String, again: Option<String>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
-    shared.google_stop.store(false, Ordering::Relaxed);
+    shared.oauth_stop.store(false, Ordering::Relaxed);
     std::thread::spawn(move || {
         let address = address.trim().to_ascii_lowercase();
         let config = load_config();
@@ -67,7 +67,7 @@ pub(crate) fn add_google_mail(qt: &QtThread, shared: &Arc<Shared>, address: Stri
             let sign_in = google::begin_for(Purpose::Mail, &client_id, &address).map_err(|e| google_sentence(&e, &id))?;
             let url = sign_in.url.clone();
             let _ = qt.queue(move |mut sioul| sioul.as_mut().open_url(QString::from(&url)));
-            google::finish(sign_in, &client_id, &client_secret, &address, &shared.google_stop).map_err(|e| google_sentence(&e, &id))?;
+            google::finish(sign_in, &client_id, &client_secret, &address, &shared.oauth_stop).map_err(|e| google_sentence(&e, &id))?;
             // The server tried with the access just given, before anything is kept.
             if let Err(e) = sioul_sync::test(&account, "") {
                 if existing.is_none() {

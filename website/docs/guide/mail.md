@@ -157,7 +157,7 @@ Outside working hours, work addresses fold, without their dots: "Work mail rests
 
 ## Not there yet {#not-there-yet}
 
-Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, drafts kept on the server, sending later, an encrypted subject, revoking or extending an OpenPGP key, security keys on a phone, lookalike domain names. They are planned. Sioul has no S/MIME, and no Microsoft sign-in for mail, so Outlook.com, Hotmail and Microsoft 365 addresses cannot be added.
+Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, drafts kept on the server, sending later, an encrypted subject, revoking or extending an OpenPGP key, security keys on a phone, lookalike domain names. They are planned. Sioul has no S/MIME.
 
 ## Going further {#going-further}
 
@@ -255,7 +255,7 @@ Under **Your own spam filter**, in the Mail page's ⚙. It judges strangers' mai
     Until you choose: probable spam and doubts flagged, nothing done with the rest. Nothing it flags or moves is ever notified, on any device.
 - **Spam from**: how sure it must be to call a stranger's message probably spam, 95% unless you change it. Higher: fewer of your messages taken for spam, more spam let through.
 - **Maybe spam from**: from here up to the other, a stranger's message is maybe spam; below, probably not; 50% unless you change it. Each slider stops short of the other: "maybe" stays below "spam".
-- **Its training**, on one computer: the first time by hand, with **Train now**, then again by itself once a week (below). Train it on that one alone (two computers training their own is not supported). **Train now** downloads what training needs from every folder of every address but the trash, drafts and sent mail (the headers, the names of attachments and the start of each text, never the attachments themselves), without changing anything on the server, then learns from your mail: your junk folders teach it most; what it caught itself counts as it is (what it moved or found probably spam, as spam; a maybe spam, only once you say); and what you said is spam or not, on any of your devices, always wins. The first time takes long. While it runs, it says where it is ("Messages fetched: 1,200 of about 15,000", then each step), and Sioul stays usable; **Stop** keeps what came, and the next time goes on from there. Its new table replaces the one in use only if it takes no more of your messages for spam. Below, the last training: when, whether its table replaced the one in use and why, from how many messages, and on your newest mail how much of it was taken for spam and how much spam was caught, each with its margin; then what it learns from, the room left on the disk, and the outside material you imported, if any, with what the filter measured on it.
+- **Its training**, on one computer: the first time by hand, with **Train now**, then again by itself once a week (below). Train it on that one alone (two computers training their own is not supported). **Train now** names the addresses it learns from, and pressing it is your consent to it, for each (Microsoft's terms ask it for a Microsoft address). It downloads what training needs from every folder of every address but the trash, drafts and sent mail (the headers, the names of attachments and the start of each text, never the attachments themselves), without changing anything on the server, then learns from your mail: your junk folders teach it most; what it caught itself counts as it is (what it moved or found probably spam, as spam; a maybe spam, only once you say); and what you said is spam or not, on any of your devices, always wins. The first time takes long. While it runs, it says where it is ("Messages fetched: 1,200 of about 15,000", then each step), and Sioul stays usable; **Stop** keeps what came, and the next time goes on from there. Its new table replaces the one in use only if it takes no more of your messages for spam. Below, the last training: when, whether its table replaced the one in use and why, from how many messages, and on your newest mail how much of it was taken for spam and how much spam was caught, each with its margin; then what it learns from, the room left on the disk, and the outside material you imported, if any, with what the filter measured on it.
 - **Train again by itself once a week, when this computer is plugged in and idle**: on unless you switch it off, on the computer that made the table in use; on your other computers the switch is greyed, and one sentence says which computer trains. Once a week at most after the last training, by hand or by itself; never on battery nor while saving power, only after 15 minutes without anyone at the computer or with its session locked, never during a focus session. It runs at the lowest priority, on half the processor; on a metered connection it learns from what it has, without downloading first. Unplugged or saving power while it runs, it stops and tries again later. It never notifies you: one line under the switch says when it last trained by itself, and whether its table replaced the one in use.
 - **Outside material**: mail labelled elsewhere (an older filter's archive), imported once on that computer with `sioul spam import <file>`, gives the filter more words to learn and a baseline to measure it against; it stays on that computer, apart from your mail, and `sioul spam import --remove <name>` takes it away. Its format: [the developers' notes, "Outside material"](../dev/spam-filter.md#outside-material).
 - **Its table**, on a phone, which never trains it: the computer that trained it, and when, with what it measured then. It comes through your folder, sealed (the part **Spam filter**, in [Sharing](sharing.md#what-travels-from-this-device)), with what you said is spam or not on each device, and what its filter caught there.
@@ -285,7 +285,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     | Undo send | ✓³⁴ | ✗ | ✓³⁵ | ✓³⁶ | ✓³⁷ | ✓³⁸ |
     | Send later, snooze | ✗³⁹ | partly⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Signed and encrypted mail | ✓⁴³ | ✓⁴⁴ | partly⁴⁵ | partly⁴⁶ | partly⁴⁷ | ✓⁴⁸ |
-    | Outlook.com, Hotmail and Microsoft 365 addresses | ✗⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Outlook.com, Hotmail and Microsoft 365 addresses | partly⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
 
     1. Thunderbird: only through an add-on (DKIM Verifier); nothing on Android.
     2. Gmail: a question mark on a message that is not authenticated, and "Mailed by" and "Signed by" in its details, on a computer and on Android; not on an iPhone or iPad.
@@ -335,7 +335,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     46. Outlook: S/MIME with a certificate, usually from your organisation, and "Encrypt" for Microsoft 365 Personal and Family subscribers; no OpenPGP.
     47. Apple Mail: S/MIME, on a Mac and on an iPhone or iPad that an organisation manages; no OpenPGP.
     48. Proton Mail: end to end between Proton addresses; OpenPGP or a password with others.
-    49. Sioul: Microsoft accepts only its own sign-in page, which Sioul does not have for mail yet.
+    49. Sioul: signed in on Microsoft's own page; not yet tried with a real Microsoft account. A work or school address may need its organisation's approval.
     50. Gmail: in its phone apps; Gmail on the web stops reading other accounts in January 2027.
     51. Proton Mail: Proton addresses; a Gmail account can be connected.
 
@@ -389,7 +389,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     31. FairEmail: signing and encrypting are paid features.
     32. Gmail: hosted S/MIME, on some Workspace plans.
     33. Outlook: with a certificate, usually from your organisation.
-    34. Sioul: Google, with a Google key of your own; no Microsoft sign-in.
+    34. Sioul: Google, with a Google key of your own; Microsoft, with Sioul's application or yours, not yet tried with a real Microsoft account.
     35. FairEmail: not in the F-Droid build.
     36. Thunderbird: mail goes straight to your provider; Mozilla learns your address's domain when you set it up, and receives telemetry unless you turn it off.
     37. FairEmail: a FairEmail page may relay the OAuth sign-in when Android cannot.
@@ -500,7 +500,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
 
 Any IMAP and SMTP server that takes a password over an encrypted connection: TLS from the first byte (ports 993 and 465, as RFC 8314 prefers) or STARTTLS (143 and 587), never a plain connection; a server that does not offer STARTTLS is refused. Certificates are checked against your system's (rustls, TLS 1.2 and 1.3). IMAP4rev2 (RFC 9051) and IMAP4rev1, with IDLE (RFC 2177, renewed every five minutes), MOVE, UIDPLUS and SPECIAL-USE; each address is kept as a Maildir, whose files only you can read on Linux and macOS.
 
-Gmail and Google Workspace take an app password, or **Sign in with Google** with a Google key of your own (OAuth 2.0 for native apps, PKCE, SASL XOAUTH2), not yet tried against Google itself ([Gmail and Google Workspace](first-steps.md#gmail-and-google-workspace)). Outlook.com, Hotmail and Microsoft 365 addresses cannot be added: Microsoft takes only its own sign-in page, and Sioul has none for mail yet. JMAP, POP3 and Exchange's own protocols are not supported. More in [Works with](compatibility.md#mail).
+Gmail and Google Workspace take an app password, or **Sign in with Google** with a Google key of your own (OAuth 2.0 for native apps, PKCE, SASL XOAUTH2), not yet tried against Google itself ([Gmail and Google Workspace](first-steps.md#gmail-and-google-workspace)). Outlook.com, Hotmail, Live, MSN and Microsoft 365 addresses sign in on Microsoft's page the same way, with no secret at all (Sioul is a public client), not yet tried against Microsoft itself ([Outlook.com, Hotmail and Microsoft 365](first-steps.md#outlook-and-microsoft-365)). JMAP, POP3 and Exchange's own protocols are not supported. More in [Works with](compatibility.md#mail).
 
 ### How a sender is checked {#how-a-sender-is-checked}
 

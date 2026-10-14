@@ -22,6 +22,7 @@ fn main() {
         "qml/BudgetsPage.qml",
         "qml/AccountsPage.qml",
         "qml/GoogleMail.qml",
+        "qml/MicrosoftMail.qml",
         "qml/Panel.qml",
         "qml/WrapCheckBox.qml",
         "qml/PlainComboBox.qml",

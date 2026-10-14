@@ -9,7 +9,8 @@
 // else it has (mail beside calendars, a Nextcloud's apps). Adding one: mail
 // (address, then the server found, then the password, tested before
 // anything is kept), contacts and calendars on a CalDAV/CardDAV server, or
-// Google (signed in on Google's page). Encryption: your keys. Who may reach
+// Google (signed in on Google's page); Microsoft's mail signs in on
+// Microsoft's page (MicrosoftMail.qml). Encryption: your keys. Who may reach
 // you, and when, is Settings ▸ What reaches you's (ReachesTab.qml). Sites are
 // not accounts: they are on the Sites page.
 
@@ -28,6 +29,8 @@ Item {
 
     readonly property var accounts: page.sioul.accounts ? JSON.parse(page.sioul.accounts) : []
     readonly property var found: page.sioul.found ? JSON.parse(page.sioul.found) : null
+    // Google's or Microsoft's mail: never its password, its own sign-in (or Google's app password).
+    readonly property bool oauthFound: page.found !== null && (page.found.google === true || page.found.microsoft === true)
     readonly property var scouted: page.sioul.scouted ? JSON.parse(page.sioul.scouted) : null
     property string removing: ""
     // One card per address: its services together.
@@ -94,15 +97,20 @@ Item {
         addTab.item.davFor(address, true)
     }
 
-    // A mail account signed in with Google, signed in again (or given an app
-    // password instead): the mail form, its address, Google's two ways.
-    function googleMailAgain(account) {
+    // A mail account signed in with Google or Microsoft, signed in again (or,
+    // Google's, given an app password instead; or added with a password at
+    // Microsoft's server, switched to Microsoft's sign-in): the mail form, its
+    // address, the provider's own form.
+    function mailAgain(account) {
         tabs.currentIndex = 1
         addTab.item.mailFor(account.address)
         page.againId = account.id
         page.lastForm = "mail"
         page.sioul.discover(account.address)
     }
+
+    // The account being removed, as its card shows it.
+    readonly property var removingAccount: page.accounts.find(a => a.id === page.removing) || null
 
     // An account's password, given on this device (AccountPassword.qml): made the first time.
     function askPassword(account) {
@@ -171,6 +179,8 @@ Item {
     property string againId: ""
     property bool davServerShown: false
     property bool googleStepsShown: false
+    // Microsoft's form with "What your administrator does" unfolded (for captures).
+    property bool microsoftAdminUnfolded: false
     // Sioul's own Google key in this build, and whether you would rather use yours.
     readonly property bool googleBuiltIn: page.sioul.googleBuiltIn()
     property bool ownGoogleKey: false
@@ -545,8 +555,8 @@ Item {
                                     if (googleMail.item)
                                         googleMail.item.reset()
                                 })
-                                // Google's mail asks no account password: its own form instead.
-                                if (!found.google)
+                                // Google's and Microsoft's mail ask no account password: their own forms instead.
+                                if (!found.google && !found.microsoft)
                                     password.forceActiveFocus()
                             }
                             function clear() {
@@ -655,7 +665,7 @@ Item {
                                             color: page.theme.text
                                         }
                                         Label {
-                                            visible: !page.found || !page.found.google
+                                            visible: !page.oauthFound
                                             Layout.fillWidth: true
                                             text: page.found ? page.found.hint : ""
                                             textFormat: Text.PlainText
@@ -663,7 +673,7 @@ Item {
                                             color: page.theme.warm
                                         }
                                         Button {
-                                            visible: page.found !== null && !!page.found.help_url && !page.found.google
+                                            visible: page.found !== null && !!page.found.help_url && !page.oauthFound
                                             text: page.sioul.text("ui-app-passwords")
                                             onClicked: Qt.openUrlExternally(page.found.help_url)
                                         }
@@ -689,8 +699,27 @@ Item {
                                                 }
                                             }
                                         }
+                                        // Microsoft's mail: Microsoft's page alone (MicrosoftMail.qml),
+                                        // made the first time an address is Microsoft's; its fields
+                                        // emptied by itself when another address is found.
+                                        Loader {
+                                            id: microsoftMail
+
+                                            active: page.found !== null && page.found.microsoft === true
+                                            visible: active
+                                            Layout.fillWidth: true
+                                            sourceComponent: MicrosoftMail {
+                                                sioul: page.sioul
+                                                theme: page.theme
+                                                address: addressField.text
+                                                found: page.found
+                                                againId: page.againId
+                                                unfoldAdmin: page.microsoftAdminUnfolded
+                                                onStarted: page.lastForm = "mail"
+                                            }
+                                        }
                                         GridLayout {
-                                            visible: !page.found || !page.found.google
+                                            visible: !page.oauthFound
                                             Layout.fillWidth: true
                                             columns: 2
                                             columnSpacing: page.theme.gap
@@ -745,7 +774,7 @@ Item {
                                             }
                                         }
                                         Label {
-                                            visible: !page.found || !page.found.google
+                                            visible: !page.oauthFound
                                             Layout.fillWidth: true
                                             text: page.sioul.text("ui-password-note")
                                             wrapMode: Text.Wrap
@@ -754,7 +783,7 @@ Item {
                                         Button {
                                             id: connect
 
-                                            visible: !page.found || !page.found.google
+                                            visible: !page.oauthFound
                                             text: page.sioul.formBusy ? page.sioul.text("ui-connecting") : page.sioul.text("ui-connect")
                                             enabled: !page.sioul.formBusy && password.text.length > 0 && host.text.length > 0
                                             onClicked: {
@@ -771,6 +800,23 @@ Item {
                                         textFormat: Text.PlainText
                                         wrapMode: Text.Wrap
                                         color: page.theme.forged
+                                    }
+                                    // Nothing found: a Microsoft 365 address whose mail first goes
+                                    // through another service is not recognised by its domain.
+                                    Button {
+                                        id: atMicrosoft
+
+                                        visible: page.found === null && page.sioul.formError !== "" && page.lastForm === "mail" && !page.sioul.formBusy && addressField.text.indexOf("@") > 0
+                                        Layout.fillWidth: true
+                                        flat: true
+                                        text: page.sioul.text("ui-at-microsoft")
+                                        contentItem: Label {
+                                            text: atMicrosoft.text
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            color: page.theme.text
+                                        }
+                                        onClicked: page.sioul.discoverAtMicrosoft(addressField.text)
                                     }
                                 }
                             }
@@ -1561,6 +1607,21 @@ Item {
                 }
             }
         }
+        // Microsoft's mail: its access ended (or never given on this device), or
+        // added with a password Microsoft no longer takes: Microsoft's page.
+        // Never a password. Below the line, to fit a phone.
+        Flow {
+            visible: service.modelData.service === "mail" && ((service.modelData.microsoft && service.modelData.status_error) || (service.modelData.at_microsoft && !service.modelData.microsoft))
+            Layout.fillWidth: true
+            Layout.leftMargin: 28
+            spacing: 8
+
+            Button {
+                enabled: !page.sioul.formBusy
+                text: page.sioul.text(service.modelData.microsoft ? "ui-microsoft-again" : "ui-microsoft-sign-in")
+                onClicked: page.mailAgain(service.modelData)
+            }
+        }
         // Google's mail signed in with Google, its access ended (or never given on
         // this device): Google's page again, or an app password instead; never
         // the account's password. Below the line, to fit a phone.
@@ -1573,7 +1634,7 @@ Item {
             Button {
                 enabled: !page.sioul.formBusy
                 text: page.sioul.text("ui-google-again")
-                onClicked: page.googleMailAgain(service.modelData)
+                onClicked: page.mailAgain(service.modelData)
             }
             Button {
                 enabled: !page.sioul.formBusy
@@ -1777,14 +1838,30 @@ Item {
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(480, page.width - 2 * page.theme.gap)
-                onAccepted: page.sioul.removeAccount(page.removing)
+                // A Microsoft account's mail kept here: deleted unless unticked (Microsoft's terms).
+                readonly property bool microsoft: page.removingAccount !== null && page.removingAccount.microsoft === true
+                onAboutToShow: deleteMail.checked = true
+                onAccepted: page.sioul.removeAccount(page.removing, confirmForm.microsoft && deleteMail.checked)
 
-                Label {
+                ColumnLayout {
                     width: parent.width
-                    text: page.sioul.textWith("ui-remove-confirmForm", "id", page.removing)
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
+                    spacing: 10
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: page.sioul.textWith(confirmForm.microsoft ? "ui-remove-confirm-microsoft" : "ui-remove-confirm", "id", page.removing)
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.text
+                    }
+                    WrapCheckBox {
+                        id: deleteMail
+
+                        visible: confirmForm.microsoft
+                        Layout.fillWidth: true
+                        text: page.sioul.text("ui-remove-microsoft-mail")
+                        checked: true
+                    }
                 }
 
                 footer: DialogButtonBox {

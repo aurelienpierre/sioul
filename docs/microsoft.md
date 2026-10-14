@@ -1,0 +1,137 @@
+# Microsoft: Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail
+
+Microsoft takes no password from mail programs any more: personal accounts (Outlook.com, Hotmail, Live, MSN) since 16 September 2024, Microsoft 365 (work and school accounts, Exchange Online) for IMAP since 2022. App passwords no longer open IMAP either. Sioul signs these addresses in with OAuth 2.0 on Microsoft's own page and gives IMAP and SMTP an access token (SASL XOAUTH2), as it does for Gmail ([google.md](google.md), "Mail"). Mail only, for now: Microsoft has no CalDAV or CardDAV ([Not built](#not-built)).
+
+## The sign-in
+A native application's sign-in (RFC 8252), as Google's:
+
+1. In Accounts ▸ Add an account, the address, then **Find the server** ([Recognising Microsoft's mail](#recognising-microsofts-mail)). For Microsoft's mail, the form (`qml/MicrosoftMail.qml`) shows **Sign in with Microsoft**, never a password field; for a personal address, a sentence on Outlook.com's IMAP switch (off until turned on); for a work or school address, a sentence on the organisation's approval and **What your administrator does**, to copy and forward.
+2. The application: the id typed under **Use an application of my own** (a GUID; anything else, a secret pasted by mistake among them, is refused before Microsoft is asked), else one of yours kept on this device for the address, else Sioul's own (`microsoft::built_in`). Never a secret: Sioul is a public client, and Microsoft refuses a secret from one (`AADSTS700025`).
+3. The authority, the `{tenant}` of Microsoft's endpoints: a directory typed with your own application (an id or a domain, letters, digits, dots and hyphens only), else the one of the grant kept (`consumers` for a personal account, the organisation's id for a work one), else by what discovery found: `consumers` for a personal address, `organizations` for a work one, `common` when not known.
+4. Microsoft's page opens in the system's browser: `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`, with `response_type=code`, `redirect_uri=http://127.0.0.1:<port>` (no path; Microsoft ignores the port of a loopback redirect), `response_mode=query`, the scopes below, a random `state`, PKCE's S256 challenge, `login_hint` (the address) and `prompt=select_account` (a browser often holds several Microsoft accounts, and a personal and a work account can share an address).
+5. Sioul waits on `127.0.0.1` only (`loopback.rs`: Microsoft takes no IPv6 loopback, so there is no `[::1]` fallback, unlike Google's), five minutes at most; Cancel stops it. Only the request line is read. A favicon gets a 404. An answer whose `state` is not this sign-in's is refused in the browser and the wait goes on (a page of an earlier sign-in, or anyone else, cannot end it); an `error` is read only from an answer whose state matches. An answer waiting in the system's queue is read even past the five minutes (a phone freezes Sioul while the browser is in front).
+6. The code is redeemed at once (Microsoft's codes last about a minute): `POST https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token` with `client_id`, `scope`, `code`, `redirect_uri` (the same), `grant_type=authorization_code` and `code_verifier`. No secret, no `Origin` header; HTTPS only, no redirect followed.
+7. The answer must hold a refresh token and, when it names its scopes, both mail scopes. The ID token's payload says who signed in (`email`, else `preferred_username` when it is an address) and the directory (`tid`): `9188040d-6c67-4c5b-b112-36a304b66dad` is the personal accounts' tenant. Its signature is not checked: it came straight from the token endpoint over TLS, and it decides nothing the mail server does not check again.
+8. The mailbox is tried before anything is kept (`microsoft::sign_in`): IMAP `AUTHENTICATE XOAUTH2`, the inbox opened read-only, as the address. If it does not open and Microsoft's page signed in another address (an alias's mailbox opens under its primary address), it is tried once as that one, kept then as the account's user name. If the mailbox still does not open, the grant is forgotten and nothing is kept: "You signed in to Microsoft as …; the mailbox … did not open with that sign-in", or, for a token refused the moment it was given or a mailbox closed to IMAP, the switch to turn on, then a sign-in again. Any other refusal is said as it is.
+9. The account is added with `auth = "microsoft"`, IMAP `outlook.office365.com:993` (TLS from the first byte), and the sending server of its kind: `smtp-mail.outlook.com:587` for a personal account, `smtp.office365.com:587` for a work one, both STARTTLS (Microsoft has no port 465). The sending server records the kind in the configuration, so that the core knows it without the keyring (`Account::is_microsoft_work`); an account whose kind is not known counts as a work one, the cautious side.
+
+**Scopes**, asked at once, one resource: `https://outlook.office.com/IMAP.AccessAsUser.All` (reading over IMAP), `https://outlook.office.com/SMTP.Send` (sending over SMTP), `offline_access` (a refresh token), `openid email profile` (who signed in). A refresh asks the first three alone.
+
+The same flow serves the command line: `sioul account add <address>` prints Microsoft's page to open in a browser on the same computer and waits for its answer; `sioul account sign-in <id>` signs an account in again; `--client-id` and `--tenant` give an application of your own; `--auth microsoft` (or `--host outlook.office365.com`) signs in with Microsoft an address whose mail discovery does not recognise.
+
+### On Android
+The same loopback flow, with no Java (as Google's: [google.md](google.md), "On Android"). The waiting line says to come back to Sioul as soon as Microsoft's page says it is done: the code is redeemed when Sioul reads it, and a code read more than about a minute after Microsoft gave it is refused; Sioul then says "Microsoft's answer reached Sioul after it had ended: sign in again" (a second try is quicker: the browser keeps Microsoft's session). If this proves too short on a phone, Microsoft also takes a custom-scheme redirect (`msauth://<package>/<signature hash>`) that wakes the app at once: an activity with an intent filter, not built.
+
+## The grant, the keyring, the refresh
+- **Where**: the system keyring only, under `microsoft-mail:<login>` (the account's user name, else its address, lowercased): the application's id, the tenant refreshes go to, personal or work, the refresh token, the scopes, the time of the sign-in on Microsoft's page, and who signed in. The access token stays in memory, until a minute before its end (`expires_in`). `Debug` prints neither token.
+- **Size**: Microsoft's refresh tokens are long, and Windows' Credential Manager keeps 2,560 bytes an entry (a text stored as a password takes two bytes a character there). The grant is written as UTF-8 bytes (`Entry::set_secret`), at most 2,400 bytes an entry: the refresh token's first part in the main entry, the rest in `microsoft-mail:<login>#2`, `#3` and `#4` (a token of about 9 KB at most, several times the longest reported). The parts are written first and the main entry last, with the first eight bytes of the whole token's SHA-256: parts written at different times (a write cut short) give no grant, rather than a token that is not one, and the account asks to sign in again. A shorter token later removes the parts left behind.
+- **Refresh**: `POST …/<tenant>/oauth2/v2.0/token` with `grant_type=refresh_token`, the refresh token and the mail scopes. Microsoft gives a new refresh token at each use and asks clients to keep the newest: it is written back each time. Microsoft does not revoke the old one when it gives the next, so a write that fails is said (`eprintln`) and does not stop the mail, and two of Sioul's processes refreshing at once (the window, the phone's background service, the command line) do not lock each other out: the last one written stays. A refresh token unused for 90 days dies.
+- **Who gets a token**: the token endpoint (`https://login.microsoftonline.com/…` only: any other address is refused before anything is sent), and the account's own servers, named exactly: `outlook.office365.com` for IMAP, `smtp-mail.outlook.com` or `smtp.office365.com` for SMTP (`OAuth::may_reach`). A configuration that names another server for an account signed in with Microsoft gets nothing: "this account signs in with Microsoft, but its server is …, not Microsoft's: Sioul sent it nothing". Only a test build with `SIOUL_TEST_MICROSOFT_TOKEN` reaches a local stand-in, with that stand-in token ([building.md](building.md), "Testing against a local mail server").
+- **The mark**: `sasl::OAuth::mark` gives the time of the sign-in, which refreshes keep: a watcher parked after a refusal sees a new sign-in as a new credential, and a refresh as none.
+
+## Errors, in words
+Microsoft's refusals come as OAuth's `error`, Entra's `error_codes`, and an `AADSTS<number>` at the start of `error_description`. Each becomes a sentence that says what to do (`microsoft::refusal`, the sentences in the Fluent files):
+
+| Microsoft says | Sioul says |
+|---|---|
+| `invalid_grant`, 50173 | your password changed: sign in again |
+| 70008, 700082 at a refresh | unused for 90 days: sign in again |
+| 70008, 700082, 54005, or `invalid_grant`, at the code's redemption | Microsoft's answer arrived too late (a code lasts about a minute): sign in again, and come back to Sioul at once |
+| 70043 | your organisation asks you to sign in again every so often |
+| 50076, 50079, 50074, `interaction_required`, `login_required` | Microsoft asks you to sign in again (a second factor only its page can ask) |
+| 90094, 90008, and `consent_required` or 65001 on a work account | your organisation must approve Sioul once (below) |
+| 65001 on a personal account | sign in again and accept |
+| `access_denied`, 65004 | you declined on Microsoft's page; for a work account, or perhaps Microsoft's page asked an administrator's approval |
+| 53003, 530035 | your organisation's rules block this app or this sign-in |
+| 700016, `unauthorized_client` | Microsoft does not know the application: check its id (and its directory) |
+| 50011 | the application has no `http://127.0.0.1` redirect under "Mobile and desktop applications" |
+| 7000218 | the application is registered as a web application |
+| 700025 | Sioul sent a secret: a fault of Sioul's, never meant to happen |
+| 50020, 50194 | the application does not take this kind of account |
+| anything else | "Microsoft: <status> <error> AADSTS<number>" |
+
+Each of these but the declined one (which only a sign-in meets) is lasting (`SyncError::Login`): a watcher stops trying, and does not hammer Microsoft with a refresh that cannot work; the card offers **Sign in again**. At a sign-in, a mailbox that refuses the access just given, or stays closed to IMAP, is said with its switch and "then sign in again", since nothing was kept. Two refusals come from the mail servers, not the token endpoint, and no fresh token changes them, so none is asked:
+- IMAP's **"User is authenticated but not connected"** (`BAD` or `NO`): the token is good, the mailbox closed to IMAP. For a personal account: Outlook.com's "Let devices and apps use IMAP" is off (the default), or Outlook.com wants the sign-in confirmed at account.live.com/activity ("This was me"). For a work account: IMAP switched off for the mailbox, or another of your accounts chosen on Microsoft's page. Not lasting: the watcher tries again later, so that turning the switch on is enough.
+- SMTP's **`535 5.7.139`** ("SmtpClientAuthentication is disabled for the Tenant"): Authenticated SMTP switched off; the administrator turns it on for the mailbox (aka.ms/smtp_auth_disabled). mail-send keeps the enhanced status code apart from the reply's words; `sasl::smtp_xoauth2` writes it back into the refusal.
+
+Microsoft's other IMAP refusal, `NO AUTHENTICATE failed.` (no challenge, unlike Google's JSON one), and SMTP's `535 5.7.3`, get a fresh token once, then "sign in again", as Google's do. A password refused by `outlook.office365.com` (an account added with a password before) says that Microsoft takes only its own sign-in, and the card offers **Sign in with Microsoft** in place of **Password…**: signing in switches the account to Microsoft's sign-in and forgets its password.
+
+## Work and school accounts: the organisation's approval
+Since November 2025, Microsoft's default consent policy for Entra tenants lets employees approve `IMAP.AccessAsUser.All` for a short list of mail programs of Microsoft's choosing only (Thunderbird, Apple Mail, eM Client, Spark, two Android mail apps), whether or not the publisher is verified. In a tenant on Microsoft's defaults, then, an employee cannot let Sioul read their mail; only an administrator can, once, for everyone there. **What your administrator does** (`microsoft::admin_consent_url`, `outlook::admin_text`) gives them:
+1. the admin consent link, for the organisation's directory (the one kept from a sign-in, else the address's domain; never `common`): `https://login.microsoftonline.com/<directory>/v2.0/adminconsent?client_id=<id>&scope=<the scopes>&redirect_uri=http://127.0.0.1&state=sioul`. Microsoft then sends the administrator's browser to `127.0.0.1`, where nothing answers: the approval is done. Or, in the Microsoft Entra admin center: *Enterprise apps ▸ the application ▸ Permissions ▸ Grant admin consent*;
+2. the mailbox's two switches: IMAP on, and Authenticated SMTP on (*Microsoft 365 admin center ▸ Users ▸ Active users ▸ the person ▸ Mail ▸ Manage email apps*).
+
+Many tenants also switch SMTP AUTH off altogether (security defaults do): such an account receives over IMAP and is refused at sending, said as above. Sending through Microsoft Graph (`Mail.Send`) would get around it: not built.
+
+## Microsoft's terms, and what Sioul does about them
+The Microsoft APIs Terms of Use limit mail protocols to syncing and backing up mail, calendars and contacts, unless the customer, an organisation included, expressly allows more; they ask apps to delete what they keep of an account the person leaves, and not to use the data for advertising or anything beyond what the person allowed. The identity platform's terms ask for a privacy statement within reach and terms of use that disclaim all warranties and liability on Microsoft's behalf. So:
+- **Removing a Microsoft account** asks "Also delete the mail Sioul keeps on this device for this account?", ticked by default (`outlook::remove`, `sioul account remove`, which asks at the terminal, or takes `--keep-mail` or `--delete-mail`): its mail folder when it is Sioul's own (a folder chosen with `maildir =` is yours and stays), the AI shield's answers, and the spam filter's corpus for that account. Microsoft offers apps no way to give a token back (its discovery documents list no revocation endpoint): Sioul forgets the grant here and names the page where you withdraw the consent, account.live.com/consent/Manage for a personal account, myapps.microsoft.com for a work one. Other providers' accounts keep their mail on removal, as before.
+- **The AI shield** is not offered on a work or school Microsoft account (its settings say why in one sentence), and is never run there whatever the configuration says (`Account::ai_reads`): sending an employer's mail to another company needs the organisation's consent, not the employee's alone. A personal account keeps the switch, whose sentence names Anthropic.
+- **AI agents** (`sioul mcp`) leave a work or school Microsoft account's mail out, whatever its projects, unless `[mcp] work_accounts = true` (Settings ▸ AI agents, "Work and school Microsoft accounts", shown once there is such an account): `Consent::keep_accounts`, applied to every message by its Message-ID, its account and its file, and to the spam filter's reports by account.
+- **The spam filter**: the sentence under **Train now** names the addresses it learns from; pressing it is the consent for those addresses, Microsoft's included.
+- **The privacy policy** has a section on Microsoft mail ([privacy](https://aurelienpierre.github.io/sioul/privacy.html#microsoft-mail)); **the terms of use** ([terms](https://aurelienpierre.github.io/sioul/terms.html)) carry the disclaimer Microsoft asks. Their two addresses go into the application's registration, without which Microsoft's consent page shows an alert.
+
+## Recognising Microsoft's mail
+`discover.rs`, before any password is asked:
+- **Outlook.com's own domains**: hotmail.com, live.com, msn.com, outlook.com, windowslive.com, livemail.tw and their country forms (outlook.fr, hotmail.co.uk, live.com.mx…), the 102 names of Thunderbird's ISPDB entry for Outlook.com (read 13 October 2026; its 103rd, `olc.protection.outlook.com`, is an exchanger's): known here, nothing asked of anyone; a personal account.
+- **Settings found elsewhere naming `outlook.office365.com`** (the domain's own autoconfig): a personal account when they send through `smtp-mail.outlook.com`, else a work one.
+- **A domain whose mail Microsoft receives**, asked of the system's DNS with the same question as Google's: an MX under `.olc.protection.outlook.com` is Outlook.com's (a personal account, or a domain of your own Outlook.com receives); under `.mail.protection.outlook.com`, `.mail.eo.outlook.com`, `.mail.protection.outlook.de` or `.mx.microsoft` (a Microsoft 365 domain whose mail exchange is signed with DNSSEC), Microsoft 365's. A whole label must come before each: names only made to look like these (`mail.protection.outlook.com.evil.example`) are not taken.
+
+A Microsoft 365 domain whose MX is a filtering service's (Mimecast, Proofpoint) is not recognised: when nothing is found, the window offers **This address is at Microsoft** (`discover_at_microsoft`), and the command line takes `--auth microsoft`. Not built: the `autodiscover.<domain>` CNAME test, a second signal for such domains. In every case the kind is a guess until the sign-in, whose ID token settles it.
+
+## Sioul's own application, and yours
+The id is read at build time: `SIOUL_MICROSOFT_CLIENT_ID` in the environment of `cargo build`. There is no secret variable. The release workflows pass it on their build steps only (Windows, macOS, AppImage, Flatpak through `secret-env`, Android), not the CI artefacts' (`build.yml`). It is no secret (every program carries it); keeping it out of the sources keeps forks and distributions from showing as "Sioul" on Microsoft's consent page. The same id serves every system, the phone's included: one registration, one loopback redirect. A build without it asks each person for an application of their own.
+
+**Registering an application**, by Sioul's maintainer for its own, or by anyone for theirs (the form's **How to register your application** gives the same steps):
+1. Microsoft keeps applications only in an organisation's directory (an Entra tenant); with a personal account alone, a free Azure account makes one. Registering costs nothing and Microsoft reviews nothing.
+2. Microsoft Entra admin center ▸ *App registrations ▸ New registration*: a name; *Supported account types*: **Any Entra ID Tenant + Personal Microsoft accounts** (or one organisation alone, whose directory is then given with the id).
+3. *Authentication*: the platform **Mobile and desktop applications**, redirect URI `http://127.0.0.1` (through the *Manifest* if the box refuses an `http` loopback address), registered once. *Allow public client flows*: **No** (it would open the device code and password flows to Sioul's id).
+4. *API permissions*, Microsoft Graph, delegated: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`, `profile`; the default `User.Read` removed. No client secret.
+5. *Branding & properties*: the name, the logo, the home page, the terms of use and the privacy statement's addresses.
+
+Personal accounts then consent for themselves and see the application as "Unverified" until its publisher is verified (Microsoft's partner programme). Verification does not lift the work accounts' block above.
+
+## What was tested
+Against stand-ins only; no Microsoft account was used, and no other application's id: every test invents its own.
+- The page asked: each authority's path, the exact scopes, `prompt=select_account`, `login_hint`, the S256 challenge of the verifier, the redirect, no secret, no IPv6 (`microsoft::tests`).
+- The door: a favicon first, an answer of another sign-in refused while the wait goes on, Cancel, an answer read late, the time up, a refusal on Microsoft's page said as declined (`microsoft::tests::microsoft_comes_back_here`).
+- A stand-in of the token endpoint: the redemption's form exactly (verifier, redirect, scopes, no secret, no `Origin`), the ID token's tenant making a personal account (Outlook.com's SMTP) or a work one; refresh tokens rotating (`RT2` kept and sent next, an answer without one keeping it); the table of refusals, each with a sentence in both languages, each lasting.
+- The keyring's splitting: a 4 KB refresh token in two entries, an 8 KB one in four, a 12 KB one refused rather than cut, a shorter one leaving no part behind, parts from another write and a missing part giving no grant; against a store in memory on every system, and against Windows' own Credential Manager in the Windows CI job (`windows_keeps_a_4_kb_token`, under a name of its own, removed after). Never against the keyring of the computer running the tests.
+- Discovery: Outlook.com's domains without DNS, Microsoft's exchangers by kind from stand-ins of the DNS, lookalikes refused, settings naming `outlook.office365.com`.
+- An IMAP stand-in answering as Exchange: `NO AUTHENTICATE failed.` brings one fresh token, then "sign in again"; `BAD User is authenticated but not connected.` is said at once, with no second token. An SMTP stand-in: `535 5.7.3` brings one fresh token; `535 5.7.139` is said at once. No APPEND into Sent after sending (Microsoft files its own copy, as Gmail does). Microsoft's token refused for a server that is not Microsoft's.
+- Google's sign-in, whose door moved into `loopback.rs`: its tests pass unchanged.
+
+**Not tested against Microsoft itself**, until Sioul's application is registered: the sign-in page and its answer, the code's redemption, the ID token's claims, IMAP and SMTP with a real token, Outlook.com's IMAP switch and its "not connected", a work tenant's approval and its SMTP AUTH, the length of real refresh tokens, the sign-in on a phone and its one-minute code, Microsoft's TLS with rustls (FairEmail caps it at TLS 1.2 for Microsoft without saying why; Sioul does not). The first real sign-in is the test; what fails says so in the account's line. Whether IMAP with OAuth works in a tenant under security defaults is not settled by Microsoft's pages either: a trial tenant settles it.
+
+## Not built
+- Microsoft's calendars, contacts and tasks: Microsoft offers no CalDAV or CardDAV (probed on 13 October 2026: 404 everywhere), and Exchange Web Services is being shut down from October 2026. Microsoft Graph is the way: `Calendars.ReadWrite`, `Contacts.ReadWrite`, `Tasks.ReadWrite`, a grant of its own or the same one, another resource's access token.
+- Sending through Microsoft Graph (`Mail.Send`), for tenants that switch SMTP AUTH off.
+- The device code flow: Microsoft calls it a phishing risk and asks tenants to block it; it would also teach people to type codes into Microsoft's page, the gesture phishers use.
+- Microsoft's national clouds (21Vianet in China, US Government): other hosts and authorities.
+- App passwords for Microsoft: they no longer open IMAP.
+
+## Files
+- `crates/sioul-sync/src/microsoft.rs`: the sign-in, the grant and its splitting in the keyring, the refresh and its rotation, the refusals, the administrator's link, `sign_in` (shared by the window and the command line).
+- `crates/sioul-sync/src/loopback.rs`: the door, PKCE, the state, shared with Google's sign-in.
+- `crates/sioul-sync/src/sasl.rs`: `OAuth::Microsoft`, its tokens, its servers (`may_reach`), its refusals no token changes.
+- `crates/sioul-sync/src/discover.rs`: Microsoft's mail recognised (its domains, its exchangers, settings naming its server), its servers.
+- `crates/sioul-sync/src/imap.rs`, `send.rs`: "not connected", `5.7.139`, no APPEND into Sent.
+- `crates/sioul-app/src/outlook.rs`, `qml/MicrosoftMail.qml`, `qml/AccountsPage.qml`: the form, the cards' **Sign in again** and **Sign in with Microsoft**, the removal's question.
+- `crates/sioul-cli/src/accounts.rs`: `account add`, `account sign-in`, `account remove`.
+- `crates/sioul-core/src/config.rs` (`is_microsoft`, `is_microsoft_work`, `ai_reads`, `set_sign_in`), `maildir.rs` (`forget_account`), `consent.rs` (`keep_accounts`), `settings.rs`; `crates/sioul-learn/src/lib.rs` (`Dirs::forget_account`).
+
+## Sources
+Read on 13 October 2026; the research behind this page cites each one in full.
+- Microsoft Support, "POP, IMAP, and SMTP settings for Outlook.com" (servers, "Outlook.com requires the use of Modern Auth / OAuth2", IMAP off by default): <https://support.microsoft.com/en-us/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040>
+- Microsoft Support, "Modern Authentication Methods now needed to continue syncing Outlook Email in non-Microsoft email apps": <https://support.microsoft.com/en-us/topic/c5d65390-9676-4763-b41f-d7986499a90d>
+- Microsoft Learn, "Deprecation of Basic authentication in Exchange Online": <https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/deprecation-of-basic-authentication-exchange-online>
+- Microsoft Learn, "Authenticate an IMAP, POP or SMTP connection using OAuth" (scopes, XOAUTH2): <https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth>
+- Microsoft Learn, "Microsoft identity platform and OAuth 2.0 authorization code flow": <https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow>
+- Microsoft Learn, "Refresh tokens in the Microsoft identity platform" (rotation): <https://learn.microsoft.com/en-us/entra/identity-platform/refresh-tokens>
+- Microsoft Learn, "Redirect URI (reply URL) outline and restrictions" (loopback ports, no IPv6): <https://learn.microsoft.com/en-us/entra/identity-platform/reply-url>
+- Microsoft Learn, "Microsoft Entra authentication and authorization error codes": <https://learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes>
+- Microsoft Learn, "Manage app consent policies" (the Microsoft-managed policy): <https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/manage-app-consent-policies>
+- Microsoft Learn, "Admin consent on the Microsoft identity platform": <https://learn.microsoft.com/en-us/entra/identity-platform/v2-admin-consent>
+- Microsoft Learn, "Enable or disable authenticated client SMTP submission (SMTP AUTH) in Exchange Online": <https://learn.microsoft.com/en-us/exchange/clients-and-mobile-in-exchange-online/authenticated-client-smtp-submission>
+- Microsoft APIs Terms of Use: <https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use>; Microsoft identity platform for developers Terms of Use: <https://learn.microsoft.com/en-us/legal/microsoft-identity-platform/terms-of-use>
+- Thunderbird's ISPDB entry for Outlook.com: <https://autoconfig.thunderbird.net/v1.1/outlook.com>

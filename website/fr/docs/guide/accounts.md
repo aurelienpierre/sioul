@@ -57,7 +57,7 @@ Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, util
 
 ### Retirer un compte {#removing-one}
 
-**Retirer** demande d’abord. Le mot de passe d’un compte de courrier quitte le trousseau ; son courrier reste sur votre disque et sur le serveur. Pour Google, l’accès est rendu à Google : celui du courrier et celui des agendas à part, pour que retirer l’un laisse son accès à l’autre.
+**Retirer** demande d’abord. Le mot de passe d’un compte de courrier quitte le trousseau ; son courrier reste sur votre disque et sur le serveur. Pour Google, l’accès est rendu à Google : celui du courrier et celui des agendas à part, pour que retirer l’un laisse son accès à l’autre. Pour Microsoft, sa connexion est oubliée sur cet appareil, et **Retirer** demande aussi s’il faut supprimer le courrier que Sioul garde sur cet appareil pour ce compte : oui, sauf si vous décochez. Microsoft n’offre aux applications aucun moyen de rendre un accès : la ligne que Sioul montre ensuite nomme la page de Microsoft où vous le retirez.
 
 ### Un compte venu de votre autre appareil {#an-account-from-your-other-device}
 
@@ -69,11 +69,15 @@ Depuis cette page, votre coffre Bitwarden s’ouvre avec son mot de passe princi
 
 Le courrier Gmail ou Google Workspace connecté avec Google dit quand Google met fin à l’accès (votre mot de passe Google changé, votre propre application Google supprimée, un projet Google laissé en test). Sur sa fiche, **Se reconnecter** rouvre la page de Google, dans votre navigateur ; **Mot de passe d’application…** lui donne un mot de passe d’application à la place. Sioul ne demande jamais le mot de passe de votre compte Google. Voir [Premiers pas](first-steps.md#gmail-and-google-workspace).
 
+### Le courrier de Microsoft {#microsofts-mail}
+
+Le courrier Outlook.com, Hotmail, Live, MSN et Microsoft 365 connecté avec Microsoft dit quand Microsoft met fin à l’accès (votre mot de passe changé, quatre-vingt-dix jours sans usage, les règles de votre organisation), ou quand la boîte reste fermée aux logiciels de courrier, avec ce qu’il faut faire. Sur sa fiche, **Se reconnecter** rouvre la page de Microsoft, dans votre navigateur. Une adresse ajoutée avant avec un mot de passe, sur le serveur de Microsoft, montre **Se connecter avec Microsoft** au lieu de **Mot de passe…** : Microsoft ne prend plus aucun mot de passe, mots de passe d’application compris, et se connecter oublie celui qui était gardé. Sioul ne demande jamais votre mot de passe Microsoft. Sa fiche dit **Connexion : avec Microsoft**, et si c’est comme compte personnel ou comme compte professionnel ou scolaire. Voir [Premiers pas](first-steps.md#outlook-and-microsoft-365).
+
 ## Ajouter un compte {#add-an-account}
 
 Trois formulaires, l’un après l’autre :
 
-- **Ajouter un compte de courrier** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe.
+- **Ajouter un compte de courrier** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**.
 - **Ajouter des contacts et agendas** : depuis un serveur CalDAV et CardDAV, comme Nextcloud, Fastmail, iCloud ou votre hébergeur.
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
 
@@ -81,7 +85,7 @@ Sur un téléphone, **Depuis les comptes du téléphone…**, au-dessus d’eux,
 
 Pas à pas : [Premiers pas](first-steps.md#add-your-mail). Les mots de passe vont dans le trousseau de votre système, nulle part ailleurs, et Sioul ne parle à vos serveurs que par des connexions chiffrées.
 
-Les adresses Outlook.com, Hotmail et Microsoft 365 ne peuvent pas encore être ajoutées : Microsoft n’accepte des autres logiciels de courrier que sa propre page de connexion ([Fonctionne avec](compatibility.md#mail)).
+Les adresses Outlook.com, Hotmail, Live, MSN et Microsoft 365 se connectent sur la page de Microsoft elle-même, dans votre navigateur : Microsoft ne prend aucun mot de passe des autres logiciels de courrier. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation, une fois ([Premiers pas](first-steps.md#outlook-and-microsoft-365) ; [Fonctionne avec](compatibility.md#mail)).
 
 ## Qui peut vous joindre {#senders}
 
@@ -128,7 +132,7 @@ Sioul ne fait qu’utiliser la clé : il ne demande jamais son code PIN d’ad
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courrier ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul ne peut pas ajouter d’adresses Outlook.com, Hotmail ou Microsoft 365, n’a pas S/MIME, et a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour le courrier de Gmail ; sa clé de sécurité OpenPGP n’a pas encore été essayée avec une vraie clé, et n’existe pas encore sur les téléphones.
+**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courrier ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour le courrier de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’a pas encore été essayée avec une vraie clé, et n’existe pas encore sur les téléphones.
 
 En octobre 2026, d’après la documentation de chaque application.
 
@@ -139,12 +143,12 @@ En octobre 2026, d’après la documentation de chaque application.
     | | Sioul | Thunderbird | Gmail | Outlook | Apple Mail | Evolution |
     |---|---|---|---|---|---|---|
     | Google connecté sur la page de Google elle-même | en partie¹ | ✓ | — | ✓ | ? | ✓ |
-    | Les adresses Outlook.com et Microsoft 365 | ✗² | ✓ | ✓³ | ✓ | ? | ? |
+    | Les adresses Outlook.com et Microsoft 365 | en partie² | ✓ | ✓³ | ✓ | ? | ? |
     | Un gestionnaire de mots de passe donne son mot de passe à un compte | ✓⁴ | ✗ | ✗ | ✗ | ? | ✗ |
     | Un service d’un compte éteint, ses réglages gardés | ✓ | en partie⁵ | — | ? | ✓ | ✓ |
 
     1. La page de Google s’ouvre dans votre navigateur. Le courrier de Gmail demande une application Google à vous (un projet Google Cloud gratuit, environ un quart d’heure, une fois) ou un mot de passe d’application ; les agendas aussi, dans une copie de Sioul construite sans clé à elle.
-    2. Microsoft n’accepte des autres logiciels de courrier que sa propre page de connexion, et Sioul n’en a pas encore pour le courrier ([Fonctionne avec](compatibility.md#mail)).
+    2. La page de Microsoft s’ouvre dans votre navigateur. Pas encore essayé avec un vrai compte Microsoft. Dans une copie de Sioul construite sans sa propre application Microsoft, une application à vous, inscrite une fois (les étapes sont dans le formulaire). Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation, une fois ([Fonctionne avec](compatibility.md#mail)).
     3. Dans l’application Gmail d’un téléphone.
     4. Bitwarden, lu par Sioul lui-même. Bitwarden lui-même ne décrit le remplissage que dans les navigateurs et sur les téléphones.
     5. Les agendas seulement.

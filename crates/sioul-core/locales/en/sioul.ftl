@@ -1474,7 +1474,7 @@ set-account-fetch-help = 0 follows the other addresses. A public address can be 
 set-account-shield = Protected against harassment
 set-account-shield-help = For a public address that may bring insults: its mail is read first; hostile messages are set aside without showing their text, the rest is summarised by topic.
 set-account-shield-ai = Let the AI read it first
-set-account-shield-ai-help = An AI (Claude) reads new mail of this address to say its tone and topic, more finely than word lists. The text leaves this device for that.
+set-account-shield-ai-help = An AI (Claude, Anthropic’s model, with your own key) reads new mail of this address to say its tone and topic, more finely than word lists. The text leaves this device for Anthropic, under its terms for its API.
 set-day-start = The day starts at
 set-day-start-help = The hour the day and week planning open on.
 set-task-estimate = A task without an estimate counts
@@ -4658,7 +4658,7 @@ spam-app-by-itself-kept = Trained again by itself { $when }: the table in use st
 spam-app-by-itself-stopped = Stopped training by itself { $when }, unplugged or saving power: it tries again later.
 spam-app-by-itself-failed = Its training by itself { $when } did not finish: it tries again a day later.
 spam-app-phone-trains-not = A phone never trains the filter: your computer does.
-spam-app-train-about = Downloads what training needs from every folder of every address (the headers and the start of each text, never attachments), then learns. The first time takes long; Stop keeps what came, and the next time goes on from there. The table changes only if it takes no more of your messages for spam than the one in use.
+spam-app-train-about = Downloads what training needs from every folder of { $addresses } (the headers and the start of each text, never attachments), then learns, on this computer: Train now is your consent to it, for these addresses. The first time takes long; Stop keeps what came, and the next time goes on from there. The table changes only if it takes no more of your messages for spam than the one in use.
 spam-app-fetching-start = Looking through { $place }…
 spam-app-fetching = Messages fetched: { $done } of about { $total } ({ $place }).
 spam-app-step = { $stage } { $done } of { $total }.
@@ -5497,3 +5497,84 @@ words-line-count = { $n ->
 }
 words-line-added = { $count } added
 words-line-removed = { $count } taken away
+
+## Microsoft's mail: Outlook.com, Hotmail, Live, MSN, Microsoft 365 (crates/sioul-sync/src/microsoft.rs,
+## crates/sioul-app/src/outlook.rs, MicrosoftMail.qml, docs/microsoft.md)
+account-by-microsoft = Microsoft's own servers, since Microsoft keeps this address's mail
+sync-error-microsoft-again = { $account }: Microsoft asks you to sign in again.
+sync-error-microsoft-again-password = { $account }: Microsoft ended the sign-in after your password changed: sign in again.
+sync-error-microsoft-again-unused = { $account }: Microsoft ended the sign-in, unused for 90 days: sign in again.
+sync-error-microsoft-again-frequency = { $account }: your organisation asks you to sign in again every so often: sign in again.
+sync-error-microsoft-again-late = { $account }: Microsoft's answer reached Sioul after it had ended (it lasts about a minute): sign in again, and come back to Sioul as soon as Microsoft's page says it is done.
+sync-error-microsoft-admin = { $account }: your organisation must approve Sioul once before it reads this mailbox. Ask your administrator: the steps are under “What your administrator does”, in the form that signs it in.
+sync-error-microsoft-blocked = { $account }: your organisation's rules block this app or this sign-in. Only its administrator can change them.
+sync-error-microsoft-unknown-app = { $account }: Microsoft does not know this application. Check its Application (client) ID, and its Directory (tenant) ID if you gave one.
+sync-error-microsoft-redirect = { $account }: the application has no redirect for Sioul. In Microsoft Entra, add http://127.0.0.1 under Authentication, platform “Mobile and desktop applications”.
+sync-error-microsoft-confidential = { $account }: the application is set up as a web application. In Microsoft Entra, give it its redirect under “Mobile and desktop applications”, not under “Web”.
+sync-error-microsoft-secret-sent = { $account }: Sioul sent Microsoft a secret it should never send. It is a fault of Sioul's: please report it.
+sync-error-microsoft-account-types = { $account }: the application does not take this kind of account. In Microsoft Entra, its supported account types must include personal Microsoft accounts and those of any organisation.
+sync-error-microsoft-scopes = { $account }: Microsoft gave Sioul reading or sending, not both: sign in again and accept both.
+sync-error-microsoft-password = { $account }: Microsoft takes no password from mail programs any more, app passwords included. Use Sign in with Microsoft instead, on this account's card.
+sync-said-microsoft-not-connected-personal = { $account }: Outlook.com let Sioul sign in, but keeps the mailbox closed to mail programs. In Outlook.com's settings (Mail ▸ Forwarding and IMAP), turn on “Let devices and apps use IMAP”, then save; if it is on already, confirm this sign-in as yours at account.live.com/activity (“This was me”).
+sync-said-microsoft-not-connected-work = { $account }: Microsoft let Sioul sign in, but the mailbox did not open. Your organisation may have switched IMAP off for it (its administrator can turn it on), or Microsoft's page signed in another of your accounts: sign in again and choose this one.
+sync-said-microsoft-smtp-off = { $account }: your organisation has switched off sending by mail programs (Authenticated SMTP) for this mailbox, so the message was not sent. Its administrator can turn it on for you: aka.ms/smtp_auth_disabled.
+sync-said-microsoft-other-host = { $account }: this account signs in with Microsoft, but its server is { $detail }, not Microsoft's: Sioul sent it nothing. Remove the account and add its address again.
+microsoft-cancelled = Stopped: nothing changed.
+microsoft-timeout = Microsoft did not answer within five minutes: nothing changed.
+microsoft-declined = You declined on Microsoft's page: nothing changed.
+microsoft-declined-work = Microsoft's page ended without giving Sioul access: nothing changed. If it said that your organisation must approve the app, your administrator does it once (“What your administrator does”, below).
+microsoft-other-account = You signed in to Microsoft as { $detail }; the mailbox { $account } did not open with that sign-in. Nothing was kept: sign in again, and choose { $account } on Microsoft's page.
+microsoft-mailbox-refused = { $account }: Microsoft gave Sioul the access, but the mailbox stayed closed, so nothing was kept. For an Outlook.com address, turn on “Let devices and apps use IMAP” in Outlook.com's settings (Mail ▸ Forwarding and IMAP), or, if it is on already, confirm this sign-in as yours at account.live.com/activity; for a work or school address, your organisation may have switched IMAP off for this mailbox. Then sign in again.
+microsoft-page-granted = Sioul has the access. You can close this tab.
+microsoft-page-granted-phone = Sioul has the access. Go back to Sioul now: it finishes there.
+microsoft-page-refused = Microsoft gave Sioul no access: nothing changed. Sioul says why. You can close this tab.
+microsoft-page-foreign = This answer was not for the sign-in Sioul waits for: nothing changed. You can close this tab.
+account-row-sign-in = Signs in
+account-signed-in-microsoft-personal = with Microsoft, as a personal account (the access in the keyring)
+account-signed-in-microsoft-work = with Microsoft, as a work or school account (the access in the keyring)
+account-signed-in-microsoft = signed in with Microsoft (the access in the keyring)
+set-account-shield-ai-work = The AI’s reading is not offered for a work or school Microsoft account: its mail is its organisation’s too, and Microsoft’s terms ask the organisation’s consent before it goes to another company. The word lists still protect this address.
+set-mcp-work-accounts = Work and school Microsoft accounts
+set-mcp-work-accounts-help = Their mail stays closed to agents unless you open it here, whatever its projects: Microsoft’s terms let the organisation, not you alone, allow its mail to be used beyond syncing. Open it only if your organisation allows it.
+microsoft-cli-no-app = This copy of Sioul carries no Microsoft application: give the Application (client) ID of one of your own with --client-id (docs/microsoft.md says how to register it, once). No secret is ever needed.
+microsoft-cli-open = Microsoft takes no password from mail programs: open the page below in a browser on this computer, sign in, then come back here. Sioul waits five minutes; Ctrl+C stops.
+microsoft-cli-signed-in = { $account }: signed in { $how }.
+microsoft-cli-again = { $account }: signed in with Microsoft again; its mail comes again.
+microsoft-cli-not-microsoft = “{ $id }” is not at Microsoft: it signs in with its password (sioul account password { $id }).
+microsoft-cli-no-password = “{ $id }” is at Microsoft, which takes no password, app passwords included: sioul account sign-in { $id } signs it in on Microsoft's page.
+microsoft-admin-steps = What your organisation's administrator does, once, for everyone there:
+    1. Approve Sioul: open this link signed in as an administrator, and accept. Microsoft then sends the browser to 127.0.0.1, where nothing answers: the approval is done. { $link }
+       Or, in the Microsoft Entra admin center: Enterprise apps ▸ the application (Sioul) ▸ Permissions ▸ Grant admin consent.
+    2. For your mailbox: IMAP on, and Authenticated SMTP on (Microsoft 365 admin center ▸ Users ▸ Active users ▸ your name ▸ Mail ▸ Manage email apps).
+ui-remove-microsoft-mail = Also delete the mail Sioul keeps on this device for this account?
+account-removed-microsoft-mail = “{ $id }” removed, with its sign-in and the mail Sioul kept for it on this device. Microsoft still lists Sioul among the apps you allowed until you remove it there: { $page }
+account-removed-microsoft = “{ $id }” removed, with its sign-in. Its mail stays in { $path }. Microsoft still lists Sioul among the apps you allowed until you remove it there: { $page }
+cli-yes-no = [Y/n]
+ui-microsoft-sign-in-note = Microsoft takes no password from mail programs, app passwords included: you sign in on Microsoft's own page, in your browser, and Sioul keeps the access in the system keyring.
+ui-microsoft-app-kept = Microsoft's page opens in your browser, with your application kept on this device. Sioul keeps the access in the system keyring: no password.
+ui-microsoft-imap-switch = Outlook.com keeps IMAP off until you turn it on, once: in Outlook.com's settings, Mail ▸ Forwarding and IMAP, turn on “Let devices and apps use IMAP”, then Save.
+ui-microsoft-imap-how = Microsoft's page on it
+ui-microsoft-work-note = For a work or school address, your organisation may have to approve Sioul once. If Microsoft's page says that only an administrator can, forward them what follows.
+ui-microsoft-admin = What your administrator does
+ui-microsoft-own-app = Use an application of my own
+ui-microsoft-no-app = This copy of Sioul carries no Microsoft application: give the Application (client) ID of one of your own, registered once in Microsoft Entra (the steps below). No secret is needed.
+ui-microsoft-steps = How to register your application (once, about fifteen minutes)
+ui-microsoft-steps-text =
+    1. Microsoft keeps applications only in an organisation's directory. With a personal account, a free Azure account makes one ([azure.microsoft.com](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account): a card is asked, nothing is charged).
+    2. In the [Microsoft Entra admin center](https://entra.microsoft.com): *App registrations → New registration*. Name: Sioul. Supported account types: *Any Entra ID Tenant + Personal Microsoft accounts* (or your organisation alone: then give its Directory (tenant) ID here too).
+    3. *Authentication → Add a platform → Mobile and desktop applications*, custom redirect URI `http://127.0.0.1` (if the box refuses it, add it in *Manifest*). Leave *Allow public client flows* at No.
+    4. *API permissions*: Microsoft Graph, delegated: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`, `profile`. No client secret: Sioul never sends one.
+    5. Copy the *Application (client) ID* from *Overview*, paste it here, and sign in.
+ui-microsoft-client-id = Application (client) ID
+ui-microsoft-tenant-id = Directory (tenant) ID
+ui-microsoft-tenant-optional = only for one organisation's application
+ui-microsoft-sign-in = Sign in with Microsoft
+ui-microsoft-waiting = Your browser is open on Microsoft's page. Sioul waits here.
+ui-microsoft-waiting-phone = Your browser is open on Microsoft's page. Once Microsoft says it is done, come back to Sioul at once: its answer lasts about a minute.
+ui-microsoft-again = Sign in again
+ui-remove-confirm-microsoft = Remove “{ $id }”? Its sign-in leaves the keyring; its mail stays on the server. Microsoft offers apps no way to give the access back: once it is removed, Sioul says where to withdraw it on Microsoft's side.
+microsoft-no-app = This copy of Sioul carries no Microsoft application: use an application of your own (its Application (client) ID).
+account-signed-in-again-microsoft = { $account }: signed in with Microsoft again; its mail comes again.
+spam-app-no-address = no address yet
+ui-microsoft-privacy = What Sioul does with your Microsoft mail, and what it never does: its [privacy policy](https://aurelienpierre.github.io/sioul/privacy.html#microsoft-mail) and its [terms of use](https://aurelienpierre.github.io/sioul/terms.html).
+ui-at-microsoft = This address is at Microsoft (Microsoft 365, for work or school): sign in with Microsoft

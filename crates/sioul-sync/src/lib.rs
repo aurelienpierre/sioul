@@ -50,6 +50,8 @@
 //! - [`scout`]: what a server offers for one address: mail, calendars and contacts, a Nextcloud's apps.
 //! - [`imap`]: an encrypted, logged-in IMAP session.
 //! - [`sasl`]: signing in to IMAP and SMTP with an access token instead of a password (XOAUTH2).
+//! - [`microsoft`]: Microsoft's mail (Outlook.com, Hotmail, Live, MSN, Microsoft 365), signed in with OAuth 2.0.
+//! - `loopback` (not public): the door your browser comes back to after a sign-in on Google's or Microsoft's page.
 //! - [`fetch`]: new mail fetched read-only into the account's Maildir, once or as it arrives.
 //! - [`mailbox`]: an account's folders, and what you do to its messages on the server.
 //! - [`search`]: searching the mail a server holds and this device does not; a message found there brought here.
@@ -127,14 +129,18 @@ pub mod history;
 pub mod imap;
 pub mod keys;
 pub mod lease;
+// The door a browser comes back to after Google's or Microsoft's sign-in page (RFC 8252).
+mod loopback;
 pub mod mailbox;
+// Microsoft's mail, signed in with OAuth 2.0 (docs/microsoft.md).
+pub mod microsoft;
 pub mod notify;
 pub mod ocr;
 // What the computer says of itself (power, saving, idle, a metered connection): the spam filter's training by itself.
 pub mod power;
 // The sharing folder fetched from its server too, beside the sync app (docs/database.md).
 pub mod remote;
-// Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail.
+// Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail, Microsoft's.
 pub mod sasl;
 pub mod scout;
 pub mod search;
@@ -310,6 +316,8 @@ impl SyncError {
             SyncError::Login(d) if d == google::SIGN_IN_AGAIN => "sync-error-google-again",
             SyncError::Login(d) if d == google::IN_TESTING => "sync-error-google-testing",
             SyncError::Login(d) if d == github::TOKEN_REFUSED => "sync-error-github-token",
+            // Microsoft's refusals, each with what to do (microsoft.rs).
+            SyncError::Login(d) if microsoft::message_of(d).is_some() => microsoft::message_of(d).unwrap_or("sync-error-login"),
             SyncError::Login(_) => "sync-error-login",
             SyncError::AppPassword(_) => "sync-error-app-password",
             SyncError::Server(_) => "sync-error-server",

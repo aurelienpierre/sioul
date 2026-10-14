@@ -1492,7 +1492,7 @@ set-account-fetch-help = 0 suit les autres adresses. Une adresse publique peut �
 set-account-shield = Protégée contre le harcèlement
 set-account-shield-help = Pour une adresse publique qui peut amener des insultes : son courrier est lu d’abord ; les messages hostiles sont mis de côté sans montrer leur texte, le reste est résumé par sujet.
 set-account-shield-ai = Laisser l’IA le lire d’abord
-set-account-shield-ai-help = Une IA (Claude) lit le nouveau courrier de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour cela.
+set-account-shield-ai-help = Une IA (Claude, le modèle d’Anthropic, avec votre propre clé) lit le nouveau courrier de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour Anthropic, selon ses conditions d’utilisation de son API.
 set-day-start = La journée commence à
 set-day-start-help = L’heure à laquelle s’ouvrent le planning du jour et de la semaine.
 set-task-estimate = Une tâche sans durée compte
@@ -4676,7 +4676,7 @@ spam-app-by-itself-kept = Réappris de lui-même { $when } : la table en servi
 spam-app-by-itself-stopped = Arrêté { $when }, débranché ou en économie d’énergie : il réessaiera plus tard.
 spam-app-by-itself-failed = Son réentraînement de lui-même { $when } n’a pas abouti : il réessaiera un jour plus tard.
 spam-app-phone-trains-not = Un téléphone n’entraîne jamais le filtre : votre ordinateur le fait.
-spam-app-train-about = Télécharge ce dont l’apprentissage a besoin, de chaque dossier de chaque adresse (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend. La première fois est longue ; « Arrêter » garde ce qui est venu, et la fois suivante reprend de là. La table ne change que si elle ne prend pas plus de vos messages pour indésirables que celle en service.
+spam-app-train-about = Télécharge ce dont l’apprentissage a besoin, de chaque dossier de { $addresses } (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend, sur cet ordinateur : « Entraîner maintenant » est votre accord, pour ces adresses. La première fois est longue ; « Arrêter » garde ce qui est venu, et la fois suivante reprend de là. La table ne change que si elle ne prend pas plus de vos messages pour indésirables que celle en service.
 spam-app-fetching-start = Parcours de { $place }…
 spam-app-fetching = Messages téléchargés : { $done } sur environ { $total } ({ $place }).
 spam-app-step = { $stage } { $done } sur { $total }.
@@ -5521,3 +5521,84 @@ words-line-removed = { $n ->
     [one] { $count } retiré
    *[other] { $count } retirés
 }
+
+## Microsoft's mail: Outlook.com, Hotmail, Live, MSN, Microsoft 365 (crates/sioul-sync/src/microsoft.rs,
+## crates/sioul-app/src/outlook.rs, MicrosoftMail.qml, docs/microsoft.md)
+account-by-microsoft = les serveurs de Microsoft, puisque Microsoft garde le courrier de cette adresse
+sync-error-microsoft-again = { $account } : Microsoft demande de vous reconnecter.
+sync-error-microsoft-again-password = { $account } : Microsoft a mis fin à la connexion après le changement de votre mot de passe : reconnectez-vous.
+sync-error-microsoft-again-unused = { $account } : Microsoft a mis fin à la connexion, inutilisée depuis 90 jours : reconnectez-vous.
+sync-error-microsoft-again-frequency = { $account } : votre organisation demande de vous reconnecter de temps en temps : reconnectez-vous.
+sync-error-microsoft-again-late = { $account } : la réponse de Microsoft est arrivée à Sioul après sa fin (elle dure environ une minute) : reconnectez-vous, et revenez à Sioul dès que la page de Microsoft dit que c’est fait.
+sync-error-microsoft-admin = { $account } : votre organisation doit approuver Sioul une fois avant qu’il lise cette boîte. Demandez-le à votre administrateur : les étapes sont sous « Ce que fait votre administrateur », dans le formulaire qui la connecte.
+sync-error-microsoft-blocked = { $account } : les règles de votre organisation bloquent cette application ou cette connexion. Seul son administrateur peut les changer.
+sync-error-microsoft-unknown-app = { $account } : Microsoft ne connaît pas cette application. Vérifiez son ID d’application (client), et son ID de répertoire (locataire) si vous en avez donné un.
+sync-error-microsoft-redirect = { $account } : l’application n’a pas de redirection pour Sioul. Dans Microsoft Entra, ajoutez http://127.0.0.1 sous Authentication, plateforme « Mobile and desktop applications ».
+sync-error-microsoft-confidential = { $account } : l’application est réglée comme une application web. Dans Microsoft Entra, donnez-lui sa redirection sous « Mobile and desktop applications », pas sous « Web ».
+sync-error-microsoft-secret-sent = { $account } : Sioul a envoyé à Microsoft un secret qu’il ne devrait jamais envoyer. C’est une faute de Sioul : signalez-la, s’il vous plaît.
+sync-error-microsoft-account-types = { $account } : l’application ne prend pas ce type de compte. Dans Microsoft Entra, ses types de comptes pris en charge doivent comprendre les comptes Microsoft personnels et ceux de toute organisation.
+sync-error-microsoft-scopes = { $account } : Microsoft a donné à Sioul la lecture ou l’envoi, pas les deux : reconnectez-vous et acceptez les deux.
+sync-error-microsoft-password = { $account } : Microsoft ne prend plus de mot de passe des logiciels de courrier, mots de passe d’application compris. Utilisez plutôt « Se connecter avec Microsoft », sur la carte de ce compte.
+sync-said-microsoft-not-connected-personal = { $account } : Outlook.com a laissé Sioul se connecter, mais garde la boîte fermée aux logiciels de courrier. Dans les paramètres d’Outlook.com (Courrier ▸ Transfert et IMAP), activez l’accès IMAP des appareils et des applications, puis enregistrez ; s’il l’est déjà, confirmez que cette connexion est la vôtre sur account.live.com/activity.
+sync-said-microsoft-not-connected-work = { $account } : Microsoft a laissé Sioul se connecter, mais la boîte ne s’est pas ouverte. Votre organisation y a peut-être coupé IMAP (son administrateur peut le rétablir), ou la page de Microsoft a connecté un autre de vos comptes : reconnectez-vous et choisissez celui-ci.
+sync-said-microsoft-smtp-off = { $account } : votre organisation a coupé l’envoi par les logiciels de courrier (SMTP authentifié) pour cette boîte, et le message n’est pas parti. Son administrateur peut le rétablir pour vous : aka.ms/smtp_auth_disabled.
+sync-said-microsoft-other-host = { $account } : ce compte se connecte avec Microsoft, mais son serveur est { $detail }, pas celui de Microsoft : Sioul ne lui a rien envoyé. Retirez le compte et ajoutez de nouveau son adresse.
+microsoft-cancelled = Arrêté : rien n’a changé.
+microsoft-timeout = Microsoft n’a pas répondu en cinq minutes : rien n’a changé.
+microsoft-declined = Vous avez refusé sur la page de Microsoft : rien n’a changé.
+microsoft-declined-work = La page de Microsoft s’est terminée sans donner l’accès à Sioul : rien n’a changé. Si elle disait que votre organisation doit approuver l’application, votre administrateur le fait une fois (« Ce que fait votre administrateur », ci-dessous).
+microsoft-other-account = Vous vous êtes connecté à Microsoft en tant que { $detail } ; la boîte { $account } ne s’est pas ouverte avec cette connexion. Rien n’a été gardé : reconnectez-vous, et choisissez { $account } sur la page de Microsoft.
+microsoft-mailbox-refused = { $account } : Microsoft a donné l’accès à Sioul, mais la boîte est restée fermée, et rien n’a été gardé. Pour une adresse Outlook.com, activez l’accès IMAP des appareils et des applications dans les paramètres d’Outlook.com (Courrier ▸ Transfert et IMAP), ou, s’il l’est déjà, confirmez que cette connexion est la vôtre sur account.live.com/activity ; pour une adresse professionnelle ou scolaire, votre organisation a peut-être coupé IMAP pour cette boîte. Puis reconnectez-vous.
+microsoft-page-granted = Sioul a l’accès. Vous pouvez fermer cet onglet.
+microsoft-page-granted-phone = Sioul a l’accès. Revenez à Sioul maintenant : il termine là-bas.
+microsoft-page-refused = Microsoft n’a donné aucun accès à Sioul : rien n’a changé. Sioul dit pourquoi. Vous pouvez fermer cet onglet.
+microsoft-page-foreign = Cette réponse n’était pas pour la connexion que Sioul attend : rien n’a changé. Vous pouvez fermer cet onglet.
+account-row-sign-in = Connexion
+account-signed-in-microsoft-personal = avec Microsoft, comme compte personnel (l’accès dans le trousseau)
+account-signed-in-microsoft-work = avec Microsoft, comme compte professionnel ou scolaire (l’accès dans le trousseau)
+account-signed-in-microsoft = connecté avec Microsoft (l’accès dans le trousseau)
+set-account-shield-ai-work = La lecture par l’IA n’est pas proposée pour un compte Microsoft professionnel ou scolaire : son courrier est aussi celui de son organisation, et les conditions de Microsoft demandent l’accord de l’organisation avant qu’il aille chez une autre entreprise. Les listes de mots protègent toujours cette adresse.
+set-mcp-work-accounts = Comptes Microsoft professionnels et scolaires
+set-mcp-work-accounts-help = Leur courrier reste fermé aux agents tant que vous ne l’ouvrez pas ici, quels que soient ses projets : les conditions de Microsoft laissent l’organisation, pas vous seul, permettre d’utiliser son courrier au-delà de la synchronisation. Ouvrez-le seulement si votre organisation le permet.
+microsoft-cli-no-app = Cette copie de Sioul ne porte aucune application Microsoft : donnez l’ID d’application (client) de l’une des vôtres avec --client-id (docs/microsoft.md dit comment l’inscrire, une fois). Aucun secret n’est jamais nécessaire.
+microsoft-cli-open = Microsoft ne prend pas de mot de passe des logiciels de courrier : ouvrez la page ci-dessous dans un navigateur de cet ordinateur, connectez-vous, puis revenez ici. Sioul attend cinq minutes ; Ctrl+C arrête.
+microsoft-cli-signed-in = { $account } : connecté { $how }.
+microsoft-cli-again = { $account } : reconnecté avec Microsoft ; son courrier revient.
+microsoft-cli-not-microsoft = « { $id } » n’est pas chez Microsoft : il se connecte avec son mot de passe (sioul account password { $id }).
+microsoft-cli-no-password = « { $id } » est chez Microsoft, qui ne prend aucun mot de passe, mots de passe d’application compris : sioul account sign-in { $id } le connecte sur la page de Microsoft.
+microsoft-admin-steps = Ce que fait l’administrateur de votre organisation, une fois, pour tout le monde :
+    1. Approuver Sioul : ouvrir ce lien connecté comme administrateur, et accepter. Microsoft envoie ensuite le navigateur vers 127.0.0.1, où rien ne répond : l’approbation est faite. { $link }
+       Ou, dans le centre d’administration Microsoft Entra, intitulés anglais : Enterprise apps ▸ l’application (Sioul) ▸ Permissions ▸ Grant admin consent.
+    2. Pour votre boîte : IMAP activé, et SMTP authentifié activé (centre d’administration Microsoft 365, intitulés anglais : Users ▸ Active users ▸ votre nom ▸ Mail ▸ Manage email apps).
+ui-remove-microsoft-mail = Supprimer aussi le courrier que Sioul garde sur cet appareil pour ce compte ?
+account-removed-microsoft-mail = « { $id } » retiré, avec sa connexion et le courrier que Sioul en gardait sur cet appareil. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
+account-removed-microsoft = « { $id } » retiré, avec sa connexion. Son courrier reste dans { $path }. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
+cli-yes-no = [O/n]
+ui-microsoft-sign-in-note = Microsoft ne prend aucun mot de passe des logiciels de courrier, mots de passe d’application compris : vous vous connectez sur la page de Microsoft, dans votre navigateur, et Sioul garde l’accès dans le trousseau du système.
+ui-microsoft-app-kept = La page de Microsoft s’ouvre dans votre navigateur, avec votre application gardée sur cet appareil. Sioul garde l’accès dans le trousseau du système : aucun mot de passe.
+ui-microsoft-imap-switch = Outlook.com garde IMAP coupé tant que vous ne l’activez pas, une fois : dans les paramètres d’Outlook.com, Courrier ▸ Transfert et IMAP, activez l’accès IMAP des appareils et des applications, puis enregistrez.
+ui-microsoft-imap-how = La page de Microsoft à ce sujet
+ui-microsoft-work-note = Pour une adresse professionnelle ou scolaire, votre organisation doit peut-être approuver Sioul une fois. Si la page de Microsoft dit que seul un administrateur le peut, transmettez-lui ce qui suit.
+ui-microsoft-admin = Ce que fait votre administrateur
+ui-microsoft-own-app = Utiliser une application à moi
+ui-microsoft-no-app = Cette copie de Sioul ne porte aucune application Microsoft : donnez l’ID d’application (client) de l’une des vôtres, inscrite une fois dans Microsoft Entra (les étapes ci-dessous). Aucun secret n’est nécessaire.
+ui-microsoft-steps = Comment inscrire votre application (une fois, environ quinze minutes)
+ui-microsoft-steps-text =
+    1. Microsoft ne garde d’applications que dans le répertoire d’une organisation. Avec un compte personnel, un compte Azure gratuit en crée un ([azure.microsoft.com](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) : une carte est demandée, rien n’est prélevé).
+    2. Dans le [centre d’administration Microsoft Entra](https://entra.microsoft.com), intitulés anglais : *App registrations → New registration*. Nom : Sioul. Types de comptes : *Any Entra ID Tenant + Personal Microsoft accounts* (ou votre seule organisation : donnez alors ici aussi son ID de répertoire (locataire)).
+    3. *Authentication → Add a platform → Mobile and desktop applications*, URI de redirection personnalisée `http://127.0.0.1` (si la case la refuse, ajoutez-la dans *Manifest*). Laissez *Allow public client flows* sur No.
+    4. *API permissions* : Microsoft Graph, déléguées : `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`, `openid`, `email`, `profile`. Aucun secret client : Sioul n’en envoie jamais.
+    5. Copiez l’*Application (client) ID* depuis *Overview*, collez-le ici, et connectez-vous.
+ui-microsoft-client-id = ID d’application (client)
+ui-microsoft-tenant-id = ID de répertoire (locataire)
+ui-microsoft-tenant-optional = seulement pour l’application d’une organisation
+ui-microsoft-sign-in = Se connecter avec Microsoft
+ui-microsoft-waiting = Votre navigateur est ouvert sur la page de Microsoft. Sioul attend ici.
+ui-microsoft-waiting-phone = Votre navigateur est ouvert sur la page de Microsoft. Quand Microsoft dit que c’est fait, revenez tout de suite à Sioul : sa réponse dure environ une minute.
+ui-microsoft-again = Se reconnecter
+ui-remove-confirm-microsoft = Retirer « { $id } » ? Sa connexion quitte le trousseau ; son courrier reste sur le serveur. Microsoft n’offre aux applications aucun moyen de rendre l’accès : une fois le compte retiré, Sioul dit où le retirer du côté de Microsoft.
+microsoft-no-app = Cette copie de Sioul ne porte aucune application Microsoft : utilisez une application à vous (son ID d’application (client)).
+account-signed-in-again-microsoft = { $account } : reconnecté avec Microsoft ; son courrier revient.
+spam-app-no-address = aucune adresse encore
+ui-microsoft-privacy = Ce que Sioul fait de votre courrier Microsoft, et ce qu’il ne fait jamais : sa [politique de confidentialité](https://aurelienpierre.github.io/sioul/fr/privacy.html#microsoft-mail) et ses [conditions d’utilisation](https://aurelienpierre.github.io/sioul/fr/terms.html).
+ui-at-microsoft = Cette adresse est chez Microsoft (Microsoft 365, professionnelle ou scolaire) : se connecter avec Microsoft

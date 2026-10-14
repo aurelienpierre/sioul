@@ -1,18 +1,18 @@
 ---
 title: Privacy policy
-description: Sioul's privacy policy - Sioul runs on your device and has no server; what it reads and writes in your Google account, where it is kept, what is shared and how to take the access back.
+description: Sioul's privacy policy - Sioul runs on your device and has no server; what it reads and writes in your Google account and your Microsoft mailbox, where it is kept, what is shared and how to take the access back.
 ---
 
 # Privacy policy
 
-*Last updated on 10 October 2026 (2026-10-10).*
+*Last updated on 14 October 2026 (2026-10-14).*
 
-Sioul is a free and open-source desktop application, published by Aurélien Pierre under the GPL-3.0-or-later licence. This policy says what Sioul does with your data, and in particular with the data it receives from Google when you sign in with a Google account.
+Sioul is a free and open-source desktop application, published by Aurélien Pierre under the GPL-3.0-or-later licence. This policy says what Sioul does with your data, and in particular with the data it receives from Google when you sign in with a Google account, and from Microsoft when you sign in with a Microsoft account for your mail.
 
 ## In short
 
 - **Sioul runs on your device. There is no Sioul server.**
-- Your data stays on your device and in your own accounts: your mail provider, your calendar server, your Google account.
+- Your data stays on your device and in your own accounts: your mail provider, your calendar server, your Google account, your Microsoft account.
 - Nothing is sent to the developer of Sioul. Nothing is sold, nothing is used for advertising, nothing is used to build profiles.
 - Data leaves your device only to the services you add, and to the few others described below, each for a feature you choose.
 
@@ -24,7 +24,7 @@ Sioul is made and published by Aurélien Pierre. Since Sioul has no server, its 
 
 ## How Sioul works
 
-Sioul connects, from your device, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS), never into a file.
+Sioul connects, from your device, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google, Microsoft. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS), never into a file.
 
 ## Google calendars, contacts and tasks
 
@@ -76,6 +76,51 @@ Removing the account leaves your Google account itself as it is. The copies alre
 
 If you use a Google key of your own (your own Google Cloud project, as Sioul allows), all of the above holds the same: the data travels only between your device and Google. Such a key also lets you sign in to Gmail through Google ([above](#google-calendars-contacts-and-tasks)).
 
+## Microsoft mail
+
+When you add an Outlook.com, Hotmail, Live, MSN or Microsoft 365 address in Sioul (Accounts ▸ Add an account ▸ Add a mail account), you sign in on Microsoft's own page, in your browser: Microsoft takes no password from mail programs. Microsoft then asks your permission for these scopes:
+
+| Scope | What Sioul does with it |
+|---|---|
+| `https://outlook.office.com/IMAP.AccessAsUser.All` | Reads your mailbox over IMAP, as any mail program does: fetches your mail onto your device, and does on the server what you do in Sioul (archive, delete, move, mark as read), when you do it. |
+| `https://outlook.office.com/SMTP.Send` | Sends the messages you send, over SMTP, when you press Send. |
+| `offline_access` | Keeps you signed in: Microsoft gives a refresh token, so that Sioul fetches your mail without asking you to sign in each time. |
+| `openid`, `email`, `profile` | Reads which account you signed in with, and whether it is a personal account or a work or school one, to check that the mailbox opens with it and to choose its sending server. Nothing else. |
+
+Sioul asks nothing more: not your calendars, not your contacts, not your files.
+
+### How Microsoft data is used
+
+Only to show your mail in Sioul, on your device, and to do on your mailbox what you do in Sioul, when you do it. Within Sioul, it serves the features you see: the Porch, the checks of who sent each message, reminders, the ties you make between your things, and the spam filter you train yourself. Microsoft data is not used for advertising, not sold, not used to build profiles, and not used to develop, improve or train artificial intelligence or machine-learning models. Nobody working on Sioul can read it: it never reaches them.
+
+### Where Microsoft data is kept
+
+- **On your device**: your mail, as any account's, in Sioul's data folder (on Linux, `~/.local/share/sioul/mail/`, in a folder named after the account).
+- **In your own Microsoft mailbox**, where it already is.
+- **The sign-in**: the refresh token Microsoft gives, with the application's identifier and your account's directory, in your system's keyring only, split over a few entries when it is too long for one. Microsoft gives a new refresh token each time one is used: Sioul keeps the newest in place of the one before. The access token stays in memory only, about an hour.
+
+Nothing is kept on any server of the developer: there is none.
+
+### Sharing of Microsoft data
+
+Sioul does not send data received from Microsoft to its developer, or to any third party. That data leaves your device only in these cases, each chosen by you:
+
+1. **Back to Microsoft**, when you act on your mail, and when you send a message.
+2. **To your other devices**, only if you turn on [sharing between your devices](guide/sharing.md): what Sioul keeps about your things, encrypted on your device with your passphrase. Each device fetches the mail itself from Microsoft.
+3. **To Anthropic, through the AI shield**, only for a personal Microsoft address you protect against harassment, and only once you turn on **Let the AI read it first** and give your own key for Anthropic's API (below, [Other data](#other-data)). **Never for a work or school Microsoft address**: its mail is its organisation's too, and Microsoft's terms ask the organisation's consent before it goes to another company; Sioul does not offer it there, whatever its settings say.
+4. **To an AI agent you connect yourself**, only if you do: a personal Microsoft address's mail as any other's, as far as you open it to the agent. **A work or school Microsoft address's mail is kept from agents** until you open it in Settings ▸ AI agents, which you should do only if your organisation allows it.
+
+Your own spam filter, on your computer, learns from the mail of the addresses named under **Train now**, a Microsoft address among them, when you press it: that is your consent, for each. What it keeps stays on that computer (below, [Other data](#other-data)).
+
+Sioul's use of the Microsoft APIs adheres to the [Microsoft APIs Terms of Use](https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use): it syncs your mail with your device, and does no more with it than what you choose, as this policy says. Microsoft's own processing of your data is described in the [Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement); this policy is no less protective.
+
+### Taking Microsoft's access back
+
+- **In Sioul**: Accounts ▸ Your accounts, on the address's card, **Remove**. Sioul forgets its sign-in on this device, and asks whether to delete the mail it keeps on this device for that account: yes, unless you untick it (its mail folder, what the AI shield kept of it, what the spam filter keeps of it).
+- **At Microsoft**: Microsoft offers apps no way to give an access back, so Sioul stays among the apps you allowed until you remove it there: for a personal account, [account.live.com/consent/Manage](https://account.live.com/consent/Manage); for a work or school account, [myapps.microsoft.com](https://myapps.microsoft.com), or your organisation's administrator. A password changed or reset usually ends Sioul's access too.
+
+Removing the account leaves your mailbox at Microsoft as it is.
+
 ## Other data
 
 Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, papers and the other things you give it, on your device, as described above. Besides your own providers, it reaches other services only for a feature you choose:
@@ -83,7 +128,7 @@ Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, pap
 - **Weather**, if you choose a place: Open-Meteo receives that place's coordinates, rounded to two decimals, at most every half hour, or the name of a town you search.
 - **The map of your contacts**, if you allow it: OpenStreetMap's geocoder receives their postal addresses, once each; map images come from OpenStreetMap, or from the source you chose.
 - **Finding someone's encryption key**, when you ask: their domain's Web Key Directory, then keys.openpgp.org, receive the address you write to.
-- **The AI shield**, only for an address you protect against harassment, and only once you turn on **Let the AI read it first** on its card in Accounts and give your own key for Anthropic's API: every message in that address's inbox that the AI has not read yet, from anyone, those already there when you turn it on included, is sent to Anthropic, the newest first, twenty at a time, to tell its tone and topic. For each, Anthropic receives the subject and the first 4,000 characters of its text, as they are: nothing is masked, so a code, a password or an account number in such a message reaches Anthropic too. A message whose answer comes back malformed is sent again later. The answer (a tone, a topic, one neutral line) stays on your device; what Anthropic does with what it receives falls under your own agreement with Anthropic. To stop it, turn **Let the AI read it first** off, or choose **Forget the key** in Accounts. It reads mail only, never Google data.
+- **The AI shield**, only for an address you protect against harassment, and only once you turn on **Let the AI read it first** on its card in Accounts and give your own key for Anthropic's API: every message in that address's inbox that the AI has not read yet, from anyone, those already there when you turn it on included, is sent to Anthropic, the newest first, twenty at a time, to tell its tone and topic. For each, Anthropic receives the subject and the first 4,000 characters of its text, as they are: nothing is masked, so a code, a password or an account number in such a message reaches Anthropic too. A message whose answer comes back malformed is sent again later. The answer (a tone, a topic, one neutral line) stays on your device; what Anthropic does with what it receives falls under your own agreement with Anthropic. To stop it, turn **Let the AI read it first** off, or choose **Forget the key** in Accounts. It reads mail only, never Google data, and never the mail of a work or school Microsoft account.
 - **GitHub**, if you turn it on: your issues and pull requests are read with your own token. Nothing is written to GitHub.
 - **Bitwarden**, when you fill a login from your vault: your Bitwarden server, with your account.
 - **The sites you pin**, as any browser: each is also asked for its own icon.
@@ -95,7 +140,7 @@ On a phone, if you allow Sioul to read and send texts (Settings ▸ This phone �
 
 On a phone, if you make Sioul Android's caller ID & spam app, Android shows it each call's number before the phone rings; Sioul decides there, on the phone, and sends no number to any server: no lookup. The list of the calls it screened goes to your other devices only, encrypted with your passphrase, while your sharing's part **Calls** is on. It never answers, records or listens to a call ([Calls](guide/calls.md)).
 
-**Your own spam filter**, on a computer: it learns the first time when you ask (**Train now**), then again by itself once a week, on the computer that trained it, while that computer is plugged in and idle, unless you turn off **Train again by itself once a week, when this computer is plugged in and idle**. To learn, Sioul reads from your mail provider, without changing anything there, the messages of every folder but the trash, drafts and sent mail (from Gmail's All Mail, only the archived mail that no other folder holds, never your own messages), and keeps on that computer, for each message, its headers, the names and types of its parts and the start of its text, never the attachments themselves, with the language model it learns. To check each sender as it checks the mail it stores, it also reads each message of up to 2 MB whole, in memory only, keeps only the results of the checks, and asks your system's DNS about the senders' domains. What it keeps and the language model stay on that computer, and Sioul sends them nowhere: for training, it talks only to your own mail providers, to read, and to your system's DNS; on a metered connection, or one it cannot tell, training by itself downloads nothing. Only the result, a table of numbers with no word of your mail in plain text, goes to your other devices, encrypted with your passphrase, if you share between your devices, with what you said is spam or not on each device (which message, where and when; never a word of it). If you import outside training material on that computer (`sioul spam import`: mail labelled elsewhere, its subjects and texts), it stays there, apart from your mail, never shared, until you remove it. Nothing of it goes to the developer or to any other service. If you connect an AI agent yourself, it can run the filter's own tools, which report its numbers and list its worst mistakes by sender and subject, with codes and account numbers masked; the company behind the agent then receives what it reads, unless you keep those tools from it ([Using an AI agent](guide/ai-agent.md#the-spam-filters-tools)). It learns from your mail only: never from data received from Google ([Privacy and security](guide/privacy-security.md#your-own-spam-filter)).
+**Your own spam filter**, on a computer: it learns the first time when you ask (**Train now**), then again by itself once a week, on the computer that trained it, while that computer is plugged in and idle, unless you turn off **Train again by itself once a week, when this computer is plugged in and idle**. To learn, Sioul reads from your mail provider, without changing anything there, the messages of every folder but the trash, drafts and sent mail (from Gmail's All Mail, only the archived mail that no other folder holds, never your own messages), and keeps on that computer, for each message, its headers, the names and types of its parts and the start of its text, never the attachments themselves, with the language model it learns. To check each sender as it checks the mail it stores, it also reads each message of up to 2 MB whole, in memory only, keeps only the results of the checks, and asks your system's DNS about the senders' domains. What it keeps and the language model stay on that computer, and Sioul sends them nowhere: for training, it talks only to your own mail providers, to read, and to your system's DNS; on a metered connection, or one it cannot tell, training by itself downloads nothing. Only the result, a table of numbers with no word of your mail in plain text, goes to your other devices, encrypted with your passphrase, if you share between your devices, with what you said is spam or not on each device (which message, where and when; never a word of it). If you import outside training material on that computer (`sioul spam import`: mail labelled elsewhere, its subjects and texts), it stays there, apart from your mail, never shared, until you remove it. Nothing of it goes to the developer or to any other service. If you connect an AI agent yourself, it can run the filter's own tools, which report its numbers and list its worst mistakes by sender and subject, with codes and account numbers masked; the company behind the agent then receives what it reads, unless you keep those tools from it ([Using an AI agent](guide/ai-agent.md#the-spam-filters-tools)). It learns from your mail only: never from data received from Google ([Privacy and security](guide/privacy-security.md#your-own-spam-filter)). Under **Train now**, a sentence names the addresses it learns from: pressing it is your consent, for each, as Microsoft's terms ask for a Microsoft address.
 
 The complete list, with when each happens: [Privacy and security](guide/privacy-security.md#what-leaves-your-computer-and-when).
 
@@ -103,7 +148,7 @@ Sioul has no analytics, no advertising, no tracking, and no crash reports.
 
 ## Security
 
-Connections to Google use HTTPS. The sign-in follows Google's guidance for installed applications: Google's page opens in your browser, and Sioul receives the answer on your own device only (a loopback address), checked with PKCE and a state value. Passwords and tokens are kept in your system's keyring. What you share between your devices is encrypted on your device before it leaves it.
+Connections to Google and Microsoft use HTTPS. Each sign-in follows the provider's guidance for installed applications: its page opens in your browser, and Sioul receives the answer on your own device only (a loopback address), checked with PKCE and a state value. With Microsoft, Sioul holds no secret at all, and its tokens go to Microsoft's sign-in service and to Microsoft's own mail servers, named exactly, never elsewhere. Passwords and tokens are kept in your system's keyring. What you share between your devices is encrypted on your device before it leaves it.
 
 ## This website
 
