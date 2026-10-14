@@ -100,9 +100,15 @@ fn day_of(kind: Kind, now: &Zoned) -> Date {
     let moment = Moment { now, mode: &mode, work_end: work_end(&config, now), night: night(now), closed_today: false };
     match kind {
         Kind::Night => moment.evening().1,
-        Kind::Work if now.hour() < reviews::DAY_TURNS => now.date().yesterday().unwrap_or(now.date()),
-        Kind::Work => now.date(),
+        Kind::Work => work_day(now),
     }
+}
+
+/// The work day a sheet closes at `now`: today; before the turn of the day
+/// (05:00), yesterday. A notice's button carries it, so that hours ending
+/// after midnight open the sheet of the day they belong to.
+fn work_day(now: &Zoned) -> Date {
+    if now.hour() < reviews::DAY_TURNS { now.date().yesterday().unwrap_or(now.date()) } else { now.date() }
 }
 
 /// The first letter capitalized ("lundi" → "Lundi").
@@ -344,30 +350,49 @@ pub(crate) enum WorkNotice {
 pub(crate) fn work_notice(now: &Zoned, keeper: impl FnOnce() -> sioul_sync::lease::Keeper) -> WorkNotice {
     let stamp = now.timestamp().as_second();
     let Some(end) = work_end(&load_config(), now) else { return WorkNotice::No };
-    if !still_due(stamp, end.timestamp().as_second()) || told(now.date()) {
-        return WorkNotice::No;
+    let due = still_due(stamp, end.timestamp().as_second()) && !told(now.date());
+    let offer = || notice_offer(now, &crate::hours::mode_at(now));
+    let comes = || crate::hours::comes(sioul_core::attention::Kind::WorkOver);
+    let (notice, told_for) = notice_decision(due, offer, comes, || meeting(stamp), keeper, now.date());
+    if let Some(day) = told_for {
+        mark_told(day);
     }
-    if !crate::hours::comes(sioul_core::attention::Kind::WorkOver) {
-        return WorkNotice::Held;
+    notice
+}
+
+/// The end-of-work notice's decision (`work_notice`), each thing read only
+/// when those before let it on, in this order: whether it is `due` (its ten
+/// minutes, not told yet); what the day offers (`offer`): anything but the
+/// work day's (closed, its review given, the evening's offer instead), and it
+/// cannot come that day, told for `today` and never asked again; whether the
+/// matrix of what reaches you lets it come now (`comes`): held while it does
+/// not; a `meeting`: nothing said, told; who keeps the notices (`keeper`),
+/// asked last. Gives the decision, and the day to mark told, if any.
+fn notice_decision(
+    due: bool,
+    offer: impl FnOnce() -> Option<Offer>,
+    comes: impl FnOnce() -> bool,
+    meeting: impl FnOnce() -> bool,
+    keeper: impl FnOnce() -> sioul_sync::lease::Keeper,
+    today: Date,
+) -> (WorkNotice, Option<Date>) {
+    if !due {
+        return (WorkNotice::No, None);
     }
-    let mode = crate::hours::mode_at(now);
-    // Closed early, its review given, or the evening's offer instead: it cannot come today.
-    let Some(Offer { kind: Kind::Work, date }) = notice_offer(now, &mode) else {
-        mark_told(now.date());
-        return WorkNotice::No;
-    };
+    let Some(Offer { kind: Kind::Work, date }) = offer() else { return (WorkNotice::No, Some(today)) };
+    if !comes() {
+        return (WorkNotice::Held, None);
+    }
     // In a meeting, nothing is said: the status line still offers it.
-    if meeting(stamp) {
-        mark_told(date);
-        return WorkNotice::No;
+    if meeting() {
+        return (WorkNotice::No, Some(date));
     }
     let keeper = keeper();
     // Kept here only lately: the next minute, once the others know.
     if keeper.mine && !keeper.settled {
-        return WorkNotice::Soon;
+        return (WorkNotice::Soon, None);
     }
-    mark_told(date);
-    if keeper.mine { WorkNotice::Comes(date) } else { WorkNotice::No }
+    (if keeper.mine { WorkNotice::Comes(date) } else { WorkNotice::No }, Some(date))
 }
 
 /// Each minute: the end-of-work notice when it comes (`work_notice`), "Work
@@ -383,8 +408,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let keeper = || crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
-        if let WorkNotice::Comes(date) = work_notice(&Zoned::now(), keeper) {
-            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{date}") };
+        let now = Zoned::now();
+        if let WorkNotice::Comes(_) = work_notice(&now, keeper) {
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{}", work_day(&now)) };
             if let Err(e) = show_notice(&qt, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close]) {
                 eprintln!("{e}");
             }
@@ -492,7 +518,7 @@ pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
     }
     match work_notice(now, || crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou)) {
         WorkNotice::Comes(date) => {
-            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{date}") };
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{}", work_day(now)) };
             let until = end.as_ref().map_or(stamp + PHONE_NOTICE_KEPT, |end| next_turn(end).min(stamp + PHONE_NOTICE_KEPT));
             crate::eventalarms::day_note(&format!("day:work:{date}"), &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), &[close], until);
             serde_json::json!({ "shown": true })
@@ -591,5 +617,45 @@ mod tests {
         assert!(closes_the_work_day(today, today, false));
         assert!(!closes_the_work_day(today, today, true), "closed already");
         assert!(!closes_the_work_day(yesterday, today, false), "opened at 04:58, closed at 05:01: its review alone");
+    }
+
+    /// What can still come is asked before what reaches you: a day closed,
+    /// its review given or the evening's offer instead is told at once,
+    /// what reaches you never asked, nor a meeting, nor who keeps the
+    /// notices; held by the matrix, asked again; then a meeting, the lease.
+    #[test]
+    fn the_end_of_work_notice_asks_first_whether_it_can_come() {
+        let today: Date = "2026-10-14".parse().unwrap();
+        let work = || Some(Offer { kind: Kind::Work, date: today });
+        let keeper = |mine: bool, settled: bool| sioul_sync::lease::Keeper { mine, settled, ..Default::default() };
+        let never = || -> bool { panic!("not asked when it cannot come") };
+        let no_keeper = || -> sioul_sync::lease::Keeper { panic!("not asked") };
+        // Not due: nothing read, nothing told.
+        assert_eq!(notice_decision(false, || panic!("not asked"), never, never, no_keeper, today), (WorkNotice::No, None));
+        // It cannot come today (closed, review given, the evening's instead): told, the matrix never asked.
+        assert_eq!(notice_decision(true, || None, never, never, no_keeper, today), (WorkNotice::No, Some(today)));
+        assert_eq!(notice_decision(true, || Some(Offer { kind: Kind::Night, date: today }), never, never, no_keeper, today), (WorkNotice::No, Some(today)));
+        // Held by the matrix while it could come: asked again, not told.
+        assert_eq!(notice_decision(true, work, || false, never, no_keeper, today), (WorkNotice::Held, None));
+        // A meeting: told, nothing said.
+        assert_eq!(notice_decision(true, work, || true, || true, no_keeper, today), (WorkNotice::No, Some(today)));
+        // The lease: kept here lately, soon; elsewhere, told; here, it comes.
+        assert_eq!(notice_decision(true, work, || true, || false, || keeper(true, false), today), (WorkNotice::Soon, None));
+        assert_eq!(notice_decision(true, work, || true, || false, || keeper(false, true), today), (WorkNotice::No, Some(today)));
+        assert_eq!(notice_decision(true, work, || true, || false, || keeper(true, true), today), (WorkNotice::Comes(today), Some(today)));
+    }
+
+    /// A notice's button carries the work day its sheet closes, as the sheet
+    /// counts it: hours ending after midnight belong to the day before,
+    /// until the turn of the day at 05:00.
+    #[test]
+    fn hours_ending_after_midnight_date_their_button_with_the_day_before() {
+        let zone = jiff::tz::TimeZone::fixed(jiff::tz::offset(2));
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        let (day, next): (Date, Date) = ("2026-10-14".parse().unwrap(), "2026-10-15".parse().unwrap());
+        assert_eq!(work_day(&at("2026-10-14T17:30")), day);
+        assert_eq!(work_day(&at("2026-10-15T00:30")), day);
+        assert_eq!(work_day(&at("2026-10-15T04:59")), day);
+        assert_eq!(work_day(&at("2026-10-15T05:00")), next);
     }
 }
