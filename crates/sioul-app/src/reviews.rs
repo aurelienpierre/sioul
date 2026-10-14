@@ -60,15 +60,22 @@ fn offer_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
     reviews::offer(&Moment { now, mode, work_end, night, closed_today }, &reviews)
 }
 
-/// What the notice "Work hours are over" offers at `now`: as the status
-/// line, at the times the matrix of what reaches you lets it come (as usual,
-/// the status line's own: never at work, asleep, paused or in Free time).
-fn notice_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
-    if !crate::hours::comes(sioul_core::attention::Kind::WorkOver) {
-        return None;
-    }
+/// What the notice "Work hours are over" would offer at `now`, as the status
+/// line does, whatever the time now is for: the matrix of what reaches you
+/// says apart when it may come (`work_notice`).
+fn notice_offer(now: &Zoned, mode: &Mode) -> Option<Offer> {
     let (work_end, night, closed_today, reviews) = standing(now);
     reviews::offer_any_time(&Moment { now, mode, work_end, night, closed_today }, &reviews)
+}
+
+/// A sheet asked for: "work" or "night", and the day it is for when a
+/// notice's press carries one ("work:2026-10-14"); none for words that are
+/// neither.
+fn asked(what: &str) -> Option<(Kind, Option<Date>)> {
+    match what.split_once(':') {
+        Some((kind, date)) => Some((Kind::parse(kind)?, Some(date.parse().ok()?))),
+        None => Some((Kind::parse(what)?, None)),
+    }
 }
 
 /// For the status line (`mode_json`): {kind, date, line, button}; kind "" when
@@ -163,14 +170,24 @@ fn memo_html(review: Option<&Review>) -> Option<String> {
     review.map(|r| r.memo.trim()).filter(|m| !m.is_empty()).map(sioul_core::compose::markdown_html)
 }
 
-/// The sheet for `kind` ("work", "night"), as JSON: its title and the day it
+/// The sheet for `what` ("work", "night"), as JSON: its title and the day it
 /// closes; how the day started and went, in words; for the night the work's
 /// review, tomorrow's first step and the day's balance; the answers already
 /// given (closed once, the sheet opens on them); the notes of the last days.
-pub(crate) fn view(kind: &str) -> String {
-    let kind = Kind::parse(kind).unwrap_or(Kind::Work);
+/// A notice's press carries its day ("work:2026-10-14"): pressed once the
+/// day turned (05:00 for the work day, the evening for the night), it opens
+/// nothing ("null"), rather than the sheet of a day not begun.
+pub(crate) fn view(what: &str) -> String {
+    let (kind, for_day) = match asked(what) {
+        Some(asked) => asked,
+        None if what.contains(':') => return "null".into(),
+        None => (Kind::Work, None),
+    };
     let now = Zoned::now();
     let date = day_of(kind, &now);
+    if for_day.is_some_and(|day| day != date) {
+        return "null".into();
+    }
     let from = date.checked_sub(jiff::Span::new().days(BACK_DAYS)).unwrap_or(date);
     let all = Reviews::load_between(&Reviews::default_path(), from, date);
     let day = all.day(date);
@@ -206,18 +223,23 @@ pub(crate) fn view(kind: &str) -> String {
     .to_string()
 }
 
-/// The review kept, then for the work day the day closed as "Done for today"
-/// always did, unless it was already today: the closing screen's JSON, else
-/// "". The night: the status line says the day is closed. A review that
-/// cannot be kept is said; the work day closes all the same.
-pub(crate) fn close(mut sioul: Pin<&mut Sioul>, kind: &str, felt: &str, mix: &str, memo: &str) -> QString {
+/// The review kept for `date`, the day its sheet was opened for (`view`),
+/// though the day turned meanwhile (a sheet opened at 04:58 and closed at
+/// 05:01 closes the day it showed; none given, the day of `kind` now); then
+/// for the work day the day closed as "Done for today" always did, unless it
+/// was already today, or the sheet was an earlier day's: the closing
+/// screen's JSON, else "". The night: the status line says the day is
+/// closed. A review that cannot be kept is said; the work day closes all
+/// the same.
+pub(crate) fn close(mut sioul: Pin<&mut Sioul>, kind: &str, date: &str, felt: &str, mix: &str, memo: &str) -> QString {
     let Some(kind) = Kind::parse(kind) else { return QString::default() };
     let now = Zoned::now();
-    let date = day_of(kind, &now);
+    let today = day_of(kind, &now);
+    let date = date.parse::<Date>().unwrap_or(today);
     let review = Review { at: now.timestamp().as_second(), felt: Felt::parse(felt), mix: Mix::parse(mix), memo: memo.trim().to_string() };
     let kept = reviews::save(&Reviews::default_path(), date, kind, &review, now.time_zone());
     let closing = match kind {
-        Kind::Work if !Overrides::load(&Overrides::default_path()).closed_today(&now) => sioul.as_mut().done_for_the_day(),
+        Kind::Work if closes_the_work_day(date, today, Overrides::load(&Overrides::default_path()).closed_today(&now)) => sioul.as_mut().done_for_the_day(),
         Kind::Work => {
             sioul.as_mut().set_status(QString::from(&tr().text("review-kept", None)));
             QString::default()
@@ -233,6 +255,14 @@ pub(crate) fn close(mut sioul: Pin<&mut Sioul>, kind: &str, felt: &str, mix: &st
     // What the status line offers follows at once.
     sioul.as_mut().set_mode(QString::from(&mode_json()));
     closing
+}
+
+/// Whether closing a work day's sheet closes the work day itself, as "Done
+/// for today" always did: only today's, not closed yet; an earlier day's
+/// sheet (opened before the turn of the day, closed after it) keeps its
+/// review alone, and never closes a day not begun.
+fn closes_the_work_day(sheet: Date, today: Date, closed_today: bool) -> bool {
+    sheet == today && !closed_today
 }
 
 /// The weather said for today, copied as the morning's (`reviews::note_weather`).
@@ -296,6 +326,9 @@ pub(crate) enum WorkNotice {
     Comes(Date),
     /// Kept here only lately: asked again in a minute, once the others know.
     Soon,
+    /// Held by the matrix of what reaches you now (a pause, do-not-disturb):
+    /// it may come once it lets it, while its ten minutes last.
+    Held,
     /// Not now, or not from here.
     No,
 }
@@ -304,17 +337,25 @@ pub(crate) enum WorkNotice {
 /// admin hours, within ten minutes of it, once on this device (`told`); at
 /// the times the matrix of what reaches you lets it come (as usual, never
 /// while you sleep or work); never during a meeting, nor once the day was
-/// closed or its review given; from the device you are at, as `keeper` says
-/// it (the "notices" lease), asked last. The window's minute and a phone's
-/// alarm both decide it here (`tick`, `decide_work`).
+/// closed or its review given, nor when the evening's offer takes its place:
+/// then it is told for the day, never asked again; from the device you are
+/// at, as `keeper` says it (the "notices" lease), asked last. The window's
+/// minute and a phone's alarm both decide it here (`tick`, `decide_work`).
 pub(crate) fn work_notice(now: &Zoned, keeper: impl FnOnce() -> sioul_sync::lease::Keeper) -> WorkNotice {
     let stamp = now.timestamp().as_second();
     let Some(end) = work_end(&load_config(), now) else { return WorkNotice::No };
     if !still_due(stamp, end.timestamp().as_second()) || told(now.date()) {
         return WorkNotice::No;
     }
+    if !crate::hours::comes(sioul_core::attention::Kind::WorkOver) {
+        return WorkNotice::Held;
+    }
     let mode = crate::hours::mode_at(now);
-    let Some(Offer { kind: Kind::Work, date }) = notice_at(now, &mode) else { return WorkNotice::No };
+    // Closed early, its review given, or the evening's offer instead: it cannot come today.
+    let Some(Offer { kind: Kind::Work, date }) = notice_offer(now, &mode) else {
+        mark_told(now.date());
+        return WorkNotice::No;
+    };
     // In a meeting, nothing is said: the status line still offers it.
     if meeting(stamp) {
         mark_told(date);
@@ -342,8 +383,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let keeper = || crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
-        if let WorkNotice::Comes(_) = work_notice(&Zoned::now(), keeper) {
-            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: "work".into() };
+        if let WorkNotice::Comes(date) = work_notice(&Zoned::now(), keeper) {
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{date}") };
             if let Err(e) = show_notice(&qt, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close]) {
                 eprintln!("{e}");
             }
@@ -352,7 +393,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 /// A button of a closing notice: its words, and what it opens in the window
-/// (`reminder_opened`: "review" with "work" or "night", "need" with a block's key).
+/// (`reminder_opened`: "review" with "work" or "night" and the day it is for,
+/// "work:2026-10-14", or "need" with a block's key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Offered {
     pub label: String,
@@ -386,9 +428,20 @@ pub(crate) fn show_notice(qt: &QtThread, title: &str, body: &str, offered: Vec<O
     sioul_sync::notify::remind_offering(title, body, choices)
 }
 
-/// A phone's notice stays in the shade this long after it comes, then goes:
-/// pressed later, its sheet would close another day.
+/// A phone's notice stays in the shade this long after it comes at most,
+/// then goes (the work's at the turn of the day, 05:00, if sooner; the
+/// night's at waking): its press carries its day, and opens nothing once the
+/// day turned (`view`).
 pub(crate) const PHONE_NOTICE_KEPT: i64 = 6 * 3600;
+
+/// The turn of the day (05:00) next after `end`, when the work day it ended
+/// is no longer the one the sheet closes (`day_of`), Unix seconds; six hours
+/// on where the zone has no such time.
+fn next_turn(end: &Zoned) -> i64 {
+    let at = |date: Date| date.at(reviews::DAY_TURNS, 0, 0, 0).to_zoned(end.time_zone().clone()).ok().map(|z| z.timestamp().as_second());
+    let stamp = end.timestamp().as_second();
+    at(end.date()).filter(|turn| *turn > stamp).or_else(|| end.date().tomorrow().ok().and_then(at)).unwrap_or(stamp + PHONE_NOTICE_KEPT)
+}
 
 /// Whether the end-of-work notice may still come at `stamp`, the hours
 /// having ended at `end` (Unix seconds): within its ten minutes, never before.
@@ -424,26 +477,28 @@ pub(crate) fn coming_work(now: &Zoned) -> Vec<(String, i64)> {
 /// who keeps the notices read, never claimed, from there: Sioul may be put
 /// away, or not running (`share::looked`). Shown in Android's notifications
 /// with "Close the work day", which opens Sioul on the sheet. {"shown": true}
-/// once shown; {"again_at": ms} rung early, kept here only lately, or not
-/// yet (the matrix holding it) while its ten minutes last, asked each
-/// minute as a computer's minute asks it; {} when it does not come.
+/// once shown, its press carrying its day; {"again_at": ms} rung early, kept
+/// here only lately, or held by the matrix while its ten minutes last, asked
+/// each minute as a computer's minute asks it; {} when it does not come, nor
+/// asked again that day once it cannot (`work_notice`).
 pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
-    let end = work_end(&load_config(), now).map(|end| end.timestamp().as_second());
-    if let Some(end) = end
+    let end = work_end(&load_config(), now);
+    let end_at = end.as_ref().map(|end| end.timestamp().as_second());
+    if let Some(end) = end_at
         && (1..3600).contains(&(end - stamp))
     {
         return serde_json::json!({ "again_at": end * 1000 });
     }
     match work_notice(now, || crate::share::looked("notices", sioul_sync::lease::Rule::FollowsYou)) {
         WorkNotice::Comes(date) => {
-            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: "work".into() };
-            crate::eventalarms::day_note(&format!("day:work:{date}"), &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), &[close], stamp + PHONE_NOTICE_KEPT);
+            let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{date}") };
+            let until = end.as_ref().map_or(stamp + PHONE_NOTICE_KEPT, |end| next_turn(end).min(stamp + PHONE_NOTICE_KEPT));
+            crate::eventalarms::day_note(&format!("day:work:{date}"), &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), &[close], until);
             serde_json::json!({ "shown": true })
         }
-        WorkNotice::Soon => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
-        WorkNotice::No if end.is_some_and(|end| still_due(stamp + 60, end)) && !told(now.date()) => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
-        WorkNotice::No => serde_json::json!({}),
+        WorkNotice::Soon | WorkNotice::Held if end_at.is_some_and(|end| still_due(stamp + 60, end)) => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
+        WorkNotice::Soon | WorkNotice::Held | WorkNotice::No => serde_json::json!({}),
     }
 }
 
@@ -495,5 +550,46 @@ mod tests {
         assert!(!still_due(end + NOTICE_GRACE, end));
         assert!(!still_due(end - 1, end));
         assert!(!still_due(end - 8 * 3600, end), "hours before: not due, not asked again");
+    }
+
+    /// A notice's press carries its day: the sheet is asked for that day,
+    /// and only words that are a sheet and a day are read so.
+    #[test]
+    fn a_press_asks_for_its_own_days_sheet() {
+        let day: Date = "2026-10-14".parse().unwrap();
+        assert_eq!(asked("work"), Some((Kind::Work, None)));
+        assert_eq!(asked("night"), Some((Kind::Night, None)));
+        assert_eq!(asked("work:2026-10-14"), Some((Kind::Work, Some(day))));
+        assert_eq!(asked("night:2026-10-14"), Some((Kind::Night, Some(day))));
+        assert_eq!(asked("work:yesterday"), None);
+        assert_eq!(asked("settings:2026-10-14"), None);
+        // Words that are no day: nothing, read before anything is.
+        assert_eq!(view("work:yesterday"), "null");
+    }
+
+    /// The work notice on a phone goes at the turn of the day (05:00) after
+    /// the hours' end, or six hours after it came if sooner: work ending at
+    /// 23:30 goes at 05:00, not at 05:30.
+    #[test]
+    fn the_work_notice_goes_at_the_turn_of_the_day() {
+        let zone = jiff::tz::TimeZone::fixed(jiff::tz::offset(2));
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        assert_eq!(next_turn(&at("2026-10-14T17:30")), at("2026-10-15T05:00").timestamp().as_second());
+        assert_eq!(next_turn(&at("2026-10-14T23:30")), at("2026-10-15T05:00").timestamp().as_second());
+        assert_eq!(next_turn(&at("2026-10-15T01:00")), at("2026-10-15T05:00").timestamp().as_second());
+        assert_eq!(next_turn(&at("2026-10-15T05:00")), at("2026-10-16T05:00").timestamp().as_second());
+        let end = at("2026-10-14T23:30");
+        let shown = end.timestamp().as_second() + 60;
+        assert_eq!(next_turn(&end).min(shown + PHONE_NOTICE_KEPT), at("2026-10-15T05:00").timestamp().as_second());
+    }
+
+    /// A sheet opened before the turn of the day and closed after it closes
+    /// the day it showed: its review kept, the new day never closed.
+    #[test]
+    fn a_sheet_closed_after_the_turn_of_the_day_closes_its_own() {
+        let (yesterday, today): (Date, Date) = ("2026-10-13".parse().unwrap(), "2026-10-14".parse().unwrap());
+        assert!(closes_the_work_day(today, today, false));
+        assert!(!closes_the_work_day(today, today, true), "closed already");
+        assert!(!closes_the_work_day(yesterday, today, false), "opened at 04:58, closed at 05:01: its review alone");
     }
 }

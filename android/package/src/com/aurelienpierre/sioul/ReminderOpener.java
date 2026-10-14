@@ -22,7 +22,7 @@ public final class ReminderOpener extends Activity
 {
     /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need". */
     static final String SCHEME = "sioul-open";
-    /** The event's file, on an event's reminder; "work" or "night" for a closing sheet; a block's key for its question. */
+    /** The event's file, on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question. */
     static final String KEY = "key";
     /** The day's notice pressed, to take away (DayNotes: its key). */
     static final String NOTE = "note";
@@ -30,9 +30,9 @@ public final class ReminderOpener extends Activity
     /**
      * Whether a notice of Sioul's may open `kind` with `key`: an event, the
      * Porch, a block's question ("need"), or a closing sheet ("review") of
-     * the work day ("work") or of the whole day ("night"). Rust reads the
-     * same (eventalarms.rs, `opened_of`). Pure, checked on a JVM
-     * (android/jvm-checks/DayNotesCheck.java).
+     * the work day ("work") or of the whole day ("night"), with the day it
+     * is for ("work:2026-10-14"). Rust reads the same (eventalarms.rs,
+     * `opened_of`). Pure, checked on a JVM (android/jvm-checks/DayNotesCheck.java).
      *
      * @param kind what the notice is about, or null
      * @param key what in it, or null
@@ -42,7 +42,7 @@ public final class ReminderOpener extends Activity
     {
         if ("event".equals(kind) || "porch".equals(kind) || "need".equals(kind))
             return true;
-        return "review".equals(kind) && ("work".equals(key) || "night".equals(key));
+        return "review".equals(kind) && key != null && key.matches("(work|night)(:\\d{4}-\\d{2}-\\d{2})?");
     }
 
     @Override

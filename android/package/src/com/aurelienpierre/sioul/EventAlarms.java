@@ -20,8 +20,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -77,7 +81,7 @@ final class EventAlarms
     /**
      * Rust's coming reminders: JSON {reminders: [{key, at (Unix ms), title,
      * body}], look (Unix ms), words}. Their alarms replace those given
-     * before; the list is kept for Android's restarts. Any thread.
+     * before, as `merged` says; the list is kept for Android's restarts. Any thread.
      */
     static synchronized void set(Context context, String json)
     {
@@ -100,18 +104,139 @@ final class EventAlarms
             if (!key.isEmpty() && !keys.contains(key))
                 cancel(context, key);
         }
+        List<Arm> armed = new ArrayList<>();
+        JSONArray list = merged(before, coming, System.currentTimeMillis(), armed);
         JSONObject words = given.optJSONObject("words");
-        SharedPreferences.Editor kept = kept(context).edit().putString(LIST, coming.toString());
+        SharedPreferences.Editor kept = kept(context).edit().putString(LIST, list.toString());
         if (words != null)
             kept.putString(WORDS, words.toString());
         kept.commit();
         channel(context);
-        schedule(context, coming);
+        for (Arm arm : armed)
+            alarm(context, arm.key, arm.at);
         look(context, given.optLong("look"));
-        Log.i(DoseAlarms.TAG, "Events: " + coming.length() + " reminders given, " + (DoseAlarms.exact(context) ? "on time." : "inexact (no \"Alarms & reminders\")."));
+        Log.i(DoseAlarms.TAG, "Events: " + coming.length() + " reminders given, " + armed.size() + " alarms set, " + (DoseAlarms.exact(context) ? "on time." : "inexact (no \"Alarms & reminders\")."));
     }
 
-    /** The alarms given again from the list kept: Android forgets them when it restarts. One whose time went by rings at once: Rust says whether it still makes sense. */
+    /** An alarm to set: its reminder's key, and when (Unix ms). */
+    static final class Arm
+    {
+        final String key;
+        final long at;
+
+        Arm(String key, long at)
+        {
+            this.key = key;
+            this.at = at;
+        }
+    }
+
+    /** Whether a reminder of the list rang and was answered (`done`): kept while Rust lists it, never set again. */
+    static final String DONE = "done";
+
+    /**
+     * The list kept once Rust gives `coming` (`set`), and the alarms to set
+     * for it, put in `armed`: a reminder new to the list, at its time (one
+     * past rings at once: Rust says whether it still makes sense); one kept
+     * already, at a time Rust moved into the future; never one kept already
+     * again in the past: it rang already, or rings at the time `again` gave
+     * it, and keeps that time and whether it is done. So a list given again
+     * and again with a past reminder in it (the end of work's, while its ten
+     * minutes last) never rings it again and again. Pure, checked on a JVM
+     * (android/jvm-checks/DayNotesCheck.java).
+     *
+     * @param kept the list kept until now
+     * @param coming the list Rust gives
+     * @param now the time now (Unix ms)
+     * @param armed the alarms to set, added to
+     * @return the list to keep
+     */
+    static JSONArray merged(JSONArray kept, JSONArray coming, long now, List<Arm> armed)
+    {
+        Map<String, JSONObject> before = new HashMap<>();
+        for (int i = 0; i < kept.length(); i++) {
+            JSONObject reminder = kept.optJSONObject(i);
+            if (!key(reminder).isEmpty())
+                before.put(key(reminder), reminder);
+        }
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < coming.length(); i++) {
+            JSONObject reminder = coming.optJSONObject(i);
+            if (reminder == null)
+                continue;
+            String key = key(reminder);
+            long at = reminder.optLong("at");
+            JSONObject old = before.get(key);
+            if (old != null && at <= now) {
+                JSONObject carried = copied(reminder);
+                put(carried, "at", old.optLong("at"));
+                if (old.optBoolean(DONE))
+                    put(carried, DONE, true);
+                out.put(carried);
+                continue;
+            }
+            out.put(reminder);
+            if (!key.isEmpty() && at > 0)
+                armed.add(new Arm(key, at));
+        }
+        return out;
+    }
+
+    /**
+     * The list with `key` asked about again at `at` (`again`), set again,
+     * not done. Pure (DayNotesCheck).
+     *
+     * @param kept the list kept
+     * @param key the reminder's key
+     * @param at when (Unix ms)
+     * @return the list to keep
+     */
+    static JSONArray asked(JSONArray kept, String key, long at)
+    {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < kept.length(); i++) {
+            JSONObject reminder = copied(kept.optJSONObject(i));
+            if (key.equals(key(reminder))) {
+                put(reminder, "at", at);
+                reminder.remove(DONE);
+            }
+            out.put(reminder);
+        }
+        return out;
+    }
+
+    /**
+     * The list with `key` done with (`done`): kept, marked, while Rust lists
+     * it, so that it is never set again; gone with the next list without it.
+     * Pure (DayNotesCheck).
+     *
+     * @param kept the list kept
+     * @param key the reminder's key
+     * @return the list to keep
+     */
+    static JSONArray answered(JSONArray kept, String key)
+    {
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < kept.length(); i++) {
+            JSONObject reminder = copied(kept.optJSONObject(i));
+            if (key.equals(key(reminder)))
+                put(reminder, DONE, true);
+            out.put(reminder);
+        }
+        return out;
+    }
+
+    /** A copy of `reminder`, or an empty one. */
+    private static JSONObject copied(JSONObject reminder)
+    {
+        try {
+            return reminder == null ? new JSONObject() : new JSONObject(reminder.toString());
+        } catch (JSONException e) {
+            return new JSONObject();
+        }
+    }
+
+    /** The alarms given again from the list kept: Android forgets them when it restarts. One whose time went by rings at once: Rust says whether it still makes sense. Those done with stay unset. */
     static synchronized void restore(Context context, String why)
     {
         JSONArray coming = list(context);
@@ -143,25 +268,14 @@ final class EventAlarms
     /** A reminder asked about again at `at`: held now (you sleep), still worth telling then. */
     static synchronized void again(Context context, String key, long at)
     {
-        JSONArray coming = list(context);
-        for (int i = 0; i < coming.length(); i++) {
-            JSONObject reminder = coming.optJSONObject(i);
-            if (key.equals(key(reminder)))
-                put(reminder, "at", at);
-        }
-        kept(context).edit().putString(LIST, coming.toString()).commit();
+        kept(context).edit().putString(LIST, asked(list(context), key, at).toString()).commit();
         alarm(context, key, at);
     }
 
-    /** A reminder done with (told, gone): out of the list, not to ring again after a restart. */
+    /** A reminder done with (told, gone): marked, not to ring again, after a restart neither (`answered`). */
     static synchronized void done(Context context, String key)
     {
-        JSONArray coming = list(context);
-        JSONArray left = new JSONArray();
-        for (int i = 0; i < coming.length(); i++)
-            if (!key.equals(key(coming.optJSONObject(i))))
-                left.put(coming.opt(i));
-        kept(context).edit().putString(LIST, left.toString()).commit();
+        kept(context).edit().putString(LIST, answered(list(context), key).toString()).commit();
     }
 
     private static void schedule(Context context, JSONArray coming)
@@ -170,7 +284,7 @@ final class EventAlarms
             JSONObject reminder = coming.optJSONObject(i);
             String key = key(reminder);
             long at = reminder == null ? 0 : reminder.optLong("at");
-            if (!key.isEmpty() && at > 0)
+            if (!key.isEmpty() && at > 0 && !reminder.optBoolean(DONE))
                 alarm(context, key, at);
         }
     }

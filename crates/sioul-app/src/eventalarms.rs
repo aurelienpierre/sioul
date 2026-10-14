@@ -205,14 +205,22 @@ fn day_note_json(key: &str, title: &str, body: &str, offered: &[crate::reviews::
 }
 
 /// When a reminder held now may come: when the time now ends (waking, the
-/// end of free time, the hours' end); while a layer holds it (a slot of time
-/// for you, do-not-disturb) or the end is unknown (a pause), in a quarter of
-/// an hour (Unix seconds).
+/// end of free time, the hours' end), a minute on at the soonest; while a
+/// layer holds it (a slot of time for you, do-not-disturb) or the end is
+/// unknown (a pause), at the next quarter of an hour (Unix seconds). In
+/// steps, never "a minute from now": the list given to Java stays the same
+/// from one call to the next, so it is not given again, its alarms set again,
+/// every second.
 fn again_at(holds: &Holds, stamp: i64) -> i64 {
     match holds.until {
-        Some(until) if !holds.now.slot && !holds.now.dnd => until.max(stamp + 60),
-        _ => stamp + AGAIN,
+        Some(until) if !holds.now.slot && !holds.now.dnd => until.max(step_after(stamp, 60)),
+        _ => step_after(stamp, AGAIN),
     }
+}
+
+/// The first multiple of `step` seconds after `stamp`.
+fn step_after(stamp: i64, step: i64) -> i64 {
+    (stamp.div_euclid(step) + 1) * step
 }
 
 /// At a reminder's time (`EventAlarms`): {"shown": true} once told here; or
@@ -298,8 +306,8 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
 }
 
 /// What a notification tapped while Sioul was away opens, once: ("event",
-/// its file), ("porch", ""), a closing sheet ("review", "work" or "night"),
-/// or a block's question ("need", its key).
+/// its file), ("porch", ""), a closing sheet ("review", "work" or "night",
+/// with its day: "work:2026-10-14"), or a block's question ("need", its key).
 pub(crate) fn opened() -> Option<(String, String)> {
     #[cfg(target_os = "android")]
     {
@@ -321,7 +329,10 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     let key = said["key"].as_str().unwrap_or_default();
     let kind = said["kind"].as_str().filter(|kind| match *kind {
         "event" | "porch" | "need" => true,
-        "review" => key == "work" || key == "night",
+        "review" => {
+            let (sheet, day) = key.split_once(':').map_or((key, None), |(sheet, day)| (sheet, Some(day)));
+            matches!(sheet, "work" | "night") && day.is_none_or(|day| day.parse::<jiff::civil::Date>().is_ok())
+        }
         _ => false,
     })?;
     Some((kind.to_string(), key.to_string()))
@@ -340,6 +351,14 @@ mod tests {
         assert_eq!(again_at(&usual(Wait::Free { until: stamp + 600 }), stamp), stamp + 600, "at the end of free time");
         assert_eq!(again_at(&usual(Wait::Free { until: stamp }), stamp), stamp + 60, "never at once again");
         assert_eq!(again_at(&usual(Wait::Paused), stamp), stamp + AGAIN);
+        // In steps: the same from one second to the next, so the list given to Java stays the same.
+        for later in 0..AGAIN {
+            assert_eq!(again_at(&usual(Wait::Paused), stamp + later), stamp + AGAIN, "{later} s on");
+        }
+        for later in 0..60 {
+            assert_eq!(again_at(&usual(Wait::Free { until: stamp }), stamp + later), stamp + 60, "{later} s on");
+        }
+        assert_eq!(again_at(&usual(Wait::Paused), stamp + AGAIN), stamp + 2 * AGAIN, "never now");
         // A reminder's alarm: its time; due and free, at once; held (a train after waking), at waking.
         let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until) };
         let night = usual(Wait::Sleep { from: stamp - 8 * 3600, until: stamp + 900 });
@@ -364,6 +383,9 @@ mod tests {
         assert_eq!(of(r#"{"kind":"need","key":"sleep"}"#), Some(("need".into(), "sleep".into())));
         assert_eq!(of(r#"{"kind":"event","key":"work/1.ics"}"#), Some(("event".into(), "work/1.ics".into())));
         assert_eq!(of(r#"{"kind":"porch"}"#), Some(("porch".into(), String::new())));
+        assert_eq!(of(r#"{"kind":"review","key":"work:2026-10-14"}"#), Some(("review".into(), "work:2026-10-14".into())));
+        assert_eq!(of(r#"{"kind":"review","key":"night:2026-10-14"}"#), Some(("review".into(), "night:2026-10-14".into())));
+        assert_eq!(of(r#"{"kind":"review","key":"work:yesterday"}"#), None);
         assert_eq!(of(r#"{"kind":"review","key":"settings"}"#), None);
         assert_eq!(of(r#"{"kind":"settings:words","key":""}"#), None);
         assert_eq!(of(r#"{"key":"work"}"#), None);
@@ -407,9 +429,9 @@ mod tests {
         let words = serde_json::json!({ "day": en.text("review-channel", None) });
         let offer = |label: &str, kind: &'static str, key: &str| crate::reviews::Offered { label: en.text(label, None), kind, key: key.into() };
         let until = 1_792_000_000;
-        let work = day_note_json("day:work:2026-10-14", &en.text("review-notice-title", None), &en.text("review-notice-text", None), &[offer("review-close-work", "review", "work")], until, words.clone());
+        let work = day_note_json("day:work:2026-10-14", &en.text("review-notice-title", None), &en.text("review-notice-text", None), &[offer("review-close-work", "review", "work:2026-10-14")], until, words.clone());
         assert_eq!(work, java("WORK"));
-        let night = day_note_json("day:night:2026-10-14", "Wind down", "22:30", &[offer("review-close-night", "review", "night"), offer("need-open", "need", "sleep")], until, words.clone());
+        let night = day_note_json("day:night:2026-10-14", "Wind down", "22:30", &[offer("review-close-night", "review", "night:2026-10-14"), offer("need-open", "need", "sleep")], until, words.clone());
         assert_eq!(night, java("NIGHT"));
         let given = day_note_json("day:night:2026-10-14", "Wind down", "22:30", &[offer("need-open", "need", "sleep")], until, words);
         assert_eq!(given, java("GIVEN"));

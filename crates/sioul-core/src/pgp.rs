@@ -263,37 +263,100 @@ fn write_key(path: &std::path::Path, armored: &[u8]) -> Result<(), String> {
 
 /// The certificates of `bytes` (armored or binary), read, not kept.
 pub fn certificates_in(bytes: &[u8]) -> Vec<Cert> {
-    CertParser::from_bytes(&minimal_mpis(bytes)).map(|parser| parser.filter_map(Result::ok).collect()).unwrap_or_default()
+    certificates_of(bytes).unwrap_or_default()
+}
+
+/// The certificates among `bytes` (armored or binary, one or several), as a
+/// certificate from outside is read everywhere here (a file, GnuPG, a
+/// server, a message): read as they came, and again with their signatures'
+/// numbers written shortest (`minimal_mpis`), merged by fingerprint, in the
+/// order they came; so the repair only ever adds, never takes a certificate
+/// or a part away. Sequoia's words when neither reading reads.
+pub fn certificates_of(bytes: &[u8]) -> Result<Vec<Cert>, String> {
+    let read = |bytes: &[u8]| CertParser::from_bytes(bytes).map(|parser| parser.filter_map(Result::ok).collect::<Vec<Cert>>()).map_err(|e| e.to_string());
+    let as_they_came = read(bytes);
+    let shortest = match minimal_mpis(bytes) {
+        std::borrow::Cow::Borrowed(_) => return as_they_came,
+        std::borrow::Cow::Owned(repaired) => read(&repaired),
+    };
+    let (mut certs, shortest) = match (as_they_came, shortest) {
+        (Ok(certs), Ok(shortest)) => (certs, shortest),
+        (Ok(certs), Err(_)) => return Ok(certs),
+        (Err(_), shortest) => return shortest,
+    };
+    for cert in shortest {
+        match certs.iter().position(|kept| kept.fingerprint() == cert.fingerprint()) {
+            Some(index) => {
+                // The same key read both ways: every component either reading found.
+                if let Ok(merged) = certs[index].clone().merge_public_and_secret(cert) {
+                    certs[index] = merged;
+                }
+            }
+            None => certs.push(cert),
+        }
+    }
+    Ok(certs)
 }
 
 /// `bytes` (armored or binary) with the numbers of each signature written in
-/// their shortest form, as RFC 9580 (3.2) asks and Sequoia insists: read
-/// that way wherever a certificate comes from outside (a file, GnuPG, a
-/// server, a message). GnuPG 2.4.4, Ubuntu 24.04's, writes about one key
-/// signature in 128 with a number one octet too long (a leading zero octet
-/// counted in its length); Sequoia then read that signature as none, and
-/// the subkey it binds, or the whole key, as missing. A signature's numbers
-/// are not part of what it signs: written shorter they are the same numbers,
-/// and Sequoia still checks the signature. The bytes as they came when none
+/// their shortest form, as RFC 9580 (3.2) asks and Sequoia insists
+/// (`certificates_of` reads with it). GnuPG 2.4.4, Ubuntu 24.04's, writes
+/// about one key signature in 128 with a number one octet too long (a
+/// leading zero octet counted in its length); Sequoia then read that
+/// signature as none, and the subkey it binds, or the whole key, as missing.
+/// A signature's numbers are not part of what it signs: written shorter they
+/// are the same numbers, and Sequoia still checks the signature. Only ever
+/// shorter: a length said too short is left as it came. Armor is read block
+/// by block, every key block kept, in order. The bytes as they came when none
 /// needed it, or when they do not read as packets of known length; armored
 /// bytes come back binary once changed, which every reader here takes.
 pub fn minimal_mpis(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
     use std::borrow::Cow;
-    // A binary packet starts with its tag's high bit set; anything else may be armor.
-    let binary: Cow<'_, [u8]> = if bytes.first().is_some_and(|b| b & 0x80 != 0) {
-        Cow::Borrowed(bytes)
-    } else {
-        let mut reader = openpgp::armor::Reader::from_bytes(bytes, openpgp::armor::ReaderMode::Tolerant(None));
-        let mut out = Vec::new();
-        if std::io::Read::read_to_end(&mut reader, &mut out).is_err() || out.is_empty() {
+    // A binary packet starts with its tag's high bit set: the packets as they come.
+    if bytes.first().is_some_and(|b| b & 0x80 != 0) {
+        return shortened(bytes).map_or(Cow::Borrowed(bytes), Cow::Owned);
+    }
+    // Armor: each key block on its own, dearmored, then shortened where it
+    // needs it; every one kept, as Sequoia reads them all.
+    let mut out = Vec::new();
+    let mut changed = false;
+    for block in armored_keys(bytes) {
+        let mut reader = openpgp::armor::Reader::from_bytes(block, openpgp::armor::ReaderMode::Tolerant(None));
+        let mut binary = Vec::new();
+        if std::io::Read::read_to_end(&mut reader, &mut binary).is_err() || binary.is_empty() {
             return Cow::Borrowed(bytes);
         }
-        Cow::Owned(out)
-    };
-    match shortened(&binary) {
-        Some(repaired) => Cow::Owned(repaired),
-        None => Cow::Borrowed(bytes),
+        match shortened(&binary) {
+            Some(shorter) => {
+                out.extend_from_slice(&shorter);
+                changed = true;
+            }
+            None => out.extend_from_slice(&binary),
+        }
     }
+    if changed { Cow::Owned(out) } else { Cow::Borrowed(bytes) }
+}
+
+/// The armored key blocks of `text`, in order: each from its "-----BEGIN PGP
+/// PUBLIC KEY BLOCK-----" (or PRIVATE) to the end of its "-----END PGP" line.
+/// What lies around or between them is left out, a message's or a
+/// signature's block among it.
+fn armored_keys(text: &[u8]) -> Vec<&[u8]> {
+    const BEGIN: &[u8] = b"-----BEGIN PGP ";
+    const END: &[u8] = b"-----END PGP ";
+    let find = |from: usize, needle: &[u8]| text.get(from..).and_then(|rest| rest.windows(needle.len()).position(|window| window == needle)).map(|i| from + i);
+    let mut blocks = Vec::new();
+    let mut at = 0;
+    while let Some(begin) = find(at, BEGIN) {
+        let Some(end) = find(begin + BEGIN.len(), END) else { break };
+        let line_end = text[end..].iter().position(|b| *b == b'\n').map_or(text.len(), |i| end + i + 1);
+        let kind = &text[begin + BEGIN.len()..];
+        if kind.starts_with(b"PUBLIC KEY BLOCK-----") || kind.starts_with(b"PRIVATE KEY BLOCK-----") {
+            blocks.push(&text[begin..line_end]);
+        }
+        at = line_end;
+    }
+    blocks
 }
 
 /// The packets of `binary` with each version 4 signature's numbers in their
@@ -347,8 +410,12 @@ fn packet_at(bytes: &[u8], at: usize) -> Option<(u8, std::ops::Range<usize>)> {
 }
 
 /// A version 4 signature's body with its numbers in their shortest form (no
-/// leading zero bits, RFC 9580, 3.2); none when they were, or when its
-/// algorithm's are not numbers (Ed25519's own octets) or do not read whole.
+/// leading zero bits, RFC 9580, 3.2), and those of a signature embedded in
+/// its unhashed area (a signing subkey's back-signature, where GnuPG writes
+/// it); never anything in its hashed area, which the signature covers. None
+/// when nothing needed it, when its algorithm's are not numbers (Ed25519's own
+/// octets) or do not read whole, or when a length is said too short: only
+/// ever shorter, as GnuPG's fault is.
 fn signature_shortened(body: &[u8]) -> Option<Vec<u8>> {
     let numbers = match *body.get(2)? {
         // RSA.
@@ -357,27 +424,80 @@ fn signature_shortened(body: &[u8]) -> Option<Vec<u8>> {
         16 | 17 | 19 | 20 | 22 => 2,
         _ => return None,
     };
-    // Version, type, the key's and the hash's algorithms, the two areas of
-    // subpackets, each after its length, then the hash's first two octets.
-    let mut at = 4;
-    for _ in 0..2 {
-        let length = usize::from(u16::from_be_bytes(body.get(at..at + 2)?.try_into().ok()?));
-        at = at.checked_add(2 + length)?;
-    }
+    let length_at = |at: usize| body.get(at..at + 2).map(|two| usize::from(u16::from_be_bytes([two[0], two[1]])));
+    // Version, type, the key's and the hash's algorithms, then the hashed
+    // area after its length: as it came.
+    let unhashed = 4usize.checked_add(2 + length_at(4)?)?;
+    let mut out = body.get(..unhashed)?.to_vec();
+    // The unhashed area, its embedded signatures shortened.
+    let area = body.get(unhashed + 2..unhashed + 2 + length_at(unhashed)?)?;
+    let (area_out, mut changed) = match embedded_shortened(area) {
+        Some(shorter) => (shorter, true),
+        None => (area.to_vec(), false),
+    };
+    out.extend_from_slice(&u16::try_from(area_out.len()).ok()?.to_be_bytes());
+    out.extend_from_slice(&area_out);
+    // The hash's first two octets, then the numbers.
+    let mut at = unhashed + 2 + area.len();
+    out.extend_from_slice(body.get(at..at + 2)?);
     at += 2;
-    let mut out = body.get(..at)?.to_vec();
-    let mut changed = false;
     for _ in 0..numbers {
-        let bits = usize::from(u16::from_be_bytes(body.get(at..at + 2)?.try_into().ok()?));
+        let bits = length_at(at)?;
         let value = body.get(at + 2..at + 2 + bits.div_ceil(8))?;
         at += 2 + value.len();
         let value = &value[value.iter().position(|b| *b != 0).unwrap_or(value.len())..];
         let shortest = value.first().map_or(0, |first| value.len() * 8 - first.leading_zeros() as usize);
-        changed |= shortest != bits;
+        if shortest > bits {
+            return None;
+        }
+        changed |= shortest < bits;
         out.extend_from_slice(&u16::try_from(shortest).ok()?.to_be_bytes());
         out.extend_from_slice(value);
     }
     (changed && at == body.len()).then_some(out)
+}
+
+/// A signature's unhashed area (RFC 9580, 5.2.3.7) with each embedded
+/// signature (subpacket 32) shortened (`signature_shortened`), its length
+/// said again; none when none needed it, or when the area does not read as
+/// subpackets.
+fn embedded_shortened(area: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(area.len());
+    let mut changed = false;
+    let mut at = 0;
+    while at < area.len() {
+        let (start, length) = match *area.get(at)? {
+            first @ 0..=191 => (at + 1, usize::from(first)),
+            first @ 192..=254 => (at + 2, ((usize::from(first) - 192) << 8) + usize::from(*area.get(at + 1)?) + 192),
+            255 => (at + 5, usize::try_from(u32::from_be_bytes(area.get(at + 1..at + 5)?.try_into().ok()?)).ok()?),
+        };
+        // Its type (the critical bit aside), then its body.
+        let subpacket = area.get(start..start.checked_add(length)?)?;
+        let (&kind, inner) = subpacket.split_first()?;
+        match (kind & 0x7F == 32 && inner.first() == Some(&4)).then(|| signature_shortened(inner)).flatten() {
+            Some(shorter) => {
+                put_subpacket_length(&mut out, 1 + shorter.len());
+                out.push(kind);
+                out.extend_from_slice(&shorter);
+                changed = true;
+            }
+            None => out.extend_from_slice(&area[at..start + length]),
+        }
+        at = start + length;
+    }
+    changed.then_some(out)
+}
+
+/// A subpacket's length (RFC 9580, 5.2.3.7), in one, two or five octets.
+fn put_subpacket_length(out: &mut Vec<u8>, length: usize) {
+    match length {
+        0..=191 => out.push(length as u8),
+        192..=16_319 => out.extend_from_slice(&[((length - 192) >> 8) as u8 + 192, (length - 192) as u8]),
+        _ => {
+            out.push(255);
+            out.extend_from_slice(&(length as u32).to_be_bytes());
+        }
+    }
 }
 
 /// A packet in OpenPGP's format: its tag, its length, its body.
@@ -396,7 +516,7 @@ fn put_packet(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
 
 /// Imports the keys of a file: armored or binary, public or secret.
 pub fn import(bytes: &[u8]) -> Result<Vec<KeySummary>, String> {
-    let certs: Vec<Cert> = CertParser::from_bytes(&minimal_mpis(bytes)).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+    let certs = certificates_of(bytes)?;
     if certs.is_empty() {
         return Err("no OpenPGP key".into());
     }
@@ -882,9 +1002,7 @@ fn zbase32(bytes: &[u8]) -> String {
 
 /// Keeps keys found for `address`: public parts only, and only those naming it.
 pub fn learn(bytes: &[u8], address: &str) -> Vec<KeySummary> {
-    CertParser::from_bytes(&minimal_mpis(bytes))
-        .map(|parser| parser.filter_map(Result::ok).filter(|c| names(c, address)).filter_map(|c| store(c.strip_secret_key_material()).ok()).collect())
-        .unwrap_or_default()
+    certificates_of(bytes).unwrap_or_default().into_iter().filter(|c| names(c, address)).filter_map(|c| store(c.strip_secret_key_material()).ok()).collect()
 }
 
 /// What a protected message showed when opened, for the reader's line.
@@ -1010,7 +1128,8 @@ pub fn autocrypt_key(header: &str, from: &str) -> Option<Cert> {
         return None;
     }
     let bytes = crate::lines::base64_decode(&keydata?)?;
-    let cert = Cert::from_bytes(&minimal_mpis(&bytes)).ok()?;
+    // One certificate, as `Cert::from_bytes` reads it.
+    let [cert] = <[Cert; 1]>::try_from(certificates_of(&bytes).ok()?).ok()?;
     names(&cert, from).then_some(cert)
 }
 
@@ -1338,31 +1457,7 @@ mod tests {
         let armored = String::from_utf8(alice.armored().to_vec().unwrap()).unwrap();
         assert!(matches!(minimal_mpis(&binary), std::borrow::Cow::Borrowed(_)));
         assert!(matches!(minimal_mpis(armored.as_bytes()), std::borrow::Cow::Borrowed(_)));
-        // Each signature's last number one octet longer, its length said with it.
-        let mut long = Vec::new();
-        let mut signatures = 0;
-        let mut at = 0;
-        while at < binary.len() {
-            let (tag, body) = packet_at(&binary, at).unwrap();
-            let mut packet = binary[body.clone()].to_vec();
-            if tag == 2 {
-                signatures += 1;
-                let mut mpi = 4;
-                for _ in 0..2 {
-                    mpi += 2 + usize::from(u16::from_be_bytes([packet[mpi], packet[mpi + 1]]));
-                }
-                mpi += 2;
-                // EdDSA: two numbers, r then s; the last one written long.
-                mpi += 2 + usize::from(u16::from_be_bytes([packet[mpi], packet[mpi + 1]])).div_ceil(8);
-                let bits = usize::from(u16::from_be_bytes([packet[mpi], packet[mpi + 1]]));
-                let octets = bits.div_ceil(8);
-                packet.splice(mpi..mpi + 2, (octets as u16 * 8 + 8).to_be_bytes());
-                packet.insert(mpi + 2, 0);
-            }
-            put_packet(&mut long, tag, &packet);
-            at = body.end;
-        }
-        assert!(signatures >= 2);
+        let long = written_long(&binary);
         assert!(Cert::from_bytes(&long).ok().is_none_or(|strict| securitykey::parts(&strict).is_empty()), "Sequoia alone refuses what is written long");
         assert_eq!(minimal_mpis(&long).as_ref(), binary.as_slice());
         assert_eq!(certificates_in(&long), [alice]);
@@ -1372,5 +1467,197 @@ mod tests {
         let cut = &long[..long.len() - 5];
         assert_eq!(minimal_mpis(cut).as_ref(), cut);
         assert!(matches!(minimal_mpis(&[]), std::borrow::Cow::Borrowed(_)));
+    }
+
+    /// Where a version 4 signature body's numbers begin: past its two areas
+    /// and the hash's first two octets.
+    fn numbers_at(body: &[u8]) -> usize {
+        let mut at = 4;
+        for _ in 0..2 {
+            at += 2 + usize::from(u16::from_be_bytes([body[at], body[at + 1]]));
+        }
+        at + 2
+    }
+
+    /// `body` (a signature's) with its last number written anew: `new` gets
+    /// its length in bits and the octets from it on, and gives the length to
+    /// say and the octets to write.
+    fn last_number_as(body: &[u8], new: impl Fn(usize, &[u8]) -> (usize, Vec<u8>)) -> Vec<u8> {
+        let mut at = numbers_at(body);
+        let mut last = at;
+        while at < body.len() {
+            last = at;
+            at += 2 + usize::from(u16::from_be_bytes([body[at], body[at + 1]])).div_ceil(8);
+        }
+        let bits = usize::from(u16::from_be_bytes([body[last], body[last + 1]]));
+        let (said, octets) = new(bits, &body[last + 2..]);
+        let mut out = body[..last].to_vec();
+        out.extend_from_slice(&u16::try_from(said).unwrap().to_be_bytes());
+        out.extend_from_slice(&octets);
+        out
+    }
+
+    /// GnuPG 2.4.4's fault, made by hand: a number one octet longer, a zero
+    /// first, its length said with it.
+    fn one_octet_long(bits: usize, value: &[u8]) -> (usize, Vec<u8>) {
+        let octets = bits.div_ceil(8);
+        (octets * 8 + 8, std::iter::once(0).chain(value[..octets].iter().copied()).collect())
+    }
+
+    /// The packets of `binary`, each signature's body as `each` writes it.
+    fn signatures_as(binary: &[u8], each: impl Fn(&[u8]) -> Vec<u8>) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut at = 0;
+        while at < binary.len() {
+            let (tag, body) = packet_at(binary, at).unwrap();
+            let packet = &binary[body.clone()];
+            put_packet(&mut out, tag, &if tag == 2 { each(packet) } else { packet.to_vec() });
+            at = body.end;
+        }
+        out
+    }
+
+    /// Each signature's last number written one octet longer.
+    fn written_long(binary: &[u8]) -> Vec<u8> {
+        signatures_as(binary, |body| last_number_as(body, one_octet_long))
+    }
+
+    /// Binary packets armored as a public key block.
+    fn armored_block(binary: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut writer = openpgp::armor::Writer::new(&mut out, openpgp::armor::Kind::PublicKey).unwrap();
+        writer.write_all(binary).unwrap();
+        writer.finalize().unwrap();
+        out
+    }
+
+    /// Several keys in one file, each its armored block, some needing the
+    /// repair and some not, in every order, words between them: every key
+    /// read, each whole, never fewer than Sequoia alone reads. Until 15
+    /// October 2026 a first block that needed the repair was read alone,
+    /// the next ones dropped, and a later one was not repaired.
+    #[test]
+    fn concatenated_armored_keys_are_each_read_and_repaired() {
+        let gnupg = certificates_in(GNUPG_2_4_4).remove(0);
+        let bob = key("bob@example.org").strip_secret_key_material();
+        let carol = key("carol@example.org").strip_secret_key_material();
+        let blocks: [(&Cert, Vec<u8>); 3] = [(&gnupg, GNUPG_2_4_4.to_vec()), (&bob, bob.armored().to_vec().unwrap()), (&carol, armored_block(&written_long(&carol.to_vec().unwrap())))];
+        let orders: [&[usize]; 12] = [&[0, 1], &[1, 0], &[1, 2], &[2, 1], &[0, 2], &[2, 0], &[0, 1, 2], &[0, 2, 1], &[1, 0, 2], &[1, 2, 0], &[2, 0, 1], &[2, 1, 0]];
+        for order in orders {
+            let mut file = Vec::new();
+            for &i in order {
+                file.extend_from_slice(&blocks[i].1);
+                file.extend_from_slice(b"\nSomething said between the keys.\n");
+            }
+            let read = certificates_of(&file).unwrap();
+            let fingerprints: Vec<Fingerprint> = read.iter().map(Cert::fingerprint).collect();
+            let wanted: Vec<Fingerprint> = order.iter().map(|&i| blocks[i].0.fingerprint()).collect();
+            assert_eq!(fingerprints, wanted, "{order:?}");
+            for (cert, &i) in read.iter().zip(order) {
+                assert_eq!(securitykey::parts(cert), securitykey::parts(blocks[i].0), "{order:?}: key {i} whole");
+            }
+            let alone: Vec<Fingerprint> = CertParser::from_bytes(&file).unwrap().filter_map(Result::ok).map(|c| c.fingerprint()).collect();
+            assert!(alone.iter().all(|f| fingerprints.contains(f)), "{order:?}: never fewer than Sequoia alone");
+            assert_eq!(matches!(minimal_mpis(&file), std::borrow::Cow::Owned(_)), order.contains(&0) || order.contains(&2), "{order:?}");
+        }
+        // Bob's alone, nothing to repair: as it came.
+        assert!(matches!(minimal_mpis(&blocks[1].1), std::borrow::Cow::Borrowed(_)));
+    }
+
+    /// A key made by GnuPG 2.4.9 with a subkey that signs: its binding carries
+    /// the subkey's own signature back (the back-signature) in its unhashed area.
+    const SIGNING_SUBKEY: &[u8] = include_bytes!("../tests/fixtures/pgp/gnupg-2.4.9-signing-subkey.asc");
+
+    /// A signature `body` with each signature embedded in its unhashed area
+    /// written as `each` says; with `to_hashed`, moved into its hashed area.
+    fn embedded_as(body: &[u8], each: impl Fn(&[u8]) -> Vec<u8>, to_hashed: bool) -> Vec<u8> {
+        let hashed_end = 6 + usize::from(u16::from_be_bytes([body[4], body[5]]));
+        let area_len = usize::from(u16::from_be_bytes([body[hashed_end], body[hashed_end + 1]]));
+        let area = &body[hashed_end + 2..hashed_end + 2 + area_len];
+        let (mut kept, mut embedded) = (Vec::new(), Vec::new());
+        let mut at = 0;
+        while at < area.len() {
+            // These subpackets are short: one octet of length.
+            let length = usize::from(area[at]);
+            assert!(length < 192);
+            let (kind, inner) = (area[at + 1], &area[at + 2..at + 1 + length]);
+            if kind & 0x7F == 32 {
+                let written = each(inner);
+                put_subpacket_length(&mut embedded, 1 + written.len());
+                embedded.push(kind);
+                embedded.extend_from_slice(&written);
+            } else {
+                kept.extend_from_slice(&area[at..at + 1 + length]);
+            }
+            at += 1 + length;
+        }
+        assert!(!embedded.is_empty(), "a back-signature there");
+        let (hashed, unhashed) = if to_hashed { ([&body[6..hashed_end], &embedded[..]].concat(), kept) } else { (body[6..hashed_end].to_vec(), [&kept[..], &embedded[..]].concat()) };
+        let mut out = body[..4].to_vec();
+        out.extend_from_slice(&u16::try_from(hashed.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(&hashed);
+        out.extend_from_slice(&u16::try_from(unhashed.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(&unhashed);
+        out.extend_from_slice(&body[hashed_end + 2 + area_len..]);
+        out
+    }
+
+    /// The binding's back-signature written long, as GnuPG 2.4.4 may write
+    /// any of its signatures: Sequoia alone drops the binding, and the
+    /// signing subkey with it; read here, the key is whole again. The same
+    /// number written long in the hashed area, which the binding signs, is
+    /// left as it came.
+    #[test]
+    fn a_back_signature_written_long_is_read_shortest_in_the_unhashed_area_only() {
+        let canonical = Cert::from_bytes(SIGNING_SUBKEY).unwrap();
+        let signs = |cert: &Cert| securitykey::parts(cert).iter().any(|part| part.role == securitykey::Role::Signing);
+        assert!(signs(&canonical));
+        let mut binary = Vec::new();
+        std::io::Read::read_to_end(&mut openpgp::armor::Reader::from_bytes(SIGNING_SUBKEY, openpgp::armor::ReaderMode::Tolerant(None)), &mut binary).unwrap();
+        let binding = |to_hashed: bool| move |body: &[u8]| if body[1] == 0x18 { embedded_as(body, |inner| last_number_as(inner, one_octet_long), to_hashed) } else { body.to_vec() };
+        let long = signatures_as(&binary, binding(false));
+        assert!(Cert::from_bytes(&long).ok().is_none_or(|strict| !signs(&strict)), "Sequoia alone drops the signing subkey");
+        assert!(matches!(minimal_mpis(&long), std::borrow::Cow::Owned(_)));
+        assert_eq!(Cert::from_bytes(minimal_mpis(&long).as_ref()).unwrap(), canonical);
+        let read = certificates_in(&long);
+        assert_eq!(read.len(), 1);
+        assert!(signs(&read[0]));
+        // In the hashed area instead: never touched.
+        let hashed = signatures_as(&binary, binding(true));
+        assert!(matches!(minimal_mpis(&hashed), std::borrow::Cow::Borrowed(_)), "the signed area as it came");
+    }
+
+    /// Only ever shorter: a number whose length is said one bit too short
+    /// (a bit past it set, which Sequoia refuses and GnuPG never writes) is
+    /// left as it came, and so is its whole signature, though another of its
+    /// numbers be written long.
+    #[test]
+    fn a_length_said_too_short_is_left_as_it_came() {
+        let dave = key("dave@example.org").strip_secret_key_material().to_vec().unwrap();
+        // The first number said a bit short in as many octets; none when it cannot be.
+        let short_first = |body: &[u8]| -> Option<Vec<u8>> {
+            let first = numbers_at(body);
+            let bits = usize::from(u16::from_be_bytes([body[first], body[first + 1]]));
+            if bits < 2 || (bits - 1).div_ceil(8) != bits.div_ceil(8) {
+                return None;
+            }
+            let mut out = body.to_vec();
+            out[first..first + 2].copy_from_slice(&u16::try_from(bits - 1).unwrap().to_be_bytes());
+            Some(out)
+        };
+        let mut checked = 0;
+        let mut at = 0;
+        while at < dave.len() {
+            let (tag, body) = packet_at(&dave, at).unwrap();
+            if let Some(short) = (tag == 2).then(|| short_first(&dave[body.clone()])).flatten() {
+                checked += 1;
+                assert_eq!(signature_shortened(&short), None, "said short: as it came");
+                assert_eq!(signature_shortened(&last_number_as(&short, one_octet_long)), None, "beside a number written long: as it came");
+            }
+            at = body.end;
+        }
+        assert!(checked > 0);
+        let short_key = signatures_as(&dave, |body| short_first(body).unwrap_or_else(|| body.to_vec()));
+        assert!(matches!(minimal_mpis(&short_key), std::borrow::Cow::Borrowed(_)));
     }
 }
