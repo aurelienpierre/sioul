@@ -1081,6 +1081,15 @@ pub(crate) fn rebuild_dose_records() -> String {
     share::rebuild(&memory_path(), &here.id, &["state/health-doses.toml"]).err().unwrap_or_default()
 }
 
+/// The same for what each device did to remind each dose
+/// (`sioul_core::dose_reminders`): one lost or broken here is read again from
+/// every device's, nothing of it taken out elsewhere.
+pub(crate) fn rebuild_dose_reminders() -> String {
+    let here = share::Here::load(&state_dir());
+    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    share::rebuild(&memory_path(), &here.id, &["state/health-reminders.toml"]).err().unwrap_or_default()
+}
+
 /// Sync apps that can be asked to look for changes now, on a phone: their
 /// package, receiver and action. The sharing never depends on it (docs/database.md,
 /// "What the sync app must do"): without one, what the other devices wrote

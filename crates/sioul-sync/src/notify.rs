@@ -62,31 +62,87 @@ pub enum Outcome {
     /// Sent, and what became of it is not known (no answer in time, the bus
     /// stalled under it, the tick done waiting): it may be on the screen. Why.
     Maybe(String),
+    /// Not sent: no longer to remind when it was about to go (marked meanwhile).
+    Gone,
+}
+
+/// What a dose's reminder records, and asks, as it goes (docs/health.md,
+/// "What became of a reminder"), so that another device knows what this one
+/// did before it reminds the dose itself: each notice recorded before it
+/// goes (`going`), what became of it after. Its own device's entry alone
+/// (`sioul_core::dose_reminders`).
+pub trait DoseRecord: Send {
+    /// A notice of the dose is about to go: recorded so first ("maybe": it
+    /// may be on the screen from now on), then its words now. `Say::Nothing`:
+    /// no longer to remind (marked, answered or reminded anywhere read here,
+    /// the doses kept elsewhere now): nothing sent, nothing more tried.
+    fn going(&mut self, going: Going) -> Say;
+    /// The notice just recorded as going was refused (the bus or the server
+    /// said no, or it could not be sent): it did not show, taken back.
+    fn refused(&mut self);
+    /// One was shown: the server answered (late, or in time).
+    fn shown(&mut self);
+    /// The first try surely did not go out: nothing was sent.
+    fn unshown(&mut self);
+    /// The tries pause, a phone's alarm due meanwhile: promised, no notice
+    /// until `until` (Unix seconds); false when no longer to remind (no more tries).
+    fn pause(&mut self, until: i64) -> bool;
+    /// No more tries (the grace's end): promised, no notice again.
+    fn over(&mut self);
+    /// Whether the dose was marked or answered on any device, as read here
+    /// now: a notice of it still shown is taken away.
+    fn settled(&mut self) -> bool;
+}
+
+/// Which notice is about to go (`DoseRecord::going`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Going {
+    /// The first try, while the tick waits: its own words.
+    First,
+    /// Shown late, the doubt first: `Late::Retry` a try after the first, or
+    /// the first once the tick stopped waiting; `Late::Unconfirmed` the first,
+    /// on the screen since its time, answered late (said again in place).
+    Late(Late),
+}
+
+/// Why a reminder shows late (`Going::Late`): its words differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Late {
+    /// Its first try could not be shown in time.
+    Retry,
+    /// It was shown in time, but not confirmed in time.
+    Unconfirmed,
+}
+
+/// What a notice about to go says (`DoseRecord::going`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Say {
+    /// Its own words, as given to `remind_dose`.
+    Own,
+    /// These words: title and body.
+    Words(String, String),
+    /// Nothing: no longer to remind.
+    Nothing,
 }
 
 /// What a dose's reminder does after its first try (`remind_dose`), Linux and
 /// the BSDs; elsewhere the first try is the only one:
-/// - not gone out: tried again on its own thread until `until` (before a
-///   phone's alarm could ring, so that what shows here reaches it first),
-///   five seconds apart, then half a minute (`again_in`);
+/// - not gone out: tried again on its own thread, the doubt first, five
+///   seconds apart, then half a minute (`again_in`), until `end` (its
+///   grace), then `DoseRecord::over`; during `quiet` (a phone's alarm rings
+///   then), none: promised before it begins (`DoseRecord::pause`), resumed
+///   after it while still to remind;
 /// - sent and not answered in time: never sent again (it may be on the
-///   screen), its answer still heard on its connection, and its button.
+///   screen), its answer still heard on its connection, however late, and
+///   its button; answered, said again in place with the doubt first.
 ///
-/// Just before a notice goes late (a try after the first, or the first once
-/// the tick stopped waiting), and once one is known shown late (answered
-/// late, or after the tick stopped waiting), `late` gives the words of a
-/// reminder shown late, the doubt said first, or none: no longer to remind
-/// (marked, reminded by another device, the doses kept elsewhere now, a
-/// phone's alarm about to ring): not sent then, or taken away, and never
-/// recorded a reminder. Known shown late and still to remind, `shown`
-/// (recorded a reminder, read after `late`, which depends on it); a try after
-/// the first sent and not answered in time, `maybe` (recorded so: a phone's
-/// alarm then says the doubt).
+/// A notice shown is taken away once its dose is marked or answered anywhere
+/// read here (`DoseRecord::settled`).
 pub struct Again {
-    pub until: std::time::Instant,
-    pub late: Box<dyn FnMut() -> Option<(String, String)> + Send>,
-    pub shown: Box<dyn FnOnce() + Send>,
-    pub maybe: Box<dyn FnOnce() + Send>,
+    pub end: std::time::Instant,
+    /// From, to, and "to" in Unix seconds (the promise's words).
+    pub quiet: Option<(std::time::Instant, std::time::Instant, i64)>,
+    pub record: Box<dyn DoseRecord>,
 }
 
 /// A dose's reminder under way (`remind_dose`): what became of its first
@@ -202,13 +258,25 @@ pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + 
     sending
 }
 
-/// Elsewhere, the reminder as `remind` shows it, its outcome known at once;
-/// no try after the first.
+/// Elsewhere, the reminder as `remind` shows it, recorded before it goes,
+/// its outcome known at once; no try after the first.
 #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
-pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + Send>), _again: Again) -> Sending {
-    Sending::known(match remind(title, body, Some(button)) {
-        Ok(()) => Outcome::Shown,
-        Err(e) => Outcome::Unshown(e),
+pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + Send>), mut again: Again) -> Sending {
+    let (title, body) = match again.record.going(Going::First) {
+        Say::Own => (title.to_string(), body.to_string()),
+        Say::Words(title, body) => (title, body),
+        Say::Nothing => return Sending::known(Outcome::Gone),
+    };
+    Sending::known(match remind(&title, &body, Some(button)) {
+        Ok(()) => {
+            again.record.shown();
+            Outcome::Shown
+        }
+        Err(e) => {
+            again.record.refused();
+            again.record.unshown();
+            Outcome::Unshown(e)
+        }
     })
 }
 
@@ -411,7 +479,7 @@ fn notify(notice: Notice, pressed: Option<Pressed>) -> Result<(), String> {
             return;
         }
         let Ok(id) = send(&bus, &notice) else { return };
-        wait_for_press(&Shown { bus, heard, replies: Rc::default(), id, capabilities: Vec::new() }, pressed);
+        wait_for_press(&Shown { bus, heard, replies: Rc::default(), id, capabilities: Vec::new() }, pressed, None);
     });
     Ok(())
 }
@@ -431,9 +499,12 @@ struct Shown {
 /// A shown notice's button waited for on its connection: `pressed` runs with
 /// the key of the first one pressed, and the wait ends then, or when the
 /// notification closes, or the connection goes. What it heard before its
-/// number was known is read now.
+/// number was known is read now. A dose's reminder (`record`) is taken away
+/// once its dose is marked or answered anywhere read here, looked at each
+/// `LOOK` (review of battery part C, the fifth review's L2).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn wait_for_press(shown: &Shown, pressed: Pressed) {
+fn wait_for_press(shown: &Shown, pressed: Pressed, mut record: Option<&mut dyn DoseRecord>) {
+    let mut looked = Instant::now();
     loop {
         for item in std::mem::take(&mut *shown.heard.borrow_mut()) {
             match item {
@@ -445,11 +516,39 @@ fn wait_for_press(shown: &Shown, pressed: Pressed) {
                 _ => {}
             }
         }
+        if let Some(record) = record.as_deref_mut()
+            && looked.elapsed() >= LOOK
+        {
+            looked = Instant::now();
+            if record.settled() {
+                if shown.id != 0 {
+                    let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (shown.id,));
+                }
+                return;
+            }
+        }
         if shown.bus.process(Duration::from_secs(1)).is_err() {
             return;
         }
     }
 }
+
+/// How often a dose's reminder still shown looks whether its dose was marked
+/// or answered elsewhere (`wait_for_press`): the sharing reads the others
+/// each minute.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android")), not(test)))]
+const LOOK: Duration = Duration::from_secs(30);
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android")), test))]
+const LOOK: Duration = Duration::from_secs(1);
+
+/// How long a dose's notice sent and not answered is still listened for
+/// (`wait_late`): its answer, however late (a bus or a server stalled for
+/// minutes, hours), says it is shown, and it is then said again in place,
+/// the doubt first, or taken away, never left in its first words after
+/// another device reminded the dose. A day: past it, the dose is long asked
+/// about as one of the past.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const LISTEN_LATE: Duration = Duration::from_secs(24 * 3600);
 
 /// The Notify call, as notify-rust's `Notification` made it, argument for
 /// argument: "Sioul", the notification it replaces (0, none), the icon, the
@@ -663,13 +762,18 @@ fn try_once(notice: &mut Notice, bus: Option<LocalConnection>, words: &mut dyn F
     }
 }
 
-/// `notice`'s words as a reminder shown late says them, from `late` now
-/// (the doubt first); false when it is no longer to remind.
+/// `notice`'s words as `record` says them now, recorded first as about to
+/// go (`DoseRecord::going`); false when it is no longer to remind.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn said_late(notice: &mut Notice, late: &mut dyn FnMut() -> Option<(String, String)>) -> bool {
-    let Some((title, body)) = late() else { return false };
-    (notice.title, notice.body) = (title, body);
-    true
+fn said_now(notice: &mut Notice, record: &mut dyn DoseRecord, going: Going) -> bool {
+    match record.going(going) {
+        Say::Own => true,
+        Say::Words(title, body) => {
+            (notice.title, notice.body) = (title, body);
+            true
+        }
+        Say::Nothing => false,
+    }
 }
 
 /// Whether the tick still waits for a first try's outcome (`Sending`).
@@ -678,109 +782,148 @@ fn waited_for(slot: &Arc<(Mutex<Slot>, Condvar)>) -> bool {
     slot.0.lock().is_ok_and(|slot| !slot.closed)
 }
 
-/// A dose reminder's first try, on its own thread: its outcome left for the
-/// tick (`told`), then as `Again` says. Sent while the tick waits, in its
-/// own words; once the tick stopped waiting, in late's (the doubt first), or
-/// not at all (no longer to remind). Shown while the tick waited: its
-/// button. Shown after: late (`shown_late`).
+/// A dose reminder's first try, on its own thread: recorded before it goes,
+/// its outcome left for the tick (`told`), then as `Again` says. Sent while
+/// the tick waits, in its own words; once the tick stopped waiting, in late
+/// words (the doubt first), or not at all (no longer to remind). Answered
+/// late, said again in place, the doubt first (`shown_late`).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn first_try(mut notice: Notice, mut again: Again, pressed: Pressed, slot: &Arc<(Mutex<Slot>, Condvar)>) {
-    let tried = try_once(&mut notice, None, &mut |notice: &mut Notice| waited_for(slot) || said_late(notice, &mut *again.late));
+    let (mut sent_late, mut went) = (false, false);
+    let tried = try_once(&mut notice, None, &mut |notice: &mut Notice| {
+        let going = if waited_for(slot) { Going::First } else { Going::Late(Late::Retry) };
+        sent_late = going != Going::First;
+        went = said_now(notice, &mut *again.record, going);
+        went
+    });
     let outcome = match &tried {
         Tried::Shown(_) => Outcome::Shown,
         Tried::Unshown(why) => Outcome::Unshown(why.clone()),
         Tried::Maybe(why, ..) => Outcome::Maybe(why.clone()),
-        // Only once the tick stopped waiting: nothing to tell, nothing shown.
-        Tried::Done => return,
+        Tried::Done => Outcome::Gone,
     };
     let waited = told(slot, outcome);
+    // Gone out in its own words and known shown only after the tick stopped
+    // waiting: on the screen since its time, its fate not said then.
+    let late = if sent_late { Late::Retry } else { Late::Unconfirmed };
     match tried {
-        Tried::Shown(shown) => {
-            if !waited {
-                shown_late(&shown, &mut notice, again);
+        Tried::Shown(mut shown) => {
+            if waited || sent_late {
+                again.record.shown();
+            } else {
+                shown_late(&mut shown, &mut notice, &mut *again.record, late);
             }
-            wait_for_press(&shown, pressed);
+            wait_for_press(&shown, pressed, Some(&mut *again.record));
         }
-        Tried::Maybe(_, shown, serial) => wait_late(shown, serial, &mut notice, again, pressed),
-        // The tick done waiting meanwhile recorded it maybe: tried again all the same, late.
-        Tried::Unshown(_) => show_again(notice, again, pressed),
+        Tried::Maybe(_, shown, serial) => wait_late(shown, serial, &mut notice, again, pressed, late),
+        Tried::Unshown(_) => {
+            if went {
+                again.record.refused();
+            }
+            again.record.unshown();
+            show_again(notice, again, pressed);
+        }
         Tried::Done => {}
     }
 }
 
 /// A notice sent and not answered in time: its answer still heard on its
-/// connection, as long as it may show (`SHOWN`), never sent again; answered,
-/// it was shown, late (`shown_late`), and its button counts; refused, it was not.
+/// connection, however late (`LISTEN_LATE`), never sent again; answered, it
+/// was shown, late (`shown_late`), and its button counts; refused, or its
+/// connection gone, it was not.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn wait_late(mut shown: Shown, serial: u32, notice: &mut Notice, again: Again, pressed: Pressed) {
-    let until = Instant::now() + Duration::from_millis(u64::from(SHOWN));
+fn wait_late(mut shown: Shown, serial: u32, notice: &mut Notice, mut again: Again, pressed: Pressed, late: Late) {
+    let until = Instant::now() + LISTEN_LATE;
     match answer_by(&shown.bus, &shown.replies, serial, until) {
         Some(Reply::Return(answer)) => {
             shown.id = answer.read1::<u32>().unwrap_or(0);
-            shown_late(&shown, notice, again);
-            wait_for_press(&shown, pressed);
+            shown_late(&mut shown, notice, &mut *again.record, late);
+            wait_for_press(&shown, pressed, Some(&mut *again.record));
         }
         Some(Reply::Error(_)) | None => {}
     }
 }
 
-/// A dose's reminder known shown late (after the tick stopped waiting, or
-/// answered late). Its words read first (`Again::late`; they depend on the
-/// record, which says it reminded right after): still to remind, it is
-/// recorded a reminder (`Again::shown`) and said again in place with the
-/// doubt first, unless it says so already or was closed meanwhile (seen);
-/// no longer to remind (marked, reminded elsewhere, kept elsewhere now, a
-/// phone's alarm about to ring), it is taken away, never recorded a
-/// reminder: what takes it up is not told it was reminded. A press made
-/// before still counts (`wait_for_press`, after).
+/// A dose's reminder known shown late (answered late, or after the tick
+/// stopped waiting). Its words read first (`DoseRecord::going`; they depend
+/// on the record, which says it shown right after): still to remind, it is
+/// recorded shown (`DoseRecord::shown`) and said again in place with the
+/// doubt first (`Late::Unconfirmed`: "was not confirmed in time"), unless it
+/// says so already, was closed meanwhile (seen), or its "Taken" was pressed
+/// meanwhile (the press runs after, `wait_for_press`: never shown again over
+/// it). The server's answer to that Notify gives its number from then on
+/// (GNOME gives a new one to a notice no longer shown). No longer to remind
+/// (marked, reminded elsewhere, kept elsewhere now), it is taken away, never
+/// recorded shown: another device reads it sent, maybe shown, and says so.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn shown_late(shown: &Shown, notice: &mut Notice, again: Again) {
+fn shown_late(shown: &mut Shown, notice: &mut Notice, record: &mut dyn DoseRecord, late: Late) {
     use dbus::blocking::BlockingSender;
-    let Again { mut late, shown: record, .. } = again;
+    let id = shown.id;
+    let pressed = shown.heard.borrow().iter().any(|heard| matches!(heard, Heard::Pressed(at, _) if *at == id));
+    let closed = shown.heard.borrow().iter().any(|heard| matches!(heard, Heard::Closed(at) if *at == id));
     let before = (notice.title.clone(), notice.body.clone());
-    if !said_late(notice, &mut *late) {
-        if shown.id != 0 {
-            let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (shown.id,));
+    if !said_now(notice, record, Going::Late(late)) {
+        if id != 0 && !pressed {
+            let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (id,));
         }
         return;
     }
-    record();
-    let closed = shown.heard.borrow().iter().any(|heard| matches!(heard, Heard::Closed(at) if *at == shown.id));
-    if shown.id != 0 && !closed && (&notice.title, &notice.body) != (&before.0, &before.1) {
-        let _ = shown.bus.send_with_reply_and_block(notify_message(notice, shown.id, &shown.capabilities), ASKED);
+    record.shown();
+    if id != 0 && !closed && !pressed && (&notice.title, &notice.body) != (&before.0, &before.1)
+        && let Ok(answer) = shown.bus.send_with_reply_and_block(notify_message(notice, id, &shown.capabilities), ASKED)
+        && let Ok(number) = answer.read1::<u32>()
+        && number != 0
+    {
+        shown.id = number;
     }
 }
 
-/// A dose's reminder tried again after a first try that did not go out
-/// (`Again`), until `until`: the bus first (a stalled one refuses at once,
-/// `bus`, and nothing else is read meanwhile), then the server, its words
-/// read last, just before it goes, the doubt first (none: no longer to
-/// remind, and no more tries). Sent and not answered in time: never again
-/// (`wait_late`).
+/// A dose's reminder tried again after a first try that did not go out, the
+/// doubt first, until `Again::end`, then no more (`DoseRecord::over`): the
+/// bus first (a stalled one refuses at once, `bus`, and nothing else is read
+/// meanwhile), then the server, its words read last, just before it goes,
+/// recorded as going (none: no longer to remind, and no more tries). None
+/// during `Again::quiet` (a phone's alarm rings then): promised before it
+/// begins (`DoseRecord::pause`), the tries resumed after it while still to
+/// remind. Sent and not answered in time: never again (`wait_late`).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn show_again(mut notice: Notice, again: Again, pressed: Pressed) {
-    let Again { until, mut late, shown: record, maybe } = again;
+fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed) {
     let mut tries = 0;
     loop {
         let wait = again_in(tries);
         tries += 1;
-        if Instant::now() + wait >= until {
+        let next = Instant::now() + wait;
+        if let Some((from, to, until)) = again.quiet
+            && next >= from
+        {
+            again.quiet = None;
+            if !again.record.pause(until) {
+                return;
+            }
+            std::thread::sleep(to.saturating_duration_since(Instant::now()));
+            tries = 0;
+            continue;
+        }
+        if next >= again.end {
+            again.record.over();
             return;
         }
         std::thread::sleep(wait);
         let Ok(bus) = session_within(crate::bus::SETUP) else { continue };
-        let tried = try_once(&mut notice, Some(bus), &mut |notice: &mut Notice| said_late(notice, &mut *late));
+        let mut went = false;
+        let tried = try_once(&mut notice, Some(bus), &mut |notice: &mut Notice| {
+            went = said_now(notice, &mut *again.record, Going::Late(Late::Retry));
+            went
+        });
         match tried {
             Tried::Shown(shown) => {
-                record();
-                return wait_for_press(&shown, pressed);
+                again.record.shown();
+                return wait_for_press(&shown, pressed, Some(&mut *again.record));
             }
+            Tried::Unshown(_) if went => again.record.refused(),
             Tried::Unshown(_) => {}
             Tried::Done => return,
-            Tried::Maybe(_, shown, serial) => {
-                maybe();
-                return wait_late(shown, serial, &mut notice, Again { until, late, shown: record, maybe: Box::new(|| {}) }, pressed);
-            }
+            Tried::Maybe(_, shown, serial) => return wait_late(shown, serial, &mut notice, again, pressed, Late::Retry),
         }
     }
 }
@@ -1006,6 +1149,12 @@ fn served(lasting: &mut Lasting, asked: &Receiver<Change>, on_action: &dyn Fn(&s
     }
 }
 
+/// How long a lasting notification taken away while its Notify is not answered
+/// waits for that answer, its number, to close it (`close_lasting`): a
+/// server seconds late still gets it closed.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const CLOSE_LATE: Duration = Duration::from_secs(30);
+
 /// The lasting notification's Notify, in place of `id` if not 0.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn lasting_message(id: u32, said: &Said, capabilities: &[String]) -> dbus::Message {
@@ -1024,10 +1173,11 @@ fn lasting_message(id: u32, said: &Said, capabilities: &[String]) -> dbus::Messa
 }
 
 /// Taken away: by its number; a Notify not answered yet, its answer waited
-/// for `ASKED` first (its number), so that it does not stay.
+/// for first (`CLOSE_LATE` at most: its number), so that it does not stay
+/// (the fifth review's L4); the close of a session goes on meanwhile.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn close_lasting(connection: &LocalConnection, server: &dbus::blocking::Proxy<'_, &LocalConnection>, replies: &Replies, unanswered: Option<u32>, id: u32) {
-    let id = match unanswered.and_then(|serial| answer_by(connection, replies, serial, Instant::now() + ASKED)) {
+    let id = match unanswered.and_then(|serial| answer_by(connection, replies, serial, Instant::now() + CLOSE_LATE)) {
         Some(Reply::Return(answer)) => answer.read1::<u32>().unwrap_or(id),
         _ => id,
     };
@@ -1139,13 +1289,18 @@ mod tests {
 
     /// A stand-in notification server on the bus at `address`, on a thread of
     /// its own until `stop`: "answers" answers each Notify and presses "copy"
-    /// on each notice that has it, to the connection that showed it; "late"
-    /// shows it (says it) at once but answers three seconds later, then
-    /// presses; "stall" answers as "answers", but its first GetCapabilities
-    /// stops the bus (`bus_pid`, SIGSTOP) before its answer goes, for six
-    /// seconds; "silent" takes each call and never answers. Each Notify said
-    /// on `told`: when it came, its title, the number it replaces. Whether it
-    /// got the name.
+    /// on each notice that has it, to the connection that showed it; "shows"
+    /// answers, never presses; "late" shows it (says it) at once but answers
+    /// three seconds later, then presses; "press-first" the same, pressed
+    /// first, at one second, and kept on the screen after; "renumber" answers
+    /// a new Notify three seconds late, never presses, and gives a notice
+    /// replaced a number of its own (GNOME); "stall" answers as "answers",
+    /// but its first GetCapabilities stops the bus (`bus_pid`, SIGSTOP)
+    /// before its answer goes, for six seconds; "silent" takes each call and
+    /// never answers. A CloseNotification answered with NotificationClosed,
+    /// as a server does. Each Notify said on `told`: when it came, its title,
+    /// the number it replaces; each CloseNotification, `CLOSED` and its
+    /// number. Whether it got the name.
     fn notice_server(address: &str, mode: &'static str, told: std::sync::mpsc::Sender<(std::time::Instant, String, u32)>, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> bool {
         notice_server_on(address, mode, 0, told, stop)
     }
@@ -1198,9 +1353,11 @@ mod tests {
                             crate::bus::StandIns::signal(bus_pid, "-CONT");
                         });
                     }
+                    let (_, replaces) = if member == "Notify" { call.read2::<String, u32>().unwrap_or_default() } else { (String::new(), 0) };
                     let reply = match member.as_str() {
+                        // GNOME's way, "renumber": a notice replaced gets a number of its own.
+                        "Notify" if replaces != 0 && mode == "renumber" => call.method_return().append1(replaces + 100),
                         "Notify" => {
-                            let (_, replaces) = call.read2::<String, u32>().unwrap_or_default();
                             let id = if replaces != 0 {
                                 replaces
                             } else {
@@ -1214,18 +1371,21 @@ mod tests {
                         _ => return true,
                     };
                     let buttons: Vec<String> = if member == "Notify" { call.read_all::<(String, u32, String, String, String, Vec<String>, dbus::arg::PropMap, i32)>().map(|all| all.5).unwrap_or_default() } else { Vec::new() };
-                    let press = buttons.iter().any(|key| key == "copy").then(|| {
+                    let press = buttons.iter().any(|key| key == "copy" && !matches!(mode, "shows" | "renumber")).then(|| {
                         let id = reply.read1::<u32>().unwrap_or(0);
                         let mut press = dbus::Message::new_signal(SERVER_PATH, SERVER, "ActionInvoked").unwrap().append2(id, "copy");
                         press.set_destination(call.sender().map(|s| s.into_static()));
                         press
                     });
                     let now = std::time::Instant::now();
-                    if mode == "late" && member == "Notify" {
+                    if matches!(mode, "late" | "press-first" | "renumber") && member == "Notify" && replaces == 0 {
                         later.borrow_mut().push((now + Duration::from_secs(3), reply));
+                        let pressed_at = if mode == "press-first" { Duration::from_secs(1) } else { Duration::from_millis(3_300) };
                         if let Some(press) = press {
-                            later.borrow_mut().push((now + Duration::from_millis(3_300), press));
+                            later.borrow_mut().push((now + pressed_at, press));
                         }
+                    } else if mode == "late" && member == "Notify" {
+                        later.borrow_mut().push((now + Duration::from_secs(3), reply));
                     } else {
                         let _ = bus.send(reply);
                         if let Some(press) = press {
@@ -1267,30 +1427,73 @@ mod tests {
         seen
     }
 
+    /// A dose's record as health.rs keeps it, for the stand-ins: its first
+    /// try's words its own and its late words from `late`, while still to
+    /// remind (none in `late`: no longer to remind), none once recorded shown
+    /// too (`late_reminder_wanted`); a late word unconfirmed says so in its
+    /// body. What it records said on `log`, if any ("going First", "going
+    /// Late(Retry)", "unshown", "pause", "over"); `settled`: marked elsewhere.
+    struct StandIn {
+        name: String,
+        late: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+        shown: std::sync::mpsc::Sender<String>,
+        log: Option<std::sync::mpsc::Sender<String>>,
+        recorded: bool,
+        settled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl StandIn {
+        fn say(&self, what: String) {
+            if let Some(log) = &self.log {
+                let _ = log.send(what);
+            }
+        }
+    }
+
+    impl DoseRecord for StandIn {
+        fn going(&mut self, going: Going) -> Say {
+            self.say(format!("going {going:?}"));
+            let words = if self.recorded { None } else { self.late.lock().unwrap().clone() };
+            match (going, words) {
+                (_, None) => Say::Nothing,
+                (Going::First, Some(_)) => Say::Own,
+                (Going::Late(Late::Retry), Some(title)) => Say::Words(title, "22:00. Could not be shown in time. Check before taking it.".into()),
+                (Going::Late(Late::Unconfirmed), Some(title)) => Say::Words(title, "22:00. Not confirmed in time. Check before taking it.".into()),
+            }
+        }
+        fn refused(&mut self) {
+            self.say("refused".into());
+        }
+        fn shown(&mut self) {
+            self.recorded = true;
+            let _ = self.shown.send(self.name.clone());
+        }
+        fn unshown(&mut self) {
+            self.say("unshown".into());
+        }
+        fn pause(&mut self, until: i64) -> bool {
+            self.say(format!("pause {until}"));
+            !self.recorded && self.late.lock().unwrap().is_some()
+        }
+        fn over(&mut self) {
+            self.say("over".into());
+        }
+        fn settled(&mut self) -> bool {
+            self.settled.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
     /// A dose's reminder for the stand-ins: `name` its title; its button's
-    /// action and its late show said on channels; `late` its words when
-    /// shown late (none: no longer to remind), as health.rs gives them: none
-    /// once recorded a reminder, too (`late_reminder_wanted`).
+    /// action and what shows late said on channels; `late` its late words
+    /// (none: no longer to remind), as health.rs gives them; tried until `until`.
     fn dose(name: &str, until: Duration, pressed: &std::sync::mpsc::Sender<String>, shown: &std::sync::mpsc::Sender<String>, late: std::sync::Arc<std::sync::Mutex<Option<String>>>) -> Sending {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        let (pressed, shown) = (pressed.clone(), shown.clone());
-        let (pressed_name, shown_name) = (name.to_string(), name.to_string());
-        let recorded = std::sync::Arc::new(AtomicBool::new(false));
-        let reminded = std::sync::Arc::clone(&recorded);
-        remind_dose(
-            name,
-            "22:00",
-            ("Taken".into(), Box::new(move || drop(pressed.send(pressed_name.clone())))),
-            Again {
-                until: std::time::Instant::now() + until,
-                late: Box::new(move || if recorded.load(Ordering::SeqCst) { None } else { late.lock().unwrap().clone().map(|title| (title, "22:00. Check before taking it.".to_string())) }),
-                shown: Box::new(move || {
-                    reminded.store(true, Ordering::SeqCst);
-                    drop(shown.send(shown_name.clone()));
-                }),
-                maybe: Box::new(|| {}),
-            },
-        )
+        dose_as(name, Again { end: std::time::Instant::now() + until, quiet: None, record: Box::new(StandIn { name: name.into(), late, shown: shown.clone(), log: None, recorded: false, settled: std::sync::Arc::default() }) }, pressed)
+    }
+
+    /// The same, its record and its tries as given.
+    fn dose_as(name: &str, again: Again, pressed: &std::sync::mpsc::Sender<String>) -> Sending {
+        let (pressed, pressed_name) = (pressed.clone(), name.to_string());
+        remind_dose(name, "22:00", ("Taken".into(), Box::new(move || drop(pressed.send(pressed_name.clone())))), again)
     }
 
     /// Dose reminders and the focus session's lasting notification against a
@@ -1337,8 +1540,8 @@ mod tests {
         assert_eq!(dose("Magnesium · 300 mg", Duration::from_secs(60), &pressed, &late, words("Magnesium · 300 mg")).outcome(FIRST_TRY), Outcome::Shown);
         assert!(start.elapsed() < Duration::from_secs(2));
         assert_eq!(presses.recv_timeout(Duration::from_secs(5)).as_deref(), Ok("Magnesium · 300 mg"));
-        assert_eq!(sent_within(&notices, Duration::from_millis(300)), [("Magnesium · 300 mg".to_string(), 0)]);
-        assert!(lates.try_recv().is_err(), "shown in time: no late word");
+        assert_eq!(sent_within(&notices, Duration::from_millis(300)), [("Magnesium · 300 mg".to_string(), 0)], "its own words");
+        assert_eq!(lates.recv_timeout(Duration::from_secs(1)).as_deref(), Ok("Magnesium · 300 mg"), "recorded shown");
 
         // One stall: stopped at 0, the reminder at 1 s, let go at 9 s.
         StandIns::signal(pid, "-STOP");
@@ -1635,6 +1838,133 @@ mod tests {
         assert_eq!(presses.recv_timeout(Duration::from_secs(10)).as_deref(), Ok("Levothyroxine · 75 µg"), "its Taken counts");
         assert!(presses.recv_timeout(Duration::from_secs(5)).is_err(), "once");
         stop.store(true, Ordering::Relaxed);
+    }
+
+    /// What a dose's reminder records and keeps to, against a stand-in bus
+    /// and server (review of battery part C, the fifth review):
+    /// - a try the bus refuses (no server): recorded going, then taken back;
+    /// - its tries over at their end: promised never again (`over`);
+    /// - a phone's alarm due: none during the quiet, promised before it
+    ///   begins (`pause`), the tries resumed after it, the doubt first;
+    /// - shown, its dose then marked elsewhere: taken away by its number (L2);
+    /// - "Taken" pressed before a late answer, the notice kept by the server:
+    ///   recorded shown, never said again over the press, which counts once (L3);
+    /// - said again in place, the server giving it a number of its own
+    ///   (GNOME): followed, closed by that number (L3);
+    /// - the lasting notification taken away before its late answer: closed
+    ///   once it comes (L4).
+    /// Sets this process's session bus address: run alone, by name:
+    /// `cargo test --release -p sioul-sync notify::tests::reminders_keep_their_word -- --ignored --exact --nocapture`.
+    #[test]
+    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
+    fn reminders_keep_their_word() {
+        use crate::bus::StandIns;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc::channel;
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
+        let mut stand_ins = StandIns::new("stand-in-word");
+        let (_pid, address) = stand_ins.start("session");
+        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
+        let (told, notices) = channel::<(Instant, String, u32)>();
+        let (pressed, presses) = channel::<String>();
+        let (shown, shows) = channel::<String>();
+        let (log, logged) = channel::<String>();
+        let words = |title: &str| Arc::new(Mutex::new(Some(format!("Check first: {title}"))));
+        let record = |name: &str, settled: &Arc<AtomicBool>| Box::new(StandIn { name: name.into(), late: words(name), shown: shown.clone(), log: Some(log.clone()), recorded: false, settled: Arc::clone(settled) });
+        let drain = |within: Duration| -> Vec<String> {
+            let until = Instant::now() + within;
+            let mut seen = Vec::new();
+            while let Ok(item) = logged.recv_timeout(until.saturating_duration_since(Instant::now())) {
+                seen.push(item);
+            }
+            seen
+        };
+        let unsettled: Arc<AtomicBool> = Arc::default();
+
+        // No server: the first try goes to the bus, which says no: taken back; its end comes: over.
+        let start = Instant::now();
+        let outcome = dose_as("Iron", Again { end: start + Duration::from_secs(7), quiet: None, record: record("Iron", &unsettled) }, &pressed).outcome(FIRST_TRY);
+        assert!(matches!(outcome, Outcome::Unshown(_)), "{outcome:?}");
+        let seen = drain(Duration::from_secs(9));
+        assert_eq!(seen.first().map(String::as_str), Some("going First"), "{seen:?}");
+        assert_eq!(seen.get(1).map(String::as_str), Some("refused"), "{seen:?}");
+        assert_eq!(seen.get(2).map(String::as_str), Some("unshown"), "{seen:?}");
+        assert_eq!(seen.last().map(String::as_str), Some("over"), "{seen:?}");
+        assert!(seen.iter().filter(|s| s.starts_with("going Late(Retry)")).count() >= 1, "tried again, the doubt first: {seen:?}");
+
+        // A phone's alarm due from 8 to 16 s: promised, none meanwhile (a server there from 9 s), then shown, the doubt first.
+        let start = Instant::now();
+        let unix = 1_800_000_016;
+        let again = Again { end: start + Duration::from_secs(40), quiet: Some((start + Duration::from_secs(8), start + Duration::from_secs(16), unix)), record: record("Zinc", &unsettled) };
+        assert!(matches!(dose_as("Zinc", again, &pressed).outcome(FIRST_TRY), Outcome::Unshown(_)));
+        std::thread::sleep(Duration::from_secs(9).saturating_sub(start.elapsed()));
+        let up = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "answers", told.clone(), Arc::clone(&up)));
+        assert_eq!(shows.recv_timeout(Duration::from_secs(20)).as_deref(), Ok("Zinc"), "shown after the quiet");
+        assert!(start.elapsed() >= Duration::from_secs(16), "none during the quiet: {:?}", start.elapsed());
+        let seen = drain(Duration::from_millis(300));
+        assert!(seen.contains(&format!("pause {unix}")), "promised before it began: {seen:?}");
+        assert_eq!(sent_within(&notices, Duration::from_millis(300)).first().map(|(title, _)| title.as_str()), Some("Check first: Zinc"));
+        let _ = presses.recv_timeout(Duration::from_secs(3));
+        up.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+
+        // Shown, then marked elsewhere: taken away by its number.
+        let quiet_server = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "shows", told.clone(), Arc::clone(&quiet_server)));
+        let settled = Arc::new(AtomicBool::new(false));
+        let outcome = dose_as("Folate", Again { end: Instant::now() + Duration::from_secs(60), quiet: None, record: record("Folate", &settled) }, &pressed).outcome(FIRST_TRY);
+        assert_eq!(outcome, Outcome::Shown);
+        let first = sent_within(&notices, Duration::from_millis(500));
+        assert_eq!(first.len(), 1, "{first:?}");
+        settled.store(true, Ordering::SeqCst);
+        let closed = sent_within(&notices, Duration::from_secs(4));
+        assert!(closed.iter().any(|(title, id)| title == CLOSED && *id != 0), "taken away: {closed:?}");
+        quiet_server.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+        let _ = shows.try_iter().count();
+
+        // "Taken" pressed before a late answer, the notice kept: recorded shown, never said again, the press once.
+        let pressing = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "press-first", told.clone(), Arc::clone(&pressing)));
+        let outcome = dose("Iodine", Duration::from_secs(60), &pressed, &shown, words("Iodine")).outcome(FIRST_TRY);
+        assert!(matches!(outcome, Outcome::Maybe(_)), "{outcome:?}");
+        assert_eq!(shows.recv_timeout(Duration::from_secs(5)).as_deref(), Ok("Iodine"), "recorded shown at its late answer");
+        assert_eq!(presses.recv_timeout(Duration::from_secs(3)).as_deref(), Ok("Iodine"), "its Taken counts");
+        assert!(presses.recv_timeout(Duration::from_secs(2)).is_err(), "once");
+        let sent = sent_within(&notices, Duration::from_millis(500));
+        assert_eq!(sent, [("Iodine".to_string(), 0)], "never said again over the press");
+        pressing.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+
+        // Said again in place, given a number of its own (GNOME): followed, closed by it.
+        let renumbering = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "renumber", told.clone(), Arc::clone(&renumbering)));
+        let settled = Arc::new(AtomicBool::new(false));
+        let outcome = dose_as("Calcium", Again { end: Instant::now() + Duration::from_secs(60), quiet: None, record: record("Calcium", &settled) }, &pressed).outcome(FIRST_TRY);
+        assert!(matches!(outcome, Outcome::Maybe(_)), "{outcome:?}");
+        assert_eq!(shows.recv_timeout(Duration::from_secs(5)).as_deref(), Ok("Calcium"));
+        let sent = sent_within(&notices, Duration::from_secs(1));
+        let replaced = sent.iter().find(|(title, replaces)| title == "Check first: Calcium" && *replaces != 0).map(|(_, replaces)| *replaces);
+        assert!(replaced.is_some(), "said again in place: {sent:?}");
+        settled.store(true, Ordering::SeqCst);
+        let closed = sent_within(&notices, Duration::from_secs(4));
+        assert!(closed.iter().any(|(title, id)| title == CLOSED && Some(*id) == replaced.map(|r| r + 100)), "closed by its new number: {closed:?}");
+        renumbering.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+
+        // The lasting notification closed before its late answer: closed once the answer comes.
+        let late_server = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "late", told.clone(), Arc::clone(&late_server)));
+        let lasting = ongoing("Write to the bank", "Since 14:02, for 25 min", vec![("stop".to_string(), "Stop".to_string())], Box::new(|_: &str| {}));
+        std::thread::sleep(Duration::from_millis(500));
+        lasting.close(Duration::from_millis(500));
+        let seen = sent_within(&notices, Duration::from_secs(6));
+        assert_eq!(seen.first().map(|(title, _)| title.as_str()), Some("Write to the bank"), "{seen:?}");
+        assert!(seen.iter().any(|(title, id)| title == CLOSED && *id != 0), "closed by its number once answered: {seen:?}");
+        late_server.store(true, Ordering::Relaxed);
     }
 
     /// The focus session's lasting notification against a server that shows

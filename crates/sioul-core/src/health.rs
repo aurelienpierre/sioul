@@ -689,6 +689,19 @@ pub const BROKEN_SPAN: i64 = 12 * 3600;
 /// weekend comes back within it).
 pub const SILENT_DAYS: i64 = 7;
 
+/// How many phones count among `peers` at `now` (`counts`).
+fn phones_counted(peers: &[Peer], now: i64) -> usize {
+    peers.iter().filter(|p| counts(p, now) && p.said.as_ref().is_some_and(|s| s.phone)).count()
+}
+
+/// A device as a doubt names it: "the phone" only when it is the one phone
+/// among `phones` counted; two or more, each by its name. Words only: what
+/// a phone does (its alarm) is read from `Said::phone` itself (review of
+/// battery part C, the fifth review's C1).
+fn named(peer: &Peer, phones: usize) -> Named {
+    Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) && phones == 1 }
+}
+
 /// Whether `peer` counts for the doses at `now`: not said off by you, still
 /// sharing, and heard within `SILENT_DAYS`, by this device's clock (its entry
 /// seen changing) or its own (its last export).
@@ -730,8 +743,9 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
     if let Some(since) = record_lost.filter(|since| due <= *since && *since - due < 86_400) {
         out.push(Doubt::Record { since });
     }
+    let phones = phones_counted(peers, now);
     for peer in peers.iter().filter(|p| counts(p, now)) {
-        let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) };
+        let device = named(peer, phones);
         // A line lost from around the dose's time may have been its answer:
         // one written before it, or within `BROKEN_SPAN` after (a dose marked
         // ahead of its time). The line is dated by its own time, never by when
@@ -815,8 +829,9 @@ pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> V
 /// wait already spends.
 pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer], since: i64, heard: &std::collections::BTreeSet<String>) -> Vec<Doubt> {
     let mut out = doubts_now(due, now, record_lost, peers);
+    let phones = phones_counted(peers, now);
     for peer in peers.iter().filter(|p| counts(p, now) && !heard.contains(&p.id)) {
-        let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) };
+        let device = named(peer, phones);
         let names = |doubt: &Doubt| match doubt {
             Doubt::Unheard { device: d, .. } | Doubt::Broken { device: d } | Doubt::Working { device: d, .. } | Doubt::Coming { device: d, .. } | Doubt::Apart { device: d } => *d == device,
             Doubt::Record { .. } => false,
@@ -993,34 +1008,19 @@ pub struct HealthState {
     /// Doses already reminded, by key; kept a week.
     #[serde(default)]
     pub reminded: BTreeMap<String, i64>,
-    /// Doses whose reminder was not shown while Sioul ran, by key, when it
-    /// was tried; kept a week. Not a reminder: such a dose is still asked
-    /// about afterwards, under its own heading, since Sioul ran
-    /// (`unanswered`), and another device reminds it (a phone's alarm). Alone,
-    /// it surely did not go out (no connection, no notification server,
-    /// nothing sent in time: `reminder_unshown`); with `maybe` beside it, it
-    /// may have (format note in `maybe`). Written only when there is one: an
-    /// older Sioul's file stays as it was.
+    /// Doses whose reminder was not shown, or not known shown, while Sioul
+    /// ran, by key, when it was tried; kept a week. Not a reminder: such a
+    /// dose is still asked about afterwards, under its own heading, since
+    /// Sioul ran (`unanswered`), and another device reminds it (a phone's
+    /// alarm). What each device did, and whether it may have shown, is in
+    /// each dose's reminders (`dose_reminders`, a file of its own); this table
+    /// says it to an older Sioul (0.0.4, 0.0.5), which reads it as a reminder
+    /// not shown, never as one given: its alarm reminds the dose, plainly, as
+    /// it always did. 0.0.3 knows no such table: the dose is not reminded
+    /// there either. Written only when there is one: an older Sioul's file
+    /// stays as it was.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unshown: BTreeMap<String, i64>,
-    /// Doses whose reminder was sent but not known shown, by key, when it was
-    /// sent: the notification server did not answer in time, or the bus
-    /// stalled under it (since 14 October 2026). It may be on the screen: a
-    /// phone's alarm still reminds the dose, but says first that another
-    /// device may have shown its reminder, "check before taking it"
-    /// (`reminder_maybe`). A late answer makes it a reminder (`reminded`).
-    /// Format note: each such dose is written in `unshown` too, which an
-    /// older Sioul (0.0.4, 0.0.5) reads as a reminder not shown, never as one
-    /// given: its alarm reminds it, plainly, as it always did, and its
-    /// rewrites of the record keep `unshown` (they drop `maybe`, which they
-    /// do not know: the doubt is then not said, the reminder still comes).
-    /// 0.0.3 knows neither table: the dose is not reminded there either, and
-    /// its alarm reminds it plainly.
-    /// Since this table, `unshown` alone means "surely not shown"; until then,
-    /// a reminder unanswered in time was written there too (4f4aadd). Kept a
-    /// week; written only when there is one.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub maybe: BTreeMap<String, i64>,
     /// Doses answered "not taken" when asked afterwards, by key; kept a week.
     #[serde(default)]
     pub not_taken: BTreeMap<String, i64>,
@@ -1120,7 +1120,6 @@ impl HealthState {
         self.taken.retain(|_, at| *at >= week);
         self.reminded.retain(|_, at| *at >= week);
         self.unshown.retain(|_, at| *at >= week);
-        self.maybe.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
         write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
@@ -1144,19 +1143,13 @@ impl HealthState {
         health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
     }
 
-    /// Whether Sioul ran when `key` fell due but surely could not show its
-    /// reminder (no notification server, no connection), here or on another
-    /// device that shares its doses: its question then says so, never "while
-    /// Sioul was closed".
+    /// Whether Sioul ran when `key` fell due but did not show its reminder,
+    /// or did not know it shown (no notification server, no connection, no
+    /// answer in time), here or on another device that shares its doses: its
+    /// question then says so, never "while Sioul was closed" (which of the
+    /// two: `dose_reminders`).
     pub fn reminder_unshown(&self, key: &str) -> bool {
-        self.unshown.contains_key(key) && !self.reminded.contains_key(key) && !self.maybe.contains_key(key)
-    }
-
-    /// Whether `key`'s reminder was sent and may have shown, not known shown
-    /// (`maybe`): another device that reminds it says the doubt first, and
-    /// its question says the reminder may not have been shown.
-    pub fn reminder_maybe(&self, key: &str) -> bool {
-        self.maybe.contains_key(key) && !self.reminded.contains_key(key)
+        self.unshown.contains_key(key) && !self.reminded.contains_key(key)
     }
 
     /// Today's doses from their time on, not marked yet (taken, or said not
@@ -1558,12 +1551,12 @@ mod tests {
         assert!(state.to_remind(&health, &at("2026-10-03T13:00[Europe/Paris]"), 10).is_empty(), "past its window, no second reminder");
     }
 
-    /// The record with `maybe`, as an older Sioul (0.0.4, 0.0.5: no such
-    /// table) reads it: the dose is not reminded there, and its reminder not
-    /// shown (`unshown`, written beside it): its alarm reminds it, its
-    /// question asks about it, never "reminded"; written back by it, `unshown`
-    /// stays. 0.0.3, which knows neither table, does not read it reminded
-    /// either. A record without the table reads as before.
+    /// A reminder not known shown is written in `unshown` for an older Sioul
+    /// (0.0.4, 0.0.5), which reads it as a dose not reminded: its alarm
+    /// reminds it, its question asks about it, never "reminded"; written back
+    /// by it, `unshown` stays. 0.0.3, which knows no such table, does not read
+    /// it reminded either. What each device did travels in a file of its own
+    /// (`dose_reminders`), which no older Sioul rewrites.
     #[test]
     fn an_older_sioul_reads_a_reminder_that_may_have_shown_as_one_to_give() {
         /// The record's tables as 0.0.5 knows them.
@@ -1581,14 +1574,12 @@ mod tests {
         let key = "levo@1791360000".to_string();
         let mut new = HealthState::default();
         new.unshown.insert(key.clone(), 1_791_360_004);
-        new.maybe.insert(key.clone(), 1_791_360_002);
         let text = toml::to_string(&new).unwrap();
-        assert!(text.contains("[maybe]") && text.contains("[unshown]"));
+        assert!(text.contains("[unshown]") && !text.contains("maybe"));
         let older: Older = toml::from_str(&text).unwrap();
         assert!(!older.reminded.contains_key(&key) && older.unshown.contains_key(&key), "to remind and to ask about, never reminded");
         let rewritten: HealthState = toml::from_str(&toml::to_string(&older).unwrap()).unwrap();
-        assert!(rewritten.unshown.contains_key(&key) && rewritten.maybe.is_empty(), "its rewrite keeps unshown, drops maybe: the doubt not said, the reminder still given");
-        assert!(rewritten.reminder_unshown(&key));
+        assert!(rewritten.unshown.contains_key(&key) && rewritten.reminder_unshown(&key), "its rewrite keeps unshown");
         /// The record's tables as 0.0.3 knows them.
         #[derive(Debug, Default, Deserialize)]
         struct Oldest {
@@ -1597,9 +1588,9 @@ mod tests {
         }
         let oldest: Oldest = toml::from_str(&text).unwrap();
         assert!(!oldest.reminded.contains_key(&key), "0.0.3: to remind, never reminded");
-        let plain: HealthState = toml::from_str("[taken]\n[reminded]\n").unwrap();
-        assert!(plain.maybe.is_empty());
-        assert!(!toml::to_string(&HealthState::default()).unwrap().contains("maybe"), "written only when there is one");
+        // A file of 6c952fc's, with its `maybe` table: read, the table left out.
+        let earlier: HealthState = toml::from_str("[unshown]\n\"levo@1791360000\" = 1791360004\n[maybe]\n\"levo@1791360000\" = 1791360002\n").unwrap();
+        assert!(earlier.reminder_unshown(&key) && !toml::to_string(&earlier).unwrap().contains("maybe"));
     }
 
     /// A reminder that could not be shown (no notification server) is no
@@ -1626,17 +1617,15 @@ mod tests {
         later.reminded.insert(key("2026-10-03T08:00[Europe/Paris]"), at("2026-10-03T08:05[Europe/Paris]").timestamp().as_second());
         assert!(!later.reminder_unshown(&key("2026-10-03T08:00[Europe/Paris]")));
         assert_eq!(later.unanswered(&health, &now, 12, 30).len(), 1);
-        // Sent, not known shown (`maybe`, written with `unshown` beside it): asked about, under
-        // its own heading, never as surely not shown; a late answer makes it a reminder.
+        // Sent, not known shown (written in `unshown` too): asked about; a late answer makes it a reminder.
         let mut sent = HealthState::default();
         let nine = key("2026-10-03T09:00[Europe/Paris]");
         sent.unshown.insert(nine.clone(), at("2026-10-03T09:00[Europe/Paris]").timestamp().as_second() + 4);
-        sent.maybe.insert(nine.clone(), at("2026-10-03T09:00[Europe/Paris]").timestamp().as_second() + 2);
-        assert!(sent.reminder_maybe(&nine) && !sent.reminder_unshown(&nine));
+        assert!(sent.reminder_unshown(&nine));
         assert!(sent.unanswered(&health, &now, 12, 30).iter().any(|d| d.key == nine), "asked about");
         let mut answered_late = sent.clone();
         answered_late.reminded.insert(nine.clone(), at("2026-10-03T09:01[Europe/Paris]").timestamp().as_second());
-        assert!(!answered_late.reminder_maybe(&nine) && !answered_late.reminder_unshown(&nine));
+        assert!(!answered_late.reminder_unshown(&nine));
         // Kept as written, a week; an older Sioul's file has no table, and gets none.
         let dir = std::env::temp_dir().join(format!("sioul-unshown-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
