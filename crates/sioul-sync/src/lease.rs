@@ -93,12 +93,17 @@ pub struct Keeper {
     /// How many other computers claim it now (for a part that stays put,
     /// those lapsed but not closed too).
     pub others: usize,
+    /// Since when this keeper has kept it, as seen by this process (Unix
+    /// seconds; 0: always, nobody else ever claimed). A dose's first reminder
+    /// is this computer's only if it kept the doses at the dose's time
+    /// (docs/health.md, "What became of a reminder").
+    pub since: i64,
 }
 
 impl Keeper {
     /// The only computer: no sharing, or nobody else claims.
     pub fn alone(computer: &str) -> Keeper {
-        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0 }
+        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0, since: 0 }
     }
 }
 
@@ -225,17 +230,17 @@ fn keeper(claims: &[Claim], part: &str, computer: &str, rule: Rule, now: i64) ->
 let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(computer) };
     let mine = chosen.computer == computer;
     // Settled: this computer has kept it, as seen here, for the settling time.
-    let settled = match KEPT.lock() {
+    let (settled, since) = match KEPT.lock() {
         Ok(mut kept) => {
             let entry = kept.entry(part.to_string()).or_insert_with(|| (chosen.computer.clone(), now));
             if entry.0 != chosen.computer {
                 *entry = (chosen.computer.clone(), now);
             }
-            mine && (others.is_empty() || now - entry.1 >= SETTLING)
+            (mine && (others.is_empty() || now - entry.1 >= SETTLING), entry.1)
         }
-        Err(_) => false,
+        Err(_) => (false, now),
     };
-    Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len() }
+    Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len(), since }
 }
 
 /// This computer's claim on `part` closed: Sioul quits, or is put away on a

@@ -296,6 +296,10 @@ static DND_PEOPLE_RULES: Rules = Rules { keyed: &[keyed("person", &["id"])], who
 /// device's opening apart, and each device's answer whole, so that two
 /// devices never write one entry and an answer never travels in halves.
 static DOSES_RULES: Rules = Rules { keyed: &[], whole: &["dose.*.answer.*"], local: &[], next: None };
+/// What each device did to remind each dose (`sioul_core::dose_reminders`):
+/// each device's entry for a dose written by it alone, and travelling whole,
+/// so that a notice said sent and a promise of quiet never travel apart.
+static REMINDERS_RULES: Rules = Rules { keyed: &[], whole: &["dose.*.*"], local: &[], next: None };
 // Projects and budgets, at the notes folder's root, when they travel here (`share_projects`).
 // The projects' records keep their first names, `notes/sioul-cases.toml` and
 // `case`, which every version reads; a file renamed `sioul-projects.toml`, its
@@ -566,6 +570,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Each dose that fell due and the answers your devices captured (docs/health.md,
         // "Doses as records"): a file of its own, which an older Sioul leaves alone.
         file("health", "state/health-doses.toml", s.join(sioul_core::doses::FILE), Shape::Toml(&DOSES_RULES)),
+        // What each device did to remind each dose (docs/health.md, "What became of a
+        // reminder"): a file of its own too, which an older Sioul leaves alone.
+        file("health", "state/health-reminders.toml", s.join(sioul_core::dose_reminders::FILE), Shape::Toml(&REMINDERS_RULES)),
         folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
         // The spam filter's table alone: its language model and its corpus, beside it, stay here.
@@ -1330,10 +1337,11 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
     })
 }
 
-/// The doses' two records: the marks (`health-state.toml`) and each dose's
-/// record (`health-doses.toml`).
+/// The doses' records: the marks (`health-state.toml`), each dose's record
+/// (`health-doses.toml`), and what each device did to remind it
+/// (`health-reminders.toml`).
 fn of_the_doses(store: &Store) -> bool {
-    matches!(store.name.as_str(), "state/health-state.toml" | "state/health-doses.toml")
+    matches!(store.name.as_str(), "state/health-state.toml" | "state/health-doses.toml" | "state/health-reminders.toml")
 }
 
 /// What a file holds once entries are written into it; none when it goes.

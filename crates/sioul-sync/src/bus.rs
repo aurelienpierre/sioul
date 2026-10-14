@@ -339,11 +339,16 @@ mod tests {
         }
         assert!(files.len() > 500 && manifests.len() >= 5, "{} files, {} manifests", files.len(), manifests.len());
         let words = ["new_session", "new_system", "new_address", "get_private", "open_private", "dbus_bus_get", "dbus_bus_get_private", "dbus_bus_register", "dbus_connection_open", "dbus_connection_open_private", "ffidisp", "libdbus_sys", "dbus_secret_service", "secret_service", "zbus"];
+        // Pictures and fonts: no code. Everything else read as bytes, so that a
+        // file not in UTF-8 (a C file with a Latin-1 comment) is read all the
+        // same (the fifth review's L5).
+        let binary = ["ttf", "otf", "woff", "woff2", "png", "jpg", "jpeg", "gif", "ico", "icns", "qsb", "qm", "bin", "gz", "zst"];
         for file in &files {
-            if file.ends_with("sioul-sync/src/bus.rs") {
+            if file.ends_with("sioul-sync/src/bus.rs") || file.extension().and_then(|e| e.to_str()).is_some_and(|e| binary.contains(&e)) {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(file) else { continue };
+            let bytes = std::fs::read(file).unwrap();
+            let text = String::from_utf8_lossy(&bytes);
             for word in words {
                 assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", file.display());
             }
@@ -351,9 +356,8 @@ mod tests {
             if !file.ends_with("sioul-sync/src/notify.rs") {
                 assert!(!named(&text, "notify_rust"), "{}: notify-rust (registers through libdbus)", file.display());
             }
-            if !file.extension().is_some_and(|e| e == "rs") {
-                assert!(!text.contains("QDBus") && !text.contains("QtDBus"), "{}: Qt's D-Bus", file.display());
-            }
+            // Qt's own D-Bus, in C++ or through a cxx bridge in Rust (`include!("QtDBus/…")`).
+            assert!(!text.contains("QDBus") && !text.contains("QtDBus"), "{}: Qt's D-Bus", file.display());
             if file.ends_with("build.rs") {
                 assert!(!text.contains("\"DBus\""), "{}: Qt's D-Bus module", file.display());
             }
@@ -414,6 +418,29 @@ mod tests {
         reaching.sort();
         let expected: Vec<(String, String)> = [("dbus", "dbus-secret-service"), ("dbus", "notify-rust"), ("dbus", "sioul-sync"), ("libdbus-sys", "dbus")].iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
         assert_eq!(reaching, expected, "the crates that reach libdbus (the keyring's, notify-rust's for Windows and macOS, and this one)");
+        // Who reaches zbus or dbus at all, through any other crate: today's
+        // list, and no other (a new dependency bringing an XDG portal, `rfd`
+        // through `ashpd`, would open a bus of its own: the fifth review's L5).
+        let mut depends: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        let lock: toml::Table = lock.parse().unwrap();
+        for package in lock.get("package").and_then(toml::Value::as_array).unwrap() {
+            let name = package.get("name").and_then(toml::Value::as_str).unwrap_or_default().to_string();
+            let on: Vec<String> = package.get("dependencies").and_then(toml::Value::as_array).map(|all| all.iter().filter_map(toml::Value::as_str).map(|d| d.split(' ').next().unwrap_or_default().to_string()).collect()).unwrap_or_default();
+            depends.entry(name).or_default().extend(on);
+        }
+        let reach = |target: &str| -> Vec<String> {
+            let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            loop {
+                let more: Vec<String> = depends.iter().filter(|(name, on)| !found.contains(*name) && *name != target && on.iter().any(|d| d == target || found.contains(d))).map(|(name, _)| name.clone()).collect();
+                if more.is_empty() {
+                    break;
+                }
+                found.extend(more);
+            }
+            found.into_iter().collect()
+        };
+        assert_eq!(reach("zbus"), ["android-keyring", "keyring", "secret-service", "sioul-app", "sioul-cli", "sioul-learn", "sioul-sync"], "who reaches zbus");
+        assert_eq!(reach("dbus"), ["android-keyring", "dbus-secret-service", "keyring", "notify-rust", "sioul-app", "sioul-cli", "sioul-learn", "sioul-sync"], "who reaches dbus");
     }
 
     /// A setup stuck on a bus that hangs alive (its socket open, never

@@ -1090,4 +1090,48 @@ mod tests {
         assert!(all(&folder, &KEY).0.iter().all(|e| e.id != old.id));
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    /// What each device did to remind a dose (`health-reminders.toml`, review
+    /// of battery part C, the fifth review): each device's entry comes whole
+    /// to the others; an older Sioul, which knows no such file, takes none of
+    /// it out, whatever it writes in the files it knows.
+    #[test]
+    fn what_each_device_did_to_remind_travels_and_an_older_sioul_leaves_it() {
+        use sioul_core::dose_reminders::{DoseReminders, Tried};
+        let base = scratch("reminders");
+        let folder = base.join("shared");
+        std::fs::create_dir_all(&folder).unwrap();
+        let desk = Device::new(&base, "desk", COMPUTER);
+        let phone = Device::new(&base, "phone", PHONE);
+        let old = Device::new(&base, "old", PHONE);
+        let old_stores = || old.stores().into_iter().filter(|s| s.name != "state/health-doses.toml" && s.name != "state/health-reminders.toml").collect::<Vec<_>>();
+        let old_exchange = |now: i64| crate::share::exchange(&Sharing { folder: &folder, computer: &old.id, key: &KEY, memory: &old.memory, files: false, hurry: None }, &old_stores(), now * 1000).unwrap();
+        let reminders = |device: &Device| device.roots.state.join(sioul_core::dose_reminders::FILE);
+        desk.session(&folder, |e| e.start(DUE - 3_600));
+        phone.session(&folder, |e| e.start(DUE - 3_600));
+        desk.exchange(&folder, DUE - 3_500);
+        phone.exchange(&folder, DUE - 3_450);
+        old_exchange(DUE - 3_400);
+        // The desk's first try did not go out, then it promised quiet past the phone's alarm.
+        let promised = Tried { unshown: DUE + 5, quiet: DUE + 900, ..Tried::default() };
+        DoseReminders::update(&reminders(&desk), DUE + 5, |all| *all.entry(DOSE, &desk.id) = promised).unwrap();
+        desk.exchange(&folder, DUE + 420);
+        for n in 0..3 {
+            old_exchange(DUE + 430 + n);
+        }
+        HealthState::update(&old.marks(), DUE + 440, |s| {
+            s.reminded.insert("iron@1800000000".into(), DUE + 440);
+        })
+        .unwrap();
+        old_exchange(DUE + 450);
+        phone.exchange(&folder, DUE + 600);
+        assert_eq!(DoseReminders::read(&reminders(&phone)).unwrap().of(DOSE, &desk.id), Some(promised), "whole, as the desk wrote it");
+        // The phone's alarm shows it: its own entry, read back on the desk.
+        DoseReminders::update(&reminders(&phone), DUE + 601, |all| all.entry(DOSE, &phone.id).shown = DUE + 601).unwrap();
+        phone.exchange(&folder, DUE + 610);
+        desk.exchange(&folder, DUE + 620);
+        let read = DoseReminders::read(&reminders(&desk)).unwrap();
+        assert!(read.shown(DOSE) && read.of(DOSE, &desk.id) == Some(promised), "both entries, nothing taken out");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

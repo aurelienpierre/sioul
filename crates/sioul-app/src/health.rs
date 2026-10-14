@@ -16,6 +16,7 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
+use sioul_core::dose_reminders::{DoseReminders, Elsewhere, Others, Tried};
 use sioul_core::doses::{Answer, Answered, DoseRecords, Given, State};
 use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medicine, Movement, Named, Peer, Prescription, Problem, Schedule, Take, TakeProblem};
 use sioul_core::i18n::Translator;
@@ -472,7 +473,7 @@ pub(crate) fn page() -> String {
     json(&PageView {
         any: needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
         week,
-        missed: missed_rows(&health, &state, &knowledge, &now, tr()),
+        missed: missed_rows(&health, &state, &told().unwrap_or_default(), &knowledge, &now, tr()),
         shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
         reminded_there: [
             REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
@@ -788,11 +789,13 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
 }
 
 /// Doses neither marked nor reminded: a question on the past, each saying
-/// when whether it was taken is not known here. Two questions, each its own
-/// heading: those due while Sioul ran nowhere, then those due while it ran
-/// but whose reminder could not be shown (no notification server: never
-/// said "while Sioul was closed"); by their time within each.
-fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now: &Zoned, words: &Translator) -> Vec<DoseRow> {
+/// when whether it was taken is not known here. Three questions, each its
+/// own heading: those due while Sioul ran nowhere, then those due while it
+/// ran but whose reminder could not be shown (no notification server: never
+/// said "while Sioul was closed"), then those whose reminder went and was not
+/// known shown (`told`: what each device did); by their time within each.
+fn missed_rows(health: &Health, state: &HealthState, told: &DoseReminders, knowledge: &Knowledge, now: &Zoned, words: &Translator) -> Vec<DoseRow> {
+    let maybe = |key: &str| told.maybe_anywhere(key).is_some();
     let mut rows: Vec<DoseRow> = state
         .unanswered(health, now, MISSED_HOURS, GRACE_MINUTES)
         .into_iter()
@@ -805,7 +808,7 @@ fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now:
                 doubt,
                 doubt_off,
                 choose: false,
-                question: if state.reminder_maybe(&d.key) {
+                question: if state.reminder_unshown(&d.key) && maybe(&d.key) {
                     words.text("health-maybe-question", None)
                 } else if state.reminder_unshown(&d.key) {
                     words.text("health-unshown-question", None)
@@ -819,7 +822,7 @@ fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now:
             }
         })
         .collect();
-    rows.sort_by_key(|row| (state.reminder_unshown(&row.key), state.reminder_maybe(&row.key)));
+    rows.sort_by_key(|row| (state.reminder_unshown(&row.key), maybe(&row.key)));
     rows
 }
 
@@ -827,9 +830,9 @@ fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now:
 /// reminded (`missed`): "While Sioul was closed" only when it was; "A
 /// reminder could not be shown" when Sioul ran; both kinds, a title true of
 /// both.
-fn missed_title(missed: &[sioul_core::health::Dose], state: &HealthState, words: &Translator) -> String {
-    let unshown = missed.iter().filter(|d| state.reminder_unshown(&d.key)).count();
-    let maybe = missed.iter().filter(|d| state.reminder_maybe(&d.key)).count();
+fn missed_title(missed: &[sioul_core::health::Dose], state: &HealthState, told: &DoseReminders, words: &Translator) -> String {
+    let maybe = missed.iter().filter(|d| state.reminder_unshown(&d.key) && told.maybe_anywhere(&d.key).is_some()).count();
+    let unshown = missed.iter().filter(|d| state.reminder_unshown(&d.key)).count() - maybe;
     match (unshown, maybe) {
         (0, 0) => words.text("health-missed", None),
         (n, 0) if n == missed.len() => words.text("health-unshown", None),
@@ -839,19 +842,15 @@ fn missed_title(missed: &[sioul_core::health::Dose], state: &HealthState, words:
 }
 
 /// What a minute of `tick` did, written in the doses' record: the reminders
-/// shown, those that surely could not be (`unshown`, so that the question on
-/// the past says Sioul ran), those sent whose fate is not known (`maybe`, and
-/// `unshown` beside it for an older Sioul: `HealthState::maybe`), and the
-/// errands' tasks made.
+/// shown, those that surely could not be, and those sent whose fate is not
+/// known, both `unshown` (the question on the past says Sioul ran; an older
+/// Sioul reminds them; which of the two, and what each device did, is in
+/// `dose_reminders`), and the errands' tasks made.
 fn note_minute(record: &mut HealthState, reminded: &[String], unshown: &[String], maybe: &[String], made: &[(String, String)], stamp: i64) {
     for key in reminded {
         record.reminded.insert(key.clone(), stamp);
     }
-    for key in unshown {
-        record.unshown.insert(key.clone(), stamp);
-    }
-    for key in maybe {
-        record.maybe.insert(key.clone(), stamp);
+    for key in unshown.iter().chain(maybe) {
         record.unshown.entry(key.clone()).or_insert(stamp);
     }
     for (key, uid) in made {
@@ -877,7 +876,7 @@ struct PorchDoses {
 /// `records` and `me` (this device's id): today's doses whose answers differ
 /// on your devices come too, both answers said, until you choose.
 #[allow(clippy::too_many_arguments)]
-fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, me: &str, knowledge: &Knowledge, now: &Zoned, silent: bool, heard: bool, words: &Translator) -> PorchDoses {
+fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, told: &DoseReminders, me: &str, knowledge: &Knowledge, now: &Zoned, silent: bool, heard: bool, words: &Translator) -> PorchDoses {
     if silent || health.medicines.is_empty() {
         return PorchDoses::default();
     }
@@ -907,7 +906,7 @@ fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, me: 
         }
     }
     due.sort_by_key(|row| due_of(&row.key).unwrap_or(0));
-    PorchDoses { due, closed: if heard { missed_rows(health, state, knowledge, now, words) } else { Vec::new() } }
+    PorchDoses { due, closed: if heard { missed_rows(health, state, told, knowledge, now, words) } else { Vec::new() } }
 }
 
 /// The Porch's doses, as JSON (`PorchDoses`), made off the window's thread.
@@ -917,7 +916,7 @@ pub(crate) fn missed() -> String {
         return json(&PorchDoses::default());
     }
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
-    json(&porch_doses(&health, &record(), &records(), &this_device(), &know(), &Zoned::now(), crate::hours::doses_silent(), heard, tr()))
+    json(&porch_doses(&health, &record(), &records(), &told().unwrap_or_default(), &this_device(), &know(), &Zoned::now(), crate::hours::doses_silent(), heard, tr()))
 }
 
 /// A medicine as its form gives it.
@@ -1504,14 +1503,31 @@ pub(crate) fn alarm_decide(key: &str) -> String {
         return answer(false, "", "", since + WAIT_FOR_NEWS);
     }
     let knowledge = know();
-    // A reminder a computer tried and whose fate is not known here (sent and
-    // not answered in time, or not shown at first and tried again since):
-    // said first, whatever else is known (review of battery part C, the
-    // fourth review's H1).
-    let first = reminder_doubt(&state, key, &knowledge, since, stamp);
-    let doubt = doubt_unread_with(&knowledge, due, stamp, missed.as_ref(), first.as_deref());
+    // What the other devices did to remind it (docs/health.md, "What became of
+    // a reminder"): shown somewhere, a reminder (this alarm silent); this
+    // alarm plain only when each other device that could have reminded it is
+    // known, by its own word, not to have; else why not, said first.
+    let told_now = told();
+    let me = this_device();
+    let first = match sioul_core::dose_reminders::others(key, since, stamp, &me, true, told_now.as_ref(), &knowledge.peers) {
+        Others::Reminded => {
+            let again = if stamp < due + SHOWN_WATCH { stamp + SHOWN_EVERY } else { 0 };
+            return answer(false, "", "", again);
+        }
+        Others::First => None,
+        Others::Doubt(elsewhere) => {
+            // Kept here, the phone in use at the dose's time: the computers'
+            // words that they leave it to the phone come within a minute or
+            // two; waited for that long.
+            if keeper.mine && elsewhere.iter().all(|e| matches!(e, Elsewhere::Unknown { .. })) && stamp < since + FIRST_WORD {
+                return answer(false, "", "", since + FIRST_WORD);
+            }
+            Some(elsewhere_said(&elsewhere, since, stamp, tr()))
+        }
+    };
+    let doubt = doubt_unread_with(&knowledge, since, stamp, missed.as_ref(), first.as_deref());
     if first.is_none() && !doubt.is_empty() && waiting {
-        let known = sioul_core::health::known_from(due, stamp + 1, since + WAIT_FOR_NEWS, knowledge.record_lost, &knowledge.peers);
+        let known = sioul_core::health::known_from(since, stamp + 1, since + WAIT_FOR_NEWS, knowledge.record_lost, &knowledge.peers);
         return answer(false, "", "", alarm_again(since, stamp, known));
     }
     let named = named(&dose);
@@ -1525,6 +1541,11 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     crate::devices::receiver(move || {
         let _ = change(|record| {
             record.reminded.insert(key.to_string(), stamp);
+        });
+        // Its own word, before it shows: the others read it reminded.
+        tell_mine(key, |mine| {
+            mine.maybe = stamp;
+            mine.shown = stamp;
         });
         open_canaries(&[key.to_string()], stamp);
         drop(_held);
@@ -1679,6 +1700,11 @@ const WAIT_FOR_NEWS: i64 = sioul_core::health::ALARM_AFTER;
 /// its alarm); later, the phone's alarm and the question on the past take it
 /// up (review of battery part C, the fourth review's H2).
 const LATE_UNTIL: i64 = WAIT_FOR_NEWS - 3 * 60;
+
+/// How long a phone's alarm keeping the doses itself (the phone in use at the
+/// dose's time) waits for the computers' words that they leave the dose to
+/// it (`dose_reminders::Tried::quiet`), before it reminds with the doubt.
+const FIRST_WORD: i64 = 2 * 60;
 
 /// When a dose's alarm in doubt within the wait for news asks again: as soon
 /// as it may be known (`known`: a device closed before the dose, once the
@@ -2021,13 +2047,11 @@ fn know() -> Knowledge {
         save_peers(&kept);
         kept
     });
+    // Each a phone or not as it says: what a phone does (its alarm) is read
+    // from it; two phones or more are each named by their names, never both
+    // "the phone", in the words only (`sioul_core::health::Named`; review of
+    // battery part C, the fifth review's C1).
     let mut peers: Vec<Peer> = kept.peers.values().map(|s| s.peer.clone()).collect();
-    // Two phones or more: each said by its name, never both "the phone".
-    if peers.iter().filter(|p| p.said.as_ref().is_some_and(|s| s.phone)).count() > 1 {
-        for said in peers.iter_mut().filter_map(|p| p.said.as_mut()) {
-            said.phone = false;
-        }
-    }
     // A device sharing through the folder this last week whose claim and entry
     // do not read here (its seal not arrived yet, a damaged file): a peer all
     // the same, never heard from, so that its doses are said not known.
@@ -2335,7 +2359,32 @@ fn why_in(doubts: &[Doubt], words: &Translator) -> String {
             Doubt::Apart { device } => said(words, "dose-doubt-apart", &[("name", named(device))]),
         })
         .collect();
-    parts.join("; ")
+    joined(parts, words)
+}
+
+/// Reasons said one after the other, as `words`' language joins them
+/// ("…; …", in French "… ; …" with its thin space: the fifth review's L6).
+fn joined(parts: Vec<String>, words: &Translator) -> String {
+    parts.into_iter().reduce(|first, then| said(words, "dose-doubt-and", &[("first", first), ("then", then)])).unwrap_or_default()
+}
+
+/// Why a phone's alarm cannot know it is a dose's first reminder, in words,
+/// each device said (`dose_reminders::others`): "the desk may have shown its
+/// reminder at 08:00", "Pixel may have reminded you too, by its own alarm".
+fn elsewhere_said(elsewhere: &[Elsewhere], since: i64, now: i64, words: &Translator) -> String {
+    let zone = jiff::tz::TimeZone::system();
+    let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
+    let parts = elsewhere
+        .iter()
+        .map(|e| match e {
+            Elsewhere::Sent { device, at } => said(words, "dose-doubt-maybe", &[("name", device_word(device, words)), ("when", when(*at))]),
+            Elsewhere::Unshown { device, at } => said(words, "dose-doubt-maybe-late", &[("name", device_word(device, words)), ("when", when(*at))]),
+            Elsewhere::Unknown { device } => said(words, "dose-doubt-unknown", &[("name", device_word(device, words)), ("when", when(since))]),
+            Elsewhere::Alarm { device } => said(words, "dose-doubt-alarm", &[("name", device_word(device, words))]),
+            Elsewhere::Unread => said(words, "dose-doubt-record", &[("when", when(now))]),
+        })
+        .collect();
+    joined(parts, words)
 }
 
 /// A moment as a doubt says it: "at 07:45" today, "on Monday 5 October at 07:45" before.
@@ -2382,7 +2431,7 @@ fn doubt_unread_with(knowledge: &Knowledge, due: i64, now: i64, missed: Option<&
         (None, None) => return String::new(),
         (Some(first), None) => first.to_string(),
         (None, Some(reasons)) => reasons,
-        (Some(first), Some(reasons)) => format!("{first}; {reasons}"),
+        (Some(first), Some(reasons)) => joined(vec![first.to_string(), reasons], tr()),
     };
     say("dose-doubt", &[("why", why)])
 }
@@ -2398,39 +2447,6 @@ fn moment_said(at: i64) -> String {
 /// one.
 fn phone_alarms(knowledge: &Knowledge, now: i64) -> bool {
     knowledge.peers.iter().filter(|p| sioul_core::health::counts(p, now)).any(|p| p.said.as_ref().is_none_or(|said| said.phone && said.doses))
-}
-
-/// Whether what each computer sharing the doses may have shown late of a dose
-/// to remind from `since` (its time, or the waking it waited for:
-/// `news_from`; its tries until `LATE_UNTIL` from then, recorded as it shows
-/// them) is read here: each closed since (its last export holds it), or its
-/// records read as of a minute past `LATE_UNTIL` and later. Phones and
-/// devices that keep their doses apart have none.
-fn tries_read(knowledge: &Knowledge, since: i64, now: i64) -> bool {
-    knowledge.peers.iter().filter(|p| sioul_core::health::counts(p, now)).all(|p| match &p.said {
-        Some(said) if said.phone || !said.doses || !said.working => true,
-        Some(said) => p.complete && said.exported >= since + LATE_UNTIL + 60,
-        // An older Sioul tries once.
-        None => true,
-    })
-}
-
-/// What a reminder another device tried leaves unknown at a phone's alarm,
-/// said first (docs/health.md, "Knowing"): sent and not known shown
-/// (`maybe`), "another of your devices may have shown its reminder at
-/// 08:00"; not shown at first by a computer that tries again until
-/// `LATE_UNTIL`, what it did since not read here, "another of your devices
-/// could not show its reminder at 08:00, and may have shown it since". None
-/// when nothing was tried elsewhere, or all of it is known. `since`: when the
-/// dose was to be reminded (`news_from`).
-fn reminder_doubt(state: &HealthState, key: &str, knowledge: &Knowledge, since: i64, now: i64) -> Option<String> {
-    if state.reminder_maybe(key) {
-        return Some(say("dose-doubt-maybe", &[("when", moment_said(state.maybe.get(key).copied().unwrap_or(since)))]));
-    }
-    if state.reminder_unshown(key) && !tries_read(knowledge, since, now) {
-        return Some(say("dose-doubt-maybe-late", &[("when", moment_said(state.unshown.get(key).copied().unwrap_or(since)))]));
-    }
-    None
 }
 
 /// The same, at an alarm whose pull did not go through since it began
@@ -3085,80 +3101,266 @@ pub(crate) fn save_needs(edit: &str, shown: &str) -> String {
     .unwrap_or_default()
 }
 
-/// The words of a dose's reminder shown late on this computer
-/// (`sioul_sync::notify::Again::late`: a try after the first, the first
-/// answered late, or shown after the tick stopped waiting), the doubt said
-/// first, always (`late_said`): once its first try did not go out in time,
-/// another device may have reminded it, and it may have been taken without
-/// being marked. None when it is no longer to remind: this computer no longer
-/// keeping the doses, marked here or answered elsewhere, reminded by another
-/// device (`late_reminder_wanted`), or, a phone sharing the doses, past
-/// `LATE_UNTIL` (the phone's alarm and the question on the past take it up).
-fn late_words(key: &str) -> Option<(String, String)> {
-    if !crate::share::looked("health", sioul_sync::lease::Rule::FollowsYou).mine {
-        return None;
+// ---------------------------------------------------------------- what each device did to remind a dose
+
+/// What each device did to remind each dose (`sioul_core::dose_reminders`),
+/// as read here; none when the file cannot be trusted (repaired first, the
+/// doses due before then said not known for a day: `repair_told`). None is
+/// never read as "nothing done": a phone's alarm then says the doubt.
+fn told() -> Option<DoseReminders> {
+    let path = DoseReminders::default_path();
+    match DoseReminders::read(&path) {
+        Ok(told) => Some(told),
+        Err(_) => {
+            repair_told();
+            DoseReminders::read(&path).ok()
+        }
     }
-    let knowledge = know();
+}
+
+/// A reminders' file that cannot be trusted, as `repair_records` does the
+/// records: read again from every device's at the next exchange, then kept
+/// aside; the doses due before said not known for a day (`write_record_doubt`).
+fn repair_told() {
+    let now = Timestamp::now().as_second();
+    if crate::share::on() && !crate::share::rebuild_dose_reminders().is_empty() {
+        write_record_doubt(now, "");
+        return;
+    }
+    let path = DoseReminders::default_path();
+    let aside = sioul_core::health::HealthState::set_aside(&path, now).ok().flatten().map(|p| p.display().to_string()).unwrap_or_default();
+    write_record_doubt(now, &aside);
+}
+
+/// This computer's entry for the dose `key` changed by `change`; false when
+/// it could not be written.
+fn tell_mine(key: &str, change: impl FnOnce(&mut Tried)) -> bool {
+    let me = this_device();
+    let now = Timestamp::now().as_second();
+    let written = DoseReminders::update(&DoseReminders::default_path(), now, |all| change(all.entry(key, &me))).is_ok();
+    if written {
+        crate::devices::recorded();
+    }
+    written
+}
+
+/// This computer promises no notice of the dose `key` until `until`
+/// (`dose_reminders::NEVER`: none again); a longer promise kept.
+fn promise(key: &str, until: i64) -> bool {
+    tell_mine(key, |mine| mine.quiet = mine.quiet.max(until))
+}
+
+/// What this computer does for a dose at its tick (docs/health.md, "What
+/// became of a reminder"; review of battery part C, the fifth review).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Plan {
+    /// Nothing now: shown, promised quiet, or not this computer's to remind.
+    Not,
+    /// Its first reminder, plainly unless the devices leave a doubt: this
+    /// computer kept the doses at the dose's time, and nothing of it was
+    /// recorded here before.
+    First,
+    /// A phone's alarm due: promised quiet until then, nothing now.
+    Quiet(i64),
+    /// A reminder shown late, the doubt first: its first try did not go out
+    /// (`Late::Retry`), went and was not known shown (`Late::Unconfirmed`,
+    /// by an earlier Sioul here), or another device may have reminded it
+    /// (`None`: this computer did not keep the doses then).
+    Late(Option<sioul_sync::notify::Late>),
+}
+
+/// How long this computer's first reminder of a dose may wait for news, its
+/// window as its first: until three minutes before a phone's alarm while a
+/// phone shares the doses (`LATE_UNTIL`), else ten minutes (`WAIT_FOR_NEWS`).
+fn first_wait(alarms: bool) -> i64 {
+    if alarms { LATE_UNTIL } else { WAIT_FOR_NEWS }
+}
+
+/// The plan for a dose to remind from `since` (its time, or the waking it
+/// waited for), at `stamp`: `own`, this computer's entry for it (`read`: the
+/// file read here); `kept_since`, since when this computer has kept the doses
+/// (`lease::Keeper::since`); `alarms`, a phone shares the doses (its alarm
+/// rings ten minutes on: none from here meanwhile, promised). The rule: a
+/// first reminder is plain only where it is the dose's first; every other
+/// says the doubt first; none twice in the same words.
+fn plan(own: Option<Tried>, read: bool, kept_since: i64, since: i64, stamp: i64, alarms: bool) -> Plan {
+    use sioul_sync::notify::Late;
+    let first = kept_since <= since && stamp < since + first_wait(alarms);
+    // The file not read: nothing promised can be known here, so nothing but a first try.
+    if !read {
+        return if first && own.is_none() { Plan::First } else { Plan::Not };
+    }
+    let quiet = alarms && stamp < since + sioul_core::dose_reminders::QUIET_AFTER;
+    match own {
+        Some(own) if own.shown > 0 || own.quiet >= stamp => Plan::Not,
+        Some(own) if own.maybe > 0 || own.unshown > 0 => {
+            if quiet && stamp >= since + LATE_UNTIL {
+                Plan::Quiet(since + sioul_core::dose_reminders::QUIET_AFTER)
+            } else if own.maybe > 0 {
+                Plan::Late(Some(Late::Unconfirmed))
+            } else {
+                Plan::Late(Some(Late::Retry))
+            }
+        }
+        // A promise of its own, over: not its first.
+        Some(_) if quiet => Plan::Quiet(since + sioul_core::dose_reminders::QUIET_AFTER),
+        Some(_) => Plan::Late(None),
+        None if first => Plan::First,
+        None if quiet => Plan::Quiet(since + sioul_core::dose_reminders::QUIET_AFTER),
+        None => Plan::Late(None),
+    }
+}
+
+/// Whether a dose is still to remind from this computer, as read here now:
+/// neither marked nor answered anywhere, nor reminded anywhere (the marks'
+/// record, or a device's notice shown), and this computer keeps the doses.
+fn still_to_remind(key: &str) -> bool {
+    if !crate::share::looked("health", sioul_sync::lease::Rule::FollowsYou).mine {
+        return false;
+    }
     let _held = state_held();
     let state = record();
-    if !late_reminder_wanted(&state, &records(), key) {
+    late_reminder_wanted(&state, &records(), key) && !told().is_some_and(|told| told.shown(key))
+}
+
+/// The words of a dose's reminder shown late on this computer, the doubt
+/// first, always (`late_said`); none when it is no longer to remind
+/// (`still_to_remind`), or its grace is over (`GRACE_MINUTES` from `since`:
+/// its question on the past takes it up).
+fn late_words(key: &str, since: i64, why: Option<sioul_sync::notify::Late>) -> Option<(String, String)> {
+    if !still_to_remind(key) {
         return None;
     }
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
+    if stamp >= since + GRACE_MINUTES * 60 {
+        return None;
+    }
     let start = now.checked_sub(Span::new().hours(MISSED_HOURS)).unwrap_or_else(|_| now.clone());
     let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
     let dose = load().doses(&start, &end).into_iter().find(|d| d.key == key)?;
-    // From the dose's time, or the waking it waited for.
-    if phone_alarms(&knowledge, stamp) && stamp >= news_from(dose.at.timestamp().as_second(), crate::hours::woken()) + LATE_UNTIL {
-        return None;
-    }
-    Some(late_said(&dose, &knowledge, stamp))
+    Some(late_said(&dose, &know(), stamp, since, why))
 }
 
 /// A late reminder's words: "Check first: …", then its time and why Sioul
-/// cannot tell, its lateness first ("its reminder, due at 08:00, could not be
-/// shown in time, and it may have been taken since without being marked"),
-/// then what the devices leave unknown.
-fn late_said(dose: &sioul_core::health::Dose, knowledge: &Knowledge, now: i64) -> (String, String) {
+/// cannot tell, why it is late first: its first try could not be shown in
+/// time (`Late::Retry`), it was shown and not confirmed in time
+/// (`Late::Unconfirmed`), or another device may have reminded it (`None`);
+/// then what the devices leave unknown, from `since`.
+fn late_said(dose: &sioul_core::health::Dose, knowledge: &Knowledge, now: i64, since: i64, why: Option<sioul_sync::notify::Late>) -> (String, String) {
+    use sioul_sync::notify::Late;
     let due = dose.at.timestamp().as_second();
-    let late = say("dose-doubt-late", &[("when", moment_said(due))]);
-    let doubt = doubt_unread_with(knowledge, due, now, None, Some(&late));
+    let late = match why {
+        Some(Late::Retry) => say("dose-doubt-late", &[("when", moment_said(due))]),
+        Some(Late::Unconfirmed) => say("dose-doubt-unconfirmed", &[("when", moment_said(due))]),
+        None => say("dose-doubt-other", &[("when", moment_said(since))]),
+    };
+    let doubt = doubt_unread_with(knowledge, since, now, None, Some(&late));
     (say("dose-check-title", &[("dose", named(dose))]), format!("{}. {doubt}", dose.at.strftime("%H:%M")))
 }
 
-/// A dose's reminder sent on a try after the first and not answered in time
-/// (`sioul_sync::notify::Again::maybe`): recorded maybe (`maybe_tried`).
-fn maybe_late(key: &str) {
-    let _held = state_held();
-    let now = Timestamp::now().as_second();
-    let _ = change(|record| maybe_tried(record, key, now));
+/// A dose's reminder as this computer records it, for the notice's thread
+/// (`sioul_sync::notify::DoseRecord`): this device's entry in the dose's
+/// reminders, written before each notice goes, and the marks' record for an
+/// older Sioul (`reminded`, `unshown`).
+struct DoseNotes {
+    key: String,
+    /// When it was to be reminded: its time, or the waking it waited for.
+    since: i64,
+    /// The entry's `maybe` before the notice last recorded going: put back if refused.
+    before: Option<i64>,
 }
 
-/// `maybe_late`'s record: maybe at `now` (`unshown` beside it for an older
-/// Sioul), unless reminded or marked meanwhile.
-fn maybe_tried(record: &mut HealthState, key: &str, now: i64) {
-    if !record.reminded.contains_key(key) && !record.taken.contains_key(key) && !record.not_taken.contains_key(key) {
-        record.maybe.insert(key.to_string(), now);
-        record.unshown.entry(key.to_string()).or_insert(now);
+impl sioul_sync::notify::DoseRecord for DoseNotes {
+    fn going(&mut self, going: sioul_sync::notify::Going) -> sioul_sync::notify::Say {
+        use sioul_sync::notify::{Going, Say};
+        // The first: the tick decided it a moment ago (its record's lock is
+        // its own until it waits for this outcome: not taken again here).
+        let words = match going {
+            Going::First => Some(None),
+            Going::Late(why) => late_words(&self.key, self.since, Some(why)).map(Some),
+        };
+        let Some(words) = words else {
+            promise(&self.key, sioul_core::dose_reminders::NEVER);
+            return Say::Nothing;
+        };
+        let now = Timestamp::now().as_second();
+        let mut before = 0;
+        let written = tell_mine(&self.key, |mine| {
+            before = mine.maybe;
+            mine.maybe = now;
+        });
+        // Not recorded: a late notice does not go (a promise of this
+        // computer's could not be read either); a first one does, which no
+        // other device takes as its first's proof without this entry.
+        if !written && going != Going::First {
+            return Say::Nothing;
+        }
+        self.before = written.then_some(before);
+        match words {
+            None => Say::Own,
+            Some((title, body)) => Say::Words(title, body),
+        }
+    }
+
+    fn refused(&mut self) {
+        if let Some(before) = self.before.take() {
+            tell_mine(&self.key, |mine| mine.maybe = before);
+        }
+    }
+
+    fn shown(&mut self) {
+        let now = Timestamp::now().as_second();
+        tell_mine(&self.key, |mine| {
+            if mine.shown == 0 {
+                mine.shown = now;
+            }
+        });
+        let _held = state_held();
+        let _ = change(|record| late_reminded(record, &self.key, now));
+    }
+
+    fn unshown(&mut self) {
+        let now = Timestamp::now().as_second();
+        tell_mine(&self.key, |mine| {
+            if mine.unshown == 0 {
+                mine.unshown = now;
+            }
+        });
+        let _held = state_held();
+        let _ = change(|record| {
+            if !record.reminded.contains_key(&self.key) {
+                record.unshown.entry(self.key.clone()).or_insert(now);
+            }
+        });
+    }
+
+    fn pause(&mut self, until: i64) -> bool {
+        if still_to_remind(&self.key) {
+            promise(&self.key, until)
+        } else {
+            promise(&self.key, sioul_core::dose_reminders::NEVER);
+            false
+        }
+    }
+
+    fn over(&mut self) {
+        promise(&self.key, sioul_core::dose_reminders::NEVER);
+    }
+
+    fn settled(&mut self) -> bool {
+        let _held = state_held();
+        let state = record();
+        state.taken.contains_key(&self.key) || state.not_taken.contains_key(&self.key) || sioul_core::doses::answered(&self.key, &state, &records()) != Answered::Open
     }
 }
 
-/// Whether a dose's reminder that could not be shown may still be shown,
-/// late: neither marked here (taken, or said not taken) nor answered on
-/// another device, nor reminded since (another device took it up: a phone's
-/// alarm rang): what the phone did is never contradicted, and nothing is
-/// ever said of it but a reminder.
+/// Whether a dose's reminder may still be shown: neither marked here (taken,
+/// or said not taken) nor answered on another device, nor reminded since
+/// (another device took it up: a phone's alarm rang): what the phone did is
+/// never contradicted, and nothing is ever said of it but a reminder.
 fn late_reminder_wanted(state: &HealthState, records: &DoseRecords, key: &str) -> bool {
     !state.taken.contains_key(key) && !state.not_taken.contains_key(key) && !state.reminded.contains_key(key) && sioul_core::doses::answered(key, state, records) == Answered::Open
-}
-
-/// A dose's reminder shown late (`sioul_sync::notify::Again::shown`):
-/// recorded a reminder then (`late_reminded`).
-fn shown_late(key: &str) {
-    let _held = state_held();
-    let now = Timestamp::now().as_second();
-    let _ = change(|record| late_reminded(record, key, now));
 }
 
 /// `shown_late`'s record: a reminder at `now`, unless reminded or marked
@@ -3214,52 +3416,70 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let mut reminded: Vec<String> = Vec::new();
     let mut unshown: Vec<String> = Vec::new();
     let mut maybe: Vec<String> = Vec::new();
-    // A phone sharing the doses reminds them by its own alarm: this computer's late reminders end before it rings.
+    // A phone sharing the doses reminds them by its own alarm, ten minutes on:
+    // no notice from here meanwhile, promised, so that it may know it is the first.
     let alarms = phone_alarms(&knowledge, stamp);
     // The sleep or pause the doses waited for, ended now: their reminders count from waking (`news_from`).
     let woken = crate::hours::woken();
+    // What each device did to remind each dose (none: the file does not read here).
+    let told_now = told();
+    let answers = records();
+    let me = this_device();
     // Each dose's reminder under way, what became of it waited for below.
     let mut sending: Vec<(String, sioul_sync::notify::Sending)> = Vec::new();
     // On a phone, Android's alarm clock reminds, Sioul shown or not (`alarms`).
     crate::alarms::schedule();
     // Asleep with "Doses during sleep: stay silent" (Settings ▸ Reminders and
     // notifications), they wait for waking; by default they come, asleep or not.
-    if keeper.mine && keeper.settled && !cfg!(target_os = "android") && !crate::hours::doses_silent() {
+    if !cfg!(target_os = "android") && !crate::hours::doses_silent() {
         // Those that waited come at waking, once (more than half an hour late, Taken asks when).
         let window = crate::hours::woke_from().map_or(GRACE_MINUTES, |since| GRACE_MINUTES.max((stamp - since) / 60 + 1));
         for dose in state.to_remind(&health, &now, window) {
             if SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
                 continue;
             }
-            // Not known whether it was taken on another device: news is waited
-            // for a while; then it is reminded all the same, the doubt said first.
-            // A phone sharing the doses: until `LATE_UNTIL` at most, so that this
-            // reminder reaches the phone before its alarm.
             let due = dose.at.timestamp().as_second();
-            let doubt = doubt_of(&knowledge, due, stamp);
-            let wait = if alarms { LATE_UNTIL } else { WAIT_FOR_NEWS };
-            if !doubt.is_empty() && stamp < due + wait {
-                continue;
-            }
-            // Tried by an earlier Sioul here (its record says not shown, or maybe):
-            // a late reminder, the doubt first, and with a phone sharing the doses
-            // not past `LATE_UNTIL`.
-            let tried = state.unshown.contains_key(&dose.key) || state.maybe.contains_key(&dose.key);
             let since = news_from(due, woken);
-            if tried && alarms && stamp >= since + LATE_UNTIL {
+            // Shown on a device, or answered anywhere read here: nothing to remind.
+            if told_now.as_ref().is_some_and(|told| told.shown(&dose.key)) || sioul_core::doses::answered(&dose.key, &state, &answers) != Answered::Open {
                 continue;
             }
+            let own = told_now.as_ref().and_then(|told| told.of(&dose.key, &me));
+            let quiet_until = since + sioul_core::dose_reminders::QUIET_AFTER;
+            // Not this computer's to remind (the doses kept elsewhere, or kept
+            // here too lately): a phone sharing them is promised none from
+            // here until after its alarm (docs/health.md, "What became of a reminder").
+            if !(keeper.mine && keeper.settled) {
+                if alarms && told_now.is_some() && stamp < quiet_until && own.is_none_or(|own| own.maybe == 0 && own.quiet < quiet_until) {
+                    promise(&dose.key, quiet_until);
+                }
+                continue;
+            }
+            let (title, body) = match plan(own, told_now.is_some(), keeper.since, since, stamp, alarms) {
+                Plan::Not => continue,
+                Plan::Quiet(until) => {
+                    promise(&dose.key, until);
+                    continue;
+                }
+                Plan::First => {
+                    // Not known whether it was taken on another device: news is
+                    // waited for, within its window as the first (`first_wait`);
+                    // then it is reminded all the same, the doubt said first.
+                    // Another device's notice sent and not known shown (two
+                    // computers each keeping the doses, the sync slow): said first too.
+                    let other = told_now.as_ref().and_then(|told| told.maybe_elsewhere(&dose.key, &me)).map(|at| say("dose-doubt-other", &[("when", moment_said(at))]));
+                    let doubt = doubt_unread_with(&knowledge, since, stamp, None, other.as_deref());
+                    if !doubt.is_empty() && other.is_none() && stamp + 60 < since + first_wait(alarms) {
+                        continue;
+                    }
+                    let named = named(&dose);
+                    if doubt.is_empty() { (named, dose.at.strftime("%H:%M").to_string()) } else { (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M"))) }
+                }
+                Plan::Late(why) => late_said(&dose, &knowledge, stamp, since, why),
+            };
             if let Ok(mut sent) = SENT.lock() {
                 sent.insert(dose.key.clone());
             }
-            let named = named(&dose);
-            let (title, body) = if tried {
-                late_said(&dose, &knowledge, stamp)
-            } else if doubt.is_empty() {
-                (named, dose.at.strftime("%H:%M").to_string())
-            } else {
-                (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M")))
-            };
             let key = dose.key.clone();
             let (qt_taken, shared_taken) = (qt.clone(), Arc::clone(shared));
             let taken: Box<dyn FnOnce() + Send> = Box::new(move || {
@@ -3275,22 +3495,13 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 // Your other computers know at once.
                 crate::share::exchange(&qt_taken, &shared_taken);
             });
-            // Recorded as what became of it (below): shown, a reminder; surely not
-            // shown, `unshown` (another device reminds it, and the question on the
-            // past asks about it, saying so); sent and not known shown, `maybe` (a
-            // phone's alarm reminds it with the doubt first). Not gone out, it is
-            // tried again until `LATE_UNTIL` (a phone sharing the doses) or its
-            // grace's end; whatever shows late says the doubt first (`late_words`).
-            let (late_key, shown_key, maybe_key) = (dose.key.clone(), dose.key.clone(), dose.key.clone());
-            // From the dose's time, or the waking it waited for.
-            let end = if alarms { since + LATE_UNTIL } else { since + GRACE_MINUTES * 60 };
-            let until = std::time::Instant::now() + std::time::Duration::from_secs(u64::try_from(end - stamp).unwrap_or(0));
-            let again = sioul_sync::notify::Again {
-                until,
-                late: Box::new(move || late_words(&late_key)),
-                shown: Box::new(move || shown_late(&shown_key)),
-                maybe: Box::new(move || maybe_late(&maybe_key)),
-            };
+            // Each notice recorded before it goes (`DoseNotes`), what became of
+            // it after (below, and on its thread): not gone out, tried again,
+            // the doubt first, until its grace's end, none while a phone's
+            // alarm is due (promised); sent and not known shown, listened for.
+            let instant = |at: i64| std::time::Instant::now() + std::time::Duration::from_secs(u64::try_from(at - stamp).unwrap_or(0));
+            let quiet = (alarms && stamp < quiet_until).then(|| (instant(since + LATE_UNTIL), instant(quiet_until), quiet_until));
+            let again = sioul_sync::notify::Again { end: instant(since + GRACE_MINUTES * 60), quiet, record: Box::new(DoseNotes { key: dose.key.clone(), since, before: None }) };
             sending.push((dose.key.clone(), sioul_sync::notify::remind_dose(&title, &body, (tr().text("health-taken", None), taken), again)));
         }
     }
@@ -3314,7 +3525,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             if let Some(doubt) = doubts.first() {
                 body = format!("{body} {doubt}");
             }
-            if let Err(e) = sioul_sync::notify::remind(&missed_title(&missed, &state, tr()), &body, Some((tr().text("health-missed-open", None), open))) {
+            if let Err(e) = sioul_sync::notify::remind(&missed_title(&missed, &state, &told_now.clone().unwrap_or_default(), tr()), &body, Some((tr().text("health-missed-open", None), open))) {
                 tell(qt, shared, e);
             }
         }
@@ -3368,6 +3579,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 maybe.push(key);
                 tell(qt, shared, e);
             }
+            sioul_sync::notify::Outcome::Gone => {}
         }
     }
     let _held = state_held();
@@ -3570,7 +3782,7 @@ mod tests {
         let state = HealthState::default();
         // The Porch at 20:01: the evening's take, 2 tablets.
         let evening = at("2026-10-08T20:01[Europe/Paris]");
-        let porch = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), "desk-id", &alone, &evening, false, true, &english)).unwrap();
+        let porch = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), &DoseReminders::default(), "desk-id", &alone, &evening, false, true, &english)).unwrap();
         let due: Vec<(&str, &str)> = porch["due"].as_array().unwrap().iter().map(|d| (d["time"].as_str().unwrap(), d["dose"].as_str().unwrap())).collect();
         assert_eq!(due, [("20:00", "2 tablets")]);
         // The home screen's card at 07:00: both, each with its amount.
@@ -3676,7 +3888,7 @@ mod tests {
         let at = |text: &str| text.parse::<Zoned>().unwrap();
         let key = |id: &str, when: &str| format!("{id}@{}", at(when).timestamp().as_second());
         let alone = Knowledge { record_lost: None, peers: Vec::new() };
-        let shown = |state: &HealthState, knowledge: &Knowledge, now: &Zoned, silent: bool, heard: bool| serde_json::to_value(porch_doses(&health, state, &DoseRecords::default(), "desk-id", knowledge, now, silent, heard, &english)).unwrap();
+        let shown = |state: &HealthState, knowledge: &Knowledge, now: &Zoned, silent: bool, heard: bool| serde_json::to_value(porch_doses(&health, state, &DoseRecords::default(), &DoseReminders::default(), "desk-id", knowledge, now, silent, heard, &english)).unwrap();
         let mut state = HealthState::default();
         // 07:30, reminded by its notification while Sioul ran, never answered.
         state.reminded.insert(key("levo", "2026-10-06T07:30[Europe/Paris]"), at("2026-10-06T07:31[Europe/Paris]").timestamp().as_second());
@@ -3745,7 +3957,7 @@ mod tests {
         note_minute(&mut state, &[], std::slice::from_ref(&a), &[], &[], at("2026-10-06T08:00:30[Europe/Paris]").timestamp().as_second());
         assert!(state.reminded.is_empty() && state.reminder_unshown(&a));
         // Demo B, at 07:00, due while Sioul ran nowhere: the usual question, first.
-        let view = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), "desk-id", &alone, &noon, false, true, &english)).unwrap();
+        let view = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), &DoseReminders::default(), "desk-id", &alone, &noon, false, true, &english)).unwrap();
         let closed = view["closed"].as_array().unwrap();
         assert_eq!(closed.len(), 2, "{view}");
         assert_eq!((closed[0]["key"].as_str(), closed[0]["question"].as_str()), (Some(b.as_str()), Some("Due while Sioul was closed, and marked nowhere Sioul can see: did you take them?")));
@@ -3755,24 +3967,24 @@ mod tests {
         assert!(question.starts_with("Due while Sioul ran, but their reminder could not be shown") && !question.contains("closed"), "{question}");
         assert!(view["due"].as_array().unwrap().iter().all(|row| row["question"] == ""), "today's doses carry no question");
         // The Health page's list says the same.
-        let rows = missed_rows(&health, &state, &alone, &noon, &french);
+        let rows = missed_rows(&health, &state, &DoseReminders::default(), &alone, &noon, &french);
         assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str(), a.as_str()]);
         assert!(rows[1].question.starts_with("Prévus pendant que Sioul tournait, mais leur rappel n’a pas pu s’afficher"), "{}", rows[1].question);
         // Another device not heard since: the doubt said under both, never "not taken".
         let heard = at("2026-10-06T06:30[Europe/Paris]").timestamp().as_second();
         let unsure = Knowledge { record_lost: None, peers: vec![Peer { name: "laptop".into(), known_until: heard, closed: false, delay: Some(30), broken: None, heard, ..Peer::default() }] };
-        for row in missed_rows(&health, &state, &unsure, &noon, &english) {
+        for row in missed_rows(&health, &state, &DoseReminders::default(), &unsure, &noon, &english) {
             assert!(row.doubt.starts_with("Sioul can't tell whether it was taken") && !row.doubt.to_lowercase().contains("not taken"), "{}", row.doubt);
         }
         // The notification's title: one kind, the other, both.
         let missed = state.unanswered(&health, &noon, MISSED_HOURS, GRACE_MINUTES);
-        assert_eq!(missed_title(&missed, &state, &english), "Doses due earlier");
-        assert_eq!(missed_title(&missed[1..], &state, &english), "A reminder could not be shown");
-        assert_eq!(missed_title(&missed[..1], &state, &english), "While Sioul was closed");
-        assert_eq!(missed_title(&missed[1..], &state, &french), "Un rappel n’a pas pu s’afficher");
+        assert_eq!(missed_title(&missed, &state, &DoseReminders::default(), &english), "Doses due earlier");
+        assert_eq!(missed_title(&missed[1..], &state, &DoseReminders::default(), &english), "A reminder could not be shown");
+        assert_eq!(missed_title(&missed[..1], &state, &DoseReminders::default(), &english), "While Sioul was closed");
+        assert_eq!(missed_title(&missed[1..], &state, &DoseReminders::default(), &french), "Un rappel n’a pas pu s’afficher");
         // Reminded later (another device, or notifications back): no question at all.
         note_minute(&mut state, std::slice::from_ref(&a), &[], &[], &[], at("2026-10-06T08:05[Europe/Paris]").timestamp().as_second());
-        let rows = missed_rows(&health, &state, &alone, &noon, &english);
+        let rows = missed_rows(&health, &state, &DoseReminders::default(), &alone, &noon, &english);
         assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str()]);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3821,20 +4033,14 @@ mod tests {
         let mut marked = taken.clone();
         late_reminded(&mut marked, &key, 1_791_360_700);
         assert!(marked.reminded.is_empty(), "nothing recorded over a mark");
-        // The minute's record: maybe written with unshown beside it; a maybe answered late, a reminder.
+        // The minute's record: a reminder sent and not known shown is written
+        // `unshown` for an older Sioul (what each device did is in its own file);
+        // answered late, a reminder.
         let mut minute = HealthState::default();
         note_minute(&mut minute, &[], &[], std::slice::from_ref(&key), &[], 1_791_360_002);
-        assert!(minute.reminder_maybe(&key) && minute.unshown.contains_key(&key) && !minute.reminder_unshown(&key));
+        assert!(minute.unshown.contains_key(&key) && minute.reminder_unshown(&key) && !minute.reminded.contains_key(&key));
         late_reminded(&mut minute, &key, 1_791_360_004);
-        assert!(!minute.reminder_maybe(&key), "answered late: shown, upgraded");
-        // A try after the first, sent and not answered: maybe, unless reminded or marked.
-        let mut retried = HealthState::default();
-        retried.unshown.insert(key.clone(), 1_791_360_005);
-        maybe_tried(&mut retried, &key, 1_791_360_120);
-        assert!(retried.reminder_maybe(&key) && retried.unshown.get(&key) == Some(&1_791_360_005));
-        let mut reminded_meanwhile = phone.clone();
-        maybe_tried(&mut reminded_meanwhile, &key, 1_791_360_700);
-        assert!(reminded_meanwhile.maybe.is_empty(), "never over a reminder");
+        assert!(!minute.reminder_unshown(&key), "answered late: shown, upgraded");
         // The tick, read from the source: each first try's outcome waited for, the record let go, recorded as it went.
         let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/health.rs")).unwrap();
         let tick = source.split("pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
@@ -3847,79 +4053,150 @@ mod tests {
         assert!(waited.find("let _held = state_held();").unwrap() < waited.find("note_minute(record, &reminded, &unshown, &maybe").unwrap(), "recorded under the record's lock again");
     }
 
-    /// The fourth review's timelines, as each device holds them then (pure:
-    /// the record, what each device knows, the words; review of battery part
-    /// C, H1 and H2). Never a second reminder said plainly after one that may
-    /// have shown:
-    /// - the computer's notice taken by the server but answered late, a bus
-    ///   that stalled under it, a first try longer than the tick's wait: the
-    ///   record says maybe; the phone's alarm, the computer in use and fresh,
-    ///   says "another of your devices may have shown its reminder at 08:00"
-    ///   first; answered late, a reminder: the phone silent;
-    /// - not shown at first: until the computer's tries are read (its records
-    ///   from past `LATE_UNTIL`), the phone says it may have shown it since;
-    ///   read, and still not shown, the phone reminds plainly;
-    /// - the computer's late reminders: never past `LATE_UNTIL` while a phone
-    ///   shares the doses, their words the doubt first; and a phone put away
-    ///   counts as known from its alarm, not from the dose's time (core).
+    /// The phone's alarm, at a dose's time plus `WAIT_FOR_NEWS` (the desk kept
+    /// the doses), as it holds what the others did (review of battery part C,
+    /// the fifth review: THE RULE): plain only on the desk's own word that it
+    /// did not remind the dose (its first try not gone out, then its promise
+    /// of quiet past the alarm; or closed, everything read); every other way,
+    /// the doubt first, each device said; another phone always a doubt (its
+    /// own alarm). In English and French, the French reasons joined with a
+    /// thin space before ";".
     #[test]
-    fn each_device_says_the_doubt_once_another_may_have_reminded() {
+    fn a_phone_reminds_plainly_only_on_the_others_word() {
+        use sioul_core::dose_reminders::{QUIET_AFTER, others};
         use sioul_core::health::Said;
         let due: i64 = 1_791_360_000;
         let key = format!("levo@{due}");
         let at_alarm = due + WAIT_FOR_NEWS;
-        // The computer as the phone reads it at its alarm: in use, exported at `exported`.
-        let desk = |exported: i64| Peer {
+        let (english, french) = (Translator::new("en"), Translator::new("fr"));
+        let desk = |exported: i64, working: bool| Peer {
             name: "desk".into(),
             id: "desk-id".into(),
-            said: Some(Said { started: due - 10_800, closed: 0, working: true, exported, imported: exported, doses: true, left: false, phone: false }),
+            said: Some(Said { started: due - 10_800, closed: if working { 0 } else { exported }, working, exported, imported: exported, doses: true, left: false, phone: false }),
             complete: true,
             seen: exported + 5,
             heard: exported,
             ..Peer::default()
         };
-        let fresh = Knowledge { record_lost: None, peers: vec![desk(at_alarm - 30)] };
-        // Maybe: the phone says the doubt first, whatever else is known.
-        let mut maybe = HealthState::default();
-        note_minute(&mut maybe, &[], &[], std::slice::from_ref(&key), &[], due + 2);
-        let first = reminder_doubt(&maybe, &key, &fresh, due, at_alarm);
-        assert_eq!(first, Some(say("dose-doubt-maybe", &[("when", moment_said(due + 2))])));
-        let words = doubt_unread_with(&fresh, due, at_alarm, None, first.as_deref());
-        assert!(!words.is_empty() && words.contains(first.as_deref().unwrap()), "{words}");
-        // Answered late: a reminder; the phone's alarm silent (its first check), no doubt to say.
-        let mut answered = maybe.clone();
-        late_reminded(&mut answered, &key, due + 5);
-        assert!(answered.reminded.contains_key(&key) && reminder_doubt(&answered, &key, &fresh, due, at_alarm).is_none());
-        // Not shown at first: the computer's tries not read yet (its records from before LATE_UNTIL).
-        let mut unshown = HealthState::default();
-        note_minute(&mut unshown, &[], std::slice::from_ref(&key), &[], &[], due + 5);
-        let behind = Knowledge { record_lost: None, peers: vec![desk(due + LATE_UNTIL - 30)] };
-        assert_eq!(reminder_doubt(&unshown, &key, &behind, due, at_alarm), Some(say("dose-doubt-maybe-late", &[("when", moment_said(due + 5))])));
-        // Read past LATE_UNTIL and still not shown: surely not, the phone reminds plainly.
-        assert!(reminder_doubt(&unshown, &key, &fresh, due, at_alarm).is_none());
-        assert!(doubt_unread_with(&fresh, due, at_alarm, None, None).is_empty(), "plainly");
-        // The computer: a phone shares the doses, so its late reminders end at LATE_UNTIL, before the phone's alarm.
+        let in_use = [desk(at_alarm - 30, true)];
+        let with = |tried: Tried| {
+            let mut told = DoseReminders::default();
+            *told.entry(&key, "desk-id") = tried;
+            told
+        };
+        let said_as = |told: &DoseReminders, peers: &[Peer], words: &Translator| match others(&key, due, at_alarm, "phone-id", true, Some(told), peers) {
+            Others::Doubt(e) => Some(elsewhere_said(&e, due, at_alarm, words)),
+            Others::First => None,
+            Others::Reminded => Some("reminded".into()),
+        };
+        // H1: the desk's notice went and was not known shown: "may have shown".
+        let sent = with(Tried { maybe: due + 2, ..Tried::default() });
+        let when = |at: i64, words: &Translator| when_said(&Timestamp::from_second(at).unwrap().to_zoned(TimeZone::system()), words);
+        assert_eq!(said_as(&sent, &in_use, &english), Some(format!("desk may have shown its reminder {}", when(due + 2, &english))));
+        assert_eq!(said_as(&sent, &in_use, &french), Some(format!("desk a peut-être affiché son rappel {}", when(due + 2, &french))));
+        // Shown (answered late): reminded, the alarm silent.
+        assert_eq!(said_as(&with(Tried { maybe: due + 2, shown: due + 3, ..Tried::default() }), &in_use, &english).as_deref(), Some("reminded"));
+        // H2: not gone out, its tries going on (no promise yet): "could not show its reminder …, and may have shown it since".
+        let tried = with(Tried { unshown: due + 5, ..Tried::default() });
+        assert!(said_as(&tried, &in_use, &english).is_some_and(|w| w.contains("could not show its reminder") && w.contains("may have shown it since")));
+        // Not gone out, then quiet past the alarm, promised: the alarm is the first, plainly.
+        let promised = with(Tried { unshown: due + 5, quiet: due + QUIET_AFTER, ..Tried::default() });
+        assert_eq!(said_as(&promised, &in_use, &english), None);
+        // In use, no word of its own on the dose read here: "was in use and may have reminded you".
+        assert!(said_as(&DoseReminders::default(), &in_use, &english).is_some_and(|w| w.starts_with("desk was in use and may have reminded you")));
+        // Closed before the dose, everything read: did not; plainly.
+        assert_eq!(said_as(&DoseReminders::default(), &[desk(due - 600, false)], &english), None);
+        // C1: two phones; the other one's own alarm may ring: a doubt, named, whatever the desk promised.
+        let tablet = Peer { name: "tablet".into(), id: "tablet-id".into(), said: Some(Said { phone: true, ..desk(due - 600, false).said.unwrap() }), ..desk(due - 600, false) };
+        assert_eq!(said_as(&promised, &[in_use[0].clone(), tablet.clone()], &english).as_deref(), Some("tablet may have reminded you too, by its own alarm"));
+        assert_eq!(said_as(&promised, &[in_use[0].clone(), tablet], &french).as_deref(), Some("tablet vous l’a peut-être rappelée aussi, par sa propre alarme"));
+        // Two reasons, joined: in French with a thin space before ";".
+        let two = elsewhere_said(&[Elsewhere::Unknown { device: Named { id: "a".into(), name: "desk".into(), phone: false } }, Elsewhere::Alarm { device: Named { id: "b".into(), name: "tablet".into(), phone: false } }], due, at_alarm, &french);
+        assert_eq!(two, format!("desk était utilisé et vous l’a peut-être rappelée {}\u{202f}; tablet vous l’a peut-être rappelée aussi, par sa propre alarme", when(due, &french)));
+        assert_eq!(joined(vec!["a".into(), "b".into()], &english), "a; b");
+        assert_eq!(joined(vec!["a".into(), "b".into()], &french), "a\u{202f}; b");
+        // The file not read here: nothing known.
+        assert!(matches!(others(&key, due, at_alarm, "phone-id", true, None, &in_use), Others::Doubt(ref e) if e == &[Elsewhere::Unread]));
+    }
+
+    /// What the desk does for a dose at its tick (`plan`; the fifth review's
+    /// C1, M1, M2): its first reminder only where it kept the doses at the
+    /// dose's time, within its window; with a phone sharing the doses
+    /// (one or two: C1), none in the quiet around the phone's alarm, promised;
+    /// after it, its tries go on, the doubt first, whether the phone rang or
+    /// not (M1), until the grace's end; at waking, counted from waking (M2).
+    #[test]
+    fn a_computer_reminds_first_only_when_it_is_and_keeps_its_word() {
+        use sioul_core::dose_reminders::{NEVER, QUIET_AFTER};
+        use sioul_sync::notify::Late;
+        let since: i64 = 1_791_360_000;
+        let unshown = Some(Tried { unshown: since + 5, ..Tried::default() });
+        // Kept the doses then, nothing recorded: its first, within its window.
+        assert_eq!(plan(None, true, since - 3_600, since, since + 30, true), Plan::First);
+        assert_eq!(plan(None, true, since - 3_600, since, since + LATE_UNTIL - 1, true), Plan::First);
+        assert_eq!(plan(None, true, since - 3_600, since, since + WAIT_FOR_NEWS - 1, false), Plan::First, "no phone: its window is the wait for news");
+        // Past its window with a phone: quiet until after its alarm, promised.
+        assert_eq!(plan(None, true, since - 3_600, since, since + LATE_UNTIL, true), Plan::Quiet(since + QUIET_AFTER));
+        // Kept only since after the dose's time (a restart, the lease moved): never its first.
+        assert_eq!(plan(None, true, since + 30, since, since + 60, true), Plan::Quiet(since + QUIET_AFTER));
+        assert_eq!(plan(None, true, since + 30, since, since + 60, false), Plan::Late(None));
+        // Its first try not gone out: tries, the doubt first; quiet in the phone's window, promised;
+        // after it, the tries again, the doubt first, whether the phone rang or not (M1).
+        assert_eq!(plan(unshown, true, since - 3_600, since, since + 120, true), Plan::Late(Some(Late::Retry)));
+        assert_eq!(plan(unshown, true, since - 3_600, since, since + LATE_UNTIL + 10, true), Plan::Quiet(since + QUIET_AFTER));
+        let paused = Some(Tried { unshown: since + 5, quiet: since + QUIET_AFTER, ..Tried::default() });
+        assert_eq!(plan(paused, true, since - 3_600, since, since + QUIET_AFTER - 1, true), Plan::Not, "its promise kept");
+        assert_eq!(plan(paused, true, since - 3_600, since, since + QUIET_AFTER + 60, true), Plan::Late(Some(Late::Retry)));
+        // Two phones count as phones (C1): the quiet holds as for one.
+        assert_eq!(plan(unshown, true, since - 3_600, since, since + 8 * 60, true), Plan::Quiet(since + QUIET_AFTER));
+        // An earlier Sioul here sent it, not known shown: unconfirmed, the doubt first; shown, or never again: nothing.
+        assert_eq!(plan(Some(Tried { maybe: since + 2, ..Tried::default() }), true, since - 3_600, since, since + 120, true), Plan::Late(Some(Late::Unconfirmed)));
+        assert_eq!(plan(Some(Tried { maybe: since + 2, shown: since + 3, ..Tried::default() }), true, 0, since, since + 120, true), Plan::Not);
+        assert_eq!(plan(Some(Tried { unshown: since + 5, quiet: NEVER, ..Tried::default() }), true, 0, since, since + 1_200, true), Plan::Not);
+        // The file not read: a first try only.
+        assert_eq!(plan(None, false, since - 3_600, since, since + 30, true), Plan::First);
+        assert_eq!(plan(unshown, false, since - 3_600, since, since + 120, true), Plan::Not);
+        // The tries' words: the doubt first, why it is late first (L6: a notice on the screen since its time, answered late, "was not confirmed in time").
+        let dose = sioul_core::health::Dose { key: format!("levo@{since}"), medicine: "levo".into(), name: "Levothyroxine".into(), dose: "75 µg".into(), at: Timestamp::from_second(since).unwrap().to_zoned(TimeZone::system()) };
+        let alone = Knowledge { record_lost: None, peers: Vec::new() };
+        let (title, retry) = late_said(&dose, &alone, since + 120, since, Some(Late::Retry));
+        assert_eq!(title, say("dose-check-title", &[("dose", "Levothyroxine · 75 µg".to_string())]));
+        assert!(retry.contains(&say("dose-doubt-late", &[("when", moment_said(since))])), "{retry}");
+        let (_, unconfirmed) = late_said(&dose, &alone, since + 120, since, Some(Late::Unconfirmed));
+        assert!(unconfirmed.contains(&say("dose-doubt-unconfirmed", &[("when", moment_said(since))])) && !unconfirmed.contains(&say("dose-doubt-late", &[("when", moment_said(since))])), "{unconfirmed}");
+        let (_, other) = late_said(&dose, &alone, since + 120, since, None);
+        assert!(other.contains(&say("dose-doubt-other", &[("when", moment_said(since))])), "{other}");
+        // In English, as L6 asks.
+        assert_eq!(said(&Translator::new("en"), "dose-doubt-unconfirmed", &[("when", "at 08:00".to_string())]), "its reminder, due at 08:00, was not confirmed in time, and it may have been taken since without being marked");
+    }
+
+    /// At waking (doses kept for it), the desk's first reminder counts its
+    /// doubt from waking, not from the dose's time (the fifth review's M2):
+    /// a phone put away before the sleep may be picked up at waking to mark
+    /// it, its alarm having waited for waking too; known only once the news
+    /// of that opening had the time to come, as at a dose's time.
+    #[test]
+    fn at_waking_the_first_reminder_counts_from_waking() {
+        use sioul_core::health::Said;
+        let (bed, woke) = (1_800_000_000, 1_800_028_800);
+        let due = bed + 6 * 3600;
+        let since = news_from(due, Some((bed, woke)));
+        assert_eq!(since, woke);
         let phone = Peer {
             name: "phone".into(),
             id: "phone-id".into(),
-            said: Some(Said { started: due - 7_200, closed: due - 3_600, working: false, exported: due - 3_600, imported: due - 3_600, doses: true, left: false, phone: true }),
+            said: Some(Said { started: bed - 7_200, closed: bed - 1_800, working: false, exported: bed - 1_800, imported: bed - 1_800, doses: true, left: false, phone: true }),
             complete: true,
-            seen: due - 3_600,
-            heard: due - 3_600,
+            seen: bed - 1_800,
+            heard: bed - 1_800,
             wake: Some(30),
             ..Peer::default()
         };
-        let with_phone = Knowledge { record_lost: None, peers: vec![phone] };
-        assert!(phone_alarms(&with_phone, due) && !phone_alarms(&Knowledge { record_lost: None, peers: Vec::new() }, due));
-        assert!(LATE_UNTIL + 60 < WAIT_FOR_NEWS, "what this computer shows late reaches the phone before its alarm");
-        // The phone put away, a minute after its alarm: not known (it may have reminded or been marked): the doubt said.
-        assert!(!doubt_of(&with_phone, due, at_alarm + 60).is_empty(), "known from its alarm, not from the dose's time");
-        assert!(doubt_of(&with_phone, due, due + 30 + sioul_core::health::SKEW).is_empty(), "known before its alarm");
-        // A late reminder's words: "Check first", its time, its lateness first.
-        let dose = sioul_core::health::Dose { key: key.clone(), medicine: "levo".into(), name: "Levothyroxine".into(), dose: "75 µg".into(), at: Timestamp::from_second(due).unwrap().to_zoned(TimeZone::system()) };
-        let (title, body) = late_said(&dose, &Knowledge { record_lost: None, peers: Vec::new() }, due + 120);
-        assert_eq!(title, say("dose-check-title", &[("dose", "Levothyroxine · 75 µg".to_string())]));
-        assert!(body.contains(&say("dose-doubt-late", &[("when", moment_said(due))])), "{body}");
+        let knowledge = Knowledge { record_lost: None, peers: vec![phone] };
+        assert!(doubt_of(&knowledge, due, woke + 30).is_empty(), "counted from the dose's time, the phone would be known by its alarm long rung");
+        assert!(!doubt_of(&knowledge, since, woke + 30).is_empty(), "counted from waking: the phone may have been picked up to mark it");
+        assert!(doubt_of(&knowledge, since, woke + 30 + sioul_core::health::SKEW).is_empty(), "known once the news of an opening had the time to come");
+        assert_eq!(plan(None, true, bed - 3_600, since, woke + 30, true), Plan::First, "its first, at waking");
     }
 
     /// The question on the past for a dose whose reminder may have shown
@@ -3941,15 +4218,21 @@ mod tests {
         let alone = Knowledge { record_lost: None, peers: Vec::new() };
         let noon = at("2026-10-06T12:00[Europe/Paris]");
         let mut state = HealthState::default();
-        note_minute(&mut state, &[], &[], std::slice::from_ref(&a), &[], at("2026-10-06T08:00:02[Europe/Paris]").timestamp().as_second());
-        let rows = missed_rows(&health, &state, &alone, &noon, &english);
+        let sent = at("2026-10-06T08:00:02[Europe/Paris]").timestamp().as_second();
+        note_minute(&mut state, &[], &[], std::slice::from_ref(&a), &[], sent);
+        // The desk's notice went (recorded before it went), not known shown.
+        let mut told = DoseReminders::default();
+        told.entry(&a, "desk-id").maybe = sent;
+        let rows = missed_rows(&health, &state, &told, &alone, &noon, &english);
         assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str(), a.as_str()]);
         assert!(rows[1].question.starts_with("Due while Sioul ran, but their reminder may not have been shown"), "{}", rows[1].question);
-        assert!(missed_rows(&health, &state, &alone, &noon, &french)[1].question.starts_with("Prévus pendant que Sioul tournait, mais leur rappel ne s’est peut-être pas affiché"));
+        assert!(missed_rows(&health, &state, &told, &alone, &noon, &french)[1].question.starts_with("Prévus pendant que Sioul tournait, mais leur rappel ne s’est peut-être pas affiché"));
         let missed = state.unanswered(&health, &noon, MISSED_HOURS, GRACE_MINUTES);
-        assert_eq!(missed_title(&missed[1..], &state, &english), "A reminder may not have shown");
-        assert_eq!(missed_title(&missed[1..], &state, &french), "Un rappel ne s’est peut-être pas affiché");
-        assert_eq!(missed_title(&missed, &state, &english), "Doses due earlier");
+        assert_eq!(missed_title(&missed[1..], &state, &told, &english), "A reminder may not have shown");
+        assert_eq!(missed_title(&missed[1..], &state, &told, &french), "Un rappel ne s’est peut-être pas affiché");
+        assert_eq!(missed_title(&missed, &state, &told, &english), "Doses due earlier");
+        // Without the desk's word: not shown, as it reads here.
+        assert_eq!(missed_title(&missed[1..], &state, &DoseReminders::default(), &english), "A reminder could not be shown");
     }
 
     /// A dose is open, for a phone's steps (`steps::keeps_close`), from its
@@ -4178,27 +4461,27 @@ mod tests {
         assert_eq!(news_from(due, None), due, "no sleep held it");
         let since = news_from(due, Some((bed, woke)));
         assert_eq!(alarm_again(since, woke + 5, None), woke + WAIT_FOR_NEWS, "asked again at the end of the wait from waking");
-        // The computer in use, as the phone reads it at waking + WAIT_FOR_NEWS: its tries after waking not read yet.
-        let at_alarm = woke + WAIT_FOR_NEWS;
-        let desk = |exported: i64| Knowledge {
-            record_lost: None,
-            peers: vec![Peer {
-                name: "desk".into(),
-                id: "desk-id".into(),
-                said: Some(Said { started: bed - 3600, closed: 0, working: true, exported, imported: exported, doses: true, left: false, phone: false }),
-                complete: true,
-                seen: exported + 5,
-                heard: exported,
-                ..Peer::default()
-            }],
-        };
+        // The desk's tries count from waking too: quiet around the phone's alarm, promised; the
+        // phone, reading that promise, is the first, plainly; without it, the doubt.
+        let unshown = Some(Tried { unshown: woke + 2, ..Tried::default() });
+        assert_eq!(plan(unshown, true, bed - 3_600, since, woke + LATE_UNTIL + 30, true), Plan::Quiet(woke + sioul_core::dose_reminders::QUIET_AFTER));
         let key = format!("levo@{due}");
-        let mut unshown = HealthState::default();
-        note_minute(&mut unshown, &[], std::slice::from_ref(&key), &[], &[], woke + 2);
-        let behind = desk(woke + LATE_UNTIL - 30);
-        assert!(!tries_read(&behind, since, at_alarm), "exported long after the dose's time, not after its tries from waking");
-        assert_eq!(reminder_doubt(&unshown, &key, &behind, since, at_alarm), Some(say("dose-doubt-maybe-late", &[("when", moment_said(woke + 2))])));
-        assert!(reminder_doubt(&unshown, &key, &desk(woke + LATE_UNTIL + 90), since, at_alarm).is_none(), "read past them: plainly");
+        let mut told = DoseReminders::default();
+        *told.entry(&key, "desk-id") = Tried { unshown: woke + 2, quiet: woke + sioul_core::dose_reminders::QUIET_AFTER, ..Tried::default() };
+        let desk = Peer {
+            name: "desk".into(),
+            id: "desk-id".into(),
+            said: Some(Said { started: bed - 3_600, closed: 0, working: true, exported: woke + 540, imported: woke + 540, doses: true, left: false, phone: false }),
+            complete: true,
+            seen: woke + 540,
+            heard: woke + 540,
+            ..Peer::default()
+        };
+        let at_alarm = woke + WAIT_FOR_NEWS;
+        assert_eq!(sioul_core::dose_reminders::others(&key, since, at_alarm, "phone-id", true, Some(&told), std::slice::from_ref(&desk)), Others::First);
+        assert!(matches!(sioul_core::dose_reminders::others(&key, due, at_alarm, "phone-id", true, Some(&told), std::slice::from_ref(&desk)), Others::First), "the promise, not the dose's time, says it");
+        let unpromised = { let mut told = told.clone(); told.entry(&key, "desk-id").quiet = 0; told };
+        assert!(matches!(sioul_core::dose_reminders::others(&key, since, at_alarm, "phone-id", true, Some(&unpromised), std::slice::from_ref(&desk)), Others::Doubt(_)));
     }
 
     /// R8 of the review of 10 October 2026: an opening is timed only while
@@ -4285,7 +4568,7 @@ mod tests {
         let mut state = HealthState::default();
         state.taken.insert(eight.clone(), s("2026-10-06T08:02[Europe/Paris]"));
         state.not_taken.insert(eight.clone(), s("2026-10-06T08:10[Europe/Paris]"));
-        let shown = |knowledge: &Knowledge| serde_json::to_value(porch_doses(&health, &state, &records, "desk-id", knowledge, &noon, false, true, &english)).unwrap();
+        let shown = |knowledge: &Knowledge| serde_json::to_value(porch_doses(&health, &state, &records, &DoseReminders::default(), "desk-id", knowledge, &noon, false, true, &english)).unwrap();
         let alone = Knowledge { record_lost: None, peers: Vec::new() };
         let view = shown(&alone);
         let due = view["due"].as_array().unwrap();
@@ -4311,7 +4594,7 @@ mod tests {
         let view = shown(&Knowledge { record_lost: None, peers: vec![off] });
         assert_eq!((view["due"][1]["doubt"].as_str(), view["due"].as_array().map(Vec::len)), (Some(""), Some(2)));
         // The same answers in the records only, their marks not here yet: the 08:00 dose once, to choose.
-        let view = serde_json::to_value(porch_doses(&health, &HealthState::default(), &records, "desk-id", &alone, &noon, false, true, &english)).unwrap();
+        let view = serde_json::to_value(porch_doses(&health, &HealthState::default(), &records, &DoseReminders::default(), "desk-id", &alone, &noon, false, true, &english)).unwrap();
         let keys: Vec<&str> = view["due"].as_array().unwrap().iter().map(|row| row["key"].as_str().unwrap_or("")).collect();
         assert_eq!(keys.iter().filter(|key| **key == eight).count(), 1, "{view}");
         assert_eq!(view["due"][0]["choose"].as_bool(), Some(true), "{view}");
