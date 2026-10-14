@@ -94,16 +94,23 @@ pub struct Keeper {
     /// those lapsed but not closed too).
     pub others: usize,
     /// Since when this keeper has kept it, as seen by this process (Unix
-    /// seconds; 0: always, nobody else ever claimed). A dose's first reminder
-    /// is this computer's only if it kept the doses at the dose's time
-    /// (docs/health.md, "What became of a reminder").
+    /// seconds): alone, since this process began (`started`), never "always"
+    /// (the sixth review's R2). A dose's first reminder is this computer's
+    /// only if it kept the doses at the dose's time (docs/health.md, "What
+    /// became of a reminder").
     pub since: i64,
+}
+
+/// When this process began, as the lease first asked (Unix seconds).
+pub fn started() -> i64 {
+    static STARTED: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+    *STARTED.get_or_init(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64))
 }
 
 impl Keeper {
     /// The only computer: no sharing, or nobody else claims.
     pub fn alone(computer: &str) -> Keeper {
-        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0, since: 0 }
+        Keeper { computer: computer.to_string(), name: host_name(), mine: true, settled: true, others_heard: 0, others: 0, since: started() }
     }
 }
 

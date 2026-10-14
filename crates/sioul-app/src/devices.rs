@@ -95,11 +95,23 @@ pub(crate) fn kind() -> &'static str {
     if cfg!(target_os = "android") { PHONE } else { COMPUTER }
 }
 
+/// This process's opening, its entry's `started`, once written into the
+/// folder (Unix seconds); 0 while not (sharing off, the key not read, the
+/// folder not writable). Until every phone said it read it, this computer
+/// is never a dose's first reminder (`health::first_here`).
+static PUBLISHED: AtomicI64 = AtomicI64::new(0);
+
+/// This process's opening as written into the folder; 0 while it is not.
+pub(crate) fn published_start() -> i64 {
+    PUBLISHED.load(Ordering::SeqCst)
+}
+
 /// This device's entry changed by `change`, its identity set: written here,
 /// and into the folder when sharing is on. Never fails loudly: the doses of
-/// the others say what they cannot know when it is not written.
-fn write(change: impl FnOnce(&mut Entry)) {
-    let Some((id, vault)) = crate::share::vault() else { return };
+/// the others say what they cannot know when it is not written. Whether it
+/// went into the folder.
+fn write(change: impl FnOnce(&mut Entry)) -> bool {
+    let Some((id, vault)) = crate::share::vault() else { return false };
     let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
     // Its doses said known only while their part travels: held under a newer
     // format (`share::holds`), they are not, whatever this process recorded.
@@ -120,8 +132,17 @@ fn write(change: impl FnOnce(&mut Entry)) {
         }
         change(entry);
     });
-    if let Err(e) = written {
-        eprintln!("sioul: devices: {e}");
+    match written {
+        Ok(entry) if vault.is_some() => {
+            // Its opening, as the folder now says it: up since then, or down.
+            PUBLISHED.store(if entry.working { entry.started } else { 0 }, Ordering::SeqCst);
+            true
+        }
+        Ok(_) => false,
+        Err(e) => {
+            eprintln!("sioul: devices: {e}");
+            false
+        }
     }
 }
 
@@ -138,13 +159,16 @@ pub(crate) fn window_opened() {
 /// too whether someone is at it (`active_here`).
 fn raise() {
     let active = active_here();
-    write(|entry| {
+    // Not written into the folder: no opening of this process said there yet.
+    if !write(|entry| {
         if entry.working {
             recorded();
         }
         entry.start(now());
         entry.active = active;
-    });
+    }) {
+        PUBLISHED.store(0, Ordering::SeqCst);
+    }
 }
 
 /// When a press was last made in Sioul on this computer: in its window, or

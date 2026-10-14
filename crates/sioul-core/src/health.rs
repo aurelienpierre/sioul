@@ -593,6 +593,16 @@ pub struct Peer {
     /// mark it: known closed only once that while went by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wake: Option<i64>,
+    /// When its claim on the doses was last renewed while open, as read here
+    /// (its clock; 0 none): a computer whose entry says it closed but whose
+    /// claim came later is open, its entry not here yet (a sync app carrying
+    /// files one by one: the sixth review's R1d).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub claimed: i64,
+}
+
+fn is_zero_i64(n: &i64) -> bool {
+    *n == 0
 }
 
 /// What a device says of itself in the sharing folder: its entry in the
@@ -738,6 +748,17 @@ pub fn counts(peer: &Peer, now: i64) -> bool {
 /// phone's home screen). A dose taken twice can harm: what is not known is
 /// said, never guessed.
 pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
+    doubts_at(due, due, now, record_lost, peers)
+}
+
+/// `doubts_now` for a dose that waited for `waking` (sleep or a pause held
+/// it: its time, else): what looks back counts from the dose's time (a
+/// record lost after it, a device apart closed before it, a line lost
+/// around it, a device closed or exported after it), and only the moment a
+/// device may have been opened for it counts from waking (picked up then,
+/// or its alarm, held until waking, rung after: review of battery part C,
+/// the sixth review's M1).
+pub fn doubts_at(due: i64, waking: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
     let mut out = Vec::new();
     // Doses due before the record was found broken or gone, in the day before.
     if let Some(since) = record_lost.filter(|since| due <= *since && *since - due < 86_400) {
@@ -764,7 +785,7 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
         // dose (`ALARM_AFTER`): from then on, counted from its alarm, never
         // from the dose's time (review of battery part C, H2).
         let phone = peer.said.as_ref().is_some_and(|s| s.phone);
-        let woke = peer.wake.is_none_or(|wake| now - opened_for(due, now, phone) >= wake + SKEW);
+        let woke = peer.wake.is_none_or(|wake| now - opened_for(waking, now, phone) >= wake + SKEW);
         let Some(said) = &peer.said else {
             let closed = peer.closed && peer.heard <= peer.known_until;
             let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN) && (peer.known_until >= due + SKEW || woke);
@@ -828,7 +849,12 @@ pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> V
 /// has it: known only while its news is minutes old, which the alarm's own
 /// wait already spends.
 pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer], since: i64, heard: &std::collections::BTreeSet<String>) -> Vec<Doubt> {
-    let mut out = doubts_now(due, now, record_lost, peers);
+    doubts_unread_at(due, due, now, record_lost, peers, since, heard)
+}
+
+/// `doubts_unread` for a dose that waited for `waking` (`doubts_at`).
+pub fn doubts_unread_at(due: i64, waking: i64, now: i64, record_lost: Option<i64>, peers: &[Peer], since: i64, heard: &std::collections::BTreeSet<String>) -> Vec<Doubt> {
+    let mut out = doubts_at(due, waking, now, record_lost, peers);
     let phones = phones_counted(peers, now);
     for peer in peers.iter().filter(|p| counts(p, now) && !heard.contains(&p.id)) {
         let device = named(peer, phones);
@@ -857,12 +883,17 @@ pub fn doubts_unread(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer
 /// it is not known by `until`. For what is shown ahead of time (a phone's home
 /// screen card): "check" until then.
 pub fn known_from(due: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> Option<i64> {
+    known_from_at(due, due, from, until, record_lost, peers)
+}
+
+/// `known_from` for a dose that waited for `waking` (`doubts_at`).
+pub fn known_from_at(due: i64, waking: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> Option<i64> {
     let phone = |p: &Peer| p.said.as_ref().is_some_and(|s| s.phone);
-    let after_alarm = peers.iter().filter(|p| phone(p)).filter_map(|p| p.wake).map(|w| due + ALARM_AFTER + w + SKEW);
-    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| due + w + SKEW)).chain(after_alarm).filter(|t| *t >= from && *t < until).collect();
+    let after_alarm = peers.iter().filter(|p| phone(p)).filter_map(|p| p.wake).map(|w| waking + ALARM_AFTER + w + SKEW);
+    let mut moments: Vec<i64> = std::iter::once(from).chain(peers.iter().filter_map(|p| p.wake).map(|w| waking + w + SKEW)).chain(after_alarm).filter(|t| *t >= from && *t < until).collect();
     moments.sort_unstable();
     moments.dedup();
-    moments.into_iter().find(|t| doubts_now(due, *t, record_lost, peers).is_empty())
+    moments.into_iter().find(|t| doubts_at(due, waking, *t, record_lost, peers).is_empty())
 }
 
 /// Until when a dose due at `due`, known not taken at `from` (`doubts_now`),
@@ -1549,6 +1580,45 @@ mod tests {
         state.reminded.insert(due[0].key.clone(), now.timestamp().as_second());
         assert!(state.to_remind(&health, &now, 10).is_empty(), "reminded once");
         assert!(state.to_remind(&health, &at("2026-10-03T13:00[Europe/Paris]"), 10).is_empty(), "past its window, no second reminder");
+    }
+
+    /// A dose held by sleep (due 05:00, waking 07:00): what looks back counts
+    /// from the dose's time, the opening for it from waking (the sixth
+    /// review's M1, R4): a record lost at 06:00 and a device apart closed at
+    /// 06:00 leave it not known, as at its time; a phone put away before the
+    /// sleep is known only once the news of an opening at waking had the time to come.
+    #[test]
+    fn at_waking_what_looks_back_counts_from_the_doses_time() {
+        let (due, waking) = (1_800_018_000, 1_800_025_200);
+        let now = waking + 30;
+        // This device's record found broken at 06:00, the dose due before it.
+        assert_eq!(doubts_at(due, waking, now, Some(due + 3_600), &[]), [Doubt::Record { since: due + 3_600 }]);
+        assert_eq!(doubts_at(waking, waking, now, Some(due + 3_600), &[]), [], "counted from waking, it would be lost");
+        // A computer that does not share its doses, open at 05:00, closed at 06:00.
+        let apart = Peer {
+            name: "desk".into(),
+            id: "desk-id".into(),
+            said: Some(Said { started: due - 600, closed: due + 3_600, working: false, exported: due + 3_600, imported: due + 3_600, doses: false, left: false, phone: false }),
+            complete: true,
+            seen: due + 3_600,
+            heard: due + 3_600,
+            ..Peer::default()
+        };
+        assert!(matches!(&doubts_at(due, waking, now, None, std::slice::from_ref(&apart))[..], [Doubt::Apart { .. }]));
+        // A phone put away at 22:30, its openings' news within 30 s: known from waking + 30 s + SKEW, not from its alarm at 05:10.
+        let phone = Peer {
+            name: "phone".into(),
+            id: "phone-id".into(),
+            said: Some(Said { started: due - 30_000, closed: due - 23_400, working: false, exported: due - 23_400, imported: due - 23_400, doses: true, left: false, phone: true }),
+            complete: true,
+            seen: due - 23_400,
+            heard: due - 23_400,
+            wake: Some(30),
+            ..Peer::default()
+        };
+        assert!(!doubts_at(due, waking, now, None, std::slice::from_ref(&phone)).is_empty());
+        assert!(doubts_at(due, waking, waking + 30 + SKEW, None, std::slice::from_ref(&phone)).is_empty());
+        assert!(doubts_now(due, now, None, std::slice::from_ref(&phone)).is_empty(), "from the dose's time, it would be known by its alarm long rung");
     }
 
     /// A reminder not known shown is written in `unshown` for an older Sioul

@@ -900,6 +900,20 @@ pub(crate) fn on() -> bool {
     share::Here::load(&state_dir()).folder_path().is_some() && key().is_some()
 }
 
+/// Whether sharing is set up here (a folder chosen), its key read or not.
+pub(crate) fn configured() -> bool {
+    share::Here::load(&state_dir()).folder_path().is_some()
+}
+
+/// What each other device's notes say of `computer`'s opening (the `started`
+/// of its entry they read: `share::acknowledged`); none when sharing is off
+/// or its key is not read.
+pub(crate) fn acknowledged(computer: &str) -> Option<std::collections::BTreeMap<String, i64>> {
+    let here = share::Here::load(&state_dir());
+    let (folder, _) = sealed(attached(&here))?;
+    Some(share::acknowledged(&folder, computer))
+}
+
 /// The last exchange, when one ran since Sioul started: when (Unix seconds), and whether it went well.
 pub(crate) fn last_exchange() -> Option<(i64, bool)> {
     LAST.lock().ok().and_then(|l| l.as_ref().map(|(at, problems)| (*at, problems.is_empty())))
