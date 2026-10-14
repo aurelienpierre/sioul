@@ -830,13 +830,13 @@ fn first_try(mut notice: Notice, mut again: Again, pressed: Pressed, slot: &Arc<
         }
         Tried::Maybe(_, shown, serial) => wait_late(shown, serial, notice, again, pressed, late),
         // Taken, then refused otherwise than "no server": it may be on the screen; tried again, the doubt first.
-        Tried::Lost(_) => show_again(notice, again, pressed),
+        Tried::Lost(_) => show_again(notice, again, pressed, Late::Unconfirmed),
         Tried::Unshown(_) => {
             if went {
                 again.record.refused();
             }
             again.record.unshown();
-            show_again(notice, again, pressed);
+            show_again(notice, again, pressed, Late::Retry);
         }
         Tried::Done => {}
     }
@@ -859,7 +859,8 @@ fn wait_late(mut shown: Shown, serial: u32, mut notice: Notice, mut again: Again
         }
         Some(Reply::Error { .. }) | None => {
             drop(shown);
-            show_again(notice, again, pressed);
+            // Taken by the server, then lost: it may have shown, its tries say it was not confirmed (L2).
+            show_again(notice, again, pressed, Late::Unconfirmed);
         }
     }
 }
@@ -907,7 +908,7 @@ fn shown_late(shown: &mut Shown, notice: &mut Notice, record: &mut dyn DoseRecor
 /// begins (`DoseRecord::pause`), the tries resumed after it while still to
 /// remind. Sent and not answered in time: never again (`wait_late`).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed) {
+fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed, mut late: Late) {
     let mut tries = 0;
     loop {
         let wait = again_in(tries);
@@ -932,7 +933,7 @@ fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed) {
         let Ok(bus) = session_within(crate::bus::SETUP) else { continue };
         let mut went = false;
         let tried = try_once(&mut notice, Some(bus), &mut |notice: &mut Notice| {
-            went = said_now(notice, &mut *again.record, Going::Late(Late::Retry));
+            went = said_now(notice, &mut *again.record, Going::Late(late));
             went
         });
         match tried {
@@ -943,9 +944,9 @@ fn show_again(mut notice: Notice, mut again: Again, pressed: Pressed) {
             Tried::Unshown(_) if went => again.record.refused(),
             Tried::Unshown(_) => {}
             // Taken, then refused otherwise than "no server": it may have shown; tried again, the doubt first.
-            Tried::Lost(_) => {}
+            Tried::Lost(_) => late = Late::Unconfirmed,
             Tried::Done => return,
-            Tried::Maybe(_, shown, serial) => return wait_late(shown, serial, notice, again, pressed, Late::Retry),
+            Tried::Maybe(_, shown, serial) => return wait_late(shown, serial, notice, again, pressed, late),
         }
     }
 }
@@ -2055,6 +2056,7 @@ mod tests {
             assert_eq!(sent.last().map(|(title, _)| title.as_str()), Some(&*format!("Check first: {name}")), "{mode}: the doubt first: {sent:?}");
             let seen: Vec<String> = logged.try_iter().collect();
             assert!(!seen.contains(&"refused".to_string()), "{mode}: it may have shown: never taken back: {seen:?}");
+            assert!(seen.contains(&"going Late(Unconfirmed)".to_string()) && !seen.contains(&"going Late(Retry)".to_string()), "{mode}: not confirmed in time, never \"could not be shown\" (the seventh review's L2): {seen:?}");
             let _ = presses.recv_timeout(Duration::from_secs(3));
             stop.store(true, Ordering::Relaxed);
             back.store(true, Ordering::Relaxed);
