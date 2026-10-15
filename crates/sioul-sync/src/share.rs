@@ -684,6 +684,9 @@ struct Found {
     emptied: Vec<(String, usize)>,
     /// What else the look has to say (names that are not text).
     said: Vec<String>,
+    /// Large notes and papers found changed since they were last read, not
+    /// read yet: since when (`Sealed::changing`).
+    changing: BTreeMap<String, i64>,
 }
 
 /// A file as last read: its size, when it changed (nanoseconds), its entries'
@@ -770,6 +773,8 @@ struct Look<'a> {
     hurry: &'a dyn Fn() -> bool,
     confirmed: &'a BTreeSet<String>,
     clock: i64,
+    /// Large notes and papers found changed since they were last read, and since when (`Sealed::changing`).
+    changing: &'a BTreeMap<String, i64>,
 }
 
 /// This computer's clock, in milliseconds.
@@ -793,10 +798,12 @@ fn settling_ms() -> i64 {
 }
 
 /// A note or a paper this large (bytes) is sealed only once it has settled
-/// (`large_settling_ms`): a recording or a scan saved take after take goes
-/// once, not each take. On 14 October 2026 four takes of one recording,
-/// 15.7 MB, were sealed and replaced within minutes, and each stayed in the
-/// folder as long as replaced contents stay. Smaller notes go as before.
+/// (`large_settling_ms`): a recording or a scan saved again within minutes
+/// goes once, its last save, not each one. On 14 October 2026 four earlier
+/// takes of the owner's recordings, 15.7 MB, were sealed 13, 16, 25 and 1
+/// minute before the next save, and each stayed in the folder as long as
+/// replaced contents stay: ten minutes would have kept only the last of them
+/// (3.5 MB) off it. Smaller notes go as before.
 const LARGE_SETTLES: u64 = 1 << 20;
 
 #[cfg(test)]
@@ -807,7 +814,7 @@ thread_local! {
 
 /// How long a note or a paper of `LARGE_SETTLES` or more stays unchanged
 /// before it is read and sealed. One that never stops changing still goes an
-/// hour after its last version did (`read_file`).
+/// hour after it was first found changed (`read_file`, `Sealed::changing`).
 pub(crate) const LARGE_SETTLING: i64 = 10 * MINUTE;
 
 fn large_settling_ms() -> i64 {
@@ -1048,17 +1055,24 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         // Changed a moment ago (maybe still being written), or a hurried
         // exchange waits: read at the next look. A large note or paper, until
         // it has not changed for ten minutes (`LARGE_SETTLES`), or an hour
-        // after its last version was read here, whichever comes first: one
-        // that never stops changing still goes. Unknown meanwhile, as a file
+        // after it was first found changed, whichever comes first: one that
+        // never stops changing still goes, a new one too; one saved again
+        // after a quiet hour waits as well. Unknown meanwhile, as a file
         // being written is: the others' changes to it wait, nothing of it is
         // taken out. Read through for its hash, never held whole; one that
         // changed while read is read next time.
-        let large = meta.len() >= LARGE_SETTLES && matches!(store.part, "notes" | "papers") && known.get(file).is_none_or(|last| last.seen <= 0 || look.clock - last.seen < HOUR);
-        let settling = if large { large_settling_ms().max(settling_ms()) } else { settling_ms() };
+        let large = meta.len() >= LARGE_SETTLES && matches!(store.part, "notes" | "papers");
+        // Changed since it was last read (else taken as it was, above): since
+        // when it was first found so, kept until it is read (`Sealed::changing`).
+        let since = look.changing.get(file).copied().unwrap_or(look.clock);
+        let settling = if large && look.clock - since < HOUR { large_settling_ms().max(settling_ms()) } else { settling_ms() };
         let fresh = look.clock - ((modified / 1_000_000) as i64) < settling;
         let read = (!fresh && !(look.hurry)()).then(|| crate::blobs::hash_file(path).ok()).flatten().filter(|(_, size)| *size == meta.len());
         let Some((h, _)) = read else {
             found.unknown.insert(file.to_string());
+            if large {
+                found.changing.insert(file.to_string(), since);
+            }
             return;
         };
         let key = format!("{file}#");
@@ -2268,6 +2282,15 @@ struct Sealed {
     /// as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tables: Vec<String>,
+    /// Large notes and papers found changed since they were last read, and
+    /// since when (milliseconds, this computer's clock): each is read and
+    /// sealed once it has not changed for ten minutes, or an hour after that
+    /// time (`LARGE_SETTLES`). Kept here rather than in each file's last look
+    /// (`Stat::seen`, when it was last read), which cannot tell a file quiet
+    /// for an hour, then saved again, from one changing for an hour, and
+    /// which a new file has none of (review of 15 October 2026, M2).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    changing: BTreeMap<String, i64>,
 }
 
 /// The spam filter's tables a computer keeps in the folder: the one in use
@@ -3507,7 +3530,7 @@ fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) 
     let joining = |store: &Store| !memory.places.is_empty() && memory.places.get(&store.name) != Some(&place_of(store));
     let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some()) && !joining(s) && !memory.newer.contains_key(s.part)).cloned().collect();
     let confirmed = BTreeSet::new();
-    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms() });
+    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new() });
     let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
     for (key, h) in &found.hashes {
         if memory.entries.get(key).is_some_and(|k| k.h == *h) {
@@ -3986,7 +4009,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
         // Which of its rounds was full is not known: none taken out until
         // the next full round (`remove_old_rounds` keeps every round from 1).
+        // Nor how much that one restated: read again from the folder
+        // (`full_round_after`), never the size this memory knew when it was
+        // put away, which would hold the next full round back, and every
+        // round meanwhile, for that many bytes (review of 15 October 2026, L3).
         memory.full_round = 1;
+        memory.full_size = 0;
         memory.read.clear();
         memory.rebuild.insert("*".into());
     }
@@ -4031,7 +4059,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let holds = |key: &str| known_part(file_of(key)).is_some_and(|part| held.contains(part));
     let clock = clock_ms();
     let confirmed = memory.sealed.confirmed.clone();
-    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock });
+    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing });
+    // Large notes and papers settling: those of the stores read now as this
+    // look found them, the others' as they were (`Sealed::changing`).
+    let mut changing = std::mem::take(&mut found.changing);
+    changing.extend(memory.sealed.changing.iter().filter(|(file, _)| locate(stores, file).is_some_and(|(store, _)| !reads(store))).map(|(file, since)| (file.clone(), *since)));
+    memory.sealed.changing = changing;
     outcome.problems.extend(found.too_big.iter().map(|file| format!("share-too-big:{file}")));
     outcome.problems.append(&mut found.said);
     outcome.problems.extend(found.emptied.iter().map(|(folder, held)| format!("share-vanished:{folder}:{held}")));
@@ -4049,12 +4082,27 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.places = stores.iter().map(|s| (s.name.clone(), place(s))).collect();
     }
     let joining: BTreeSet<String> = if memory.joined { stores.iter().filter(|s| reads(s) && memory.places.get(&s.name) != Some(&place(s))).map(|s| s.name.clone()).collect() } else { BTreeSet::new() };
-    let joins = |key: &str| locate(stores, file_of(key)).is_some_and(|(store, _)| joining.contains(&store.name));
+    let joins_store = |key: &str| locate(stores, file_of(key)).is_some_and(|(store, _)| joining.contains(&store.name));
     if !joining.is_empty() {
-        memory.entries.retain(|key, _| !joins(key));
+        memory.entries.retain(|key, _| !joins_store(key));
         memory.read.clear();
         memory.rebuild.extend(joining.iter().cloned());
     }
+    // Files rebuilt whose entries this device forgot join as a store new here
+    // does (the stores joining are among them now): the doses' record
+    // repaired (`rebuild`). Read from the records first, then only what the
+    // records lack goes out: their copy here never goes out first, with a
+    // clock later than everything read, over another device's newer word not
+    // read yet. Before, a dose's mark the phone had taken back came back on
+    // both devices (review of 15 October 2026, RV-P2). Not every file read
+    // again because this device's own records go further than its memory
+    // (`share-own-ahead`, `*`): that memory keeps its entries, and what
+    // changed here since them is a change made here, which goes.
+    let rebuilt_here: BTreeSet<String> = memory.rebuild.iter().filter(|r| *r != "*").cloned().collect();
+    let joins = |key: &str| {
+        let file = file_of(key);
+        rebuilt_here.contains(file) || rebuilt_here.iter().any(|r| r.ends_with('/') && file.starts_with(r.as_str()))
+    };
 
     // A file sealed apart found empty that was not at the last look (an
     // editor writing it in place, a crash): held as it was, a while.
@@ -4745,8 +4793,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         };
     }
 
-    // Joining, the whole sharing or a store: what only this computer holds goes out.
-    if !memory.joined || !joining.is_empty() {
+    // Joining, the whole sharing, a store or a file rebuilt: what only this computer holds goes out.
+    if !memory.joined || !rebuilt_here.is_empty() {
         for (key, h) in &found.hashes {
             if memory.entries.contains_key(key) || memory.pending.contains_key(key) || (memory.joined && !joins(key)) || (key.starts_with(FILES) && hurried()) || holds(key) {
                 continue;
@@ -4884,13 +4932,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // One owed (a round after lost lines that could not restate all, R7, or
     // asked for): as soon as all reads again, and not while the connection is
     // metered or slow, nor while a bulk import goes on, as a full round past
-    // `ROUND_SIZE` waits (on a phone always on mobile data, a full round
+    // its growth waits (on a phone always on mobile data, a full round
     // restates every text it holds: review of 10 October 2026, third pass).
     // The others' doubt holds meanwhile. Metered, it waits `OWED_METERED` of
     // exchanges at most (counted as `AWAITED` is), then goes all the same: a
     // phone always on mobile data, which marks most doses, never leaves the
-    // others in doubt for days; past the growth those waits allow, it comes
-    // sooner.
+    // others in doubt for days. Sooner, the full round that growth opens:
+    // once more than the last full round restated was appended
+    // (`full_round_after`), past what those waits allow.
     let metered = frugal(sharing.memory) && !importing(sharing.memory);
     if memory.owed && metered {
         if memory.owed_last > 0 {
@@ -5986,7 +6035,20 @@ pub fn heard(memory: &Path, computer: &str) -> Heard {
 /// one's too, at the next exchange; this computer forgets it held them, so
 /// that a record lost or broken here, started again empty, takes nothing out
 /// elsewhere and gets back what was written (docs/database.md, "Prudence").
+/// At that exchange they join as a store new here does: read from the
+/// records first, then only what the records lack goes out (`exchange`).
 pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), String> {
+    rebuild_then(memory, computer, files, || ())
+}
+
+/// As `rebuild`, then `then` run while the exchanges' lock is still held,
+/// before any exchange can read those files again: the doses' repair sets
+/// the record that cannot be trusted aside there (`HealthState::set_aside`).
+/// Run apart, an exchange between the two steps filled the lost record again
+/// from the records, the full record was then set aside, and the next mark
+/// written made every other mark look taken out, on every device (review of
+/// 15 October 2026, P1).
+pub fn rebuild_then<T>(memory: &Path, computer: &str, files: &[&str], then: impl FnOnce() -> T) -> Result<T, String> {
     let _running = exchange_lock(memory, true)?;
     let mut state = Memory::load_all(memory, computer);
     state.entries.retain(|key, _| !files.contains(&file_of(key)));
@@ -5999,7 +6061,7 @@ pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), Stri
     state.read.clear();
     state.save(memory)?;
     state.keep(memory);
-    Ok(())
+    Ok(then())
 }
 
 /// The files gone at once from a folder of notes or papers (`share-vanished`)
@@ -9308,7 +9370,7 @@ mod probe {
         let roots = super::Roots { config: base.join("config"), data: base.join("data"), state: base.join("state") };
         let config: sioul_core::config::Config = std::fs::read_to_string(roots.config.join("config.toml")).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         let stores = super::stores(&config, &roots);
-        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms() };
+        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms(), changing: &Default::default() };
         let found = super::gather(&stores, &Default::default(), &look);
         for store in &stores {
             let count = found.hashes.keys().filter(|k| super::file_of(k).starts_with(store.name.as_str()) && (store.folder || super::file_of(k) == store.name)).count();

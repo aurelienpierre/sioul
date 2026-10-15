@@ -287,16 +287,63 @@ fn a_large_note_is_sealed_once_it_has_settled() {
     assert_eq!(std::fs::read(ln.join("scenes/song.mp3")).unwrap(), noise(3 << 19, 21));
     assert!(kept.contains(&noise(3 << 19, 20)), "the laptop's take kept beside: {} files", kept.len());
 
-    // One that never stops changing still goes, an hour after its last version did.
+    // Saved again after a quiet hour (its last version read long ago): the
+    // first save waits as any other. Until the review of 15 October 2026
+    // (RV-P1) the hour counted from the last read, and it went at once.
+    let song = "files/notes/scenes/song.mp3";
     let mut m = Memory::load_all(&desk.memory, &desk.id);
-    let stat = m.files.get_mut("files/notes/scenes/song.mp3").unwrap();
-    stat.seen -= 2 * HOUR;
+    m.files.get_mut(song).unwrap().seen -= 2 * HOUR;
     m.save(&desk.memory).unwrap();
     put(&dn, "scenes/song.mp3", &noise(3 << 19, 30));
-    assert_eq!(with_notes(&desk, &folder, &key, NOW + 50 * MINUTE, &dn).sent, 1, "an hour since its last version: sealed though it just changed");
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 50 * MINUTE, &dn).sent, 0, "a quiet hour, then a first take: it waits");
+    // One that never stops changing still goes, an hour after it was first found changed.
+    let mut m = Memory::load_all(&desk.memory, &desk.id);
+    *m.sealed.changing.get_mut(song).expect("found changing, and since when") -= HOUR;
+    m.save(&desk.memory).unwrap();
     put(&dn, "scenes/song.mp3", &noise(3 << 19, 31));
-    assert_eq!(with_notes(&desk, &folder, &key, NOW + 51 * MINUTE, &dn).sent, 0, "then it waits again");
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 51 * MINUTE, &dn).sent, 1, "changing for an hour: sealed though it just changed");
+    assert!(Memory::load_all(&desk.memory, &desk.id).sealed.changing.is_empty(), "read: no longer changing");
+    put(&dn, "scenes/song.mp3", &noise(3 << 19, 32));
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 52 * MINUTE, &dn).sent, 0, "then it waits again");
+    // A new large file, changing more often than every ten minutes: sealed at the hour.
+    let new = "files/notes/scenes/new.mp3";
+    put(&dn, "scenes/new.mp3", &noise(3 << 19, 40));
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 53 * MINUTE, &dn).sent, 0);
+    let mut m = Memory::load_all(&desk.memory, &desk.id);
+    *m.sealed.changing.get_mut(new).expect("a new file found changing") -= HOUR;
+    m.save(&desk.memory).unwrap();
+    put(&dn, "scenes/new.mp3", &noise(3 << 19, 41));
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 54 * MINUTE, &dn).sent, 1, "a new one changing for an hour: sealed");
+    assert_eq!(Memory::load_all(&desk.memory, &desk.id).sealed.changing.keys().collect::<Vec<_>>(), [song], "the recording still settling");
     LARGE_SETTLE.with(|s| s.set(0));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A memory put back from a backup (`share-own-ahead`) reads the size of the
+/// last full round again from the folder, never the size it knew when it was
+/// put away: an older, larger one held the next full round back for that
+/// many bytes, every round kept meanwhile (review of 15 October 2026, L3).
+#[test]
+fn a_memory_put_back_reads_the_full_round_s_size_again() {
+    let base = scratch("full-size-back");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    // A backup of the memory, from when its last full round was 50 MB.
+    let mut kept = Memory::load_all(&desk.memory, &desk.id);
+    kept.full_size = 50 << 20;
+    kept.save(&desk.memory).unwrap();
+    let backup = std::fs::read(&desk.memory).unwrap();
+    desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    // Put back: its own records go further.
+    std::fs::write(&desk.memory, &backup).unwrap();
+    let outcome = desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    assert!(outcome.problems.iter().any(|p| p == "share-own-ahead"), "{outcome:?}");
+    let first = std::fs::metadata(round_file(&folder, &desk.id, 1)).unwrap().len();
+    assert_eq!(Memory::load(&desk.memory, &desk.id).full_size, first, "read again from round 1, not 50 MB");
     let _ = std::fs::remove_dir_all(&base);
 }
 
