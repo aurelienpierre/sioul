@@ -119,6 +119,11 @@ pub const OTHER_HOST: &str = "sync-said-microsoft-other-host";
 pub const OTHER_ACCOUNT: &str = "microsoft-other-account";
 /// The mailbox refused the access Microsoft had just given, or stayed closed to IMAP: its switch, most often.
 pub const MAILBOX_REFUSED: &str = "microsoft-mailbox-refused";
+/// Another of your accounts already signs in to Microsoft as this login (it follows): two
+/// accounts never share one sign-in, so that removing one cannot sign the other out.
+pub const LOGIN_TAKEN: &str = "microsoft-login-taken";
+/// You said No to the mailbox of the login Microsoft's page signed in (it follows): nothing kept.
+pub const OTHER_DECLINED: &str = "microsoft-other-declined";
 
 /// The message that says a `SyncError::Login` of this module ("sync-error-microsoft-again").
 pub(crate) fn message_of(detail: &str) -> Option<&'static str> {
@@ -283,10 +288,13 @@ impl std::fmt::Debug for Grant {
 }
 
 /// The grant as the keyring keeps it: the refresh token's first part in
-/// this entry, the rest in `parts` more (`<name>#2`, `<name>#3`…), and the
-/// start of the whole token's SHA-256, to tell a whole token from parts
-/// written at different times.
-#[derive(serde::Serialize, serde::Deserialize)]
+/// this entry, the rest in `parts` more, and the start of the whole token's
+/// SHA-256, its `check`. The parts are named after the check
+/// (`<name>#<check>#2`, `#3`…): each token's parts are its own, written before
+/// the entry that names them, so that a rotation cut short, or two crossing,
+/// never leave this entry naming parts it does not have (the review of 15
+/// October 2026, L2). A grant without its check is no grant.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Kept {
     client_id: String,
     tenant: String,
@@ -294,7 +302,6 @@ struct Kept {
     refresh_token: String,
     #[serde(default)]
     parts: usize,
-    #[serde(default)]
     check: String,
     scopes: Vec<String>,
     signed_in: i64,
@@ -337,10 +344,46 @@ fn check_of(token: &str) -> String {
     sha2::Sha256::digest(token.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
-/// The grant written under `name`: the first entry at most `secret::ENTRY_BYTES`
-/// long, the token's rest in parts as long; the parts first, the first entry
-/// last, then the parts an older, longer token left (at most `before`).
-fn save_in(store: &dyn Store, name: &str, grant: &Grant, before: usize) -> Result<(), SyncError> {
+/// A part's name: the entry's, the check of the token it belongs to, its place (2, 3, 4).
+fn part_name(name: &str, check: &str, index: usize) -> String {
+    format!("{name}#{check}#{index}")
+}
+
+/// A part's name as the first version of this format had it (`<name>#2`…),
+/// before parts were named after their token: read when the named one is
+/// missing, and forgotten at the next write.
+fn legacy_part_name(name: &str, index: usize) -> String {
+    format!("{name}#{index}")
+}
+
+/// What the first entry under `name` says, read as is.
+fn kept_in(store: &dyn Store, name: &str) -> Option<Kept> {
+    store.get(name).ok().flatten().and_then(|bytes| serde_json::from_slice::<Kept>(&bytes).ok())
+}
+
+/// The names of the parts the first entry under `name` holds (the
+/// generation in use); none when it holds the whole token, or there is none.
+#[cfg(test)]
+fn part_names(store: &dyn Store, name: &str) -> Vec<String> {
+    kept_in(store, name).map(|kept| (2..kept.parts.min(MOST_PARTS) + 2).map(|index| part_name(name, &kept.check, index)).collect()).unwrap_or_default()
+}
+
+/// Forgets a generation's parts, and the first version's names.
+fn forget_parts(store: &dyn Store, name: &str, check: &str, parts: usize) {
+    for index in 2..parts.min(MOST_PARTS) + 2 {
+        let _ = store.forget(&part_name(name, check, index));
+    }
+}
+
+fn forget_legacy_parts(store: &dyn Store, name: &str) {
+    for index in 2..MOST_PARTS + 2 {
+        let _ = store.forget(&legacy_part_name(name, index));
+    }
+}
+
+/// A grant as the keyring keeps it: the first entry at most
+/// `secret::ENTRY_BYTES` long, the token's rest in parts as long.
+fn split(grant: &Grant) -> Result<(Kept, Vec<String>), SyncError> {
     let limit = crate::secret::ENTRY_BYTES;
     let token = grant.refresh_token.as_str();
     let mut kept = Kept {
@@ -348,7 +391,7 @@ fn save_in(store: &dyn Store, name: &str, grant: &Grant, before: usize) -> Resul
         tenant: grant.tenant.clone(),
         personal: grant.personal,
         refresh_token: String::new(),
-        parts: 0,
+        parts: MOST_PARTS,
         check: check_of(token),
         scopes: grant.scopes.clone(),
         signed_in: grant.signed_in,
@@ -356,7 +399,6 @@ fn save_in(store: &dyn Store, name: &str, grant: &Grant, before: usize) -> Resul
     };
     let json = |kept: &Kept| serde_json::to_vec(kept).map_err(|e| SyncError::Keyring(e.to_string()));
     // What the first entry holds besides the token, with room for a part count.
-    kept.parts = MOST_PARTS;
     let mut first = token.len().min(limit.saturating_sub(json(&kept)?.len()));
     // A token with characters JSON escapes takes more room than its length: less of it, then.
     loop {
@@ -377,41 +419,90 @@ fn save_in(store: &dyn Store, name: &str, grant: &Grant, before: usize) -> Resul
         while !rest.is_char_boundary(end) {
             end -= 1;
         }
-        parts.push(&rest[at..end]);
+        parts.push(rest[at..end].to_string());
         at = end;
     }
     kept.parts = parts.len();
     if kept.parts > MOST_PARTS {
-        return Err(SyncError::Keyring(format!("{name}: a refresh token of {} bytes, longer than Sioul keeps", token.len())));
+        return Err(SyncError::Keyring(format!("a refresh token of {} bytes, longer than Sioul keeps", token.len())));
     }
-    for (index, part) in parts.iter().enumerate() {
-        store.set(&format!("{name}#{}", index + 2), part.as_bytes())?;
+    Ok((kept, parts))
+}
+
+/// Writes a grant under `name` without ever leaving it lost: the new token's
+/// parts first, under names of their own; then the first entry, which names
+/// them (the pointer); then it is read back whole before the generation it
+/// replaced is forgotten. A write that fails takes back what it wrote, and
+/// the grant kept before stays whole; one that does not read back whole puts
+/// the entry it replaced back. Two writes crossing (the window and a
+/// command, each renewing the token) leave the one written last, whole.
+fn save_in(store: &dyn Store, name: &str, grant: &Grant) -> Result<(), SyncError> {
+    let (kept, parts) = split(grant)?;
+    let written: Vec<String> = (0..parts.len()).map(|index| part_name(name, &kept.check, index + 2)).collect();
+    for (part, part_named) in parts.iter().zip(&written) {
+        if let Err(e) = store.set(part_named, part.as_bytes()) {
+            written.iter().for_each(|n| drop(store.forget(n)));
+            return Err(e);
+        }
     }
-    store.set(name, &json(&kept)?)?;
-    for index in kept.parts + 2..=before + 1 {
-        store.forget(&format!("{name}#{index}"))?;
+    // What the pointer named until now: its generation goes once this one is in place.
+    let replaced = store.get(name).ok().flatten();
+    let bytes = serde_json::to_vec(&kept).map_err(|e| SyncError::Keyring(e.to_string()))?;
+    if let Err(e) = store.set(name, &bytes) {
+        written.iter().for_each(|n| drop(store.forget(n)));
+        return Err(e);
     }
-    Ok(())
+    let back = load_from(store, name).ok().flatten().map(|grant| check_of(&grant.refresh_token));
+    match back {
+        // This one, whole: the generation it replaced goes, and the first version's names.
+        Some(check) if check == kept.check => {
+            if let Some(old) = replaced.as_deref().and_then(|b| serde_json::from_slice::<Kept>(b).ok()).filter(|old| old.check != kept.check) {
+                forget_parts(store, name, &old.check, old.parts);
+            }
+            forget_legacy_parts(store, name);
+            Ok(())
+        }
+        // Another process wrote after this one, whole: this one's parts serve nothing.
+        Some(_) => {
+            written.iter().for_each(|n| drop(store.forget(n)));
+            Ok(())
+        }
+        // Not whole: the entry it replaced comes back, whose parts were never touched.
+        None => {
+            if let Some(old) = replaced {
+                let _ = store.set(name, &old);
+            }
+            written.iter().for_each(|n| drop(store.forget(n)));
+            Err(SyncError::Keyring(format!("{name}: the grant written did not read back whole; the one before is kept")))
+        }
+    }
 }
 
 /// The grant kept under `name`, its token joined again from its parts; None
-/// when there is none, or when its parts do not make the token it was (a
-/// write cut short): then you sign in again, rather than Sioul sending a token
-/// that is not one. The number of parts comes along, for the next write.
-fn load_from(store: &dyn Store, name: &str) -> Result<Option<(Grant, usize)>, SyncError> {
+/// when there is none, or when its parts do not make the token it was:
+/// then you sign in again, rather than Sioul sending a token that is not one.
+fn load_from(store: &dyn Store, name: &str) -> Result<Option<Grant>, SyncError> {
     let Some(bytes) = store.get(name)? else { return Ok(None) };
     let Ok(kept) = serde_json::from_slice::<Kept>(&bytes) else { return Ok(None) };
-    let mut token = kept.refresh_token.clone();
-    for index in 2..kept.parts.min(MOST_PARTS) + 2 {
-        match store.get(&format!("{name}#{index}"))? {
-            Some(part) => token.push_str(&String::from_utf8_lossy(&part)),
-            None => return Ok(None),
-        }
-    }
-    if kept.parts > MOST_PARTS || (!kept.check.is_empty() && kept.check != check_of(&token)) {
+    if kept.parts > MOST_PARTS || kept.check.is_empty() {
         return Ok(None);
     }
-    let grant = Grant {
+    let mut token = kept.refresh_token.clone();
+    for index in 2..kept.parts + 2 {
+        let part = match store.get(&part_name(name, &kept.check, index))? {
+            Some(part) => part,
+            // The first version's name, checked the same.
+            None => match store.get(&legacy_part_name(name, index))? {
+                Some(part) => part,
+                None => return Ok(None),
+            },
+        };
+        token.push_str(&String::from_utf8_lossy(&part));
+    }
+    if kept.check != check_of(&token) {
+        return Ok(None);
+    }
+    Ok(Some(Grant {
         client_id: kept.client_id,
         tenant: kept.tenant,
         personal: kept.personal,
@@ -419,21 +510,13 @@ fn load_from(store: &dyn Store, name: &str) -> Result<Option<(Grant, usize)>, Sy
         scopes: kept.scopes,
         signed_in: kept.signed_in,
         signed_in_as: kept.signed_in_as,
-    };
-    Ok(Some((grant, kept.parts)))
+    }))
 }
 
 /// The grant kept on this device for a login (the account's address, or the
 /// user name its mailbox opened with).
 pub fn grant(login: &str) -> Option<Grant> {
-    load_from(&Keyring, &keyring_name(login)).ok().flatten().map(|(grant, _)| grant)
-}
-
-/// Keeps a grant for a login, replacing the one kept.
-fn keep(login: &str, grant: &Grant) -> Result<(), SyncError> {
-    let name = keyring_name(login);
-    let before = load_from(&Keyring, &name).ok().flatten().map_or(MOST_PARTS, |(_, parts)| parts);
-    save_in(&Keyring, &name, grant, before)
+    load_from(&Keyring, &keyring_name(login)).ok().flatten()
 }
 
 /// An application of your own kept on this device for an address (its id,
@@ -636,8 +719,7 @@ fn finish_at(sign_in: SignIn, client_id: &str, address: &str, stop: &AtomicBool,
     };
     let grant = Grant { client_id: client_id.trim().into(), tenant, personal, refresh_token, scopes, signed_in: now(), signed_in_as };
     let name = keyring_name(address);
-    let before = load_from(store, &name).ok().flatten().map_or(MOST_PARTS, |(_, parts)| parts);
-    save_in(store, &name, &grant, before)?;
+    save_in(store, &name, &grant)?;
     if let Some(access) = answer["access_token"].as_str() {
         remember(&name, access, answer["expires_in"].as_u64().unwrap_or(3600));
     }
@@ -647,17 +729,21 @@ fn finish_at(sign_in: SignIn, client_id: &str, address: &str, stop: &AtomicBool,
 /// The grant kept for `from` moved to `to` (the user name a mailbox opened
 /// with, when it is not the address given), its access token with it.
 pub fn move_grant(from: &str, to: &str) -> Result<(), SyncError> {
+    move_grant_in(&Keyring, from, to)
+}
+
+fn move_grant_in(store: &dyn Store, from: &str, to: &str) -> Result<(), SyncError> {
     let (from_name, to_name) = (keyring_name(from), keyring_name(to));
     if from_name == to_name {
         return Ok(());
     }
-    let (grant, parts) = load_from(&Keyring, &from_name)?.ok_or_else(|| SyncError::Login(AGAIN.into()))?;
-    keep(to, &grant)?;
+    let grant = load_from(store, &from_name)?.ok_or_else(|| SyncError::Login(AGAIN.into()))?;
+    save_in(store, &to_name, &grant)?;
     let access = ACCESS.lock().ok().and_then(|a| a.as_ref().and_then(|m| m.get(&from_name).cloned()));
     if let Some((token, until)) = access {
         remember_until(&to_name, &token, until);
     }
-    forget_entries(&from_name, parts)
+    forget_entries_in(store, &from_name)
 }
 
 /// Access tokens, by grant (its keyring name), until about when they end; in memory only.
@@ -701,11 +787,11 @@ pub fn access_token(login: &str, fresh: bool) -> Result<String, SyncError> {
         return Ok(token);
     }
     // No grant kept: Microsoft's page again.
-    let (grant, parts) = load_from(&Keyring, &key)?.ok_or_else(|| SyncError::Login(AGAIN.into()))?;
+    let grant = load_from(&Keyring, &key)?.ok_or_else(|| SyncError::Login(AGAIN.into()))?;
     // The directory kept, checked as a typed one is: it goes into the path of Microsoft's address.
     let tenant = if is_tenant(&grant.tenant) { grant.tenant.as_str() } else { "common" };
     let endpoint = format!("{LOGIN}/{tenant}/oauth2/v2.0/token");
-    let (token, lasts) = refreshed(&endpoint, &grant, &Keyring, &key, parts)?;
+    let (token, lasts) = refreshed(&endpoint, &grant, &Keyring, &key)?;
     remember(&key, &token, lasts);
     Ok(token)
 }
@@ -716,7 +802,7 @@ pub fn access_token(login: &str, fresh: bool) -> Result<String, SyncError> {
 /// one keeps working until its own end, so a write that fails is said and
 /// does not stop the mail, and two of Sioul's processes refreshing at once
 /// do not lock each other out: the last one written stays).
-fn refreshed(endpoint: &str, grant: &Grant, store: &dyn Store, name: &str, parts: usize) -> Result<(String, u64), SyncError> {
+fn refreshed(endpoint: &str, grant: &Grant, store: &dyn Store, name: &str) -> Result<(String, u64), SyncError> {
     let answer = post(
         endpoint,
         &[("client_id", &grant.client_id), ("grant_type", "refresh_token"), ("refresh_token", &grant.refresh_token), ("scope", REFRESH_SCOPES)],
@@ -726,21 +812,30 @@ fn refreshed(endpoint: &str, grant: &Grant, store: &dyn Store, name: &str, parts
     let token = answer["access_token"].as_str().ok_or_else(|| SyncError::Server("Microsoft gave no access token".into()))?.to_string();
     if let Some(next) = answer["refresh_token"].as_str().filter(|next| !next.is_empty() && *next != grant.refresh_token) {
         let renewed = Grant { refresh_token: next.to_string(), ..grant.clone() };
-        if let Err(e) = save_in(store, name, &renewed, parts) {
+        if let Err(e) = save_in(store, name, &renewed) {
             eprintln!("sioul: Microsoft's new refresh token for {} could not be kept ({e}); the one kept still works until its own end", name.trim_start_matches("microsoft-mail:"));
         }
     }
     Ok((token, answer["expires_in"].as_u64().unwrap_or(3600)))
 }
 
-fn forget_entries(name: &str, parts: usize) -> Result<(), SyncError> {
+fn forget_entries(name: &str) -> Result<(), SyncError> {
+    forget_entries_in(&Keyring, name)
+}
+
+/// Forgets the grant under `name`: its parts (the generation in use, and the
+/// first version's names), then the first entry; and its access token.
+fn forget_entries_in(store: &dyn Store, name: &str) -> Result<(), SyncError> {
     if let Ok(mut access) = ACCESS.lock()
         && let Some(map) = access.as_mut()
     {
         map.remove(name);
     }
-    // The entry and every part it may have had: those of the longest token kept at least.
-    crate::secret::forget_named_all(name, parts.max(MOST_PARTS) + 1)
+    if let Some(kept) = kept_in(store, name) {
+        forget_parts(store, name, &kept.check, kept.parts);
+    }
+    forget_legacy_parts(store, name);
+    store.forget(name)
 }
 
 /// Forgets a login's grant on this device, keyring and memory. Microsoft is
@@ -748,9 +843,7 @@ fn forget_entries(name: &str, parts: usize) -> Result<(), SyncError> {
 /// page where you withdraw Sioul's access comes back, a personal account's
 /// or a work account's.
 pub fn forget(login: &str, personal: bool) -> Result<&'static str, SyncError> {
-    let name = keyring_name(login);
-    let parts = load_from(&Keyring, &name).ok().flatten().map_or(MOST_PARTS, |(_, parts)| parts);
-    forget_entries(&name, parts)?;
+    forget_entries(&keyring_name(login))?;
     Ok(if personal { CONSENT_PERSONAL } else { CONSENT_WORK })
 }
 
@@ -787,20 +880,68 @@ pub fn authority_for(login: &str, kind: Kind, tenant: &str) -> Result<Authority,
     })
 }
 
+/// What a sign-in made of an account, kept only once answered (`answer`).
+pub struct Signed {
+    /// The account, at Microsoft's servers, signed in with Microsoft.
+    pub account: sioul_core::config::Account,
+    pub grant: Grant,
+    /// The mailbox opened only under this login, the one Microsoft's page
+    /// signed in, not the address given (an alias's mailbox, or another of
+    /// your accounts chosen on Microsoft's page): never kept silently. The
+    /// caller names both addresses and asks first. None: the address given
+    /// opened, or the account already signed in as that login.
+    pub other_login: Option<String>,
+    /// The login the account signed in as before, when another: its grant
+    /// is forgotten once this sign-in is kept.
+    before: Option<String>,
+}
+
+impl Signed {
+    /// Your answer to `other_login`'s question (Yes when none was asked).
+    /// Yes: the account as signed in, the grant it had before under another
+    /// login forgotten. No: the grant just kept forgotten, the account as it
+    /// was, `OTHER_DECLINED` said.
+    pub fn answer(self, yes: bool) -> Result<(sioul_core::config::Account, Grant), SyncError> {
+        self.answer_in(&Keyring, yes)
+    }
+
+    fn answer_in(self, store: &dyn Store, yes: bool) -> Result<(sioul_core::config::Account, Grant), SyncError> {
+        let now = self.account.login().unwrap_or_default().trim().to_lowercase();
+        if !yes {
+            drop(forget_entries_in(store, &keyring_name(&now)));
+            return Err(SyncError::Said(OTHER_DECLINED, now));
+        }
+        if let Some(before) = self.before.filter(|b| *b != now) {
+            drop(forget_entries_in(store, &keyring_name(&before)));
+        }
+        Ok((self.account, self.grant))
+    }
+}
+
+/// Refuses a login that another of your accounts already signs in to
+/// Microsoft as (`taken`: their logins, lowercased): each grant is kept
+/// under its login, and two accounts sharing one would sign each other out.
+fn refuse_taken(login: &str, taken: &[String]) -> Result<(), SyncError> {
+    if taken.iter().any(|t| t.trim().eq_ignore_ascii_case(login.trim())) { Err(SyncError::Said(LOGIN_TAKEN, login.trim().to_lowercase())) } else { Ok(()) }
+}
+
 /// Signs an address's mail in with Microsoft, or signs it in again:
 /// Microsoft's page (`show` opens it: the window's browser, the terminal's
 /// line), its answer, then the mailbox itself tried with the access given,
-/// before anything is kept: as the address, else as the account Microsoft's
-/// page signed in (an alias's mailbox opens under its primary address).
-/// `account` comes back at Microsoft's servers, signed in with Microsoft, its
-/// sending server the one of the kind the sign-in found, its user name set
-/// when the mailbox opened under another; a grant kept under its former login
-/// is forgotten. When the mailbox does not open, nothing is kept: the grant
-/// is forgotten too.
-pub fn sign_in(mut account: sioul_core::config::Account, client_id: &str, authority: &Authority, show: impl FnOnce(&str), stop: &AtomicBool) -> Result<(sioul_core::config::Account, Grant), SyncError> {
+/// before anything is kept (`open_mailbox`). `account` comes back at
+/// Microsoft's servers, signed in with Microsoft, its sending server and its
+/// kind those the sign-in found. `taken`: the logins your other Microsoft
+/// accounts sign in as, refused here (the address before Microsoft's page,
+/// the login it signed in after). A mailbox that opens only under another
+/// login than the address comes back with `other_login`, for the person's
+/// Yes first; every sign-in ends with its answer (`Signed::answer`). When
+/// the mailbox does not open, nothing is kept.
+pub fn sign_in(mut account: sioul_core::config::Account, client_id: &str, authority: &Authority, taken: &[String], show: impl FnOnce(&str), stop: &AtomicBool) -> Result<Signed, SyncError> {
     use sioul_core::config::Security;
     let address = account.address.clone().unwrap_or_default().trim().to_lowercase();
     let before = account.login().map(str::to_lowercase).filter(|login| account.is_microsoft() && *login != address);
+    // The address is where the new grant is first kept: never over another account's.
+    refuse_taken(&address, taken)?;
     let started = begin(client_id, authority, &address)?;
     show(&started.url);
     let grant = finish(started, client_id, &address, stop)?;
@@ -812,33 +953,49 @@ pub fn sign_in(mut account: sioul_core::config::Account, client_id: &str, author
     account.smtp_host = Some(if grant.personal { SMTP_PERSONAL } else { SMTP_WORK }.into());
     account.smtp_port = Some(SMTP_PORT);
     account.smtp_security = Security::Starttls;
+    // Its kind, from the ID token's tenant, kept apart from the sending server (`Account::is_microsoft_work`).
+    account.microsoft_kind = Some(if grant.personal { "personal" } else { "work" }.into());
+    let (account, other_login) = open_mailbox(&Keyring, account, &grant, &address, before.as_deref(), taken, |a| crate::test(a, "").map(drop))?;
+    Ok(Signed { account, grant, other_login, before })
+}
+
+/// The mailbox tried with the grant just kept under `address`, before
+/// anything else is kept: as the address; refused there (the token refused,
+/// or IMAP closed), as the login Microsoft's page signed in, once, the grant
+/// moved there first, unless another account already uses it. Comes back
+/// with the account and, when it opened only under that other login (and
+/// the account did not already sign in as it, `before`), that login, for
+/// the person's Yes. Nothing kept when it does not open.
+fn open_mailbox(store: &dyn Store, mut account: sioul_core::config::Account, grant: &Grant, address: &str, before: Option<&str>, taken: &[String], test: impl Fn(&sioul_core::config::Account) -> Result<(), SyncError>) -> Result<(sioul_core::config::Account, Option<String>), SyncError> {
+    let forget_under = |login: &str| drop(forget_entries_in(store, &keyring_name(login)));
     // The mailbox's own refusals: the token refused, or IMAP closed. Anything else is said as it is.
     let refused = |e: &SyncError| matches!(e, SyncError::Login(d) if d == AGAIN) || matches!(e, SyncError::Said(id, _) if *id == NOT_CONNECTED_PERSONAL || *id == NOT_CONNECTED_WORK);
     let other = grant.signed_in_as.clone();
-    let opened = match crate::test(&account, "") {
-        Ok(_) => Ok(()),
+    let other_login = match test(&account) {
+        Ok(()) => None,
         // Refused as the address: as the account Microsoft's page signed in, once.
         Err(first) if refused(&first) && !other.is_empty() && other != address => {
+            if let Err(e) = refuse_taken(&other, taken) {
+                forget_under(address);
+                return Err(e);
+            }
             // Moved, or forgotten: never a grant left behind under the address.
-            move_grant(&address, &other).inspect_err(|_| drop(forget(&address, grant.personal)))?;
+            move_grant_in(store, address, &other).inspect_err(|_| forget_under(address))?;
             account.username = Some(other.clone());
-            crate::test(&account, "").map(drop).map_err(|second| {
-                let _ = forget(&other, grant.personal);
-                if refused(&second) { SyncError::Said(OTHER_ACCOUNT, other.clone()) } else { second }
-            })
+            if let Err(second) = test(&account) {
+                forget_under(&other);
+                return Err(if refused(&second) { SyncError::Said(OTHER_ACCOUNT, other.clone()) } else { second });
+            }
+            // Asked once, when it was first kept: not again at a sign-in again.
+            (before != Some(other.as_str())).then(|| other.clone())
         }
         // Nothing kept: the mailbox's switch, then a sign-in again.
         Err(first) => {
-            let _ = forget(&address, grant.personal);
-            Err(if refused(&first) { SyncError::Said(MAILBOX_REFUSED, String::new()) } else { first })
+            forget_under(address);
+            return Err(if refused(&first) { SyncError::Said(MAILBOX_REFUSED, String::new()) } else { first });
         }
     };
-    opened?;
-    // Kept under another login before (an alias's): that grant is the old one.
-    if let Some(before) = before.filter(|b| Some(b.as_str()) != account.login().map(str::to_lowercase).as_deref()) {
-        let _ = forget(&before, grant.personal);
-    }
-    Ok((account, grant))
+    Ok((account, other_login))
 }
 
 /// The link an organisation's administrator opens to approve Sioul for
@@ -1021,7 +1178,7 @@ mod tests {
             assert_eq!((grant.personal, grant.tenant.as_str(), grant.signed_in_as.as_str()), (personal, tenant, "you@example.org"));
             assert_eq!(if grant.personal { Kind::Personal.smtp_host() } else { Kind::Work.smtp_host() }, smtp);
             // Kept under the address, lowercased; the access token in memory.
-            let (kept, _) = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
+            let kept = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
             assert_eq!(kept, grant);
             assert_eq!(remembered("microsoft-mail:you@example.org").as_deref(), Some("EwBIA.access"));
             assert!(!format!("{grant:?}").contains("M.C5_BAY"), "Debug never prints the token");
@@ -1038,19 +1195,19 @@ mod tests {
     fn refresh_tokens_rotate() {
         let store = Memory::default();
         let grant = Grant { client_id: "app-id".into(), tenant: "consumers".into(), personal: true, refresh_token: "RT1".into(), scopes: vec![], signed_in: 1, signed_in_as: "you@example.org".into() };
-        save_in(&store, "microsoft-mail:you@example.org", &grant, 0).unwrap();
+        save_in(&store, "microsoft-mail:you@example.org", &grant).unwrap();
         let (endpoint, server) = token_endpoint(vec![
             ("200 OK", r#"{"access_token":"AT1","expires_in":3600,"refresh_token":"RT2"}"#.into()),
             ("200 OK", r#"{"access_token":"AT2","expires_in":3600}"#.into()),
         ]);
         for expected in ["AT1", "AT2"] {
-            let (kept, parts) = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
-            assert_eq!(refreshed(&endpoint, &kept, &store, "microsoft-mail:you@example.org", parts).unwrap(), (expected.to_string(), 3600));
+            let kept = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
+            assert_eq!(refreshed(&endpoint, &kept, &store, "microsoft-mail:you@example.org").unwrap(), (expected.to_string(), 3600));
         }
         let asked = server.join().unwrap();
         assert!(asked[0].ends_with(&loopback::query(&[("client_id", "app-id"), ("grant_type", "refresh_token"), ("refresh_token", "RT1"), ("scope", REFRESH_SCOPES)])), "{}", asked[0]);
         assert!(asked[1].contains("refresh_token=RT2"), "the newest sent: {}", asked[1]);
-        let (kept, _) = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
+        let kept = load_from(&store, "microsoft-mail:you@example.org").unwrap().unwrap();
         assert_eq!((kept.refresh_token.as_str(), kept.signed_in), ("RT2", 1), "the newest kept, the sign-in's time with it");
     }
 
@@ -1095,39 +1252,168 @@ mod tests {
         }
     }
 
+    fn long_token(length: usize) -> String {
+        (0..length).map(|i| char::from(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!*$"[i % 68])).collect()
+    }
+
+    fn work_grant(token: String) -> Grant {
+        Grant { client_id: "app-id".into(), tenant: "0a1b2c3d-0000-4000-8000-00000000c0de".into(), personal: false, refresh_token: token, scopes: vec![IMAP_SCOPE.into(), SMTP_SCOPE.into()], signed_in: 1_760_000_000, signed_in_as: "you@example.org".into() }
+    }
+
     /// Part 8, 6: a 4 KB refresh token (longer than any seen) kept in parts,
     /// each within what Windows keeps (the stand-in refuses more), joined
     /// again whole; a shorter one after it leaves no part behind; parts that
-    /// do not make the token (a write cut short) give no grant.
+    /// do not make the token give no grant, nor does an entry without its check.
     #[test]
     fn a_long_refresh_token_is_kept_in_parts() {
         let store = Memory::default();
         let name = "microsoft-mail:you@example.org";
-        let long: String = (0..4096).map(|i| char::from(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!*$"[i % 68])).collect();
-        let grant = Grant { client_id: "app-id".into(), tenant: "0a1b2c3d-0000-4000-8000-00000000c0de".into(), personal: false, refresh_token: long.clone(), scopes: vec![IMAP_SCOPE.into(), SMTP_SCOPE.into()], signed_in: 1_760_000_000, signed_in_as: "you@example.org".into() };
-        save_in(&store, name, &grant, 0).unwrap();
-        let (kept, parts) = load_from(&store, name).unwrap().unwrap();
-        assert_eq!((kept.refresh_token.len(), parts), (4096, 1), "the first entry and one part");
-        assert_eq!(kept, grant);
-        // Twice as long: two parts; a token longer than Sioul keeps is refused, not cut.
-        let double = Grant { refresh_token: long.repeat(2), ..grant.clone() };
-        save_in(&store, name, &double, parts).unwrap();
-        assert_eq!(load_from(&store, name).unwrap().unwrap(), (double, 3));
-        assert!(save_in(&store, name, &Grant { refresh_token: long.repeat(3), ..grant.clone() }, 3).is_err());
-        let parts = 3;
+        let grant = work_grant(long_token(4096));
+        save_in(&store, name, &grant).unwrap();
+        assert_eq!(load_from(&store, name).unwrap(), Some(grant.clone()));
+        assert_eq!(part_names(&store, name).len(), 1, "the first entry and one part");
+        // Twice as long: three parts; a token longer than Sioul keeps is refused, not cut.
+        let double = work_grant(long_token(8192));
+        save_in(&store, name, &double).unwrap();
+        assert_eq!((load_from(&store, name).unwrap(), part_names(&store, name).len()), (Some(double.clone()), 3));
+        assert_eq!(store.0.lock().unwrap().len(), 4, "the parts of the token before are gone");
+        assert!(save_in(&store, name, &work_grant(long_token(12288))).is_err());
+        assert_eq!(load_from(&store, name).unwrap(), Some(double), "the one kept, kept");
         // Shorter: one entry, the parts gone.
-        let short = Grant { refresh_token: "M.C5_BAY.short".into(), ..grant.clone() };
-        save_in(&store, name, &short, parts).unwrap();
-        assert_eq!(load_from(&store, name).unwrap().unwrap(), (short, 0));
+        let short = work_grant("M.C5_BAY.short".into());
+        save_in(&store, name, &short).unwrap();
+        assert_eq!(load_from(&store, name).unwrap(), Some(short));
         assert_eq!(store.0.lock().unwrap().len(), 1, "no part left behind");
         // A part from another write: no grant, rather than a token that is not one.
-        save_in(&store, name, &grant, 0).unwrap();
-        store.set(&format!("{name}#2"), b"from another write").unwrap();
+        save_in(&store, name, &grant).unwrap();
+        let part = part_names(&store, name)[0].clone();
+        store.set(&part, b"from another write").unwrap();
         assert_eq!(load_from(&store, name).unwrap(), None);
         // A part missing: the same.
-        save_in(&store, name, &grant, 1).unwrap();
-        store.forget(&format!("{name}#2")).unwrap();
+        save_in(&store, name, &grant).unwrap();
+        store.forget(&part_names(&store, name)[0]).unwrap();
         assert_eq!(load_from(&store, name).unwrap(), None);
+        // An entry that does not say its check: no grant either (never joined unchecked).
+        save_in(&store, name, &work_grant("short".into())).unwrap();
+        let mut kept: serde_json::Value = serde_json::from_slice(&store.get(name).unwrap().unwrap()).unwrap();
+        kept.as_object_mut().unwrap().remove("check");
+        store.set(name, &serde_json::to_vec(&kept).unwrap()).unwrap();
+        assert_eq!(load_from(&store, name).unwrap(), None);
+        // Forgotten: the entry and its parts, nothing left.
+        save_in(&store, name, &grant).unwrap();
+        forget_entries_in(&store, name).unwrap();
+        assert!(store.0.lock().unwrap().is_empty());
+    }
+
+    /// The first version's part names (`<name>#2`, before parts were named
+    /// after their token) are read, checked the same, and gone at the next write.
+    #[test]
+    fn a_grant_of_the_first_format_is_read_and_renewed() {
+        let store = Memory::default();
+        let name = "microsoft-mail:you@example.org";
+        let grant = work_grant(long_token(4096));
+        save_in(&store, name, &grant).unwrap();
+        // Rewritten as the first version wrote it: its part under `#2`.
+        let part = part_names(&store, name)[0].clone();
+        let bytes = store.get(&part).unwrap().unwrap();
+        store.forget(&part).unwrap();
+        store.set(&format!("{name}#2"), &bytes).unwrap();
+        assert_eq!(load_from(&store, name).unwrap(), Some(grant.clone()));
+        let renewed = work_grant(long_token(4000));
+        save_in(&store, name, &renewed).unwrap();
+        assert_eq!(load_from(&store, name).unwrap(), Some(renewed));
+        assert!(store.get(&format!("{name}#2")).unwrap().is_none(), "the first version's name, gone");
+    }
+
+    /// A store standing in for the keyring, around the memory one: it runs
+    /// another process's whole rotation once, the moment this one is about to
+    /// write its first entry; or it refuses a part, or the first entry; or,
+    /// once, reads the first entry back as missing.
+    struct Crossing<'a> {
+        memory: &'a Memory,
+        name: &'static str,
+        between: Mutex<Option<Box<dyn FnOnce() + 'a>>>,
+        refuse_part: bool,
+        refuse_first: bool,
+        reads: Mutex<u32>,
+        miss_read: u32,
+    }
+
+    impl<'a> Crossing<'a> {
+        fn over(memory: &'a Memory, name: &'static str) -> Crossing<'a> {
+            Crossing { memory, name, between: Mutex::new(None), refuse_part: false, refuse_first: false, reads: Mutex::new(0), miss_read: 0 }
+        }
+    }
+
+    impl Store for Crossing<'_> {
+        fn get(&self, name: &str) -> Result<Option<Vec<u8>>, SyncError> {
+            if name == self.name {
+                let mut reads = self.reads.lock().unwrap();
+                *reads += 1;
+                if *reads == self.miss_read {
+                    return Ok(None);
+                }
+            }
+            self.memory.get(name)
+        }
+        fn set(&self, name: &str, value: &[u8]) -> Result<(), SyncError> {
+            let first = name == self.name;
+            if (first && self.refuse_first) || (!first && self.refuse_part) {
+                return Err(SyncError::Keyring("refused by the stand-in".into()));
+            }
+            if first && let Some(between) = self.between.lock().unwrap().take() {
+                between();
+            }
+            self.memory.set(name, value)
+        }
+        fn forget(&self, name: &str) -> Result<(), SyncError> {
+            self.memory.forget(name)
+        }
+    }
+
+    /// The review of 15 October 2026, L2: two rotations crossing (another
+    /// process's whole rotation between this one's parts and its first
+    /// entry), and rotations whose writes fail at each step, never lose the
+    /// grant: the last one written stays whole, or the one before does.
+    #[test]
+    fn a_rotation_never_loses_the_grant() {
+        let name = "microsoft-mail:you@example.org";
+        let old = work_grant(long_token(3000));
+        let mine = work_grant(long_token(3100));
+        let theirs = work_grant(long_token(3200));
+        let kept = || {
+            let memory = Memory::default();
+            save_in(&memory, name, &old).unwrap();
+            memory
+        };
+        // Crossing: theirs, written whole between my parts and my first entry; mine, written last, stays whole.
+        let memory = kept();
+        let mut store = Crossing::over(&memory, name);
+        store.between = Mutex::new(Some(Box::new(|| save_in(&memory, name, &theirs).unwrap())));
+        save_in(&store, name, &mine).unwrap();
+        assert_eq!(load_from(&memory, name).unwrap(), Some(mine.clone()), "the last one written, whole");
+        // A part refused: nothing changes, nothing of mine is left.
+        let memory = kept();
+        let mut store = Crossing::over(&memory, name);
+        store.refuse_part = true;
+        assert!(save_in(&store, name, &mine).is_err());
+        assert_eq!(load_from(&memory, name).unwrap(), Some(old.clone()), "the one before, whole");
+        assert_eq!(memory.0.lock().unwrap().len(), 2);
+        // The first entry refused, after my parts: the one before stays, my parts go.
+        let memory = kept();
+        let mut store = Crossing::over(&memory, name);
+        store.refuse_first = true;
+        assert!(save_in(&store, name, &mine).is_err());
+        assert_eq!(load_from(&memory, name).unwrap(), Some(old.clone()));
+        assert_eq!(memory.0.lock().unwrap().len(), 2);
+        // Written, but not read back whole (the second read of the first entry,
+        // after the one that names what it replaces): the entry before comes back.
+        let memory = kept();
+        let mut store = Crossing::over(&memory, name);
+        store.miss_read = 2;
+        assert!(save_in(&store, name, &mine).is_err());
+        assert_eq!(load_from(&memory, name).unwrap(), Some(old), "the entry before, back");
+        assert_eq!(memory.0.lock().unwrap().len(), 2);
     }
 
     /// Part 8, 6, in the system's own keyring: Windows' Credential Manager
@@ -1138,18 +1424,99 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_keeps_a_4_kb_token() {
+        a_4_kb_token_through_the_system_keyring();
+    }
+
+    /// The Windows test's body, compiled on every system so that a slip in
+    /// it (a name shadowed, a type changed) fails every build, not only
+    /// Windows' (the review of 15 October 2026: a binding named `grant` hid
+    /// the function `grant()`, and only the Windows job saw it); run on
+    /// Windows alone.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn a_4_kb_token_through_the_system_keyring() {
         let login = format!("windows-test-{}@example.org", uuid::Uuid::new_v4());
         let long: String = (0..4096).map(|i| char::from(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!*$"[i % 68])).collect();
-        let grant = Grant { client_id: "app-id".into(), tenant: "consumers".into(), personal: true, refresh_token: long, scopes: vec![], signed_in: 1, signed_in_as: login.clone() };
+        let kept = Grant { client_id: "app-id".into(), tenant: "consumers".into(), personal: true, refresh_token: long, scopes: vec![], signed_in: 1, signed_in_as: login.clone() };
         // As one entry it does not fit: refused at Windows' limit (`CRED_MAX_CREDENTIAL_BLOB_SIZE`).
         let whole = keyring::Entry::new("sioul", &keyring_name(&login)).unwrap();
         assert!(whole.set_secret(&[b'x'; 2600]).is_err(), "Windows keeps at most 2560 bytes an entry");
-        keep(&login, &grant).unwrap();
+        save_in(&Keyring, &keyring_name(&login), &kept).unwrap();
         let back = grant(&login);
+        let names = part_names(&Keyring, &keyring_name(&login));
+        assert!(!names.is_empty(), "a 4 KB token takes a part");
         forget(&login, true).unwrap();
-        assert_eq!(back, Some(grant));
+        assert_eq!(back, Some(kept));
         assert_eq!(grant(&login), None, "forgotten, parts and all");
-        assert!(crate::secret::named_bytes(&format!("{}#2", keyring_name(&login))).unwrap().is_none());
+        for name in names {
+            assert!(crate::secret::named_bytes(&name).unwrap().is_none(), "{name}: forgotten");
+        }
+    }
+
+    /// The review of 15 October 2026, L3: a mailbox that opens only under
+    /// the login Microsoft's page signed in comes back for the person's Yes,
+    /// never kept silently (unless the account already used it); a login
+    /// another account uses is refused, its grant untouched; nothing is kept
+    /// when the mailbox does not open.
+    #[test]
+    fn another_login_is_asked_and_never_shared() {
+        use sioul_core::config::Account;
+        let store = Memory::default();
+        let grant = Grant { signed_in_as: "main@contoso.example".into(), ..work_grant("RT".into()) };
+        let account = || Account::imap("work", "alias@contoso.example", IMAP_HOST, 993, sioul_core::config::Security::Tls, None);
+        let address = "alias@contoso.example";
+        let fresh = |store: &Memory| {
+            store.0.lock().unwrap().clear();
+            save_in(store, &keyring_name(address), &grant).unwrap();
+        };
+        // Opens as the address: nothing asked.
+        fresh(&store);
+        let (opened, other) = open_mailbox(&store, account(), &grant, address, None, &[], |_| Ok(())).unwrap();
+        assert_eq!((opened.username, other), (None, None));
+        // Opens only as the login Microsoft signed in: asked, the grant moved there.
+        fresh(&store);
+        let opens_as_main = |a: &Account| if a.login() == Some("main@contoso.example") { Ok(()) } else { Err(SyncError::Login(AGAIN.into())) };
+        let (opened, other) = open_mailbox(&store, account(), &grant, address, None, &[], opens_as_main).unwrap();
+        assert_eq!((opened.username.as_deref(), other.as_deref()), (Some("main@contoso.example"), Some("main@contoso.example")));
+        assert!(load_from(&store, &keyring_name("main@contoso.example")).unwrap().is_some() && load_from(&store, &keyring_name(address)).unwrap().is_none());
+        // Signed in again, the account already under that login: not asked again.
+        fresh(&store);
+        let (_, other) = open_mailbox(&store, account(), &grant, address, Some("main@contoso.example"), &[], opens_as_main).unwrap();
+        assert_eq!(other, None);
+        // That login is another account's: refused, its grant untouched, nothing of this one kept.
+        fresh(&store);
+        let theirs = work_grant("THEIRS".into());
+        save_in(&store, &keyring_name("main@contoso.example"), &theirs).unwrap();
+        let refused = open_mailbox(&store, account(), &grant, address, None, &["main@contoso.example".into()], opens_as_main).err();
+        assert_eq!(refused, Some(SyncError::Said(LOGIN_TAKEN, "main@contoso.example".into())));
+        assert_eq!(load_from(&store, &keyring_name("main@contoso.example")).unwrap(), Some(theirs), "the other account's sign-in, untouched");
+        assert!(load_from(&store, &keyring_name(address)).unwrap().is_none());
+        // Opens under neither: nothing kept.
+        fresh(&store);
+        let refused = open_mailbox(&store, account(), &grant, address, None, &[], |_| Err(SyncError::Login(AGAIN.into()))).err();
+        assert_eq!(refused, Some(SyncError::Said(OTHER_ACCOUNT, "main@contoso.example".into())));
+        assert!(store.0.lock().unwrap().is_empty());
+        // The address itself another account's: refused before Microsoft's page.
+        assert_eq!(refuse_taken(" Alias@Contoso.example ", &["alias@contoso.example".into()]).err(), Some(SyncError::Said(LOGIN_TAKEN, "alias@contoso.example".into())));
+        assert!(refuse_taken("alias@contoso.example", &["main@contoso.example".into()]).is_ok());
+        // The answer. No: the new sign-in forgotten, the one the account had before under another login kept.
+        let old = work_grant("OLD".into());
+        let signed = |store: &Memory| {
+            store.0.lock().unwrap().clear();
+            save_in(store, &keyring_name("old@contoso.example"), &old).unwrap();
+            save_in(store, &keyring_name("main@contoso.example"), &grant).unwrap();
+            let mut account = account();
+            account.username = Some("main@contoso.example".into());
+            Signed { account, grant: grant.clone(), other_login: Some("main@contoso.example".into()), before: Some("old@contoso.example".into()) }
+        };
+        let declined = signed(&store).answer_in(&store, false).err();
+        assert_eq!(declined, Some(SyncError::Said(OTHER_DECLINED, "main@contoso.example".into())));
+        assert_eq!(load_from(&store, &keyring_name("old@contoso.example")).unwrap(), Some(old.clone()));
+        assert!(load_from(&store, &keyring_name("main@contoso.example")).unwrap().is_none());
+        // Yes: kept, the one before forgotten.
+        let (kept, _) = signed(&store).answer_in(&store, true).unwrap();
+        assert_eq!(kept.login(), Some("main@contoso.example"));
+        assert!(load_from(&store, &keyring_name("old@contoso.example")).unwrap().is_none());
+        assert_eq!(load_from(&store, &keyring_name("main@contoso.example")).unwrap(), Some(grant.clone()));
     }
 
     /// Part 8, 8 and 9: Microsoft's refusals that no token changes.

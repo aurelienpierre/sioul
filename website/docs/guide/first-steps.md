@@ -97,7 +97,7 @@ Once your key is kept on this device, **Sign in with Google** is the way chosen 
 Microsoft takes no password from other mail programs, app passwords included. Sioul knows Microsoft's mail by its address (outlook.com, hotmail.com, live.com, msn.com and their country versions, such as hotmail.fr) or by the servers that receive your domain's mail (Microsoft 365), and signs it in on Microsoft's own page instead:
 
 1. After **Find the server**, choose **Sign in with Microsoft**. Microsoft's page opens in your browser, your address filled in. Choose your account if Microsoft asks which one, sign in as Microsoft asks (your password, your phone, your security key), and accept what Sioul asks: to read and send your mail, and to stay signed in.
-2. Sioul waits for Microsoft's answer for five minutes at most, then opens your mailbox with the access given before it keeps anything. The access stays in your system's keyring, and nothing goes to Sioul's developer.
+2. Sioul waits for Microsoft's answer for five minutes at most, then opens your mailbox with the access given before it keeps anything. If only the mailbox of the account you signed in on Microsoft's page opens, not your address's (an alias, or another of your accounts chosen there), Sioul names both and asks before using it. The access stays in your system's keyring, and nothing goes to Sioul's developer.
 
 What each kind of address needs:
 

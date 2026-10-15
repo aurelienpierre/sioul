@@ -103,8 +103,12 @@ pub(crate) struct Status {
     /// This device trains (a computer); a phone only reads its table.
     trains: bool,
     /// Under Train now: what it downloads, from which addresses (Microsoft's
-    /// among them: pressing it is the consent its terms ask, docs/microsoft.md).
+    /// among them: pressing it is the consent its terms ask, docs/microsoft.md),
+    /// and the work or school Microsoft addresses it never learns from.
     train_about: String,
+    /// The addresses that sentence names: what pressing Train now consents
+    /// to, given back by the press (`train`, `sioul_learn::consent`).
+    train_named: Vec<String>,
     /// The table in use: where it comes from, when, from what; else that there is none.
     table: String,
     /// What that table measured on the newest of your mail, at the spam threshold then; "" without numbers.
@@ -141,7 +145,11 @@ pub(crate) fn status() -> String {
 }
 
 fn status_now() -> Status {
-    let mut status = Status { trains: cfg!(not(target_os = "android")), fraction: -1.0, train_about: train_about(&crate::backend::load_config()), ..Status::default() };
+    let mut status = Status { trains: cfg!(not(target_os = "android")), fraction: -1.0, ..Status::default() };
+    #[cfg(not(target_os = "android"))]
+    {
+        (status.train_about, status.train_named) = train_about(&crate::backend::load_config());
+    }
     let (table, measured, refused) = table_lines(&sioul_core::spam::table_path(), status.trains);
     (status.table, status.measured, status.refused) = (table, measured, refused);
     #[cfg(not(target_os = "android"))]
@@ -149,23 +157,38 @@ fn status_now() -> Status {
     status
 }
 
-/// What Train now downloads from, named: every address whose mail Sioul fetches.
-fn train_about(config: &sioul_core::config::Config) -> String {
-    let addresses: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).map(|a| a.address.clone().unwrap_or_else(|| a.id.clone())).collect();
-    let named = if addresses.is_empty() { tr().text("spam-app-no-address", None) } else { addresses.join(", ") };
-    say("spam-app-train-about", &[("addresses", named)])
+/// What Train now downloads from, named: every address whose mail Sioul
+/// fetches but a work or school Microsoft one (`sioul_learn::consent::named`),
+/// with, when a Microsoft address syncs, what the press means for it, and
+/// the work or school ones it never learns from. The sentence, and the
+/// addresses it names.
+#[cfg(not(target_os = "android"))]
+fn train_about(config: &sioul_core::config::Config) -> (String, Vec<String>) {
+    use sioul_learn::consent;
+    let named = consent::named(config);
+    let shown = if named.is_empty() { tr().text("spam-app-no-address", None) } else { named.join(", ") };
+    let mut about = say("spam-app-train-about", &[("addresses", shown)]);
+    if config.accounts.iter().any(|a| a.syncs() && a.is_microsoft()) {
+        about = format!("{about} {}", tr().text("spam-app-train-microsoft", None));
+    }
+    let work = consent::work(config);
+    if !work.is_empty() {
+        about = format!("{about} {}", say("spam-app-train-work", &[("addresses", work.join(", "))]));
+    }
+    (about, named)
 }
 
-/// "Train now": the corpus brought up to date, then a training, on a thread of
-/// its own; `spam_changed` says how it goes. Why it did not start, else "".
-pub(crate) fn train(qt: QtThread, shared: Arc<Shared>) -> String {
+/// "Train now": your consent kept for the addresses its sentence named
+/// (`named`), then the corpus brought up to date and a training, on a
+/// thread of its own; `spam_changed` says how it goes. Why it did not start, else "".
+pub(crate) fn train(qt: QtThread, shared: Arc<Shared>, named: Vec<String>) -> String {
     #[cfg(not(target_os = "android"))]
     {
-        training::start(qt, shared)
+        training::start(qt, shared, named)
     }
     #[cfg(target_os = "android")]
     {
-        drop((qt, shared));
+        drop((qt, shared, named));
         tr().text("spam-app-phone-trains-not", None)
     }
 }
@@ -272,6 +295,7 @@ mod training {
     use super::{Status, grouped, percent, say, tr, when};
     use crate::backend::{QtThread, Shared, load_config};
     use cxx_qt_lib::QString;
+    use sioul_learn::consent::Consent;
     use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, auto, corpus, train};
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -356,7 +380,7 @@ mod training {
         jiff::Timestamp::from_second(seconds).ok().map(|t| tr().day(t.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default()
     }
 
-    pub(super) fn start(qt: QtThread, shared: Arc<Shared>) -> String {
+    pub(super) fn start(qt: QtThread, shared: Arc<Shared>, named: Vec<String>) -> String {
         // A training apart (by itself, or from the command line) ends on its own: never two at once.
         if auto::a_job_runs(&Dirs::standard()) {
             return tr().text("spam-app-busy-job", None);
@@ -376,7 +400,9 @@ mod training {
             // Held while it trains: the minute of `sioul watch` sees a training runs (`auto::a_job_runs`).
             let _held = window_lock(&dirs);
             let mut fetch = Fetch::new(&dirs);
-            let result = train::run(&config, &dirs, &mut |p: &Progress| moved(&qt, &mut fetch, p), &cancel);
+            // The press: your consent for the addresses named under it, kept before anything is read.
+            let here = |a: &sioul_core::config::Account| load_config().every_account().any(|b| b.id == a.id && b.syncs());
+            let result = Consent::given(&dirs, named).and_then(|_| train::run(&config, &dirs, &here, &mut |p: &Progress| moved(&qt, &mut fetch, p), &cancel));
             let ended = match result {
                 Ok(_) => String::new(),
                 Err(e) => failure(&e),

@@ -604,7 +604,10 @@ fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said
 
 /// The corpus brought up to date: every account that syncs, or one; each
 /// message checked by Sioul as it comes, then those kept before without
-/// checks.
+/// checks. A Microsoft address only when named at the last press of Train
+/// now in the window (`sioul_learn::consent`), a work or school one never:
+/// whoever runs it (you, training by itself, an AI agent's job). An account
+/// removed while it runs is left alone.
 pub(crate) fn fetch(s: &Session, dirs: &Dirs, only: Option<&str>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
     fetch_or_verify(s, dirs, only, false, progress, cancel)
 }
@@ -623,13 +626,18 @@ fn fetch_or_verify(s: &Session, dirs: &Dirs, only: Option<&str>, verify: bool, p
         });
     }
     let password = |a: &sioul_core::config::Account| sioul_sync::secret::password(a);
-    let update = if verify { corpus::verify(&accounts, &password, dirs, progress, cancel) } else { corpus::update(&accounts, &password, dirs, &corpus::free_space, progress, cancel) };
+    // The configuration read again before each account: one removed meanwhile is left alone.
+    let here = |a: &sioul_core::config::Account| sioul_core::config::Config::load(&s.config_path).map_or(true, |c| c.every_account().any(|b| b.id == a.id && b.syncs()));
+    let update = if verify { corpus::verify(&accounts, &password, dirs, &here, progress, cancel) } else { corpus::update(&accounts, &password, dirs, &here, &corpus::free_space, progress, cancel) };
     if update.cancelled {
         return Err(s.tr.text("spam-stopped", None));
     }
     let mut lines = Vec::new();
     for (account, detail) in &update.failed {
         lines.push(s.say("spam-account-failed", &[("account", account.clone()), ("detail", one_line(detail))]));
+    }
+    if !update.left_out.is_empty() {
+        lines.push(s.say("spam-left-out", &[("addresses", update.left_out.iter().map(|a| one_line(a)).collect::<Vec<_>>().join(", "))]));
     }
     if !verify {
         lines.push(s.say("spam-fetch-added", &[("n", update.added.to_string())]));
@@ -646,7 +654,7 @@ fn fetch_or_verify(s: &Session, dirs: &Dirs, only: Option<&str>, verify: bool, p
     let failed: Vec<Value> = update.failed.iter().map(|(account, detail)| json!({ "account": account, "detail": one_line(detail) })).collect();
     let data = json!({
         "added": update.added, "checked": update.checked, "gone": update.gone, "offline": update.offline,
-        "failed": failed, "held": update.held.map(|h| json!({ "free_mb": h.free >> 20 })), "checks": checks,
+        "failed": failed, "held": update.held.map(|h| json!({ "free_mb": h.free >> 20 })), "checks": checks, "left_out": update.left_out,
     });
     Ok(Report { lines, data })
 }

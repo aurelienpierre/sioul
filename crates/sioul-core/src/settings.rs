@@ -1264,8 +1264,8 @@ mod tests {
     #[test]
     fn microsoft_work_accounts_keep_their_mail_from_ais() {
         let config: Config = toml::from_str(
-            "[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"you@outlook.com\"\nauth = \"microsoft\"\nsmtp_host = \"smtp-mail.outlook.com\"\nshield = true\nshield_ai = true\n\
-             [[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"you@contoso.example\"\nauth = \"microsoft\"\nsmtp_host = \"smtp.office365.com\"\nshield = true\nshield_ai = true\n",
+            "[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"you@outlook.com\"\nauth = \"microsoft\"\nmicrosoft_kind = \"personal\"\nsmtp_host = \"smtp-mail.outlook.com\"\nshield = true\nshield_ai = true\n\
+             [[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"you@contoso.example\"\nauth = \"microsoft\"\nmicrosoft_kind = \"work\"\nsmtp_host = \"smtp.office365.com\"\nshield = true\nshield_ai = true\n",
         )
         .unwrap();
         let tr = Translator::new("en");

@@ -181,6 +181,8 @@ Item {
     property bool googleStepsShown: false
     // Microsoft's form with "What your administrator does" unfolded (for captures).
     property bool microsoftAdminUnfolded: false
+    // Microsoft's form asking what its sign-in asks when only another login's mailbox opened (for captures).
+    property string microsoftAsked: ""
     // Sioul's own Google key in this build, and whether you would rather use yours.
     readonly property bool googleBuiltIn: page.sioul.googleBuiltIn()
     property bool ownGoogleKey: false
@@ -715,6 +717,7 @@ Item {
                                                 found: page.found
                                                 againId: page.againId
                                                 unfoldAdmin: page.microsoftAdminUnfolded
+                                                asked: page.microsoftAsked
                                                 onStarted: page.lastForm = "mail"
                                             }
                                         }

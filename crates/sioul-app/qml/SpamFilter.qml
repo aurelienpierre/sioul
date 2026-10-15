@@ -22,8 +22,8 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // spam.rs's `Status`: {trains, table, measured, refused, running, stopping, progress, fraction, ended, by_itself, by_itself_here, by_itself_line, last, corpus, outside}.
-    property var shown: ({ trains: false, table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", by_itself: true, by_itself_here: false, by_itself_line: "", last: [], corpus: [], outside: [] })
+    // spam.rs's `Status`: {trains, train_about, train_named, table, measured, refused, running, stopping, progress, fraction, ended, by_itself, by_itself_here, by_itself_line, last, corpus, outside}.
+    property var shown: ({ trains: false, train_about: "", train_named: [], table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", by_itself: true, by_itself_here: false, by_itself_line: "", last: [], corpus: [], outside: [] })
     // What it is, in a sentence: the setting's own (settings.rs), said first.
     property string about: ""
     // Why "Train now" did not start, else "".
@@ -98,7 +98,8 @@ ColumnLayout {
             if (filter.shown.running) {
                 filter.sioul.spamStop()
             } else {
-                filter.problem = filter.sioul.spamTrain()
+                // The addresses its sentence names: what the press consents to.
+                filter.problem = filter.sioul.spamTrain(JSON.stringify(filter.shown.train_named || []))
                 filter.read(filter.sioul.spamStatus())
             }
         }

@@ -8,11 +8,15 @@
 //! share it; each provider says what an answer means (`Verdict`) and which
 //! page the browser then shows, in your language.
 //!
-//! Nothing but the request line is read: `GET /?state=…&code=… HTTP/1.1`.
-//! A request without a query (a favicon) gets a 404 and the wait goes on.
-//! The state is compared in constant time. An answer that waits in the
-//! system's queue is read even once the time is up: a phone freezes Sioul
-//! while the browser is in front, and its clock then jumps.
+//! Nothing but the request line is read: `GET /?state=…&code=… HTTP/1.1`,
+//! at most `LINE_BYTES` of it, within `LINE_TIME` of the connection, Cancel
+//! heard meanwhile: a connection that says nothing, or says too much, is
+//! dropped, and cannot hold the door past Cancel or the code's minute (the
+//! review of 15 October 2026, L1). A request without a query (a favicon)
+//! gets a 404 and the wait goes on. The state is compared in constant time.
+//! An answer that waits in the system's queue is read even once the time is
+//! up (a phone freezes Sioul while the browser is in front, and its clock
+//! then jumps), for `LATE_CONNECTIONS` connections at most.
 //!
 //! Also here, what both providers' requests need: PKCE's verifier and
 //! challenge (RFC 7636), a random state, and the form encoding of a query.
@@ -22,8 +26,8 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -129,12 +133,55 @@ pub(crate) struct Ends {
     pub timed_out: SyncError,
 }
 
+/// The most a request line may hold: a browser's answer, its code and state
+/// included, is a few kilobytes at most.
+const LINE_BYTES: usize = 16 * 1024;
+/// The most time a connection has to say its request line: a browser says it at once.
+const LINE_TIME: Duration = Duration::from_secs(2);
+/// Connections still read once the time is up, as long as they wait in the
+/// queue (the browser's answer among them, after a phone's freeze); past
+/// them the wait ends, however many more keep coming.
+const LATE_CONNECTIONS: usize = 16;
+
+/// A connection's request line, read within `LINE_TIME` and `LINE_BYTES`,
+/// Cancel heard between reads; None when it does not come whole in time,
+/// or when Cancel is pressed meanwhile.
+fn request_line(stream: &TcpStream, stop: &AtomicBool) -> Option<String> {
+    let started = Instant::now();
+    let mut line: Vec<u8> = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 1024];
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return None;
+        }
+        let left = LINE_TIME.checked_sub(started.elapsed())?;
+        // Each read waits at most a fifth of a second, so that Cancel is heard.
+        stream.set_read_timeout(Some(left.clamp(Duration::from_millis(1), Duration::from_millis(200)))).ok()?;
+        match (&*stream).read(&mut chunk) {
+            Ok(0) => return None,
+            Ok(read) => {
+                line.extend_from_slice(&chunk[..read]);
+                if let Some(end) = line.iter().position(|&b| b == b'\n') {
+                    line.truncate(end);
+                    return Some(String::from_utf8_lossy(&line).trim_end_matches('\r').to_string());
+                }
+                if line.len() > LINE_BYTES {
+                    return None;
+                }
+            }
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::Interrupted) => continue,
+            Err(_) => return None,
+        }
+    }
+}
+
 /// Waits at the door for the provider's answer, at most `deadline`, or until
 /// `stop` (Cancel): `judge` says what each answer means and which page the
 /// browser shows. The code, else why there is none.
 pub(crate) fn wait(listener: &TcpListener, state: &str, deadline: Duration, stop: &AtomicBool, ends: Ends, judge: impl Fn(&Answer) -> Verdict) -> Result<String, SyncError> {
     listener.set_nonblocking(true).map_err(|e| SyncError::Network(e.to_string()))?;
     let until = Instant::now() + deadline;
+    let mut late = 0;
     loop {
         if stop.load(Ordering::Relaxed) {
             return Err(ends.cancelled);
@@ -153,12 +200,16 @@ pub(crate) fn wait(listener: &TcpListener, state: &str, deadline: Duration, stop
             }
             Err(e) => return Err(SyncError::Network(e.to_string())),
         };
-        let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-        let mut line = String::new();
-        if BufReader::new(&stream).read_line(&mut line).is_err() {
-            continue;
+        // Past the time, only so many: a stream of strangers cannot keep the wait going.
+        if Instant::now() > until {
+            late += 1;
+            if late > LATE_CONNECTIONS {
+                return Err(ends.timed_out);
+            }
         }
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_write_timeout(Some(LINE_TIME));
+        let Some(line) = request_line(&stream, stop) else { continue };
         // "GET /?state=…&code=…&scope=… HTTP/1.1"; anything else (a favicon) is not it.
         let target = line.split_whitespace().nth(1).unwrap_or("");
         let Some(params) = target.strip_prefix("/?") else {
@@ -194,6 +245,78 @@ mod tests {
         let verifier = random(48);
         assert_eq!(verifier.len(), 64);
         assert_eq!(challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "RFC 7636's example, appendix B");
+    }
+
+    /// The review of 15 October 2026, L1: a stranger who connects first and
+    /// dribbles, or sends a line without end, holds the door two seconds at
+    /// most, and Cancel is heard meanwhile; the browser's answer, behind it,
+    /// is read; a stream of strangers past the time does not keep the wait going.
+    #[test]
+    fn a_slow_or_endless_stranger_does_not_hold_the_door() {
+        let judge = |answer: &Answer| match (answer.state_ok, answer.get("code")) {
+            (true, Some(code)) => Verdict::Done("google-page-granted", Ok(code.to_string())),
+            _ => Verdict::Ignored("google-page-foreign"),
+        };
+        let ends = || Ends { cancelled: SyncError::Message("cancelled".into()), timed_out: SyncError::Message("timed out".into()) };
+        // A stranger dribbling a byte every 300 ms, never ending its line; Cancel at half a second.
+        let (listener, _) = open(false).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let dribbler = std::thread::spawn(move || {
+            let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            for byte in b"GET /?state=".iter().cycle().take(40) {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let stopper = {
+            let stop = std::sync::Arc::clone(&stop);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(500));
+                stop.store(true, Ordering::Relaxed);
+            })
+        };
+        let started = Instant::now();
+        assert_eq!(wait(&listener, "the-state", Duration::from_secs(60), &stop, ends(), judge).err(), Some(SyncError::Message("cancelled".into())));
+        assert!(started.elapsed() < Duration::from_millis(1500), "Cancel heard within a fifth of a second: {:?}", started.elapsed());
+        stopper.join().unwrap();
+        // A stranger sending a line without end (64 KB), then the browser's answer behind it.
+        let (listener, _) = open(false).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let endless = std::thread::spawn(move || {
+            let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let _ = stream.write_all(&[b'A'; 64 * 1024]);
+            let mut browser = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            browser.write_all(b"GET /?state=the-state&code=the-code HTTP/1.1\r\n\r\n").unwrap();
+            let mut answer = String::new();
+            let _ = browser.read_to_string(&mut answer);
+            answer
+        });
+        let started = Instant::now();
+        assert_eq!(wait(&listener, "the-state", Duration::from_secs(60), &AtomicBool::new(false), ends(), judge).unwrap(), "the-code");
+        assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+        assert!(endless.join().unwrap().starts_with("HTTP/1.1 200"));
+        dribbler.join().unwrap();
+        // Past the time, twenty strangers waiting: sixteen are read, then the wait ends.
+        let (listener, _) = open(false).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let strangers: Vec<std::net::TcpStream> = (0..20)
+            .map(|_| {
+                let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+                stream.write_all(b"GET /?state=another HTTP/1.1\r\n\r\n").unwrap();
+                stream
+            })
+            .collect();
+        let heard = std::sync::atomic::AtomicUsize::new(0);
+        let counting = |answer: &Answer| {
+            heard.fetch_add(1, Ordering::Relaxed);
+            judge(answer)
+        };
+        assert_eq!(wait(&listener, "the-state", Duration::ZERO, &AtomicBool::new(false), ends(), counting).err(), Some(SyncError::Message("timed out".into())));
+        assert_eq!(heard.load(Ordering::Relaxed), LATE_CONNECTIONS);
+        drop(strangers);
     }
 
     /// Microsoft takes no IPv6 loopback: without the fallback, the door is

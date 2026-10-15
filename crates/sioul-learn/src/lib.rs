@@ -28,6 +28,7 @@
 //!
 //! # Modules
 //!
+//! - [`consent`]: your consent, address by address, to learning from a Microsoft address's mail: the addresses named at the last press of Train now; never a work or school one's.
 //! - [`corpus`]: what training reads, downloaded from every folder of every account and kept here, junk included after your provider purges it, with Sioul's own checks of each message (its signatures, its sender) made on the whole message.
 //! - [`external`]: outside training material, mail labelled elsewhere, imported once (`sioul spam import`): more words to learn, and a baseline.
 //! - [`labels`]: spam or ham for each message, from its folder, its keywords, your own filter's word and your own actions (every device's logs).
@@ -42,6 +43,7 @@
 //! - `synthetic`, for tests only, this crate's and the command line's (so not shown here): invented mail on reserved domains.
 
 pub mod auto;
+pub mod consent;
 pub mod corpus;
 pub mod detail;
 pub mod diagnose;
@@ -90,6 +92,11 @@ impl Dirs {
         self.data.join("corpus")
     }
 
+    /// The addresses named under Train now at its last press (`consent`): this computer's only, never shared.
+    pub fn consent(&self) -> PathBuf {
+        self.data.join("consent.toml")
+    }
+
     /// Outside training material (`external`): private, never shared, never shown to an AI agent.
     pub fn external(&self) -> PathBuf {
         self.data.join("external")
@@ -134,16 +141,38 @@ impl Dirs {
 
     /// Forgets what the corpus keeps of one account (the start of each of its
     /// messages), when the account is removed with its mail (Microsoft's
-    /// accounts, docs/microsoft.md). True when there was something; an id
-    /// that is not one plain name names nothing.
+    /// accounts, docs/microsoft.md): once no download of it runs, in any
+    /// process (the window's, the command line's, an AI agent's job), whose
+    /// last batch would make the folder again; one under way is waited for,
+    /// at most `FORGET_WAITS`. True when there was something; an id that is
+    /// not one plain name names nothing.
     pub fn forget_account(&self, id: &str) -> std::io::Result<bool> {
+        self.forget_account_within(id, FORGET_WAITS)
+    }
+
+    fn forget_account_within(&self, id: &str, within: std::time::Duration) -> std::io::Result<bool> {
         let plain = matches!(std::path::Path::new(id).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
         let folder = self.corpus().join(id);
         if !plain || !folder.is_dir() {
             return Ok(false);
         }
+        unlocked(&folder.join("lock"), within);
         std::fs::remove_dir_all(&folder)?;
         Ok(true)
+    }
+}
+
+/// How long forgetting an account's corpus waits for a download of it under way.
+const FORGET_WAITS: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Waits until nobody holds the lock at `path` (an account's download holds
+/// it: `corpus.rs`), at most `within`; then lets it go at once, so that its
+/// folder can be deleted (Windows deletes no open file). No file: none runs.
+fn unlocked(path: &std::path::Path, within: std::time::Duration) {
+    let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) else { return };
+    let until = std::time::Instant::now() + within;
+    while file.try_lock().is_err() && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -314,5 +343,41 @@ mod forget_tests {
         assert!(!dirs.forget_account("../corpus").unwrap() && !dirs.forget_account("").unwrap());
         assert!(dirs.corpus().join("home").is_dir());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// The review of 15 October 2026, L5: a download of the account under
+    /// way (another process's job holds its lock) ends before its corpus is
+    /// forgotten: its last batch never makes the folder again.
+    #[test]
+    fn a_download_under_way_ends_before_its_corpus_goes() {
+        let root = std::env::temp_dir().join(format!("sioul-learn-forget-locked-{}", std::process::id()));
+        let dirs = Dirs::under(&root);
+        let folder = dirs.corpus().join("live");
+        std::fs::create_dir_all(&folder).unwrap();
+        let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(folder.join("lock")).unwrap();
+        lock.lock().unwrap();
+        let (held, wait) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                held.send(()).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                // Its last batch, then the lock let go.
+                std::fs::write(folder.join("INBOX.jsonl.gz"), b"batch").unwrap();
+                drop(lock);
+            });
+            wait.recv().unwrap();
+            let started = std::time::Instant::now();
+            assert!(dirs.forget_account("live").unwrap());
+            assert!(started.elapsed() >= std::time::Duration::from_millis(250), "waited for the download");
+        });
+        assert!(!folder.exists(), "forgotten after its last batch, not before");
+        // Held past the wait: forgotten all the same.
+        std::fs::create_dir_all(&folder).unwrap();
+        let stuck = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(folder.join("lock")).unwrap();
+        stuck.lock().unwrap();
+        #[cfg(unix)]
+        assert!(dirs.forget_account_within("live", std::time::Duration::from_millis(100)).unwrap() && !folder.exists());
+        drop(stuck);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

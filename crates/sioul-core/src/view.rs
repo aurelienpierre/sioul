@@ -1698,6 +1698,7 @@ kind = "imap"
 address = "you@outlook.com"
 host = "outlook.office365.com"
 auth = "microsoft"
+microsoft_kind = "personal"
 smtp_host = "smtp-mail.outlook.com"
 
 [[account]]
@@ -1706,6 +1707,7 @@ kind = "imap"
 address = "you@contoso.example"
 host = "outlook.office365.com"
 auth = "microsoft"
+microsoft_kind = "work"
 smtp_host = "smtp.office365.com"
 
 [[account]]

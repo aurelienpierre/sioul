@@ -132,7 +132,7 @@ Until you choose: spam and doubts flagged, the rest nothing. An older Sioul's on
 
 ## Training
 On one computer: by hand, in Mail ▸ ⚙ ("Train now") or with `sioul spam train`, and again by itself once a week (below, "Training by itself"); never on a phone. Two computers training tables of their own is not supported: the later table wins on every device; the other, kept beside it by the sharing as a conflict copy (`table (conflict …).bin`), is read by nothing, a safety only. Train on one. The steps (`train::run`):
-1. the corpus brought up to date from every address;
+1. the corpus brought up to date from every address, but a Microsoft one only while the addresses named under "Train now" at its last press include it, and a work or school Microsoft one never (`consent.rs`; what the corpus kept of an address no longer named is not read either: [microsoft.md](microsoft.md), "Microsoft's terms, and what Sioul does about them"); an account removed meanwhile is left alone;
 2. each message's label, words and header features, read as the Porch reads mail;
 3. for each account, its ham and its spam apart, the oldest 80 % to learn from, the newest 20 % to test on, by INTERNALDATE (so every account's ham and spam are on both sides: a provider that keeps its Junk folder a month would otherwise have all its spam in the test, and none to learn from); each outside source alike, its ham and its spam, by its own dates (the oldest 80 % learned from, at their dates; the newest 20 % held out);
 4. the calibration (the classifier's: a model of four fifths of what is learned from scoring the fifth left, above);

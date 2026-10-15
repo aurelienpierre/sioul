@@ -95,6 +95,9 @@ pub struct Control {
     lock: Mutex<()>,
     /// The async waits (the mail watcher's), woken with the pauses.
     wakers: Mutex<Vec<Waker>>,
+    /// The watch has ended, its last write done (`end`): what waits on it
+    /// (`wait_ended`) may delete its folder without a fetch writing it again.
+    ended: AtomicBool,
 }
 
 impl Control {
@@ -233,6 +236,27 @@ impl Control {
     /// Whether the wait should end; a nudge is used up by ending one.
     fn wakes(&self) -> bool {
         self.stopped() || self.nudge.swap(false, Ordering::Relaxed)
+    }
+
+    /// Said by whoever ran the watch (`watch`), once it has returned:
+    /// nothing of it writes any more.
+    pub fn end(&self) {
+        self.ended.store(true, Ordering::Relaxed);
+        self.ring();
+    }
+
+    /// Waits until the watch has ended (`end`), at most `within`: whether it has.
+    pub fn wait_ended(&self, within: Duration) -> bool {
+        let until = std::time::Instant::now() + within;
+        let mut held = self.lock.lock().unwrap_or_else(PoisonError::into_inner);
+        while !self.ended.load(Ordering::Relaxed) {
+            let left = until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return false;
+            }
+            held = self.bell.wait_timeout(held, left).unwrap_or_else(PoisonError::into_inner).0;
+        }
+        true
     }
 }
 
@@ -919,6 +943,24 @@ mod tests {
             control.stop();
             assert_eq!(ended.recv_timeout(Duration::from_secs(5)), Ok(false), "stopped: ends");
         });
+    }
+
+    /// The review of 15 October 2026, L5: what deletes a watcher's folder
+    /// waits for its end, not only its stop; a watch that does not end in
+    /// time is said so.
+    #[test]
+    fn the_end_of_a_watch_is_waited_for() {
+        let control = Control::default();
+        control.stop();
+        assert!(!control.wait_ended(Duration::from_millis(50)), "stopped is not ended: a fetch may still write");
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| done.send(control.wait_ended(Duration::from_secs(10))).unwrap());
+            assert!(ended.recv_timeout(Duration::from_millis(200)).is_err(), "waiting");
+            control.end();
+            assert_eq!(ended.recv_timeout(Duration::from_secs(5)), Ok(true), "ended: the wait ends at once");
+        });
+        assert!(control.wait_ended(Duration::ZERO), "ended stays ended");
     }
 
     /// A2: a refused password is tried again once another is kept, or an hour

@@ -1906,6 +1906,10 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("microsoft-work"),
+                // Only the mailbox of the login Microsoft's page signed in opened: the question, both addresses named.
+                () => accountsPage.microsoftAsked = sioul.textArgs("microsoft-other-login-question", JSON.stringify({ address: "someone@contoso.example", login: "someone.else@contoso.example" })),
+                () => {},
+                () => grabber.save("microsoft-other-login"),
                 () => window.close()
             ]
             readonly property var google: [
