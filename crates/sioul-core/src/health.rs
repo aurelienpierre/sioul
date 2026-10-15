@@ -1080,10 +1080,19 @@ pub struct HealthState {
     /// Chats: the day counted, the minutes used that day, and covered until when.
     #[serde(default, deserialize_with = "crate::budget::dates::optional")]
     pub chat_day: Option<Date>,
-    #[serde(default)]
+    /// Never written while 0, as none: a record started again after a repair
+    /// holds no minutes of its own, so it sends none over what the others'
+    /// records hold (the day's chat minutes reset on every device after a
+    /// repair: review of 15 October 2026, RV-P4 and RF-J). Read as before, 0
+    /// when missing; an older Sioul reads it the same.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub chat_minutes: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chats_locked_until: Option<i64>,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Why the doses' record cannot be trusted: what it held is not known.
