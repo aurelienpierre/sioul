@@ -5,7 +5,9 @@
 //! dropped in the inbox folder read in the background (no notification: they
 //! wait for the Porch's window, as mail does), then each a card there: who,
 //! what, how much, by when; a task for its date, its appointment in the agenda,
-//! its scan filed with its project.
+//! its scan filed with its project. The place is there before any scan: the
+//! folder they go to, opened or added to from the Porch, and whether this
+//! computer reads them (`reader`).
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::Serialize;
@@ -17,6 +19,11 @@ use std::sync::{Arc, Mutex};
 static BUSY: Mutex<()> = Mutex::new(());
 /// Why scans could not be read lately (no OCR program): said on the cards' place.
 static MISSING: Mutex<String> = Mutex::new(String::new());
+/// Whether this computer reads scans, and when that was asked: "" when it
+/// does, else how to install what reads them. None until the first tick asks.
+static READER: Mutex<Option<(std::time::Instant, String)>> = Mutex::new(None);
+/// How long an answer about the reading programs holds: one installed meanwhile is seen within it.
+const READER_FRESH: std::time::Duration = std::time::Duration::from_secs(600);
 
 const SCANS: &[&str] = &["pdf", "png", "jpg", "jpeg", "tif", "tiff", "webp"];
 
@@ -36,13 +43,31 @@ fn source_of(path: &Path) -> String {
     format!("{}|{size}|{time}", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
-/// The scans in the inbox not read yet, read; off the window's thread.
+/// The scans in the inbox not read yet, read; off the window's thread. A
+/// phone reads none (docs/porch.md, "Paper letters"): a computer does, and the
+/// cards it makes reach the phone with your notes.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
+    if cfg!(target_os = "android") {
+        return;
+    }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let config = load_config();
         let looked = sioul_core::words::Words::of(&config);
+        // Whether reading works here, said on the Porch before any scan comes; asked again every ten minutes.
+        let stale = READER.lock().map(|r| r.as_ref().is_none_or(|(at, _)| at.elapsed() >= READER_FRESH)).unwrap_or(false);
+        if stale {
+            let said = if sioul_sync::ocr::reads_here() { String::new() } else { sioul_sync::ocr::install_hint(&looked.ocr.tesseract) };
+            let changed = READER.lock().map(|mut r| {
+                let changed = r.as_ref().is_none_or(|(_, before)| *before != said);
+                *r = Some((std::time::Instant::now(), said));
+                changed
+            });
+            if changed.unwrap_or(false) {
+                let _ = qt.queue(|mut sioul| sioul.as_mut().letters_changed());
+            }
+        }
         let (Some(inbox), Some(root)) = (inbox(), config.notes_root_path()) else { return };
         let Ok(entries) = std::fs::read_dir(&inbox) else { return };
         let Ok(letters) = Letters::load(&root) else { return };
@@ -130,13 +155,20 @@ struct View {
     inbox: String,
     letters: Vec<LetterView>,
     projects: Vec<ProjectChoice>,
-    /// No OCR program: how to install one.
+    /// No OCR program, and scans waiting: how to install one.
     missing: String,
+    /// No OCR program, before any scan: how to install one ("" when this computer reads scans, or not known yet).
+    reader: String,
 }
 
 /// The letters not done with, as JSON.
 pub(crate) fn view() -> String {
-    let mut view = View { inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(), missing: MISSING.lock().map(|m| m.clone()).unwrap_or_default(), ..View::default() };
+    let mut view = View {
+        inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(),
+        missing: MISSING.lock().map(|m| m.clone()).unwrap_or_default(),
+        reader: READER.lock().ok().and_then(|r| r.as_ref().map(|(_, said)| said.clone())).unwrap_or_default(),
+        ..View::default()
+    };
     let Some(root) = load_config().notes_root_path() else { return json(&view) };
     let Ok(letters) = Letters::load(&root) else { return json(&view) };
     let today = jiff::Zoned::now().date();
@@ -269,4 +301,80 @@ pub(crate) fn done(id: &str, project: &str) -> String {
         letter.status = "done".into();
         Ok(String::new())
     })
+}
+
+/// The folder scans arrive in, made if it is not there yet; "" without one
+/// (no folder chosen and no notes folder), or when it cannot be made.
+pub(crate) fn folder() -> String {
+    let Some(inbox) = inbox() else { return String::new() };
+    if std::fs::create_dir_all(&inbox).is_err() {
+        return String::new();
+    }
+    inbox.display().to_string()
+}
+
+/// A name free in `folder` for a file named `name`: itself, else "scan (2).pdf", "scan (3).pdf"…
+fn free_name(folder: &Path, name: &str) -> PathBuf {
+    let first = folder.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let path = Path::new(name);
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let extension = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (2..)
+        .map(|n| folder.join(format!("{stem} ({n}){extension}")))
+        .find(|candidate| !candidate.exists())
+        .unwrap_or(first)
+}
+
+/// Scans chosen on this computer (a JSON array of `file://` addresses, or of
+/// paths), copied into the folder they are read from: what happened, in a
+/// sentence. The copy is read at a coming minute, as a scanner's file is; the
+/// chosen file stays where it was.
+pub(crate) fn add(files: &str) -> String {
+    let Some(inbox) = inbox() else { return tr().text("letters-no-folder", None) };
+    let chosen: Vec<String> = serde_json::from_str(files).unwrap_or_default();
+    if let Err(e) = std::fs::create_dir_all(&inbox) {
+        return say("letters-folder-failed", &[("folder", inbox.display().to_string()), ("detail", e.to_string())]);
+    }
+    let mut copied = 0usize;
+    let mut problems: Vec<String> = Vec::new();
+    for url in chosen.iter().filter(|u| !u.trim().is_empty()) {
+        let source = crate::backend::local_path(url);
+        let name = source.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let readable = source.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()));
+        if !readable {
+            problems.push(say("letters-add-not-scan", &[("name", name)]));
+            continue;
+        }
+        match std::fs::copy(&source, free_name(&inbox, &name)) {
+            Ok(_) => copied += 1,
+            Err(e) => problems.push(say("letters-add-failed", &[("name", name), ("detail", e.to_string())])),
+        }
+    }
+    let mut said: Vec<String> = Vec::new();
+    if copied > 0 {
+        said.push(tr().text("letters-added", Some(&tr().counted(copied))));
+    }
+    said.extend(problems);
+    said.join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::free_name;
+
+    #[test]
+    fn a_scan_added_twice_keeps_both() {
+        let folder = std::env::temp_dir().join(format!("sioul-letters-free-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan.pdf"));
+        std::fs::write(folder.join("scan.pdf"), b"%PDF").unwrap();
+        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan (2).pdf"));
+        std::fs::write(folder.join("scan (2).pdf"), b"%PDF").unwrap();
+        assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan (3).pdf"));
+        assert_eq!(free_name(&folder, "photo"), folder.join("photo"));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 }

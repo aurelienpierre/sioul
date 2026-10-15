@@ -5,11 +5,15 @@
 // it, what it is, how much, by when (legal delays counted into a date); a task
 // for that date, its appointment in the agenda, its scan one click away; done,
 // it is filed with its project. Letters wait outside like mail.
+// On a computer the place is there before any scan: the folder scans go to,
+// opened or added to from here, and whether this computer reads them. A phone
+// reads none (a computer does): it shows the cards alone.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ColumnLayout {
@@ -18,15 +22,29 @@ ColumnLayout {
     required property var sioul
     required property var theme
     required property var window
-    property var shown: ({ inbox: "", letters: [], projects: [], missing: "" })
+    property var shown: ({ inbox: "", letters: [], projects: [], missing: "", reader: "" })
     property string problem: ""
+    // The place before any scan: on a computer, which reads them.
+    readonly property bool place: Qt.platform.os !== "android"
+
+    // No folder for scans yet: the Porch's settings, where one is chosen.
+    signal settingsWanted
 
     function reload() {
         section.shown = JSON.parse(section.sioul.letters())
     }
 
+    // A scan chosen on this computer, copied into the folder (the New menu's
+    // "A paper letter (scan)…" too); without a folder, where to choose one.
+    function addScan() {
+        if (section.sioul.lettersFolder() === "")
+            section.settingsWanted()
+        else
+            scanPicker.open()
+    }
+
     spacing: 8
-    visible: section.shown.letters.length > 0 || section.shown.missing !== ""
+    visible: section.place || section.shown.letters.length > 0 || section.shown.missing !== ""
     Component.onCompleted: section.reload()
     // Read again once shown, after the binding that showed it: read at once,
     // what it reads would change whether it shows while that is being decided.
@@ -47,7 +65,54 @@ ColumnLayout {
         font.weight: Font.DemiBold
         color: section.theme.text
     }
-    // What installs the reader: its command, if any, to copy.
+    // Where scans go, and what this computer does with them: one quiet line,
+    // two buttons; no count, nothing that nags.
+    Label {
+        visible: section.place
+        Layout.fillWidth: true
+        text: section.shown.inbox !== "" ? section.sioul.textWith("letters-place", "folder", section.shown.inbox) : section.sioul.text("letters-place-unset")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: section.theme.muted
+    }
+    // Before any scan, what installs the reader: its command, if any, to copy.
+    CommandText {
+        visible: section.place && section.shown.reader !== "" && section.shown.missing === ""
+        Layout.fillWidth: true
+        sioul: section.sioul
+        theme: section.theme
+        text: section.sioul.textWith("letters-reader-missing", "hint", section.shown.reader)
+        color: section.theme.muted
+    }
+    Flow {
+        visible: section.place
+        Layout.fillWidth: true
+        spacing: 6
+
+        Button {
+            visible: section.shown.inbox !== ""
+            flat: true
+            text: section.sioul.text("letters-open-folder")
+            onClicked: {
+                const folder = section.sioul.lettersFolder()
+                if (folder !== "")
+                    Qt.openUrlExternally(section.theme.fileUrl(folder))
+            }
+        }
+        Button {
+            visible: section.shown.inbox !== ""
+            flat: true
+            text: section.sioul.text("letters-add-scan")
+            onClicked: section.addScan()
+        }
+        Button {
+            visible: section.shown.inbox === ""
+            flat: true
+            text: section.sioul.text("letters-choose-folder")
+            onClicked: section.settingsWanted()
+        }
+    }
+    // Scans waiting, unread: what installs the reader, its command, if any, to copy.
     CommandText {
         visible: section.shown.missing !== ""
         Layout.fillWidth: true
@@ -174,5 +239,16 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    // PDF and pictures, the kinds Sioul reads; several at once. Each copied,
+    // the chosen file left where it was; what happened said on the status line.
+    FileDialog {
+        id: scanPicker
+
+        title: section.sioul.text("letters-add-scan-title")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [section.sioul.text("letters-add-scan-filter") + " (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.webp)"]
+        onAccepted: section.sioul.status = section.sioul.lettersAdd(JSON.stringify(Array.from(scanPicker.selectedFiles, f => f.toString())))
     }
 }

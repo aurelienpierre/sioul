@@ -1082,6 +1082,15 @@ pub mod qobject {
         #[qinvokable]
         fn letter_done(self: Pin<&mut Sioul>, id: &QString, project: &QString) -> QString;
 
+        /// The folder scans of paper letters arrive in, made if missing; "" without one (`letters::folder`).
+        #[qinvokable]
+        fn letters_folder(self: &Sioul) -> QString;
+
+        /// Scans chosen here (a JSON array of file addresses) copied into that
+        /// folder, to be read at a coming minute: what happened, in a sentence (`letters::add`).
+        #[qinvokable]
+        fn letters_add(self: Pin<&mut Sioul>, files: &QString) -> QString;
+
         /// The money watch, as JSON (`bank::view`).
         #[qinvokable]
         fn bank(self: &Sioul) -> QString;
@@ -4447,6 +4456,14 @@ impl qobject::Sioul {
 
     fn letter_done(self: Pin<&mut Self>, id: &QString, project: &QString) -> QString {
         QString::from(&crate::letters::done(&id.to_string(), &project.to_string()))
+    }
+
+    fn letters_folder(&self) -> QString {
+        QString::from(&crate::letters::folder())
+    }
+
+    fn letters_add(self: Pin<&mut Self>, files: &QString) -> QString {
+        QString::from(&crate::letters::add(&files.to_string()))
     }
 
     fn bank(&self) -> QString {

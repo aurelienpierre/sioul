@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "en"
-checked = "2026-10-09"
+checked = "2026-10-15"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -122,10 +122,10 @@ channels = [
 # Amounts in mail and letters (money.rs).
 [money]
 # Words after which the amount a message is about comes.
-keywords = ["total", "amount", "you received", "you've got", "payment of", "payout of", "charged"]
+keywords = ["total", "amount", "you received", "payment of", "payout of", "charged"]
 # Sentences that state a payment; the amount follows them.
 stated = [
-    "you received a payment of", "you received", "you've got", "you paid", "you sent", "payment of", "payout of",
+    "you received a payment of", "you received", "you paid", "you sent", "payment of", "payout of",
     "refund of", "charged",
 ]
 # Labels of the line that holds what was paid.
@@ -269,7 +269,7 @@ health_cover = ["health cover"]
 health_card = ["health card"]
 tax_notice = ["tax notice", "tax assessment"]
 rent_receipt = ["rent receipt"]
-bank_details = ["rib", "bank details", "iban"]
+bank_details = ["bank details", "iban"]
 payslip = ["payslip"]
 warranty = ["warranty"]
 insurance = ["insurance"]
@@ -281,7 +281,7 @@ certificate = ["certificate"]
 rent = ["rent"]
 energy = ["energy", "electricity"]
 insurance = ["insurance"]
-telecom = ["internet", "box", "mobile", "phone"]
+telecom = ["internet", "mobile", "phone"]
 hosting = ["hosting", "domain"]
 subscription = ["subscription"]
 bank = ["bank"]
@@ -344,7 +344,7 @@ work = [
     "opportunity", "interview", "salary", "project",
 ]
 support = [
-    "bug", "crash", "crashes", "error", "issue", "problem", "help", "how to", "install", "update", "version", "plugin",
+    "bug", "crash", "crashes", "error", "issue", "problem", "help", "how to", "install", "update", "version",
     "feature",
 ]
 press = ["journalist", "press", "article", "podcast", "magazine", "media"]

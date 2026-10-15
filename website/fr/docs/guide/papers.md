@@ -46,7 +46,7 @@ En mots, jamais en rouge :
 - **À qui**, dans un foyer ;
 - **Notes**.
 
-Depuis un message, **Garder dans les papiers**, à côté d’une pièce jointe, fait de même : l’antivirus vérifie le fichier, il est gardé, et le formulaire s’ouvre avec un nom et un type devinés d’après le nom du fichier et l’objet du message. Vous ne dites que ce qui ne se devine pas.
+Depuis un courriel, **Garder dans les papiers**, à côté d’une pièce jointe, fait de même : l’antivirus vérifie le fichier, il est gardé, et le formulaire s’ouvre avec un nom et un type devinés d’après le nom du fichier et l’objet du courriel. Vous ne dites que ce qui ne se devine pas.
 
 Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Joindre**. Un papier fini, ou plus vieux que ce qui est demandé d’habitude, le dit dans la liste.
 
@@ -79,6 +79,7 @@ L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF d�
 
 1. Dans le ⚙ du Porche, **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `letters/inbox` dans votre dossier de notes. L’appli de scan d’un téléphone qui s’y synchronise convient aussi.
 2. Sioul lit les scans avec deux programmes de votre système. Sans eux, les scans attendent, non lus, et le Porche dit comment les installer ([Installer](install.md#the-packages)).
+3. Sur le Porche, sous **Courrier papier**, **Ouvrir le dossier** l’ouvre et **Ajouter un scan…** y copie un PDF ou une image ; dans le menu **Nouveau**, **Une lettre papier (scan)…** fait de même depuis n’importe quelle page ([Le Porche](porch.md#paper-letters)).
 
 Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil.
 
@@ -94,7 +95,7 @@ Sur le Porche, chaque lettre est une carte : qui l’a envoyée et ce que c’
 
 Puis :
 
-- **Voir le scan** ;
+- **Voir le scan** ;
 - **Une tâche pour cette date** : une tâche dans votre liste habituelle, à faire pour ce jour-là, liée au scan, comme « Payer la facture d’eau 86,40 € » ;
 - **Dans l’agenda**, pour un rendez-vous ;
 - le projet auquel elle appartient ;
@@ -143,7 +144,7 @@ En octobre 2026, d’après la documentation de chaque application.
 | Classe chaque scan par année, expéditeur et type | ✓ | ✓ | en partie⁸ | en partie⁹ | ✗ | ✗ |
 | Les papiers d’identité avec leur date de fin, et un rappel quand le renouvellement doit commencer | ✓ | en partie⁵ | en partie⁶ | ✗ | en partie⁷ | ✗¹⁰ |
 | Dit quand un papier est plus vieux que ce qui est demandé d’habitude | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Garde une pièce jointe de votre courrier | ✓¹¹ | ✓ | ✓ | ✗ | ✓ | en partie¹² |
+| Garde une pièce jointe de vos courriels | ✓¹¹ | ✓ | ✓ | ✗ | ✓ | en partie¹² |
 | Scanne avec l’appareil photo de votre téléphone | ✗¹³ | en partie¹⁴ | en partie¹⁵ | ✓ | ✓ | ✓ |
 | Cherche dans le texte de chaque document | ✗¹⁶ | ✓ | ✓ | ✓ | ✓ | en partie² |
 | Plusieurs personnes, chacune avec son propre accès | en partie¹⁷ | ✓ | ✓ | en partie¹⁸ | en partie¹⁹ | en partie²⁰ |
@@ -207,7 +208,7 @@ D’autres en font plus par endroits : les cinq cherchent dans le texte de cha
 
 **Scellés entre vos appareils.** Avec **Papiers** activé dans le partage de Sioul, `sioul-papers.toml` voyage scellé comme tout enregistrement, et chaque fichier du dossier `papers` compressé et scellé à part, en morceaux de 1 Mio, chacun scellé avec XChaCha20-Poly1305 avec le nom du fichier, son rang et une marque de fin comme données associées, pour qu’on ne puisse ni échanger, ni couper, ni ajouter de morceaux. Leurs noms dans le dossier sont un HMAC-SHA-256 de l’empreinte du contenu, sous une sous-clé tirée de la clé du partage par HKDF-SHA-256 : le dossier ne voit ni le nom des fichiers ni leur contenu. Les fichiers de plus de 64 Mio restent sur l’appareil qui les a ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)). Les lettres voyagent avec les notes.
 
-**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; un téléphone n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et le courrier mis de côté n’a jamais ses pièces jointes ouvertes.
+**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; un téléphone n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et les courriels mis de côté n’ont jamais leurs pièces jointes ouvertes.
 
 **Un agent d’IA.** Son outil `read_note` ne lit que les notes en texte (`.md`, `.txt`), masquées ; un PDF ou une image est nommé, jamais lu ; `sioul-papers.toml` n’est pas une note.
 

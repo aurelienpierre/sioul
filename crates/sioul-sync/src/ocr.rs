@@ -64,6 +64,13 @@ fn runs(name: &str) -> bool {
     crate::command(program(name)).arg("--version").output().is_ok()
 }
 
+/// Whether this computer can read scans now: Tesseract and Poppler's
+/// `pdftotext` start (a program missing does not). Two short processes: off
+/// the window's thread, and not every minute (`letters::tick` asks every ten).
+pub fn reads_here() -> bool {
+    runs("tesseract") && runs("pdftotext")
+}
+
 /// How to install what reads scans here, in one line, in your language:
 /// Tesseract, its models of the languages `wanted` ("fra", English being
 /// in every Tesseract), and Poppler; a command in backticks (the window

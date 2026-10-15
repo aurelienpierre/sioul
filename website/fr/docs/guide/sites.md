@@ -9,7 +9,7 @@ description: Les sites dans Sioul – les messageries sécurisées des banques e
 Certains courriers ne quittent jamais leur site : la messagerie sécurisée d’une banque, celle de l’hôpital, des impôts, de l’assurance maladie. Les discussions, les appels vidéo et les sites de rencontre vivent aussi dans le navigateur. La page Sites les garde épinglés et connectés, à part de votre navigateur habituel, et retient leurs notifications jusqu’aux heures que vous leur gardez. Votre clé de sécurité marche à l’intérieur, et Bitwarden remplit leurs identifiants quand vous le demandez.
 
 <figure markdown="span">
-  [![La page Sites : au-dessus de la liste, un entonnoir, un bouton de tri et un bouton qui replie la liste ; les sites de ces heures-ci (une discussion, avec un point pour ses nouvelles, et des appels vidéo), puis «  Autres heures : 3  » ouvert sur une banque, les impôts et une assurance maladie, estompés ; Épingler un site, Sites courants et les réglages de la page en bas.](../assets/screens/fr/sites.png){ loading=lazy }](../assets/screens/fr/sites.png "Ouvrir l’image en grand")
+  [![La page Sites : au-dessus de la liste, un entonnoir, un bouton de tri et un bouton qui replie la liste ; les sites de ces heures-ci (une discussion, avec un point pour ses nouvelles, et des appels vidéo), puis « Autres heures : 3 » ouvert sur une banque, les impôts et une assurance maladie, estompés ; Épingler un site, Sites courants et les réglages de la page en bas.](../assets/screens/fr/sites.png){ loading=lazy }](../assets/screens/fr/sites.png "Ouvrir l’image en grand")
   <figcaption>Messageries sécurisées et discussions, connectées une fois.</figcaption>
 </figure>
 
@@ -25,7 +25,7 @@ Certains courriers ne quittent jamais leur site : la messagerie sécurisée d�
 ## Épingler un site {#pinning-a-site}
 
 - **Sites courants ▾** ouvre les sites que l’on garde le plus souvent, environ 400 : pour la France, le Canada (avec le Québec) et les États-Unis (État par État là où cela compte), par groupe : démarches, banques, énergie, téléphone et internet ; et, quel que soit votre pays, discussions, appels vidéo, réseaux sociaux, rencontres. Chaque groupe commence par **Tous**, qui épingle tout le groupe d’un coup ; un site déjà épinglé est coché et laissé tel quel. Ailleurs, épinglez vos organismes et votre banque à la main.
-- **Épingler un site** en trouve un par un mot («  banque  », «  ameli  », «  discussion  »), remplit son nom, son adresse, son type et ce à quoi il sert en un clic, ou prend n’importe quel site à la main : un nom et une adresse qui commence par `https://`.
+- **Épingler un site** en trouve un par un mot (« banque », « ameli », « discussion »), remplit son nom, son adresse, son type et ce à quoi il sert en un clic, ou prend n’importe quel site à la main : un nom et une adresse qui commence par `https://`.
 
 Vous vous connectez une fois, sur le site lui-même. Sioul garde la connexion ; il ne garde jamais lui-même le mot de passe du site.
 
@@ -33,9 +33,9 @@ Sur un téléphone, la page Sites liste vos sites et ouvre chacun dans votre nav
 
 ## La liste {#the-list}
 
-- **Les sites de ces heures-ci** viennent d’abord. Les autres se replient sous une ligne, «  Autres heures : 3  », qui s’ouvre d’un clic. Voir [Les heures](hours.md).
+- **Les sites de ces heures-ci** viennent d’abord. Les autres se replient sous une ligne, « Autres heures : 3 », qui s’ouvre d’un clic. Voir [Les heures](hours.md).
 - **Dans votre ordre** : le menu d’un site ▸ **Monter**, **Descendre**. Le bouton de tri les montre plutôt **groupés par type**.
-- **L’entonnoir** («  Quels sites  ») filtre selon ce à quoi sert un site (travail, vos démarches, loisirs), selon son type, ou selon l’une de vos catégories ; **Montrer tous les sites** annule le filtre.
+- **L’entonnoir** (« Quels sites ») filtre selon ce à quoi sert un site (travail, vos démarches, loisirs), selon son type, ou selon l’une de vos catégories ; **Montrer tous les sites** annule le filtre.
 - **L’icône de chaque site** est demandée au site lui-même, jamais à un service d’icônes qui apprendrait quels sites vous gardez.
 - **La liste se replie sur ses icônes** quand vous voulez plus de place pour le site.
 
@@ -53,11 +53,11 @@ Le ⋮ du site ouvert, ou un clic droit sur n’importe quel site de la liste 
 - **Micro, pour les appels**, **Caméra, pour les appels**, **Partage de l’écran, pour les appels** : activés pour les discussions, les appels vidéo et les sites de rencontre, coupés pour les autres jusqu’à ce que vous les activiez ;
 - **Périphériques d’appel…** : la caméra, le micro et le haut-parleur des appels, pris dans la liste de votre système ;
 - **Monter**, **Descendre**, **Lier à…** une tâche, une note, un contact ou un projet ;
-- **Nom et adresse…** : son nom, son adresse et vos propres catégories («  Banque  », «  Santé  ») ;
+- **Nom et adresse…** : son nom, son adresse et vos propres catégories (« Banque », « Santé ») ;
 - **Retirer ce site** : il quitte Sioul ; rien ne change sur le site lui-même.
 
 <figure markdown="span">
-  [![Le menu d’un site ouvert, de haut en bas : les six types, «  Discussions  » coché ; Le garder ouvert, pour en être prévenu ; Pour ; Micro, Caméra et Partage de l’écran, pour les appels, cochés tous les trois ; Périphériques d’appel… ; Monter ; Descendre ; Lier à… ; Nom et adresse… ; Retirer ce site.](../assets/screens/fr/sites-menu.png){ loading=lazy }](../assets/screens/fr/sites-menu.png "Ouvrir l’image en grand")
+  [![Le menu d’un site ouvert, de haut en bas : les six types, « Discussions » coché ; Le garder ouvert, pour en être prévenu ; Pour ; Micro, Caméra et Partage de l’écran, pour les appels, cochés tous les trois ; Périphériques d’appel… ; Monter ; Descendre ; Lier à… ; Nom et adresse… ; Retirer ce site.](../assets/screens/fr/sites-menu.png){ loading=lazy }](../assets/screens/fr/sites-menu.png "Ouvrir l’image en grand")
   <figcaption>Tout ce qui concerne un site, dans son menu.</figcaption>
 </figure>
 
@@ -67,14 +67,14 @@ Les notifications de chaque site sont acceptées, puis gardées par Sioul ; le
 
 - Du site devant vous : rien de plus.
 - D’un site en **Temps réel** (sa case, toujours en vue) : une notification sur le bureau, tout de suite.
-- **Un appel** («  appel entrant  ») vient tout de suite, sauf si les sons du site sont coupés. Un appel manqué attend comme le reste.
-- Tout le reste attend sur [le Porche](porch.md#above-the-lanes), en une ligne «  Du nouveau sur  » suivie du nom du site. Ouvrir le site efface ses nouvelles.
+- **Un appel** (« appel entrant ») vient tout de suite, sauf si les sons du site sont coupés. Un appel manqué attend comme le reste.
+- Tout le reste attend sur [le Porche](porch.md#above-the-lanes), en une ligne « Du nouveau sur » suivie du nom du site. Ouvrir le site efface ses nouvelles.
 
 À heures fixes (09:00, 13:00 et 18:00, sauf si vous en choisissez d’autres dans [Paramètres ▸ Rappels](settings.md#reminders)), une seule notification rassemble les sites qui ont du nouveau, avec **Ouvrir le Porche**. Trois par jour ont le plus aidé dans un essai en conditions réelles (Fitz et al. 2019).
 
 Un site dont les heures ne sont pas venues garde ses notifications, temps réel et appels compris, jusqu’à ce qu’elles viennent.
 
-Un courriel venu du domaine d’un site («  vous avez un nouveau message dans votre espace sécurisé  ») reçoit un bouton au-dessus de lui : **Ouvrir** le site.
+Un courriel venu du domaine d’un site (« vous avez un nouveau message dans votre espace sécurisé ») reçoit un bouton au-dessus de lui : **Ouvrir** le site.
 
 ## Les appels {#calls}
 
@@ -111,12 +111,12 @@ Sioul remplit les identifiants depuis votre coffre Bitwarden, lu par Sioul lui-m
 
 Sioul remplit tout de suite l’identifiant fait pour le site devant vous, quand c’est le seul. Quand un site a plusieurs identifiants, ou aucun, la liste de vos identifiants s’ouvre ; **Choisir un identifiant…** l’ouvre à tout moment. Un identifiant fait pour un autre site n’est rempli que si vous le choisissez, et la liste dit pour quel site il a été fait, pour qu’un site qui en imite un autre se remarque. Deux champs trouvent les identifiants, chacun facultatif, les deux ensemble quand les deux sont remplis :
 
-- **Site** : le domaine du site pour commencer, sa propre adresse en premier. Changez-le pour une connexion sur un autre site (accounts.google.com, pour un site qui se connecte avec Google), ou tapez des mots : «  ameli  » trouve ameli.fr et assure.ameli.fr, pas camelia.com ; un identifiant sans site se trouve par son nom. Jamais par un nom d’utilisateur : «  gmail  » trouve les identifiants de Gmail, pas tous ceux qui ont une adresse Gmail.
+- **Site** : le domaine du site pour commencer, sa propre adresse en premier. Changez-le pour une connexion sur un autre site (accounts.google.com, pour un site qui se connecte avec Google), ou tapez des mots : « ameli » trouve ameli.fr et assure.ameli.fr, pas camelia.com ; un identifiant sans site se trouve par son nom. Jamais par un nom d’utilisateur : « gmail » trouve les identifiants de Gmail, pas tous ceux qui ont une adresse Gmail.
 - **Nom d’utilisateur** : n’importe quelle partie, seul ou avec un site.
 
 L’identifiant choisi en dernier sur un site vient en premier la fois suivante, son domaine dans Site quand il a été fait pour un autre. Tab passe d’un champ à l’autre, Entrée prend le premier identifiant (ou celui où vous êtes allé avec les flèches), Échap ferme.
 
-Pour le mot de passe d’un compte de courrier (**Mot de passe…** ▸ **Depuis Bitwarden…**, dans la page Comptes), Nom d’utilisateur porte l’adresse du compte et Site reste vide : l’adresse d’un serveur de courrier (imap.gmail.com) est rarement celle où votre fournisseur garde l’identifiant (accounts.google.com).
+Pour le mot de passe d’un compte de courriel (**Mot de passe…** ▸ **Depuis Bitwarden…**, dans la page Comptes), Nom d’utilisateur porte l’adresse du compte et Site reste vide : l’adresse d’un serveur de courriel (imap.gmail.com) est rarement celle où votre fournisseur garde l’identifiant (accounts.google.com).
 
 Sur une page qui demande un code à usage unique, **Remplir l’identifiant** écrit le code que donne en ce moment le secret gardé dans votre coffre.
 
@@ -137,7 +137,7 @@ Quand Sioul se ferme, il ferme chaque site comme un navigateur ferme ses onglets
 - **Les fenêtres surgissantes**, comme une fenêtre de connexion ou celle d’un appel, s’ouvrent dans une fenêtre à elles, avec les droits du site qui les a ouvertes.
 - **Un seul profil pour tous les sites** : chaque site garde sa propre connexion, mais deux comptes du même service (deux numéros WhatsApp) ne peuvent pas être ouverts côte à côte.
 - **Vos sites épinglés voyagent en une seule liste** avec vos réglages : épinglez des sites sur un appareil à la fois, car deux appareils qui épinglent chacun un site avant de s’échanger leurs changements ne gardent que la liste la plus récente.
-- **Votre propre liste de sites courants** : la liste est un simple fichier (`sites.json`) que chacun peut corriger sans reconstruire Sioul ; une copie dans `~/.local/share/sioul/presets/` est prise quand elle est plus récente que celle de Sioul. Voir [les notes des développeurs, «  Presets  » (en anglais)](https://aurelienpierre.github.io/sioul/dev/sites.html#presets).
+- **Votre propre liste de sites courants** : la liste est un simple fichier (`sites.json`) que chacun peut corriger sans reconstruire Sioul ; une copie dans `~/.local/share/sioul/presets/` est prise quand elle est plus récente que celle de Sioul. Voir [les notes des développeurs, « Presets » (en anglais)](https://aurelienpierre.github.io/sioul/dev/sites.html#presets).
 - **Les limites** : se connecter avec Google à l’intérieur d’un site peut être refusé, car Google bloque les connexions dans les navigateurs qu’il prend pour des navigateurs intégrés ; un appel ne peut pas passer en plein écran. Ce qui a été essayé, et avec quels sites : [Fonctionne avec](compatibility.md#sites).
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
@@ -160,7 +160,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Extensions de navigateur, blocage des publicités | ✗ | ✗ | ✓¹¹ | ✓ | ✓¹² | ✓ |
     | Sur un téléphone | en partie¹³ | ✗ | ✗ | ✗ | ✗ | en partie¹⁴ |
 
-    1. Une plage «  ne pas déranger  » chaque jour, d’une heure à une autre ; pas de regroupement à heures fixes.
+    1. Une plage « ne pas déranger » chaque jour, d’une heure à une autre ; pas de regroupement à heures fixes.
     2. Des heures de travail pour chaque espace de travail, en dehors desquelles ses notifications sont coupées, et un mode Focus ; pas de regroupement à heures fixes.
     3. Des notifications permises ou bloquées application par application.
     4. Un mode Focus pendant un temps fixé, par groupe d’applications.
@@ -188,7 +188,7 @@ En octobre 2026, d’après la documentation de chaque application.
     2. Electron, sur lequel Ferdium est construit, refuse une demande quand la clé demande son code PIN. Ferdium a ajouté une autre bibliothèque pour les clés d’accès sous Linux dans sa version 7.2.0 ; un signalement ouvert dit qu’une clé FIDO2 ne connecte pas à Microsoft Teams là.
     3. Son aide dit que les clés de sécurité marchent sous Windows, pas entièrement sous macOS ni sur certains systèmes Linux.
     4. Pour l’authentification unique, sous Windows seulement ; décrite comme ne marchant pas en deuxième étape.
-    5. «  Exactement comme dans n’importe quel autre navigateur  » ; le code PIN de la clé n’est pas mentionné.
+    5. « Exactement comme dans n’importe quel autre navigateur » ; le code PIN de la clé n’est pas mentionné.
     6. Les clés FIDO2 USB sous macOS et Linux depuis Firefox 114, avec leur code PIN.
     7. Lu par Sioul lui-même, rien à installer, jamais écrit ; le coffre s’ouvre aussi avec votre seule clé de sécurité.
     8. Ses responsables l’ont refusé comme hors de son but.
@@ -264,7 +264,7 @@ En octobre 2026, d’après la documentation de chaque application.
 
 ## Côté technique {#for-technical-readers}
 
-- **Le navigateur** : Qt WebEngine (Chromium). Chaque site vit dans un seul profil persistant propre à Sioul, `sioul-sites`, à part de votre navigateur habituel : ses cookies gardés, un cache disque de 512 Mo au plus, ses permissions enregistrées. Sioul ne pose pas de filtre de cookies à lui. L’agent utilisateur et les indications du client («  client hints  ») taisent le nom de Qt, car certaines discussions et la connexion de Google refusent les navigateurs qu’elles prennent pour des navigateurs intégrés.
+- **Le navigateur** : Qt WebEngine (Chromium). Chaque site vit dans un seul profil persistant propre à Sioul, `sioul-sites`, à part de votre navigateur habituel : ses cookies gardés, un cache disque de 512 Mo au plus, ses permissions enregistrées. Sioul ne pose pas de filtre de cookies à lui. L’agent utilisateur et les indications du client (« client hints ») taisent le nom de Qt, car certaines discussions et la connexion de Google refusent les navigateurs qu’elles prennent pour des navigateurs intégrés.
 - **Les permissions** : les notifications sont accordées à chaque site et recueillies par Sioul ; le presse-papiers, en lecture et en écriture, est accordé à chaque site, car Qt WebEngine ne demande qu’une permission pour les deux ; le micro, la caméra et la capture de l’écran suivent les interrupteurs du site, et une demande faite quand ils sont coupés est refusée et dite dans la ligne d’état ; tout le reste (la position, les polices de l’ordinateur, le verrouillage du pointeur) est refusé.
 - **Les adresses** : un site ne s’épingle qu’à une adresse `https://` : Sioul refuse toute autre, car la connexion à un site ne doit jamais circuler en clair.
 - **Les clés de sécurité** : WebAuthn par la propre demande de Qt WebEngine (le code FIDO de Chromium, par USB HID). Sous Linux, cela marche avec un Qt WebEngine construit avec udev et les règles de systemd pour les clés, sans règle à ajouter ; le Flatpak a besoin de `--device=all`. Un script d’une ligne retire `PublicKeyCredential.getClientCapabilities()` de chaque page, car Qt 6.10 et 6.11 n’y répondent jamais (QTBUG-149575) et les sites attendraient sans fin. Sous Windows, la boîte de dialogue de Windows prend la clé.
@@ -274,5 +274,5 @@ En octobre 2026, d’après la documentation de chaque application.
 - **Les notifications** : gardées dans `~/.local/state/sioul/site-notices.toml`, les 200 plus récentes, 300 caractères chacune ; ce qui vous joint et quand suit [Ce qui vous joint, et quand](notifications.md).
 - **Bitwarden, comme le font ses propres clients** : la clé principale est faite à partir de votre mot de passe principal par PBKDF2-SHA256 ou Argon2id, comme le dit votre compte, les réglages du serveur tenus dans les bornes de Bitwarden lui-même (PBKDF2, de 5 000 à 2 000 000 d’itérations ; Argon2id, au moins 2 passes, de 16 à 1 024 Mio, de 1 à 16 voies), pour qu’un serveur ne puisse pas rendre votre mot de passe moins cher à deviner. La connexion envoie une empreinte du mot de passe, jamais le mot de passe. La clé de l’utilisateur s’ouvre par des clés étirées par HKDF ; chaque élément AES-256-CBC est vérifié par son HMAC-SHA256 avant que quoi que ce soit soit déchiffré, et les éléments des comptes plus récents sont lus aussi (COSE : XChaCha20-Poly1305, AES-256-GCM) ; la clé d’une organisation passe par votre clé RSA (RSA-OAEP).
 - **Votre seule clé de sécurité** ouvre le coffre par l’extension PRF de WebAuthn, salée comme les applications de Bitwarden la salent, qui ouvre la clé que Bitwarden garde pour cette clé d’accès ; la clé d’accès d’un autre compte Bitwarden est refusée. En deuxième étape, la clé répond à la propre page de clé de sécurité de Bitwarden, tenue invisible dans la boîte de dialogue, car une clé ne signe que pour l’adresse du coffre lui-même. Les codes à usage unique suivent RFC 6238 (SHA-1, SHA-256, SHA-512, et les cinq caractères de Steam).
-- **Ce qui part vers Bitwarden** : HTTPS seulement, et seulement la version du serveur, la préconnexion, la connexion, les options de la clé d’accès, le code par courriel quand vous choisissez cette étape, et le coffre lui-même (`/sync`). Rien n’écrit dans le coffre. Le mot de passe principal et les clés vivent en mémoire et sont effacés une fois lâchés ; le trousseau ne garde que le jeton «  se souvenir de cet appareil  » ; l’identifiant choisi en dernier pour chaque site est gardé par l’identifiant de son élément, sans aucun secret.
+- **Ce qui part vers Bitwarden** : HTTPS seulement, et seulement la version du serveur, la préconnexion, la connexion, les options de la clé d’accès, le code par courriel quand vous choisissez cette étape, et le coffre lui-même (`/sync`). Rien n’écrit dans le coffre. Le mot de passe principal et les clés vivent en mémoire et sont effacés une fois lâchés ; le trousseau ne garde que le jeton « se souvenir de cet appareil » ; l’identifiant choisi en dernier pour chaque site est gardé par l’identifiant de son élément, sans aucun secret.
 - **Le remplissage** : l’identifiant passe comme des données dans un court script, jamais comme du code, et s’écrit dans le champ du mot de passe de la page et dans le champ du nom qui le précède, comme le ferait la frappe, ou dans le champ du code à usage unique. Un identifiant n’est rempli tout de suite que s’il est le seul fait pour le domaine enregistrable de la page.

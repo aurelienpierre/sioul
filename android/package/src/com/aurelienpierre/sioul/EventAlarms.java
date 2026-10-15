@@ -538,8 +538,8 @@ final class EventAlarms
         { "channel", "Events", "Événements" },
         { "alarms", "An event's alarms", "Alarmes des événements" },
         { "alarms-pause", "An event's alarms during a pause", "Alarmes des événements pendant une pause" },
-        { "mail", "New mail", "Nouveau courrier" },
-        { "mail-through", "New mail from people always let through", "Courrier des personnes qui passent toujours" },
+        { "mail", "New mail", "Nouveaux courriels" },
+        { "mail-through", "New mail from people always let through", "Courriels des personnes qui passent toujours" },
         { "day", "End of the day", "Fin de journée" },
         { "open", "Open", "Ouvrir" },
     };

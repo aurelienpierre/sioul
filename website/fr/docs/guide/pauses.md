@@ -14,7 +14,7 @@ Sioul n’est pas un service d’urgence. Il ne vous surveille pas, et n’agit 
 
 Appuyez sur **Temps libre** : le moment présent devient des loisirs, quelle que soit l’heure, jusqu’à ce que vous appuyiez de nouveau.
 
-- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leur courrier affiché sans notification, et les personnes qui passent toujours ; **Rien du tout**, dans le menu de la ligne d’état ou sur la carte du temps libre dans Ce qui vous joint, tient même vos expéditeurs sûrs à l’écart cette fois-ci. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
+- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leurs courriels affichés sans notification, et les personnes qui passent toujours ; **Rien du tout**, dans le menu de la ligne d’état ou sur la carte du temps libre dans Ce qui vous joint, tient même vos expéditeurs sûrs à l’écart cette fois-ci. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
 - **Ce qui est proposé** : la page Tâches affiche « Temps libre » et, sous « Si vous voulez : », vos propres loisirs, dans l’ordre où vous les avez créés. Rien à finir, pas d’étape suivante, pas de minuteur. Le mouvement et l’exercice en font partie, sauf si vous désactivez **Proposer le mouvement et l’exercice** dans [Paramètres ▸ Pauses](settings.md#pauses) ; avec **Des journées égales** (pour une maladie qui limite votre énergie), ils n’en font pas partie, sauf si vous les activez.
 - **Une séance de concentration** en cours s’arrête quand vous appuyez, et compte ; Sioul propose une ligne sur où vous en êtes.
 - **La nuit d’abord** : le temps libre finit tout seul quand votre nuit commence (ou à minuit, sans nuit réglée), et une sieste pendant ce temps reste une sieste.
@@ -53,7 +53,7 @@ Sur un téléphone, **Pause** est aussi parmi les réglages rapides, et dans un 
 
 ### L’écran {#the-screen}
 
-La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul garde tout en attente : courrier, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien. » En dessous : votre ligne, **Ce qui vous aide** (votre liste, repliée tant que vous ne l’ouvrez pas), le guide de respiration si vous l’avez activé, et une ligne discrète avec le numéro d’urgence et la ligne d’écoute de votre pays, un appui pour appeler chacun ; **Autres numéros** déplie le reste. Un seul bouton, **Revenir** : pas de code, pas de question.
+La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul garde tout en attente : courriels, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien. » En dessous : votre ligne, **Ce qui vous aide** (votre liste, repliée tant que vous ne l’ouvrez pas), le guide de respiration si vous l’avez activé, et une ligne discrète avec le numéro d’urgence et la ligne d’écoute de votre pays, un appui pour appeler chacun ; **Autres numéros** déplie le reste. Un seul bouton, **Revenir** : pas de code, pas de question.
 
 ### Le retour {#coming-back}
 

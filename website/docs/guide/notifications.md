@@ -137,7 +137,7 @@ Messages go as calls, but strangers' and groups' messages come at once in work a
 
 **Mail's own switches**, above its grid:
 
-- **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many letters and the first senders with their subjects; mail that waited is told once, when its time comes: "The Porch opens: three letters wait for you." On unless you turn it off. With a phone and a computer, the one you used last tells.
+- **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many e-mails and the first senders with their subjects; mail that waited is told once, when its time comes: "The Porch opens: three e-mails wait for you." On unless you turn it off. With a phone and a computer, the one you used last tells.
 - **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Off unless you turn it on.
 - What your own spam filter holds, in a sentence: maybe spam and probably spam from strangers wait on the Porch, in “Caught by your own spam filter”, never told ([Settings](settings.md#your-own-spam-filter)).
 - What an address is for: mail to an address for another time waits for that time, but your safe senders' and your Always through people's; each address's "What this address is for" is on its card in [Accounts](accounts.md#a-mail-address).

@@ -1,18 +1,18 @@
 ---
-description: Les notes dans Sioul – votre propre dossier de fichiers Markdown, le même qu’un coffre Obsidian ou que vos notes Nextcloud, lié à vos tâches, à votre courrier et à vos événements, avec des images, des PDF et des mémos vocaux ; rien de chargé ni d’exécuté à l’ouverture d’une note ; comparé aux autres applications de notes.
+description: Les notes dans Sioul – votre propre dossier de fichiers Markdown, le même qu’un coffre Obsidian ou que vos notes Nextcloud, lié à vos tâches, à vos courriels et à vos événements, avec des images, des PDF et des mémos vocaux ; rien de chargé ni d’exécuté à l’ouverture d’une note ; comparé aux autres applications de notes.
 ---
 
 # Les notes {#notes}
 
 ## En bref {#in-short}
 
-Vos notes sont un dossier de fichiers Markdown qui reste à vous. Ce peut être votre coffre Obsidian, ou le dossier que Nextcloud Notes garde dans votre Nextcloud : Sioul le lit là où il est, n’importe rien, et vous pouvez continuer à y écrire avec n’importe quel autre programme. Une note peut être liée à une tâche, un message, un événement ou une personne, et une ligne avec une case vide devient une tâche en un clic. Les images, les PDF et les mémos vocaux sont à côté de vos notes et s’ouvrent sur place. Vos notes voyagent avec la synchronisation que vous utilisez déjà, ou scellées, avec le partage de Sioul.
+Vos notes sont un dossier de fichiers Markdown qui reste à vous. Ce peut être votre coffre Obsidian, ou le dossier que Nextcloud Notes garde dans votre Nextcloud : Sioul le lit là où il est, n’importe rien, et vous pouvez continuer à y écrire avec n’importe quel autre programme. Une note peut être liée à une tâche, un courriel, un événement ou une personne, et une ligne avec une case vide devient une tâche en un clic. Les images, les PDF et les mémos vocaux sont à côté de vos notes et s’ouvrent sur place. Vos notes voyagent avec la synchronisation que vous utilisez déjà, ou scellées, avec le partage de Sioul.
 
 ## Protégé par défaut {#what-is-protected}
 
 - Vos notes restent de simples fichiers dans votre propre dossier, sur votre appareil. Sioul n’a pas de serveur à lui, et n’envoie vos notes nulle part où vous ne les avez pas envoyées.
 - Ouvrir une note ne charge rien depuis internet. Une image venue du web s’affiche comme un lien vers elle : personne n’apprend que vous lisez la note. Rien de ce qui est écrit dans une note ne peut s’exécuter : le HTML s’affiche comme le texte qu’il est, sauf de simples marques comme le gras et l’italique.
-- Un lien dans une note ouvre une page web, une adresse de courrier, un numéro de téléphone ou un fichier de cet ordinateur. Un programme, un script ou un installateur ne se lance jamais depuis une note : son dossier s’ouvre à la place. Un lien vers un dossier partagé du réseau n’est pas suivi.
+- Un lien dans une note ouvre une page web, une adresse électronique, un numéro de téléphone ou un fichier de cet ordinateur. Un programme, un script ou un installateur ne se lance jamais depuis une note : son dossier s’ouvre à la place. Un lien vers un dossier partagé du réseau n’est pas suivi.
 - Quand le partage de Sioul transporte vos notes, chacune est scellée sur votre appareil avant de le quitter. Le serveur du dossier partagé voit la taille de chaque fichier scellé, jamais son nom ni ce qu’il dit.
 - Quand un changement venu d’un autre appareil remplace une note ici, la note telle qu’elle était est gardée sur cet appareil, pour être remise : **Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
 
@@ -22,13 +22,13 @@ Choisissez votre coffre Obsidian, ou le dossier **Notes** que Nextcloud Notes ga
 
 - **Ce qu’écrit Obsidian** se lit comme Obsidian le lit : les `[[liens]]` entre notes, les images montrées par `![[image.png]]`, les `#étiquettes`, les propriétés en haut d’une note (son titre, ses étiquettes et ses autres noms), les cases à cocher, et les notes qui renvoient à celle-ci. Une note renommée dans Sioul emmène avec elle les liens des autres notes. Une note mise à la corbeille va dans le dossier `.trash` du coffre, comme le fait la corbeille propre à Obsidian.
 - **Ce qu’écrit Nextcloud Notes** se lit comme le Markdown qu’il est : ses catégories sont des dossiers, et ses notes, en `.txt` ou en `.md`, gardent leur nom et leur extension. Les nouvelles notes faites dans Sioul sont en `.md`, que Nextcloud Notes montre aussi, sur le web et dans ses applications pour téléphone.
-- **Ce que Sioul ajoute reste du Markdown simple** : une note liée à une tâche, un message ou un événement contient un lien ordinaire, ou une ligne en haut, que les autres programmes montrent comme un lien ou laissent de côté.
+- **Ce que Sioul ajoute reste du Markdown simple** : une note liée à une tâche, un courriel ou un événement contient un lien ordinaire, ou une ligne en haut, que les autres programmes montrent comme un lien ou laissent de côté.
 - **Jamais à lui** : Sioul n’écrit que les notes que vous écrivez ou faites à partir de lui. Il ne lit jamais le dossier de réglages d’Obsidian, la corbeille, ni aucun dossier caché.
 
 Une partie de ce que dessine Obsidian, Sioul le montre comme le texte que c’est : les encadrés, les surlignages, les notes de bas de page, les formules et les diagrammes. Une note intégrée dans une autre (`![[une autre note]]`) s’affiche comme un lien vers elle ; les images s’affichent sur place.
 
 <figure markdown="span">
-  [![La page Notes : Nouvelle note et les autres boutons au-dessus de la liste de toutes les notes, chacune avec son dossier ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, son texte avec des liens et l’image d’un croquis ; à droite, ce qui lui est lié (des tâches, un message, d’autres notes) et ses lignes non cochées, chacune avec un bouton qui en fait une tâche.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
+  [![La page Notes : Nouvelle note et les autres boutons au-dessus de la liste de toutes les notes, chacune avec son dossier ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, son texte avec des liens et l’image d’un croquis ; à droite, ce qui lui est lié (des tâches, un courriel, d’autres notes) et ses lignes non cochées, chacune avec un bouton qui en fait une tâche.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
   <figcaption>Une note, en lecture, avec ce qui lui est lié sur le côté.</figcaption>
 </figure>
 
@@ -42,15 +42,15 @@ La recherche vient d’abord : **Chercher dans les notes** trouve une note par
 
 ## Lire et écrire {#reading-and-writing}
 
-Une note s’ouvre pour être lue. Ses liens se suivent d’un clic, où qu’ils mènent : une autre note, une tâche, un message, un événement, un contact, une page web.
+Une note s’ouvre pour être lue. Ses liens se suivent d’un clic, où qu’ils mènent : une autre note, une tâche, un courriel, un événement, un contact, une page web.
 
 - **Modifier** passe à l’écriture, en Markdown ; **Enregistrer** (ou Ctrl+S) garde le texte.
 - `[[Une autre note]]` renvoie à une note par son nom, où qu’elle soit dans le dossier. Les liens Markdown, les `#étiquettes` et les propriétés en haut d’une note marchent aussi.
-- Chaque note montre ce qui renvoie vers elle, et ce à quoi elle est liée : tâches, messages, événements, personnes, projets.
+- Chaque note montre ce qui renvoie vers elle, et ce à quoi elle est liée : tâches, courriels, événements, personnes, projets.
 - **Aa** règle la police, sa taille et l’interligne, pour la lecture sur cet appareil.
 - **Ouvrir avec…** ouvre la note dans un autre programme.
 
-Une note changée sur un autre appareil, venue par le partage, s’affiche aussitôt, comme sur les pages Santé, Papiers et Temps ; pendant que vous y tapez, ce que vous avez tapé reste tel quel, et une ligne sous son titre dit qu’une version plus récente est arrivée. Si la note a changé ailleurs pendant que vous écriviez (sur un autre appareil, par une application de synchronisation, dans un autre programme), votre version n’est jamais enregistrée par-dessus : elle est gardée à côté, sous «  Plan (conflict 2026-10-05 21.50)  » (ce mot anglais, tel quel), et reste ouverte ; la ligne d’état le dit. L’autre version garde le nom. Sur un téléphone, la note ouverte prend toute la page, et **Retour** garde la note, enregistrée, et la ferme.
+Une note changée sur un autre appareil, venue par le partage, s’affiche aussitôt, comme sur les pages Santé, Papiers et Temps ; pendant que vous y tapez, ce que vous avez tapé reste tel quel, et une ligne sous son titre dit qu’une version plus récente est arrivée. Si la note a changé ailleurs pendant que vous écriviez (sur un autre appareil, par une application de synchronisation, dans un autre programme), votre version n’est jamais enregistrée par-dessus : elle est gardée à côté, sous « Plan (conflict 2026-10-05 21.50) » (ce mot anglais, tel quel), et reste ouverte ; la ligne d’état le dit. L’autre version garde le nom. Sur un téléphone, la note ouverte prend toute la page, et **Retour** garde la note, enregistrée, et la ferme.
 
 Une ligne comme `- [ ] Demander l’attestation`, non cochée, est à un clic de devenir une tâche : **En faire une tâche**. La tâche reste liée à sa note.
 
@@ -58,7 +58,7 @@ Une ligne comme `- [ ] Demander l’attestation`, non cochée, est à un clic de
 
 **Nouvelle note**, ou **Nouveau ▾ ▸ Une note**, demande son titre. Chaque nouvelle note va dans un dossier de vos notes, réglé dans le ⚙ de la page Notes : **Les nouvelles notes vont dans** (`notes`, sauf si vous le changez). Les notes que vous faites depuis ailleurs y vont aussi :
 
-- depuis un message : avec son objet pour titre, en commençant par qui l’a écrit et ses premières lignes citées, le message lié à elle ;
+- depuis un courriel : avec son objet pour titre, en commençant par qui l’a écrit et ses premières lignes citées, le courriel lié à elle ;
 - depuis un événement : datée, avec la liste des personnes invitées, liée dans les deux sens, puis **Envoyer aux personnes invitées** ;
 - depuis une tâche, liée à elle.
 
@@ -85,19 +85,19 @@ Vos notes voyagent avec la synchronisation de leur dossier : Nextcloud, Dropbo
 
 Sur un téléphone, Sioul garde son propre dossier de notes : activez **Notes** dans le partage, sur le téléphone et sur un ordinateur, et donnez à Sioul l’accès d’Android à tous vos fichiers ([Les notes et les papiers](sharing.md#notes-and-papers)).
 
-Une note liée qui n’est pas encore arrivée apparaît estompée, avec «  Pas encore sur cet appareil : sa synchronisation est peut-être en cours  ».
+Une note liée qui n’est pas encore arrivée apparaît estompée, avec « Pas encore sur cet appareil : sa synchronisation est peut-être en cours ».
 
 ## Pour aller plus loin {#going-further}
 
 - **Les liens écrits dans la note** : quand vous liez une note à quelque chose, Sioul écrit son adresse en haut de la note, entre deux lignes `---`, sous `links:` (ou `task:`, `event:`, `mail:`, `contact:`). Vous pouvez les y écrire vous-même, ou les retirer ; les adresses sont dans [Côté technique](#for-technical-readers).
 - **Les liens vers un titre, ou avec d’autres mots** : `[[Plan#Budget]]` mène à un titre de la note, et `[[Plan|le plan]]` montre d’autres mots pour le lien, comme dans Obsidian.
-- **Les étiquettes avec une barre oblique** : `#démarches/courriers` se lit comme une seule étiquette, comme Obsidian écrit ses étiquettes imbriquées ; chercher «  démarches  » la trouve.
+- **Les étiquettes avec une barre oblique** : `#démarches/courriers` se lit comme une seule étiquette, comme Obsidian écrit ses étiquettes imbriquées ; chercher « démarches » la trouve.
 - **Les versions précédentes** : avant qu’un changement venu d’un autre appareil remplace ou retire une note ici, la note telle qu’elle était est gardée sur cet appareil : ses 20 dernières versions, et toutes celles des 30 derniers jours. Les modifications que vous faites sur cet appareil ne créent pas de version ; votre application de synchronisation ou votre serveur peuvent garder les leurs (Nextcloud le fait).
 - **Des sons pour travailler** : les sons que vous mettez dans un dossier `sounds` de vos notes sont proposés par le bouton des sons pendant que vous travaillez ([Tâches](tasks.md#sounds)).
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Un dossier que d’autres programmes lisent aussi.** Les notes de Sioul sont là pour se tenir à côté de vos tâches, de votre courrier et de vos journées. Parmi ces applications, seuls Sioul et Obsidian ouvrent un coffre Obsidian là où il est. Sioul lie une note à vos tâches, à votre courrier et à vos événements, dans les deux sens, et fait une tâche d’une ligne avec une case ; OneNote en fait une partie avec Outlook, sous Windows, et Joplin fait une note d’un courrier transféré à son service payant. Son partage scellé emploie XChaCha20-Poly1305 et Argon2id, comme Standard Notes, à travers n’importe quelle application de synchronisation et sans compte. D’autres font plus ailleurs : Sioul ne cherche pas les mots à l’intérieur de vos notes, n’a ni dessin, ni écriture à la main, ni texte lu dans les images, ne peut pas partager une note avec d’autres personnes, et ne garde les versions précédentes que quand un changement venu d’un autre appareil remplace une note.
+**Un dossier que d’autres programmes lisent aussi.** Les notes de Sioul sont là pour se tenir à côté de vos tâches, de vos courriels et de vos journées. Parmi ces applications, seuls Sioul et Obsidian ouvrent un coffre Obsidian là où il est. Sioul lie une note à vos tâches, à vos courriels et à vos événements, dans les deux sens, et fait une tâche d’une ligne avec une case ; OneNote en fait une partie avec Outlook, sous Windows, et Joplin fait une note d’un courriel transféré à son service payant. Son partage scellé emploie XChaCha20-Poly1305 et Argon2id, comme Standard Notes, à travers n’importe quelle application de synchronisation et sans compte. D’autres font plus ailleurs : Sioul ne cherche pas les mots à l’intérieur de vos notes, n’a ni dessin, ni écriture à la main, ni texte lu dans les images, ne peut pas partager une note avec d’autres personnes, et ne garde les versions précédentes que quand un changement venu d’un autre appareil remplace une note.
 
 En octobre 2026, d’après la documentation de chaque application.
 
@@ -110,7 +110,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Vos notes sont de simples fichiers, dans un dossier que vous choisissez | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ |
     | Ouvre un coffre Obsidian là où il est, liens et étiquettes compris | ✓ | ✓ | ✗¹ | ✗² | ✗ | ✗ |
     | Des liens entre notes, et les notes qui renvoient à celle-ci | ✓ | ✓ | en partie³ | ✗ | ✓ | en partie⁴ |
-    | Une note liée à une tâche, un message ou un événement | ✓ | ✗⁵ | en partie⁶ | ✗ | ✗ | en partie⁷ |
+    | Une note liée à une tâche, un courriel ou un événement | ✓ | ✗⁵ | en partie⁶ | ✗ | ✗ | en partie⁷ |
     | Une ligne avec une case transformée en tâche | ✓ | ✗ | ✗ | ✗ | ✗ | ✓⁷ |
     | Images, PDF, et son enregistré dans l’application | ✓ | ✓ | ✓ | en partie⁸ | en partie⁹ | ✓ |
     | Trouve une note par les mots qu’elle contient | ✗¹⁰ | ✓ | ✓ | ? | ? | ✓ |
@@ -122,7 +122,7 @@ En octobre 2026, d’après la documentation de chaque application.
     3. Des liens par le numéro d’une note ; les notes qui renvoient à celle-ci seulement par des greffons faits par d’autres.
     4. Des liens vers des pages et des sections ; ce qui renvoie à une page n’est pas décrit.
     5. Pas parmi les fonctions propres à Obsidian ; des greffons faits par d’autres peuvent l’ajouter.
-    6. Un courrier transféré à Joplin Cloud devient une note, avec ses formules payantes ; une note peut être une tâche avec une alarme.
+    6. Un courriel transféré à Joplin Cloud devient une note, avec ses formules payantes ; une note peut être une tâche avec une alarme.
     7. Avec Outlook, dans OneNote pour Windows : les détails d’une réunion copiés dans une page, et des mots transformés en tâche Outlook, cochée dans l’un ou l’autre.
     8. Images et fichiers ; pas d’enregistrement de son.
     9. Des fichiers avec la formule Professional seulement ; pas d’enregistrement de son.
@@ -161,7 +161,7 @@ En octobre 2026, d’après la documentation de chaque application.
     17. Sur l’appareil ; sur le serveur avec les formules payantes.
     18. Libre d’usage pour tout but, mais son code n’est pas un logiciel libre. L’application Android de Nextcloud Notes est sous GPL-3.0-or-later.
 
-**Apple Notes**, sur les appareils d’Apple et sur le site d’iCloud, garde les notes dans sa propre base et les synchronise par iCloud. Il relie les notes entre elles (ce qui renvoie à une note n’est pas décrit), enregistre du son avec une transcription écrite, laisse plusieurs personnes écrire dans une note à la fois, et chiffre de bout en bout quand la protection avancée des données est activée. Son guide ne décrit pas de versions précédentes ; une note supprimée reste 30 jours dans «  Suppressions récentes  ».
+**Apple Notes**, sur les appareils d’Apple et sur le site d’iCloud, garde les notes dans sa propre base et les synchronise par iCloud. Il relie les notes entre elles (ce qui renvoie à une note n’est pas décrit), enregistre du son avec une transcription écrite, laisse plusieurs personnes écrire dans une note à la fois, et chiffre de bout en bout quand la protection avancée des données est activée. Son guide ne décrit pas de versions précédentes ; une note supprimée reste 30 jours dans « Suppressions récentes ».
 
 ??? info "Sources (en anglais)"
     - Aide d’Obsidian : comment Obsidian garde les données, <https://help.obsidian.md/data-storage>, lu le 8 octobre 2026.
@@ -180,7 +180,7 @@ En octobre 2026, d’après la documentation de chaque application.
     - Aide d’Obsidian : les problèmes de Sync (conflits), <https://help.obsidian.md/sync/troubleshoot>, lu le 8 octobre 2026.
     - Aide d’Obsidian : la récupération de fichiers, <https://help.obsidian.md/plugins/file-recovery>, lu le 8 octobre 2026.
     - Aide d’Obsidian : l’historique des versions de Sync, <https://help.obsidian.md/sync/version-history>, lu le 8 octobre 2026.
-    - Aide d’Obsidian : les réglages («  Deleted files  »), <https://obsidian.md/help/settings>, lu le 8 octobre 2026.
+    - Aide d’Obsidian : les réglages (« Deleted files »), <https://obsidian.md/help/settings>, lu le 8 octobre 2026.
     - Obsidian : la licence, <https://obsidian.md/license>, lu le 8 octobre 2026.
     - Obsidian : les prix, <https://obsidian.md/pricing>, lu le 8 octobre 2026.
     - Aide d’Obsidian : l’installation, <https://help.obsidian.md/install>, lu le 8 octobre 2026.
@@ -188,7 +188,7 @@ En octobre 2026, d’après la documentation de chaque application.
     - Joplin : importer et exporter, <https://joplinapp.org/help/apps/import_export>, lu le 8 octobre 2026.
     - Joplin : lier une note, <https://joplinapp.org/help/apps/link_to_note>, lu le 8 octobre 2026.
     - Greffons de Joplin : Easy Backlinks, <https://joplinapp.org/plugins/plugin/com.tuibyte.EasyBacklinks/>, lu le 8 octobre 2026.
-    - Joplin : du courrier aux notes, <https://joplinapp.org/help/apps/email_to_note>, lu le 8 octobre 2026.
+    - Joplin : des courriels aux notes, <https://joplinapp.org/help/apps/email_to_note>, lu le 8 octobre 2026.
     - Joplin : les tâches, <https://joplinapp.org/help/apps/to-dos>, lu le 8 octobre 2026.
     - Joplin : les pièces jointes, <https://joplinapp.org/help/apps/attachments>, lu le 8 octobre 2026.
     - Joplin : l’historique des versions de l’application Android, <https://joplinapp.org/help/about/changelog/android>, lu le 8 octobre 2026.
@@ -249,7 +249,7 @@ En octobre 2026, d’après la documentation de chaque application.
 
 - **Markdown** : CommonMark avec les tableaux, le texte barré et les listes de tâches (pulldown-cmark). Le HTML brut s’affiche tel qu’il est écrit, sauf douze marques de mise en forme simples, sans attributs (`<b>`, `<i>`, `<u>`, `<s>`, `<em>`, `<strong>`, `<del>`, `<sub>`, `<sup>`, `<mark>`, `<kbd>`, `<br>`). Une image ne s’affiche que depuis cet ordinateur ou le dossier des notes, refaite à partir de son adresse et de sa taille ; une image distante devient un lien. La note est dessinée par le texte enrichi de Qt, pas par un moteur web : aucun script ne peut s’exécuter.
 - **Les liens** : `[[nom]]`, `[[nom#titre]]` et `[[nom|texte affiché]]` se trouvent comme Obsidian les trouve : une note dont le chemin finit par ce nom, le même dossier d’abord, puis le chemin le plus court, puis les `aliases` des notes. Les liens Markdown sont relatifs à la note.
-- **Les adresses** : une note est `sioul:note/<chemin>` (une IRI, RFC 3987), un message `mid:<Message-ID>` (RFC 2392), une tâche, un événement ou un contact `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`. Chaque lien est écrit dans la chose qui peut le porter : les propriétés d’une note (son en-tête : `title`, `tags`, `aliases`, et les liens vers les tâches, les événements, le courrier, les contacts et les brouillons) ; les lignes `LINK` ou `RELATED-TO` d’une tâche ou d’un événement, que CalDAV transporte vers vos autres appareils et que les autres programmes gardent ; sinon un petit fichier local, `links.toml`.
+- **Les adresses** : une note est `sioul:note/<chemin>` (une IRI, RFC 3987), un courriel `mid:<Message-ID>` (RFC 2392), une tâche, un événement ou un contact `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`. Chaque lien est écrit dans la chose qui peut le porter : les propriétés d’une note (son en-tête : `title`, `tags`, `aliases`, et les liens vers les tâches, les événements, les courriels, les contacts et les brouillons) ; les lignes `LINK` ou `RELATED-TO` d’une tâche ou d’un événement, que CalDAV transporte vers vos autres appareils et que les autres programmes gardent ; sinon un petit fichier local, `links.toml`.
 - **Les liens ouverts** : `http`, `https`, `mailto`, `tel`, et `file:///` sur cet ordinateur ; un lien `file:///` vers un programme ouvre son dossier. Les autres schémas (`smb:`, `file://serveur/`, les gestionnaires propres à un bureau) sont refusés, et la ligne d’état le dit.
 - **Les fichiers** : les dossiers cachés, `.obsidian`, `.trash`, `.git`, `node_modules` et `target` ne sont jamais lus. Une note s’écrit à côté de sa place, puis est renommée à sa place, pour qu’une panne ne laisse jamais une moitié de note ; un chemin qui sortirait du dossier des notes est refusé. Les noms qu’un système refuse, dont les noms de périphériques de Windows (`CON`, `NUL`, `AUX`…), sont changés, pour que les notes passent d’un système à l’autre. Le texte d’une note reçoit une empreinte à son ouverture ; si le fichier a changé au moment où vous enregistrez, votre version va à côté.
 - **Le partage scellé** : chaque note est compressée, puis scellée avec XChaCha20-Poly1305 en morceaux de 1 Mio, chaque morceau lié à son fichier, à sa place et au fait qu’il soit le dernier, pour que des morceaux ne puissent être ni échangés, ni coupés, ni ajoutés. Son nom dans le dossier est un HMAC-SHA-256 de l’empreinte de son contenu, sous une clé dérivée par HKDF-SHA-256 : les noms ne disent rien, pas même que deux dossiers contiennent le même fichier. La clé vient de votre phrase de passe (12 caractères au moins) par Argon2id (version 1.3, 64 Mio, 3 passes, 1 voie) et reste dans le trousseau du système, ou dans le KeyStore d’Android sur un téléphone. Les fichiers de plus de 64 Mo restent sur leur appareil. Une suppression atteint les autres appareils au bout de dix minutes ; beaucoup de fichiers disparus d’un coup sont retenus jusqu’à ce que vous confirmiez. Le serveur du dossier voit toujours quel appareil a écrit (un identifiant tiré au hasard), quand, et la taille de chaque fichier scellé. Voir [Ce que cela protège, et ce que cela ne peut pas cacher](sharing.md#what-it-protects-and-what-it-cannot-hide).

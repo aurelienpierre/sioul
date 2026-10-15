@@ -36,8 +36,8 @@ decimal-separator = .
 ## What came, when the Porch opens.
 summary-nothing = Nothing came. Nothing needs you.
 summary-total = { $Count } { $n ->
-        [one] letter
-       *[other] letters
+        [one] e-mail
+       *[other] e-mails
     } came.
 summary-codes = { $Count } { $n ->
         [one] code is
@@ -2999,12 +2999,12 @@ event-reminds-none = No reminder before it
 events-channel = Events
 # New mail, told at the times it may come (docs/porch.md, "Notifications").
 mail-note-title = { $Count } { $n ->
-        [one] letter
-       *[other] letters
+        [one] e-mail
+       *[other] e-mails
     }
 mail-note-opens = The Porch opens: { $count } { $n ->
-        [one] letter waits
-       *[other] letters wait
+        [one] e-mail waits
+       *[other] e-mails wait
     } for you.
 mail-note-letter = { $sender }, { $subject }
 mail-channel = New mail
@@ -3034,6 +3034,7 @@ paper-renew-warranty = Its guarantee ends: anything to report before?
 paper-renew-other = It ends soon.
 ui-papers = Papers
 new-paper = A paper
+new-letter = A paper letter (scan)…
 papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your notes folder (papers/): they travel with it. A reminder comes when one should be renewed.
 papers-add = Add a paper
 papers-none = No paper yet. Add one from a file (a scan, a photo), or keep an attachment of a mail with “Keep in papers”.
@@ -3087,7 +3088,7 @@ paper-kind-health-cover = Health cover (CSS, mutual insurance)
 paper-kind-insurance = Insurance certificate
 paper-kind-tax-notice = Tax notice
 paper-kind-rent-receipt = Rent receipt
-paper-kind-bank-details = Bank details (RIB)
+paper-kind-bank-details = Bank details
 paper-kind-payslip = Payslip
 paper-kind-certificate = Attestation, certificate
 paper-kind-warranty = Warranty, proof of purchase
@@ -3394,6 +3395,23 @@ bank-attention = { $count ->
 }
 letters = Paper letters
 letters-no-ocr = Scans wait in the letters folder, unread: no program here reads them. To read them: { $hint }
+# The place of paper letters on a computer's Porch, before any scan (LettersSection.qml, docs/porch.md, "Paper letters").
+letters-place = Scans of your paper post, as PDF or pictures, go in { $folder }: Sioul reads each one and shows it here.
+letters-place-unset = Scans of your paper post go in a folder you choose: Sioul reads each one and shows it here.
+letters-reader-missing = No program on this computer reads scans yet. To read them: { $hint }
+letters-open-folder = Open the folder
+letters-add-scan = Add a scan…
+letters-choose-folder = Choose the folder…
+letters-add-scan-title = A scan of a paper letter
+letters-add-scan-filter = PDF and pictures
+letters-added = { $n ->
+        [one] In the folder: Sioul reads it within a minute or two.
+       *[other] { $Count } scans in the folder: Sioul reads them within a minute or two.
+    }
+letters-add-not-scan = { $name } is neither a PDF nor a picture: Sioul reads only those.
+letters-add-failed = { $name } could not be copied into the folder ({ $detail }).
+letters-folder-failed = The folder { $folder } could not be made ({ $detail }).
+letters-no-folder = No folder for scans yet: Porch ⚙ ▸ Paper letters ▸ Where scans arrive.
 letters-unread = Its text could not be read ({ $problem }); its scan is here.
 letters-scan = See the scan
 letters-task = A task for that date
@@ -4267,7 +4285,7 @@ set-home-card-details-help = Sioul's cards on this phone's home screen name what
 # Leaving a mailing list from a message (Reader.qml, unsubscribe.rs): one click, ten seconds to undo.
 unsubscribe-label = Unsubscribe
 unsubscribe-done-label = Unsubscribed
-unsubscribe-done = You left { $list } on { $date }, { $way }. If its mail keeps coming, block the sender: ⋮ ▸ Their mail.
+unsubscribe-done = You left { $list } on { $date }, { $way }. If its mail keeps coming, block the sender: ⋮ ▸ How they reach you…
 unsubscribe-way-one-click = in one click
 unsubscribe-way-mail = by mail
 unsubscribe-way-page = on its page

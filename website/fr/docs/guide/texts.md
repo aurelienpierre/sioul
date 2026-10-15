@@ -8,13 +8,13 @@ Les SMS de votre téléphone peuvent se lire sur votre ordinateur, et un SMS éc
 
 ## La mise en place {#setting-it-up}
 
-1. **Sur le téléphone**, Réglages ▸ Ce téléphone ▸ **SMS** dit à quoi sert chaque autorisation : lire vos SMS, être averti d’un nouveau, envoyer les SMS que vous écrivez sur un ordinateur, et le nom de vos cartes SIM. **Autoriser dans Android…** les demande.
-2. **Activez la partie SMS**, sur le téléphone et sur chaque ordinateur qui doit lire ou écrire des SMS (Réglages ▸ Votre dossier et le partage ▸ Ce qui part de cet appareil). Elle reste désactivée tant que vous ne l’activez pas.
-3. **L’historique suit ensuite de lui-même**, 500 SMS à la fois, les images et autres médias après leurs SMS, pour que vos prises, le mode ne pas déranger et les appels n’attendent jamais derrière lui. Il part pendant que votre téléphone charge : un long historique peut peser des centaines de mégaoctets. Les nouveaux SMS et messages multimédias, ensuite, partent en une minute ou deux, sur batterie aussi. Sur le téléphone, Réglages ▸ Ce téléphone ▸ SMS dit combien de SMS et de médias il a, puis combien sont partis. Sur un ordinateur, la ligne de la partie dans le panneau du partage dit combien il en garde.
+1. **Sur le téléphone**, Paramètres ▸ Ce téléphone ▸ **SMS** dit à quoi sert chaque autorisation : lire vos SMS, être averti d’un nouveau, envoyer les SMS que vous écrivez sur un ordinateur, et le nom de vos cartes SIM. **Autoriser dans Android…** les demande.
+2. **Activez la partie SMS**, sur le téléphone et sur chaque ordinateur qui doit lire ou écrire des SMS (Paramètres ▸ Votre dossier et le partage ▸ Ce qui part de cet appareil). Elle reste désactivée tant que vous ne l’activez pas.
+3. **L’historique suit ensuite de lui-même**, 500 SMS à la fois, les images et autres médias après leurs SMS, pour que vos prises, le mode ne pas déranger et les appels n’attendent jamais derrière lui. Il part pendant que votre téléphone charge : un long historique peut peser des centaines de mégaoctets. Les nouveaux SMS et messages multimédias, ensuite, partent en une minute ou deux, sur batterie aussi. Sur le téléphone, Paramètres ▸ Ce téléphone ▸ SMS dit combien de SMS et de médias il a, puis combien sont partis. Sur un ordinateur, la ligne de la partie dans le panneau du partage dit combien il en garde.
 
 ## Ce que vous voyez {#what-you-see}
 
-**SMS** est une page à part entière, sous Courrier parmi les lieux à gauche, disposée comme Courrier.
+**SMS** est une page à part entière, sous Courriels parmi les lieux à gauche, disposée comme Courriels.
 
 - **À gauche, les conversations**, les plus récentes en premier, les personnes sous le nom de vos carnets d’adresses, leurs derniers mots, et quand ; « Un brouillon d’un agent d’IA attend ici. » là où il y en a un. La recherche au-dessus parcourt les mots de chaque SMS, ainsi que les noms et les numéros.
 - **À droite, la conversation que vous ouvrez**, en fil : tout l’historique dans l’ordre du temps, chaque jour dit une fois, vos SMS à droite et les leurs à gauche.
@@ -22,7 +22,7 @@ Les SMS de votre téléphone peuvent se lire sur votre ordinateur, et un SMS éc
 - **Un SMS effacé sur votre téléphone** reste ici, dit discrètement.
 - **En écrivant**, sous le fil : d’abord les brouillons d’un agent d’IA, s’il en a laissé (**L’utiliser** met leurs mots dans la zone ; l’envoi reste le vôtre), puis la zone. La page dit combien de SMS le vôtre prendra. Les accents et les signes hors de l’alphabet propre aux SMS laissent moins de caractères par SMS.
 - **Au clavier** : Haut et Bas parcourent la liste et Entrée ouvre une conversation ; Échap la ferme.
-- **Dans une fenêtre étroite**, comme dans Courrier : la liste, puis la conversation, et Retour.
+- **Dans une fenêtre étroite**, comme dans Courriels : la liste, puis la conversation, et Retour.
 - **Ce qu’il est advenu d’un SMS que vous avez envoyé**, en mots : en attente de votre téléphone (et quand il a partagé pour la dernière fois), en cours d’envoi, envoyé à, remis à (seulement quand votre opérateur le dit), pas envoyé et pourquoi, expiré, ou « Votre téléphone ne l’a peut-être pas envoyé », quand Sioul ne peut pas le savoir. **Renvoyer** fait un nouveau SMS ; rien n’est jamais renvoyé de lui-même.
 - **Pas affichés** : les brouillons et les SMS qui ont échoué ou attendent de partir. Android ne les montre qu’à votre application de messages. Un message multimédia que votre téléphone n’a pas téléchargé le dit.
 
@@ -42,7 +42,7 @@ Vos ordinateurs gardent chaque SMS et tout ce dont aurait besoin une restauratio
 
 ## Où la trouver {#where-to-find-it}
 
-- **Parmi les lieux à gauche**, sous Courrier.
+- **Parmi les lieux à gauche**, sous Courriels.
 - **Sur le Porche**, **Répondre par SMS** sur un SMS ouvre sa conversation ici.
 - **Sur la fiche d’une personne**, **SMS avec cette personne…**.
 

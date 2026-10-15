@@ -1,48 +1,48 @@
 ---
-description: La page Comptes de Sioul – une fiche par adresse, un interrupteur pour chacun de ses services ; Google connecté sur la page de Google ; les mots de passe dans le trousseau de votre système, ou venus de Bitwarden ; vos clés OpenPGP, sur cet appareil ou sur une clé de sécurité ; comparée aux autres logiciels de courrier.
+description: La page Comptes de Sioul – une fiche par adresse, un interrupteur pour chacun de ses services ; Google connecté sur la page de Google ; les mots de passe dans le trousseau de votre système, ou venus de Bitwarden ; vos clés OpenPGP, sur cet appareil ou sur une clé de sécurité ; comparée aux autres logiciels de courriel.
 ---
 
 # Les comptes {#accounts}
 
 ## En bref {#in-short}
 
-**Comptes** est l’icône de personne en bas de la colonne de gauche. La page tient une fiche par adresse, avec un interrupteur pour chacun de ses services : le courrier, les agendas et les contacts, ceux de Google. Les mots de passe vont dans le trousseau de votre système et ne voyagent jamais entre vos appareils ; Google se connecte sur sa propre page ; Bitwarden peut donner son mot de passe à un compte. L’onglet **Chiffrement** tient vos clés OpenPGP, gardées sur cet appareil ou sur une clé de sécurité comme une YubiKey.
+**Comptes** est l’icône de personne en bas de la colonne de gauche. La page tient une fiche par adresse, avec un interrupteur pour chacun de ses services : les courriels, les agendas et les contacts, ceux de Google. Les mots de passe vont dans le trousseau de votre système et ne voyagent jamais entre vos appareils ; Google se connecte sur sa propre page ; Bitwarden peut donner son mot de passe à un compte. L’onglet **Chiffrement** tient vos clés OpenPGP, gardées sur cet appareil ou sur une clé de sécurité comme une YubiKey.
 
 Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](notifications.md). Les sites (messageries sécurisées, discussions) ne sont pas des comptes : ils se créent et se modifient sur la page [Sites](sites.md).
 
 ## Protégé par défaut {#what-is-protected}
 
 - Chaque mot de passe va dans le trousseau de votre système, jamais dans un fichier. Les mots de passe ne voyagent jamais entre vos appareils : chaque appareil le demande une fois.
-- Sioul ne parle à vos serveurs de courrier, d’agendas et de contacts que par des connexions chiffrées : aucun réglage ne permet de s’en passer.
+- Sioul ne parle à vos serveurs de courriel, d’agendas et de contacts que par des connexions chiffrées : aucun réglage ne permet de s’en passer.
 - Google : vous vous connectez sur la page de Google elle-même, dans votre navigateur habituel, avec ce que Google y demande (votre mot de passe, votre clé de sécurité, une clé d’accès). Sioul ne voit jamais votre mot de passe Google, et retirer le compte rend l’accès à Google.
 - Bitwarden peut donner son mot de passe à un compte : Sioul lit votre coffre lui-même et n’y écrit jamais.
-- Vos clés OpenPGP restent sur cet appareil, ou sur votre clé de sécurité ; les personnes à qui vous écrivez reçoivent votre clé publique avec vos messages, pour pouvoir vous répondre chiffré.
+- Vos clés OpenPGP restent sur cet appareil, ou sur votre clé de sécurité ; les personnes à qui vous écrivez reçoivent votre clé publique avec vos courriels, pour pouvoir vous répondre chiffré.
 - Sur une clé de sécurité, vos clés ne la quittent jamais. Son code PIN est gardé en mémoire un quart d’heure sans usage, et jamais écrit nulle part.
 - Chercher la clé de quelqu’un dit à un serveur quelle clé vous cherchez : Sioul ne le fait que quand vous le demandez.
 
 ## Vos comptes {#your-accounts}
 
 <figure markdown="span">
-  [![L’onglet «  Vos comptes  » : en haut, «  Jusqu’où remontent le courrier et l’agenda  », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courrier avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, «  Nom et signature…  », et «  Serveur et dossiers  », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
+  [![L’onglet « Vos comptes » : en haut, « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : son service de courriel avec son serveur, un interrupteur et Retirer, puis à quoi sert cette adresse (Travail coché, Vos démarches, Loisirs), jusqu’où remonter, à quel rythme elle est relevée, la protection contre le harcèlement, sa priorité, « Nom et signature… », et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
   <figcaption>Une fiche par adresse, chacun de ses services avec un interrupteur.</figcaption>
 </figure>
 
-En haut, **Jusqu’où remontent le courrier et l’agenda** : d’une semaine à un an, ou tout. Le courrier plus ancien arrive au prochain relevé ; «  Tout  » peut prendre du temps, et de la place sur le disque.
+En haut, **Jusqu’où remontent les courriels et l’agenda** : d’une semaine à un an, ou tout. Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps, et de la place sur le disque.
 
-Puis une fiche par adresse, avec chacun de ses services : **Courrier** ; **Agendas, tâches et contacts** ; **Google : agendas, contacts et tâches**. Chacun a :
+Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **Agendas, tâches et contacts** ; **Google : agendas, contacts et tâches**. Chacun a :
 
 - **un interrupteur** : éteint, le service garde ses réglages et n’est ni synchronisé ni montré ;
 - son serveur, et ce qu’a dit sa dernière relève, en une phrase ;
 - **Retirer**.
 
-**Ce que ce serveur offre**, en haut de la fiche, demande au serveur ce qu’il a d’autre : des agendas et des contacts à côté du courrier, et pour un Nextcloud, sa version et ses applications. Ce dont Sioul peut se servir s’ajoute en un clic.
+**Ce que ce serveur offre**, en haut de la fiche, demande au serveur ce qu’il a d’autre : des agendas et des contacts à côté des courriels, et pour un Nextcloud, sa version et ses applications. Ce dont Sioul peut se servir s’ajoute en un clic.
 
-### Une adresse de courrier {#a-mail-address}
+### Une adresse électronique {#a-mail-address}
 
 Sur sa fiche, **Réglages de cette adresse**, replié tant que vous ne l’ouvrez pas :
 
-- **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Son courrier vient aux heures de ce à quoi elle sert. Sans rien de coché, elle compte comme du travail, pour que son courrier n’atteigne jamais vos soirées. Voir [Les heures](hours.md).
-- **Jusqu’où remonter** : combien de semaines du courrier de cette adresse ses dossiers montrent, ou comme les autres adresses.
+- **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Ses courriels viennent aux heures de ce à quoi elle sert. Sans rien de coché, elle compte comme du travail, pour que ses courriels n’atteignent jamais vos soirées. Voir [Les heures](hours.md).
+- **Jusqu’où remonter** : combien de semaines des courriels de cette adresse ses dossiers montrent, ou comme les autres adresses.
 - **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses. Une adresse publique peut être relevée deux fois par jour (720 minutes).
 - **Protégée contre le harcèlement**, et une fois cette protection activée, **Laisser l’IA le lire d’abord**. Voir [le Porche](porch.md#a-public-address-protected).
 
@@ -51,13 +51,13 @@ Toujours en vue en dessous :
 - **Priorité** : *Plus important*, *Normal* ou *Moins important*. Voir [le Porche](porch.md#some-addresses-first-others-last).
 - **Nom et signature…** : votre nom, tel que les destinataires le voient, et votre signature, en Markdown.
 
-Puis **Serveur et dossiers**, replié : le serveur, et l’endroit où son courrier est gardé sur cet appareil.
+Puis **Serveur et dossiers**, replié : le serveur, et l’endroit où ses courriels sont gardés sur cet appareil.
 
 Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, utilisée seulement par les adresses qui laissent l’IA les lire d’abord. Elle est gardée dans le trousseau de votre système, jamais dans un fichier ; **Oublier la clé** la retire.
 
 ### Retirer un compte {#removing-one}
 
-**Retirer** demande d’abord. Le mot de passe d’un compte de courrier quitte le trousseau ; son courrier reste sur votre disque et sur le serveur. Pour Google, l’accès est rendu à Google : celui du courrier et celui des agendas à part, pour que retirer l’un laisse son accès à l’autre. Pour Microsoft, sa connexion est oubliée sur cet appareil, et **Retirer** demande aussi s’il faut supprimer le courrier que Sioul garde sur cet appareil pour ce compte : oui, sauf si vous décochez. Microsoft n’offre aux applications aucun moyen de rendre un accès : la ligne que Sioul montre ensuite nomme la page de Microsoft où vous le retirez.
+**Retirer** demande d’abord. Le mot de passe d’un compte de courriel quitte le trousseau ; ses courriels restent sur votre disque et sur le serveur. Pour Google, l’accès est rendu à Google : celui des courriels et celui des agendas à part, pour que retirer l’un laisse son accès à l’autre. Pour Microsoft, sa connexion est oubliée sur cet appareil, et **Retirer** demande aussi s’il faut supprimer les courriels que Sioul garde sur cet appareil pour ce compte : oui, sauf si vous décochez. Microsoft n’offre aux applications aucun moyen de rendre un accès : la ligne que Sioul montre ensuite nomme la page de Microsoft où vous le retirez.
 
 ### Un compte venu de votre autre appareil {#an-account-from-your-other-device}
 
@@ -65,55 +65,55 @@ Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, util
 
 Depuis cette page, votre coffre Bitwarden s’ouvre avec son mot de passe principal et une deuxième étape autre qu’une clé de sécurité : le code d’une application, celui d’un courriel, celui d’une YubiKey, un code de récupération. Pour l’ouvrir avec votre clé de sécurité, ouvrez-le d’abord depuis la page Sites (**Remplir l’identifiant**, ou ⋮ ▸ **Choisir un identifiant…**) : il reste ensuite ouvert jusqu’à la fermeture de Sioul, ici aussi. Sur un téléphone, une clé de sécurité ne peut pas encore ouvrir le coffre : prenez une autre deuxième étape de votre compte Bitwarden.
 
-### Le courrier de Google {#googles-mail}
+### Les courriels de Google {#googles-mail}
 
-Le courrier Gmail ou Google Workspace connecté avec Google dit quand Google met fin à l’accès (votre mot de passe Google changé, votre propre application Google supprimée, un projet Google laissé en test). Sur sa fiche, **Se reconnecter** rouvre la page de Google, dans votre navigateur ; **Mot de passe d’application…** lui donne un mot de passe d’application à la place. Sioul ne demande jamais le mot de passe de votre compte Google. Voir [Premiers pas](first-steps.md#gmail-and-google-workspace).
+Le compte de courriel Gmail ou Google Workspace connecté avec Google dit quand Google met fin à l’accès (votre mot de passe Google changé, votre propre application Google supprimée, un projet Google laissé en test). Sur sa fiche, **Se reconnecter** rouvre la page de Google, dans votre navigateur ; **Mot de passe d’application…** lui donne un mot de passe d’application à la place. Sioul ne demande jamais le mot de passe de votre compte Google. Voir [Premiers pas](first-steps.md#gmail-and-google-workspace).
 
-### Le courrier de Microsoft {#microsofts-mail}
+### Les courriels de Microsoft {#microsofts-mail}
 
-Le courrier Outlook.com, Hotmail, Live, MSN et Microsoft 365 connecté avec Microsoft dit quand Microsoft met fin à l’accès (votre mot de passe changé, quatre-vingt-dix jours sans usage, les règles de votre organisation), ou quand la boîte reste fermée aux logiciels de courrier, avec ce qu’il faut faire. Sur sa fiche, **Se reconnecter** rouvre la page de Microsoft, dans votre navigateur. Une adresse ajoutée avant avec un mot de passe, sur le serveur de Microsoft, montre **Se connecter avec Microsoft** au lieu de **Mot de passe…** : Microsoft ne prend plus aucun mot de passe, mots de passe d’application compris, et se connecter oublie celui qui était gardé. Sioul ne demande jamais votre mot de passe Microsoft. Sa fiche dit **Connexion : avec Microsoft**, et si c’est comme compte personnel ou comme compte professionnel ou scolaire. Voir [Premiers pas](first-steps.md#outlook-and-microsoft-365).
+Le compte de courriel Outlook.com, Hotmail, Live, MSN ou Microsoft 365 connecté avec Microsoft dit quand Microsoft met fin à l’accès (votre mot de passe changé, quatre-vingt-dix jours sans usage, les règles de votre organisation), ou quand la boîte reste fermée aux logiciels de courriel, avec ce qu’il faut faire. Sur sa fiche, **Se reconnecter** rouvre la page de Microsoft, dans votre navigateur. Une adresse ajoutée avant avec un mot de passe, sur le serveur de Microsoft, montre **Se connecter avec Microsoft** au lieu de **Mot de passe…** : Microsoft ne prend plus aucun mot de passe, mots de passe d’application compris, et se connecter oublie celui qui était gardé. Sioul ne demande jamais votre mot de passe Microsoft. Sa fiche dit **Connexion : avec Microsoft**, et si c’est comme compte personnel ou comme compte professionnel ou scolaire. Voir [Premiers pas](first-steps.md#outlook-and-microsoft-365).
 
 ## Ajouter un compte {#add-an-account}
 
 Trois formulaires, l’un après l’autre :
 
-- **Ajouter un compte de courrier** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**.
+- **Ajouter un compte de courriel** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**.
 - **Ajouter des contacts et agendas** : depuis un serveur CalDAV et CardDAV, comme Nextcloud, Fastmail, iCloud ou votre hébergeur.
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
 
-Sur un téléphone, **Depuis les comptes du téléphone…**, au-dessus d’eux, ouvre la liste d’Android des comptes que le téléphone connaît. Une adresse Google remplit le formulaire de Google et celui du courrier, avec les deux façons de Google ; toute autre remplit le formulaire de courrier, dont Sioul cherche alors le serveur, et celui des contacts et agendas. Android ne prête aucun mot de passe : Sioul le demande une fois.
+Sur un téléphone, **Depuis les comptes du téléphone…**, au-dessus d’eux, ouvre la liste d’Android des comptes que le téléphone connaît. Une adresse Google remplit le formulaire de Google et celui des courriels, avec les deux façons de Google ; toute autre remplit le formulaire des courriels, dont Sioul cherche alors le serveur, et celui des contacts et agendas. Android ne prête aucun mot de passe : Sioul le demande une fois.
 
 Pas à pas : [Premiers pas](first-steps.md#add-your-mail). Les mots de passe vont dans le trousseau de votre système, nulle part ailleurs, et Sioul ne parle à vos serveurs que par des connexions chiffrées.
 
-Les adresses Outlook.com, Hotmail, Live, MSN et Microsoft 365 se connectent sur la page de Microsoft elle-même, dans votre navigateur : Microsoft ne prend aucun mot de passe des autres logiciels de courrier. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation, une fois ([Premiers pas](first-steps.md#outlook-and-microsoft-365) ; [Fonctionne avec](compatibility.md#mail)).
+Les adresses Outlook.com, Hotmail, Live, MSN et Microsoft 365 se connectent sur la page de Microsoft elle-même, dans votre navigateur : Microsoft ne prend aucun mot de passe des autres logiciels de courriel. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation, une fois ([Premiers pas](first-steps.md#outlook-and-microsoft-365) ; [Fonctionne avec](compatibility.md#mail)).
 
 ## Qui peut vous joindre {#senders}
 
-Qui peut vous joindre, et quand, par courrier, par téléphone et par les messages des autres applications, et qui est sur quelle liste (sûrs, neutres, restreints, bloqués, avec des adresses, des numéros, des motifs comme `*@example.org`, les personnes mises sur une liste et les catégories de vos contacts) : Paramètres ▸ **Ce qui vous joint** ▸ **Par personne** ([Ce qui vous joint, et quand](notifications.md#by-person)). Pour une personne, sa fiche, depuis sa fiche de contact ou un message : **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Ce à quoi sert chaque adresse reste sur sa carte, plus haut : le courrier d’une adresse pour un autre moment attend ce moment.
+Qui peut vous joindre, et quand, par courriel, par téléphone et par les messages des autres applications, et qui est sur quelle liste (sûrs, neutres, restreints, bloqués, avec des adresses, des numéros, des motifs comme `*@example.org`, les personnes mises sur une liste et les catégories de vos contacts) : Paramètres ▸ **Ce qui vous joint** ▸ **Par personne** ([Ce qui vous joint, et quand](notifications.md#by-person)). Pour une personne, sa fiche, depuis sa fiche de contact ou un message : **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Ce à quoi sert chaque adresse reste sur sa carte, plus haut : les courriels d’une adresse pour un autre moment attendent ce moment.
 
 ## Chiffrement {#encryption}
 
-Vos clés OpenPGP, pour signer et chiffrer vos messages ([Le courrier](mail.md#signing-and-encrypting)) :
+Vos clés OpenPGP, pour signer et chiffrer vos courriels ([Les courriels](mail.md#signing-and-encrypting)) :
 
-- **Créer une clé pour** une adresse : une nouvelle clé, valable trois ans ; sa phrase secrète est faite au hasard et gardée dans votre trousseau, si bien que rien n’est demandé à chaque message.
+- **Créer une clé pour** une adresse : une nouvelle clé, valable trois ans ; sa phrase secrète est faite au hasard et gardée dans votre trousseau, si bien que rien n’est demandé à chaque courriel.
 - **Importer une clé…** : une clé exportée de GnuPG, avec sa phrase secrète, demandée une fois.
 - **Enregistrer la clé publique** : dans vos téléchargements, pour la donner aux autres.
-- **Enregistrer le certificat de révocation**, pour une clé créée ici : une copie dans vos téléchargements, à garder en lieu sûr, ailleurs que sur cet appareil. C’est lui qui déclare la clé hors d’usage, si elle est un jour perdue ou volée ; qui le détient peut le faire. Sioul le garde à côté de la clé, lisible par vous seulement ([Le courrier, OpenPGP](mail.md)), et ne sait pas encore révoquer une clé.
-- **Clés des autres** : celles venues avec leurs messages, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
+- **Enregistrer le certificat de révocation**, pour une clé créée ici : une copie dans vos téléchargements, à garder en lieu sûr, ailleurs que sur cet appareil. C’est lui qui déclare la clé hors d’usage, si elle est un jour perdue ou volée ; qui le détient peut le faire. Sioul le garde à côté de la clé, lisible par vous seulement ([Les courriels, OpenPGP](mail.md)), et ne sait pas encore révoquer une clé.
+- **Clés des autres** : celles venues avec leurs courriels, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
 
 Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas.
 
 ### Clé de sécurité {#security-key}
 
-Vos clés OpenPGP peuvent rester sur une clé de sécurité, comme une YubiKey ou une Nitrokey : elle signe et ouvre votre courrier elle-même, après son code PIN, et ses clés privées ne la quittent jamais. Sioul n’en garde que la partie publique. Cela marche sur un ordinateur ; sur un téléphone, pas encore.
+Vos clés OpenPGP peuvent rester sur une clé de sécurité, comme une YubiKey ou une Nitrokey : elle signe et ouvre vos courriels elle-même, après son code PIN, et ses clés privées ne la quittent jamais. Sioul n’en garde que la partie publique. Cela marche sur un ordinateur ; sur un téléphone, pas encore.
 
 1. Branchez la clé, puis choisissez **Utiliser une clé de sécurité**. Sioul la lit sans son code PIN : son nom et son numéro de série, et ce avec quoi elle signe et déchiffre.
 2. Sioul a besoin de la partie publique de ces clés, que la clé ne contient pas. **La chercher** interroge l’adresse écrite sur la clé, l’annuaire de clés de votre domaine, puis keys.openpgp.org ; cela dit à ces serveurs que quelqu’un cherche votre clé. **Importer depuis GnuPG** la prend à GnuPG sur cet ordinateur, s’il l’a. Ou **Importer un fichier…** ; sous **À la main**, la commande GnuPG qui l’écrit dans un fichier, prête à copier.
-3. Sioul ne la garde que si c’est bien celle de la clé : les mêmes clés, les mêmes parties publiques. Votre clé de sécurité signe alors, seule, pour les adresses qu’elle nomme parmi les vôtres (une clé créée ou importée ici pour la même adresse n’ouvre plus que l’ancien courrier), et ouvre ce qui lui est chiffré.
+3. Sioul ne la garde que si c’est bien celle de la clé : les mêmes clés, les mêmes parties publiques. Votre clé de sécurité signe alors, seule, pour les adresses qu’elle nomme parmi les vôtres (une clé créée ou importée ici pour la même adresse n’ouvre plus que les anciens courriels), et ouvre ce qui lui est chiffré.
 
-Quand vous envoyez un message signé ou ouvrez un message chiffré, Sioul demande la clé là où vous êtes : branchez-la, tapez son code PIN, et touchez-la quand Sioul le dit. Gardez le doigt sur la clé une seconde ou deux : un toucher bref n’est souvent pas pris, sa lumière en dit peu, et elle attend environ quinze secondes. Si la clé s’en va pendant qu’elle signe, rien n’est envoyé et le message reste dans les Brouillons ([Le courrier](mail.md#signing-and-encrypting)).
+Quand vous envoyez un courriel signé ou ouvrez un courriel chiffré, Sioul demande la clé là où vous êtes : branchez-la, tapez son code PIN, et touchez-la quand Sioul le dit. Gardez le doigt sur la clé une seconde ou deux : un toucher bref n’est souvent pas pris, sa lumière en dit peu, et elle attend environ quinze secondes. Si la clé s’en va pendant qu’elle signe, rien n’est envoyé et le courriel reste dans les Brouillons ([Les courriels](mail.md#signing-and-encrypting)).
 
-Chaque clé montre pour quoi elle signe, si elle demande un toucher, d’où vient sa partie publique et quand elle expire. Sioul dit un mois avant qu’elle va expirer ; une fois expirée, le courrier ne peut plus être signé avec elle avant qu’elle soit renouvelée, et l’ancien courrier s’ouvre toujours. **Renouveler pour deux ans** la renouvelle avec GnuPG sur cet ordinateur, quand GnuPG connaît la clé : GnuPG demande le code PIN de la clé dans une fenêtre à lui, puis Sioul dit quand toucher la clé, le doigt gardé dessus une seconde ou deux, pendant que GnuPG renouvelle la clé puis ses sous-clés ; Sioul garde ensuite la partie publique renouvelée. Si la clé a attendu un toucher en vain, Sioul le dit, avec **Réessayer**. Là où GnuPG ne le peut pas (un Flatpak, un téléphone, un ordinateur sans GnuPG), les deux commandes qui la renouvellent sont sous **À la main**, prêtes à copier. **Chercher une version plus récente** rapporte la partie publique renouvelée depuis les serveurs, **Importer depuis GnuPG** depuis GnuPG, ou **Importer un fichier…** depuis un nouvel export. **L’envoyer à keys.openpgp.org** y met votre clé publique, après une phrase qui dit ce qui devient public : chacun peut alors la trouver par son empreinte, et keys.openpgp.org envoie à chacune de ses adresses un lien qui, une fois ouvert, rend cette adresse trouvable ; Sioul ne l’envoie que quand vous choisissez **L’envoyer**. **Oublier le code PIN maintenant** oublie le code PIN que Sioul garde. **Ne plus utiliser cette clé de sécurité** la met de côté.
+Chaque clé montre pour quoi elle signe, si elle demande un toucher, d’où vient sa partie publique et quand elle expire. Sioul dit un mois avant qu’elle va expirer ; une fois expirée, les courriels ne peuvent plus être signés avec elle avant qu’elle soit renouvelée, et les anciens courriels s’ouvrent toujours. **Renouveler pour deux ans** la renouvelle avec GnuPG sur cet ordinateur, quand GnuPG connaît la clé : GnuPG demande le code PIN de la clé dans une fenêtre à lui, puis Sioul dit quand toucher la clé, le doigt gardé dessus une seconde ou deux, pendant que GnuPG renouvelle la clé puis ses sous-clés ; Sioul garde ensuite la partie publique renouvelée. Si la clé a attendu un toucher en vain, Sioul le dit, avec **Réessayer**. Là où GnuPG ne le peut pas (un Flatpak, un téléphone, un ordinateur sans GnuPG), les deux commandes qui la renouvellent sont sous **À la main**, prêtes à copier. **Chercher une version plus récente** rapporte la partie publique renouvelée depuis les serveurs, **Importer depuis GnuPG** depuis GnuPG, ou **Importer un fichier…** depuis un nouvel export. **L’envoyer à keys.openpgp.org** y met votre clé publique, après une phrase qui dit ce qui devient public : chacun peut alors la trouver par son empreinte, et keys.openpgp.org envoie à chacune de ses adresses un lien qui, une fois ouvert, rend cette adresse trouvable ; Sioul ne l’envoie que quand vous choisissez **L’envoyer**. **Oublier le code PIN maintenant** oublie le code PIN que Sioul garde. **Ne plus utiliser cette clé de sécurité** la met de côté.
 
 Chaque commande que Sioul montre, ici et ailleurs (pour démarrer le service des cartes à puce, installer un antivirus ou le lecteur des numérisations), est dans un champ que vous pouvez sélectionner, avec **Copier** à côté.
 
@@ -125,14 +125,14 @@ Sioul ne fait qu’utiliser la clé : il ne demande jamais son code PIN d’ad
 
 ## Pour aller plus loin {#going-further}
 
-- **Une clé Google à vous** : Google ne donne l’accès au courrier de Gmail qu’aux applications qu’il a examinées. Tant que celle de Sioul ne l’est pas, **Utiliser une clé Google à moi** prend l’identifiant client et le secret d’une application Google que vous créez une fois dans Google Cloud (environ un quart d’heure, les étapes montrées). Une copie de Sioul construite sans clé Google à elle demande la vôtre pour les agendas aussi ; les copies publiées jusqu’ici sont construites sans. Cette «  clé  » est le nom et le secret d’une application, pas une clé de sécurité ([Premiers pas](first-steps.md#gmail-and-google-workspace)).
+- **Une clé Google à vous** : Google ne donne l’accès aux courriels de Gmail qu’aux applications qu’il a examinées. Tant que celle de Sioul ne l’est pas, **Utiliser une clé Google à moi** prend l’identifiant client et le secret d’une application Google que vous créez une fois dans Google Cloud (environ un quart d’heure, les étapes montrées). Une copie de Sioul construite sans clé Google à elle demande la vôtre pour les agendas aussi ; les copies publiées jusqu’ici sont construites sans. Cette « clé » est le nom et le secret d’une application, pas une clé de sécurité ([Premiers pas](first-steps.md#gmail-and-google-workspace)).
 - **Un mot de passe d’application** pour Gmail marche aussi, sans la connexion de Google.
 - **La clé du bouclier IA**, pour les adresses qui laissent l’IA les lire d’abord, est gardée dans le trousseau comme un mot de passe ; **Oublier la clé** la retire ([le Porche](porch.md#a-public-address-protected)).
 - **Partager la clé de sécurité avec GnuPG** : ajoutez la ligne `pcsc-shared` à `~/.gnupg/scdaemon.conf`, et les deux se servent de la clé à tour de rôle.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courrier ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour le courrier de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’a pas encore été essayée avec une vraie clé, et n’existe pas encore sur les téléphones.
+**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courriel ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour les courriels de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’a pas encore été essayée avec une vraie clé, et n’existe pas encore sur les téléphones.
 
 En octobre 2026, d’après la documentation de chaque application.
 
@@ -147,7 +147,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Un gestionnaire de mots de passe donne son mot de passe à un compte | ✓⁴ | ✗ | ✗ | ✗ | ? | ✗ |
     | Un service d’un compte éteint, ses réglages gardés | ✓ | en partie⁵ | — | ? | ✓ | ✓ |
 
-    1. La page de Google s’ouvre dans votre navigateur. Le courrier de Gmail demande une application Google à vous (un projet Google Cloud gratuit, environ un quart d’heure, une fois) ou un mot de passe d’application ; les agendas aussi, dans une copie de Sioul construite sans clé à elle.
+    1. La page de Google s’ouvre dans votre navigateur. Les courriels de Gmail demandent une application Google à vous (un projet Google Cloud gratuit, environ un quart d’heure, une fois) ou un mot de passe d’application ; les agendas aussi, dans une copie de Sioul construite sans clé à elle.
     2. La page de Microsoft s’ouvre dans votre navigateur. Pas encore essayé avec un vrai compte Microsoft. Dans une copie de Sioul construite sans sa propre application Microsoft, une application à vous, inscrite une fois (les étapes sont dans le formulaire). Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation, une fois ([Fonctionne avec](compatibility.md#mail)).
     3. Dans l’application Gmail d’un téléphone.
     4. Bitwarden, lu par Sioul lui-même. Bitwarden lui-même ne décrit le remplissage que dans les navigateurs et sur les téléphones.
@@ -169,7 +169,7 @@ En octobre 2026, d’après la documentation de chaque application.
     3. Sous Linux.
     4. La page de Google s’ouvre dans votre navigateur, qui demande la clé.
     5. Les anciennes clés U2F marchent dans sa fenêtre de connexion ; les clés qui demandent un code PIN, et les clés d’accès, sont des demandes ouvertes.
-    6. Autocrypt en partie, ce que Thunderbird appelle une «  compatibilité limitée  ».
+    6. Autocrypt en partie, ce que Thunderbird appelle une « compatibilité limitée ».
     7. Par GnuPG, qui crée les clés ; Autocrypt et l’annuaire de clés Web Key Directory depuis 2022–2023.
     8. Sur un ordinateur, par le service des cartes à puce du système ; pas encore sur un téléphone ; essayé avec une YubiKey 5 le 8 octobre 2026 ([Fonctionne avec](compatibility.md#logins-and-keys)).
     9. Seulement avec GnuPG installé et un réglage caché activé ; GnuPG signe et déchiffre alors ; dit expérimental.
@@ -194,7 +194,7 @@ En octobre 2026, d’après la documentation de chaque application.
     - Aide de Bitwarden : premiers pas avec l’application de bureau, <https://bitwarden.com/help/getting-started-desktop/>, lu le 8 octobre 2026.
     - Aide de Bitwarden : ce que l’application de bureau prend en charge, <https://bitwarden.com/help/desktop-app-feature-support/>, lu le 8 octobre 2026.
     - Aide de Bitwarden : le remplissage sous Android, <https://bitwarden.com/help/auto-fill-android/>, lu le 8 octobre 2026.
-    - Aide de Gmail : Gmail dans d’autres logiciels de courrier, <https://support.google.com/mail/answer/6078445>, lu le 8 octobre 2026.
+    - Aide de Gmail : Gmail dans d’autres logiciels de courriel, <https://support.google.com/mail/answer/6078445>, lu le 8 octobre 2026.
     - Aide de Gmail : ajouter d’autres comptes dans l’application Gmail, <https://support.google.com/mail/answer/21289>, lu le 8 octobre 2026.
     - Aide du compte Google : les mots de passe d’application, <https://support.google.com/accounts/answer/185833>, lu le 8 octobre 2026.
     - Aide du compte Google : les clés de sécurité pour la validation en deux étapes, <https://support.google.com/accounts/answer/6103523>, lu le 8 octobre 2026.
@@ -204,16 +204,16 @@ En octobre 2026, d’après la documentation de chaque application.
     - Administration de Google Workspace : le chiffrement par clé matérielle pour Gmail, <https://knowledge.workspace.google.com/admin/security/gmail-only-set-up-and-manage-hardware-key-encryption>, lu le 8 octobre 2026.
     - Outlook : ajouter un compte Gmail à Outlook pour Windows, <https://support.microsoft.com/en-us/outlook/getstarted/add-a-gmail-account-to-outlook-for-windows>, lu le 8 octobre 2026.
     - Outlook : les comptes synchronisés par le nuage de Microsoft, <https://support.microsoft.com/en-us/Outlook/getstarted/sync-your-account-in-outlook-to-the-microsoft-cloud>, lu le 8 octobre 2026.
-    - Microsoft Purview : le chiffrement du courrier, <https://learn.microsoft.com/en-us/purview/email-encryption>, lu le 8 octobre 2026.
+    - Microsoft Purview : le chiffrement des courriels, <https://learn.microsoft.com/en-us/purview/email-encryption>, lu le 8 octobre 2026.
     - Assistance Microsoft : chiffrer des courriels, <https://support.microsoft.com/en-us/office/encrypt-email-messages-373339cb-bf1a-4509-b296-802a39d801dc>, lu le 8 octobre 2026.
     - Outlook sur le web : S/MIME, <https://support.microsoft.com/en-us/office/encrypt-messages-by-using-s-mime-in-outlook-on-the-web-878c79fc-7088-4b39-966f-14512658f480>, lu le 8 octobre 2026.
-    - Compte Microsoft : Windows Hello et les clés de sécurité (redirigé aujourd’hui vers «  Configurer Windows Hello  »), <https://support.microsoft.com/en-us/account-billing/sign-in-to-your-microsoft-account-with-windows-hello-or-a-security-key-800a8c01-6b61-49f5-0660-c2159bea4d84>, lu le 8 octobre 2026.
+    - Compte Microsoft : Windows Hello et les clés de sécurité (redirigé aujourd’hui vers « Configurer Windows Hello »), <https://support.microsoft.com/en-us/account-billing/sign-in-to-your-microsoft-account-with-windows-hello-or-a-security-key-800a8c01-6b61-49f5-0660-c2159bea4d84>, lu le 8 octobre 2026.
     - Microsoft Learn : présentation du nouvel Outlook pour Windows, <https://learn.microsoft.com/en-us/microsoft-365-apps/outlook/overview-new-outlook-windows>, lu le 8 octobre 2026.
     - Mail pour Mac : ajouter et gérer des comptes, <https://support.apple.com/guide/mail/add-and-manage-email-accounts-mail35803/mac>, lu le 8 octobre 2026.
-    - Guide de l’iPhone : les comptes de courrier, de contacts et de calendrier, <https://support.apple.com/guide/iphone/add-mail-contacts-and-calendar-accounts-ipha0d932e96/ios>, lu le 8 octobre 2026.
+    - Guide de l’iPhone : les comptes de courriel, de contacts et de calendrier, <https://support.apple.com/guide/iphone/add-mail-contacts-and-calendar-accounts-ipha0d932e96/ios>, lu le 8 octobre 2026.
     - Trousseaux d’accès : ce que c’est, <https://support.apple.com/guide/keychain-access/what-is-keychain-access-kyca1083/mac>, lu le 8 octobre 2026.
     - Mail pour Mac : les certificats personnels, <https://support.apple.com/guide/mail/use-personal-certificates-mlhlp1179/mac>, lu le 8 octobre 2026.
-    - Guide de l’iPhone : ajouter et supprimer des comptes de courrier, <https://support.apple.com/guide/iphone/add-and-remove-email-accounts-iph44d1ae58a/ios>, lu le 8 octobre 2026.
+    - Guide de l’iPhone : ajouter et supprimer des comptes de courriel, <https://support.apple.com/guide/iphone/add-and-remove-email-accounts-iph44d1ae58a/ios>, lu le 8 octobre 2026.
     - Aide d’Evolution : un compte Gmail, <https://help.gnome.org/evolution/mail-access-gmail-imap-account.html>, lu le 8 octobre 2026.
     - Evolution : le code de sa connexion à Google, <https://gitlab.gnome.org/GNOME/evolution-data-server/-/raw/master/src/libedataserver/e-oauth2-service-google.c>, lu le 8 octobre 2026.
     - Evolution : le code de sa réserve de secrets, <https://gitlab.gnome.org/GNOME/evolution-data-server/-/raw/master/src/libedataserver/e-secret-store.c>, lu le 8 octobre 2026.
@@ -227,11 +227,11 @@ En octobre 2026, d’après la documentation de chaque application.
 
 ## Côté technique {#for-technical-readers}
 
-- **Les connexions** : le courrier en TLS dès le premier octet (préféré, RFC 8314) ou en STARTTLS, sans réglage non chiffré ; un STARTTLS qui échoue met fin à la connexion au lieu de continuer en clair. Les certificats sont vérifiés d’après ceux du système (la liste de Mozilla quand le système n’en a pas), avec rustls. CalDAV et CardDAV en HTTPS seulement.
+- **Les connexions** : les courriels en TLS dès le premier octet (préféré, RFC 8314) ou en STARTTLS, sans réglage non chiffré ; un STARTTLS qui échoue met fin à la connexion au lieu de continuer en clair. Les certificats sont vérifiés d’après ceux du système (la liste de Mozilla quand le système n’en a pas), avec rustls. CalDAV et CardDAV en HTTPS seulement.
 - **Trouver le serveur** : `autoconfig.<domaine>`, puis `<domaine>/.well-known/autoconfig`, puis la liste des fournisseurs de Thunderbird (à qui l’on dit le domaine, jamais l’adresse), puis `imap.<domaine>` et `mail.<domaine>`, pour que vous vérifiiez ; HTTPS seulement, car un fichier de réglages venu en clair pourrait envoyer votre mot de passe ailleurs. Les domaines Google Workspace sont reconnus par leurs enregistrements MX.
-- **Google** : OAuth 2.0 pour les applications natives (RFC 8252) : votre navigateur s’ouvre sur la page de Google, la réponse revient à une adresse en boucle locale sur un port tiré au hasard, et PKCE (S256, RFC 7636) avec un `state` tiré au hasard prouve que c’est le même programme. Le courrier (IMAP et SMTP, SASL XOAUTH2) a sa propre autorisation, à part des agendas, des contacts et des tâches, pour que l’un puisse être retiré seul. Le jeton de renouvellement est gardé dans le trousseau, le jeton d’accès en mémoire seulement ; retirer un compte révoque son jeton chez Google.
-- **Le trousseau** : le Secret Service sous Linux (KWallet, GNOME Keyring), le trousseau de macOS, le gestionnaire d’identifiants de Windows, le KeyStore d’Android sur un téléphone. Chaque entrée est rangée sous `sioul`, en «  *identifiant* on *serveur*  », facile à retrouver, vérifier ou retirer là.
-- **OpenPGP** : RFC 9580, avec Sequoia-PGP et sa cryptographie en Rust pur. Une clé créée ici est Ed25519 pour signer et Curve25519 pour chiffrer, valable trois ans, ses parties secrètes chiffrées par une phrase secrète tirée au hasard et gardée dans le trousseau. Autocrypt niveau 1 : votre courrier porte votre clé ; une clé trouvée dans l’en-tête d’un expéditeur n’est gardée que si elle nomme cet expéditeur, parties publiques seulement. Les clés des autres ne sont cherchées que quand vous le demandez : dans le Web Key Directory de leur domaine, puis sur keys.openpgp.org, en HTTPS seulement. Pas de S/MIME.
-- **La clé de sécurité** : la spécification de carte OpenPGP 3.4, par le service des cartes à puce du système, PC/SC (pcscd sous Linux, que la plupart des systèmes démarrent quand un programme le demande ; le service Carte à puce sous Windows ; CryptoTokenKit sous macOS). La clé est ouverte pour une seule opération, puis remise à zéro, pour que son code PIN ne reste pas donné à un autre programme ; les lecteurs sont joints en mode partagé. Le code PIN est gardé en mémoire, chiffré, pendant quinze minutes sans usage, jamais écrit. Une signature que fait la clé est vérifiée d’après sa partie publique avant que le message parte. Les journaux des bibliothèques sont bridés, pour qu’aucun code PIN ni aucune clé de session ne puisse atteindre un journal.
+- **Google** : OAuth 2.0 pour les applications natives (RFC 8252) : votre navigateur s’ouvre sur la page de Google, la réponse revient à une adresse en boucle locale sur un port tiré au hasard, et PKCE (S256, RFC 7636) avec un `state` tiré au hasard prouve que c’est le même programme. Les courriels (IMAP et SMTP, SASL XOAUTH2) ont leur propre autorisation, à part des agendas, des contacts et des tâches, pour que l’un puisse être retiré seul. Le jeton de renouvellement est gardé dans le trousseau, le jeton d’accès en mémoire seulement ; retirer un compte révoque son jeton chez Google.
+- **Le trousseau** : le Secret Service sous Linux (KWallet, GNOME Keyring), le trousseau de macOS, le gestionnaire d’identifiants de Windows, le KeyStore d’Android sur un téléphone. Chaque entrée est rangée sous `sioul`, en « *identifiant* on *serveur* », facile à retrouver, vérifier ou retirer là.
+- **OpenPGP** : RFC 9580, avec Sequoia-PGP et sa cryptographie en Rust pur. Une clé créée ici est Ed25519 pour signer et Curve25519 pour chiffrer, valable trois ans, ses parties secrètes chiffrées par une phrase secrète tirée au hasard et gardée dans le trousseau. Autocrypt niveau 1 : vos courriels portent votre clé ; une clé trouvée dans l’en-tête d’un expéditeur n’est gardée que si elle nomme cet expéditeur, parties publiques seulement. Les clés des autres ne sont cherchées que quand vous le demandez : dans le Web Key Directory de leur domaine, puis sur keys.openpgp.org, en HTTPS seulement. Pas de S/MIME.
+- **La clé de sécurité** : la spécification de carte OpenPGP 3.4, par le service des cartes à puce du système, PC/SC (pcscd sous Linux, que la plupart des systèmes démarrent quand un programme le demande ; le service Carte à puce sous Windows ; CryptoTokenKit sous macOS). La clé est ouverte pour une seule opération, puis remise à zéro, pour que son code PIN ne reste pas donné à un autre programme ; les lecteurs sont joints en mode partagé. Le code PIN est gardé en mémoire, chiffré, pendant quinze minutes sans usage, jamais écrit. Une signature que fait la clé est vérifiée d’après sa partie publique avant que le courriel parte. Les journaux des bibliothèques sont bridés, pour qu’aucun code PIN ni aucune clé de session ne puisse atteindre un journal.
 - **GnuPG** : son service de cartes à puce garde la clé pour lui après s’en être servi, sauf si `scdaemon.conf` dit `pcsc-shared`. **Laisser GnuPG la libérer** lance `gpgconf --kill scdaemon`, à ce clic seulement, et Sioul aussi à la fin de son propre renouvellement par GnuPG, pour nettoyer derrière lui ; gpg le redémarre quand il a besoin de la clé, et redemande alors son code PIN. Sioul ne change jamais les réglages de GnuPG.
 - **Bitwarden depuis cette page** : le coffre s’ouvre avec son mot de passe principal et une deuxième étape que cette boîte de dialogue sait demander : le code d’une application d’authentification, un code par courriel, le code à usage unique d’une YubiKey, un code de récupération. Une clé de sécurité, en deuxième étape ou seule, n’est demandée que par la boîte de dialogue de la page Sites, sur un ordinateur ; le coffre reste alors ouvert pour toutes les pages jusqu’à la fermeture de Sioul. Comment le coffre est lu : [Sites, côté technique](sites.md#for-technical-readers).

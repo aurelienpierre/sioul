@@ -968,7 +968,7 @@ mod tests {
         let en = Translator::new("en");
         assert_eq!(sentence(&search, &en, &names, today), "Mail from …@bank.example…, arrived after 3 June, with an attachment.");
         let fr = Translator::new("fr");
-        assert_eq!(sentence(&search, &fr, &names, today), "Le courrier de …@bank.example…, arrivé après le 3 juin, avec une pièce jointe.");
+        assert_eq!(sentence(&search, &fr, &names, today), "Les courriels de …@bank.example…, arrivés après le 3 juin, avec une pièce jointe.");
         let any = Search { conditions: vec![condition(Field::Account, Test::Is, "work"), condition(Field::AttachmentType, Test::Is, "pdf"), condition(Field::Mark, Test::IsNot, "read")], join: Join::Any };
         assert_eq!(sentence(&any, &en, &names, today), "Mail in noa@example.com, or with a PDF attached, or not read yet.");
         assert_eq!(sentence(&Search::default(), &en, &names, today), "Say what to look for.");

@@ -138,6 +138,12 @@ Item {
         settingsButton.show(open)
     }
 
+    // A scan of a paper letter, chosen and copied into the folder scans are
+    // read from (the New menu's "A paper letter (scan)…").
+    function addScan() {
+        letters.addScan()
+    }
+
     function grabSettings(path) {
         settingsButton.grab(path)
     }
@@ -712,15 +718,17 @@ Item {
                     }
                 }
 
-                // Paper letters, read from their scans: in the window, like mail.
+                // Paper letters, read from their scans: in the window, like mail. On a
+                // computer, where their scans go is said before any comes (LettersSection.qml).
                 LettersSection {
                     id: letters
 
-                    visible: page.view.open && page.window.moment.sleep !== true && (letters.shown.letters.length > 0 || letters.shown.missing !== "")
+                    visible: page.view.open && page.window.moment.sleep !== true && (letters.place || letters.shown.letters.length > 0 || letters.shown.missing !== "")
                     Layout.fillWidth: true
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
+                    onSettingsWanted: page.openSettings(true)
                 }
 
                 // Right now: the one exception to the windows.

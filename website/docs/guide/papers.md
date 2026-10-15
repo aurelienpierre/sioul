@@ -79,6 +79,7 @@ The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, 
 
 1. In the Porch's ⚙, **Paper letters ▸ Where scans arrive**: the folder your scans come to. Unset, it is `letters/inbox` in your notes folder. A phone's scanner app syncing into it works too.
 2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the Porch says how to install them ([Install](install.md#the-packages)).
+3. On the Porch, under **Paper letters**, **Open the folder** opens it and **Add a scan…** copies a PDF or a picture into it; the **New** menu's **A paper letter (scan)…** does the same from any page ([The Porch](porch.md#paper-letters)).
 
 PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device.
 

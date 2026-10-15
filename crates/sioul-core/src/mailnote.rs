@@ -232,14 +232,14 @@ pub fn gone_by(items: &[Triaged], ledger: &Ledger, newsletters: bool) -> Vec<Str
     items.iter().filter(|t| never(t, newsletters)).map(key).filter(|k| ledger.waiting.contains_key(k)).collect()
 }
 
-/// The notification of new mail: "Two letters", and the first senders with
+/// The notification of new mail: "Two e-mails", and the first senders with
 /// their subjects, "Murena, Your invoice · Alice, Dinner on Friday".
 pub fn batch(tr: &Translator, letters: &[Letter]) -> (String, String) {
     (tr.text("mail-note-title", Some(&tr.counted(letters.len()))), named(tr, letters))
 }
 
 /// When a time begins in which mail that waited may come: "The Porch opens:
-/// three letters wait for you.", the first senders below.
+/// three e-mails wait for you.", the first senders below.
 pub fn opens(tr: &Translator, letters: &[Letter]) -> (String, String) {
     (tr.text("mail-note-opens", Some(&tr.counted(letters.len()))), named(tr, letters))
 }
@@ -317,14 +317,14 @@ mod tests {
 
         // The words: the count in words, the first senders with their subjects.
         let en = Translator::new("en");
-        assert_eq!(batch(&en, &sorted.now), ("Two letters".to_string(), "Murena, Your invoice · Alice, Dinner on Friday".to_string()));
+        assert_eq!(batch(&en, &sorted.now), ("Two e-mails".to_string(), "Murena, Your invoice · Alice, Dinner on Friday".to_string()));
         let fr = Translator::new("fr");
-        assert_eq!(batch(&fr, &sorted.now), ("Deux lettres".to_string(), "Murena, Your invoice · Alice, Dinner on Friday".to_string()));
-        assert_eq!(batch(&fr, &sorted.now[..1]).0, "Une lettre");
-        assert_eq!(batch(&en, &sorted.now[..1]).0, "One letter");
+        assert_eq!(batch(&fr, &sorted.now), ("Deux courriels".to_string(), "Murena, Your invoice · Alice, Dinner on Friday".to_string()));
+        assert_eq!(batch(&fr, &sorted.now[..1]).0, "Un courriel");
+        assert_eq!(batch(&en, &sorted.now[..1]).0, "One e-mail");
         // Past twelve, digits; three named at most; a message without a subject says so.
         let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false }).collect();
-        assert_eq!(batch(&en, &many), ("13 letters".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
+        assert_eq!(batch(&en, &many), ("13 e-mails".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
 
         // Told once, by account and Message-ID: fetched again, nothing; the same message in another account is another.
         let mut ledger = Ledger::default();
@@ -363,8 +363,8 @@ mod tests {
         // A time begins: what waited and may come now, told once.
         let waiting = waited(&arrivals, &ledger, false, |_| true);
         assert_eq!(waiting.iter().map(|l| l.sender.as_str()).collect::<Vec<_>>(), ["Bob"]);
-        assert_eq!(opens(&en, &waiting).0, "The Porch opens: one letter waits for you.");
-        assert_eq!(opens(&fr, &[waiting[0].clone(), waiting[0].clone(), waiting[0].clone()]).0, "Le Porche ouvre\u{202f}: trois lettres vous attendent.");
+        assert_eq!(opens(&en, &waiting).0, "The Porch opens: one e-mail waits for you.");
+        assert_eq!(opens(&fr, &[waiting[0].clone(), waiting[0].clone(), waiting[0].clone()]).0, "Le Porche ouvre\u{202f}: trois courriels vous attendent.");
         assert!(waited(&arrivals, &ledger, false, |_| false).is_empty(), "not while its list may not come");
         for letter in &waiting {
             ledger.tell(&letter.key, 200);

@@ -1,5 +1,5 @@
 ---
-description: Ce avec quoi Sioul fonctionne, fonction par fonction – serveurs de courrier et d’agenda, Google, les applications que vous utilisez déjà sur les mêmes comptes, Obsidian et Nextcloud Notes, applications de synchronisation, sites web, Bitwarden, OpenPGP, antivirus, agents d’IA et systèmes ; ce qui a été testé, ce qui est attendu, et les limites connues.
+description: Ce avec quoi Sioul fonctionne, fonction par fonction – serveurs de courriel et d’agenda, Google, les applications que vous utilisez déjà sur les mêmes comptes, Obsidian et Nextcloud Notes, applications de synchronisation, sites web, Bitwarden, OpenPGP, antivirus, agents d’IA et systèmes ; ce qui a été testé, ce qui est attendu, et les limites connues.
 ---
 
 # Fonctionne avec {#works-with}
@@ -17,49 +17,49 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 
 | Domaine | Fonctionne avec | À quel point c’est sûr |
 |---|---|---|
-| [Courrier](#mail) | tout serveur IMAP et SMTP qui accepte un mot de passe sur une connexion chiffrée ; Gmail et Google Workspace avec un mot de passe d’application, ou en se connectant avec Google avec une clé à vous ; Outlook.com, Hotmail, Live, MSN et Microsoft 365 en se connectant avec Microsoft | **Testé** avec un serveur de test, et une vraie boîte aux lettres utilisée chaque jour ; **attendu** ailleurs. Microsoft : **attendu**, essayé contre des doublures seulement. **Limite** : une adresse Microsoft professionnelle ou scolaire peut demander l’approbation de son organisation |
+| [Courriels](#mail) | tout serveur IMAP et SMTP qui accepte un mot de passe sur une connexion chiffrée ; Gmail et Google Workspace avec un mot de passe d’application, ou en se connectant avec Google avec une clé à vous ; Outlook.com, Hotmail, Live, MSN et Microsoft 365 en se connectant avec Microsoft | **Testé** avec un serveur de test, et une vraie boîte de courriel utilisée chaque jour ; **attendu** ailleurs. Microsoft : **attendu**, essayé contre des doublures seulement. **Limite** : une adresse Microsoft professionnelle ou scolaire peut demander l’approbation de son organisation |
 | [Agendas, tâches et contacts](#calendars-tasks-and-contacts) | tout serveur CalDAV et CardDAV en HTTPS : Nextcloud (celui de Murena aussi), Radicale, Fastmail, Posteo, mailbox.org, iCloud, celui de votre hébergeur | **Testé** avec Radicale, et utilisé chaque jour avec Murena (Nextcloud) depuis le 4 octobre 2026 ; **attendu** avec les autres. **Limites** : les rappels d’iCloud ; Baïkal doit être réglé sur l’identification Basic |
 | [Google](#google) | agendas, contacts et Google Tasks, connexion sur la page de Google | **Attendu** : essayé seulement face à une imitation de Google Tasks |
-| [Les autres applications sur les mêmes comptes](#other-apps-on-the-same-accounts) | Thunderbird et les applications de courrier des téléphones ; Nextcloud Tasks, Tasks.org ; DAVx⁵ avec OpenTasks ou jtx Board | **Attendu**, d’après leur code. **Limite** : une tâche liée à une autre par une attente, changée sur un téléphone par DAVx⁵ |
+| [Les autres applications sur les mêmes comptes](#other-apps-on-the-same-accounts) | Thunderbird et les applications de courriel des téléphones ; Nextcloud Tasks, Tasks.org ; DAVx⁵ avec OpenTasks ou jtx Board | **Attendu**, d’après leur code. **Limite** : une tâche liée à une autre par une attente, changée sur un téléphone par DAVx⁵ |
 | [Les notes](#notes) | Obsidian, Nextcloud Notes, tout éditeur Markdown | **Testé** sur des fichiers écrits comme chacun les écrit |
 | [Partager entre vos appareils](#sharing-between-your-devices) | Nextcloud d’abord ([où en trouver un](#where-to-get-a-nextcloud)) ; toute application qui garde un dossier en accord : Nextcloud, l’eDrive de Murena, Syncthing, Dropbox, Google Drive, OneDrive… | **Testé** avec un simulateur de la façon dont se comportent les applications de synchronisation, et avec eDrive sur un téléphone ; **attendu** avec les autres |
 | [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : sur un téléphone, les sites s’ouvrent dans votre navigateur |
-| [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courrier | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec un vrai coffre, utilisé chaque jour (6 octobre 2026) |
+| [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courriel | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec un vrai coffre, utilisé chaque jour (6 octobre 2026) |
 | [Antivirus et courrier scanné](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract et Poppler | **Testé** sur Linux ; Defender **attendu** |
 | [Agents d’IA](#ai-agents) | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme | **Testé** seul, pas encore dans ces clients |
 | [GitHub](#github) | vos tickets et pull requests, lus avec un jeton | **Testé** face à une imitation de GitHub |
 | [Systèmes](#systems) | Linux (AppImage, Flatpak), Windows 10 et 11, macOS 13 et suivants ; Android 9 et suivants (un APK) | Linux utilisé chaque jour ; Windows et macOS construits et testés par GitHub, pas encore lancés par une personne ; Android utilisé chaque jour sur un téléphone |
 
-## Courrier {#mail}
+## Courriels {#mail}
 
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
 | Trouver votre serveur | votre adresse | celui de Murena, à la main | les fournisseurs qui publient leurs réglages, et ceux de la liste de Thunderbird | un serveur trouvé en devinant est dit comme une supposition, à vérifier |
-| Recevoir et garder le courrier | IMAP sur une connexion chiffrée (port 993, ou 143 avec STARTTLS), votre mot de passe | GreenMail, un serveur de test ; Murena, utilisé chaque jour depuis le 4 octobre 2026 | Fastmail, Posteo, mailbox.org, celui de votre hébergeur, votre propre Dovecot ; iCloud Mail et Yahoo avec un mot de passe d’application | relever ne change rien sur le serveur ; aucune connexion non chiffrée |
+| Recevoir et garder les courriels | IMAP sur une connexion chiffrée (port 993, ou 143 avec STARTTLS), votre mot de passe | GreenMail, un serveur de test ; Murena, utilisé chaque jour depuis le 4 octobre 2026 | Fastmail, Posteo, mailbox.org, celui de votre hébergeur, votre propre Dovecot ; iCloud Mail et Yahoo avec un mot de passe d’application | relever ne change rien sur le serveur ; aucune connexion non chiffrée |
 | Les codes en quelques secondes | IDLE, que la plupart des serveurs ont | — | la plupart des serveurs | sans lui, Sioul regarde toutes les deux minutes |
 | Archiver, supprimer, indésirable, déplacer | MOVE, sinon UIDPLUS ; des dossiers marqués par leur usage | GreenMail : archiver, supprimer | la plupart des serveurs | sans MOVE ni UIDPLUS, l’original reste marqué comme supprimé jusqu’à ce qu’un autre programme le retire ; les dossiers non marqués sont trouvés par leur nom, et une Corbeille, des Indésirables ou des Archives manquants sont créés |
-| Ce que les autres programmes ont changé | — | — | tout serveur | lu, signalé, déplacé ou supprimé ailleurs : vu à chaque passage, en demandant les marques de chaque message, ce qui est plus lent pour les très gros dossiers |
+| Ce que les autres programmes ont changé | — | — | tout serveur | lu, signalé, déplacé ou supprimé ailleurs : vu à chaque passage, en demandant les marques de chaque courriel, ce qui est plus lent pour les très gros dossiers |
 | Envoyer | SMTP sur le port 465 (chiffré) ou 587 (STARTTLS), votre mot de passe | GreenMail | le serveur d’envoi de votre fournisseur | une copie va dans Envoyés (Gmail et Microsoft rangent la leur) ; aucune connexion non chiffrée |
-| Gmail et Google Workspace | un mot de passe d’application, qui demande la validation en deux étapes de Google ; ou « Se connecter avec Google » avec une clé Google à vous | son serveur atteint à la main ; son refus d’un mot de passe habituel reconnu, dans les tests ; la connexion avec Google contre des doublures seulement | Gmail ; les domaines Workspace, reconnus par leurs serveurs de courrier | « Tous les messages » sert d’archive. Pas essayé contre Google lui-même. L’accès à Gmail est restreint par Google : pas avec la clé de Sioul |
-| Outlook.com, Hotmail, Live, MSN ; Microsoft 365 | « Se connecter avec Microsoft », sur la page de Microsoft ; pour Outlook.com, IMAP activé dans ses paramètres ; en professionnel ou scolaire, l’approbation de votre organisation là où elle garde les réglages par défaut de Microsoft, et IMAP et le SMTP authentifié permis pour votre boîte | sa connexion, ses réponses IMAP et SMTP, contre des doublures seulement | Outlook.com et ses domaines par pays ; les domaines Microsoft 365, reconnus par leurs serveurs de courrier | aucun mot de passe, mots de passe d’application compris ; « Non vérifié » sur la page de Microsoft tant que l’éditeur de Sioul n’est pas vérifié ; les agendas et contacts de Microsoft ne sont pas atteints. Pas essayé contre Microsoft lui-même |
-| Le courrier chiffré | OpenPGP, en PGP/MIME | GnuPG 2.4, dans les deux sens | Thunderbird, Proton, tout programme qui lit le PGP/MIME | voir [Identifiants et clés](#logins-and-keys) |
+| Gmail et Google Workspace | un mot de passe d’application, qui demande la validation en deux étapes de Google ; ou « Se connecter avec Google » avec une clé Google à vous | son serveur atteint à la main ; son refus d’un mot de passe habituel reconnu, dans les tests ; la connexion avec Google contre des doublures seulement | Gmail ; les domaines Workspace, reconnus par leurs serveurs de courriel | « Tous les messages » sert d’archive. Pas essayé contre Google lui-même. L’accès à Gmail est restreint par Google : pas avec la clé de Sioul |
+| Outlook.com, Hotmail, Live, MSN ; Microsoft 365 | « Se connecter avec Microsoft », sur la page de Microsoft ; pour Outlook.com, IMAP activé dans ses paramètres ; en professionnel ou scolaire, l’approbation de votre organisation là où elle garde les réglages par défaut de Microsoft, et IMAP et le SMTP authentifié permis pour votre boîte | sa connexion, ses réponses IMAP et SMTP, contre des doublures seulement | Outlook.com et ses domaines par pays ; les domaines Microsoft 365, reconnus par leurs serveurs de courriel | aucun mot de passe, mots de passe d’application compris ; « Non vérifié » sur la page de Microsoft tant que l’éditeur de Sioul n’est pas vérifié ; les agendas et contacts de Microsoft ne sont pas atteints. Pas essayé contre Microsoft lui-même |
+| Les courriels chiffrés | OpenPGP, en PGP/MIME | GnuPG 2.4, dans les deux sens | Thunderbird, Proton, tout programme qui lit le PGP/MIME | voir [Identifiants et clés](#logins-and-keys) |
 
 **Non pris en charge** :
 
-- **Microsoft avec un mot de passe ou un mot de passe d’application** : Microsoft ne prend plus ni l’un ni l’autre des logiciels de courrier (Outlook.com, Hotmail et Live depuis le 16 septembre 2024 ; l’IMAP de Microsoft 365 depuis 2022) : Sioul se connecte sur la page de Microsoft à la place. **Les agendas et contacts de Microsoft** : Microsoft ne propose ni CalDAV ni CardDAV. Les nuages nationaux de Microsoft (21Vianet en Chine, le gouvernement des États-Unis).
-- **Gmail avec la clé Google de Sioul** : Google restreint l’accès complet au courrier, et la clé de Sioul n’est pas vérifiée pour cela. Utilisez un mot de passe d’application, ou une clé Google à vous ([Google](#google)).
+- **Microsoft avec un mot de passe ou un mot de passe d’application** : Microsoft ne prend plus ni l’un ni l’autre des logiciels de courriel (Outlook.com, Hotmail et Live depuis le 16 septembre 2024 ; l’IMAP de Microsoft 365 depuis 2022) : Sioul se connecte sur la page de Microsoft à la place. **Les agendas et contacts de Microsoft** : Microsoft ne propose ni CalDAV ni CardDAV. Les nuages nationaux de Microsoft (21Vianet en Chine, le gouvernement des États-Unis).
+- **Gmail avec la clé Google de Sioul** : Google restreint l’accès complet aux courriels, et la clé de Sioul n’est pas vérifiée pour cela. Utilisez un mot de passe d’application, ou une clé Google à vous ([Google](#google)).
 - Les serveurs JMAP, POP3, et les protocoles propres à Exchange.
 - **Proton Mail par son Bridge** : pas essayé. Sioul ne fait confiance qu’aux certificats auxquels votre système fait confiance : celui du Bridge devrait d’abord être ajouté à votre système. Proton Mail fonctionne comme [site](#sites).
 
-### La même boîte aux lettres dans d’autres programmes {#the-same-mailbox-in-other-programs}
+### La même boîte de courriel dans d’autres programmes {#the-same-mailbox-in-other-programs}
 
-Thunderbird, l’application de courrier de votre téléphone et le webmail voient la même boîte aux lettres :
+Thunderbird, l’application de courriel de votre téléphone et le webmail voient la même boîte de courriel :
 
-- Relever le courrier ne marque rien comme lu. Ouvrir un message dans Sioul le marque comme lu sur le serveur, comme dans tout logiciel de courrier.
-- Archiver, supprimer, indésirable et déplacer arrivent sur le serveur dix secondes après votre geste, comme de vrais déplacements : les autres programmes les voient. **Indésirable** et **Pas indésirable** marquent aussi le message pour le filtre anti-spam du serveur.
+- Relever les courriels ne marque rien comme lu. Ouvrir un courriel dans Sioul le marque comme lu sur le serveur, comme dans tout logiciel de courriel.
+- Archiver, supprimer, indésirable et déplacer arrivent sur le serveur dix secondes après votre geste, comme de vrais déplacements : les autres programmes les voient. **Indésirable** et **Pas indésirable** marquent aussi le courriel pour le filtre anti-spam du serveur.
 - Ce que font les autres programmes (lu, signalé, déplacé, supprimé) revient dans Sioul à chaque passage.
 - Sioul ne crée un dossier Corbeille, Indésirables, Archives ou Envoyés que si le serveur n’en a pas, et ne supprime que les dossiers vides que vous avez créés.
-- Répondre depuis Sioul ne marque pas le message comme répondu sur le serveur.
+- Répondre depuis Sioul ne marque pas le courriel comme répondu sur le serveur.
 - Les brouillons restent sur votre appareil : les autres programmes ne les voient pas.
 
 ## Agendas, tâches et contacts {#calendars-tasks-and-contacts}
@@ -74,7 +74,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 | Une tâche fixée à une heure | un événement dans un agenda qui accepte les événements, lié à la tâche dans les deux sens | ses morceaux, dans les tests | les serveurs dont les agendas acceptent les événements, celui de Nextcloud parmi eux | l’heure n’est pas le début de la tâche, que les serveurs qui vérifient (celui de Nextcloud) refusent avec une heure quand la date demandée n’en a pas : c’est un créneau, un événement dans « Tâches planifiées » ou dans l’agenda que vous choisissez, que toute application d’agenda montre ([Tâches](tasks.md#pinned-to-a-time)). Déplacé ou supprimé dans une autre application, la tâche suit à la synchronisation suivante. Pas encore essayé chez Google, qui ajoute vos rappels par défaut à chaque créneau |
 | Nouvelles listes, nouveaux agendas et carnets d’adresses ; les renommer | les requêtes de la norme pour les créer et les renommer | — | Nextcloud et la plupart des serveurs | pas chez Google |
 | Les catégories des contacts | les catégories de la fiche elle-même | des fiches écrites comme Nextcloud les écrit | Nextcloud Contacts (ses groupes) ; DAVx⁵ réglé pour garder les groupes en catégories | les groupes gardés comme fiches à part (la façon d’Apple, et l’autre réglage de DAVx⁵) ne sont pas lus comme catégories : un tel groupe apparaît comme une fiche |
-| Les invitations | reçues par courrier ; votre réponse repart par courrier | Radicale, une invitation acceptée | le logiciel de courrier de l’organisateur, quel qu’il soit | inviter des personnes depuis Sioul : non pris en charge. La copie dans votre agenda ne garde pas votre réponse : d’autres applications peuvent la montrer sans réponse |
+| Les invitations | reçues par courriel ; votre réponse repart par courriel | Radicale, une invitation acceptée | le logiciel de courriel de l’organisateur, quel qu’il soit | inviter des personnes depuis Sioul : non pris en charge. La copie dans votre agenda ne garde pas votre réponse : d’autres applications peuvent la montrer sans réponse |
 | Changé à deux endroits à la fois | l’étiquette de chaque élément | une imitation dans les tests | tout serveur | la version du serveur l’emporte ; la vôtre est gardée parmi les versions précédentes, à remettre depuis la fenêtre, et la ligne d’état le dit |
 
 ## Google {#google}
@@ -85,7 +85,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 | Les agendas | le CalDAV de Google | — | Google | aucun agenda créé, renommé ou supprimé depuis Sioul ; pas de tâches dans un agenda Google ; Google ajoute vos rappels par défaut à chaque événement, et décale les événements écrits sans fuseau horaire |
 | Les contacts | le CardDAV de Google | — | Google | Google garde l’ancienne version des vCard : les libellés, les anniversaires sans année et les champs plus récents sont perdus, ce qui est dit avant qu’un contact n’y aille ; aucun nouveau carnet d’adresses |
 | Les tâches | Google Tasks | une imitation de Google Tasks | Google Tasks | Google garde un titre, des notes, fait ou non, un jour, et un niveau d’étapes ; le reste est grisé dans le formulaire de la tâche, en disant pourquoi |
-| Gmail | un mot de passe d’application, ou « Se connecter avec Google » avec votre propre clé | voir [Courrier](#mail) | | |
+| Gmail | un mot de passe d’application, ou « Se connecter avec Google » avec votre propre clé | voir [Courriels](#mail) | | |
 
 ## Les autres applications sur les mêmes comptes {#other-apps-on-the-same-accounts}
 
@@ -132,7 +132,7 @@ Nextcloud est le moyen de synchronisation avec lequel Sioul est testé, et le se
 
 | Où | Gratuit | Payant | Remarques |
 |---|---|---|---|
-| [Murena](https://murena.io/signup), France | 1 Go | de 20 Go à 2 To | le compte avec lequel Sioul est testé ; courrier, agendas, contacts et fichiers en un seul |
+| [Murena](https://murena.io/signup), France | 1 Go | de 20 Go à 2 To | le compte avec lequel Sioul est testé ; courriels, agendas, contacts et fichiers en un seul |
 | [Zaclys](https://www.zaclys.com/), France | une offre gratuite | 12 € par an | un petit hébergeur français de logiciels libres |
 | [CHATONS](https://entraide.chatons.org/), France | selon l’hébergeur | selon l’hébergeur | un collectif d’hébergeurs éthiques : cherchez « cloud » ou « Nextcloud » |
 | [Hetzner Storage Share](https://www.hetzner.com/storage/storage-share/), Allemagne | — | à partir de 1 To | un Nextcloud tenu à jour par Hetzner, dans son centre de données de Falkenstein |
@@ -162,7 +162,7 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 |---|---|---|---|---|
 | Les identifiants de Bitwarden | votre compte Bitwarden : bitwarden.com, bitwarden.eu, votre propre serveur ou Vaultwarden, en HTTPS | un vrai coffre dans le cloud de Bitwarden, utilisé chaque jour (6 octobre 2026) ; son déchiffrement vérifié sur les propres valeurs de test de Bitwarden | votre propre serveur ou Vaultwarden | lecture seule : rien n’est écrit dans votre coffre. Duo comme deuxième étape : non pris en charge. Sur un téléphone : pas de clé de sécurité |
 | Les mots de passe de vos comptes | le trousseau de votre système | Linux, utilisé chaque jour | le Gestionnaire d’identification de Windows, le Trousseau d’accès de macOS, le KeyStore d’Android | les mots de passe ne voyagent jamais entre vos appareils |
-| Le courrier chiffré (OpenPGP) | votre clé, faite dans Sioul ou importée de GnuPG | GnuPG 2.4, dans les deux sens : signé, chiffré, falsifié ; une YubiKey 5 portant la clé (8 octobre 2026) : renouvelée, signé, chiffré, ouvert | Thunderbird, Proton, tout programme qui lit le PGP/MIME ; l’annuaire de clés web de leur domaine (WKD), keys.openpgp.org | Sioul garde ses propres clés et ne lit ni n’écrit jamais celles de GnuPG. Les clés sur une clé de sécurité (une carte OpenPGP : YubiKey, Nitrokey) : sur ordinateur, par le service des cartes à puce du système (pcscd sous Linux) ; pas encore essayé avec une vraie clé ; pas encore sur téléphone. Vos clés secrètes restent sur leur appareil |
+| Les courriels chiffrés (OpenPGP) | votre clé, faite dans Sioul ou importée de GnuPG | GnuPG 2.4, dans les deux sens : signé, chiffré, falsifié ; une YubiKey 5 portant la clé (8 octobre 2026) : renouvelée, signé, chiffré, ouvert | Thunderbird, Proton, tout programme qui lit le PGP/MIME ; l’annuaire de clés web de leur domaine (WKD), keys.openpgp.org | Sioul garde ses propres clés et ne lit ni n’écrit jamais celles de GnuPG. Les clés sur une clé de sécurité (une carte OpenPGP : YubiKey, Nitrokey) : sur ordinateur, par le service des cartes à puce du système (pcscd sous Linux) ; pas encore essayé avec une vraie clé ; pas encore sur téléphone. Vos clés secrètes restent sur leur appareil |
 
 ## Antivirus et courrier scanné {#antivirus-and-scanned-letters}
 
