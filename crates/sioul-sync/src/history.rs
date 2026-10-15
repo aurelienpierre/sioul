@@ -7,8 +7,8 @@
 //! 20 versions are kept, and all those of the last 30 days; of a file no longer
 //! here, those of the last 30 days only; never more than a cap in all, the
 //! oldest going first. A note or a paper whose content a record named is kept
-//! by reference (`<time>.sealed`): its content is sealed in the sharing folder
-//! already, and stays there long enough. Any version can be put back
+//! by reference (`<time>.sealed`), 12 days: its content is sealed in the
+//! sharing folder already, and stays there longer than that. Any version can be put back
 //! (`share::put_back`): the file as it is then is kept first, and the next
 //! exchange sends what was put back as a change made here.
 
@@ -19,8 +19,18 @@ pub const VERSIONS: usize = 20;
 /// Days during which every version is kept.
 pub const DAYS: i64 = 30;
 /// Days a version kept by reference stays: its content stays in the sharing
-/// folder 90 days after a record last named it (`blobs::UNUSED_DAYS`).
-pub const SEALED_DAYS: i64 = 60;
+/// folder two weeks after its last use, less a day at most (`blobs::UNUSED_DAYS`,
+/// `blobs::sweep`), counted from when its writer last knew it in use: when
+/// the change replacing it was made there, or read there if later. A version
+/// kept here within a day of that change therefore always opens. A change received later (a
+/// device away for days) may keep a reference whose content went from the
+/// folder meanwhile: putting it back then says it is missing, and writes
+/// nothing. 60 days until 15 October 2026, when the folder kept contents 90.
+/// Kept by reference rather than copied: a copy on every device receiving a
+/// change would cost each one's disk up to the history's cap (a GB, on a
+/// phone too) and hold a change back where the disk is short.
+pub const SEALED_DAYS: i64 = 12;
+const _: () = assert!(SEALED_DAYS < crate::blobs::UNUSED_DAYS - 1);
 /// A version kept by reference: its name ends so.
 const SEALED: &str = ".sealed";
 const DAY: i64 = 86_400_000;
@@ -310,15 +320,18 @@ mod tests {
         assert_eq!(kept.len(), 1);
         assert_eq!((kept[0].sealed.as_deref(), kept[0].size), (Some("a".repeat(64).as_str()), 10_000));
         assert_eq!(version(&root, "papers", "files/papers/scan.pdf", &kept[0].stamp), Some(Kept::Sealed { hash: "a".repeat(64), size: 10_000 }));
-        // References go after 60 days, versions of a file no longer here after 30, whatever their number.
+        // References go after `SEALED_DAYS` (12 days; 60 until 15 October
+        // 2026, when this test pruned at 40 and 61 days), versions of a file
+        // no longer here after 30, whatever their number.
         keep(&root, "notes", "files/notes/gone.md", &file, start).unwrap();
         keep(&root, "notes", "files/notes/here.md", &file, start).unwrap();
+        prune(&root, start + SEALED_DAYS * DAY, u64::MAX, &|_, _| true);
+        assert_eq!(versions(&root, "papers", "files/papers/scan.pdf").len(), 1);
+        prune(&root, start + SEALED_DAYS * DAY + 1, u64::MAX, &|_, _| true);
+        assert!(versions(&root, "papers", "files/papers/scan.pdf").is_empty());
         prune(&root, start + 40 * DAY, u64::MAX, &|_, file| file != "files/notes/gone.md");
         assert!(versions(&root, "notes", "files/notes/gone.md").is_empty());
         assert_eq!(versions(&root, "notes", "files/notes/here.md").len(), 1);
-        assert_eq!(versions(&root, "papers", "files/papers/scan.pdf").len(), 1);
-        prune(&root, start + 61 * DAY, u64::MAX, &|_, _| true);
-        assert!(versions(&root, "papers", "files/papers/scan.pdf").is_empty());
         // Past the cap, the oldest copies go first.
         for n in 0..5 {
             keep(&root, "notes", "files/notes/big.md", &file, start + 70 * DAY + n).unwrap();

@@ -95,6 +95,8 @@ const OVERLAP: u64 = 1 << 20;
 
 const XML: &str = "application/xml; charset=utf-8";
 const LIST: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>"#;
+/// One file's properties (`Server::stat`): a listing's, and its time there.
+const STAT: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><d:getlastmodified/><oc:checksums/></d:prop></d:propfind>"#;
 /// Nextcloud's own properties: the checksums a file was sent with (`oc:checksums`).
 const OC: &str = "http://owncloud.org/ns";
 const PRINCIPAL: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>"#;
@@ -457,6 +459,9 @@ pub(crate) struct Item {
     pub(crate) size: u64,
     /// The checksums the server keeps of it, as it says them ("SHA1:… MD5:…"); "" when none.
     pub(crate) checksum: String,
+    /// Its time there (Unix seconds), as the `PUT` that wrote it said it
+    /// (`X-OC-Mtime`): asked of one file (`Server::stat`), never in a listing.
+    pub(crate) modified: Option<i64>,
 }
 
 /// What came of a file asked from a place in it: where it starts, its bytes,
@@ -565,15 +570,15 @@ impl Server {
             }
             let Some(name) = path.strip_prefix(&me).and_then(|rest| rest.strip_prefix('/')).filter(|n| !n.is_empty() && !n.contains('/')) else { continue };
             let size = response.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0);
-            listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size, checksum: sums.get(&path).cloned().unwrap_or_default() });
+            listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size, checksum: sums.get(&path).cloned().unwrap_or_default(), modified: None });
         }
         Ok(listing)
     }
 
-    /// One file as the server has it now (`Depth: 0`): its ETag, size and
-    /// checksums; none when it is not there.
+    /// One file as the server has it now (`Depth: 0`): its ETag, size,
+    /// checksums and time; none when it is not there.
     pub(crate) fn stat(&self, url: &str) -> Result<Option<Item>, SyncError> {
-        let mut response = self.request(false, "PROPFIND", url, &[("Depth", "0"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
+        let mut response = self.request(false, "PROPFIND", url, &[("Depth", "0"), ("Content-Type", XML)], STAT.as_bytes().to_vec())?;
         match response.status().as_u16() {
             207 => {}
             404 => return Ok(None),
@@ -587,6 +592,7 @@ impl Server {
             etag: r.text(DAV, "getetag").unwrap_or_default(),
             size: r.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0),
             checksum: sums.get(&dav::path_key(&dav::absolute(url, &r.href))).cloned().unwrap_or_default(),
+            modified: r.text(DAV, "getlastmodified").and_then(|t| jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(t.trim()).ok()).map(|t| t.as_second()),
         }))
     }
 
@@ -1267,6 +1273,9 @@ pub struct Pulled {
     /// This device's records found longer there than here (a sync app put an
     /// older copy back here): left as they are there (`send`).
     pub longer: usize,
+    /// This device's files taken out there: its records past their time and
+    /// the sealed files it swept (`send`).
+    pub taken_out: usize,
     /// This device's files found otherwise there, by kind and size, for the
     /// log ("records 70708 here, 71234 there"; eight at most): never a name nor a content.
     pub differ: Vec<String>,
@@ -2623,7 +2632,9 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
                 files
             }
         };
-        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane }.run(&files, check, again));
+        // Listed, its records past their time still there are taken out (`Sender::take_out_past`).
+        let past = if lane == Lane::Main && check { crate::share::rounds_past(folder, memory, own, now * 1000) } else { None };
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past }.run(&files, check, again));
         match outcome {
             Ok(()) => {
                 sending.tries = 0;
@@ -2765,6 +2776,9 @@ struct Sender<'a> {
     now: i64,
     frugal: bool,
     lane: Lane,
+    /// With a listing: this device's rounds below this one are past their
+    /// time (`share::rounds_past`), taken out there when still listed.
+    past: Option<u32>,
 }
 
 impl Sender<'_> {
@@ -2790,6 +2804,9 @@ impl Sender<'_> {
         }
         if self.lane == Lane::Main {
             self.take_out_gone()?;
+            if let (Some(listed), Some(past)) = (&listed, self.past) {
+                self.take_out_past(listed, past)?;
+            }
         }
         Ok(())
     }
@@ -2999,22 +3016,83 @@ impl Sender<'_> {
     /// sent (`If-Match`): its records past their time (removed here once
     /// every device read past them), never its last round, and nothing while
     /// none of its records is here; the sealed files it swept. Gone there
-    /// already, or changed there since: forgotten all the same. Another file
-    /// gone here (a claim of a part no longer kept) is forgotten, left there.
+    /// already: forgotten. Changed there since (`412`): looked at there, and
+    /// taken out when it is still what this device sent (`again_after_412`).
+    /// Another file gone here (a claim of a part no longer kept) is
+    /// forgotten, left there.
     fn take_out_gone(&mut self) -> Result<(), Stop> {
         let latest = own_latest(self.folder, self.own);
-        let gone: Vec<(String, String)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.etag.clone())).collect();
-        for (relative, etag) in gone {
+        let gone: Vec<(String, Sent)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.clone())).collect();
+        for (relative, sent) in gone {
             let round = relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok());
             let past = matches!(kind_of(&relative), Some((Kind::Round, _))) && round.zip(latest).is_some_and(|(round, latest)| round < latest);
             let swept = relative.strip_prefix("blobs/").is_some_and(|name| !self.sealed.contains_key(name));
             if past || swept {
-                match self.server.delete(&self.url(&relative), Some(&etag).filter(|e| !e.is_empty()).map(String::as_str))? {
-                    200 | 204 | 404 | 412 => {}
+                match self.server.delete(&self.url(&relative), Some(&sent.etag).filter(|e| !e.is_empty()).map(String::as_str))? {
+                    200 | 204 => self.pulled.taken_out += 1,
+                    404 => {}
+                    412 => self.again_after_412(&relative, &sent, past)?,
                     status => return Err(Stop::Failed(SyncError::Server(format!("DELETE: {status}")))),
                 }
             }
             if past || swept || !matches!(kind_of(&relative), Some((Kind::Round, _))) {
+                self.sending.sent.remove(&relative);
+                self.sending.held.remove(&relative);
+            }
+        }
+        Ok(())
+    }
+
+    /// One of this device's files to take out there, refused as changed
+    /// there since it went (`412`). A sync app sends the same file again:
+    /// eDrive sends each file Sioul sent, the same bytes, and Nextcloud gives
+    /// it a new ETag. Until 15 October 2026 such a file was forgotten here and
+    /// stayed on the server for good (a phone's past full rounds, 47 MB on the
+    /// owner's). Looked at there now: of the size this device sent (records
+    /// only grow and only this device writes them; a sealed file's name is
+    /// its content's), and for a sealed file still dated as this device sent
+    /// it, it is taken out, over its ETag there now. A sealed file dated
+    /// otherwise was sent there again by another device that uses that
+    /// content again (`blobs::put` makes it fresh, and its sync app sends the
+    /// new time): its use, never taken out. Otherwise, or refused again, or
+    /// any other answer: left there, forgotten here (this device's past
+    /// rounds are looked for again at each listing: `take_out_past`).
+    fn again_after_412(&mut self, relative: &str, sent: &Sent, records: bool) -> Result<(), Stop> {
+        let url = self.url(relative);
+        let Some(there) = self.server.stat(&url)? else { return Ok(()) };
+        let dated = records || there.modified == Some((sent.modified / 1_000_000_000) as i64);
+        if there.dir || there.etag.is_empty() || there.size != sent.size || !dated {
+            return Ok(());
+        }
+        if matches!(self.server.delete(&url, Some(&there.etag))?, 200 | 204) {
+            self.pulled.taken_out += 1;
+        }
+        Ok(())
+    }
+
+    /// This device's records past their time still listed there (below
+    /// `past`, `share::rounds_past`: every device heard lately read past
+    /// them, and none is its last full round or one continuing it) and gone
+    /// here: taken out over their ETag there, whatever sent them, so that
+    /// those a sync app left there (eDrive passes no deletion on), or that
+    /// were forgotten here before 15 October 2026, go too. Only files named
+    /// as this device's records, never another device's file; nothing while
+    /// none of its records is here. Refused, or any other answer: left for
+    /// the next listing, the send going on.
+    fn take_out_past(&mut self, listed: &BTreeMap<String, Item>, past: u32) -> Result<(), Stop> {
+        if own_latest(self.folder, self.own).is_none() {
+            return Ok(());
+        }
+        let old: Vec<(String, String)> = listed
+            .iter()
+            .filter(|(relative, item)| !item.dir && !item.etag.is_empty() && matches!(kind_of(relative), Some((Kind::Round, id)) if id == self.own))
+            .filter(|(relative, _)| relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok()).is_some_and(|round| round < past))
+            .filter(|(relative, _)| !self.folder.join(relative).exists())
+            .map(|(relative, item)| (relative.clone(), item.etag.clone()))
+            .collect();
+        for (relative, etag) in old {
+            if matches!(self.server.delete(&self.url(&relative), Some(&etag))?, 200 | 204) {
+                self.pulled.taken_out += 1;
                 self.sending.sent.remove(&relative);
                 self.sending.held.remove(&relative);
             }
@@ -3183,7 +3261,7 @@ pub(crate) mod fake {
 
         fn propfind(&self, request: &Request, relative: &str, path: &Path) -> Reply {
             let Ok(meta) = std::fs::metadata(path) else { return (404, Vec::new(), Vec::new()) };
-            let mut out = entry(&href(relative, meta.is_dir()), meta.is_dir(), &etag_of(path), meta.len(), self.sum_of(path));
+            let mut out = entry(&href(relative, meta.is_dir()), meta.is_dir(), &etag_of(path), meta.len(), self.sum_of(path), date_of(path));
             if meta.is_dir() && request.header("Depth") != Some("0") {
                 let mut children: Vec<_> = std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok).collect();
                 children.sort_by_key(|e| e.file_name());
@@ -3191,7 +3269,7 @@ pub(crate) mod fake {
                     let name = child.file_name().to_string_lossy().to_string();
                     let inside = if relative.is_empty() { name } else { format!("{relative}/{name}") };
                     let dir = child.file_type().is_ok_and(|t| t.is_dir());
-                    out += &entry(&href(&inside, dir), dir, &etag_of(&child.path()), child.metadata().map_or(0, |m| m.len()), self.sum_of(&child.path()));
+                    out += &entry(&href(&inside, dir), dir, &etag_of(&child.path()), child.metadata().map_or(0, |m| m.len()), self.sum_of(&child.path()), date_of(&child.path()));
                 }
             }
             (207, vec![("Content-Type", "application/xml; charset=utf-8".into())], multistatus(&out))
@@ -3307,11 +3385,19 @@ pub(crate) mod fake {
         *GENERATIONS.lock().unwrap().entry(path.to_path_buf()).or_insert(0) += 1;
     }
 
-    fn entry(href: &str, dir: bool, etag: &str, size: u64, sum: Option<String>) -> String {
+    fn entry(href: &str, dir: bool, etag: &str, size: u64, sum: Option<String>, modified: Option<String>) -> String {
         let kind = if dir { "<d:resourcetype><d:collection/></d:resourcetype>" } else { "<d:resourcetype/>" };
         let length = if dir { String::new() } else { format!("<d:getcontentlength>{size}</d:getcontentlength>") };
         let sums = sum.map(|sum| format!("<oc:checksums><oc:checksum>{sum}</oc:checksum></oc:checksums>")).unwrap_or_default();
-        format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{kind}<d:getetag>&quot;{etag}&quot;</d:getetag>{length}{sums}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+        let modified = modified.map(|at| format!("<d:getlastmodified>{at}</d:getlastmodified>")).unwrap_or_default();
+        format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{kind}<d:getetag>&quot;{etag}&quot;</d:getetag>{length}{modified}{sums}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+    }
+
+    /// A file's time there, as Nextcloud says it (an HTTP date, to the second):
+    /// the `X-OC-Mtime` its last `PUT` gave, or its time on the disk.
+    fn date_of(path: &Path) -> Option<String> {
+        let seconds = std::fs::metadata(path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        jiff::fmt::rfc2822::DateTimePrinter::new().timestamp_to_rfc9110_string(&jiff::Timestamp::from_second(seconds as i64).ok()?).ok()
     }
 
     pub(crate) fn href(relative: &str, dir: bool) -> String {
@@ -3523,6 +3609,21 @@ mod tests {
         fn exchange(&self, folder: &Path, now: i64) -> Outcome {
             let outcome = crate::share::exchange(&Sharing { folder, computer: &self.id, key: &KEY, memory: &self.memory, files: false, hurry: None }, &self.stores(), now * 1000).unwrap();
             crate::devices::change(&crate::devices::own_path(&self.roots.state), Some((folder, &KEY)), |e| e.exported(now * 1000, outcome.wrote, now)).unwrap();
+            outcome
+        }
+
+        /// A whole exchange (seconds) with `notes` as its notes folder, notes,
+        /// papers and texts shared besides the parts shared by default.
+        fn exchange_all_parts(&self, folder: &Path, now: i64, notes: &Path) -> Outcome {
+            let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+            let stores = crate::share::stores_of(&config, &self.roots, &|part| matches!(part, "notes" | "papers" | "texts") || crate::share::shared_by_default(part, &config));
+            let outcome = crate::share::exchange(&Sharing { folder, computer: &self.id, key: &KEY, memory: &self.memory, files: true, hurry: None }, &stores, now * 1000).unwrap();
+            // As this Sioul's window says it: it keeps sealed files two weeks.
+            crate::devices::change(&crate::devices::own_path(&self.roots.state), Some((folder, &KEY)), |e| {
+                e.exported(now * 1000, outcome.wrote, now);
+                e.keeping = crate::blobs::KEEPING;
+            })
+            .unwrap();
             outcome
         }
 
@@ -5874,5 +5975,352 @@ mod tests {
         assert_eq!(fetch(&w, DUE + 3_000, false).fetched, 2, "14 MiB, then the third past 16");
         assert_eq!(fetch(&w, DUE + 3_001, false).fetched, 1);
         assert!(large.iter().all(|n| blobs.join(n).exists()));
+    }
+
+    // ------------------------------------------------ taken out there, whatever sent it again
+
+    /// The phone's records' rounds there, by number.
+    fn rounds_there(server: &Path, id: &str) -> BTreeSet<u32> {
+        walk(server).into_keys().filter(|r| r.starts_with(id) && r.ends_with(".jsonl")).filter_map(|r| r.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse().ok())).collect()
+    }
+
+    /// eDrive sends again each file Sioul sent, the same bytes, and Nextcloud
+    /// gives it a new ETag: a past round or a swept sealed file then met `412`
+    /// and was forgotten, left on the server for good (a phone's past full
+    /// rounds, 47 MB, 14 October 2026). Now looked at there and taken out over
+    /// its ETag there when it is still what this device sent: of that size,
+    /// and a sealed file dated as it was sent. A sealed file another device
+    /// sent there again with a new time (it uses that content again), and a
+    /// round grown there, stay; nothing of them is asked again.
+    #[test]
+    fn what_edrive_sent_again_is_taken_out_once_past() {
+        let w = World::new("edrive-again");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let round = |n: u32| format!("{}-{n}.jsonl", w.phone.id);
+        for n in 40..=43 {
+            put(&w.phone_folder, &round(n), &format!("{{\"round\":{n}}}\n").repeat(n as usize));
+        }
+        let seal = |text: &str| {
+            let source = w.base.join(format!("{}.md", text.len()));
+            std::fs::write(&source, text.repeat(200)).unwrap();
+            let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+            crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+            let name = crate::blobs::name(&KEY, &hash);
+            let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+            (name, size)
+        };
+        let (mine, mine_size) = seal("a note of the phone's\n");
+        let (used, used_size) = seal("a note the desk uses again\n");
+        let sealed: BTreeMap<String, u64> = [(mine.clone(), mine_size), (used.clone(), used_size)].into();
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &sealed, DUE + 10, false, TEST);
+        assert!(sent.problem.is_none() && sent.taken_out == 0, "{sent:?}");
+        {
+            let _turn = w.fake.turn.lock().unwrap();
+            // eDrive sends them again, the same bytes, dated as on the phone: new ETags there.
+            for relative in [round(40), round(41), format!("blobs/{mine}"), format!("blobs/{used}")] {
+                sync_up(&w.phone_folder.join(&relative), &w.server.join(&relative));
+            }
+            // Round 41 longer there: eDrive carried a later copy than Sioul's last send.
+            let grown = w.server.join(round(41));
+            let mut bytes = std::fs::read(&grown).unwrap();
+            bytes.extend_from_slice(b"{\"later\":1}\n");
+            std::fs::write(&grown, bytes).unwrap();
+            fake::bump(&grown);
+            // The desk uses the second content again: made fresh, its sync app sends it with the new time.
+            let again = w.server.join("blobs").join(&used);
+            fake::bump(&again);
+            set_mtime(&again, SystemTime::now() + Duration::from_secs(3600));
+        }
+        // Rounds 40 and 41 past their time here, both sealed files swept.
+        for relative in [round(40), round(41), format!("blobs/{mine}"), format!("blobs/{used}")] {
+            std::fs::remove_file(w.phone_folder.join(relative)).unwrap();
+        }
+        w.fake.forget_seen();
+        let gone = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, false, TEST);
+        assert!(gone.problem.is_none(), "{gone:?}");
+        assert_eq!(gone.taken_out, 2, "{:?}", w.fake.seen());
+        assert!(!w.server.join(round(40)).exists(), "the past round eDrive sent again: taken out");
+        assert!(!w.server.join("blobs").join(&mine).exists(), "the swept sealed file eDrive sent again: taken out");
+        assert!(w.server.join("blobs").join(&used).exists(), "sent again with a new time, by a device that uses it: left");
+        assert!(w.server.join(round(41)).exists(), "longer there: left (a listing looks at it again)");
+        assert!(w.server.join(round(42)).exists() && w.server.join(round(43)).exists(), "its last rounds stay");
+        let deletes: Vec<String> = w.fake.seen().into_iter().filter(|l| l.starts_with("DELETE ")).collect();
+        assert_eq!(deletes.len(), 6, "each refused once (412), two taken out over their ETag there: {deletes:?}");
+        assert!(deletes.iter().all(|l| l.contains(&w.phone.id) || l.contains(&mine) || l.contains(&used)), "never another device's file: {deletes:?}");
+        // Forgotten here: nothing asked again.
+        w.fake.forget_seen();
+        let quiet = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 30, false, TEST);
+        assert!(quiet.problem.is_none() && quiet.taken_out == 0, "{quiet:?}");
+        assert!(w.fake.seen().is_empty(), "{:?}", w.fake.seen());
+    }
+
+    /// The phone's rounds past their time that a sync app left on the server
+    /// (eDrive passes no deletion on) or that an older Sioul forgot there go
+    /// at the next listing, every six hours: below its last full round, read
+    /// past by every device heard lately (a device that read less holds back
+    /// the rest), only its own names, never another device's file, and
+    /// nothing while none of its records is here.
+    #[test]
+    fn past_rounds_left_on_the_server_go_at_the_next_listing() {
+        let w = World::new("past-rounds");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let mut edrive = EDrive::default();
+        edrive.scan(&w.fake, &w.server, &w.phone_folder);
+        let lines = |from: usize, count: usize| -> String { (from..from + count).map(|n| format!("phone-sender-{n:06}@example.org\n")).collect() };
+        let mut list = String::new();
+        let mut left_there: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+        let mut now = DUE;
+        // The phone appends much: rounds, full rounds, its past ones taken out
+        // here; eDrive sends each file again after Sioul.
+        for step in 0..24 {
+            list.push_str(&lines(step * 1_500, 1_500));
+            put(&w.phone.roots.config, "known-senders.txt", &list);
+            now += 600;
+            w.phone.exchange(&w.phone_folder, now);
+            let sent = phone_sends(&w, now + 1, false);
+            assert!(sent.problem.is_none(), "step {step}: {sent:?}");
+            edrive.scan(&w.fake, &w.server, &w.phone_folder);
+            // What the server held of them, kept aside: as an older Sioul left them there.
+            for (relative, bytes) in walk(&w.server).into_iter().filter(|(r, _)| r.starts_with(&w.phone.id) && r.ends_with(".jsonl")) {
+                left_there.insert(relative, bytes);
+            }
+            w.desk.exchange(&w.server, now + 30);
+            edrive.scan(&w.fake, &w.server, &w.phone_folder);
+        }
+        let past = crate::share::rounds_past(&w.phone_folder, &w.phone.memory, &w.phone.id, (now + 60) * 1000).unwrap();
+        assert!(past > 3, "several rounds past their time: below {past}");
+        // As they went past, eDrive's copies were taken out too.
+        assert!(rounds_there(&w.server, &w.phone.id).iter().all(|r| *r >= past), "{:?}, below {past}", rounds_there(&w.server, &w.phone.id));
+        assert!(rounds_there(&w.phone_folder, &w.phone.id).iter().all(|r| *r >= past));
+        let put_back = |w: &World| {
+            let _turn = w.fake.turn.lock().unwrap();
+            for (relative, bytes) in &left_there {
+                if !w.server.join(relative).exists() {
+                    put_bytes(&w.server, relative, bytes);
+                    fake::bump(&w.server.join(relative));
+                }
+            }
+        };
+        // Every past round back there, as an older Sioul left them; a stranger's past round beside.
+        put_back(&w);
+        let stranger = uuid::Uuid::new_v4().to_string();
+        put(&w.server, &format!("{stranger}-1.jsonl"), "{\"n\":1}\n");
+        let desks: BTreeMap<String, Vec<u8>> = walk(&w.server).into_iter().filter(|(r, _)| r.contains(&w.desk.id)).collect();
+        let below: Vec<u32> = rounds_there(&w.server, &w.phone.id).into_iter().filter(|r| *r < past).collect();
+        assert!(below.len() >= 3, "{below:?}");
+        // Within six hours of the last listing: not looked for.
+        w.fake.forget_seen();
+        assert_eq!(phone_sends(&w, now + 120, false).taken_out, 0);
+        assert!(w.fake.seen().iter().all(|l| !l.starts_with("DELETE ")));
+        // A device that read the phone only to an earlier round holds back the rounds from there.
+        let lagging = uuid::Uuid::new_v4().to_string();
+        let held = below[below.len() / 2];
+        let notes = |read: u32, at: i64| format!("at = {at}\nround = 1\n\n[read]\n\"{}\" = {read}\n", w.phone.id);
+        put(&w.phone_folder, &format!("{lagging}.toml"), &notes(held, now + 100));
+        let checked = phone_sends(&w, now + 6 * 3600 + 200, false);
+        assert!(checked.problem.is_none(), "{checked:?}");
+        assert_eq!(checked.taken_out, below.iter().filter(|r| **r < held).count(), "{checked:?}");
+        assert_eq!(rounds_there(&w.server, &w.phone.id).into_iter().filter(|r| *r < past).collect::<Vec<_>>(), below.iter().copied().filter(|r| *r >= held).collect::<Vec<_>>(), "from round {held} on, held back");
+        // It read on: the rest goes at the next listing.
+        put(&w.phone_folder, &format!("{lagging}.toml"), &notes(past, now + 6 * 3600 + 300));
+        assert!(phone_sends(&w, now + 12 * 3600 + 400, false).taken_out > 0);
+        assert!(rounds_there(&w.server, &w.phone.id).iter().all(|r| *r >= past));
+        // Nothing while none of its records is here.
+        put_back(&w);
+        let aside = w.base.join("rounds-aside");
+        std::fs::create_dir_all(&aside).unwrap();
+        let mine: Vec<String> = walk(&w.phone_folder).into_keys().filter(|r| r.starts_with(&w.phone.id) && r.ends_with(".jsonl")).collect();
+        for relative in &mine {
+            std::fs::rename(w.phone_folder.join(relative), aside.join(relative)).unwrap();
+        }
+        assert_eq!(phone_sends(&w, now + 18 * 3600 + 500, false).taken_out, 0, "none of its records here: nothing taken out");
+        assert!(rounds_there(&w.server, &w.phone.id).iter().any(|r| *r < past));
+        for relative in &mine {
+            std::fs::rename(aside.join(relative), w.phone_folder.join(relative)).unwrap();
+        }
+        assert!(phone_sends(&w, now + 24 * 3600 + 600, false).taken_out > 0);
+        assert!(rounds_there(&w.server, &w.phone.id).iter().all(|r| *r >= past));
+        // Never another device's file.
+        assert!(w.server.join(format!("{stranger}-1.jsonl")).exists());
+        assert_eq!(walk(&w.server).into_iter().filter(|(r, _)| r.contains(&w.desk.id)).collect::<BTreeMap<_, _>>(), desks);
+    }
+
+    // ------------------------------------------------ weeks of edits: what the server holds settles
+
+    /// Bytes that do not compress, the same for the same seed: a recording, a scan.
+    fn noise(length: usize, seed: u32) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(2_654_435_761).wrapping_add(1);
+        (0..length)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect()
+    }
+
+    /// A file's content by its sealed file's name.
+    fn content_name(path: &Path) -> String {
+        crate::blobs::name(&KEY, &crate::blobs::hash_file(path).unwrap().0)
+    }
+
+    /// Six weeks of a desk and a phone sharing through a Nextcloud, the phone
+    /// under eDrive (it sends each file again, and never passes a deletion
+    /// on) and sending its own files itself, as on 14 October 2026: 36 notes
+    /// edited a day on the desk, a recording saved in three takes minutes
+    /// apart every six days, a paper replaced every ten, a note of the
+    /// phone's each day, the phone's texts growing as an archive (150 a
+    /// day, from 3,000). What the server holds settles: every content
+    /// replaced leaves it within two weeks and a day, whichever device
+    /// sealed it; no device's records below its floor stay there; a
+    /// recording's earlier takes never reach it. Past its current contents
+    /// and records, the server holds at most what the last two weeks of edits
+    /// replaced, the same in the sixth week as in the fourth. The daily
+    /// figures are printed (`--nocapture`).
+    #[test]
+    fn six_weeks_of_edits_what_the_server_holds_settles() {
+        crate::share::LARGE_SETTLE.with(|s| s.set(crate::share::LARGE_SETTLING));
+        let w = World::new("six-weeks");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let (dn, pn) = (w.base.join("desk-notes"), w.base.join("phone-notes"));
+        std::fs::create_dir_all(&dn).unwrap();
+        std::fs::create_dir_all(&pn).unwrap();
+        let texts = w.phone.roots.data.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG).join(format!("{}.jsonl", w.phone.id));
+        std::fs::create_dir_all(texts.parent().unwrap()).unwrap();
+        let text_line = |n: usize| format!("{{\"n\":{n},\"padded\":\"{}\"}}\n", "x".repeat(230));
+        std::fs::write(&texts, (0..3_000).map(text_line).collect::<String>()).unwrap();
+        let mut texts_made = 3_000;
+        // Sealed files dated long ago in real time, the same in every copy:
+        // the sweeps then go by when each content was last used, in the
+        // simulation's time, as on devices whose files age with the days.
+        let long_ago = SystemTime::now() - Duration::from_secs(365 * 86_400);
+        let age_sealed = |folder: &Path| {
+            for entry in std::fs::read_dir(folder.join("blobs")).into_iter().flatten().filter_map(Result::ok) {
+                if !entry.file_name().to_string_lossy().starts_with('.') && entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t > long_ago + Duration::from_secs(86_400)) {
+                    set_mtime(&entry.path(), long_ago);
+                }
+            }
+        };
+        let mut edrive = EDrive::default();
+        // Each content replaced, and when (seconds); the sizes sealed, as seen there.
+        let mut replaced: BTreeMap<String, i64> = BTreeMap::new();
+        let mut sizes: BTreeMap<String, u64> = BTreeMap::new();
+        let mut takes: Vec<String> = Vec::new();
+        let (mut last_song, mut last_paper): (Option<String>, Option<String>) = (None, None);
+        let (mut phone_floor, mut desk_floor, mut taken_out) = (0u32, 0u32, 0usize);
+        let mut overheads: Vec<u64> = Vec::new();
+        let mut table: Vec<String> = Vec::new();
+        let start = DUE + 3_600;
+        let days = 42i64;
+        for day in 0..days {
+            for slot in 0..3i64 {
+                let now = start + day * 86_400 + slot * 4 * 3_600;
+                // The desk: twelve notes edited, each a content of its own.
+                for i in 0..12usize {
+                    let n = (day as usize * 36 + slot as usize * 12 + i) % 50;
+                    let path = dn.join(format!("note-{n:02}.md"));
+                    if path.is_file() {
+                        replaced.insert(content_name(&path), now);
+                    }
+                    std::fs::write(&path, format!("note {n}, day {day}, edit {slot}-{i}\n").repeat(10 + (n * 7) % 90)).unwrap();
+                }
+                // A recording, three takes minutes apart: the last one settles.
+                if day % 6 == 1 {
+                    let song = dn.join("scenes").join("song.mp3");
+                    std::fs::create_dir_all(song.parent().unwrap()).unwrap();
+                    std::fs::write(&song, noise((1 << 20) + 100_000, (day * 10 + slot) as u32)).unwrap();
+                    let name = content_name(&song);
+                    if slot < 2 {
+                        takes.push(name);
+                    } else {
+                        set_mtime(&song, SystemTime::now() - Duration::from_secs(11 * 60));
+                        if let Some(old) = last_song.replace(name) {
+                            replaced.insert(old, now);
+                        }
+                    }
+                }
+                // A paper replaced every ten days.
+                if day % 10 == 2 && slot == 1 {
+                    let paper = dn.join(sioul_core::papers::FOLDER).join("scan.pdf");
+                    std::fs::create_dir_all(paper.parent().unwrap()).unwrap();
+                    std::fs::write(&paper, noise(400_000, 1_000 + day as u32)).unwrap();
+                    if let Some(old) = last_paper.replace(content_name(&paper)) {
+                        replaced.insert(old, now);
+                    }
+                }
+                w.desk.exchange_all_parts(&w.server, now, &dn);
+                age_sealed(&w.server);
+                // The phone: fifty texts, its own note once a day; its files sent, then eDrive's turn.
+                {
+                    let mut log = std::fs::OpenOptions::new().append(true).open(&texts).unwrap();
+                    for _ in 0..50 {
+                        log.write_all(text_line(texts_made).as_bytes()).unwrap();
+                        texts_made += 1;
+                    }
+                }
+                if slot == 1 {
+                    let journal = pn.join("journal.md");
+                    if journal.is_file() {
+                        replaced.insert(content_name(&journal), now);
+                    }
+                    std::fs::write(&journal, format!("the phone's own note, day {day}\n").repeat(20)).unwrap();
+                }
+                w.phone.exchange_all_parts(&w.phone_folder, now + 60, &pn);
+                age_sealed(&w.phone_folder);
+                phone_floor = crate::share::rounds_past(&w.phone_folder, &w.phone.memory, &w.phone.id, (now + 60) * 1000).unwrap();
+                let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &crate::share::own_sealed(&w.phone.memory, &w.phone.id), now + 61, false, TEST);
+                assert!(sent.problem.is_none(), "day {day}: {sent:?}");
+                taken_out += sent.taken_out;
+                edrive.scan(&w.fake, &w.server, &w.phone_folder);
+                w.desk.exchange_all_parts(&w.server, now + 120, &dn);
+                age_sealed(&w.server);
+                desk_floor = crate::share::rounds_past(&w.server, &w.desk.memory, &w.desk.id, (now + 120) * 1000).unwrap();
+                edrive.scan(&w.fake, &w.server, &w.phone_folder);
+            }
+            // What the server holds at the end of the day.
+            let end = start + day * 86_400 + 8 * 3_600 + 120;
+            let there = walk(&w.server);
+            let total: u64 = there.values().map(|b| b.len() as u64).sum();
+            let blobs: BTreeMap<String, u64> = there.iter().filter_map(|(r, b)| r.strip_prefix("blobs/").map(|n| (n.to_string(), b.len() as u64))).collect();
+            for (name, size) in &blobs {
+                sizes.entry(name.clone()).or_insert(*size);
+            }
+            let current: BTreeSet<String> = [&dn, &pn].into_iter().flat_map(|dir| walk(dir).into_keys().map(move |r| content_name(&dir.join(r)))).collect();
+            let mut overhead = 0;
+            for (name, size) in blobs.iter().filter(|(n, _)| !current.contains(*n)) {
+                let at = replaced.get(name).copied().unwrap_or_else(|| panic!("day {day}: a sealed file there that no edit replaced"));
+                assert!(end - at <= 15 * 86_400, "day {day}: a content replaced {} days ago still there", (end - at) / 86_400);
+                overhead += size;
+            }
+            assert!(takes.iter().all(|t| !blobs.contains_key(t)), "day {day}: a take saved minutes before the next reached the server");
+            let (phone_rounds, desk_rounds) = (rounds_there(&w.server, &w.phone.id), rounds_there(&w.server, &w.desk.id));
+            assert!(phone_rounds.iter().all(|r| *r >= phone_floor), "day {day}: the phone's rounds {phone_rounds:?}, below {phone_floor}");
+            assert!(desk_rounds.iter().all(|r| *r >= desk_floor), "day {day}: the desk's rounds {desk_rounds:?}, below {desk_floor}");
+            let bytes_of = |id: &str| -> u64 { there.iter().filter(|(r, _)| r.starts_with(id) && r.ends_with(".jsonl")).map(|(_, b)| b.len() as u64).sum() };
+            let current_bytes: u64 = blobs.iter().filter(|(n, _)| current.contains(*n)).map(|(_, s)| s).sum();
+            let replaced_bytes: u64 = replaced.keys().filter_map(|n| sizes.get(n)).sum();
+            table.push(format!(
+                "day {day:2}: {:>6} KB there; current sealed {:>6} KB; replaced, still there {:>5} KB ({:>3} files); phone's records {:>5} KB in {:>2} rounds ({:?}); desk's {:>4} KB in {} rounds; replaced since day 0 {:>6} KB",
+                total / 1000,
+                current_bytes / 1000,
+                overhead / 1000,
+                blobs.keys().filter(|n| !current.contains(*n)).count(),
+                bytes_of(&w.phone.id) / 1000,
+                phone_rounds.len(),
+                phone_rounds.first().zip(phone_rounds.last()).map(|(a, b)| (*a, *b)).unwrap_or_default(),
+                bytes_of(&w.desk.id) / 1000,
+                desk_rounds.len(),
+                replaced_bytes / 1000,
+            ));
+            overheads.push(overhead);
+        }
+        eprintln!("{}", table.join("\n"));
+        eprintln!("eDrive: {} uploads, {} refused; the phone's sends took out {taken_out} files there", edrive.uploads, edrive.refusals);
+        // The same in the sixth week as in the fourth: two weeks of edits, one recording more at most.
+        let weeks = |from: usize, to: usize| overheads[from..to].iter().copied().max().unwrap_or(0);
+        assert!(weeks(35, 42) <= weeks(21, 28) + (1 << 20) + 200_000, "settled: {} then {}", weeks(21, 28), weeks(35, 42));
+        assert!(taken_out > 0 && edrive.uploads > 0, "eDrive sent the phone's files again, and Sioul took them out there");
+        crate::share::LARGE_SETTLE.with(|s| s.set(0));
     }
 }
