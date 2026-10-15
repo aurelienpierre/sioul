@@ -519,6 +519,11 @@ pub mod qobject {
         #[qinvokable]
         fn cancel_microsoft(self: Pin<&mut Sioul>);
 
+        /// Your answer to `microsoft_question`: Yes keeps the mailbox of the
+        /// login Microsoft's page signed in for the address given; No keeps nothing.
+        #[qinvokable]
+        fn answer_microsoft(self: Pin<&mut Sioul>, yes: bool);
+
         /// Whether this build carries Sioul's own Microsoft application: then none of your own is needed.
         #[qinvokable]
         fn microsoft_built_in(self: &Sioul) -> bool;
@@ -1212,9 +1217,11 @@ pub mod qobject {
 
         /// "Train now", on a computer: the corpus brought up to date, then a
         /// training, off the window's thread; `spam_changed` says how it goes.
-        /// Returns why it did not start, else "".
+        /// `named`: the addresses its sentence named (a JSON list,
+        /// `train_named`), kept as your consent for a Microsoft address
+        /// among them (`sioul_learn::consent`). Returns why it did not start, else "".
         #[qinvokable]
-        fn spam_train(self: Pin<&mut Sioul>) -> QString;
+        fn spam_train(self: Pin<&mut Sioul>, named: &QString) -> QString;
 
         /// The training running stops at its next step.
         #[qinvokable]
@@ -1795,6 +1802,12 @@ pub mod qobject {
         #[qsignal]
         fn open_url(self: Pin<&mut Sioul>, url: QString);
 
+        /// Microsoft's page signed in another login than the address given,
+        /// and only that login's mailbox opened: the form asks, naming both,
+        /// before anything is kept (`answer_microsoft`).
+        #[qsignal]
+        fn microsoft_question(self: Pin<&mut Sioul>, question: QString);
+
         /// No antivirus answered, or the file is larger than it scans (`big`):
         /// the window asks before opening or saving, with how to install one.
         #[qsignal]
@@ -1943,6 +1956,9 @@ pub(crate) struct Shared {
     shown: Mutex<BTreeMap<String, ImapOrigin>>,
     /// The running watchers.
     pub(crate) watchers: Mutex<BTreeMap<String, Arc<Control>>>,
+    /// Accounts being removed, their mail deleted on a thread (`outlook::remove`):
+    /// no watcher starts for them meanwhile.
+    pub(crate) removing: Mutex<BTreeSet<String>>,
     /// Accounts whose provider id was looked for this session.
     learned: Mutex<BTreeSet<String>>,
     /// Views are computed on threads and may finish out of order: only the newest is shown.
@@ -1983,6 +1999,8 @@ pub(crate) struct Shared {
     pub(crate) held_back: Mutex<std::collections::BTreeSet<String>>,
     /// Cancel on Google's or Microsoft's sign-in: its wait for the browser ends.
     pub(crate) oauth_stop: AtomicBool,
+    /// Microsoft's sign-in waiting for your Yes or No (`answer_microsoft`).
+    pub(crate) microsoft_answer: Mutex<Option<std::sync::mpsc::Sender<bool>>>,
     /// GitHub's issues being brought, when asked.
     pub(crate) github: Mutex<Option<Arc<sioul_sync::Control>>>,
     /// When you were last at this window (Unix seconds): reminders follow you.
@@ -2707,6 +2725,10 @@ pub(crate) fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Accoun
     control.set_realtime(shared.realtime.load(Ordering::Relaxed));
     {
         let Ok(mut watchers) = shared.watchers.lock() else { return };
+        // Being removed: its mail is deleted once its watcher has ended, and none starts again.
+        if shared.removing.lock().is_ok_and(|removing| removing.contains(&account.id)) {
+            return;
+        }
         if let Some(running) = watchers.get(&account.id) {
             // Already watching: fetch now instead, a refused password tried again too.
             running.retry();
@@ -2720,6 +2742,8 @@ pub(crate) fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Accoun
             Ok(password) => sioul_sync::watch(&account, &password, &control, |result| reported(&qt, &shared, &account, result)),
             Err(e) => reported(&qt, &shared, &account, Err(e)),
         }
+        // Nothing of it writes any more: a removal waiting to delete its mail goes on (`outlook::remove`).
+        control.end();
         // Gone, unless another watcher replaced this one meanwhile.
         if let Ok(mut watchers) = shared.watchers.lock()
             && watchers.get(&account.id).is_some_and(|c| Arc::ptr_eq(c, &control))
@@ -3643,18 +3667,32 @@ impl qobject::Sioul {
     fn remove_account(mut self: Pin<&mut Self>, id: &QString, delete_mail: bool) {
         let id = id.to_string();
         let shared = self.shared();
-        if let Some(control) = shared.watchers.lock().ok().and_then(|mut w| w.remove(&id)) {
+        let config = load_config();
+        // A Microsoft account's mail is deleted once its watcher has ended: from now on
+        // none starts for it, not even from another device's settings (`outlook::remove`).
+        // Under the watchers' lock, which `start_watcher` holds while it looks.
+        let microsoft = config.every_account().any(|a| a.id == id && a.is_microsoft());
+        let watcher = shared.watchers.lock().ok().and_then(|mut watchers| {
+            if microsoft && let Ok(mut removing) = shared.removing.lock() {
+                removing.insert(id.clone());
+            }
+            watchers.remove(&id)
+        });
+        if let Some(control) = &watcher {
             control.stop();
         }
         if let Ok(mut statuses) = shared.statuses.lock() {
             statuses.remove(&id);
         }
-        let config = load_config();
         // Switched off, an account can be removed all the same.
         let line = match config.every_account().find(|a| a.id == id) {
             None => say("account-unknown", &[("id", id.clone())]),
-            // Microsoft's: its sign-in forgotten here, its mail too when you said so (outlook.rs).
-            Some(account) if account.is_microsoft() => outlook::remove(account, delete_mail).unwrap_or_else(|e| e),
+            // Microsoft's: its sign-in forgotten, its mail too when you said so, on a
+            // thread once its watcher has ended; the status line says it when done (outlook.rs).
+            Some(account) if account.is_microsoft() => {
+                outlook::remove(&self.qt_thread(), &shared, account.clone(), delete_mail, watcher);
+                return;
+            }
             Some(account) => {
                 if account.is_dav() {
                     pim::stop_dav_watcher(&shared, &id);
@@ -3989,6 +4027,12 @@ impl qobject::Sioul {
 
     fn cancel_microsoft(self: Pin<&mut Self>) {
         self.shared().oauth_stop.store(true, Ordering::Relaxed);
+    }
+
+    fn answer_microsoft(self: Pin<&mut Self>, yes: bool) {
+        if let Some(answer) = self.shared().microsoft_answer.lock().ok().and_then(|mut waiting| waiting.take()) {
+            let _ = answer.send(yes);
+        }
     }
 
     fn microsoft_built_in(&self) -> bool {
@@ -5853,8 +5897,9 @@ impl qobject::Sioul {
         QString::from(&crate::spam::status())
     }
 
-    fn spam_train(self: Pin<&mut Self>) -> QString {
-        QString::from(&crate::spam::train(self.qt_thread(), self.shared()))
+    fn spam_train(self: Pin<&mut Self>, named: &QString) -> QString {
+        let named: Vec<String> = serde_json::from_str(&named.to_string()).unwrap_or_default();
+        QString::from(&crate::spam::train(self.qt_thread(), self.shared(), named))
     }
 
     fn spam_stop(self: Pin<&mut Self>) {

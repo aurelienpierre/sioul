@@ -108,7 +108,7 @@ pub enum OAuth {
     /// Google's sign-in, the mail grant kept in the keyring (`google::Purpose::Mail`).
     Google,
     /// Microsoft's sign-in (`microsoft.rs`); `personal`: an Outlook.com
-    /// account (its sending server says so), else a work or school one.
+    /// account (its `microsoft_kind` says so), else a work or school one.
     Microsoft { personal: bool },
 }
 
@@ -358,11 +358,13 @@ mod tests {
                 assert_eq!(heard[0], xoauth2_base64("you@outlook.com", "kept"), "Microsoft's format, Google's: one and the same");
             }
         });
-        // Mail signed in with Microsoft uses tokens; its kind is its sending server's.
+        // Mail signed in with Microsoft uses tokens; its kind is its own (`microsoft_kind`).
         let mut mail = Account::imap("o", "you@outlook.com", "outlook.office365.com", 993, sioul_core::config::Security::Tls, None);
         mail.auth = Some("microsoft".into());
         assert_eq!(OAuth::of(&mail), Some(OAuth::Microsoft { personal: false }), "not known yet: an organisation's, the cautious side");
         mail.smtp_host = Some("smtp-mail.outlook.com".into());
+        assert_eq!(OAuth::of(&mail), Some(OAuth::Microsoft { personal: false }), "the sending server says nothing of it");
+        mail.microsoft_kind = Some("personal".into());
         assert_eq!(OAuth::of(&mail), Some(OAuth::Microsoft { personal: true }));
     }
 

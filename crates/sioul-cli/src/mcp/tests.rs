@@ -645,7 +645,7 @@ fn work_microsoft_accounts_are_kept_from_agents() {
     std::fs::write(work.join("cur").join(seen("1759300009.U3-1.test")), plan).unwrap();
     let config = std::fs::read_to_string(&home.config).unwrap();
     let account = format!(
-        "\n[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"jane@contoso.example\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nsmtp_host = \"smtp.office365.com\"\nmaildir = \"{}\"\n",
+        "\n[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"jane@contoso.example\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nmicrosoft_kind = \"work\"\nsmtp_host = \"smtp.office365.com\"\nmaildir = \"{}\"\n",
         work.display().to_string().replace('\\', "\\\\")
     );
     let kept = home.root.join("config/sioul/work-kept.toml");

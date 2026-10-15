@@ -97,7 +97,7 @@ Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est l
 Microsoft ne prend aucun mot de passe des autres logiciels de courrier, mots de passe d’application compris. Sioul reconnaît le courrier de Microsoft à son adresse (outlook.com, hotmail.com, live.com, msn.com et leurs versions par pays, comme hotmail.fr) ou aux serveurs qui reçoivent le courrier de votre domaine (Microsoft 365), et le connecte plutôt sur la page de Microsoft elle-même :
 
 1. Après **Trouver le serveur**, choisissez **Se connecter avec Microsoft**. La page de Microsoft s’ouvre dans votre navigateur, votre adresse déjà remplie. Choisissez votre compte si Microsoft demande lequel, connectez-vous comme Microsoft le demande (votre mot de passe, votre téléphone, votre clé de sécurité), et acceptez ce que Sioul demande : lire et envoyer votre courrier, et rester connecté.
-2. Sioul attend la réponse de Microsoft cinq minutes au plus, puis ouvre votre boîte avec l’accès donné avant de rien garder. L’accès reste dans le trousseau de votre système, et rien ne part chez le développeur de Sioul.
+2. Sioul attend la réponse de Microsoft cinq minutes au plus, puis ouvre votre boîte avec l’accès donné avant de rien garder. Si seule s’ouvre la boîte du compte connecté sur la page de Microsoft, pas celle de votre adresse (un alias, ou un autre de vos comptes choisi là), Sioul nomme les deux et demande avant de l’utiliser. L’accès reste dans le trousseau de votre système, et rien ne part chez le développeur de Sioul.
 
 Ce que chaque sorte d’adresse demande :
 

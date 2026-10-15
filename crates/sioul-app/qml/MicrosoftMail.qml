@@ -9,8 +9,10 @@
 // Outlook.com's IMAP switch, off until turned on; a work or school one, that
 // its organisation may have to approve Sioul once, with what its
 // administrator does, to copy and forward. An application of your own: its
-// id, and its directory when it is registered for one organisation. Made the
-// first time an address turns out to be Microsoft's (AccountsPage.qml).
+// id, and its directory when it is registered for one organisation. When
+// only the mailbox of another login than the address opened (the one
+// Microsoft's page signed in), the form asks before anything is kept. Made
+// the first time an address turns out to be Microsoft's (AccountsPage.qml).
 // docs/microsoft.md.
 
 pragma ComponentBehavior: Bound
@@ -41,6 +43,10 @@ ColumnLayout {
     readonly property bool phone: Qt.platform.os === "android"
     // An application's id is asked: none built in, or yours chosen, and none kept here.
     readonly property bool asksApp: !form.appKept && (!form.builtIn || form.ownApp)
+    // Microsoft's page signed in another login, and only its mailbox opened: the question, until answered.
+    property string question: ""
+    // The same question put in from the page (its captures).
+    property string asked: ""
 
     // Something was asked of the backend: the page shows its answer under this form.
     signal started
@@ -58,6 +64,21 @@ ColumnLayout {
     // Another address found: its fields emptied.
     onFoundChanged: form.reset()
     onUnfoldAdminChanged: form.adminShown = form.unfoldAdmin
+    onAskedChanged: form.question = form.asked
+
+    Connections {
+        target: form.sioul
+
+        function onMicrosoftQuestion(question) {
+            form.question = question
+        }
+
+        // The sign-in ended (Cancel, five minutes): its question with it.
+        function onFormBusyChanged() {
+            if (!form.sioul.formBusy)
+                form.question = ""
+        }
+    }
 
     spacing: 10
 
@@ -254,10 +275,44 @@ ColumnLayout {
         }
     }
     Label {
-        visible: form.sioul.formBusy
+        visible: form.sioul.formBusy && form.question === ""
         Layout.fillWidth: true
         text: form.phone ? form.sioul.text("ui-microsoft-waiting-phone") : form.sioul.text("ui-microsoft-waiting")
         wrapMode: Text.Wrap
         color: form.theme.text
+    }
+    // Kept on your Yes alone: both addresses named (backend's microsoft_question).
+    ColumnLayout {
+        visible: form.question !== ""
+        Layout.fillWidth: true
+        spacing: 6
+
+        Label {
+            Layout.fillWidth: true
+            text: form.question
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: form.theme.text
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 8
+
+            Button {
+                text: form.sioul.text("ui-microsoft-other-use")
+                onClicked: {
+                    form.question = ""
+                    form.sioul.answerMicrosoft(true)
+                }
+            }
+            Button {
+                flat: true
+                text: form.sioul.text("ui-microsoft-other-not")
+                onClicked: {
+                    form.question = ""
+                    form.sioul.answerMicrosoft(false)
+                }
+            }
+        }
     }
 }

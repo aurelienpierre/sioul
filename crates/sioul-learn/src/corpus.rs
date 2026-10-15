@@ -55,6 +55,7 @@
 //!
 //! The corpus is private: never shared, never shown to an AI agent.
 
+use crate::consent::Consent;
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use async_imap::imap_proto::{BodyStructure, ContentEncoding, SectionPath};
 use async_imap::types::{Fetch, Flag};
@@ -359,6 +360,14 @@ fn file_name(folder: &Folder) -> String {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct AccountState {
+    /// A Microsoft account's kind ("personal", "work"), and its address, as
+    /// its download recorded them (`record_account`): its records are read
+    /// only while your consent covers that address (`Consent`), even once
+    /// the account is gone. None for any other account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    microsoft: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    address: Option<String>,
     /// Bytes of `checks.jsonl.gz` known whole (`verify`); anything after is a batch cut short.
     #[serde(default)]
     checks: u64,
@@ -502,8 +511,13 @@ pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnEr
     let Ok(accounts) = std::fs::read_dir(&root) else { return Ok(()) };
     let mut accounts: Vec<PathBuf> = accounts.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
     accounts.sort();
+    // A Microsoft account's records, only while your consent covers its address; a work one's never.
+    let consent = Consent::load(dirs);
     for dir in accounts {
         let state = AccountState::load(&dir.join("state.toml"));
+        if !consent.allows_kept(state.microsoft.as_deref(), state.address.as_deref()) {
+            continue;
+        }
         let checks = read_checks(&dir, state.checks);
         let mut files: BTreeMap<String, u64> = BTreeMap::new();
         for folder in state.folders.values() {
@@ -833,6 +847,9 @@ pub struct Update {
     pub held: Option<Held>,
     /// Stopped when asked.
     pub cancelled: bool,
+    /// Microsoft addresses left alone: not named at the last press of Train
+    /// now (`Consent`); work or school ones are never downloaded, nor listed.
+    pub left_out: Vec<String>,
 }
 
 /// The free space on the disk holding a path; None when the system does not say.
@@ -843,7 +860,11 @@ pub fn free_space(path: &Path) -> Option<u64> {
 /// Brings the corpus up to date: every account given, every folder kept
 /// (`kept`), what is new since the last time. `password` gives an account's
 /// password as the sync uses it (`sioul_sync::secret::password`); `room` the
-/// free space on a disk (`free_space`; tests say less).
+/// free space on a disk (`free_space`; tests say less). `here`: whether an
+/// account is still in the configuration, asked before each one, so that one
+/// removed meanwhile is left alone and its folder not made again. A
+/// Microsoft account is read only when your consent covers it (`Consent`):
+/// one left out is named in `left_out`; a work or school one never.
 ///
 /// Each message added is checked as it comes (`Checked`), and then the
 /// messages kept before without checks (`verify`'s work).
@@ -858,11 +879,12 @@ pub fn update(
     accounts: &[Account],
     password: &dyn Fn(&Account) -> Result<String, SyncError>,
     dirs: &Dirs,
+    here: &dyn Fn(&Account) -> bool,
     room: &dyn Fn(&Path) -> Option<u64>,
     progress: &mut dyn FnMut(&Progress),
     cancel: &Cancel,
 ) -> Update {
-    run(accounts, password, dirs, room, progress, cancel, true)
+    run(accounts, password, dirs, here, room, progress, cancel, true)
 }
 
 /// Sioul's own checks of the messages kept without them (`Checked`), and
@@ -872,15 +894,18 @@ pub fn update(
 /// records after each group, so a run stopped goes on there. A message its
 /// server no longer has (its folder gone or renumbered, its UID gone) is
 /// `gone`: unknown for good. Progress: `Verify`, account after account.
-pub fn verify(accounts: &[Account], password: &dyn Fn(&Account) -> Result<String, SyncError>, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Update {
-    run(accounts, password, dirs, &|_| None, progress, cancel, false)
+/// `here` and your consent as for `update`.
+pub fn verify(accounts: &[Account], password: &dyn Fn(&Account) -> Result<String, SyncError>, dirs: &Dirs, here: &dyn Fn(&Account) -> bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Update {
+    run(accounts, password, dirs, here, &|_| None, progress, cancel, false)
 }
 
 /// `update` (`download`), or `verify`.
+#[allow(clippy::too_many_arguments)]
 fn run(
     accounts: &[Account],
     password: &dyn Fn(&Account) -> Result<String, SyncError>,
     dirs: &Dirs,
+    here: &dyn Fn(&Account) -> bool,
     room: &dyn Fn(&Path) -> Option<u64>,
     progress: &mut dyn FnMut(&Progress),
     cancel: &Cancel,
@@ -900,7 +925,11 @@ fn run(
     let checker = Checker::new();
     update.offline = checker.is_none();
     let own = own_addresses(accounts);
-    let passwords: Vec<(&Account, Result<String, SyncError>)> = accounts.iter().filter(|a| a.syncs()).map(|a| (a, password(a))).collect();
+    // A Microsoft address only with your consent (Train now's last press); a work one never, nor said.
+    let consent = Consent::load(dirs);
+    let syncing = accounts.iter().filter(|a| a.syncs());
+    update.left_out = syncing.clone().filter(|a| !consent.allows(a) && !a.is_microsoft_work()).map(|a| a.address.clone().unwrap_or_else(|| a.id.clone())).collect();
+    let passwords: Vec<(&Account, Result<String, SyncError>)> = syncing.filter(|a| consent.allows(a)).map(|a| (a, password(a))).collect();
     if download {
         // About how much is to come, so the window can say "N of about M": best effort.
         let estimate: u64 = passwords.iter().filter_map(|(a, p)| p.as_ref().ok().map(|p| runtime.block_on(to_come(a, p, dirs)).unwrap_or(0))).sum();
@@ -910,6 +939,10 @@ fn run(
         if cancel.cancelled() {
             update.cancelled = true;
             break;
+        }
+        // Removed since the run began: left alone, its folder not made again.
+        if !here(account) {
+            continue;
         }
         let result = password.map_err(|e| e.to_string()).and_then(|password| {
             let work = update_account(account, &password, &own, dirs, room, progress, cancel, checker.as_ref(), download, &mut update);
@@ -1024,6 +1057,7 @@ async fn update_account(
     if lock.try_lock().is_err() {
         return Err(LearnError::Io(format!("{}: being updated by another Sioul", account.id)).into());
     }
+    record_account(&dir, account)?;
     let server = Server::of(account)?;
     // Whether the DNS answers at all, asked once per account: the mail server's own name.
     let checker = match checker {
@@ -1058,6 +1092,21 @@ async fn update_account(
     let result = check_kept(&mut session, account, &dir, checker, &server.host, progress, cancel, update).await;
     let _ = session.logout().await;
     result
+}
+
+/// What the training must know of an account to read its records with your
+/// consent (`read_all`): a Microsoft account's kind and address, written in
+/// its state when they changed. Under the account's lock.
+fn record_account(dir: &Path, account: &Account) -> Result<(), LearnError> {
+    let path = dir.join("state.toml");
+    let mut state = AccountState::load(&path);
+    let microsoft = account.is_microsoft().then(|| if account.is_microsoft_work() { "work" } else { "personal" }.to_string());
+    let address = microsoft.as_ref().and(account.address.as_deref()).map(|a| a.trim().to_lowercase());
+    if state.microsoft != microsoft || state.address != address {
+        (state.microsoft, state.address) = (microsoft, address);
+        state.save(&path)?;
+    }
+    Ok(())
 }
 
 /// A broken batch's messages, one at a time, each on a working connection:
@@ -1913,6 +1962,56 @@ mod tests {
             checked: None,
             fetched: 1_700_000_100,
         }
+    }
+
+    /// The review of 15 October 2026, M2 and L5: a Microsoft account's mail
+    /// is downloaded and read only while your consent (Train now's last
+    /// press) covers its address, even once the account is gone; a work
+    /// one's never; an account removed while a run goes on is left alone.
+    #[test]
+    fn consent_and_removal_decide_what_is_read() {
+        use sioul_core::config::Security;
+        let root = scratch("consent");
+        let dirs = Dirs::under(&root);
+        let microsoft = |id: &str, address: &str, kind: &str| {
+            let mut account = Account::imap(id, address, "outlook.office365.com", 993, Security::Tls, None);
+            account.auth = Some("microsoft".into());
+            account.microsoft_kind = Some(kind.into());
+            account
+        };
+        let home = Account::imap("home", "me@example.org", "imap.example.org", 993, Security::Tls, None);
+        let live = microsoft("live", "me@outlook.example", "personal");
+        let office = microsoft("office", "me@contoso.example", "work");
+        let gone = Account::imap("gone", "old@example.org", "imap.example.org", 993, Security::Tls, None);
+        let accounts = [home.clone(), live.clone(), office.clone(), gone];
+        // No password anywhere: what is tried fails at once, without a network.
+        let password = |_: &Account| Err(SyncError::NoPassword);
+        let here = |a: &Account| a.id != "gone";
+        let run = |dirs: &Dirs| update(&accounts, &password, dirs, &here, &|_| None, &mut |_| {}, &Cancel::new());
+        let tried = |update: &Update| update.failed.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        let first = run(&dirs);
+        assert_eq!(tried(&first), ["home"], "never consented: the Microsoft addresses left alone, and the account removed meanwhile");
+        assert_eq!(first.left_out, ["me@outlook.example"], "the work address is never named");
+        crate::consent::Consent::given(&dirs, ["me@example.org".to_string(), "ME@outlook.example".to_string(), "me@contoso.example".to_string()]).unwrap();
+        let second = run(&dirs);
+        assert_eq!(tried(&second), ["home", "live"], "consented; the work address never");
+        assert!(second.left_out.is_empty());
+        // What is kept of each, recorded at its download: read only while consented.
+        for (account, uid) in [(&home, 1), (&live, 2), (&office, 3)] {
+            store(&dirs, &[Record { account: account.id.clone(), ..record(uid) }]).unwrap();
+            record_account(&dirs.corpus().join(&account.id), account).unwrap();
+        }
+        let read = |dirs: &Dirs| {
+            let mut uids = Vec::new();
+            read_all(dirs, |r| uids.push(r.uid)).unwrap();
+            uids.sort();
+            uids
+        };
+        assert_eq!(read(&dirs), [1, 2], "the work account's never");
+        // Train now pressed again without it (its account gone): what was kept of it is no longer read.
+        crate::consent::Consent::given(&dirs, ["me@example.org".to_string()]).unwrap();
+        assert_eq!(read(&dirs), [1]);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

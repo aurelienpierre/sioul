@@ -347,11 +347,13 @@ pub fn last(dirs: &Dirs) -> Option<Summary> {
 }
 
 /// "Train now": the corpus brought up to date from every account (each
-/// password as the sync uses it), then `train` with your thresholds. For the
-/// window: run it on a thread of its own; `progress` says each step,
-/// `cancel` stops it at the next.
-pub fn run(config: &Config, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(corpus::Update, Summary), LearnError> {
-    let update = corpus::update(&config.accounts, &|a| sioul_sync::secret::password(a), dirs, &corpus::free_space, progress, cancel);
+/// password as the sync uses it; a Microsoft one only with your consent,
+/// `consent`, which the window keeps first), then `train` with your
+/// thresholds. `here`: whether an account is still in the configuration
+/// (`corpus::update`). For the window: run it on a thread of its own;
+/// `progress` says each step, `cancel` stops it at the next.
+pub fn run(config: &Config, dirs: &Dirs, here: &dyn Fn(&sioul_core::config::Account) -> bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(corpus::Update, Summary), LearnError> {
+    let update = corpus::update(&config.accounts, &|a| sioul_sync::secret::password(a), dirs, here, &corpus::free_space, progress, cancel);
     if update.cancelled {
         return Err(LearnError::Cancelled);
     }

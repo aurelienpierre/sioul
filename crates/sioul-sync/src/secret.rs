@@ -146,16 +146,6 @@ pub fn save_named_bytes(name: &str, secret: &[u8]) -> Result<(), SyncError> {
     Entry::new(SERVICE, name).and_then(|e| e.set_secret(secret)).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
-/// Forgets a secret kept under a name and the parts kept after it
-/// (`<name>#2`, `<name>#3`…, as many as `parts` says at most).
-pub fn forget_named_all(name: &str, parts: usize) -> Result<(), SyncError> {
-    forget_named(name)?;
-    for part in 2..=parts.max(1) {
-        forget_named(&format!("{name}#{part}"))?;
-    }
-    Ok(())
-}
-
 /// Forgets the account's password; nothing to do if there was none.
 pub fn forget(account: &Account) -> Result<(), SyncError> {
     if testing() {

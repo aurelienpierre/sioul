@@ -800,9 +800,7 @@ pub const DEFAULT_SYNC_DAYS: u32 = 14;
 /// Microsoft's IMAP server, for every mail account signed in with Microsoft
 /// (`auth = "microsoft"`, docs/microsoft.md): Outlook.com's and Microsoft 365's alike.
 pub const MICROSOFT_IMAP: &str = "outlook.office365.com";
-/// Microsoft's SMTP server for personal accounts (Outlook.com, Hotmail, Live,
-/// MSN). An account signed in with Microsoft keeps it as its sending server:
-/// that is how its kind is known without the keyring (`Account::is_microsoft_work`).
+/// Microsoft's SMTP server for personal accounts (Outlook.com, Hotmail, Live, MSN).
 pub const MICROSOFT_SMTP_PERSONAL: &str = "smtp-mail.outlook.com";
 /// Microsoft's SMTP server for work and school accounts (Microsoft 365).
 pub const MICROSOFT_SMTP_WORK: &str = "smtp.office365.com";
@@ -907,6 +905,14 @@ pub struct Account {
     /// For a shielded account, an AI may read its new mail to say its tone and topic (docs/ai.md).
     #[serde(default)]
     pub shield_ai: bool,
+    /// Mail signed in with Microsoft: "personal" (Outlook.com, Hotmail, Live,
+    /// MSN) or "work" (work or school, Microsoft 365), as its sign-in found
+    /// it (the ID token's tenant). Kept apart from the sending server, so that
+    /// an edit of that server cannot turn a work account personal; none (an
+    /// account signed in before it was kept) counts as work until the next
+    /// sign-in (docs/microsoft.md).
+    #[serde(default)]
+    pub microsoft_kind: Option<String>,
 }
 
 impl Account {
@@ -952,6 +958,7 @@ impl Account {
             fetch_minutes: None,
             shield: false,
             shield_ai: false,
+            microsoft_kind: None,
         }
     }
 
@@ -973,12 +980,14 @@ impl Account {
 
     /// Mail signed in with Microsoft that belongs to an organisation (a work
     /// or school account, Microsoft 365), or whose kind is not known: its
-    /// sending server is not Outlook.com's. Microsoft's terms count the
+    /// `microsoft_kind` is not "personal" (the sending server is not read for
+    /// it: an edit there changes nothing). Microsoft's terms count the
     /// organisation among whom must allow its mail to go further than
-    /// syncing, so the AI shield is not offered for it and agents leave it out
-    /// unless you open it to them (`[mcp] work_accounts`).
+    /// syncing, so the AI shield is not offered for it, agents leave it out
+    /// unless you open it to them (`[mcp] work_accounts`), and the spam
+    /// filter does not learn from it.
     pub fn is_microsoft_work(&self) -> bool {
-        self.is_microsoft() && !self.smtp_host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(MICROSOFT_SMTP_PERSONAL))
+        self.is_microsoft() && self.microsoft_kind.as_deref() != Some("personal")
     }
 
     /// Whether the AI reads this address's new mail first (its shield, and
@@ -1531,6 +1540,10 @@ pub fn set_sign_in(path: &Path, account: &Account) -> Result<(), String> {
         match &account.username {
             Some(username) => table["username"] = value(username.as_str()),
             None => drop(table.remove("username")),
+        }
+        match &account.microsoft_kind {
+            Some(kind) => table["microsoft_kind"] = value(kind.as_str()),
+            None => drop(table.remove("microsoft_kind")),
         }
         if let Some(host) = &account.smtp_host {
             table["smtp_host"] = value(host.as_str());
@@ -2341,12 +2354,31 @@ mod tests {
         account.smtp_host = Some(MICROSOFT_SMTP_PERSONAL.into());
         account.smtp_port = Some(587);
         account.smtp_security = Security::Starttls;
+        account.microsoft_kind = Some("personal".into());
         set_sign_in(&path, &account).unwrap();
         let back = Config::load(&path).unwrap().account("old").unwrap().clone();
         assert_eq!((back.auth.as_deref(), back.username.as_deref(), back.smtp_host.as_deref(), back.smtp_port, back.smtp_security), (Some("microsoft"), None, Some("smtp-mail.outlook.com"), Some(587), Security::Starttls));
+        assert_eq!(back.microsoft_kind.as_deref(), Some("personal"));
         assert!(back.is_microsoft() && !back.is_microsoft_work());
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# mine"), "the file's comments stay");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The review of 15 October 2026, L4: a work account's kind is its own;
+    /// its sending server set by hand to Outlook.com's does not make it
+    /// personal (the AI shield and agents would follow); none said counts as work.
+    #[test]
+    fn a_microsoft_accounts_kind_is_its_own() {
+        let config: Config = toml::from_str(
+            "[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"you@contoso.example\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nmicrosoft_kind = \"work\"\nsmtp_host = \"smtp-mail.outlook.com\"\nshield = true\nshield_ai = true\n\
+             [[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"you@outlook.com\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nmicrosoft_kind = \"personal\"\nsmtp_host = \"smtp.office365.com\"\n\
+             [[account]]\nid = \"older\"\nkind = \"imap\"\naddress = \"me@hotmail.com\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nsmtp_host = \"smtp-mail.outlook.com\"\n",
+        )
+        .unwrap();
+        let work = config.account("work").unwrap();
+        assert!(work.is_microsoft_work() && !work.ai_reads(), "Outlook.com's server, by hand: still a work account");
+        assert!(!config.account("home").unwrap().is_microsoft_work());
+        assert!(config.account("older").unwrap().is_microsoft_work(), "no kind said: work, until signed in again");
     }
 
     #[test]

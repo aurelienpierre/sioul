@@ -228,8 +228,11 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
 /// Microsoft's page, from the terminal: its link printed, to open in a
 /// browser on this computer (its answer comes back here, to a loopback
 /// port); Sioul waits five minutes, Ctrl+C stops. The mailbox is tried with
-/// the access given before anything is kept (`microsoft::sign_in`). A work
-/// account refused for want of its organisation's approval gets what its
+/// the access given before anything is kept (`microsoft::sign_in`); when
+/// only the mailbox of the login Microsoft's page signed in opened, not the
+/// address's, Sioul asks first, No by default (and No without a terminal).
+/// A login another of your accounts signs in as is refused. A work account
+/// refused for want of its organisation's approval gets what its
 /// administrator does, to forward.
 fn sign_in_with_microsoft(s: &Session, account: Account, kind: MicrosoftKind, client_id: &str, tenant: &str) -> Result<Account, String> {
     let address = account.address.clone().unwrap_or_default();
@@ -239,7 +242,18 @@ fn sign_in_with_microsoft(s: &Session, account: Account, kind: MicrosoftKind, cl
     let authority = microsoft::authority_for(&login, kind, tenant).map_err(|e| e.sentence(&s.tr, &label))?;
     println!("{}", s.tr.text("microsoft-cli-open", None));
     let stop = AtomicBool::new(false);
-    match microsoft::sign_in(account, &client, &authority, |url| println!("\n{url}\n"), &stop) {
+    // The logins your other Microsoft accounts sign in as: never shared.
+    let taken: Vec<String> = s.config.every_account().filter(|a| a.is_microsoft() && a.id != account.id).filter_map(|a| a.login().map(|l| l.trim().to_lowercase())).collect();
+    let signed = microsoft::sign_in(account, &client, &authority, &taken, |url| println!("\n{url}\n"), &stop).and_then(|signed| {
+        // Only the mailbox of the login Microsoft's page signed in opened: kept on your Yes alone.
+        let yes = match signed.other_login.as_deref() {
+            // Microsoft's words on one line: they never drive the terminal.
+            Some(other) => ask_no(s, &s.say("microsoft-other-login-question", &[("address", crate::one_line(&address)), ("login", crate::one_line(other))])).unwrap_or(false),
+            None => true,
+        };
+        signed.answer(yes)
+    });
+    match signed {
         Ok((account, grant)) => {
             let kind = if grant.personal { "account-signed-in-microsoft-personal" } else { "account-signed-in-microsoft-work" };
             println!("{}", s.say("microsoft-cli-signed-in", &[("account", label), ("how", s.tr.text(kind, None))]));
@@ -422,6 +436,27 @@ fn remove(s: &Session, id: &str, delete_mail: Option<bool>) -> Result<(), String
     config::remove_account(&s.config_path, id)?;
     println!("{}", s.say("account-removed", &[("id", id.to_string()), ("path", account.maildir_path().display().to_string())]));
     Ok(())
+}
+
+/// A question answered Yes or No at the terminal, No unless the answer
+/// begins with Yes's letter ("y", or the French "o"); without a terminal to
+/// ask at, No.
+fn ask_no(s: &Session, question: &str) -> Result<bool, String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return Ok(false);
+    }
+    print!("{question} {} ", s.tr.text("cli-no-yes", None));
+    std::io::stdout().flush().map_err(|e| e.to_string())?;
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line).map_err(|e| e.to_string())?;
+    Ok(said_yes(&line))
+}
+
+/// Whether an answer at the terminal is Yes: it begins with "y" (yes) or "o" (oui).
+fn said_yes(line: &str) -> bool {
+    let answer = line.trim().to_lowercase();
+    answer.starts_with('y') || answer.starts_with('o')
 }
 
 /// A question answered Yes or No at the terminal, Yes when Enter alone is
@@ -628,5 +663,20 @@ mod tests {
         let s = Session { config, config_path: PathBuf::new(), tr: Translator::new("en") };
         let refused = password(&s, "me").unwrap_err();
         assert!(refused.contains("sioul account sign-in me"), "{refused}");
+    }
+
+    /// The review of 15 October 2026, L3: the mailbox of another login than
+    /// the address is kept on Yes alone, at the terminal too: Enter alone,
+    /// or anything but Yes, is No, and so is no terminal.
+    #[test]
+    fn another_logins_mailbox_is_no_by_default() {
+        use std::io::IsTerminal;
+        assert!(said_yes("y\n") && said_yes("Yes") && said_yes("oui\n") && said_yes(" O "));
+        assert!(!said_yes("\n") && !said_yes("n") && !said_yes("non") && !said_yes("") && !said_yes("maybe"));
+        let s = Session { config: Config::default(), config_path: PathBuf::new(), tr: Translator::new("fr") };
+        assert_eq!(s.tr.text("cli-no-yes", None), "[o/N]");
+        if !std::io::stdin().is_terminal() {
+            assert_eq!(ask_no(&s, "?"), Ok(false));
+        }
     }
 }
