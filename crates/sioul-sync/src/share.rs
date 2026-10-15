@@ -792,6 +792,31 @@ fn settling_ms() -> i64 {
     2_000
 }
 
+/// A note or a paper this large (bytes) is sealed only once it has settled
+/// (`large_settling_ms`): a recording or a scan saved take after take goes
+/// once, not each take. On 14 October 2026 four takes of one recording,
+/// 15.7 MB, were sealed and replaced within minutes, and each stayed in the
+/// folder as long as replaced contents stay. Smaller notes go as before.
+const LARGE_SETTLES: u64 = 1 << 20;
+
+#[cfg(test)]
+thread_local! {
+    /// How long a large note or paper settles, in this test's thread: not at all, unless a test says.
+    pub(crate) static LARGE_SETTLE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+}
+
+/// How long a note or a paper of `LARGE_SETTLES` or more stays unchanged
+/// before it is read and sealed. One that never stops changing still goes an
+/// hour after its last version did (`read_file`).
+pub(crate) const LARGE_SETTLING: i64 = 10 * MINUTE;
+
+fn large_settling_ms() -> i64 {
+    #[cfg(test)]
+    return LARGE_SETTLE.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    LARGE_SETTLING
+}
+
 /// What the stores hold; a file whose size and time did not change since
 /// `known` is taken from there, not read. What could not be read is unknown,
 /// its last look kept: nothing of it is taken out elsewhere.
@@ -1021,9 +1046,16 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     }
     if sealed_apart {
         // Changed a moment ago (maybe still being written), or a hurried
-        // exchange waits: read at the next look. Read through for its hash,
-        // never held whole; one that changed while read is read next time.
-        let fresh = look.clock - ((modified / 1_000_000) as i64) < settling_ms();
+        // exchange waits: read at the next look. A large note or paper, until
+        // it has not changed for ten minutes (`LARGE_SETTLES`), or an hour
+        // after its last version was read here, whichever comes first: one
+        // that never stops changing still goes. Unknown meanwhile, as a file
+        // being written is: the others' changes to it wait, nothing of it is
+        // taken out. Read through for its hash, never held whole; one that
+        // changed while read is read next time.
+        let large = meta.len() >= LARGE_SETTLES && matches!(store.part, "notes" | "papers") && known.get(file).is_none_or(|last| last.seen <= 0 || look.clock - last.seen < HOUR);
+        let settling = if large { large_settling_ms().max(settling_ms()) } else { settling_ms() };
+        let fresh = look.clock - ((modified / 1_000_000) as i64) < settling;
         let read = (!fresh && !(look.hurry)()).then(|| crate::blobs::hash_file(path).ok()).flatten().filter(|(_, size)| *size == meta.len());
         let Some((h, _)) = read else {
             found.unknown.insert(file.to_string());
@@ -1988,6 +2020,12 @@ struct Memory {
     /// What this computer appended since its last full round (bytes).
     #[serde(default)]
     grown: u64,
+    /// The size of its last full round's file once it opened (bytes): the
+    /// next one waits until as much was appended since (`full_round_after`).
+    /// 0: not known yet (a memory from before 15 October 2026), read from
+    /// that round's file in the folder.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    full_size: u64,
     /// The number of the last line of the round before, when this round
     /// continues it (`SEGMENT`): said on its first line (`Turn::p`). 0 for a
     /// full round.
@@ -2190,8 +2228,10 @@ struct Sealed {
     /// record last pointed to each (milliseconds), and the size it sealed.
     #[serde(default)]
     mine: BTreeMap<String, (i64, u64)>,
-    /// Sealed files the others' records named lately, by name: when
-    /// (milliseconds). None is taken out within 90 days of that.
+    /// Sealed files the others' records named lately, by name: when this
+    /// device first read such a record (milliseconds); never from its own
+    /// records, nor from a record read again. None is taken out within the
+    /// time sealed files stay (`unused_days`: two weeks, or 90 days) of that.
     #[serde(default)]
     named_at: BTreeMap<String, i64>,
     /// Sealed files found damaged, as they were then (`blobs::fingerprint`):
@@ -2981,6 +3021,21 @@ fn format_holders(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory
             _ => Some((id, Holds::Older)),
         })
         .collect()
+}
+
+/// How long this device keeps the sealed files no record points to any more
+/// (days): two weeks (`blobs::UNUSED_DAYS`) once every other device that
+/// counts (`present`) says in its sealed entry that it keeps them so too
+/// (`devices::Entry::keeping`), else 90 days (`blobs::UNUSED_DAYS_BEFORE`), as
+/// until 15 October 2026. An older Sioul makes a content it uses again fresh
+/// only past 30 days (`blobs::put`): on a phone under eDrive, which keeps every
+/// sealed file it brought, it could put back an earlier version whose
+/// content left the server, and name it in a record no device could follow.
+/// A device whose entry does not read, or known by its records alone, counts
+/// as an older one; a hostile folder can only keep contents longer.
+fn unused_days(sharing: &Sharing, memory: &Memory, now_ms: i64) -> i64 {
+    let all = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.keeping >= crate::blobs::KEEPING));
+    if all { crate::blobs::UNUSED_DAYS } else { crate::blobs::UNUSED_DAYS_BEFORE }
 }
 
 /// Whether this device may write format 2: another device at least counts
@@ -4060,6 +4115,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     }
     memory.sealed.gone = gone_since;
     let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
+    // The contents of the files sealed apart as this exchange finds them: used
+    // in it, so that one replaced in it (here, or by another device's change
+    // read now) is swept two weeks from now, not from its last use this device
+    // noted, which may be days old after days away (`blobs::sweep_after`).
+    let current_before: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
 
     // Changes made here since the last look, dated by their file. When joining,
     // the others' records come first, and only what they do not hold goes out.
@@ -4337,8 +4397,19 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 if !change.build.is_empty() {
                     builds.insert(computer.clone(), change.build.clone());
                 }
-                // Sealed files named lately are never taken out from under the record naming them (`blobs::sweep`).
-                if change.k.starts_with(FILES)
+                // Sealed files another device's record named lately are never
+                // taken out from under it (`blobs::sweep`), `UNUSED_DAYS` from
+                // when this device first read that record. Never from its own
+                // records, nor from a record read before (a store rebuilt, or
+                // a memory from before rounds said where they stand, reads
+                // every kept round again): until 15 October 2026 each rebuild
+                // restarted that time for every superseded content this
+                // computer's kept rounds named, and those never aged while new
+                // versions kept coming (`named_at` itself says the others' records).
+                let first = memory.met.get(computer).or_else(|| memory.read_n.get(computer)).is_none_or(|met| (round, record.n) > *met);
+                if !own
+                    && first
+                    && change.k.starts_with(FILES)
                     && let Some(value) = change.v.as_deref()
                 {
                     memory.sealed.named_at.insert(crate::blobs::name(sharing.key, &value_hash(&change.k, value)), now_ms);
@@ -4771,21 +4842,23 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.sealed.damaged.retain(|name, _| waited.contains(name));
     }
     // The files this computer sealed in the folder that no record points to
-    // any more go, in time; never one a record named lately.
-    memory.sealed.named_at.retain(|_, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY);
+    // any more go, in time (`unused_days`); never one a record named lately.
+    let days = if memory.sealed.named_at.is_empty() && memory.sealed.mine.is_empty() { crate::blobs::UNUSED_DAYS } else { unused_days(sharing, &memory, now_ms) };
+    memory.sealed.named_at.retain(|_, at| now_ms - *at < days * DAY);
     if !memory.sealed.mine.is_empty() {
-        let used: BTreeSet<String> = memory
-            .entries
+        let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+        let used: BTreeSet<String> = current
             .iter()
-            .filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty())
-            .map(|(_, known)| known.h.clone())
+            .cloned()
             .chain(memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| value_hash(key, v))))
             .map(|h| crate::blobs::name(sharing.key, &h))
             .chain(memory.sealed.named_at.keys().cloned())
             .collect();
         prune_tables(sharing.folder, &mut memory.sealed, &used);
+        // What this exchange found current and replaced, used in it (`current_before`).
+        let used: BTreeSet<String> = current_before.difference(&current).map(|h| crate::blobs::name(sharing.key, h)).chain(used).collect();
         let mut last: BTreeMap<String, i64> = memory.sealed.mine.iter().map(|(name, (at, _))| (name.clone(), *at)).collect();
-        crate::blobs::sweep(sharing.folder, &mut last, &used, now_ms);
+        crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
     // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly.
@@ -4798,9 +4871,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         clean_leftovers(&sharing.folder.join("blobs"));
         memory.cleaned = now_ms;
     }
-    // A full round, past `ROUND_SIZE` appended since the last: then the
-    // rounds before it can go. Waits while the connection is metered or slow,
-    // and while a bulk import goes on (`set_importing`).
+    // A full round, once as much as the last one restated was appended since,
+    // a megabyte at least (`full_round_after`): then the rounds before it can
+    // go. Waits while the connection is metered or slow, and while a bulk
+    // import goes on (`set_importing`).
     let waits = if importing(sharing.memory) { memory.grown <= IMPORT_ROUND_SIZE } else { frugal(sharing.memory) && memory.grown <= FRUGAL_ROUND_SIZE };
     // Another device asks for one (it lost some of this computer's records:
     // `Seen::full`): owed.
@@ -4826,7 +4900,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     }
     let thrifty = importing(sharing.memory) || (metered && memory.owed_waited < OWED_METERED);
     let owed = memory.owed && !thrifty && restatement(sharing, &memory, stores, &found).1 == 0;
-    if (memory.grown > ROUND_SIZE && !waits) || owed {
+    if (memory.grown > full_round_after(sharing, &mut memory) && !waits) || owed {
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
         memory.round_base = own(&memory);
     }
@@ -5263,8 +5337,16 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", path.display()));
     let size_here = std::fs::metadata(path).map_or(0, |m| m.len());
     let diverged = current.as_deref().is_some_and(|here| !seen(here));
-    // The version here kept by reference when a record named it: its content is in the folder.
-    let by_reference = current.as_deref().is_some_and(|here| known.is_some_and(|k| k.h == here) || seen(here));
+    // The version here kept by reference when a record named it and its
+    // content is in the folder, or fetched beside it; else copied, as any
+    // file is: a device back after weeks away, whose content left the folder
+    // meanwhile (two weeks after it was replaced, `blobs::UNUSED_DAYS`), keeps
+    // its own last version, not a reference that no longer opens.
+    let sealed_there = |h: &str| {
+        let name = crate::blobs::name(sharing.key, h);
+        std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).any(|dir| std::fs::metadata(dir.join("blobs").join(&name)).is_ok_and(|m| m.len() > 0))
+    };
+    let by_reference = current.as_deref().is_some_and(|here| (known.is_some_and(|k| k.h == here) || seen(here)) && sealed_there(here));
     let room = wanted.as_ref().map_or(0, |w| w.s) + if by_reference { 0 } else { size_here } + if diverged { size_here } else { 0 };
     if wanted.as_ref().is_some_and(|w| w.s > crate::blobs::LARGEST) {
         return Err(Fault::Broken);
@@ -5804,7 +5886,29 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
         memory.continues = if previous > 0 { previous } else { UNKNOWN_TURN };
         memory.owed |= cut;
     }
-    append(sharing, memory, &ours)
+    append(sharing, memory, &ours)?;
+    // What it restated, for when the next one opens (`full_round_after`).
+    if omitted == 0 {
+        memory.full_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
+    }
+    Ok(())
+}
+
+/// What this computer appends since its last full round before it opens the
+/// next: as much as that round restated, and a megabyte at least
+/// (`ROUND_SIZE`). A phone's full round restates its whole archive of texts
+/// (16 MB on one phone); opened at each megabyte
+/// appended, as until 15 October 2026, the full rounds cost the folder and
+/// the connection many times what was appended (eDrive sends each twice).
+/// Now restating never costs more than what was appended since, and the
+/// rounds a device joining reads stay within twice the last full round. Its
+/// size, not known to a memory from before, is read once from that round's file.
+fn full_round_after(sharing: &Sharing, memory: &mut Memory) -> u64 {
+    if memory.full_size == 0 {
+        let full = if memory.full_round == 0 { memory.round } else { memory.full_round };
+        memory.full_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, full)).map_or(0, |m| m.len());
+    }
+    ROUND_SIZE.max(memory.full_size)
 }
 
 /// The sealed files this computer put in the folder (`blobs/<name>`), by
@@ -6009,14 +6113,41 @@ fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
 /// This computer's old files, once every other computer heard lately has read past them.
 fn remove_old_rounds(sharing: &Sharing, memory: &Memory, now_ms: i64) {
     let all = rounds(sharing.folder);
-    let others: Vec<Seen> = computers(sharing.folder).iter().filter(|c| *c != sharing.computer).filter_map(|c| read_seen(sharing.folder, c)).filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400).collect();
-    let read_up_to = others.iter().map(|s| s.read.get(sharing.computer).copied().unwrap_or(0)).min().unwrap_or(memory.round);
-    // Never the last full round, nor the rounds continuing it: a device
-    // joining reads from the oldest kept, and finds every entry there.
-    let full = if memory.full_round == 0 { memory.round } else { memory.full_round };
-    for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < full && **r < read_up_to) {
+    let below = past_below(sharing.folder, sharing.computer, memory.round, memory.full_round, now_ms);
+    for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < below) {
         let _ = std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round));
     }
+}
+
+/// The round below which a computer's rounds are past their time: every
+/// other computer heard within `SILENT_DAYS` read past them (its notes say a
+/// later round: it met their end, `Memory::met`, or read on from a later
+/// full round), and never its last full round nor the rounds continuing it:
+/// a device joining reads from the oldest kept, and finds every entry there.
+fn past_below(folder: &Path, computer: &str, round: u32, full_round: u32, now_ms: i64) -> u32 {
+    let others: Vec<Seen> = computers(folder).iter().filter(|c| *c != computer).filter_map(|c| read_seen(folder, c)).filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400).collect();
+    let read_up_to = others.iter().map(|s| s.read.get(computer).copied().unwrap_or(0)).min().unwrap_or(round);
+    let full = if full_round == 0 { round } else { full_round };
+    full.min(read_up_to)
+}
+
+/// This computer's rounds below the one returned are past their time, as
+/// `remove_old_rounds` judges them from its memory as last saved and the
+/// others' notes: its sending takes those still on the server out of it
+/// (`remote`), where a sync app left them (eDrive passes no deletion on).
+/// None when the memory does not read, or is not this computer's.
+pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) -> Option<u32> {
+    #[derive(Deserialize)]
+    struct Part {
+        #[serde(default)]
+        computer: String,
+        #[serde(default)]
+        round: u32,
+        #[serde(default)]
+        full_round: u32,
+    }
+    let part = std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok())?;
+    (part.computer == computer && part.round > 0).then(|| past_below(folder, computer, part.round, part.full_round, now_ms))
 }
 
 /// Another computer sharing through the folder, and when it last exchanged (Unix seconds).
@@ -9162,6 +9293,10 @@ mod idle_bench;
 #[cfg(test)]
 #[path = "share_correctness_tests.rs"]
 mod correctness_tests;
+
+#[cfg(test)]
+#[path = "share_storage_tests.rs"]
+mod storage_tests;
 
 #[cfg(test)]
 mod probe {

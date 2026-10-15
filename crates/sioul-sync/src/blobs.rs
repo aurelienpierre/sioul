@@ -27,8 +27,34 @@ use std::path::{Path, PathBuf};
 
 /// Files larger than this stay on their device.
 pub const LARGEST: u64 = 64 << 20;
-/// A sealed file no record points to any more is removed by its writer after this long.
-pub const UNUSED_DAYS: i64 = 90;
+/// A sealed file no record points to any more is removed by its writer after
+/// this long. A device needs a superseded content only between reading the
+/// record that names it and the one that supersedes it, and a device back
+/// after a long time reads both in one exchange and writes the latest: two
+/// weeks is ample. Until 15 October 2026 it was 90 days, and some 25 to 45 MB
+/// of one folder were replaced contents (docs/database.md, "Old
+/// contents go"). Earlier versions kept by reference stay less long
+/// (`history::SEALED_DAYS`), and a content used again is made fresh well
+/// within it (`FRESH_DAYS`). Only once every device of the sharing keeps
+/// them so too (`KEEPING`, `share::unused_days`): else `UNUSED_DAYS_BEFORE`.
+pub const UNUSED_DAYS: i64 = 14;
+/// How long they stay while a device of the sharing runs a Sioul from before
+/// 15 October 2026 (its entry says no `KEEPING`): it makes a content it uses
+/// again fresh only past 30 days, and keeps earlier versions by reference 60
+/// days, both counting on 90. A phone of that kind under eDrive, which keeps
+/// every sealed file it brought, putting back a version swept from the
+/// server, would name a content that no device sends again.
+pub const UNUSED_DAYS_BEFORE: i64 = 90;
+/// What a device's sealed entry says of how it keeps sealed files
+/// (`devices::Entry::keeping`): two weeks, made fresh past a week, earlier
+/// versions by reference 12 days. 0, unsaid: an older Sioul's 90, 30 and 60.
+pub const KEEPING: u32 = 1;
+/// A content sealed in the folder longer ago than this and used again has
+/// its file made fresh (`put`), so that its writer, which may not have read
+/// the record using it again yet, never sweeps it from under that record
+/// (`sweep` keeps a file made fresh within `UNUSED_DAYS`). Half of
+/// `UNUSED_DAYS`: it must stay below it (it was 30 days, below 90).
+pub const FRESH_DAYS: i64 = UNUSED_DAYS / 2;
 /// What is sealed at once.
 const PIECE: usize = 1 << 20;
 /// What is opened is inflated this much at a time: never far past `LARGEST`.
@@ -160,14 +186,16 @@ fn fill(reader: &mut impl Read, buffer: &mut [u8]) -> std::io::Result<usize> {
 /// A file sealed into the folder, unless its content is there already (from
 /// any device). `hash` is its content when gathered: read again here, a file
 /// that changed meanwhile is not sent, the next look sends it. The size sealed
-/// when written here; none when it was there. One there for long is made fresh:
-/// its writer does not take it out from under the record that names it again.
+/// when written here; none when it was there. One there for long (`FRESH_DAYS`)
+/// is made fresh: its writer does not take it out from under the record that
+/// names it again, and a sync app carries the new time (eDrive sends a file
+/// whose time changed), so that a copy taken out of the server comes back.
 pub fn put(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result<Option<u64>, String> {
     let target = path(folder, key, hash);
     if let Ok(meta) = std::fs::metadata(&target)
         && meta.len() > 0
     {
-        let old = meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 30 * 86_400);
+        let old = meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > FRESH_DAYS as u64 * 86_400);
         if old {
             let _ = std::fs::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
         }
@@ -362,10 +390,19 @@ fn unseal<W: Write>(mut reader: impl Read, key: &[u8; 32], name: &str, hash: &st
 /// named lately. One whose file was made fresh lately (sealed again, named
 /// again by another device) stays.
 pub fn sweep(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTreeSet<String>, now_ms: i64) {
-    let unused = UNUSED_DAYS * 86_400_000;
-    // Said used again at most once a day: the time counts in months, and the
+    sweep_after(folder, mine, used, now_ms, UNUSED_DAYS);
+}
+
+/// As `sweep`, after `days` unused: `UNUSED_DAYS`, or `UNUSED_DAYS_BEFORE`
+/// while a device of the sharing runs an older Sioul (`share::unused_days`).
+pub fn sweep_after(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTreeSet<String>, now_ms: i64, days: i64) {
+    let unused = days * 86_400_000;
+    // Said used again at most once a day: the time counts in weeks, and the
     // memory holding it is written only when it changes (a computer's held
     // 25 MB, rewritten at every exchange for these times alone, 8 October 2026).
+    // So a content goes a day early at most: `UNUSED_DAYS` less a day after
+    // its last use, which earlier versions kept by reference stay within
+    // (`history::SEALED_DAYS`).
     let day = 86_400_000;
     mine.retain(|name, last| {
         if used.contains(name) {
@@ -588,13 +625,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Two weeks unused, gone (90 days until 15 October 2026: this test's
+    /// "recent" was 20 days, "unused" 100; the times now follow `UNUSED_DAYS`).
     #[test]
-    fn unused_ones_go_after_ninety_days() {
+    fn unused_ones_go_after_two_weeks() {
         let base = scratch("sweep");
         let folder = base.join("vault");
         std::fs::create_dir_all(folder.join("blobs")).unwrap();
         let old = std::time::SystemTime::now() - std::time::Duration::from_secs(100 * 86_400);
-        for name in ["used", "unused", "recent", "fresh"] {
+        for name in ["used", "unused", "recent", "fresh", "just-past"] {
             std::fs::write(folder.join("blobs").join(name), "x").unwrap();
             if name != "fresh" {
                 std::fs::File::options().write(true).open(folder.join("blobs").join(name)).unwrap().set_modified(old).unwrap();
@@ -602,12 +641,51 @@ mod tests {
         }
         let day = 86_400_000;
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-        let mut mine: BTreeMap<String, i64> = [("used".to_string(), now - 100 * day), ("unused".to_string(), now - 100 * day), ("recent".to_string(), now - 20 * day), ("fresh".to_string(), now - 100 * day)].into();
+        let mut mine: BTreeMap<String, i64> = [
+            ("used".to_string(), now - 100 * day),
+            ("unused".to_string(), now - 100 * day),
+            ("recent".to_string(), now - (UNUSED_DAYS - 1) * day),
+            ("fresh".to_string(), now - 100 * day),
+            ("just-past".to_string(), now - UNUSED_DAYS * day - 1),
+        ]
+        .into();
         sweep(&folder, &mut mine, &["used".to_string()].into(), now);
         assert!(folder.join("blobs/used").exists() && folder.join("blobs/recent").exists());
         assert!(folder.join("blobs/fresh").exists(), "sealed or named again lately: kept");
         assert!(!folder.join("blobs/unused").exists());
+        assert!(!folder.join("blobs/just-past").exists(), "two weeks and a moment: gone");
         assert_eq!(mine.get("used"), Some(&now));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A content used again is made fresh when it was sealed more than
+    /// `FRESH_DAYS` ago, so that its writer's sweep, two weeks after its last
+    /// use, never takes it from under the record using it again; a recent one
+    /// is left as it is (its sync app has nothing to carry).
+    #[test]
+    fn a_content_used_again_is_made_fresh_within_the_sweeps_time() {
+        const { assert!(FRESH_DAYS < UNUSED_DAYS && FRESH_DAYS > 0) };
+        let base = scratch("fresh");
+        let folder = base.join("vault");
+        let key = [8u8; 32];
+        let day = std::time::Duration::from_secs(86_400);
+        for (n, age, touched) in [(1, FRESH_DAYS + 1, true), (2, FRESH_DAYS - 1, false)] {
+            let source = base.join(format!("note-{n}.md"));
+            std::fs::write(&source, format!("note {n}\n").repeat(50)).unwrap();
+            let (hash, _) = hash_file(&source).unwrap();
+            assert!(put(&folder, &key, &source, &hash).unwrap().is_some());
+            let sealed = path(&folder, &key, &hash);
+            let then = std::time::SystemTime::now() - day * age as u32;
+            std::fs::File::options().write(true).open(&sealed).unwrap().set_modified(then).unwrap();
+            assert_eq!(put(&folder, &key, &source, &hash).unwrap(), None, "there already: not sealed again");
+            let modified = std::fs::metadata(&sealed).unwrap().modified().unwrap();
+            assert_eq!(modified > then + day, touched, "sealed {age} days ago");
+            // Made fresh, the sweep keeps it whatever its writer last knew of it.
+            let mut mine: BTreeMap<String, i64> = [(name(&key, &hash), 0)].into();
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+            sweep(&folder, &mut mine, &BTreeSet::new(), now);
+            assert!(sealed.exists(), "sealed {age} days ago, used again: kept");
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -128,6 +128,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.version = sioul_core::build::VERSION.into();
         entry.commit = sioul_core::build::COMMIT.into();
         entry.format = sioul_sync::share::FORMAT;
+        // How it keeps the sealed files no record points to any more: the others keep theirs two weeks once every device says so.
+        entry.keeping = sioul_sync::blobs::KEEPING;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

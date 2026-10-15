@@ -56,6 +56,15 @@ pub struct Entry {
     /// The sharing writes format 2 once every device says 2 (`share::format_holders`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub format: u32,
+    /// How its Sioul keeps the sealed files of notes and papers that no record
+    /// points to any more (`blobs::KEEPING`): 1, two weeks, a content used
+    /// again made fresh past a week, earlier versions by reference 12 days; 0
+    /// from an older Sioul (90 days, 30, 60). A device keeps its own two
+    /// weeks only once every device that counts says 1 (`share::unused_days`).
+    /// An older Sioul reads the entry as before, the field unknown to it
+    /// passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub keeping: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]

@@ -1751,11 +1751,11 @@ fn send_to_server(here: &share::Here, again: bool) -> Option<sioul_sync::remote:
     // The texts to send first, on their own lane: never behind a large file.
     send_texts(here);
     let sent = sioul_sync::remote::send(&memory, &folder, &here.id, &login, &sealed, now, again, metered());
-    if sent.sent > 0 || sent.held > 0 || again || sent.problem.as_deref().is_some_and(|p| p != "off" && !p.starts_with("waiting:")) {
+    if sent.sent > 0 || sent.held > 0 || sent.taken_out > 0 || again || sent.problem.as_deref().is_some_and(|p| p != "off" && !p.starts_with("waiting:")) {
         let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
         let detail = sent.failure.as_ref().map(|f| format!("; {}", failure_words(f))).unwrap_or_default();
         log_send(match &sent.problem {
-            None => format!("{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} bytes{}", state.host(), sent.sent, sent.same, sent.longer, sent.paced, sent.bytes, if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) }),
+            None => format!("{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} taken out, {} bytes{}", state.host(), sent.sent, sent.same, sent.longer, sent.paced, sent.taken_out, sent.bytes, if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) }),
             Some(why) => format!("{at} send to {} stopped: {}{detail}", state.host(), backup_words(why)),
         });
     }
