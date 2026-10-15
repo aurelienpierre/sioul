@@ -2440,6 +2440,15 @@ pub struct Sending {
     /// This device's own files as they last went up, or were found there the same, by their path in the folder.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sent: BTreeMap<String, Sent>,
+    /// Of those, the sealed files swept here that could not be taken out
+    /// there: another answer than taken out or gone (`423` while a sync app
+    /// sends that very file again, a server's error, `403`), or, after a
+    /// `412`, a look that failed or a second refusal. Kept, and tried again
+    /// at the next listing only, never at each send nor holding one back: no
+    /// listing looks for them otherwise, and forgotten they would stay there
+    /// for good (final review of 15 October 2026, RES-1).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub refused: BTreeSet<String>,
 }
 
 /// A failed send, in detail: what the panel and the log say of it.
@@ -2805,7 +2814,7 @@ impl Sender<'_> {
             records_held |= records && went == Went::Held;
         }
         if self.lane == Lane::Main {
-            self.take_out_gone()?;
+            self.take_out_gone(check)?;
             if let (Some(listed), Some(past)) = (&listed, self.past) {
                 self.take_out_past(listed, past)?;
             }
@@ -3020,11 +3029,21 @@ impl Sender<'_> {
     /// none of its records is here; the sealed files it swept. Gone there
     /// already: forgotten. Changed there since (`412`): looked at there, and
     /// taken out when it is still what this device sent (`again_after_412`).
-    /// Another file gone here (a claim of a part no longer kept) is
-    /// forgotten, left there.
-    fn take_out_gone(&mut self) -> Result<(), Stop> {
+    /// Any other answer (`423` while a sync app sends that very file again, a
+    /// server's error, `403`), or a look that fails: left there, the send
+    /// going on, never held back for it; a round forgotten here and looked
+    /// for again at the next listing (`take_out_past`), a sealed file kept
+    /// here and tried again at the next listing (`Sending::refused`; `check`:
+    /// this send lists). Until the final review of 15 October 2026 (RES-1)
+    /// such an answer failed the whole send, after its files went, and held
+    /// the next sends back, the records with them. Another file gone here (a
+    /// claim of a part no longer kept) is forgotten, left there.
+    fn take_out_gone(&mut self, check: bool) -> Result<(), Stop> {
         let latest = own_latest(self.folder, self.own);
         let gone: Vec<(String, Sent)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.clone())).collect();
+        // Refused there, then here again (its content used again, or brought back): no longer waiting.
+        let (folder, Sending { refused, sent, .. }) = (self.folder, &mut *self.sending);
+        refused.retain(|relative| sent.contains_key(relative) && !folder.join(relative).exists());
         // A round gone here is past its time only below the readers' floor
         // (`share::rounds_past`), as `remove_old_rounds` judged it: one gone
         // from a folder synced again in part, a backup put back or a file
@@ -3036,17 +3055,29 @@ impl Sender<'_> {
             let round = relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok());
             let past = matches!(kind_of(&relative), Some((Kind::Round, _))) && round.zip(latest).is_some_and(|(round, latest)| round < latest) && round.zip(floor).is_some_and(|(round, floor)| round < floor);
             let swept = relative.strip_prefix("blobs/").is_some_and(|name| !self.sealed.contains_key(name));
-            if past || swept {
-                match self.server.delete(&self.url(&relative), Some(&sent.etag).filter(|e| !e.is_empty()).map(String::as_str))? {
-                    200 | 204 => self.pulled.taken_out += 1,
-                    404 => {}
-                    412 => self.again_after_412(&relative, &sent, past),
-                    status => return Err(Stop::Failed(SyncError::Server(format!("DELETE: {status}")))),
-                }
+            if swept && !check && self.sending.refused.contains(&relative) {
+                continue;
             }
-            if past || swept || !matches!(kind_of(&relative), Some((Kind::Round, _))) {
+            let mut settled = true;
+            if past || swept {
+                settled = match self.server.delete(&self.url(&relative), Some(&sent.etag).filter(|e| !e.is_empty()).map(String::as_str))? {
+                    200 | 204 => {
+                        self.pulled.taken_out += 1;
+                        true
+                    }
+                    412 => self.again_after_412(&relative, &sent, past),
+                    // Gone there already.
+                    404 => true,
+                    // Any other answer: left there.
+                    _ => false,
+                };
+            }
+            if swept && !settled {
+                self.sending.refused.insert(relative);
+            } else if past || swept || !matches!(kind_of(&relative), Some((Kind::Round, _))) {
                 self.sending.sent.remove(&relative);
                 self.sending.held.remove(&relative);
+                self.sending.refused.remove(&relative);
             }
         }
         Ok(())
@@ -3063,20 +3094,32 @@ impl Sender<'_> {
     /// it, it is taken out, over its ETag there now. A sealed file dated
     /// otherwise was sent there again by another device that uses that
     /// content again (`blobs::put` makes it fresh, and its sync app sends the
-    /// new time): its use, never taken out. Otherwise, or refused again, or
-    /// any other answer, a failure too (a server's error, a timeout): left
-    /// there, forgotten here, the send going on and not held back (review of
-    /// 15 October 2026, L1); this device's past rounds are looked for again
-    /// at each listing (`take_out_past`).
-    fn again_after_412(&mut self, relative: &str, sent: &Sent, records: bool) {
+    /// new time): its use, never taken out. Of another size there (a round
+    /// grown there): left there, forgotten here; this device's past rounds
+    /// are looked for again at each listing (`take_out_past`). Refused again,
+    /// or any other answer, a failure too (a server's error, a timeout): left
+    /// there, the send going on and not held back (review of 15 October 2026,
+    /// L1), a round forgotten here as above, a sealed file kept here and tried
+    /// again at the next listing (`Sending::refused`). Whether it is settled:
+    /// taken out, gone there, or not this device's to take out.
+    fn again_after_412(&mut self, relative: &str, sent: &Sent, records: bool) -> bool {
         let url = self.url(relative);
-        let Ok(Some(there)) = self.server.stat(&url) else { return };
+        let there = match self.server.stat(&url) {
+            Ok(Some(there)) => there,
+            Ok(None) => return true,
+            Err(_) => return false,
+        };
         let dated = records || there.modified == Some((sent.modified / 1_000_000_000) as i64);
         if there.dir || there.etag.is_empty() || there.size != sent.size || !dated {
-            return;
+            return true;
         }
-        if matches!(self.server.delete(&url, Some(&there.etag)), Ok(200 | 204)) {
-            self.pulled.taken_out += 1;
+        match self.server.delete(&url, Some(&there.etag)) {
+            Ok(200 | 204) => {
+                self.pulled.taken_out += 1;
+                true
+            }
+            Ok(404) => true,
+            _ => false,
         }
     }
 
@@ -6204,6 +6247,75 @@ mod tests {
         let listed = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 10 + 6 * 3600, false, TEST);
         assert_eq!(listed.taken_out, 1, "{listed:?}");
         assert!(!w.server.join(round(40)).exists());
+    }
+
+    /// Any other answer to taking a file out there than taken out, gone or
+    /// changed there (`423` while a sync app sends that very file again, a
+    /// server's error, `403`) leaves it there and lets the send go on: the
+    /// other files go, nothing is held back, no backoff. A past round is
+    /// forgotten here and taken out at the next listing; a swept sealed file,
+    /// which no listing looks for, is kept here, asked nothing at the next
+    /// sends, and taken out at the next listing; so is one whose look after a
+    /// `412` failed (final review of 15 October 2026, RES-1). Before, the
+    /// first such answer failed the whole send and backed the next ones off.
+    #[test]
+    fn a_delete_answered_otherwise_holds_nothing_back() {
+        for status in [423, 503, 403] {
+            let w = World::new(&format!("delete-{status}"));
+            assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+            let round = |n: u32| format!("{}-{n}.jsonl", w.phone.id);
+            for n in 40..=42 {
+                put(&w.phone_folder, &round(n), &format!("{{\"round\":{n}}}\n"));
+            }
+            let seal = |text: &str| {
+                let source = w.base.join(format!("{}.md", text.len()));
+                std::fs::write(&source, text.repeat(200)).unwrap();
+                let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+                crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+                let name = crate::blobs::name(&KEY, &hash);
+                let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+                (name, size)
+            };
+            let (refused, refused_size) = seal("a note of the phone's\n");
+            let (looked, looked_size) = seal("another note of the phone's\n");
+            let sealed: BTreeMap<String, u64> = [(refused.clone(), refused_size), (looked.clone(), looked_size)].into();
+            assert!(send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &sealed, DUE + 10, false, TEST).problem.is_none());
+            let blob = |name: &str| format!("blobs/{name}");
+            {
+                // eDrive sends the second sealed file again: a new ETag there.
+                let _turn = w.fake.turn.lock().unwrap();
+                sync_up(&w.phone_folder.join(blob(&looked)), &w.server.join(blob(&looked)));
+            }
+            // Round 40 past its time here, both sealed files swept; a new round to send.
+            for relative in [round(40), blob(&refused), blob(&looked)] {
+                std::fs::remove_file(w.phone_folder.join(relative)).unwrap();
+            }
+            rounds_stand(&w, 42, 41, 42, DUE + 15);
+            put(&w.phone_folder, &round(43), "{\"round\":43}\n");
+            let (deleted, stat) = ([round(40), refused.clone()], looked.clone());
+            w.fake.fault(move |r| (r.method == "DELETE" && deleted.iter().any(|d| r.path.ends_with(d.as_str()))).then_some(Fault::Status(status)));
+            w.fake.fault(move |r| (r.method == "PROPFIND" && r.path.ends_with(&stat)).then_some(Fault::Status(status)));
+            let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, false, TEST);
+            assert!(sent.problem.is_none() && sent.failure.is_none(), "{status}: the send goes on: {sent:?}");
+            assert_eq!((sent.sent, sent.taken_out), (1, 0), "{status}: the new round went, the others stayed there");
+            let sending = Sending::load(&w.phone.memory);
+            assert_eq!((sending.tries, sending.retry_at), (0, 0), "{status}: no backoff");
+            assert!(!sending.sent.contains_key(&round(40)), "{status}: the round forgotten here");
+            assert_eq!(sending.refused, [blob(&refused), blob(&looked)].into_iter().collect(), "{status}: the sealed files kept for the next listing");
+            assert!([round(40), round(43), blob(&refused), blob(&looked)].iter().all(|r| w.server.join(r).exists()));
+            // The next send asks nothing of them.
+            w.fake.clear_faults();
+            w.fake.forget_seen();
+            let quiet = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 30, false, TEST);
+            assert!(quiet.problem.is_none(), "{status}: {quiet:?}");
+            assert!(w.fake.seen().iter().all(|l| !l.contains(&round(40)) && !l.contains(&refused) && !l.contains(&looked)), "{status}: {:?}", w.fake.seen());
+            // The listing takes all three out, and forgets them here.
+            let listed = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 10 + 6 * 3600, false, TEST);
+            assert_eq!(listed.taken_out, 3, "{status}: {listed:?}");
+            assert!([round(40), blob(&refused), blob(&looked)].iter().all(|r| !w.server.join(r).exists()));
+            let sending = Sending::load(&w.phone.memory);
+            assert!(sending.refused.is_empty() && !sending.sent.keys().any(|r| r.starts_with("blobs/")), "{status}: {sending:?}");
+        }
     }
 
     /// A round of this device gone from the folder here but not past its time

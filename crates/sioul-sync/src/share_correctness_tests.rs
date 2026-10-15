@@ -1308,3 +1308,123 @@ fn after_the_doses_repair_every_mark_and_the_chat_minutes_stay() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+// ---------------------------------------------------------------- the final review of 15 October 2026
+
+/// RF-J1: a dose marked right after the doses' record was repaired goes out
+/// as a change made here, whatever older record of that dose the others hold.
+/// The phone marked b by mistake and took it back, the desk read both; the
+/// desk's record breaks, b is now truly taken and marked on the desk, in the
+/// record started again (`rebuild_then`, then the mark, as the window's
+/// `change` does): b on both devices. While the repaired file joined as a
+/// store new here, the phone's older take-back won, and b was lost on every
+/// device, the phone then showing it due with no doubt.
+#[test]
+fn a_dose_marked_after_the_repair_goes_out_over_an_older_take_back() {
+    use sioul_core::health::HealthState;
+    let base = scratch("marked-after-repair");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (path, phones) = (desk.path("state/health-state.toml"), phone.path("state/health-state.toml"));
+    record_with(&path, &["a@1790000600"], 0);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    // The phone marks b by mistake, then takes it back; the desk reads both.
+    HealthState::update(&phones, NOW / 1000 + 120, |state| {
+        state.taken.insert("b@1790003600".into(), NOW / 1000 + 120);
+    })
+    .unwrap();
+    phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+    desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+    HealthState::update(&phones, NOW / 1000 + 240, |state| {
+        state.taken.remove("b@1790003600");
+    })
+    .unwrap();
+    phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+    desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+    assert_eq!(marks(&desk).0, ["a@1790000600"]);
+    // Twenty minutes on, the desk's record breaks; repaired, then b marked there.
+    std::fs::write(&path, "[taken\n").unwrap();
+    rebuild_then(&desk.memory, &desk.id, &["state/health-state.toml"], || HealthState::set_aside(&path, NOW / 1000 + 1500)).unwrap().unwrap();
+    HealthState::update(&path, NOW / 1000 + 1500, |state| {
+        state.taken.insert("b@1790003600".into(), NOW / 1000 + 1500);
+    })
+    .unwrap();
+    let outcome = desk.exchange(&folder, &key, NOW + 26 * MINUTE);
+    assert_eq!(outcome.sent, 1, "the mark made after the repair goes out, nothing else ({outcome:?})");
+    phone.exchange(&folder, &key, NOW + 27 * MINUTE);
+    for c in [&desk, &phone] {
+        assert_eq!(marks(c).0, ["a@1790000600", "b@1790003600"], "the desk's mark, the last word on b");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// RF-J3: the same for what each device did to remind each dose: the desk's
+/// own word on a dose, written after the reminders' file was repaired (its
+/// notice shown), goes out over its own older word (it stayed quiet), here
+/// and everywhere; while the repaired file joined, the older word came back.
+#[test]
+fn a_reminders_word_written_after_the_repair_goes_out() {
+    use sioul_core::dose_reminders::DoseReminders;
+    use sioul_core::health::HealthState;
+    let base = scratch("told-after-repair");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let path = desk.path("state/health-reminders.toml");
+    let dose = "levothyroxine@1790000600";
+    DoseReminders::update(&path, NOW / 1000 + 300, &desk.id, |all| all.entry(dose, &desk.id).quiet = 1_790_000_900).unwrap();
+    desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 6 * MINUTE);
+    let word = |c: &Computer| DoseReminders::read(&c.path("state/health-reminders.toml")).unwrap().of(dose, &desk.id).map(|t| (t.maybe, t.shown, t.quiet));
+    assert_eq!(word(&phone), Some((0, 0, 1_790_000_900)));
+    // The file breaks, is repaired as the window repairs it, then the notice shown is written.
+    std::fs::write(&path, "[dose\n").unwrap();
+    rebuild_then(&desk.memory, &desk.id, &["state/health-reminders.toml"], || HealthState::set_aside(&path, NOW / 1000 + 900)).unwrap().unwrap();
+    DoseReminders::update(&path, NOW / 1000 + 961, &desk.id, |all| {
+        let told = all.entry(dose, &desk.id);
+        told.maybe = 1_790_000_960;
+        told.shown = 1_790_000_961;
+    })
+    .unwrap();
+    desk.exchange(&folder, &key, NOW + 17 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 18 * MINUTE);
+    for c in [&desk, &phone] {
+        assert_eq!(word(c), Some((1_790_000_960, 1_790_000_961, 0)), "its notice shown, said everywhere");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// RV-P2 with the repair as the window runs it (`rebuild_then`, the record
+/// set aside in the same step): a mark the desk still held, which the phone
+/// took back and the desk has not read yet, goes aside with the lost record
+/// and never goes out again with a fresh clock; nothing goes but what is
+/// written after the repair.
+#[test]
+fn the_repair_sends_no_old_mark_again() {
+    use sioul_core::health::HealthState;
+    let base = scratch("repair-no-old-mark");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let path = desk.path("state/health-state.toml");
+    record_with(&path, &["a@1790000600", "b@1790003600"], 0);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    HealthState::update(&phone.path("state/health-state.toml"), NOW / 1000 + 120, |state| {
+        state.taken.remove("b@1790003600");
+    })
+    .unwrap();
+    phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+    // The desk's record lost before it read that, and repaired.
+    std::fs::remove_file(&path).unwrap();
+    rebuild_then(&desk.memory, &desk.id, &["state/health-state.toml"], || HealthState::set_aside(&path, NOW / 1000 + 180)).unwrap().unwrap();
+    let outcome = desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+    assert_eq!(outcome.sent, 0, "nothing old goes out again ({outcome:?})");
+    phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+    for c in [&desk, &phone] {
+        assert_eq!(marks(c).0, ["a@1790000600"], "the mark taken back stays taken back");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

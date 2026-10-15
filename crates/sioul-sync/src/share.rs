@@ -2125,6 +2125,14 @@ struct Memory {
     /// one's too, at the next exchange (`rebuild`): a record lost here comes back.
     #[serde(default)]
     rebuild: BTreeSet<String>,
+    /// Of those, the files rebuilt without being set aside (`rebuild`): what
+    /// they hold may be what was there before, so at that exchange they join
+    /// as a store new here does, read from the records first, only what the
+    /// records lack going out. Not those set aside in the same step
+    /// (`rebuild_then`): what they hold was written after the repair, and goes
+    /// out as changes made here (review of 15 October 2026, RF-J).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    rejoin: BTreeSet<String>,
     /// Others' changes not written yet (their file could not be read, or is
     /// one this version does not know): tried again at each exchange.
     #[serde(default)]
@@ -4088,17 +4096,19 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.read.clear();
         memory.rebuild.extend(joining.iter().cloned());
     }
-    // Files rebuilt whose entries this device forgot join as a store new here
-    // does (the stores joining are among them now): the doses' record
-    // repaired (`rebuild`). Read from the records first, then only what the
-    // records lack goes out: their copy here never goes out first, with a
-    // clock later than everything read, over another device's newer word not
-    // read yet. Before, a dose's mark the phone had taken back came back on
-    // both devices (review of 15 October 2026, RV-P2). Not every file read
-    // again because this device's own records go further than its memory
-    // (`share-own-ahead`, `*`): that memory keeps its entries, and what
-    // changed here since them is a change made here, which goes.
-    let rebuilt_here: BTreeSet<String> = memory.rebuild.iter().filter(|r| *r != "*").cloned().collect();
+    // Files rebuilt without being set aside (`rebuild`, `Memory::rejoin`)
+    // join as the stores joining do: read from the records first, then only
+    // what the records lack goes out; what they hold may be what was there
+    // before, and never goes out first, with a clock later than everything
+    // read, over another device's newer word not read yet (a dose's mark the
+    // phone had taken back came back on both devices: review of 15 October
+    // 2026, RV-P2). Not the files set aside in the same step (`rebuild_then`,
+    // the doses' repair): they hold only what was written after the repair,
+    // a change made here that goes, never replaced by an older record of the
+    // same entry (RF-J). Nor every file read again because this device's own
+    // records go further than its memory (`share-own-ahead`): that memory
+    // keeps its entries, and what changed here since them goes.
+    let rebuilt_here: BTreeSet<String> = joining.iter().cloned().chain(std::mem::take(&mut memory.rejoin)).collect();
     let joins = |key: &str| {
         let file = file_of(key);
         rebuilt_here.contains(file) || rebuilt_here.iter().any(|r| r.ends_with('/') && file.starts_with(r.as_str()))
@@ -6035,20 +6045,30 @@ pub fn heard(memory: &Path, computer: &str) -> Heard {
 /// one's too, at the next exchange; this computer forgets it held them, so
 /// that a record lost or broken here, started again empty, takes nothing out
 /// elsewhere and gets back what was written (docs/database.md, "Prudence").
-/// At that exchange they join as a store new here does: read from the
-/// records first, then only what the records lack goes out (`exchange`).
+/// The files left as they are, what they hold may be what was there before:
+/// at that exchange they join as a store new here does, read from the
+/// records first, only what the records lack going out (`Memory::rejoin`),
+/// so that an old mark never goes out again with a fresh clock (review of
+/// 15 October 2026, RV-P2).
 pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), String> {
-    rebuild_then(memory, computer, files, || ())
+    rebuild_with(memory, computer, files, true, || ())
 }
 
-/// As `rebuild`, then `then` run while the exchanges' lock is still held,
-/// before any exchange can read those files again: the doses' repair sets
-/// the record that cannot be trusted aside there (`HealthState::set_aside`).
-/// Run apart, an exchange between the two steps filled the lost record again
-/// from the records, the full record was then set aside, and the next mark
-/// written made every other mark look taken out, on every device (review of
-/// 15 October 2026, P1).
+/// As `rebuild`, then `then`, which sets the files aside (the doses' repair:
+/// `HealthState::set_aside`), run while the exchanges' lock is still held,
+/// before any exchange can read those files again. Run apart, an exchange
+/// between the two steps filled the lost record again from the records, the
+/// full record was then set aside, and the next mark written made every other
+/// mark look taken out, on every device (review of 15 October 2026, P1). Set
+/// aside in that same step, the files hold afterwards only what was written
+/// after the repair: it goes out as changes made here, never replaced by an
+/// older record of the same entry (a dose marked again after it was taken
+/// back elsewhere was lost on every device: RF-J).
 pub fn rebuild_then<T>(memory: &Path, computer: &str, files: &[&str], then: impl FnOnce() -> T) -> Result<T, String> {
+    rebuild_with(memory, computer, files, false, then)
+}
+
+fn rebuild_with<T>(memory: &Path, computer: &str, files: &[&str], rejoin: bool, then: impl FnOnce() -> T) -> Result<T, String> {
     let _running = exchange_lock(memory, true)?;
     let mut state = Memory::load_all(memory, computer);
     state.entries.retain(|key, _| !files.contains(&file_of(key)));
@@ -6056,6 +6076,11 @@ pub fn rebuild_then<T>(memory: &Path, computer: &str, files: &[&str], then: impl
     for file in files {
         state.files.remove(*file);
         state.rebuild.insert((*file).to_string());
+        if rejoin {
+            state.rejoin.insert((*file).to_string());
+        } else {
+            state.rejoin.remove(*file);
+        }
     }
     // The others' records read again from their oldest kept round.
     state.read.clear();

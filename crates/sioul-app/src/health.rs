@@ -2138,11 +2138,12 @@ fn load_peers() -> Peers {
     std::fs::read_to_string(peers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
+/// Written whole beside its place, then renamed over it (`share::write_atomically`):
+/// a crash in mid-write never leaves half of it, which read as nothing would
+/// lose the newest copies kept, the openings read and the off and forgotten
+/// marks (final review of 15 October 2026).
 fn save_peers(kept: &Peers) -> String {
-    let written = serde_json::to_string(kept).map_err(|e| e.to_string()).and_then(|text| {
-        std::fs::create_dir_all(sioul_core::config::state_dir().join("share")).map_err(|e| e.to_string())?;
-        std::fs::write(peers_path(), text).map_err(|e| e.to_string())
-    });
+    let written = serde_json::to_string(kept).map_err(|e| e.to_string()).and_then(|text| sioul_sync::share::write_atomically(&peers_path(), text.as_bytes()));
     written.err().unwrap_or_default()
 }
 
