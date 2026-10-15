@@ -2723,6 +2723,7 @@ share-device-ahead = Its clock is { $minutes ->
     [one] a minute
    *[other] { $minutes } minutes
 } ahead of this one's, at least.
+share-device-future = Its clock runs more than ten minutes ahead of this one's: what it says is set aside here until its clock is set right.
 share-device-count-again = Count it again
 share-device-forget = Forget this device
 share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other device would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Your folder and sharing).

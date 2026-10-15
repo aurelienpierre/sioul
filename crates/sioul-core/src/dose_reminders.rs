@@ -37,7 +37,9 @@ pub const NEVER: i64 = i64::MAX;
 
 /// How long after its dose any device takes another device's entry out (a
 /// device forgotten, reinstalled under a new id, gone without a word): far
-/// past `KEPT_DAYS`, beyond any clock's error (the eighth review's L6).
+/// past `KEPT_DAYS`, beyond any clock's error (the eighth review's L6);
+/// counted from the newest dose the other devices' entries name when it is
+/// earlier than this device's clock (`save`: the ninth review's P1).
 pub const STALE_DAYS: i64 = 30;
 
 /// What each device did to remind each dose, by the dose's key, then the device's id.
@@ -105,12 +107,17 @@ impl DoseReminders {
     }
 
     /// Saved, this device's own entries past `KEPT_DAYS` dropped, by its
-    /// clock: never another device's, whatever this clock says (each device
-    /// takes its own out, and the sharing carries that; a clock days ahead
-    /// would empty the others' else: the sixth review's L3, R8). Use
-    /// `update`: it holds the lock.
+    /// clock (each device takes its own out, and the sharing carries that: a
+    /// clock days ahead would empty the others' else, the sixth review's L3,
+    /// R8); every device's entries `STALE_DAYS` after their dose, counted not
+    /// by this clock alone but by the earlier of it and the newest dose the
+    /// other devices' entries name, so that a clock a month ahead, here or on
+    /// one other device, takes no entry of today's out (the ninth review's P1).
+    /// Use `update`: it holds the lock.
     fn save(&mut self, path: &Path, now: i64, me: &str) -> Result<(), String> {
-        let (oldest, stale) = (now - KEPT_DAYS * 86_400, now - STALE_DAYS * 86_400);
+        // The others' newest dose: a time this clock alone cannot push.
+        let others = self.dose.iter().filter(|(_, devices)| devices.keys().any(|device| device != me)).map(|(key, _)| due_of(key)).max().unwrap_or(0);
+        let (oldest, stale) = (now - KEPT_DAYS * 86_400, now.min(others) - STALE_DAYS * 86_400);
         for (key, devices) in &mut self.dose {
             if due_of(key) < stale {
                 devices.clear();
@@ -406,6 +413,19 @@ mod tests {
         assert!(read.of(KEY, "phone").is_none() && read.of(KEY, "desk").is_some(), "the desk's entry is the desk's to take out");
         DoseReminders::update(&path, DUE + 3 * 86_400, "desk", |_| ()).unwrap();
         assert!(DoseReminders::read(&path).unwrap().dose.is_empty(), "each its own, two days on");
+        // A clock a month ahead (P1): its own old entries go, today's of the others stay; a month-old one goes.
+        let month = 31 * 86_400;
+        DoseReminders::update(&path, DUE + 1, "phone", |all| all.entry(KEY, "phone").shown = DUE + 1).unwrap();
+        DoseReminders::update(&path, DUE + 2, "desk", |all| {
+            all.entry(KEY, "desk").maybe = DUE + 2;
+            all.entry("iron@1797320000", "desk").maybe = 1_797_320_000;
+        })
+        .unwrap();
+        DoseReminders::update(&path, DUE + month, "ahead", |all| all.entry("zinc@1802678400", "ahead").shown = DUE + month).unwrap();
+        let read = DoseReminders::read(&path).unwrap();
+        assert!(read.of(KEY, "phone").is_some() && read.of(KEY, "desk").is_some(), "today's entries of the others kept by a clock a month ahead");
+        assert!(read.of("iron@1797320000", "desk").is_none(), "a month older than the others' newest dose: gone");
+        DoseReminders::update(&path, DUE + 3 * 86_400, "desk", |all| all.dose.clear()).unwrap();
         // A device gone (stopped sharing, or forgotten): its entries taken out by any device (L5).
         DoseReminders::update(&path, DUE + 1, "phone", |all| all.entry(KEY, "old-phone").shown = DUE + 1).unwrap();
         let mut read = DoseReminders::read(&path).unwrap();
