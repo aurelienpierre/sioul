@@ -8,12 +8,15 @@
 //! share it; each provider says what an answer means (`Verdict`) and which
 //! page the browser then shows, in your language.
 //!
-//! Nothing but the request line is read: `GET /?state=…&code=… HTTP/1.1`,
-//! at most `LINE_BYTES` of it, within `LINE_TIME` of the connection, Cancel
-//! heard meanwhile: a connection that says nothing, or says too much, is
-//! dropped, and cannot hold the door past Cancel or the code's minute (the
-//! review of 15 October 2026, L1). A request without a query (a favicon)
-//! gets a 404 and the wait goes on. The state is compared in constant time.
+//! What counts is the request line, `GET /?state=…&code=… HTTP/1.1`; the
+//! request is read whole, its headers too, at most `LINE_BYTES` of it,
+//! within `LINE_TIME` of the connection, Cancel heard meanwhile: a
+//! connection that says nothing, or says too much, is dropped, and cannot
+//! hold the door past Cancel or the code's minute (the review of 15 October
+//! 2026, L1). Read whole, so that closing it after the page is an orderly
+//! end: unread headers would make it a reset, and the browser's tab might
+//! say "connection reset" (the re-check, L1-bis). A request without a query
+//! (a favicon) gets a 404 and the wait goes on. The state is compared in constant time.
 //! An answer that waits in the system's queue is read even once the time is
 //! up (a phone freezes Sioul while the browser is in front, and its clock
 //! then jumps), for `LATE_CONNECTIONS` connections at most.
@@ -133,23 +136,27 @@ pub(crate) struct Ends {
     pub timed_out: SyncError,
 }
 
-/// The most a request line may hold: a browser's answer, its code and state
-/// included, is a few kilobytes at most.
+/// The most a request may hold, its line and headers: a browser's answer,
+/// its code and state included, and its headers (cookies for 127.0.0.1
+/// among them) are a few kilobytes at most.
 const LINE_BYTES: usize = 16 * 1024;
-/// The most time a connection has to say its request line: a browser says it at once.
+/// The most time a connection has to say its request: a browser says it at once.
 const LINE_TIME: Duration = Duration::from_secs(2);
 /// Connections still read once the time is up, as long as they wait in the
 /// queue (the browser's answer among them, after a phone's freeze); past
 /// them the wait ends, however many more keep coming.
 const LATE_CONNECTIONS: usize = 16;
 
-/// A connection's request line, read within `LINE_TIME` and `LINE_BYTES`,
-/// Cancel heard between reads; None when it does not come whole in time,
-/// or when Cancel is pressed meanwhile.
+/// A connection's request, read whole (its line, then its headers up to the
+/// blank line that ends them) within `LINE_TIME` and `LINE_BYTES`, Cancel
+/// heard between reads: its request line. None when it does not come whole
+/// in time, or when Cancel is pressed meanwhile. A request that ends with
+/// the connection's own end after its line (a tool, not a browser) counts whole.
 fn request_line(stream: &TcpStream, stop: &AtomicBool) -> Option<String> {
     let started = Instant::now();
-    let mut line: Vec<u8> = Vec::with_capacity(1024);
-    let mut chunk = [0u8; 1024];
+    let mut head: Vec<u8> = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 4096];
+    let line = |head: &[u8]| head.iter().position(|&b| b == b'\n').map(|end| String::from_utf8_lossy(&head[..end]).trim_end_matches('\r').to_string());
     loop {
         if stop.load(Ordering::Relaxed) {
             return None;
@@ -158,14 +165,16 @@ fn request_line(stream: &TcpStream, stop: &AtomicBool) -> Option<String> {
         // Each read waits at most a fifth of a second, so that Cancel is heard.
         stream.set_read_timeout(Some(left.clamp(Duration::from_millis(1), Duration::from_millis(200)))).ok()?;
         match (&*stream).read(&mut chunk) {
-            Ok(0) => return None,
+            Ok(0) => return line(&head),
             Ok(read) => {
-                line.extend_from_slice(&chunk[..read]);
-                if let Some(end) = line.iter().position(|&b| b == b'\n') {
-                    line.truncate(end);
-                    return Some(String::from_utf8_lossy(&line).trim_end_matches('\r').to_string());
+                // From a little before what came, for a blank line split between two reads.
+                let from = head.len().saturating_sub(3);
+                head.extend_from_slice(&chunk[..read]);
+                let tail = &head[from..];
+                if tail.windows(4).any(|w| w == b"\r\n\r\n") || tail.windows(2).any(|w| w == b"\n\n") {
+                    return line(&head);
                 }
-                if line.len() > LINE_BYTES {
+                if head.len() > LINE_BYTES {
                     return None;
                 }
             }
@@ -232,9 +241,50 @@ pub(crate) fn wait(listener: &TcpListener, state: &str, deadline: Duration, stop
     }
 }
 
+/// A browser coming back to the door at `port`: `GET <target>` with the
+/// headers a browser sends (Chrome's), a cookie making the request `size`
+/// bytes long when it is shorter; what the door answered, read to its end,
+/// or the error that ended it (a reset). For the tests of both providers.
+#[cfg(test)]
+pub(crate) fn browser_answer(port: u16, target: &str, size: usize) -> std::io::Result<String> {
+    let head = format!(
+        "GET {target} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: keep-alive\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\nSec-Fetch-Site: cross-site\r\nSec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\nsec-ch-ua: \"Chromium\";v=\"141\", \"Not?A_Brand\";v=\"8\"\r\nsec-ch-ua-mobile: ?0\r\nsec-ch-ua-platform: \"Linux\"\r\nAccept-Encoding: gzip, deflate, br, zstd\r\nAccept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7\r\n"
+    );
+    let cookie = |pad: usize| format!("Cookie: pad={}\r\n", "c".repeat(pad));
+    let pad = size.saturating_sub(head.len() + cookie(0).len() + 2);
+    let request = format!("{head}{}\r\n", if pad > 0 { cookie(pad) } else { String::new() });
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.write_all(request.as_bytes())?;
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer)?;
+    Ok(String::from_utf8_lossy(&answer).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The re-check of 15 October 2026, L1-bis: the browser's whole request,
+    /// its headers included (800 to 3,000 bytes, a cookie or two), is read
+    /// before the door answers and closes, so the browser gets its page and
+    /// an orderly end, never a reset ("connection reset" in its tab).
+    #[test]
+    fn a_browser_gets_its_page_and_an_orderly_end() {
+        let judge = |answer: &Answer| match (answer.state_ok, answer.get("code")) {
+            (true, Some(code)) => Verdict::Done("google-page-granted", Ok(code.to_string())),
+            _ => Verdict::Ignored("google-page-foreign"),
+        };
+        for size in (800..=3000).step_by(110) {
+            let (listener, _) = open(false).unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let browser = std::thread::spawn(move || browser_answer(port, "/?state=the-state&code=the-code&scope=openid", size));
+            let ends = Ends { cancelled: SyncError::Message("cancelled".into()), timed_out: SyncError::Message("timed out".into()) };
+            assert_eq!(wait(&listener, "the-state", Duration::from_secs(10), &AtomicBool::new(false), ends, judge).unwrap(), "the-code", "{size} bytes");
+            let answer = browser.join().unwrap();
+            assert!(answer.as_ref().is_ok_and(|page| page.starts_with("HTTP/1.1 200") && page.contains("</p>")), "{size} bytes: {answer:?}");
+        }
+    }
 
     #[test]
     fn values_go_and_come_back_whole() {

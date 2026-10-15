@@ -293,7 +293,9 @@ impl std::fmt::Debug for Grant {
 /// (`<name>#<check>#2`, `#3`…): each token's parts are its own, written before
 /// the entry that names them, so that a rotation cut short, or two crossing,
 /// never leave this entry naming parts it does not have (the review of 15
-/// October 2026, L2). A grant without its check is no grant.
+/// October 2026, L2); every generation with parts is noted beside it until
+/// its parts are gone (`generations`), so that removal forgets them all. A
+/// grant without its check is no grant.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Kept {
     client_id: String,
@@ -368,10 +370,57 @@ fn part_names(store: &dyn Store, name: &str) -> Vec<String> {
     kept_in(store, name).map(|kept| (2..kept.parts.min(MOST_PARTS) + 2).map(|index| part_name(name, &kept.check, index)).collect()).unwrap_or_default()
 }
 
-/// Forgets a generation's parts, and the first version's names.
-fn forget_parts(store: &dyn Store, name: &str, check: &str, parts: usize) {
-    for index in 2..parts.min(MOST_PARTS) + 2 {
-        let _ = store.forget(&part_name(name, check, index));
+/// Forgets a generation's parts: whether every one is gone.
+fn forget_parts(store: &dyn Store, name: &str, check: &str, parts: usize) -> bool {
+    (2..parts.min(MOST_PARTS) + 2).map(|index| store.forget(&part_name(name, check, index)).is_ok()).fold(true, |all, gone| all && gone)
+}
+
+/// The checks of the generations whose parts may still be in the keyring,
+/// the one in use included (`<name>#generations`): each write notes its
+/// own before it writes a part, and the one it replaces; one is struck off
+/// only once its parts are gone. Two rotations crossing (the window and a
+/// command, each renewing) can leave a generation that no first entry names
+/// any more: removal still finds it here (the re-check of 15 October 2026,
+/// L2-bis). A short token has no part, and is not noted.
+fn generations_name(name: &str) -> String {
+    format!("{name}#generations")
+}
+
+/// At most this many generations noted: past them, the oldest are dropped
+/// (a crossing leaves one, at most, and each write strikes off what it replaced).
+const MOST_GENERATIONS: usize = 16;
+
+fn generations(store: &dyn Store, name: &str) -> Result<Vec<String>, SyncError> {
+    Ok(store.get(&generations_name(name))?.and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok()).unwrap_or_default())
+}
+
+/// Notes a generation that has, or is about to have, parts. Read once more
+/// after a passing error; not noted when the keyring does not answer.
+fn note_generation(store: &dyn Store, name: &str, check: &str) {
+    let Ok(mut noted) = generations(store, name).or_else(|_| generations(store, name)) else { return };
+    if noted.iter().any(|c| c == check) {
+        return;
+    }
+    noted.push(check.to_string());
+    let past = noted.len().saturating_sub(MOST_GENERATIONS);
+    noted.drain(..past);
+    if let Ok(bytes) = serde_json::to_vec(&noted) {
+        let _ = store.set(&generations_name(name), &bytes);
+    }
+}
+
+/// Strikes off generations whose parts are gone; the list itself goes with the last.
+fn strike_generations(store: &dyn Store, name: &str, gone: &[&str]) {
+    let Ok(mut noted) = generations(store, name) else { return };
+    let before = noted.len();
+    noted.retain(|c| !gone.contains(&c.as_str()));
+    if noted.len() == before {
+        return;
+    }
+    if noted.is_empty() {
+        let _ = store.forget(&generations_name(name));
+    } else if let Ok(bytes) = serde_json::to_vec(&noted) {
+        let _ = store.set(&generations_name(name), &bytes);
     }
 }
 
@@ -430,41 +479,66 @@ fn split(grant: &Grant) -> Result<(Kept, Vec<String>), SyncError> {
 }
 
 /// Writes a grant under `name` without ever leaving it lost: the new token's
-/// parts first, under names of their own; then the first entry, which names
-/// them (the pointer); then it is read back whole before the generation it
-/// replaced is forgotten. A write that fails takes back what it wrote, and
-/// the grant kept before stays whole; one that does not read back whole puts
-/// the entry it replaced back. Two writes crossing (the window and a
-/// command, each renewing the token) leave the one written last, whole.
+/// parts first, under names of their own, noted beside it (`generations`);
+/// then the first entry, which names them (the pointer); then it is read
+/// back whole before the generation it replaced is forgotten. A write that
+/// fails takes back what it wrote, and the grant kept before stays whole;
+/// one that does not read back whole puts the entry it replaced back. A
+/// read-back that the keyring does not answer, twice, leaves everything as
+/// written: what it replaced, noted, goes at the next write or at removal.
+/// Two writes crossing (the window and a command, each renewing the token)
+/// leave the one written last, whole, and every part of the other noted.
 fn save_in(store: &dyn Store, name: &str, grant: &Grant) -> Result<(), SyncError> {
     let (kept, parts) = split(grant)?;
     let written: Vec<String> = (0..parts.len()).map(|index| part_name(name, &kept.check, index + 2)).collect();
+    // Undoes this write's parts, struck off once gone.
+    let take_back = || {
+        if written.iter().map(|n| store.forget(n).is_ok()).fold(true, |all, gone| all && gone) {
+            strike_generations(store, name, &[&kept.check]);
+        }
+    };
+    if !parts.is_empty() {
+        note_generation(store, name, &kept.check);
+    }
     for (part, part_named) in parts.iter().zip(&written) {
         if let Err(e) = store.set(part_named, part.as_bytes()) {
-            written.iter().for_each(|n| drop(store.forget(n)));
+            take_back();
             return Err(e);
         }
     }
-    // What the pointer named until now: its generation goes once this one is in place.
+    // What the pointer names until now, read the moment before it is replaced: its generation goes once this one is in place, and is noted meanwhile.
     let replaced = store.get(name).ok().flatten();
+    let old = replaced.as_deref().and_then(|b| serde_json::from_slice::<Kept>(b).ok()).filter(|old| old.check != kept.check && old.parts > 0);
+    if let Some(old) = &old {
+        note_generation(store, name, &old.check);
+    }
     let bytes = serde_json::to_vec(&kept).map_err(|e| SyncError::Keyring(e.to_string()))?;
     if let Err(e) = store.set(name, &bytes) {
-        written.iter().for_each(|n| drop(store.forget(n)));
+        take_back();
         return Err(e);
     }
-    let back = load_from(store, name).ok().flatten().map(|grant| check_of(&grant.refresh_token));
+    // Read back; once more after a passing error, which is not a grant "not whole".
+    let back = match load_from(store, name).or_else(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        load_from(store, name)
+    }) {
+        Ok(back) => back.map(|grant| check_of(&grant.refresh_token)),
+        Err(_) => return Ok(()),
+    };
     match back {
         // This one, whole: the generation it replaced goes, and the first version's names.
         Some(check) if check == kept.check => {
-            if let Some(old) = replaced.as_deref().and_then(|b| serde_json::from_slice::<Kept>(b).ok()).filter(|old| old.check != kept.check) {
-                forget_parts(store, name, &old.check, old.parts);
+            if let Some(old) = old
+                && forget_parts(store, name, &old.check, old.parts)
+            {
+                strike_generations(store, name, &[&old.check]);
             }
             forget_legacy_parts(store, name);
             Ok(())
         }
         // Another process wrote after this one, whole: this one's parts serve nothing.
         Some(_) => {
-            written.iter().for_each(|n| drop(store.forget(n)));
+            take_back();
             Ok(())
         }
         // Not whole: the entry it replaced comes back, whose parts were never touched.
@@ -472,7 +546,7 @@ fn save_in(store: &dyn Store, name: &str, grant: &Grant) -> Result<(), SyncError
             if let Some(old) = replaced {
                 let _ = store.set(name, &old);
             }
-            written.iter().for_each(|n| drop(store.forget(n)));
+            take_back();
             Err(SyncError::Keyring(format!("{name}: the grant written did not read back whole; the one before is kept")))
         }
     }
@@ -823,8 +897,9 @@ fn forget_entries(name: &str) -> Result<(), SyncError> {
     forget_entries_in(&Keyring, name)
 }
 
-/// Forgets the grant under `name`: its parts (the generation in use, and the
-/// first version's names), then the first entry; and its access token.
+/// Forgets the grant under `name`: its parts (the generation in use, every
+/// generation noted beside it, and the first version's names), then the
+/// first entry; and its access token.
 fn forget_entries_in(store: &dyn Store, name: &str) -> Result<(), SyncError> {
     if let Ok(mut access) = ACCESS.lock()
         && let Some(map) = access.as_mut()
@@ -833,6 +908,14 @@ fn forget_entries_in(store: &dyn Store, name: &str) -> Result<(), SyncError> {
     }
     if let Some(kept) = kept_in(store, name) {
         forget_parts(store, name, &kept.check, kept.parts);
+    }
+    // Every generation noted, a crossing's left behind included; the list
+    // kept when the keyring does not answer it, twice, rather than lost.
+    if let Ok(noted) = generations(store, name).or_else(|_| generations(store, name)) {
+        for check in noted {
+            forget_parts(store, name, &check, MOST_PARTS);
+        }
+        let _ = store.forget(&generations_name(name));
     }
     forget_legacy_parts(store, name);
     store.forget(name)
@@ -1077,6 +1160,22 @@ mod tests {
         }
     }
 
+    /// The re-check of 15 October 2026, L1-bis: Microsoft's answer as a
+    /// browser sends it, with its headers (800 to 3,000 bytes), ends in its
+    /// page and an orderly close, never a reset.
+    #[test]
+    fn microsofts_answer_ends_cleanly_in_the_browser() {
+        for size in [800, 1060, 1500, 2200, 3000] {
+            let sign_in = begin("id", &Authority::Common, "you@example.org").unwrap();
+            let port = sign_in.listener.local_addr().unwrap().port();
+            let target = format!("/?code=M.C5_BAY.2.U.{}&state={}", "x".repeat(400), sign_in.state);
+            let browser = std::thread::spawn(move || crate::loopback::browser_answer(port, &target, size));
+            assert!(wait_for_code(&sign_in, Duration::from_secs(10), &AtomicBool::new(false), None).unwrap().starts_with("M.C5_BAY.2.U."));
+            let page = browser.join().unwrap();
+            assert!(page.as_ref().is_ok_and(|p| p.starts_with("HTTP/1.1 200")), "{size} bytes: {page:?}");
+        }
+    }
+
     /// Part 8, 2: the door. A favicon first; an answer of another sign-in
     /// refused while the wait goes on; Cancel; an answer read late; a refusal.
     #[test]
@@ -1276,7 +1375,8 @@ mod tests {
         let double = work_grant(long_token(8192));
         save_in(&store, name, &double).unwrap();
         assert_eq!((load_from(&store, name).unwrap(), part_names(&store, name).len()), (Some(double.clone()), 3));
-        assert_eq!(store.0.lock().unwrap().len(), 4, "the parts of the token before are gone");
+        assert_eq!(store.0.lock().unwrap().len(), 5, "the parts of the token before are gone; its own noted beside");
+        assert_eq!(generations(&store, name).unwrap(), [check_of(&double.refresh_token)]);
         assert!(save_in(&store, name, &work_grant(long_token(12288))).is_err());
         assert_eq!(load_from(&store, name).unwrap(), Some(double), "the one kept, kept");
         // Shorter: one entry, the parts gone.
@@ -1327,26 +1427,52 @@ mod tests {
 
     /// A store standing in for the keyring, around the memory one: it runs
     /// another process's whole rotation once, the moment this one is about to
-    /// write its first entry; or it refuses a part, or the first entry; or,
-    /// once, reads the first entry back as missing.
+    /// write its first entry (`between`), or once it has written it and is
+    /// about to read it back (`after`); or it refuses a part, or the first
+    /// entry; or, once, reads the first entry back as missing; or fails the
+    /// first entry's reads after it was written, so many times (`failing`).
     struct Crossing<'a> {
         memory: &'a Memory,
         name: &'static str,
         between: Mutex<Option<Box<dyn FnOnce() + 'a>>>,
+        after: Mutex<Option<Box<dyn FnOnce() + 'a>>>,
         refuse_part: bool,
         refuse_first: bool,
         reads: Mutex<u32>,
         miss_read: u32,
+        written: Mutex<bool>,
+        failing: Mutex<u32>,
     }
 
     impl<'a> Crossing<'a> {
         fn over(memory: &'a Memory, name: &'static str) -> Crossing<'a> {
-            Crossing { memory, name, between: Mutex::new(None), refuse_part: false, refuse_first: false, reads: Mutex::new(0), miss_read: 0 }
+            Crossing {
+                memory,
+                name,
+                between: Mutex::new(None),
+                after: Mutex::new(None),
+                refuse_part: false,
+                refuse_first: false,
+                reads: Mutex::new(0),
+                miss_read: 0,
+                written: Mutex::new(false),
+                failing: Mutex::new(0),
+            }
         }
     }
 
     impl Store for Crossing<'_> {
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, SyncError> {
+            if name == self.name && *self.written.lock().unwrap() {
+                if let Some(after) = self.after.lock().unwrap().take() {
+                    after();
+                }
+                let mut failing = self.failing.lock().unwrap();
+                if *failing > 0 {
+                    *failing -= 1;
+                    return Err(SyncError::Keyring("the stand-in's keyring did not answer".into()));
+                }
+            }
             if name == self.name {
                 let mut reads = self.reads.lock().unwrap();
                 *reads += 1;
@@ -1363,6 +1489,9 @@ mod tests {
             }
             if first && let Some(between) = self.between.lock().unwrap().take() {
                 between();
+            }
+            if first {
+                *self.written.lock().unwrap() = true;
             }
             self.memory.set(name, value)
         }
@@ -1386,34 +1515,68 @@ mod tests {
             save_in(&memory, name, &old).unwrap();
             memory
         };
+        // After each, removal leaves nothing: no part of any token, crossing's included (the re-check, L2-bis).
+        let removed = |memory: &Memory| {
+            forget_entries_in(memory, name).unwrap();
+            assert!(memory.0.lock().unwrap().is_empty(), "left after removal: {:?}", memory.0.lock().unwrap().keys().collect::<Vec<_>>());
+        };
         // Crossing: theirs, written whole between my parts and my first entry; mine, written last, stays whole.
         let memory = kept();
         let mut store = Crossing::over(&memory, name);
         store.between = Mutex::new(Some(Box::new(|| save_in(&memory, name, &theirs).unwrap())));
         save_in(&store, name, &mine).unwrap();
         assert_eq!(load_from(&memory, name).unwrap(), Some(mine.clone()), "the last one written, whole");
+        removed(&memory);
+        // The other order: theirs, written whole after my first entry, before I read it back; theirs stays whole.
+        let memory = kept();
+        let mut store = Crossing::over(&memory, name);
+        store.after = Mutex::new(Some(Box::new(|| save_in(&memory, name, &theirs).unwrap())));
+        save_in(&store, name, &mine).unwrap();
+        assert_eq!(load_from(&memory, name).unwrap(), Some(theirs.clone()), "the last one written, whole");
+        removed(&memory);
         // A part refused: nothing changes, nothing of mine is left.
         let memory = kept();
         let mut store = Crossing::over(&memory, name);
         store.refuse_part = true;
         assert!(save_in(&store, name, &mine).is_err());
         assert_eq!(load_from(&memory, name).unwrap(), Some(old.clone()), "the one before, whole");
-        assert_eq!(memory.0.lock().unwrap().len(), 2);
+        assert_eq!(memory.0.lock().unwrap().len(), 3, "its first entry, its part, its generation noted");
+        removed(&memory);
         // The first entry refused, after my parts: the one before stays, my parts go.
         let memory = kept();
         let mut store = Crossing::over(&memory, name);
         store.refuse_first = true;
         assert!(save_in(&store, name, &mine).is_err());
         assert_eq!(load_from(&memory, name).unwrap(), Some(old.clone()));
-        assert_eq!(memory.0.lock().unwrap().len(), 2);
+        assert_eq!(memory.0.lock().unwrap().len(), 3);
+        removed(&memory);
         // Written, but not read back whole (the second read of the first entry,
         // after the one that names what it replaces): the entry before comes back.
         let memory = kept();
         let mut store = Crossing::over(&memory, name);
         store.miss_read = 2;
         assert!(save_in(&store, name, &mine).is_err());
-        assert_eq!(load_from(&memory, name).unwrap(), Some(old), "the entry before, back");
-        assert_eq!(memory.0.lock().unwrap().len(), 2);
+        assert_eq!(load_from(&memory, name).unwrap(), Some(old.clone()), "the entry before, back");
+        assert_eq!(memory.0.lock().unwrap().len(), 3);
+        removed(&memory);
+        // The keyring not answering the read-back once: read again, and the rotation goes through.
+        let memory = kept();
+        let store = Crossing::over(&memory, name);
+        *store.failing.lock().unwrap() = 1;
+        save_in(&store, name, &mine).unwrap();
+        assert_eq!(load_from(&memory, name).unwrap(), Some(mine.clone()));
+        assert_eq!(memory.0.lock().unwrap().len(), 3, "the one before gone");
+        removed(&memory);
+        // Not answering twice: nothing undone, mine in place (never "not whole"), the one before noted for later.
+        let memory = kept();
+        let store = Crossing::over(&memory, name);
+        *store.failing.lock().unwrap() = 2;
+        save_in(&store, name, &mine).unwrap();
+        assert_eq!(load_from(&memory, name).unwrap(), Some(mine.clone()));
+        assert_eq!(generations(&memory, name).unwrap(), [check_of(&old.refresh_token), check_of(&mine.refresh_token)]);
+        save_in(&memory, name, &theirs).unwrap();
+        assert_eq!(memory.0.lock().unwrap().len(), 4, "the next write forgets what it replaced; the older one, still noted, waits for removal");
+        removed(&memory);
     }
 
     /// Part 8, 6, in the system's own keyring: Windows' Credential Manager
@@ -1447,7 +1610,7 @@ mod tests {
         forget(&login, true).unwrap();
         assert_eq!(back, Some(kept));
         assert_eq!(grant(&login), None, "forgotten, parts and all");
-        for name in names {
+        for name in names.into_iter().chain([generations_name(&keyring_name(&login))]) {
             assert!(crate::secret::named_bytes(&name).unwrap().is_none(), "{name}: forgotten");
         }
     }

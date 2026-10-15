@@ -36,15 +36,15 @@ pub fn names() -> &'static [&'static str] {
 /// Each account's and label's feature means, over the copies a training
 /// learns from; only the mail of `domain` (the sender's registrable domain,
 /// or one under it) when given.
-pub fn feature_means(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, domain: Option<&str>) -> Result<Vec<Group>, LearnError> {
+pub fn feature_means(dirs: &Dirs, microsoft: &crate::consent::MicrosoftIds, trusted: &BTreeMap<String, Vec<String>>, domain: Option<&str>) -> Result<Vec<Group>, LearnError> {
     let mut copies = Vec::new();
-    corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
+    corpus::read_all(dirs, microsoft, |record| copies.push(Copy::of(&record)))?;
     let (labeled, _) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
     let chosen: HashMap<corpus::Place, Label> = labeled.into_iter().map(|l| (l.place, l.label)).collect();
     let domain = domain.map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase());
     // By account and label (spam: true), in order.
     let mut sums: BTreeMap<(String, bool), (u64, [f64; N], [u64; N])> = BTreeMap::new();
-    corpus::read_all(dirs, |record| {
+    corpus::read_all(dirs, microsoft, |record| {
         let Some(&label) = chosen.get(&record.place()) else { return };
         if let Some(domain) = &domain {
             let from = labels::from_address(&record.header_bytes()).and_then(|a| a.rsplit_once('@').map(|(_, d)| d.to_string())).unwrap_or_default();
@@ -88,13 +88,13 @@ mod tests {
         let mail = synthetic::mailbox(2, 60, 40);
         let records: Vec<_> = mail.iter().enumerate().map(|(i, m)| synthetic::record_of(m, 1, i as u32 + 1)).collect();
         corpus::store(&dirs, &records).unwrap();
-        let groups = feature_means(&dirs, &BTreeMap::new(), None).unwrap();
+        let groups = feature_means(&dirs, &Default::default(), &BTreeMap::new(), None).unwrap();
         assert_eq!(groups.iter().map(|g| g.messages).sum::<u64>(), 100);
         assert!(groups.iter().all(|g| g.means.len() == N && g.known.len() == N));
         let list = NAMES.iter().position(|n| *n == "list_unsubscribe").unwrap();
         assert!(groups.iter().all(|g| g.means[list].is_some_and(|m| (0.0..=1.0).contains(&m))), "{groups:?}");
         // One sender's domain alone: the invented spam's.
-        let lottery = feature_means(&dirs, &BTreeMap::new(), Some("lottery.test")).unwrap();
+        let lottery = feature_means(&dirs, &Default::default(), &BTreeMap::new(), Some("lottery.test")).unwrap();
         assert!(!lottery.is_empty() && lottery.iter().all(|g| g.label == Label::Spam), "{lottery:?}");
         let _ = std::fs::remove_dir_all(root);
     }

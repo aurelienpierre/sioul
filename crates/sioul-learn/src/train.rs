@@ -62,6 +62,7 @@ use crate::labels::{self, Copy, Evidence, Label};
 use crate::platt::{self, Platt};
 use crate::spamcore::{self as spam, N, Table};
 use crate::svm::{self, HAM, Problem, SPAM};
+use crate::consent::MicrosoftIds;
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use serde::{Deserialize, Serialize};
 use sioul_core::card::Card;
@@ -109,6 +110,9 @@ pub struct Options {
     /// changes, `[words]`): it reads the messages with them, and the table
     /// keeps them (`spam::Meta::lexicon`).
     pub lexicon: SpamWords,
+    /// The configuration's Microsoft accounts: a folder of the corpus that
+    /// recorded nothing is read only when it is not one of theirs (`corpus::read_all`).
+    pub microsoft: MicrosoftIds,
 }
 
 /// Which model learns: fastText's classifier (the filter's), or the
@@ -166,6 +170,7 @@ impl Default for Options {
             replace: true,
             model: Model::default(),
             lexicon: sioul_core::words::Words::builtin_ref().spam.clone(),
+            microsoft: MicrosoftIds::default(),
         }
     }
 }
@@ -176,7 +181,7 @@ impl Options {
     pub fn of(config: &Config) -> Options {
         let (spam, unsure) = config.spam.thresholds();
         let lexicon = sioul_core::words::Words::of(config).spam.clone();
-        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), lexicon, ..Options::default() }
+        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), lexicon, microsoft: MicrosoftIds::of(config), ..Options::default() }
     }
 }
 
@@ -421,7 +426,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
     // Labels: a first pass over the corpus, keeping only what deciding needs.
     let mut copies = Vec::new();
     let mut texts = 0u64;
-    corpus::read_all(dirs, |record| {
+    corpus::read_all(dirs, &options.microsoft, |record| {
         texts += record.plain.as_ref().map_or(0, |t| t.text.len() as u64) + record.html.as_ref().map_or(0, |t| t.text.len() as u64) + record.header.len() as u64;
         copies.push(Copy::of(&record));
         if copies.len() % 1000 == 0 {
@@ -477,7 +482,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
         let mut offset = 0u64;
         let mut done = 0u64;
         let mut failure = None;
-        corpus::read_all(dirs, |record| {
+        corpus::read_all(dirs, &options.microsoft, |record| {
             if failure.is_some() {
                 return;
             }
@@ -671,7 +676,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
         held_out(outside.entry(name.clone()).or_default(), &scored, options);
     }
     // Message by message: counted by account and folder, the grid, and the worst errors, read again.
-    let detail = detail::of(dirs, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
+    let detail = detail::of(dirs, &options.microsoft, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
     drop(tested);
     progress(&Progress { stage: Stage::Evaluation, done: test_ids.len() as u64, total: test_ids.len() as u64, detail: String::new() });
 
@@ -907,7 +912,7 @@ pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec
             } else {
                 let wanted: HashMap<Place, usize> = unseen.iter().filter_map(|&row| Some((messages[test_ids[row]].place.clone()?, row))).collect();
                 let mut read: HashMap<usize, Vec<String>> = HashMap::new();
-                corpus::read_all(dirs, |record| {
+                corpus::read_all(dirs, &options.microsoft, |record| {
                     if let Some(&row) = wanted.get(&record.place()) {
                         read.entry(row).or_insert_with(|| words_of_record(&record, &lexicon));
                     }
@@ -1360,7 +1365,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
     // Every message read with the table's own words.
     let lexicon = table.lexicon();
     let mut copies = Vec::new();
-    corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
+    corpus::read_all(dirs, &options.microsoft, |record| copies.push(Copy::of(&record)))?;
     let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
     progress(&Progress { stage: Stage::Labels, done: label_summary.records, total: label_summary.records, detail: String::new() });
     if cancel.cancelled() {
@@ -1376,7 +1381,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
     let wanted: HashMap<Place, usize> = tested_labels.iter().enumerate().map(|(i, l)| (l.place.clone(), i)).collect();
     let mut scored: Vec<Option<(f64, bool)>> = vec![None; tested_labels.len()];
     let mut done = 0u64;
-    corpus::read_all(dirs, |record| {
+    corpus::read_all(dirs, &options.microsoft, |record| {
         let Some(&i) = wanted.get(&record.place()) else { return };
         if scored[i].is_some() || cancel.cancelled() {
             return;
@@ -1432,7 +1437,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
         tested.extend(held.iter().zip(&scored).map(|((ordinal, m), &(p, _))| Tested { p, label: m.label, date: m.date, origin: Origin::Outside { source: name.clone(), ordinal: *ordinal }, unsettled: false }));
         outside.insert(name, eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure));
     }
-    let detail = detail::of(dirs, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
+    let detail = detail::of(dirs, &options.microsoft, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
     let numbers = eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure);
     Ok((Evaluation { labels: label_summary, split, numbers, table: table.meta, outside, unseen }, detail))
 }

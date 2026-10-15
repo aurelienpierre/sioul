@@ -413,6 +413,10 @@ fn remove(s: &Session, id: &str, delete_mail: Option<bool>) -> Result<(), String
     // The keyring keeps one password per login and server: another account on the same keeps it.
     let shared_password = s.config.every_account().any(|a| a.id != id && a.host == account.host && a.login() == account.login());
     if account.is_microsoft() {
+        // Another process's watcher of this account (the window, `sioul watch`) is not stopped from here: said before anything is deleted.
+        if delete_mail != Some(false) {
+            println!("{}", s.tr.text("microsoft-cli-remove-close", None));
+        }
         let delete = delete_mail.map_or_else(|| ask_yes(s, &s.tr.text("ui-remove-microsoft-mail", None)), Ok)?;
         // Nothing to give back to Microsoft: forgotten here, the consent withdrawn on Microsoft's page.
         let page = microsoft::forget(account.login().unwrap_or(id), !account.is_microsoft_work()).map_err(|e| e.sentence(&s.tr, id))?;

@@ -187,7 +187,7 @@ pub fn class_of(p: f64, threshold_spam: f64, threshold_unsure: f64) -> Class {
 /// The detail of a test: counts, the grid, and up to `errors` errors of
 /// each kind for your own mail and for each outside source. The errors'
 /// cards are read again from the corpus and the outside material, once.
-pub fn of(dirs: &Dirs, tested: &[Tested], threshold_spam: f64, threshold_unsure: f64, errors: usize) -> Result<Detail, LearnError> {
+pub fn of(dirs: &Dirs, microsoft: &crate::consent::MicrosoftIds, tested: &[Tested], threshold_spam: f64, threshold_unsure: f64, errors: usize) -> Result<Detail, LearnError> {
     let class = |p: f64| class_of(p, threshold_spam, threshold_unsure);
     let mut detail = Detail::default();
     let mut own = Vec::new();
@@ -245,7 +245,7 @@ pub fn of(dirs: &Dirs, tested: &[Tested], threshold_spam: f64, threshold_unsure:
         chosen.iter().flat_map(|(_, h, s)| h.iter().chain(s)).filter_map(|t| if let Origin::Outside { source, ordinal } = &t.origin { Some((source.as_str(), *ordinal)) } else { None }).collect();
     let mut cards: HashMap<Place, Card> = HashMap::new();
     if !places.is_empty() {
-        corpus::read_all(dirs, |record| {
+        corpus::read_all(dirs, microsoft, |record| {
             let place = record.place();
             if places.contains(&place)
                 && !cards.contains_key(&place)
@@ -325,7 +325,7 @@ mod tests {
         tested[spams[0]].p = 0.2;
         tested.push(Tested { p: 0.8, label: Label::Ham, date: 1_600_000_000, origin: Origin::Outside { source: "old".into(), ordinal: 0 }, unsettled: false });
         tested.push(Tested { p: 0.9, label: Label::Spam, date: 1_600_000_100, origin: Origin::Outside { source: "old".into(), ordinal: 1 }, unsettled: false });
-        let detail = of(&dirs, &tested, 0.95, 0.5, 5).unwrap();
+        let detail = of(&dirs, &Default::default(), &tested, 0.95, 0.5, 5).unwrap();
         // Counted: every own message once by account and once by folder.
         let counted: u64 = detail.by_account.values().map(|c| c.ham.total() + c.spam.total()).sum();
         let by_folder: u64 = detail.by_folder.values().flat_map(|f| f.values()).map(|c| c.ham.total() + c.spam.total()).sum();
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!((card.subject.as_str(), card.from_address.as_deref()), ("Lunch tomorrow", Some("jane@example.org")));
         assert_eq!(old.errors.spam_missed[0].card.as_ref().map(|c| c.subject.clone()), Some("You won".to_string()));
         // No errors asked: counts and the grid alone, no card read.
-        let plain = of(&dirs, &tested, 0.95, 0.5, 0).unwrap();
+        let plain = of(&dirs, &Default::default(), &tested, 0.95, 0.5, 0).unwrap();
         assert!(plain.errors.ham_called_spam.is_empty() && plain.outside["old"].errors.spam_missed.is_empty() && !plain.grid.is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
