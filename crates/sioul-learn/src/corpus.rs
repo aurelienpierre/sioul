@@ -55,7 +55,7 @@
 //!
 //! The corpus is private: never shared, never shown to an AI agent.
 
-use crate::consent::Consent;
+use crate::consent::{Consent, MicrosoftIds};
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use async_imap::imap_proto::{BodyStructure, ContentEncoding, SectionPath};
 use async_imap::types::{Fetch, Flag};
@@ -506,7 +506,7 @@ pub fn read_file(path: &Path, committed: Option<u64>, mut each: impl FnMut(Recor
 
 /// Every record of the corpus, account after account, folder after folder,
 /// each with Sioul's checks of it, made as it was fetched or later (`verify`).
-pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnError> {
+pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Record)) -> Result<(), LearnError> {
     let root = dirs.corpus();
     let Ok(accounts) = std::fs::read_dir(&root) else { return Ok(()) };
     let mut accounts: Vec<PathBuf> = accounts.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
@@ -515,7 +515,12 @@ pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnEr
     let consent = Consent::load(dirs);
     for dir in accounts {
         let state = AccountState::load(&dir.join("state.toml"));
-        if !consent.allows_kept(state.microsoft.as_deref(), state.address.as_deref()) {
+        let readable = match state.microsoft.as_deref() {
+            Some(kind) => consent.allows_kept(Some(kind), state.address.as_deref()),
+            // Nothing recorded (kept before kinds were): a Microsoft account's counts as a work one's.
+            None => !dir.file_name().and_then(|n| n.to_str()).is_some_and(|id| microsoft.contains(id)),
+        };
+        if !readable {
             continue;
         }
         let checks = read_checks(&dir, state.checks);
@@ -583,9 +588,9 @@ pub struct Verdicts {
 }
 
 /// The providers' verdicts in the corpus, per account.
-pub fn verdicts(dirs: &Dirs) -> Result<BTreeMap<String, Verdicts>, LearnError> {
+pub fn verdicts(dirs: &Dirs, microsoft: &MicrosoftIds) -> Result<BTreeMap<String, Verdicts>, LearnError> {
     let mut accounts: BTreeMap<String, Verdicts> = BTreeMap::new();
-    read_all(dirs, |record| {
+    read_all(dirs, microsoft, |record| {
         let headers = sioul_core::headers::RawHeaders::parse(&record.header_bytes());
         let totals = accounts.entry(record.account.clone()).or_default();
         totals.records += 1;
@@ -657,9 +662,9 @@ impl Tally {
 }
 
 /// What Sioul's checks say in the corpus, per account (`CheckCounts`).
-pub fn checks(dirs: &Dirs) -> Result<BTreeMap<String, CheckCounts>, LearnError> {
+pub fn checks(dirs: &Dirs, microsoft: &MicrosoftIds) -> Result<BTreeMap<String, CheckCounts>, LearnError> {
     let mut accounts: BTreeMap<String, CheckCounts> = BTreeMap::new();
-    read_all(dirs, |record| {
+    read_all(dirs, microsoft, |record| {
         let counts = accounts.entry(record.account.clone()).or_default();
         counts.records += 1;
         let Some(checked) = &record.checked else {
@@ -701,13 +706,13 @@ pub fn checks(dirs: &Dirs) -> Result<BTreeMap<String, CheckCounts>, LearnError> 
 /// after account. For a label said of a message no longer stored here
 /// (`sioul spam label mid:…`): its place on the server is what the label
 /// log names it by.
-pub fn copies_of(dirs: &Dirs, message_id: &str) -> Result<Vec<(Place, Role)>, LearnError> {
+pub fn copies_of(dirs: &Dirs, microsoft: &MicrosoftIds, message_id: &str) -> Result<Vec<(Place, Role)>, LearnError> {
     let wanted = sioul_core::mailindex::bare_id(message_id);
     let mut found = Vec::new();
     if wanted.is_empty() {
         return Ok(found);
     }
-    read_all(dirs, |record| {
+    read_all(dirs, microsoft, |record| {
         // The Message-ID's text first, before the header block is parsed.
         if record.header.contains(wanted.as_str()) && crate::labels::message_id(&record.header_bytes()).is_some_and(|id| id == wanted) {
             found.push((record.place(), record.role));
@@ -925,6 +930,8 @@ fn run(
     let checker = Checker::new();
     update.offline = checker.is_none();
     let own = own_addresses(accounts);
+    // What each Microsoft account's folder kept before holds, said in it, downloaded this time or not.
+    record_kinds(dirs, accounts);
     // A Microsoft address only with your consent (Train now's last press); a work one never, nor said.
     let consent = Consent::load(dirs);
     let syncing = accounts.iter().filter(|a| a.syncs());
@@ -1092,6 +1099,25 @@ async fn update_account(
     let result = check_kept(&mut session, account, &dir, checker, &server.host, progress, cancel, update).await;
     let _ = session.logout().await;
     result
+}
+
+/// At the start of a run, every configured Microsoft account's folder kept
+/// before says its kind and address (`record_account`), downloaded this time
+/// or not, so that it is read with your consent alone (`read_all`), even
+/// once the account is gone (the re-check of 15 October 2026, M2-bis). A
+/// folder whose download runs elsewhere (its lock taken) is left to it: it
+/// records them first.
+fn record_kinds(dirs: &Dirs, accounts: &[Account]) {
+    for account in accounts.iter().filter(|a| a.is_microsoft()) {
+        let dir = dirs.corpus().join(&account.id);
+        if !dir.join("state.toml").is_file() {
+            continue;
+        }
+        let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("lock")) else { continue };
+        if lock.try_lock().is_ok() {
+            let _ = record_account(&dir, account);
+        }
+    }
 }
 
 /// What the training must know of an account to read its records with your
@@ -2003,7 +2029,7 @@ mod tests {
         }
         let read = |dirs: &Dirs| {
             let mut uids = Vec::new();
-            read_all(dirs, |r| uids.push(r.uid)).unwrap();
+            read_all(dirs, &MicrosoftIds::default(), |r| uids.push(r.uid)).unwrap();
             uids.sort();
             uids
         };
@@ -2012,6 +2038,65 @@ mod tests {
         crate::consent::Consent::given(&dirs, ["me@example.org".to_string()]).unwrap();
         assert_eq!(read(&dirs), [1]);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The re-check of 15 October 2026, M2-bis: a corpus kept before kinds
+    /// were recorded (as c0ccb14 left it, a work account's included) is read
+    /// with your consent too: a folder of a Microsoft account that recorded
+    /// nothing counts as a work one's, and the next run records every
+    /// configured Microsoft account's kind, downloaded or not (a folder
+    /// another download holds is left to it).
+    #[test]
+    fn a_corpus_kept_before_kinds_were_recorded_follows_the_consent() {
+        use sioul_core::config::{Config, Security};
+        let root = scratch("unrecorded");
+        let dirs = Dirs::under(&root);
+        let microsoft = |id: &str, address: &str, kind: &str| {
+            let mut account = Account::imap(id, address, "outlook.office365.com", 993, Security::Tls, None);
+            account.auth = Some("microsoft".into());
+            account.microsoft_kind = Some(kind.into());
+            account
+        };
+        let home = Account::imap("home", "me@example.org", "imap.example.org", 993, Security::Tls, None);
+        let live = microsoft("live", "me@outlook.example", "personal");
+        let office = microsoft("office", "me@contoso.example", "work");
+        let config = Config { accounts: vec![home.clone(), live.clone(), office.clone()], ..Config::default() };
+        // As c0ccb14 left it: every account's records, none of their kinds.
+        for (account, uid) in [(&home, 1), (&live, 2), (&office, 3)] {
+            store(&dirs, &[Record { account: account.id.clone(), ..record(uid) }]).unwrap();
+        }
+        let read = |known: &MicrosoftIds| {
+            let mut uids = Vec::new();
+            read_all(&dirs, known, |r| uids.push(r.uid)).unwrap();
+            uids.sort();
+            uids
+        };
+        let known = MicrosoftIds::of(&config);
+        assert_eq!(read(&known), [1], "a Microsoft account's folder without its kind: never read");
+        assert_eq!(read(&MicrosoftIds::default()), [1, 2, 3], "an account the configuration does not name: read as before");
+        // A run records every configured Microsoft account's kind, downloaded or not (here none is: no password).
+        let password = |_: &Account| Err(SyncError::NoPassword);
+        let run = || update(&config.accounts, &password, &dirs, &|_| true, &|_| None, &mut |_| {}, &Cancel::new());
+        let first = run();
+        assert_eq!(first.left_out, ["me@outlook.example"]);
+        assert_eq!(read(&MicrosoftIds::default()), [1], "recorded: kept from the training, whoever reads, the account gone or not");
+        // Named at a press: read; the work account's never.
+        crate::consent::Consent::given(&dirs, ["me@example.org".to_string(), "me@outlook.example".to_string(), "me@contoso.example".to_string()]).unwrap();
+        assert_eq!(read(&known), [1, 2]);
+        // A folder whose download runs elsewhere (its lock held) is left to it, and stays unread meanwhile.
+        let held = scratch("unrecorded-held");
+        let dirs = Dirs::under(&held);
+        store(&dirs, &[Record { account: "live".into(), ..record(4) }]).unwrap();
+        let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dirs.corpus().join("live").join("lock")).unwrap();
+        lock.lock().unwrap();
+        crate::consent::Consent::given(&dirs, ["me@outlook.example".to_string()]).unwrap();
+        update(&[live.clone()], &password, &dirs, &|_| true, &|_| None, &mut |_| {}, &Cancel::new());
+        let mut uids = Vec::new();
+        read_all(&dirs, &known, |r| uids.push(r.uid)).unwrap();
+        assert!(uids.is_empty(), "unrecorded, a Microsoft account's: not read");
+        drop(lock);
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_dir_all(held);
     }
 
     #[test]
@@ -2094,7 +2179,7 @@ mod tests {
         let senders = "Received: from mx.example.net (mx.example.net [192.0.2.7]) by in.example.org\r\nX-Spam-Flag: NO\r\nSubject: b\r\n\r\n";
         let none = "Received: from mx.example.net (mx.example.net [192.0.2.7]) by in.example.org\r\nSubject: c\r\n\r\n";
         store(&dirs, &[Record { uid: 1, ..header(arrived) }, Record { uid: 2, ..header(senders) }, Record { uid: 3, ..header(none) }]).unwrap();
-        let totals = verdicts(&dirs).unwrap();
+        let totals = verdicts(&dirs, &MicrosoftIds::default()).unwrap();
         assert_eq!(totals["home"], Verdicts { records: 3, with_header: 2, read: 1, flagged: 1 });
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -2139,7 +2224,7 @@ mod tests {
         let longer = append(&account.join(CHECKS_FILE), committed, &[line(6, old("dkim=pass header.d=bank.example"))]).unwrap();
         assert!(longer > committed);
         let mut read = BTreeMap::new();
-        read_all(&dirs, |r| {
+        read_all(&dirs, &MicrosoftIds::default(), |r| {
             read.insert(r.uid, r.checked);
         })
         .unwrap();
@@ -2157,7 +2242,7 @@ mod tests {
         let spoofed = old("spf=softfail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example");
         assert_eq!(spoofed.reading(date(3), false).map(|r| (r.spf, r.dmarc)), Some((Some(Outcome::SoftFail), Some(Outcome::Fail))));
         assert_eq!(spoofed.reading(date(3), true).map(|r| (r.spf, r.dmarc)), Some((None, None)), "the same beside a signature: unknown");
-        let counts = checks(&dirs).unwrap()["home"];
+        let counts = checks(&dirs, &MicrosoftIds::default()).unwrap()["home"];
         assert_eq!((counts.records, counts.unchecked, counts.gone, counts.silent, counts.header_only), (6, 1, 1, 0, 0));
         assert_eq!((counts.dkim.pass, counts.dkim.fail, counts.dkim.unknown), (1, 1, 2), "the old failure and the key gone: unknown");
         assert_eq!((counts.dmarc.pass, counts.dmarc.fail, counts.dmarc.unknown), (2, 1, 1));
@@ -2165,7 +2250,7 @@ mod tests {
         // The next group is appended at what was committed: the crash's leftovers cut off.
         keep_checks(&mut state, &state_path, &account, &[line(6, Checked { at, results: stamp("dkim=none"), whole: true, gone: false })], &mut update).unwrap();
         let mut sixth = None;
-        read_all(&dirs, |r| {
+        read_all(&dirs, &MicrosoftIds::default(), |r| {
             if r.uid == 6 {
                 sixth = r.checked;
             }
@@ -2340,7 +2425,7 @@ mod tests {
 
         fn records_of(dirs: &Dirs) -> Vec<Record> {
             let mut records = Vec::new();
-            read_all(dirs, |r| records.push(r)).unwrap();
+            read_all(dirs, &MicrosoftIds::default(), |r| records.push(r)).unwrap();
             records
         }
 
@@ -2546,7 +2631,7 @@ mod tests {
             // Nothing left: nothing asked again.
             let again = verify(std::slice::from_ref(&account), &|_| Ok("any".into()), &dirs, &mut |_| {}, &Cancel::new());
             assert_eq!(again.checked, 0);
-            let counts = checks(&dirs).unwrap()[&account.id];
+            let counts = checks(&dirs, &MicrosoftIds::default()).unwrap()[&account.id];
             assert_eq!((counts.records, counts.unchecked, counts.gone, counts.dkim.none), (6, 0, 2, 4));
             let _ = std::fs::remove_dir_all(root);
         }
@@ -2605,7 +2690,7 @@ mod tests {
             let entry = &AccountState::load(&dir.join("state.toml")).folders["All"];
             assert_eq!((entry.done.as_str(), entry.skipped.as_str()), ("4", "1:3"));
             let mut copies = Vec::new();
-            read_all(&dirs, |r| copies.push(crate::labels::Copy::of(&r))).unwrap();
+            read_all(&dirs, &MicrosoftIds::default(), |r| copies.push(crate::labels::Copy::of(&r))).unwrap();
             let (labeled, _) = crate::labels::decide(copies, &[], &[]);
             assert_eq!(labeled.len(), 3, "messages 1, 2 and 4, once each");
             assert!(labeled.iter().any(|l| l.key == "4.all@example.org" && l.label == crate::labels::Label::Ham));

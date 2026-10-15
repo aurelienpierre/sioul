@@ -401,6 +401,22 @@ mod tests {
         assert_eq!(Purpose::Pim.keyring_name("You@Gmail.com"), "google:you@gmail.com", "as before mail came");
     }
 
+    /// The re-check of 15 October 2026, L1-bis: Google's answer as a browser
+    /// sends it, with its headers (800 to 3,000 bytes), ends in its page and
+    /// an orderly close, never a reset.
+    #[test]
+    fn googles_answer_ends_cleanly_in_the_browser() {
+        for size in [800, 1060, 1500, 2200, 3000] {
+            let sign_in = begin("id", "you@example.org").unwrap();
+            let port = sign_in.listener.local_addr().unwrap().port();
+            let target = format!("/?state={}&iss=https%3A%2F%2Faccounts.google.com&code=4%2F0AVMBsJ-the-code&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar&authuser=0&prompt=consent", sign_in.state);
+            let browser = std::thread::spawn(move || crate::loopback::browser_answer(port, &target, size));
+            assert_eq!(wait_for_code(&sign_in, Duration::from_secs(10), &AtomicBool::new(false)).unwrap(), "4/0AVMBsJ-the-code");
+            let page = browser.join().unwrap();
+            assert!(page.as_ref().is_ok_and(|p| p.starts_with("HTTP/1.1 200")), "{size} bytes: {page:?}");
+        }
+    }
+
     /// The browser answered while Sioul was frozen (a phone): its request
     /// waited in the system's queue, and is read even once the time is up.
     #[test]

@@ -5572,6 +5572,7 @@ microsoft-cli-signed-in = { $account } : connecté { $how }.
 microsoft-cli-again = { $account } : reconnecté avec Microsoft ; son courrier revient.
 microsoft-cli-not-microsoft = « { $id } » n’est pas chez Microsoft : il se connecte avec son mot de passe (sioul account password { $id }).
 microsoft-cli-no-password = « { $id } » est chez Microsoft, qui ne prend aucun mot de passe, mots de passe d’application compris : sioul account sign-in { $id } le connecte sur la page de Microsoft.
+microsoft-cli-remove-close = Si la fenêtre de Sioul ou un sioul watch est ouvert, fermez-le d’abord : tant qu’il est ouvert, il continue de relever le courrier de ce compte, qui reviendrait sur cet appareil.
 microsoft-admin-steps = Ce que fait l’administrateur de votre organisation, une fois, pour tout le monde :
     1. Approuver Sioul : ouvrir ce lien connecté comme administrateur, et accepter. Microsoft envoie ensuite le navigateur vers 127.0.0.1, où rien ne répond : l’approbation est faite. { $link }
        Ou, dans le centre d’administration Microsoft Entra, intitulés anglais : Enterprise apps ▸ l’application (Sioul) ▸ Permissions ▸ Grant admin consent.

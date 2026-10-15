@@ -24,6 +24,7 @@ use sioul_core::spam::labels::{self as label_log, Entry, Label, Source};
 use sioul_core::spam::table::Table;
 use sioul_core::spam::{Action, Actions, Class, Filter};
 use sioul_core::state::PorchState;
+use sioul_learn::consent::MicrosoftIds;
 use sioul_learn::detail::{Confusion, Detail, Errors, Wrong};
 use sioul_learn::{Cancel, Dirs, LearnError, Progress, corpus, eval, external, train};
 use std::collections::BTreeMap;
@@ -228,7 +229,7 @@ pub(crate) fn status(s: &Session, dirs: &Dirs) -> Result<Report, String> {
     }
     // Whether your providers' own spam flags still count, as Sioul reads them now: totals only.
     let mut verdicts = Map::new();
-    for (account, v) in corpus::verdicts(dirs).map_err(|e| e.to_string())? {
+    for (account, v) in corpus::verdicts(dirs, &MicrosoftIds::of(&s.config)).map_err(|e| e.to_string())? {
         lines.push(s.say("spam-verdicts", &[("account", account.clone()), ("records", v.records.to_string()), ("with", v.with_header.to_string()), ("read", v.read.to_string()), ("flagged", v.flagged.to_string())]));
         verdicts.insert(account, json!({ "records": v.records, "with_header": v.with_header, "read": v.read, "flagged": v.flagged }));
     }
@@ -278,7 +279,7 @@ pub(crate) fn status(s: &Session, dirs: &Dirs) -> Result<Report, String> {
 fn check_counts(s: &Session, dirs: &Dirs) -> Result<(Vec<String>, Value), String> {
     let mut lines = Vec::new();
     let mut data = Map::new();
-    for (account, c) in corpus::checks(dirs).map_err(|e| e.to_string())? {
+    for (account, c) in corpus::checks(dirs, &MicrosoftIds::of(&s.config)).map_err(|e| e.to_string())? {
         let tally = |t: &corpus::Tally| [t.pass.to_string(), t.fail.to_string(), t.unknown.to_string(), t.none.to_string()];
         let [dkim_pass, dkim_fail, dkim_unknown, dkim_none] = tally(&c.dkim);
         let [spf_pass, spf_fail, spf_unknown, _] = tally(&c.spf);
@@ -1047,7 +1048,7 @@ fn folder_of(s: &Session, account: &str, file: Option<&Path>) -> String {
 /// Each header feature's mean by account and label (`sioul_learn::diagnose`):
 /// a table, features down, groups across; numbers only.
 pub(crate) fn features(s: &Session, dirs: &Dirs, domain: Option<&str>) -> Result<Report, String> {
-    let groups = sioul_learn::diagnose::feature_means(dirs, &train::trusted_ids(&s.config), domain).map_err(|e| e.to_string())?;
+    let groups = sioul_learn::diagnose::feature_means(dirs, &MicrosoftIds::of(&s.config), &train::trusted_ids(&s.config), domain).map_err(|e| e.to_string())?;
     let names = sioul_learn::diagnose::names();
     let mut lines = vec![s.tr.text("spam-features", None)];
     let heads: Vec<String> = groups.iter().map(|g| format!("{}·{} ({})", one_line(&g.account), label_name(g.label), g.messages)).collect();
@@ -1152,7 +1153,7 @@ pub(crate) fn label(s: &Session, dirs: &Dirs, message: &str, label: Label, movin
             (entry, "here", moved)
         }
         Err(not_here) if by_id(message) => {
-            let copies = corpus::copies_of(dirs, message).map_err(|e| e.to_string())?;
+            let copies = corpus::copies_of(dirs, &MicrosoftIds::of(&s.config), message).map_err(|e| e.to_string())?;
             let Some((place, _)) = copies.iter().find(|(_, role)| *role != Role::Junk).or(copies.first()).cloned() else { return Err(not_here) };
             if moving {
                 return Err(s.tr.text("spam-label-move-needs-file", None));

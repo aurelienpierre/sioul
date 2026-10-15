@@ -5548,6 +5548,7 @@ microsoft-cli-signed-in = { $account }: signed in { $how }.
 microsoft-cli-again = { $account }: signed in with Microsoft again; its mail comes again.
 microsoft-cli-not-microsoft = “{ $id }” is not at Microsoft: it signs in with its password (sioul account password { $id }).
 microsoft-cli-no-password = “{ $id }” is at Microsoft, which takes no password, app passwords included: sioul account sign-in { $id } signs it in on Microsoft's page.
+microsoft-cli-remove-close = If Sioul's window or a sioul watch is open, close it first: until it is closed, it goes on fetching this account's mail, which would come back on this device.
 microsoft-admin-steps = What your organisation's administrator does, once, for everyone there:
     1. Approve Sioul: open this link signed in as an administrator, and accept. Microsoft then sends the browser to 127.0.0.1, where nothing answers: the approval is done. { $link }
        Or, in the Microsoft Entra admin center: Enterprise apps ▸ the application (Sioul) ▸ Permissions ▸ Grant admin consent.

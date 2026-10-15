@@ -17,9 +17,12 @@
 //! Other addresses are learned from as they always were.
 //!
 //! The corpus records, for each account, whether it is Microsoft's and its
-//! address when it is downloaded (`corpus.rs`), so that what was kept of an
+//! address when it is downloaded, and every configured Microsoft account's
+//! at the start of each run (`corpus.rs`), so that what was kept of an
 //! address no longer on the list is not read again, even once the account is
-//! gone.
+//! gone. A folder that recorded nothing yet (kept before kinds were
+//! recorded) is read only when the configuration says its account is not
+//! Microsoft's (`MicrosoftIds`): a Microsoft one's counts as a work one's.
 
 use crate::{Dirs, LearnError, io_error, now};
 use serde::{Deserialize, Serialize};
@@ -78,6 +81,24 @@ impl Consent {
             Some("personal") => address.is_some_and(|a| self.addresses.contains(&a.trim().to_lowercase())),
             Some(_) => false,
         }
+    }
+}
+
+/// The configuration's Microsoft accounts, by id, switched off or not: what
+/// reading the corpus needs to know of a folder whose download recorded
+/// nothing (kept before kinds were recorded): one of a Microsoft account
+/// counts as a work one's, never read, until a download, or the start of a
+/// run, records its kind (the re-check of 15 October 2026, M2-bis).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MicrosoftIds(BTreeSet<String>);
+
+impl MicrosoftIds {
+    pub fn of(config: &Config) -> MicrosoftIds {
+        MicrosoftIds(config.every_account().filter(|a| a.is_microsoft()).map(|a| a.id.clone()).collect())
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.0.contains(id)
     }
 }
 

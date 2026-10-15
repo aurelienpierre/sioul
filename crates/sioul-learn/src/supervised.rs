@@ -283,7 +283,7 @@ pub(crate) fn train(dirs: &Dirs, read: train::Read, options: &Options, word_ngra
         tested.extend(held[s].iter().zip(&scored).map(|(&i, &(p, _))| train::tested_of(&messages[i], p, &sources)));
         train::held_out(outside.entry(name.clone()).or_default(), &scored, options);
     }
-    let detail = detail::of(dirs, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
+    let detail = detail::of(dirs, &options.microsoft, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
     drop(tested);
     progress(&Progress { stage: Stage::Evaluation, done: test_ids.len() as u64, total: test_ids.len() as u64, detail: String::new() });
 
