@@ -45,15 +45,15 @@ fn the_porch_sorts_a_morning() {
     let summary = porch::summarise(&triaged);
     assert_eq!(
         Translator::new("en").summary(&summary, Some(&store)),
-        "Eight letters came. Two codes are ready above. One belongs to a project: Taxes. \
+        "Eight e-mails came. Two codes are ready above. One belongs to a project: Taxes. \
          One is from people you know. One is from someone new and waits in the screener. \
          One newsletter or notification was filed. Two forged or spam messages were set aside."
     );
     assert_eq!(
         Translator::new("fr").summary(&summary, Some(&store)),
-        "Huit lettres sont arrivées. Deux codes sont prêts ci-dessus. Une concerne un projet\u{202f}: Taxes. \
-         Une vient de quelqu’un que vous connaissez. Une vient d’un nouvel expéditeur et attend votre accord. \
-         Une lettre d’information ou notification a été rangée. Deux messages falsifiés ou indésirables ont été mis de côté."
+        "Huit courriels sont arrivés. Deux codes sont prêts ci-dessus. Un concerne un projet\u{202f}: Taxes. \
+         Un vient de quelqu’un que vous connaissez. Un vient d’un nouvel expéditeur et attend votre accord. \
+         Une infolettre ou notification a été rangée. Deux courriels falsifiés ou indésirables ont été mis de côté."
     );
 }
 

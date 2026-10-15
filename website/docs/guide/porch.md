@@ -48,11 +48,11 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 
 ## New mail, told at its times {#new-mail-told-at-its-times}
 
-When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two letters", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
+When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
 
-- **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three letters wait for you."
+- **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three e-mails wait for you."
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
-- **No sound.** With a phone and a computer, only the one you used last tells. On a phone's lock screen, the notification says how many letters came, not who wrote.
+- **No sound.** With a phone and a computer, only the one you used last tells. On a phone's lock screen, the notification says how many e-mails came, not who wrote.
 
 Settings ▸ What reaches you ▸ By person ▸ Mail: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
 
@@ -153,13 +153,24 @@ When there is something, a few lines come before the lanes:
 - **Calls Sioul declined**, on your phone and on your other devices, each at a time its caller may reach you: "While you slept, a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
 - **From your phone**, on a computer, when you send your phone's messages there: who wrote, when and what, at a time they may reach you, with **Text back**, **Call back** and **Seen**. See [What reaches you](notifications.md#messages-on-your-computers).
 - **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
-- **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
+- **Paper letters**: on a computer, always one line on where their scans go, with **Open the folder** and **Add a scan…**; then each scan read, as a card: who, what, how much, by when. See [Paper letters](#paper-letters), below.
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
   [![A card at the top of the Porch: "Your hours are not set: work and your admin come at any time.", a sentence on what each kind of hours brings, and two buttons, "Set my hours" and "Leave as is".](../assets/screens/porch-hours.png){ loading=lazy }](../assets/screens/porch-hours.png "Open the picture at full size")
   <figcaption>Until your hours are set, the Porch asks once.</figcaption>
 </figure>
+
+## Paper letters {#paper-letters}
+
+Sioul reads your paper post too, from scans, and on a computer the Porch says where they go before any comes:
+
+- **The folder**: the line under **Paper letters** names it. Unset, it is `letters/inbox` in your notes folder; choose another in the Porch's ⚙, **Paper letters ▸ Where scans arrive**. You, a scanner, a phone's scanner app syncing into it, or someone who opens your post for you can put scans there.
+- **Open the folder** opens it. **Add a scan…** copies PDF files or pictures (PNG, JPEG, TIFF, WebP) into it, several at once; the file you chose stays where it was. The **New** menu's **A paper letter (scan)…** does the same from any page.
+- **What Sioul reads**: who sent the letter, what it is (a bill, a reminder, a decision, an appointment…), how much it asks and by when, a delay such as "within two months" turned into a date. Within a minute or two each scan becomes a card here, with a task for its date, its appointment in the agenda and its scan one click away. See [Papers and letters](papers.md#paper-letters).
+- **Reading needs two programs** of your system, Tesseract and Poppler. When they are missing, the line says so and gives the command that installs them ([Install](install.md#the-packages)). Nothing leaves your computer.
+
+A phone reads no scans: it shows the cards your computer made, without the line.
 
 ## Why it works this way {#why-it-works-this-way}
 

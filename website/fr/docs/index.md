@@ -1,6 +1,6 @@
 ---
 title: Des démarches qui s’adaptent à vous
-description: "Sioul est un environnement administratif personnel, sensible au trauma et conçu à partir de la recherche pour les personnes à qui l’administratif coûte le plus : les personnes neuroatypiques, celles qui vivent avec un TSPT, une EM/SFC, un covid long, un trouble des conduites alimentaires ou l’anxiété administrative, et toute personne dont l’énergie ou la pensée est limitée. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), lui laisse décider de ce qui peut la joindre et quand, et garde les liens entre le courrier, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
+description: "Sioul est un environnement administratif personnel, sensible au trauma et conçu à partir de la recherche pour les personnes à qui l’administratif coûte le plus : les personnes neuroatypiques, celles qui vivent avec un TSPT, une EM/SFC, un covid long, un trouble des conduites alimentaires ou l’anxiété administrative, et toute personne dont l’énergie ou la pensée est limitée. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), lui laisse décider de ce qui peut la joindre et quand, et garde les liens entre les courriels, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
 ---
 
 # Sioul {#sioul}
@@ -13,7 +13,7 @@ La vie administrative moderne suppose quelqu’un de toujours disponible et touj
 
 Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment une seule affaire. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
 
-**Sioul est un environnement administratif personnel.** Il rassemble ce que la vie moderne éparpille entre les messageries, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Il fonctionne sur vos propres appareils.
+**Sioul est un environnement administratif personnel.** Il rassemble ce que la vie moderne éparpille entre les boîtes de courriel, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Il fonctionne sur vos propres appareils.
 
 **Ce n’est pas un logiciel de productivité.** Il ne cherche pas à vous faire faire plus, répondre plus vite ou tout tenir à jour : il cherche à ce que les démarches vous demandent moins. Il est conçu comme [un acte de soin](#an-act-of-care).
 
@@ -21,16 +21,16 @@ Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document
 
 ## Vous décidez de ce qui passe {#you-decide-what-gets-through}
 
-Le monde n’accède pas directement à votre attention. Le courrier, les appels, les messages des autres applications, les sites que vous gardez, les rappels et les prises passent tous par les mêmes règles, et c’est vous qui les fixez. Chaque moment de votre journée a les siennes : le travail, vos démarches, les loisirs, les repas, le sommeil, et le temps libre ou la pause que vous prenez d’un appui sur un bouton.
+Le monde n’accède pas directement à votre attention. Les courriels, les appels, les messages des autres applications, les sites que vous gardez, les rappels et les prises passent tous par les mêmes règles, et c’est vous qui les fixez. Chaque moment de votre journée a les siennes : le travail, vos démarches, les loisirs, les repas, le sommeil, et le temps libre ou la pause que vous prenez d’un appui sur un bouton.
 
-Certaines choses arrivent tout de suite : le code que vous venez de demander à un site, une prise, l’appel de quelqu’un que vous avez choisi. D’autres attendent leur moment : le courrier d’un client attend vos heures de travail, celui des impôts vos heures de démarches, et le travail de personne n’atteint votre soirée. D’autres s’affichent là où vous regardez, sous le Porche ou sur l’écran d’accueil de votre téléphone, sans notification. D’autres ne vous joignent jamais, comme les expéditeurs que vous avez bloqués.
+Certaines choses arrivent tout de suite : le code que vous venez de demander à un site, une prise, l’appel de quelqu’un que vous avez choisi. D’autres attendent leur moment : les courriels d’un client attendent vos heures de travail, ceux des impôts vos heures de démarches, et le travail de personne n’atteint votre soirée. D’autres s’affichent là où vous regardez, sous le Porche ou sur l’écran d’accueil de votre téléphone, sans notification. D’autres ne vous joignent jamais, comme les expéditeurs que vous avez bloqués.
 
 **Être affiché n’est pas être dérangé.** Ce qui attend sous le Porche ne vous demande rien tant que vous ne regardez pas ; seul ce que vous avez permis peut vous interrompre.
 
-La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour votre courrier, vos appels, vos messages, vos sites et vos rappels. [Ce qui vous joint, et quand](guide/notifications.md)
+La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour vos courriels, vos appels, vos messages, vos sites et vos rappels. [Ce qui vous joint, et quand](guide/notifications.md)
 
 <figure markdown="span">
-  [![La fenêtre de Sioul. À gauche, la liste des lieux : Porche, Tâches, Courrier, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé. À droite, le Porche : les paiements de la semaine en une ligne, un code à usage unique avec son bouton Copier, les nouvelles d’une discussion, puis le nouveau courrier réparti en files.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![La fenêtre de Sioul. À gauche, la liste des lieux : Porche, Tâches, Courriels, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé. À droite, le Porche : les paiements de la semaine en une ligne, un code à usage unique avec son bouton Copier, les nouvelles d’une discussion, puis les nouveaux courriels répartis en files.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
   <figcaption>Le Porche : ce qui est arrivé attend les heures que vous avez choisies ; les codes que vous venez de demander arrivent tout de suite.</figcaption>
 </figure>
 
@@ -44,9 +44,9 @@ Les appels suivent les mêmes règles. Sur un téléphone Android, Sioul les fil
 
 ### Un filtre qui apprend ce qui peut attendre {#a-filter-that-learns-what-can-wait}
 
-La plupart des filtres à indésirables gardent une boîte de réception en ordre. Celui de Sioul protège votre attention : il décide de ce qui peut attendre. Il apprend de votre propre courrier, sur votre ordinateur : de vos dossiers d’indésirables, et de chaque message que vous marquez comme indésirable ou non, sur n’importe lequel de vos appareils. Vous lancez son premier apprentissage ; ensuite, il se réentraîne de lui-même une fois par semaine, sur l’ordinateur qui l’a entraîné, quand cet ordinateur est branché et inactif. Sioul n’envoie votre courrier à aucun service de filtrage ; seule la petite table que le filtre apprend voyage vers votre téléphone, scellée.
+La plupart des filtres à indésirables gardent une boîte de réception en ordre. Celui de Sioul protège votre attention : il décide de ce qui peut attendre. Il apprend de vos propres courriels, sur votre ordinateur : de vos dossiers d’indésirables, et de chaque courriel que vous marquez comme indésirable ou non, sur n’importe lequel de vos appareils. Vous lancez son premier apprentissage ; ensuite, il se réentraîne de lui-même une fois par semaine, sur l’ordinateur qui l’a entraîné, quand cet ordinateur est branché et inactif. Sioul n’envoie vos courriels à aucun service de filtrage ; seule la petite table que le filtre apprend voyage vers votre téléphone, scellée.
 
-Il ne juge que le courrier des inconnus, jamais celui de quelqu’un que vous connaissez, un code que vous avez demandé ou le courrier d’un projet. Il ne prétend pas non plus être sûr : ce qui ressemble à un indésirable, ou pourrait en être un, attend dans une file repliée sous le Porche, sans compte ni notification, que vous ayez le temps d’y regarder. Vous choisissez ce qu’il fait de chaque avis ; tant que vous n’avez pas choisi, il ne déplace rien. [Les indésirables, et votre propre filtre](guide/porch.md#spam-and-your-own-filter)
+Il ne juge que les courriels des inconnus, jamais ceux de quelqu’un que vous connaissez, un code que vous avez demandé ou les courriels d’un projet. Il ne prétend pas non plus être sûr : ce qui ressemble à un indésirable, ou pourrait en être un, attend dans une file repliée sous le Porche, sans compte ni notification, que vous ayez le temps d’y regarder. Vous choisissez ce qu’il fait de chaque avis ; tant que vous n’avez pas choisi, il ne déplace rien. [Les indésirables, et votre propre filtre](guide/porch.md#spam-and-your-own-filter)
 
 ## À l’envers {#the-other-way-round}
 
@@ -57,7 +57,7 @@ Il ne juge que le courrier des inconnus, jamais celui de quelqu’un que vous co
 | Chaque type de chose a son programme, et c’est à vous de garder les liens. | Chaque pièce est reliée aux autres, et c’est Sioul qui garde les liens. |
 | Une date manquée devient du travail en retard. | Le plan repart d’aujourd’hui. Rien ne devient une dette. |
 
-**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.** Le courrier, les appels, l’agenda, les tâches, la santé, les budgets et le téléphone ne sont pas des modules posés côte à côte : ce sont les quatre mêmes règles, appliquées chaque fois à un type de choses. Ils vont ensemble parce que chacun réclame la même attention, limitée : la vôtre.
+**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.** Les courriels, les appels, l’agenda, les tâches, la santé, les budgets et le téléphone ne sont pas des modules posés côte à côte : ce sont les quatre mêmes règles, appliquées chaque fois à un type de choses. Ils vont ensemble parce que chacun réclame la même attention, limitée : la vôtre.
 
 ## Au quotidien {#day-to-day}
 
@@ -67,23 +67,23 @@ Vous réglez d’abord vos repas, votre repos et votre sommeil. Ils sont gardés
 
 ### Un porche entre le monde et votre attention {#a-porch-between-the-world-and-your-attention}
 
-Rien de nouveau n’entre directement : arriver n’est pas entrer. Le courrier, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant. Chaque message est d’abord vérifié : authentique ou falsifié. Les codes que vous venez de demander à un site arrivent tout de suite.
+Rien de nouveau n’entre directement : arriver n’est pas entrer. Les courriels, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant. Chaque courriel est d’abord vérifié : authentique ou falsifié. Les codes que vous venez de demander à un site arrivent tout de suite.
 
 ### Sans peur de se tromper {#nothing-to-be-afraid-of-getting-wrong}
 
-Pas de compteur de non-lus, pas de pastilles, pas de rouge, pas de séries ; le nouveau courrier arrive sans bruit, et rien ne bouge sous vos yeux. Tout ce qui est déplacé, supprimé ou envoyé peut être annulé pendant dix secondes. Le courrier falsifié est mis de côté, avec la raison. Rien n’est envoyé, supprimé ou payé sans vous, pas même par un agent d’IA. Les mots reçoivent le même soin : un rappel dit ce qu’il est, sans vous dire malade ni vous féliciter ; s’arrêter tôt est dit comme la chose ordinaire que c’est ; pas de gaieté forcée, pas de condescendance.
+Pas de compteur de non-lus, pas de pastilles, pas de rouge, pas de séries ; les nouveaux courriels arrivent sans bruit, et rien ne bouge sous vos yeux. Tout ce qui est déplacé, supprimé ou envoyé peut être annulé pendant dix secondes. Les courriels falsifiés sont mis de côté, avec la raison. Rien n’est envoyé, supprimé ou payé sans vous, pas même par un agent d’IA. Les mots reçoivent le même soin : un rappel dit ce qu’il est, sans vous dire malade ni vous féliciter ; s’arrêter tôt est dit comme la chose ordinaire que c’est ; pas de gaieté forcée, pas de condescendance.
 
 ## Le logiciel garde les liens {#the-software-keeps-the-links}
 
-La plupart des logiciels éparpillent les pièces d’une même affaire entre la messagerie, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie. Pourtant, vous ne vous dites jamais « maintenant, j’utilise ma messagerie » ; vous vous dites « maintenant, je m’occupe de ce client ». Sioul est construit de la seconde façon.
+La plupart des logiciels éparpillent les pièces d’une même affaire entre le logiciel de courriel, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie. Pourtant, vous ne vous dites jamais « maintenant, j’utilise mon logiciel de courriel » ; vous vous dites « maintenant, je m’occupe de ce client ». Sioul est construit de la seconde façon.
 
-Dans Sioul, chaque affaire que vous suivez est un projet : une déclaration d’impôts, un bail, le travail pour un client. Son courrier lui arrive tout seul, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : le courrier d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
+Dans Sioul, chaque affaire que vous suivez est un projet : une déclaration d’impôts, un bail, le travail pour un client. Ses courriels lui arrivent tout seuls, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : les courriels d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
 
 ## Travailler à son compte {#working-for-yourself}
 
-Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez et les démarches qu’il entraîne vivent dans la même fenêtre, du premier courrier du client à la facture payée.
+Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez et les démarches qu’il entraîne vivent dans la même fenêtre, du premier courriel du client à la facture payée.
 
-- **Un projet par client**, dont le courrier lui arrive tout seul : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
+- **Un projet par client**, dont les courriels lui arrivent tout seuls : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
 - **Le temps compté pendant le travail.** Le minuteur de concentration compte pour la tâche et son projet ; une réunion ou un appel se note en quelques touches : `1h30`. Le même relevé apprend au plan [combien de temps prennent les choses](guide/time.md#how-long-things-take).
 - **Ce qui reste à facturer**, pour chaque projet, en heures et en argent, toujours en vue.
 - **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, la plupart des mentions que la loi française demande (« EI » et la date de la prestation restent à venir), un PDF ; puis l’argent attendu dans votre budget jusqu’au paiement.
@@ -92,8 +92,8 @@ Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez e
 Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturation à côté, et pas d’abonnement : vos clients et vos factures restent dans vos propres fichiers. [Travailler pour des clients](guide/clients.md)
 
 <figure markdown="span">
-  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Le courrier qui arrive ici tout seul », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](assets/screens/fr/projects.png){ loading=lazy }](assets/screens/fr/projects.png "Ouvrir l’image en grand")
-  <figcaption>Le projet d’un client : ses tâches, son temps, son courrier et ses factures, sur une ligne de temps.</figcaption>
+  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Les courriels qui arrivent ici tout seuls », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](assets/screens/fr/projects.png){ loading=lazy }](assets/screens/fr/projects.png "Ouvrir l’image en grand")
+  <figcaption>Le projet d’un client : ses tâches, son temps, ses courriels et ses factures, sur une ligne de temps.</figcaption>
 </figure>
 
 ## Quand les forces changent {#when-capacity-changes}
@@ -102,7 +102,7 @@ Sioul a d’abord été pensé pour les personnes à qui l’administratif coût
 
 L’anxiété administrative n’est pas de la paresse : repousser une lettre protège votre humeur, pour le moment (Sirois & Pychyl 2013). Et la charge administrative pèse le plus sur les personnes à qui il reste le moins de ressources, fonctions exécutives et santé comprises (Christensen et al. 2020) : les personnes qui déclarent un TDAH, de l’anxiété ou une douleur chronique trouvent plus lourdes les règles des impôts et des aides aux études, et celles avec un TDAH ou une douleur perdent plus souvent l’aide (Bell et al. 2023). Sioul part de ce que peut tenir une journée, qui change, et non d’un diagnostic : il n’en demande aucun, et ne devine rien de votre état. Vous dites ce que vous pouvez faire, et il s’organise autour.
 
-Les personnes avec un handicap ou une maladie de longue durée travaillent plus souvent à leur compte que les autres, et des études relient le TDAH au travail indépendant ; certaines disent avoir quitté des emplois qui refusaient de s’adapter à elles. Travailler à son compte apporte l’administratif qu’un employeur ferait autrement, justement du plus dur : devis et factures, impôts, cotisations, clients, banque. Sioul porte donc aussi une petite activité, du premier courrier d’un client à la facture payée ([plus haut](#working-for-yourself)).
+Les personnes avec un handicap ou une maladie de longue durée travaillent plus souvent à leur compte que les autres, et des études relient le TDAH au travail indépendant ; certaines disent avoir quitté des emplois qui refusaient de s’adapter à elles. Travailler à son compte apporte l’administratif qu’un employeur ferait autrement, justement du plus dur : devis et factures, impôts, cotisations, clients, banque. Sioul porte donc aussi une petite activité, du premier courriel d’un client à la facture payée ([plus haut](#working-for-yourself)).
 
 ## Dans la fenêtre {#in-the-window}
 
@@ -112,7 +112,7 @@ Les personnes avec un handicap ou une maladie de longue durée travaillent plus 
 
     ---
 
-    Le nouveau courrier de toutes vos adresses, vérifié et trié en files ; les nouvelles des sites que vous gardez ; les codes que vous avez demandés, tout de suite.
+    Les nouveaux courriels de toutes vos adresses, vérifiés et triés en files ; les nouvelles des sites que vous gardez ; les codes que vous avez demandés, tout de suite.
 
     [Le Porche](guide/porch.md)
 
@@ -144,7 +144,7 @@ Les personnes avec un handicap ou une maladie de longue durée travaillent plus 
 
     ---
 
-    Courrier, agenda, contacts, notes, projets, temps et factures, budgets et comptes bancaires, papiers et courrier papier, médicaments, et les sites que vous devez consulter.
+    Courriels, agenda, contacts, notes, projets, temps et factures, budgets et comptes bancaires, papiers et courrier papier, médicaments, et les sites que vous devez consulter.
 
     [La fenêtre](guide/first-steps.md#the-window)
 
@@ -189,9 +189,9 @@ Vos agendas, contacts et tâches Google peuvent venir aussi. Si vous vous connec
 Chaque règle de Sioul vient d’une chaîne : ce que des études ont observé, pourquoi, la règle qui en découle, ce que fait Sioul, et ce qu’il refuse. En voici six :
 
 - **Les forces changent, et il n’y a que vous pour savoir quand.** L’épuisement autistique s’apaise quand on baisse les attentes (Raymaker et al. 2020) ; des adultes avec un TDAH aimaient une vue de leur « météo intérieure », et pas les outils qui les surveillent (Chen, Meng & Nie 2026). Vous dites donc comment est la journée, et rien n’est deviné.
-- **Regarder son courrier moins souvent, à des moments prévisibles.** Relever son courrier trois fois par jour a fait baisser le stress dans un essai randomisé ; regrouper les notifications a amélioré l’attention et l’humeur, alors que n’en recevoir aucune rendait les gens plus anxieux (Kushlev & Dunn 2015 ; Fitz et al. 2019). Le courrier attend donc les heures que vous avez choisies, et Sioul dit quand elles viennent.
+- **Regarder ses courriels moins souvent, à des moments prévisibles.** Relever ses courriels trois fois par jour a fait baisser le stress dans un essai randomisé ; regrouper les notifications a amélioré l’attention et l’humeur, alors que n’en recevoir aucune rendait les gens plus anxieux (Kushlev & Dunn 2015 ; Fitz et al. 2019). Les courriels attendent donc les heures que vous avez choisies, et Sioul dit quand elles viennent.
 - **Le plus dur, c’est de commencer.** L’inertie autistique, une difficulté à passer de l’intention à l’action, s’atténue avec un appui extérieur (Buckle et al. 2021) ; avec un TDAH, l’aide a sa place au moment et à l’endroit où l’action se fait (Barkley 2012). Sioul choisit donc une petite étape suivante, et dit pourquoi.
-- **Les soirées servent à récupérer.** Se détacher du travail après les heures va de pair avec moins d’épuisement, et le simple fait de s’attendre à du courrier professionnel le soir fait du tort (Wendsche & Lohmann-Haislah 2017 ; Becker et al. 2021). Le travail se repose donc en dehors de vos heures de travail.
+- **Les soirées servent à récupérer.** Se détacher du travail après les heures va de pair avec moins d’épuisement, et le simple fait de s’attendre à des courriels professionnels le soir fait du tort (Wendsche & Lohmann-Haislah 2017 ; Becker et al. 2021). Le travail se repose donc en dehors de vos heures de travail.
 - **Des progrès, jamais des séries.** Une série rompue fait baisser l’engagement ensuite, d’autant plus quand on s’en fait le reproche (Silverman & Barasch 2023). Sioul montre donc ce qui a été fait, et ne compte jamais ce qui ne l’a pas été.
 - **La sécurité, la confiance et le choix d’abord.** L’informatique sensible au trauma demande aux logiciels la sécurité, la confiance, la collaboration et le choix de la personne (Chen et al. 2022). Rien dans Sioul ne vous surprend donc, chaque raison est montrée, tout peut être annulé, et rien n’est supprimé ni envoyé sans vous.
 
@@ -214,23 +214,23 @@ Il est fait par une seule personne, au grand jour : aucune assistance n’est 
 ## Par où commencer {#where-to-start}
 
 1. [Installez Sioul](guide/install.md).
-2. [Faites les premiers pas](guide/first-steps.md) : ajoutez votre courrier, vos agendas et contacts, votre compte Google, les sites que vous consultez.
+2. [Faites les premiers pas](guide/first-steps.md) : ajoutez vos courriels, vos agendas et contacts, votre compte Google, les sites que vous consultez.
 3. [Réglez vos heures](guide/hours.md), pour que le travail, les démarches et le repos aient chacun leur temps.
 4. [Voyez ce qui vous joint, et quand](guide/notifications.md), dit en phrases, et changez ce qui ne vous convient pas.
-5. Lisez ensuite la page sur [le Porche](guide/porch.md), où le nouveau courrier attend.
+5. Lisez ensuite la page sur [le Porche](guide/porch.md), où les nouveaux courriels attendent.
 
 ## Côté technique {#for-technical-readers}
 
 - **La sécurité par défaut, sans rien régler** : aucun serveur à nous, aucune télémétrie, aucune vérification de mise à jour ; des connexions chiffrées seulement (TLS par rustls, sans option en clair) ; les dossiers de Sioul fermés aux autres comptes de l’ordinateur ([Vie privée et sécurité](guide/privacy-security.md)). Rien ne part vers un service d’IA extérieur sauf si vous l’activez : le bouclier IA d’une adresse publique, ou un agent que vous connectez vous-même, chacun dit clairement là où vous l’activez ([Agents IA](guide/ai-agent.md)).
-- **Chaque message vérifié à l’arrivée** : SPF, DKIM, DMARC, ARC et DNS inverse, par Sioul lui-même. Le courrier falsifié est mis de côté, avec la raison, et un expéditeur que rien n’authentifie compte comme un inconnu, quelle que soit l’adresse qu’il affiche. Les noms empruntés à des marques et à des services publics sont repérés, même écrits avec des lettres qui se ressemblent ([Comment un expéditeur est vérifié](guide/mail.md#how-a-sender-is-checked)).
-- **Un filtre à indésirables à vous** : un classifieur fastText entraîné sur votre ordinateur à partir de votre propre courrier (les en-têtes et le début de chaque texte, jamais les pièces jointes), d’abord quand vous le demandez, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif ; seule sa table compacte voyage vers votre téléphone, scellée. Il ne juge que le courrier des inconnus, et ne déplace rien sauf si vous le choisissez ([Votre filtre à indésirables](guide/settings.md#your-own-spam-filter)).
+- **Chaque courriel vérifié à l’arrivée** : SPF, DKIM, DMARC, ARC et DNS inverse, par Sioul lui-même. Les courriels falsifiés sont mis de côté, avec la raison, et un expéditeur que rien n’authentifie compte comme un inconnu, quelle que soit l’adresse qu’il affiche. Les noms empruntés à des marques et à des services publics sont repérés, même écrits avec des lettres qui se ressemblent ([Comment un expéditeur est vérifié](guide/mail.md#how-a-sender-is-checked)).
+- **Un filtre à indésirables à vous** : un classifieur fastText entraîné sur votre ordinateur à partir de vos propres courriels (les en-têtes et le début de chaque texte, jamais les pièces jointes), d’abord quand vous le demandez, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif ; seule sa table compacte voyage vers votre téléphone, scellée. Il ne juge que les courriels des inconnus, et ne déplace rien sauf si vous le choisissez ([Votre filtre à indésirables](guide/settings.md#your-own-spam-filter)).
 - **Les pièces jointes analysées avant de s’ouvrir**, par l’antivirus de votre système : ClamAV sur Linux et macOS, Microsoft Defender (par AMSI) sur Windows. Un programme ne s’ouvre jamais depuis un courriel, et sous Windows et macOS les fichiers que vous ouvrez ou enregistrez portent la marque du système qui dit qu’ils viennent d’Internet.
-- **Le courrier HTML rendu sûr** : rien de distant ne se charge, jamais, et rien ne s’exécute ; un lien montre son adresse avant de s’ouvrir.
+- **Les courriels HTML rendus sûrs** : rien de distant ne se charge, jamais, et rien ne s’exécute ; un lien montre son adresse avant de s’ouvrir.
 - **Une authentification forte**, sur les ordinateurs :
     - votre clé OpenPGP sur une clé de sécurité (toute carte OpenPGP : une YubiKey, une Nitrokey…) : la carte elle-même signe et déchiffre, et votre clé privée n’entre jamais dans l’ordinateur ; son code PIN gardé en mémoire seulement et jamais journalisé ;
     - les clés de sécurité FIDO2 et WebAuthn, et les clés d’accès qu’elles gardent, dans les sites que vous gardez, le code PIN demandé dans la boîte de dialogue de Sioul ;
     - Bitwarden, lu par le client propre à Sioul et jamais écrit, ouvert avec une clé de sécurité comme deuxième étape, ou seule comme clé d’accès.
-- **OpenPGP** : Sequoia, signature et chiffrement à l’envoi, avec Autocrypt (clés prises seulement dans le courrier vérifié) et le Web Key Directory.
+- **OpenPGP** : Sequoia, signature et chiffrement à l’envoi, avec Autocrypt (clés prises seulement dans les courriels vérifiés) et le Web Key Directory.
 - **Partage entre vos appareils**, téléphone compris : chaque appareil garde ses propres données ; un dossier que transporte n’importe quelle application de synchronisation (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) fait passer les changements entre eux, chaque appareil n’écrivant que son propre fichier, scellé de bout en bout (XChaCha20-Poly1305, la clé tirée de votre phrase de passe par Argon2id et gardée dans le trousseau de chaque appareil). Les notes et les papiers voyagent fichier par fichier ; les versions précédentes sont gardées sur chaque appareil. Aucun serveur à nous. [Comment cela marche, et ce que cela protège](guide/sharing.md).
 - **Agents d’IA**, seulement si vous en branchez un : `sioul mcp` sert à un agent ce que Sioul garde sur cet appareil, par le Model Context Protocol. Il n’envoie, ne supprime et ne paie jamais rien ; les codes à usage unique et les numéros de compte, de carte et de sécurité sociale sont masqués ; chaque appel est noté par les adresses de ce qui a été donné, jamais par ses mots ([Avec un agent d’IA](guide/ai-agent.md)).
 - **Normes ouvertes et fichiers simples** : IMAP, SMTP, CalDAV et CardDAV, tâches liées comme le dit la RFC 9253, Maildir, TOML, et des notes en Markdown, entièrement compatibles avec les coffres Obsidian (liens wiki, images incluses, étiquettes, en-têtes, alias) et avec Nextcloud Notes (`.txt` ou `.md`, catégories en dossiers). Ce qui fonctionne avec quoi, fonction par fonction, et jusqu’où chaque chose a été essayée : [Fonctionne avec](guide/compatibility.md).

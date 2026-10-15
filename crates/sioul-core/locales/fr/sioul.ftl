@@ -38,40 +38,40 @@ decimal-separator = ,
 
 ## Ce qui est arrivé, quand le Porche ouvre.
 summary-nothing = Rien n’est arrivé. Rien n’a besoin de vous.
-summary-total = { $Countf } { $n ->
-        [one] lettre est arrivée
-       *[other] lettres sont arrivées
+summary-total = { $Count } { $n ->
+        [one] courriel est arrivé
+       *[other] courriels sont arrivés
     }.
 summary-codes = { $Count } { $n ->
         [one] code est prêt
        *[other] codes sont prêts
     } ci-dessus.
-summary-projects = { $Countf } { $n ->
+summary-projects = { $Count } { $n ->
         [one] concerne
        *[other] concernent
     } { $k ->
         [one] un projet
        *[other] des projets
     } : { $projects }.
-summary-project-part = { $title } ({ $countf })
-summary-people = { $Countf } { $n ->
+summary-project-part = { $title } ({ $count })
+summary-people = { $Count } { $n ->
         [one] vient de quelqu’un que vous connaissez
        *[other] viennent de personnes que vous connaissez
     }.
-summary-screener = { $Countf } { $n ->
+summary-screener = { $Count } { $n ->
         [one] vient d’un nouvel expéditeur et attend votre accord
        *[other] viennent de nouveaux expéditeurs et attendent votre accord
     }.
 summary-filed = { $Countf } { $n ->
-        [one] lettre d’information ou notification a été rangée
-       *[other] lettres d’information et notifications ont été rangées
+        [one] infolettre ou notification a été rangée
+       *[other] infolettres et notifications ont été rangées
     }.
 summary-set-aside = { $Count } { $n ->
-        [one] message falsifié ou indésirable a été mis
-       *[other] messages falsifiés ou indésirables ont été mis
+        [one] courriel falsifié ou indésirable a été mis
+       *[other] courriels falsifiés ou indésirables ont été mis
     } de côté.
 
-## Pourquoi un message est là où il est.
+## Pourquoi un courriel est là où il est.
 reason-dmarc-pass = le domaine de l’expéditeur s’en porte garant (DMARC valide)
 reason-dmarc-fail = le domaine de l’expéditeur dit ne pas l’avoir envoyé (DMARC en échec)
 reason-dkim-pass = il porte une signature valide (DKIM valide)
@@ -91,10 +91,10 @@ spam-chip-ham = probablement pas indésirable
 reason-expires-soon = { $akind } qui expire bientôt
 reason-unverified-code = on dirait { $akind }, mais l’expéditeur n’est pas vérifié : ne vous en servez que si vous venez de le demander à ce site ; les faux codes sont une ruse d’hameçonnage
 reason-project = projet { $title } : { $why }
-reason-newsletter = une lettre d’information ou une liste de diffusion
+reason-newsletter = une infolettre ou une liste de diffusion
 reason-automatic = envoyé par une adresse automatique
 reason-not-authenticated = son expéditeur n’a pas pu être vérifié (SPF et DKIM en échec) : traité comme quelqu’un que vous ne connaissez pas
-reason-first-message = le premier message de cet expéditeur
+reason-first-message = le premier courriel de cet expéditeur
 reason-known = de quelqu’un que vous connaissez
 reason-from-yourself = envoyé depuis l’une de vos adresses
 route-sender-domain = domaine de l’expéditeur : { $value }
@@ -141,7 +141,7 @@ right-now-valid-days = { $days ->
 }
 lane-people = De personnes que vous connaissez
 lane-screener = Nouveaux expéditeurs, en attente de votre accord
-lane-filed = Rangé : lettres d’information et notifications
+lane-filed = Rangé : infolettres et notifications
 lane-set-aside = Mis de côté
 lane-review = Retenu par votre filtre à indésirables
 porch-closed = Le Porche ouvre { $when }. D’ici là, ce qui arrive est vérifié et trié.
@@ -154,7 +154,7 @@ window-next = Le prochain créneau pour vos démarches ouvre { $when }.
 window-none = Aucune fenêtre dans la semaine qui vient.
 
 ## Les erreurs.
-error-no-mail = Pas encore de courrier à lire : indiquez --maildir, ou des comptes avec un maildir dans la configuration (examples/config.toml).
+error-no-mail = Pas encore de courriel à lire : indiquez --maildir, ou des comptes avec un maildir dans la configuration (examples/config.toml).
 error-no-store = Pas de dossier de notes : indiquez --store, ou case_store dans la configuration.
 error-no-windows = Pas de fenêtres administratives dans la configuration (examples/config.toml).
 
@@ -236,7 +236,7 @@ budget-drawn = { $reserve } couvre { $amount } le { $end }.
 budget-swept = { $amount } vont à { $reserve } le { $end }.
 reserve-line = { $title } : { $balance } aujourd’hui. Ce mois-ci, { $month_done } utilisés et { $month_planned } encore prévus. Au { $year_end_date }, { $year_end }.
 reserve-quiet = Rien n’est prévu depuis cette réserve.
-mail-title = Proposé par le courrier
+mail-title = Proposé par les courriels
 mail-line = { $date } · { $budget } · { $amount } · { $label }
 mail-line-foreign = { $date } · { $budget } · { $amount } { $currency }, à convertir · { $label }
 mail-added = ajouté
@@ -250,39 +250,39 @@ account-found = Trouvé : { $server }, { $by }.
 account-by-provider = d’après les réglages publiés par votre fournisseur
 account-by-ispdb = d’après la liste de fournisseurs de Thunderbird
 account-by-guess = une supposition : vérifiez-la avant de continuer
-account-by-google = les serveurs de Google, puisque Google garde le courrier de cette adresse
+account-by-google = les serveurs de Google, puisque Google garde les courriels de cette adresse
 account-login = Identifiant : { $login }
 account-gmail-hint = Google refuse ici le mot de passe de votre compte : créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes), et donnez-le à la place.
 account-app-password-hint = Si ce compte utilise la validation en deux étapes, il peut demander un mot de passe d’application.
 account-password-prompt = Mot de passe pour { $address } (il va dans le trousseau de votre système, nulle part ailleurs) :
 account-connected = Connexion réussie : la boîte de réception contient { $n ->
-        [one] un message
-       *[other] { $count } messages
+        [one] un courriel
+       *[other] { $count } courriels
     }.
-account-added = Ajouté sous le nom « { $id } ». Son courrier va dans { $path }.
+account-added = Ajouté sous le nom « { $id } ». Ses courriels vont dans { $path }.
 account-exists = Un compte nommé « { $id } » existe déjà.
 account-address-exists = { $address } est déjà configurée, sous le nom « { $id } ».
 account-unknown = Aucun compte nommé « { $id } ».
-account-removed = « { $id } » retiré, avec son mot de passe. Son courrier reste dans { $path }.
+account-removed = « { $id } » retiré, avec son mot de passe. Ses courriels restent dans { $path }.
 account-portal-added = « { $id } » ajouté : il ouvre { $url } dans votre navigateur.
 account-password-saved = Mot de passe gardé dans le trousseau de votre système.
 account-has-password = mot de passe dans le trousseau
 account-signed-in-google = connecté avec Google (l’accès dans le trousseau)
 account-no-password = pas encore de mot de passe : `sioul account password { $id }`
 account-trust = Vérification des expéditeurs : fait confiance à { $ids }.
-account-trust-learning = Vérification des expéditeurs : apprise de votre courrier à la première relève.
+account-trust-learning = Vérification des expéditeurs : apprise de vos courriels à la première relève.
 account-portal = ouvre { $url }
 
-## La relève du courrier.
+## La relève des courriels.
 sync-new = { $account } : { $n ->
         [0] rien de nouveau
-        [one] un nouveau message
-       *[other] { $count } nouveaux messages
+        [one] un nouveau courriel
+       *[other] { $count } nouveaux courriels
     }.
 sync-first = { $account } : { $n ->
-        [0] aucun message
-        [one] un message
-       *[other] { $count } messages
+        [0] aucun courriel
+        [one] un courriel
+       *[other] { $count } courriels
     } des { $days } derniers jours.
 sync-learned = { $account } : votre fournisseur consigne ses vérifications sous le nom { $id } ; Sioul fait désormais confiance à ce nom pour ce compte.
 sync-not-learned = { $account } : votre fournisseur ne semble pas consigner ses vérifications, les expéditeurs restent donc « non vérifiés » pour l’instant.
@@ -296,17 +296,17 @@ sync-error-tls = { $account } : le certificat du serveur n’a pas pu être v�
 sync-error-login = { $account } : le serveur a refusé le mot de passe ({ $detail }).
 sync-error-app-password = { $account } : ce serveur demande un mot de passe d’application, créé dans les réglages de votre compte chez le fournisseur, et non votre mot de passe habituel. Gmail : myaccount.google.com/apppasswords.
 sync-error-server = { $account } : le serveur a refusé une commande ({ $detail }).
-sync-error-disk = { $account } : le courrier n’a pas pu être écrit sur le disque ({ $detail }).
+sync-error-disk = { $account } : les courriels n’ont pas pu être écrits sur le disque ({ $detail }).
 sync-error-elsewhere = { $account } : le serveur a donné une adresse sur un autre serveur ({ $detail }) ; Sioul n’y est pas allé et n’y a envoyé aucun mot de passe.
 sync-said-folder-name = { $account } : un dossier a besoin d’un nom.
 sync-said-no-folder = { $account } : il n’y a pas de dossier « { $detail } ».
 sync-said-not-kept = { $account } : Sioul ne garde pas de copie du dossier « { $detail } ».
 sync-said-purpose = { $account } : « { $detail } » est l’un des dossiers propres au compte (réception, envoyés, brouillons, indésirables, corbeille, archives), et il reste.
-sync-said-not-fetched = { $account } : Sioul n’a pas relevé ce message sur un serveur.
-sync-said-unknown-folder = { $account } : Sioul ne connaît pas le dossier où se trouve ce message.
-sync-said-renumbered = { $account } : le serveur a renuméroté ce dossier ; relevez le courrier de nouveau.
-sync-said-gone = { $account } : ce message n’est plus sur le serveur.
-sync-said-open-first = { $account } : ouvrez d’abord le message.
+sync-said-not-fetched = { $account } : Sioul n’a pas relevé ce courriel sur un serveur.
+sync-said-unknown-folder = { $account } : Sioul ne connaît pas le dossier où se trouve ce courriel.
+sync-said-renumbered = { $account } : le serveur a renuméroté ce dossier ; relevez les courriels de nouveau.
+sync-said-gone = { $account } : ce courriel n’est plus sur le serveur.
+sync-said-open-first = { $account } : ouvrez d’abord le courriel.
 sync-nothing = Rien à relever pour l’instant : les comptes s’ajoutent dans Comptes, en bas à gauche.
 watch-started = Surveillance de { $accounts }. Les codes et les liens que vous demandez aux sites arrivent en notification. Ctrl+C arrête.
 watch-line = { $time } · { $line }
@@ -321,7 +321,7 @@ ui-accounts = Comptes
 accounts-tab-yours = Vos comptes
 accounts-tab-add = Ajouter un compte
 accounts-tab-keys = Chiffrement
-account-service-mail = Courrier
+account-service-mail = Courriels
 account-service-dav = Agendas, tâches et contacts
 account-service-google = Google : agendas, contacts et tâches
 account-switch-help = Éteint, il garde ses réglages et n’est ni synchronisé ni montré.
@@ -332,9 +332,9 @@ account-settings = Réglages de cette adresse
 scout-button = Ce que ce serveur offre
 scout-asking = Le serveur est interrogé…
 scout-title = Ce que { $server } offre
-scout-mail = Courrier : { $server }
+scout-mail = Courriels : { $server }
 scout-have = déjà là
-scout-mail-add = Ajouter le courrier, avec le mot de passe de ses agendas
+scout-mail-add = Ajouter les courriels, avec le mot de passe de ses agendas
 scout-mail-add-other = L’ajouter avec un autre mot de passe
 scout-dav = Agendas, tâches et contacts : { $server }
 scout-dav-add = Les ajouter
@@ -355,9 +355,9 @@ scout-app-tables = Tables
 scout-app-forms = Formulaires
 scout-app-photos = Photos
 senders-help = Chaque adresse, numéro, fiche ou catégorie est sur une liste au plus. Toute personne de vos carnets d’adresses est neutre tant que vous n’en décidez pas autrement ; les inconnus ne sont dans aucun d’eux ni sur aucune liste ; les bloqués ne vous joignent jamais. Quand chaque liste vous joint, c’est la grille ci-dessus. Quelqu’un bloqué depuis un message arrive ici aussi.
-ui-sync-now = Relever le courrier
-ui-syncing = Relève du courrier…
-ui-synced-at = Courrier relevé à { $time }.
+ui-sync-now = Relever les courriels
+ui-syncing = Relève des courriels…
+ui-synced-at = Courriels relevés à { $time }.
 ui-open-anyway = L’ouvrir quand même
 ui-not-open = L’ouvrir hors fenêtre montre tout ce qui attend. Les codes s’affichent toujours.
 ui-done = Terminé pour l’instant
@@ -369,10 +369,10 @@ ui-close = Fermer
 ui-ok = OK
 ui-reasons = Pourquoi il est ici
 ui-attachments = Pièces jointes : { $names }
-ui-no-text = Ce message n’a pas de texte.
+ui-no-text = Ce courriel n’a pas de texte.
 ui-text-safe = Affiché sans risque : rien de distant ne se charge, rien ne s’exécute.
-reader-opening = Ouverture du message…
-ui-add-account = Ajouter un compte de courrier
+reader-opening = Ouverture du courriel…
+ui-add-account = Ajouter un compte de courriel
 ui-address = Adresse électronique
 ui-find-server = Trouver le serveur
 ui-finding = Recherche du serveur…
@@ -386,14 +386,14 @@ ui-app-passwords = Créer un mot de passe d’application
 ui-connect = Se connecter et ajouter
 ui-connecting = Connexion…
 ui-remove = Retirer
-ui-remove-confirm = Retirer « { $id } » ? Son mot de passe quitte le trousseau ; son courrier reste sur le disque et sur le serveur.
+ui-remove-confirm = Retirer « { $id } » ? Son mot de passe quitte le trousseau ; ses courriels restent sur le disque et sur le serveur.
 ui-cancel = Annuler
 ui-portal-name = Nom
 ui-portal-url = Adresse web
 ui-add = Ajouter
 ui-open = Ouvrir
 ui-no-accounts = Pas encore de compte : ajoutez le premier dans « Ajouter un compte ».
-ui-watching = En attente de nouveau courrier.
+ui-watching = En attente de nouveaux courriels.
 ui-no-budgets = Pas encore de budgets : placez sioul-budgets.toml à la racine de votre dossier de notes.
 ui-keys = Ctrl+1 à Ctrl+0 lieux · Ctrl+N nouveau · Ctrl+Z annuler · F5 actualiser
 
@@ -413,8 +413,8 @@ fig-month-flows = { $done } utilisés, { $planned } prévus
 fig-by-date = Au { $date }
 fig-pace = À ce rythme
 fig-pace-quiet = rien n’est prévu dessus
-mail-section = Depuis le courrier
-mail-none = Pas encore de courrier sur de l’argent.
+mail-section = Depuis les courriels
+mail-none = Pas encore de courriel sur de l’argent.
 kind-received = Reçu
 kind-paid = Payé
 kind-order = Commande
@@ -424,7 +424,7 @@ note-recorded = Compté dans { $budget }
 note-duplicate = Même paiement que { $other }
 note-preset = Compté par le prévu « { $preset } »
 note-preset-amount = Remplace le prévu « { $preset } » pour son mois une fois ajouté
-note-no-amount = Le message ne donne pas de montant.
+note-no-amount = Le courriel ne donne pas de montant.
 note-doubtful = D’un expéditeur nouveau et non vérifié : vérifiez qu’il est authentique avant de le compter.
 ui-add-line = Ajouter
 ui-not-payment = Pas un paiement
@@ -436,7 +436,7 @@ reason-blocked = vous avez bloqué cet expéditeur
 reason-impersonation = il prend le nom { $brand } mais vient de { $domain } : mis de côté
 ui-block = Bloquer…
 ui-block-title = Bloquer cet expéditeur ?
-ui-block-text = Son courrier sera mis de côté pour de bon : jamais affiché, jamais compté. Rien n’est supprimé, et vous pouvez le débloquer dans Comptes.
+ui-block-text = Ses courriels seront mis de côté pour de bon : jamais affichés, jamais comptés. Rien n’est supprimé, et vous pouvez le débloquer dans Comptes.
 ui-block-address = Bloquer { $address }
 ui-block-domain = Bloquer tout { $domain }
 ui-blocked = { $entry } est bloqué.
@@ -445,33 +445,33 @@ ui-unblock = Débloquer
 ui-unblocked = { $entry } est débloqué.
 blocked-none = Personne n’est bloqué.
 
-## Les comptes et les messages, détaillés.
+## Les comptes et les courriels, détaillés.
 account-row-server = Serveur
 account-row-checks = Vérification des expéditeurs
-account-row-mail = Courrier gardé dans
+account-row-mail = Courriels gardés dans
 account-row-web = Adresse web
-account-checks-learning = apprise de votre courrier ; votre fournisseur n’en consigne peut-être aucune
+account-checks-learning = apprise de vos courriels ; votre fournisseur n’en consigne peut-être aucune
 ui-to = À
 ui-cc = Cc
 ui-attachments-title = Pièces jointes
 ui-save = Enregistrer
 ui-saved = Enregistré dans { $path }.
 ui-attachments-closed = Mis de côté : ses pièces jointes ne s’ouvrent pas.
-ui-quote-show = Afficher le message cité ({ $n ->
+ui-quote-show = Afficher le courriel cité ({ $n ->
         [one] une ligne
        *[other] { $n } lignes
     })
-ui-quote-hide = Masquer le message cité
+ui-quote-hide = Masquer le courriel cité
 size-b = { $n } o
 size-kb = { $n } Ko
 size-mb = { $n } Mo
 
 ## La priorité des comptes.
 lane-low = Comptes moins importants
-summary-low = { $Countf } { $n ->
-        [one] lettre d’un compte moins important attend
-       *[other] lettres de comptes moins importants attendent
-    }, repliées en bas.
+summary-low = { $Count } { $n ->
+        [one] courriel d’un compte moins important attend
+       *[other] courriels de comptes moins importants attendent
+    }, repliés en bas.
 reason-low-priority = il vient d’un compte que vous avez classé sous les autres
 priority-above = Plus important
 priority-average = Normal
@@ -482,12 +482,12 @@ ui-priority-set = { $id } : { $priority }.
 ## Les vérifications des expéditeurs.
 verify-done = { $account } : { $n ->
         [0] rien à vérifier
-        [one] un message vérifié
-       *[other] { $count } messages vérifiés
+        [one] un courriel vérifié
+       *[other] { $count } courriels vérifiés
     }.
 reason-dmarc-fail-no-policy = DMARC échoue, mais le domaine de l’expéditeur ne demande rien quand c’est le cas
 reason-dmarc-fail-list = DMARC échoue sur une liste de diffusion, qui réécrit ce qu’elle relaie
-checks-by-sioul = Vérifié par Sioul à l’arrivée du message :
+checks-by-sioul = Vérifié par Sioul à l’arrivée du courriel :
 checks-by-provider = Vérifié par votre fournisseur ({ $id }) :
 checks-none = Aucune vérification consignée : rien ne prouve qui l’a envoyé.
 check-line = { $protocol } : { $outcome }
@@ -514,7 +514,7 @@ scan-error = La pièce jointe { $name } n’a pas pu être vérifiée ({ $detail
 ## La lecture.
 ui-images-hidden = Les images ne sont pas affichées : rien ne se charge depuis le réseau.
 ui-link = Lien : { $url }
-ui-quote-history = Afficher les messages précédents
+ui-quote-history = Afficher les courriels précédents
 
 ## Les dossiers.
 folder-inbox = Boîte de réception
@@ -523,7 +523,7 @@ folder-sent = Envoyés
 folder-archive = Archives
 folder-junk = Indésirables
 folder-trash = Corbeille
-folder-all = Tout le courrier
+folder-all = Tous les courriels
 folder-other = Dossier
 
 ## L’écriture.
@@ -537,11 +537,11 @@ compose-forwarded = ---------- Message transféré ----------
 compose-attribution = Le { $date }, { $name } a écrit :
 
 ## L’envoi.
-send-error-refused = { $account } : le serveur d’envoi a refusé le message ({ $detail }).
+send-error-refused = { $account } : le serveur d’envoi a refusé le courriel ({ $detail }).
 send-error-not-filed = { $account } : envoyé, mais sa copie n’a pas pu être rangée dans les Envoyés ({ $detail }).
 send-error-message = { $detail }
 
-## Le client de courrier.
+## Le client de courriel.
 mail-done = C’est fait.
 mail-sent = Envoyé.
 mail-you-to = Vous, à { $names }
@@ -552,12 +552,12 @@ mail-empty = Rien ici.
 mail-nothing-recent = Rien ces deux dernières semaines.
 mail-not-found = Rien ne correspond à « { $query } ».
 mail-unread = { $n ->
-    [one] Un message que vous n’avez pas lu.
-   *[other] { $Count } messages que vous n’avez pas lus.
+    [one] Un courriel que vous n’avez pas lu.
+   *[other] { $Count } courriels que vous n’avez pas lus.
 }
 
-## La page du courrier.
-ui-mail = Courrier
+## La page des courriels.
+ui-mail = Courriels
 ui-write = Écrire
 ui-undo = Annuler
 ui-reply = Répondre
@@ -584,34 +584,34 @@ ui-selected = { $n ->
 }
 ui-clear-selection = Tout désélectionner
 ui-drag-count = { $n ->
-    [one] Un message
-   *[other] { $n } messages
+    [one] Un courriel
+   *[other] { $n } courriels
 }
 ui-move-to = Déplacer vers…
 ui-move-title = Déplacer vers quel dossier ?
 ui-show-source = Voir la source
 ui-drafts-here = Brouillons
 ui-more-folders = Autres dossiers
-ui-no-mail-accounts = Pas encore de compte de courrier : ajoutez-en un dans Comptes.
+ui-no-mail-accounts = Pas encore de compte de courriel : ajoutez-en un dans Comptes.
 ui-folders = Revenir aux dossiers
 ui-search = Chercher
-ui-earlier = Messages plus anciens
+ui-earlier = Courriels plus anciens
 ui-discard = Supprimer le brouillon
 
-## Chercher dans le courrier par conditions (mailsearch.rs, MailSearch.qml) : les conditions des filtres.
+## Chercher dans les courriels par conditions (mailsearch.rs, MailSearch.qml) : les conditions des filtres.
 ui-search-more = Plus de critères…
 ui-search-more-tip = Chercher par conditions : qui l’a envoyé, à qui, quand, ce qu’il dit ou apporte, où il est.
 ui-select = Sélectionner
 search-title = Recherche
 search-results = Résultats
-search-help = Le courrier selon qui l’a envoyé, à qui, quand, ce qu’il dit ou apporte. Les indésirables et la corbeille restent de côté, sauf si une condition sur le dossier les nomme.
+search-help = Les courriels selon qui les a envoyés, à qui, quand, ce qu’ils disent ou apportent. Les indésirables et la corbeille restent de côté, sauf si une condition sur le dossier les nomme.
 search-add = Ajouter une condition
 search-remove = Retirer cette condition
-search-match-all = Le courrier qui les remplit toutes
-search-match-any = Le courrier qui en remplit au moins une
+search-match-all = Toutes les conditions
+search-match-any = Au moins une condition
 search-and = et le
 search-clear = Effacer
-search-show = Voir les messages
+search-show = Voir les courriels
 search-change = Modifier la recherche
 search-back = Revenir à la recherche
 search-placeholder = Mots à trouver
@@ -619,19 +619,19 @@ search-placeholder-who = Un nom, une adresse, @domaine
 search-placeholder-size = 5 Mo, 500 Ko
 search-make-filter = En faire un filtre…
 search-sentence-empty = Dites ce qu’il faut chercher.
-search-sentence = Le courrier { $phrases }.
+search-sentence = Les courriels { $phrases }.
 search-join-all = {", "}
 search-join-any = {", ou "}
 search-phrase-anywhere-contains = avec « { $value } »
 search-phrase-anywhere-not-contains = sans « { $value } »
 search-phrase-from-contains = de …{ $value }…
-search-phrase-from-not-contains = qui ne vient pas de …{ $value }…
+search-phrase-from-not-contains = qui ne viennent pas de …{ $value }…
 search-phrase-from-is = de { $value }
-search-phrase-from-is-not = qui ne vient pas de { $value }
+search-phrase-from-is-not = qui ne viennent pas de { $value }
 search-phrase-to-contains = pour …{ $value }…
-search-phrase-to-not-contains = qui n’est pas pour …{ $value }…
+search-phrase-to-not-contains = qui ne sont pas pour …{ $value }…
 search-phrase-to-is = pour { $value }
-search-phrase-to-is-not = qui n’est pas pour { $value }
+search-phrase-to-is-not = qui ne sont pas pour { $value }
 search-phrase-cc-contains = en copie à …{ $value }…
 search-phrase-cc-not-contains = sans copie à …{ $value }…
 search-phrase-cc-is = en copie à { $value }
@@ -648,39 +648,39 @@ search-phrase-attachment-contains = avec une pièce jointe nommée …{ $value }
 search-phrase-attachment-not-contains = sans pièce jointe nommée …{ $value }…
 search-phrase-attachment-type-is = avec { $kind } en pièce jointe
 search-phrase-attachment-type-is-not = sans { $kind } en pièce jointe
-search-phrase-date-before = arrivé avant le { $day }
-search-phrase-date-after = arrivé après le { $day }
-search-phrase-date-between = arrivé entre le { $day } et le { $until }
+search-phrase-date-before = arrivés avant le { $day }
+search-phrase-date-after = arrivés après le { $day }
+search-phrase-date-between = arrivés entre le { $day } et le { $until }
 search-phrase-size-above = de plus de { $size }
 search-phrase-size-below = de moins de { $size }
 search-phrase-sender-is = dont l’expéditeur est { $who }
 search-phrase-sender-is-not = dont l’expéditeur n’est pas { $who }
-search-phrase-list-exists = d’une lettre d’information ou d’une liste
-search-phrase-list-missing = qui ne vient d’aucune lettre ni liste
+search-phrase-list-exists = d’une infolettre ou d’une liste
+search-phrase-list-missing = qui ne viennent d’aucune infolettre ni liste
 search-phrase-list-contains = de la liste …{ $value }…
-search-phrase-list-not-contains = qui ne vient pas de la liste …{ $value }…
+search-phrase-list-not-contains = qui ne viennent pas de la liste …{ $value }…
 search-phrase-account-is = dans { $account }
 search-phrase-account-is-not = hors de { $account }
 search-phrase-folder-is = dans { $folder }
 search-phrase-folder-is-not = hors de { $folder }
-search-phrase-mark-is-read = déjà lu
-search-phrase-mark-is-not-read = pas encore lu
-search-phrase-mark-is-flagged = suivi
-search-phrase-mark-is-not-flagged = non suivi
-search-phrase-mark-is-answered = auquel vous avez répondu
-search-phrase-mark-is-not-answered = auquel vous n’avez pas encore répondu
+search-phrase-mark-is-read = déjà lus
+search-phrase-mark-is-not-read = pas encore lus
+search-phrase-mark-is-flagged = suivis
+search-phrase-mark-is-not-flagged = non suivis
+search-phrase-mark-is-answered = auxquels vous avez répondu
+search-phrase-mark-is-not-answered = auxquels vous n’avez pas encore répondu
 search-found = { $n ->
     [0] Rien ici ne correspond.
-    [one] Un message ici.
-   *[other] { $n } messages ici.
+    [one] Un courriel ici.
+   *[other] { $n } courriels ici.
 }
 search-found-all = { $n ->
     [0] Rien ne correspond.
-    [one] Un message.
-   *[other] { $n } messages.
+    [one] Un courriel.
+   *[other] { $n } courriels.
 }
 search-found-more = Les { $shown } plus récents sur { $n } sont montrés : une autre condition les resserre.
-search-server-looking = Recherche sur les serveurs du courrier qui n’est gardé que là-bas…
+search-server-looking = Recherche sur les serveurs des courriels qui ne sont gardés que là-bas…
 search-server-found = { $n ->
     [one] Un de plus sur les serveurs.
    *[other] { $n } de plus sur les serveurs.
@@ -694,7 +694,7 @@ search-server-failed = { $account } : la recherche sur son serveur n’a pas a
 search-open-first = Ouvrez-le d’abord : Sioul n’en garde encore rien ici.
 search-on-server = sur le serveur
 search-on-server-tip = Gardé sur son serveur seulement : l’ouvrir le fait venir ici.
-search-bringing = Le message arrive du serveur…
+search-bringing = Le courriel arrive du serveur…
 search-place = { $folder } · { $account }
 
 ## La fenêtre d’écriture.
@@ -712,12 +712,12 @@ ui-your-name = Votre nom, tel que les destinataires le voient
 ui-signature = Signature
 ui-signature-note = En Markdown ; elle s’ajoute sous ce que vous écrivez.
 ui-writing-saved = { $id } : nom et signature enregistrés.
-compose-title-new = Nouveau message
+compose-title-new = Nouveau courriel
 compose-title-reply = Réponse à { $names }
 compose-title-forward = Transfert
 compose-saved = Enregistré à { $time }.
-compose-below-quote = Sous votre texte : le message de { $name } du { $date }, cité.
-compose-below-forward = Sous votre texte : le message de { $name } du { $date }, avec ses pièces jointes.
+compose-below-quote = Sous votre texte : le courriel de { $name } du { $date }, cité.
+compose-below-forward = Sous votre texte : le courriel de { $name } du { $date }, avec ses pièces jointes.
 compose-kept = Le brouillon est gardé dans Brouillons.
 compose-not-a-file = { $path } n’est pas un fichier.
 compose-bad-address = « { $entry } » n’est pas une adresse.
@@ -739,7 +739,7 @@ handed-missing = { $count ->
 handed-a-file = un fichier
 handed-stopped = Sioul s’est arrêté pendant sa copie : partagez-le de nouveau
 handed-refused = donné par son emplacement sur le téléphone, ce que Sioul refuse d’une autre application
-handed-no-account = Quelque chose a été partagé avec Sioul, mais aucun compte de courrier n’envoie encore : ajoutez-en un dans Comptes, puis partagez de nouveau.
+handed-no-account = Quelque chose a été partagé avec Sioul, mais aucun compte de courriel n’envoie encore : ajoutez-en un dans Comptes, puis partagez de nouveau.
 share-write-from = Écrire depuis { $address }
 share-address-gone = Cette adresse n’est plus dans Sioul.
 
@@ -751,35 +751,35 @@ undo-junked = Mis dans les indésirables.
 undo-not-junk = De retour dans la boîte de réception.
 undo-not-spam = Pas indésirable, pour de bon : il reste dans sa file.
 undo-moved = Déplacé vers { $folder }.
-undo-many-archived = { $n } messages archivés.
-undo-many-trashed = { $n } messages mis à la corbeille.
-undo-many-deleted = { $n } messages supprimés définitivement.
-undo-many-junked = { $n } messages mis dans les indésirables.
-undo-many-not-junk = { $n } messages de retour dans la boîte de réception.
-undo-many-not-spam = { $n } messages pas indésirables, pour de bon : ils restent dans leur file.
+undo-many-archived = { $n } courriels archivés.
+undo-many-trashed = { $n } courriels mis à la corbeille.
+undo-many-deleted = { $n } courriels supprimés définitivement.
+undo-many-junked = { $n } courriels mis dans les indésirables.
+undo-many-not-junk = { $n } courriels de retour dans la boîte de réception.
+undo-many-not-spam = { $n } courriels pas indésirables, pour de bon : ils restent dans leur file.
 undo-spam-kept = Indésirable, pour de bon : il reste dans le dossier Indésirables.
 undo-review-all-spam = { $n ->
-        [one] Un message indésirable, pour de bon.
-       *[other] { $n } messages indésirables, pour de bon.
+        [one] Un courriel indésirable, pour de bon.
+       *[other] { $n } courriels indésirables, pour de bon.
     }
 undo-review-all-not-spam = { $n ->
-        [one] Un message pas indésirable, pour de bon : de retour dans sa file.
-       *[other] { $n } messages pas indésirables, pour de bon : de retour dans leur file.
+        [one] Un courriel pas indésirable, pour de bon : de retour dans sa file.
+       *[other] { $n } courriels pas indésirables, pour de bon : de retour dans leur file.
     }
-undo-many-moved = { $n } messages déplacés vers { $folder }.
+undo-many-moved = { $n } courriels déplacés vers { $folder }.
 undo-moved-across = { $n ->
     [one] Déplacé
-   *[other] { $n } messages déplacés
+   *[other] { $n } courriels déplacés
 } vers { $folder } de { $account }.
 undo-sending = Envoi dans dix secondes.
 undo-discarded = Brouillon supprimé.
 undo-done = Annulé.
 undo-send-undone = Pas envoyé : le brouillon est de nouveau ouvert.
 undo-too-late = Trop tard pour annuler : c’est fait.
-mail-message-gone = Ce message n’est plus là ; relevez le courrier.
+mail-message-gone = Ce courriel n’est plus là ; relevez les courriels.
 mail-draft-gone = Ce brouillon n’est plus là.
 mail-not-sent = Pas envoyé ; le brouillon attend dans Brouillons. { $detail }
-mail-no-account = Aucun compte de courrier pour envoyer : ajoutez-en un dans Comptes.
+mail-no-account = Aucun compte de courriel pour envoyer : ajoutez-en un dans Comptes.
 
 ## Contacts et agendas.
 agenda-today = Aujourd’hui
@@ -1013,7 +1013,7 @@ pgp-imported = { $n ->
 pgp-no-key = Cette clé n’est plus là.
 pgp-removed = Clé retirée.
 pgp-looking = Recherche de leurs clés…
-pgp-lookup-all = Toutes les clés sont trouvées : le message peut être chiffré.
+pgp-lookup-all = Toutes les clés sont trouvées : le courriel peut être chiffré.
 pgp-lookup-some = Aucune clé trouvée pour { $missing }.
 pgp-lookup-failed = Les serveurs de clés ne répondent pas ({ $detail }).
 ui-sign = Signer
@@ -1021,7 +1021,7 @@ ui-encrypt = Chiffrer
 ui-no-key-for = Pas encore de clé pour { $addresses }
 ui-look-for-keys = Chercher leurs clés
 ui-encryption = Chiffrement (OpenPGP)
-ui-encryption-note = Signez et chiffrez vos messages. Vos clés restent sur cet appareil, leurs phrases secrètes dans le trousseau du système ; les personnes à qui vous écrivez reçoivent votre clé avec chaque message (Autocrypt).
+ui-encryption-note = Signez et chiffrez vos courriels. Vos clés restent sur cet appareil, leurs phrases secrètes dans le trousseau du système ; les personnes à qui vous écrivez reçoivent votre clé avec chaque courriel (Autocrypt).
 ui-export-key = Enregistrer la clé publique
 ui-save-revocation = Enregistrer le certificat de révocation
 ui-make-key = Créer une clé pour { $address }
@@ -1057,7 +1057,7 @@ seckey-tries-left = { $n ->
 }
 seckey-blocked = Votre clé de sécurité est verrouillée après trois codes PIN faux. Sioul ne demande jamais le code PIN d’administration : lui, ou le code de réinitialisation, la déverrouille hors de Sioul, dans YubiKey Manager ou dans GnuPG (là, admin, puis passwd) : `ykman openpgp access unblock-pin` `gpg --card-edit`
 seckey-touch-missed = Votre clé de sécurité a attendu un toucher, qui n’est pas venu à temps. Réessayez, et quand Sioul le dit, gardez le doigt sur la clé une seconde ou deux.
-seckey-removed-sign = La clé est partie avant d’avoir fini. Rien n’a été envoyé ; le message est dans les brouillons.
+seckey-removed-sign = La clé est partie avant d’avoir fini. Rien n’a été envoyé ; le courriel est dans les brouillons.
 seckey-removed = La clé est partie avant d’avoir fini.
 seckey-not-openpgp = La clé branchée ne contient aucune clé OpenPGP.
 seckey-other-keys = Votre clé de sécurité contient maintenant d’autres clés que celles que Sioul connaît : cherchez de nouveau son certificat dans Comptes ▸ Chiffrement.
@@ -1069,11 +1069,11 @@ seckey-mismatch = La clé trouvée n’est pas celle de votre clé de sécurité
 seckey-mismatch-revoked = Cette clé a été révoquée : Sioul ne s’en servira pas.
 seckey-mismatch-use = La clé trouvée ne laisse pas les clés de votre clé de sécurité faire ce à quoi elles servent : elle n’a pas été gardée.
 seckey-mismatch-invalid = La clé trouvée ne peut pas être lue sans risque ({ $detail }) : elle n’a pas été gardée.
-seckey-expired = Votre clé a expiré le { $date } : le courrier ne peut plus être signé avec elle, ni chiffré pour vous, avant que GnuPG la renouvelle, depuis Comptes ▸ Chiffrement.
+seckey-expired = Votre clé a expiré le { $date } : les courriels ne peuvent plus être signés avec elle, ni chiffrés pour vous, avant que GnuPG la renouvelle, depuis Comptes ▸ Chiffrement.
 seckey-expires-soon = Votre clé expire le { $date }. GnuPG la renouvelle, depuis Comptes ▸ Chiffrement.
 seckey-valid-until = Valable jusqu’au { $date }.
 seckey-part-expired-primary = Sa clé principale ({ $fingerprint }) a expiré le { $date } : toute la clé compte comme expirée, et rien ne peut être signé avec elle.
-seckey-part-expired-sign = Sa sous-clé de signature ({ $fingerprint }) a expiré le { $date } : le courrier ne peut plus être signé avec elle.
+seckey-part-expired-sign = Sa sous-clé de signature ({ $fingerprint }) a expiré le { $date } : les courriels ne peuvent plus être signés avec elle.
 seckey-part-expired-encrypt = Sa sous-clé de chiffrement ({ $fingerprint }) a expiré le { $date } : personne ne peut plus vous chiffrer avec elle.
 seckey-part-expired-auth = Sa sous-clé d’authentification ({ $fingerprint }) a expiré le { $date } : elle ne peut plus vous connecter ailleurs (SSH, par exemple).
 seckey-part-expired-other = Sa sous-clé ({ $fingerprint }) a expiré le { $date }.
@@ -1086,7 +1086,7 @@ seckey-part-until = { $part } jusqu’au { $date }
 seckey-part-forever = { $part } sans fin
 seckey-subkeys-renew = Renouveler pour deux ans les renouvelle avec sa clé principale. À la main, nommez chaque sous-clé : le « * » de GnuPG laisse telles quelles celles déjà expirées.
 seckey-renew-incomplete = GnuPG a renouvelé la clé, mais pas toute. { $parts } Elle n’a pas été gardée comme renouvelée : renouvelez-la de nouveau, ou à la main.
-seckey-sign-in-window = Ce message est signé avec votre clé de sécurité : envoyez-le depuis sa fenêtre dans Sioul, qui demande le code PIN de la clé.
+seckey-sign-in-window = Ce courriel est signé avec votre clé de sécurité : envoyez-le depuis sa fenêtre dans Sioul, qui demande le code PIN de la clé.
 seckey-cannot-sign = Votre clé de sécurité ne peut pas signer pour cette adresse maintenant.
 seckey-released = GnuPG a laissé partir votre clé de sécurité. Il la reprendra la prochaine fois qu’il en aura besoin, et redemandera alors son code PIN.
 seckey-release-no-gnupg = Sioul n’a pas trouvé ici gpgconf, l’outil de GnuPG. Débranchez votre clé de sécurité puis rebranchez-la : GnuPG la laisse alors partir.
@@ -1109,7 +1109,7 @@ seckey-release = Laisser GnuPG la libérer
 seckey-open-with = Ouvrir avec votre clé de sécurité
 seckey-pin-forgotten = Le code PIN de votre clé de sécurité est oublié.
 seckey-section = Clé de sécurité
-seckey-intro = Vos clés OpenPGP peuvent rester sur une clé de sécurité, comme une YubiKey : elle signe et ouvre votre courrier elle-même, après son code PIN, et ses clés privées ne la quittent jamais. Sioul n’en garde que la partie publique.
+seckey-intro = Vos clés OpenPGP peuvent rester sur une clé de sécurité, comme une YubiKey : elle signe et ouvre vos courriels elle-même, après son code PIN, et ses clés privées ne la quittent jamais. Sioul n’en garde que la partie publique.
 seckey-use = Utiliser une clé de sécurité
 seckey-made-on = { $algorithm }, créée le { $date }
 seckey-found-both = { $label }{ $holder }. Elle signe ({ $sign }) et déchiffre ({ $decrypt }). Sioul a besoin de la partie publique de ces clés, que la clé de sécurité ne contient pas.
@@ -1130,7 +1130,7 @@ seckey-renewing = GnuPG renouvelle votre clé pour deux ans, puis ses sous-clés
 seckey-gnupg-pin = Tapez le code PIN de votre clé de sécurité dans la fenêtre de GnuPG.
 seckey-gnupg-then-touch = Puis touchez la clé, et gardez le doigt dessus une seconde ou deux : elle attend environ 15 secondes.
 seckey-gnupg-touch-missed = Votre clé de sécurité a attendu un toucher, qui n’est pas venu à temps : GnuPG s’est arrêté. Réessayez, et quand Sioul le dit, gardez le doigt sur la clé une seconde ou deux.
-seckey-renewed = Renouvelée : { $parts }. Les autres voient les nouvelles dates une fois qu’ils ont de nouveau votre clé : Envoyez-la à keys.openpgp.org, ou vos messages la portent.
+seckey-renewed = Renouvelée : { $parts }. Les autres voient les nouvelles dates une fois qu’ils ont de nouveau votre clé : Envoyez-la à keys.openpgp.org, ou vos courriels la portent.
 seckey-renew-unknown = GnuPG ne connaît pas encore cette clé de sécurité ici. Branchez-la et lancez ceci une fois, puis choisissez de nouveau Renouveler pour deux ans ; ou renouvelez-la à la main : `gpg --card-status`
 seckey-send = L’envoyer à keys.openpgp.org
 seckey-send-tells = Votre clé publique va sur keys.openpgp.org, où chacun peut la trouver par son empreinte ; votre clé privée reste sur la clé de sécurité. keys.openpgp.org envoie ensuite un lien à chaque adresse que la clé nomme : une adresse n’est trouvable qu’une fois son lien ouvert.
@@ -1144,7 +1144,7 @@ seckey-looking = Recherche de la partie publique de votre clé de sécurité…
 seckey-not-found = Sa partie publique n’a été trouvée nulle part : ni à l’adresse écrite sur la clé, ni dans l’annuaire de clés de votre domaine, ni sur keys.openpgp.org. Importez-la depuis un fichier.
 seckey-kept = Trouvée : { $names }. Elle correspond à votre clé de sécurité, qui signe désormais pour { $addresses } et ouvre ce qui lui est chiffré.
 seckey-kept-not-yours = Trouvée : { $names }. Elle correspond à votre clé de sécurité, qui ouvre ce qui lui est chiffré ; elle ne nomme aucune de vos adresses dans Sioul, et ne signe donc pour aucune.
-seckey-kept-no-address = Elle correspond à votre clé de sécurité, mais ne nomme aucune adresse : Sioul signe votre courrier avec elle et ouvre ce qui lui est chiffré, mais les autres ne trouveront pas cette clé par votre adresse, et vos messages ne peuvent pas l’annoncer.
+seckey-kept-no-address = Elle correspond à votre clé de sécurité, mais ne nomme aucune adresse : Sioul signe vos courriels avec elle et ouvre ce qui lui est chiffré, mais les autres ne trouveront pas cette clé par votre adresse, et vos courriels ne peuvent pas l’annoncer.
 seckey-source = Son certificat vient de { $source }, le { $date }.
 seckey-source-file = Son certificat vient d’un fichier, le { $date }.
 seckey-touch-both = Elle demande un toucher pour signer et pour ouvrir.
@@ -1169,10 +1169,10 @@ seckey-cli-touch = { $policy ->
     [cached-fixed] une fois pour 15 secondes, fixé
    *[unknown] demandé
 }
-ui-history = Jusqu’où remontent le courrier et l’agenda
-ui-history-note = Le courrier plus ancien arrive au prochain relevé ; « Tout » peut prendre du temps et de la place.
-ui-history-set = Le courrier et l’agenda remontent maintenant à { $weeks } semaines.
-ui-history-everything = Le courrier et l’agenda remontent maintenant jusqu’au début.
+ui-history = Jusqu’où remontent les courriels et l’agenda
+ui-history-note = Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps et de la place.
+ui-history-set = Les courriels et l’agenda remontent maintenant à { $weeks } semaines.
+ui-history-everything = Les courriels et l’agenda remontent maintenant jusqu’au début.
 history-1 = 1 semaine
 history-2 = 2 semaines
 history-4 = 1 mois
@@ -1456,7 +1456,7 @@ ui-settings = Réglages de cette page
 set-like-others = Comme les autres adresses
 set-windows = Heures de travail
 set-windows-help = Ces jours et à ces heures, le travail peut vous joindre. En dehors, il se repose : vos démarches viennent à leurs propres heures, plus bas ; tout le reste du temps, ce sont vos loisirs. Les codes et les liens que vous demandez aux sites, et ce que vous vous envoyez, arrivent toujours tout de suite.
-set-sorting = Comment le courrier est trié
+set-sorting = Comment les courriels sont triés
 set-accounts-elsewhere = À quoi sert chaque adresse, jusqu’où elle remonte, à quel rythme elle est relevée et son bouclier se règlent sur sa fiche dans Comptes : l’icône de personne en bas de la colonne de gauche.
 set-task-areas-group = À quoi sert une tâche
 set-files-group = Votre dossier
@@ -1472,9 +1472,9 @@ set-office-hours-help = Une tâche marquée « Demande un bureau ouvert » n
 set-windows-add = Ajouter une fenêtre
 set-windows-none = Aucune fenêtre : le Porche est toujours ouvert.
 set-known = Expéditeurs connus
-set-known-help = Leur courrier va directement dans « De personnes que vous connaissez », comme celui de vos contacts. Un inconnu attend dans le filtre d’accueil jusqu’à ce que vous le laissiez entrer. Une adresse, ou @domaine pour tout le monde là-bas.
+set-known-help = Leurs courriels vont directement dans « De personnes que vous connaissez », comme ceux de vos contacts. Un inconnu attend dans le filtre d’accueil jusqu’à ce que vous le laissiez entrer. Une adresse, ou @domaine pour tout le monde là-bas.
 set-blocked = Expéditeurs bloqués
-set-blocked-help = Leur courrier est mis de côté pour de bon : jamais montré, jamais compté. Une adresse, ou @domaine pour tout le monde là-bas.
+set-blocked-help = Leurs courriels sont mis de côté pour de bon : jamais montrés, jamais comptés. Une adresse, ou @domaine pour tout le monde là-bas.
 set-senders-add = Ajouter une adresse ou un @domaine
 set-senders-add-number = Ajouter une adresse, un numéro ou un @domaine
 set-fetch-minutes = Relever toutes les
@@ -1484,15 +1484,15 @@ set-account-name-help = Tel que les destinataires le voient dans la ligne De.
 set-account-signature = Signature
 set-account-signature-help = Ajoutée sous ce que vous écrivez, en Markdown.
 set-account-priority = Importance
-set-account-priority-help = Moins importante : son courrier ne passe pas par le filtre d’accueil et attend replié en bas du Porche. Plus importante : il passe en premier.
+set-account-priority-help = Moins importante : ses courriels ne passent pas par le filtre d’accueil et attendent repliés en bas du Porche. Plus importante : ils passent en premier.
 set-account-history = Jusqu’où remonter
-set-account-history-help = Combien de semaines du courrier de cette adresse les dossiers montrent.
+set-account-history-help = Combien de semaines des courriels de cette adresse les dossiers montrent.
 set-account-fetch = Relever toutes les
 set-account-fetch-help = 0 suit les autres adresses. Une adresse publique peut être relevée moins souvent : deux fois par jour, c’est 720.
 set-account-shield = Protégée contre le harcèlement
-set-account-shield-help = Pour une adresse publique qui peut amener des insultes : son courrier est lu d’abord ; les messages hostiles sont mis de côté sans montrer leur texte, le reste est résumé par sujet.
+set-account-shield-help = Pour une adresse publique qui peut amener des insultes : ses courriels sont lus d’abord ; les courriels hostiles sont mis de côté sans montrer leur texte, le reste est résumé par sujet.
 set-account-shield-ai = Laisser l’IA le lire d’abord
-set-account-shield-ai-help = Une IA (Claude, le modèle d’Anthropic, avec votre propre clé) lit le nouveau courrier de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour Anthropic, selon ses conditions d’utilisation de son API.
+set-account-shield-ai-help = Une IA (Claude, le modèle d’Anthropic, avec votre propre clé) lit les nouveaux courriels de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour Anthropic, selon ses conditions d’utilisation de son API.
 set-day-start = La journée commence à
 set-day-start-help = L’heure à laquelle s’ouvrent le planning du jour et de la semaine.
 set-task-estimate = Une tâche sans durée compte
@@ -1526,7 +1526,7 @@ set-projects-both = Votre dossier de notes contient à la fois sioul-projects.to
 set-notes-folder = Les nouvelles notes vont dans
 set-notes-folder-help = Un dossier à l’intérieur du dossier des notes, où Sioul range chaque nouvelle note (sauf si vous la créez dans un autre dossier), et vos mémos vocaux dans son dossier memos.
 set-reading-family = Police
-set-reading-family-help = Pour le texte long : notes, courrier, notes d’une tâche. Vide : celle du bureau.
+set-reading-family-help = Pour le texte long : notes, courriels, notes d’une tâche. Vide : celle du bureau.
 set-reading-size = Taille
 set-reading-size-help = La taille du texte long.
 set-reading-spacing = Interligne
@@ -1568,13 +1568,13 @@ set-invoice-rate-help = Le tarif quand un projet ne fixe pas le sien.
 set-ai-agents-group = Ce que les agents d’IA peuvent utiliser
 set-ai-agents-note = Un agent d’IA que vous connectez avec sioul mcp (Claude Code, Claude Desktop, tout client MCP) lit ce que vous lui ouvrez ici, et y ajoute des tâches, des évènements, des notes, des liens et des brouillons. Ce qu’il lit part chez le fournisseur de son modèle. Il n’envoie, ne supprime et ne paie jamais rien, et ne voit jamais un mot de passe, un code ni un numéro de compte entier.
 set-mcp-outside-projects = Ce qui n’est dans aucun projet
-set-mcp-outside-projects-help = Le reste du courrier du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, pour qu’un agent connecté serve tout de suite ; fermez-le si vous voulez que les agents ne voient que les projets que vous ouvrez plus bas.
+set-mcp-outside-projects-help = Les autres courriels du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, pour qu’un agent connecté serve tout de suite ; fermez-le si vous voulez que les agents ne voient que les projets que vous ouvrez plus bas.
 set-mcp-texts = SMS
 set-mcp-texts-help = Désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes. Activé, un agent lit et cherche les SMS que cet ordinateur garde de votre téléphone, codes masqués, et écrit des brouillons qui attendent dans la page des SMS jusqu’à ce que vous les envoyiez vous-même ; jamais à un groupe, jamais un SMS envoyé. Pour ouvrir vos SMS, Sioul lit la clé de partage dans le trousseau de cet ordinateur, et seulement alors ; la clé ne parvient jamais à l’agent.
 set-mcp-spam = Les outils de votre filtre à indésirables
-set-mcp-spam-help = Un agent peut faire tourner, tester et juger votre propre filtre à indésirables : il voit l’expéditeur et le sujet du courrier qu’il liste, jamais un texte, et une étiquette qu’il donne change ce que le filtre signale sur chaque appareil. Sur les ordinateurs.
+set-mcp-spam-help = Un agent peut faire tourner, tester et juger votre propre filtre à indésirables : il voit l’expéditeur et le sujet des courriels qu’il liste, jamais un texte, et une étiquette qu’il donne change ce que le filtre signale sur chaque appareil. Sur les ordinateurs.
 set-ai-projects-group = Projets ouverts aux agents d’IA
-set-ai-projects-note = Chaque projet est fermé aux agents jusqu’à ce que vous l’ouvriez, ici ou sur sa page. Ouvert, un agent lit son courrier, ses tâches, ses notes, son temps, ses factures et ses lettres, et y ajoute.
+set-ai-projects-note = Chaque projet est fermé aux agents jusqu’à ce que vous l’ouvriez, ici ou sur sa page. Ouvert, un agent lit ses courriels, ses tâches, ses notes, son temps, ses factures et ses lettres, et y ajoute.
 set-ai-projects-none = Pas encore de projet. Chaque projet que vous créez commence fermé aux agents.
 set-theme = Couleurs
 set-theme-help = Claires ou sombres, ou comme celles du système : Sioul devient alors sombre ou clair avec lui, ses icônes aussi.
@@ -1583,16 +1583,16 @@ set-theme-light = Claires
 set-theme-dark = Sombres
 set-ai-group = Le bouclier IA
 set-ai-key = Clé de l’API d’Anthropic
-set-ai-key-help = Gardée dans le trousseau du système, jamais dans un fichier. Chaque nouveau message vers une adresse protégée qui permet l’IA est envoyé une fois à Anthropic (modèle Claude Haiku), avec son objet ; la réponse (ton, sujet, une ligne neutre) reste sur cet appareil. Une clé se crée sur console.anthropic.com.
+set-ai-key-help = Gardée dans le trousseau du système, jamais dans un fichier. Chaque nouveau courriel vers une adresse protégée qui permet l’IA est envoyé une fois à Anthropic (modèle Claude Haiku), avec son objet ; la réponse (ton, sujet, une ligne neutre) reste sur cet appareil. Une clé se crée sur console.anthropic.com.
 set-ai-key-kept = Une clé est gardée.
 set-ai-key-none = Pas encore de clé : les listes de mots jugent seules.
 set-ai-key-keep = Garder
 set-ai-key-forget = Oublier la clé
 set-mail-threads = Par conversation
-set-mail-threads-help = Un message et ses réponses ensemble, sous le plus récent ; les vôtres viennent des Envoyés. S’ouvre par la petite flèche à gauche.
+set-mail-threads-help = Un courriel et ses réponses ensemble, sous le plus récent ; les vôtres viennent des Envoyés. S’ouvre par la petite flèche à gauche.
 set-spam-group = Votre filtre à indésirables
 set-spam-actions = Ce qu’il fait de chaque avis
-set-spam-actions-help = Entraîné sur votre courrier, il ne juge que le message d’un inconnu, jamais les personnes que vous connaissez, les codes, les projets ni votre propre courrier. « Déplacer dans les indésirables » déplace le message sur le serveur, dans le dossier Indésirables du compte, à son arrivée ; « Signaler seulement » le laisse où il est. Dans les deux cas il attend sur le Porche, dans « Retenu par votre filtre à indésirables », sans jamais de notification. Rien n’est supprimé.
+set-spam-actions-help = Entraîné sur vos courriels, il ne juge que le courriel d’un inconnu, jamais les personnes que vous connaissez, les codes, les projets ni vos propres courriels. « Déplacer dans les indésirables » déplace le courriel sur le serveur, dans le dossier Indésirables du compte, à son arrivée ; « Signaler seulement » le laisse où il est. Dans les deux cas il attend sur le Porche, dans « Retenu par votre filtre à indésirables », sans jamais de notification. Rien n’est supprimé.
 set-spam-class-spam = Probablement indésirable
 set-spam-class-unsure = Peut-être indésirable
 set-spam-class-ham = Probablement pas indésirable
@@ -1600,15 +1600,15 @@ set-spam-action-move = Déplacer dans les indésirables
 set-spam-action-flag = Signaler seulement
 set-spam-action-nothing = Ne rien faire
 set-spam-threshold = Indésirable à partir de
-set-spam-threshold-help = À quel point il doit être sûr pour dire probablement indésirable le message d’un inconnu. Plus haut : moins de vos messages pris pour indésirables, plus d’indésirables laissés passer.
+set-spam-threshold-help = À quel point il doit être sûr pour dire probablement indésirable le courriel d’un inconnu. Plus haut : moins de vos courriels pris pour indésirables, plus d’indésirables laissés passer.
 set-spam-unsure = Peut-être indésirable à partir de
-set-spam-unsure-help = De là jusqu’au seuil d’indésirable, le message d’un inconnu est peut-être indésirable ; en dessous, probablement pas. Toujours sous le seuil d’indésirable.
+set-spam-unsure-help = De là jusqu’au seuil d’indésirable, le courriel d’un inconnu est peut-être indésirable ; en dessous, probablement pas. Toujours sous le seuil d’indésirable.
 set-spam-filter = Son apprentissage
-set-spam-filter-help = Il apprend sur un seul ordinateur : entraînez-le sur celui-ci seulement, quand vous le demandez, et il se réentraîne de lui-même une fois par semaine quand cet ordinateur est branché et inactif, à partir de tout votre courrier : chaque dossier de chaque adresse, vos dossiers Indésirables, ce qu’il a retenu lui-même, tel quel (un peut-être indésirable seulement une fois que vous l’avez dit), et ce que vous avez dit indésirable ou pas sur chacun de vos appareils, qui l’emporte toujours. Le courrier qu’il lit et les mots qu’il apprend restent sur cet ordinateur ; seule sa table va vers vos autres appareils, scellée, sans aucun mot de votre courrier.
+set-spam-filter-help = Il apprend sur un seul ordinateur : entraînez-le sur celui-ci seulement, quand vous le demandez, et il se réentraîne de lui-même une fois par semaine quand cet ordinateur est branché et inactif, à partir de tous vos courriels : chaque dossier de chaque adresse, vos dossiers Indésirables, ce qu’il a retenu lui-même, tel quel (un peut-être indésirable seulement une fois que vous l’avez dit), et ce que vous avez dit indésirable ou pas sur chacun de vos appareils, qui l’emporte toujours. Les courriels qu’il lit et les mots qu’il apprend restent sur cet ordinateur ; seule sa table va vers vos autres appareils, scellée, sans aucun mot de vos courriels.
 set-spam-filter-phone = Sa table
-set-spam-filter-phone-help = Ce téléphone ne l’entraîne jamais : un seul ordinateur le fait, sur votre courrier, et sa table arrive ici scellée par votre dossier (la partie « Filtre à indésirables »), sans aucun mot de votre courrier. Ce que vous dites ici, Indésirable ou Pas indésirable, et ce que son filtre retient ici y vont de la même façon.
+set-spam-filter-phone-help = Ce téléphone ne l’entraîne jamais : un seul ordinateur le fait, sur vos courriels, et sa table arrive ici scellée par votre dossier (la partie « Filtre à indésirables »), sans aucun mot de vos courriels. Ce que vous dites ici, Indésirable ou Pas indésirable, et ce que son filtre retient ici y vont de la même façon.
 
-## Les filtres du courrier (crates/sioul-core/src/rules.rs, docs/client.md, « Filters »).
+## Les filtres des courriels (crates/sioul-core/src/rules.rs, docs/client.md, « Filters »).
 filter-field-from = De
 filter-field-to = À
 filter-field-cc = Cc
@@ -1618,7 +1618,7 @@ filter-field-body = Texte
 filter-field-attachment = Pièce jointe
 filter-field-attachment-type = Type de pièce jointe
 filter-field-sender = Expéditeur
-filter-field-list = Lettre d’information ou liste
+filter-field-list = Infolettre ou liste
 filter-field-date = Jour d’arrivée
 filter-field-weekday = Jour de la semaine
 filter-field-hour = Heure d’arrivée
@@ -1626,7 +1626,7 @@ filter-field-size = Taille
 filter-field-anywhere = Partout
 filter-field-account = Adresse
 filter-field-folder = Dossier
-filter-field-mark = Message
+filter-field-mark = Courriel
 filter-mark-read = lu
 filter-mark-flagged = suivi
 filter-mark-answered = répondu
@@ -1653,7 +1653,7 @@ filter-if-text = { $field ->
         [anywhere] Partout
         [account] Adresse
         [folder] Dossier
-        [mark] Message
+        [mark] Courriel
        *[body] Texte
     } { $test ->
         [not-contains] ne contient pas
@@ -1666,8 +1666,8 @@ filter-if-attachment = { $test ->
        *[exists] avec une pièce jointe
     }
 filter-if-list = { $test ->
-        [missing] pas venu d’une lettre d’information ni d’une liste
-       *[exists] venu d’une lettre d’information ou d’une liste
+        [missing] pas venu d’une infolettre ni d’une liste
+       *[exists] venu d’une infolettre ou d’une liste
     }
 filter-if-kind = { $test ->
         [is-not] aucune pièce jointe n’est { $kind }
@@ -1731,7 +1731,7 @@ filter-then-unfinished = (une action à compléter)
 filter-then-stop = et aucun autre filtre
 filter-then-none = (rien à faire encore)
 filter-said = { $conditions } → { $actions }
-filter-said-empty = Un nouveau filtre : dites ce que montre un message, puis ce qui en est fait.
+filter-said-empty = Un nouveau filtre : dites ce que montre un courriel, puis ce qui en est fait.
 filter-problem-unknown = Ce filtre contient quelque chose que ce Sioul ne connaît pas : changez-le, ou mettez Sioul à jour.
 filter-problem-value = Une condition attend sa valeur.
 filter-problem-date = Un jour s’écrit 2026-10-01, et une période va de son début à sa fin.
@@ -1739,57 +1739,57 @@ filter-problem-time = Une heure s’écrit 18:00.
 filter-problem-size = Une taille s’écrit 5 Mo ou 500 Ko.
 filter-problem-no-condition = Ajoutez une condition : sans elle, ce filtre ne fait rien.
 filter-problem-no-action = Choisissez ce qu’il fait : sans action, il ne fait rien.
-filter-problem-folder = Choisissez le dossier où il déplace les messages.
+filter-problem-folder = Choisissez le dossier où il déplace les courriels.
 filter-problem-keyword = Un mot-clé est un seul mot : sans espace, parenthèse, accolade, crochet, guillemet, % ni *, et ni $Junk, ni $NotJunk, ni $SioulFiltered.
 set-filters-group = Filtres
 set-filters = Vos filtres
-set-filters-help = Chaque filtre dit ce que montre un message, puis ce qui en est fait sur son serveur. Ils agissent sur le courrier qui arrive non lu dans une boîte de réception, sur le premier de vos appareils à le relever ; vos autres appareils n’y touchent plus ensuite. Le courrier que le Porche met de côté, un code que vous avez demandé et ce que votre filtre à indésirables a retenu ne sont jamais touchés, et rien n’est supprimé pour de bon.
+set-filters-help = Chaque filtre dit ce que montre un courriel, puis ce qui en est fait sur son serveur. Ils agissent sur les courriels qui arrivent non lus dans une boîte de réception, sur le premier de vos appareils à les relever ; vos autres appareils n’y touchent plus ensuite. Les courriels que le Porche met de côté, un code que vous avez demandé et ce que votre filtre à indésirables a retenu ne sont jamais touchés, et rien n’est supprimé pour de bon.
 filter-only = Seulement pour { $accounts }
 filter-tried = { $n ->
-        [0] Dans vos boîtes de réception, il ne prend aucun des { $total } messages.
-        [one] Dans vos boîtes de réception, il prend un des { $total } messages.
-       *[other] Dans vos boîtes de réception, il prend { $count } des { $total } messages.
+        [0] Dans vos boîtes de réception, il ne prend aucun des { $total } courriels.
+        [one] Dans vos boîtes de réception, il prend un des { $total } courriels.
+       *[other] Dans vos boîtes de réception, il prend { $count } des { $total } courriels.
     }
 filter-tried-newest = { $n ->
-        [0] Parmi les { $total } messages les plus récents de vos boîtes de réception, il n’en prend aucun.
-        [one] Parmi les { $total } messages les plus récents de vos boîtes de réception, il en prend un.
-       *[other] Parmi les { $total } messages les plus récents de vos boîtes de réception, il en prend { $count }.
+        [0] Parmi les { $total } courriels les plus récents de vos boîtes de réception, il n’en prend aucun.
+        [one] Parmi les { $total } courriels les plus récents de vos boîtes de réception, il en prend un.
+       *[other] Parmi les { $total } courriels les plus récents de vos boîtes de réception, il en prend { $count }.
     }
 filter-tried-one = { $who } : { $subject }
 filter-preview-line = { $Count } { $n ->
-        [one] message
-       *[other] messages
+        [one] courriel
+       *[other] courriels
     } : { $filter }
 filter-preview = { $n ->
-        [one] Dans vos boîtes de réception, un message changerait, lu ou non.
-       *[other] Dans vos boîtes de réception, { $count } messages changeraient, lus ou non.
-    } Les codes que vous avez demandés, le courrier mis de côté et ce que votre filtre à indésirables a retenu restent comme ils sont.
-filter-preview-none = Aucun message de vos boîtes de réception ne correspond à un filtre : rien ne changerait.
+        [one] Dans vos boîtes de réception, un courriel changerait, lu ou non.
+       *[other] Dans vos boîtes de réception, { $count } courriels changeraient, lus ou non.
+    } Les codes que vous avez demandés, les courriels mis de côté et ce que votre filtre à indésirables a retenu restent comme ils sont.
+filter-preview-none = Aucun courriel de vos boîtes de réception ne correspond à un filtre : rien ne changerait.
 filter-running = { $n ->
-        [one] Un message filtré dans dix secondes.
-       *[other] { $Count } messages filtrés dans dix secondes.
+        [one] Un courriel filtré dans dix secondes.
+       *[other] { $Count } courriels filtrés dans dix secondes.
     }
 filter-ran = { $n ->
-        [0] Aucun message filtré.
-        [one] Un message filtré.
-       *[other] { $Count } messages filtrés.
+        [0] Aucun courriel filtré.
+        [one] Un courriel filtré.
+       *[other] { $Count } courriels filtrés.
     }
 filter-failed-folder = { $n ->
-        [one] Un message de { $account } n’a pas pu être déplacé : il n’y a pas de dossier « { $folder } » là-bas.
-       *[other] { $Count } messages de { $account } n’ont pas pu être déplacés : il n’y a pas de dossier « { $folder } » là-bas.
-    } Créez-le dans Courrier, ou changez le filtre ; Sioul réessaie au prochain courrier.
+        [one] Un courriel de { $account } n’a pas pu être déplacé : il n’y a pas de dossier « { $folder } » là-bas.
+       *[other] { $Count } courriels de { $account } n’ont pas pu être déplacés : il n’y a pas de dossier « { $folder } » là-bas.
+    } Créez-le dans Courriels, ou changez le filtre ; Sioul réessaie au prochain courriel.
 filter-failed-server = { $n ->
-        [one] Un message de { $account } n’a pas pu être filtré : son serveur ne l’a pas pris.
-       *[other] { $Count } messages de { $account } n’ont pas pu être filtrés : son serveur ne les a pas pris.
-    } Sioul réessaie au prochain courrier.
+        [one] Un courriel de { $account } n’a pas pu être filtré : son serveur ne l’a pas pris.
+       *[other] { $Count } courriels de { $account } n’ont pas pu être filtrés : son serveur ne les a pas pris.
+    } Sioul réessaie au prochain courriel.
 filter-failed-keywords = Le serveur de { $account } ne garde pas de mots-clés : un filtre qui ne fait qu’en ajouter un n’y fait rien.
 filter-failed-renumbered = Le serveur de { $account } a renuméroté sa boîte de réception : { $n ->
-        [one] un message n’a pas été filtré, et il est annoncé
-       *[other] { $count } messages n’ont pas été filtrés, et ils sont annoncés
-    } comme du nouveau courrier.
+        [one] un courriel n’a pas été filtré, et il est annoncé comme nouveau
+       *[other] { $count } courriels n’ont pas été filtrés, et ils sont annoncés comme nouveaux
+    }.
 filter-cli-acted = { $account } : { $n ->
-        [one] un message filtré.
-       *[other] { $count } messages filtrés.
+        [one] un courriel filtré.
+       *[other] { $count } courriels filtrés.
     }
 filter-ui-narrow = Montrer les filtres de
 filter-ui-all-addresses = Toutes les adresses
@@ -1815,7 +1815,7 @@ filter-ui-add-condition = Ajouter une condition
 filter-ui-then = Alors
 filter-ui-add-action = Ajouter une action
 filter-ui-folder = Choisir un dossier
-filter-ui-folder-some = Ce dossier n’existe que sur { $accounts } : depuis les autres adresses, le message ne peut pas y aller, et Sioul le dit.
+filter-ui-folder-some = Ce dossier n’existe que sur { $accounts } : depuis les autres adresses, le courriel ne peut pas y aller, et Sioul le dit.
 filter-ui-keyword = Un mot-clé
 filter-ui-more = Sur quelles adresses ; les filtres suivants
 filter-ui-addresses = Sur quelles adresses
@@ -1825,12 +1825,12 @@ filter-ui-try = L’essayer sur les boîtes de réception
 filter-ui-looking = Lecture de vos boîtes de réception…
 filter-ui-delete = Supprimer ce filtre
 filter-ui-deleted = Supprimé : { $name }
-filter-ui-run-help = Les filtres agissent sur le courrier qui arrive non lu. Pour agir sur tout ce qui est dans vos boîtes de réception, le courrier lu aussi, appliquez-les : Sioul dit d’abord ce qui changerait.
+filter-ui-run-help = Les filtres agissent sur les courriels qui arrivent non lus. Pour agir sur tout ce qui est dans vos boîtes de réception, les courriels lus aussi, appliquez-les : Sioul dit d’abord ce qui changerait.
 filter-ui-run = Les appliquer aux boîtes de réception…
 filter-ui-run-now = Les appliquer maintenant
 filter-ui-not-now = Pas maintenant
-filter-from-search-left = Un filtre lit le courrier qui arrive dans vos boîtes de réception : ce que la recherche disait des dossiers, et du courrier lu, suivi ou répondu, est laissé de côté.
-ui-conversation = { $n } messages : montrer ou replier la conversation
+filter-from-search-left = Un filtre lit les courriels qui arrivent dans vos boîtes de réception : ce que la recherche disait des dossiers, et des courriels lus, suivis ou répondus, est laissé de côté.
+ui-conversation = { $n } courriels : montrer ou replier la conversation
 link-made = Lié à « { $title } ».
 link-undone = Le lien est défait.
 link-is-plan = Ce lien est une étape ou une attente : il se change dans la tâche.
@@ -1843,7 +1843,7 @@ ui-link-existing = Lier à…
 add-task = Une tâche
 add-event = Un événement
 add-note = Une note
-add-mail = Un message
+add-mail = Un courriel
 add-reply = Une réponse
 add-contact = L’expéditeur, dans vos contacts
 link-title = Lier « { $title } » à…
@@ -1851,7 +1851,7 @@ link-search = Quelques mots de son titre
 link-kind-all = Tout
 link-kind-task = Tâches
 link-kind-event = Événements
-link-kind-mail = Courrier
+link-kind-mail = Courriel
 link-kind-note = Notes
 link-kind-contact = Contacts
 link-kind-budget = Lignes de budget
@@ -1908,7 +1908,7 @@ project-invoice = Facture { $number }
 project-no-title = Un projet a besoin d’un nom.
 project-gone = Ce projet n’existe plus.
 project-ai = Ouvert aux agents d’IA
-project-ai-help = Un agent que vous connectez avec sioul mcp lit alors le courrier, les tâches, les notes, le temps, les factures et les lettres de ce projet, et y ajoute des tâches, des notes, des liens et des brouillons ; ce qu’il lit part chez le fournisseur de son modèle. Fermé, il n’en voit rien.
+project-ai-help = Un agent que vous connectez avec sioul mcp lit alors les courriels, les tâches, les notes, le temps, les factures et les lettres de ce projet, et y ajoute des tâches, des notes, des liens et des brouillons ; ce qu’il lit part chez le fournisseur de son modèle. Fermé, il n’en voit rien.
 invoice-nothing = Aucun temps facturable n’attend d’être facturé.
 invoice-gone = Cette facture n’existe plus.
 invoice-folder-name = Factures
@@ -2044,7 +2044,7 @@ account-password-use = Utiliser
 account-password-keep = Garder
 account-password-testing = Le serveur est interrogé…
 account-password-kept = { $account } : mot de passe gardé ; la synchronisation reprend.
-account-signed-in-again = { $account } : reconnecté avec Google ; son courrier revient.
+account-signed-in-again = { $account } : reconnecté avec Google ; ses courriels reviennent.
 account-app-password-title = Mot de passe d’application pour { $account }
 bitwarden-unlock-help-password = Votre mot de passe principal ouvre le coffre ici, par Sioul lui-même ; il n’est pas gardé, et le coffre reste ouvert jusqu’à la fermeture de Sioul.
 site-none = Pas encore de site. Une messagerie sécurisée (celle d’une banque, d’un hôpital, des impôts), une discussion, tout site à garder sous la main : connecté une fois, gardé ici.
@@ -2099,28 +2099,28 @@ bitwarden-locked = Bitwarden est verrouillé.
 bitwarden-none = Bitwarden ne garde aucun identifiant pour ce site.
 until-tomorrow = demain à { $time }
 day-tomorrow = demain
-mail-resting = Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez.
-mail-rest = Pendant le sommeil, le courrier se repose : rien ne notifie, et le Porche ne montre que ce que vos listes laissent passer maintenant. Le reste est là si vous le cherchez.
+mail-resting = Les courriels du travail se reposent jusqu’au retour du travail. Ils sont là si vous les cherchez.
+mail-rest = Pendant le sommeil, les courriels se reposent : rien ne notifie, et le Porche ne montre que ce que vos listes laissent passer maintenant. Le reste est là si vous le cherchez.
 set-account-area = À quoi sert cette adresse
-set-account-area-help = Son courrier vient aux moments de ce à quoi elle sert : travail, vos démarches, loisirs, plusieurs à la fois. Rien de coché : le travail, pour qu’il n’atteigne jamais vos soirées. Le courrier de vos expéditeurs sûrs vient à n’importe quelle adresse, aux moments cochés pour eux ; les codes viennent toujours.
+set-account-area-help = Ses courriels viennent aux moments de ce à quoi elle sert : travail, vos démarches, loisirs, plusieurs à la fois. Rien de coché : le travail, pour qu’ils n’atteignent jamais vos soirées. Les courriels de vos expéditeurs sûrs viennent à n’importe quelle adresse, aux moments cochés pour eux ; les codes viennent toujours.
 area-work = Travail
 area-personal = À vous, démarches ou loisirs
 project-field-personal = À vous, hors travail
 project-field-personal-help = Ses tâches restent en vue pendant le calme, avec la famille et les amis.
-project-routes = Le courrier qui arrive ici tout seul
+project-routes = Les courriels qui arrivent ici tout seuls
 project-resting = Les projets de travail se reposent jusqu’au retour du travail.
 ui-show-anyway = Montrer quand même
 folder-server-only = Gardé sur le serveur seulement : clic droit pour en garder une copie ici.
 folder-keep = En garder une copie ici
 folder-forget = Ne plus en garder de copie
-folder-forget-ask = Sa copie ici s’en va ; le serveur garde tous les messages, et en garder de nouveau une copie la ramène entière.
+folder-forget-ask = Sa copie ici s’en va ; le serveur garde tous les courriels, et en garder de nouveau une copie la ramène entière.
 folder-delete = Supprimer ce dossier vide
-folder-delete-ask = Supprimé sur le serveur, pour tous les appareils. Seul un dossier vide peut l’être : déplacez d’abord ses messages.
+folder-delete-ask = Supprimé sur le serveur, pour tous les appareils. Seul un dossier vide peut l’être : déplacez d’abord ses courriels.
 folder-new = Nouveau dossier…
 folder-made = Dossier « { $name } » créé sur le serveur.
 folder-deleted = Dossier « { $name } » supprimé sur le serveur.
-folder-not-empty = « { $name } » contient encore des messages : déplacez-les d’abord.
-sync-held-back = Le courrier plus ancien de { $account } attend : le disque garde sa réserve ({ $free } Go libres). Il viendra quand il y aura de la place.
+folder-not-empty = « { $name } » contient encore des courriels : déplacez-les d’abord.
+sync-held-back = Les courriels plus anciens de { $account } attendent : le disque garde sa réserve ({ $free } Go libres). Ils viendront quand il y aura de la place.
 note-as-list = Liste
 note-as-tree = Dossiers
 note-all = Toutes les notes
@@ -2413,7 +2413,7 @@ closing-step-hint = Un repère et un geste : « Après le petit-déjeuner, o
 closing-deadline = La date demandée pour « { $title } » est { $day }.
 closing-ask-time = Demander un délai
 closing-leave = Laisser pour { $day }
-closing-resting = Le courrier et les tâches se reposent. Les codes à usage unique arrivent toujours, ainsi que les messages des proches que vous avez choisis.
+closing-resting = Les courriels et les tâches se reposent. Les codes à usage unique arrivent toujours, ainsi que les messages des proches que vous avez choisis.
 closing-plan = S’arrêter avant d’être à bout fait partie du plan.
 first-step-line = { $day }. Le plan commence par : { $step }
 day-today = aujourd’hui
@@ -2452,10 +2452,10 @@ topic-donation = un don
 topic-other = autre chose
 tone-calm = calme
 tone-hostile = hostile
-shield-none = Aucune adresse n’est protégée : mettre « shield = true » sur un compte, ou dans les réglages du Courrier.
+shield-none = Aucune adresse n’est protégée : mettre « shield = true » sur un compte, ou dans Courriels ▸ ⚙.
 shield-read = L’IA a lu { $n } { $n ->
-    [one] message
-   *[other] messages
+    [one] courriel
+   *[other] courriels
 } ; { $left } restent pour les prochains tours.
 shield-words = Mots qui ont pesé : { $words }
 tone-rude = grossier
@@ -2463,42 +2463,42 @@ porch-open-until = Ouvert jusqu’à { $time }.
 porch-opened-anyway = Ouvert en dehors d’une fenêtre.
 lane-public = Votre adresse publique, { $address }
 lane-hostile = Hostile, mis de côté
-lane-about-project = Le courrier qui correspond aux règles de ce projet.
+lane-about-project = Les courriels qui correspondent aux règles de ce projet.
 lane-about-public = À { $address }, de personnes que vous n’avez pas laissées entrer, lu d’abord et trié par sujet : le travail en premier.
 lane-about-people = De personnes que vous connaissez : dans vos carnets d’adresses, laissées entrer, ou nommées sur une liste.
 lane-about-screener = De quelqu’un de nouveau : laissez entrer, ou bloquez.
-lane-about-filed = Lettres d’information et expéditeurs automatiques, à lire quand vous voulez.
+lane-about-filed = Infolettres et expéditeurs automatiques, à lire quand vous voulez.
 lane-about-low = Des adresses que vous avez classées moins importantes.
 lane-about-set-aside = Falsifié, empruntant un nom, indésirable ou bloqué. Rien n’est supprimé.
 lane-about-review = Ce que votre filtre à indésirables a retenu attend ici, sans notification. Sioul en apprend tel quel ; si l’un n’est pas indésirable, « Pas indésirable » le remet à sa place et l’apprend au filtre.
 lane-about-hostile = Insultes, harcèlement ou menaces envoyés à votre adresse publique. Leurs mots restent cachés.
-rule-order = Chaque message va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, lettres d’information, quelqu’un de nouveau, personnes que vous connaissez.
-rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un message de quelqu’un de nouveau, les y ajoute.
-rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des lettres d’information prend le message d’abord.
-rule-filed = Un message qui dit venir d’une liste de diffusion (List-Id, List-Unsubscribe, Precedence: bulk) est une lettre d’information. Un expéditeur dont l’adresse contient l’un de ces mots est automatique : { $words }.
+rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
+rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
+rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
+rule-filed = Un courriel qui dit venir d’une liste de diffusion (List-Id, List-Unsubscribe, Precedence: bulk) est une infolettre. Un expéditeur dont l’adresse contient l’un de ces mots est automatique : { $words }.
 rule-low-none = Aucune adresse n’est encore classée moins importante : le rang d’une adresse se règle sur sa fiche dans Comptes.
 rule-low = Adresses classées moins importantes : { $addresses }. Leurs codes arrivent quand même tout de suite.
 rule-forged = Falsifié : le domaine de l’expéditeur dit ne pas l’avoir envoyé (DMARC). L’échec des autres vérifications ne le rend pas falsifié : son expéditeur est alors non vérifié.
 rule-borrowed = Empruntant un nom : le nom affiché se réclame d’une marque, ou de votre propre domaine, auquel l’adresse n’appartient pas.
-rule-spam = Indésirable : le filtre de votre fournisseur le dit, du courrier d’un inconnu ; jamais de quelqu’un que vous connaissez, d’un code, du courrier d’un projet, ni d’un message dont vous avez dit qu’il n’en était pas.
+rule-spam = Indésirable : le filtre de votre fournisseur le dit, d’un courriel d’un inconnu ; jamais de quelqu’un que vous connaissez, d’un code, d’un courriel d’un projet, ni d’un courriel dont vous avez dit qu’il n’en était pas.
 rule-review-class-spam = Probablement indésirable (à partir de { $p } %)
 rule-review-class-unsure = Peut-être indésirable (à partir de { $p } %, sous le seuil d’indésirable)
 rule-review-class-ham = Probablement pas indésirable (sous { $p } %)
 rule-review-move = { $class } : déplacé dans le dossier Indésirables du compte, sur le serveur, à son arrivée, et listé ici tant qu’il y reste.
 rule-review-flag = { $class } : laissé où il est, signalé, et listé ici.
 rule-review-nothing = { $class } : rien n’est fait ; il va dans sa file comme s’il n’était pas jugé.
-rule-review-protected = Seul le courrier d’inconnus est jugé : jamais celui de quelqu’un que vous connaissez, un code, le courrier d’un projet, le vôtre, ni un message dont vous avez dit qu’il n’était pas indésirable, sur aucun de vos appareils.
-rule-review-buttons = Sioul en apprend tels qu’ils sont : ce qui a été déplacé dans le dossier Indésirables, ou signalé comme probablement indésirable, comme indésirable ; un peut-être indésirable, pas avant que vous l’ayez dit. « Pas indésirable » en remet un dans sa file, du dossier Indésirables vers la boîte de réception, pour de bon, sur chaque appareil, et l’apprend au filtre ; « Indésirable » met un message signalé dans le dossier Indésirables. Chacun, et chaque « pour tous », s’annule pendant dix secondes.
-rule-review-where = Ce qu’il fait de chaque avis, et à quel point il doit être sûr : Courrier ▸ ⚙, « Votre filtre à indésirables ».
-rule-blocked = Bloqué : de votre liste d’expéditeurs bloqués ; ce courrier n’est jamais montré, jamais compté.
-rule-project-none = Ce projet n’a pas encore de règle : aucun courrier n’y arrive de lui-même.
+rule-review-protected = Seuls les courriels d’inconnus sont jugés : jamais ceux de quelqu’un que vous connaissez, un code, les courriels d’un projet, les vôtres, ni un courriel dont vous avez dit qu’il n’était pas indésirable, sur aucun de vos appareils.
+rule-review-buttons = Sioul en apprend tels qu’ils sont : ce qui a été déplacé dans le dossier Indésirables, ou signalé comme probablement indésirable, comme indésirable ; un peut-être indésirable, pas avant que vous l’ayez dit. « Pas indésirable » en remet un dans sa file, du dossier Indésirables vers la boîte de réception, pour de bon, sur chaque appareil, et l’apprend au filtre ; « Indésirable » met un courriel signalé dans le dossier Indésirables. Chacun, et chaque « pour tous », s’annule pendant dix secondes.
+rule-review-where = Ce qu’il fait de chaque avis, et à quel point il doit être sûr : Courriels ▸ ⚙, « Votre filtre à indésirables ».
+rule-blocked = Bloqué : de votre liste d’expéditeurs bloqués ; ces courriels ne sont jamais montrés, jamais comptés.
+rule-project-none = Ce projet n’a pas encore de règle : aucun courriel n’y arrive de lui-même.
 rule-route = { $parts }.
 rule-part-domains = De { $list } (et ses sous-domaines)
 rule-part-addresses = De { $list }
 rule-part-subject = avec { $list } dans le sujet
 rule-part-text = avec { $list } dans le texte
 rule-and = , et{" "}
-rule-public = Lu avant que vous ne le voyiez, par des listes de mots en français et en anglais ; le courrier hostile va dans « Hostile ». Relevé toutes les { $minutes } minutes.
+rule-public = Lus avant que vous ne les voyiez, par des listes de mots en français et en anglais ; les courriels hostiles vont dans « Hostile ». Relevés toutes les { $minutes } minutes.
 rule-public-ai = Une IA le lit aussi, comme vous l’avez permis, et en dit le ton et le sujet plus finement.
 rule-hostile = Les insultes qui vous visent, le harcèlement et les menaces arrivent ici. Le nom de l’expéditeur, le sujet et le texte restent cachés jusqu’à ce que vous choisissiez de les lire.
 rule-where-shield = Le bouclier d’une adresse se règle sur sa fiche dans Comptes.
@@ -2507,13 +2507,13 @@ rule-where-blocked = Les expéditeurs bloqués sont dans Paramètres, sous Ce qu
 rule-where-routes = Ses règles se choisissent sur sa page dans Projets.
 hostile-someone = Quelqu’un
 hostile-someone-at = Quelqu’un chez { $domain }
-hostile-subject = Un message mis de côté comme hostile
-ui-lane-help = Comment le courrier arrive ici
+hostile-subject = Un courriel mis de côté comme hostile
+ui-lane-help = Comment les courriels arrivent ici
 set-filed-words = Mots des expéditeurs automatiques
-set-filed-words-help = Un expéditeur dont l’adresse contient l’un de ces mots est automatique : son courrier est rangé avec les lettres d’information. Ils sont dans Paramètres ▸ Mots, avec les autres mots que Sioul repère.
+set-filed-words-help = Un expéditeur dont l’adresse contient l’un de ces mots est automatique : ses courriels sont rangés avec les infolettres. Ils sont dans Paramètres ▸ Mots, avec les autres mots que Sioul repère.
 set-words-add = Ajouter un mot
 set-routes = Les règles de ce projet
-set-routes-help = Le courrier va dans ce projet quand une règle correspond : chaque ligne remplie d’une règle doit correspondre. Plusieurs mots ou domaines sur une ligne : l’un d’eux suffit. Une réponse dans la conversation d’un message du projet le suit.
+set-routes-help = Les courriels vont dans ce projet quand une règle correspond : chaque ligne remplie d’une règle doit correspondre. Plusieurs mots ou domaines sur une ligne : l’un d’eux suffit. Une réponse dans la conversation d’un courriel du projet le suit.
 set-route = Règle
 set-route-domains = Des domaines
 set-route-addresses = Des adresses
@@ -2522,7 +2522,7 @@ set-route-text = Mots dans le texte
 set-route-attachments = Mots dans le nom d’une pièce jointe
 set-route-add = Ajouter une règle
 set-route-comma = Séparés par des virgules
-hostile-gate = Ce message a été mis de côté comme hostile.
+hostile-gate = Ce courriel a été mis de côté comme hostile.
 hostile-gate-help = Ses mots ne sont pas montrés. Il peut attendre, aller à quelqu’un de confiance, ou partir. Le lire est votre choix, au moment qui vous convient.
 hostile-forward = Transférer à quelqu’un de confiance
 hostile-read = Le lire quand même
@@ -2555,13 +2555,13 @@ google-denied = Google n’a donné aucun accès : rien n’a changé.
 google-state = Une réponse est arrivée qui n’était pas pour Sioul : rien n’a changé.
 google-other = Votre navigateur s’est connecté en tant que { $address }, pas à l’adresse donnée : rien n’a changé, et cet accès est rendu à Google.
 google-cancelled = Arrêté : rien n’a changé.
-# Le courrier de Google (Gmail, Google Workspace) : un mot de passe d’application, ou la connexion de Google avec une clé à vous (docs/google.md, « Mail »).
+# Les courriels de Google (Gmail, Google Workspace) : un mot de passe d’application, ou la connexion de Google avec une clé à vous (docs/google.md, « Mail »).
 ui-gmail-choice-app-password = Utiliser un mot de passe d’application
 ui-gmail-choice-sign-in = Se connecter avec Google
 ui-gmail-app-password-guide = Google refuse ici le mot de passe de votre compte. Créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes), puis collez-le ci-dessous.
 ui-gmail-app-password-field = Mot de passe d’application (de Google)
 ui-gmail-sign-in-key-kept = La page de Google s’ouvre dans votre navigateur, avec votre clé Google gardée sur cet appareil. Sioul garde l’accès dans le trousseau du système : aucun mot de passe.
-ui-gmail-sign-in-own-key = Pour le courrier, Google n’accepte qu’une clé à vous : un projet gratuit dans Google Cloud, fait une fois, en un quart d’heure environ. Google dit ensuite que l’application n’est pas validée : c’est la vôtre.
+ui-gmail-sign-in-own-key = Pour les courriels, Google n’accepte qu’une clé à vous : un projet gratuit dans Google Cloud, fait une fois, en un quart d’heure environ. Google dit ensuite que l’application n’est pas validée : c’est la vôtre.
 ui-gmail-steps-text =
     1. Sur [console.cloud.google.com](https://console.cloud.google.com), créez un projet nommé Sioul, ou ouvrez celui de vos agendas Google.
     2. Dans *API et services → Bibliothèque*, activez **Gmail API**.
@@ -2571,9 +2571,9 @@ ui-gmail-steps-text =
     6. Collez les deux ici et connectez-vous. Google dit que l’application n’est pas validée : c’est la vôtre. Choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail.
 ui-gmail-again-app-password = Mot de passe d’application…
 ui-google-waiting-phone = Votre navigateur est ouvert sur la page de Google. Quand Google dit que Sioul a l’accès, revenez à Sioul : il termine ici.
-google-mail-built-in = Google ne laisse pas encore la clé de Sioul lire le courrier : l’accès à Gmail demande que Google examine Sioul, ce qui n’est pas fait. Utilisez un mot de passe d’application, ou une clé Google à vous.
+google-mail-built-in = Google ne laisse pas encore la clé de Sioul lire les courriels : l’accès à Gmail demande que Google examine Sioul, ce qui n’est pas fait. Utilisez un mot de passe d’application, ou une clé Google à vous.
 google-mail-no-key = Aucune clé Google à vous n’est gardée sur cet appareil pour { $address } : donnez son identifiant client et son secret, ou utilisez un mot de passe d’application.
-google-mail-unticked = Google n’a donné aucun accès à votre courrier : sur la page de Google, laissez cochée la case de l’accès à Gmail. Rien n’a changé.
+google-mail-unticked = Google n’a donné aucun accès à vos courriels : sur la page de Google, laissez cochée la case de l’accès à Gmail. Rien n’a changé.
 sync-error-google-again = { $account } : Google demande de vous reconnecter.
 sync-error-google-testing = { $account } : Google a mis fin à la connexion au bout de sept jours, comme il le fait tant que votre projet Google est en test. Dans Google Cloud : Google Auth Platform ▸ Audience ▸ Publier l’application ; puis reconnectez-vous : elle dure ensuite.
 google-no-collections = Google ne crée ni agenda ni carnet d’adresses depuis un autre programme : créez-le sur les pages de Google.
@@ -2584,7 +2584,7 @@ task-limited = Cette liste est sur Google Tasks : ce que Google ne garde pas e
 # GitHub, une fois demandé : tickets et pull requests en tâches.
 set-code-group = Code
 set-github = Tickets et pull requests GitHub en tâches
-set-github-help = Pour qui travaille sur GitHub : ce qui vous revient arrive dans une liste « GitHub » sur cet appareil, toutes les trente minutes, et le courrier de notification de GitHub y est lié. Rien n’est écrit sur GitHub.
+set-github-help = Pour qui travaille sur GitHub : ce qui vous revient arrive dans une liste « GitHub » sur cet appareil, toutes les trente minutes, et les courriels de notification de GitHub y sont liés. Rien n’est écrit sur GitHub.
 set-github-token = Jeton GitHub
 set-github-token-help = Un jeton à droits fins qui lit les tickets et les pull requests, rien de plus, gardé dans le trousseau du système. « Créer un jeton sur GitHub » ouvre la page de GitHub avec ses droits remplis : choisissez les dépôts (tous les vôtres, ou certains), créez-le, et collez-le ici.
 set-github-token-kept = Un jeton est gardé.
@@ -2602,7 +2602,7 @@ set-github-mentioned-help = Là où quelqu’un a écrit votre nom. Souvent nomb
 sync-error-github-token = GitHub a refusé le jeton : un nouveau se met dans les réglages des tâches, « Code ».
 note-not-here = Pas encore sur cet appareil : sa synchronisation est peut-être en cours (Nextcloud, Dropbox).
 ui-new = Nouveau
-new-mail = Un message
+new-mail = Un courriel
 new-task = Une tâche
 new-event = Un événement
 new-contact = Un contact
@@ -2617,7 +2617,7 @@ settings-tab-reminders = Rappels
 settings-tab-files = Votre dossier et le partage
 settings-tab-invoices = Factures
 settings-tab-ai = Agents d’IA
-ui-refresh-all = Tout actualiser : courrier, agenda, tâches, contacts (F5)
+ui-refresh-all = Tout actualiser : courriels, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.
 ui-places = Lieux
@@ -2627,7 +2627,7 @@ tray-show = Afficher Sioul
 tray-hide = Masquer la fenêtre
 tray-quit = Quitter Sioul
 tray-said-title = Sioul continue
-tray-said = Sa fenêtre est masquée ; rappels, médicaments et courrier continuent. Un clic sur son icône ici la fait revenir ; Quitter est dans son menu.
+tray-said = Sa fenêtre est masquée ; rappels, médicaments et courriels continuent. Un clic sur son icône ici la fait revenir ; Quitter est dans son menu.
 # Les boutons de la fenêtre, dans la barre de titre que Sioul dessine sur un ordinateur : leurs noms, au survol et pour les lecteurs d’écran.
 titlebar-minimize = Réduire
 titlebar-maximize = Agrandir
@@ -2649,15 +2649,15 @@ site-column-narrow = Replier la liste sur ses icônes
 site-column-widen = Afficher les noms des sites
 set-senders-group = Qui peut vous écrire, et quand
 set-safe = Sûrs
-set-safe-help = Les amis, les collègues et la famille que vous choisissez. Une adresse, un numéro (+33 1 99 00 12 34), ou un motif avec * : *@example.org pour tout le monde là-bas, *@*.example.org pour ses sous-domaines, +3319900* pour les numéros qui commencent ainsi. Un courrier falsifié ne compte jamais comme le leur.
+set-safe-help = Les amis, les collègues et la famille que vous choisissez. Une adresse, un numéro (+33 1 99 00 12 34), ou un motif avec * : *@example.org pour tout le monde là-bas, *@*.example.org pour ses sous-domaines, +3319900* pour les numéros qui commencent ainsi. Un courriel falsifié ne compte jamais comme le leur.
 set-neutral = Neutres
 set-neutral-help = Toute personne de vos carnets d’adresses est neutre sans être nommée. Nommez quelqu’un ici pour le garder neutre dans un domaine ou une catégorie mis sur une autre liste.
 set-blocked-all = Bloqués
-set-blocked-all-help = Le spam et le harcèlement : jamais, sur aucun canal. Leur courrier est mis de côté pour de bon, jamais montré, jamais notifié ; leurs appels sont refusés. L’entrée la plus précise l’emporte : une adresse marquée sûre le reste dans un domaine bloqué ici. Personne n’est bloqué pour partager un serveur ou un domaine avec quelqu’un d’autre.
-sender-now-safe = { $entry } est sûr : son courrier vient comme le dit la ligne Sûrs, dans Ce qui vous joint.
-sender-now-neutral = { $entry } est neutre : son courrier vient comme le dit la ligne Neutres, dans Ce qui vous joint.
-sender-now-blocked = { $entry } est bloqué : son courrier est mis de côté pour de bon.
-sender-unverified = L’expéditeur de ce message n’est pas vérifié : l’adresse peut appartenir à quelqu’un d’autre, elle ne change donc aucune liste.
+set-blocked-all-help = Le spam et le harcèlement : jamais, sur aucun canal. Leurs courriels sont mis de côté pour de bon, jamais montrés, jamais notifiés ; leurs appels sont refusés. L’entrée la plus précise l’emporte : une adresse marquée sûre le reste dans un domaine bloqué ici. Personne n’est bloqué pour partager un serveur ou un domaine avec quelqu’un d’autre.
+sender-now-safe = { $entry } est sûr : ses courriels viennent comme le dit la ligne Sûrs, dans Ce qui vous joint.
+sender-now-neutral = { $entry } est neutre : ses courriels viennent comme le dit la ligne Neutres, dans Ce qui vous joint.
+sender-now-blocked = { $entry } est bloqué : ses courriels sont mis de côté pour de bon.
+sender-unverified = L’expéditeur de ce courriel n’est pas vérifié : l’adresse peut appartenir à quelqu’un d’autre, elle ne change donc aucune liste.
 sender-unverified-short = non vérifié
 set-quiet-work = Ce qui est du travail
 set-quiet-work-help = Les tâches de ces catégories, des projets pour un client et celles de GitHub sont du travail : elles viennent seulement aux heures de travail. Une tâche peut aussi dire à quoi elle sert, dans son panneau.
@@ -2675,7 +2675,7 @@ site-https-only = Seulement une adresse https:// : la connexion à un site ne 
 budget-line-change = Modifier cette ligne…
 set-projects-group = Projets
 set-porch-projects = Projets montrés ici
-set-porch-projects-help = Chaque projet coché a sa file sur le Porche. Le courrier des autres reste sur leur page dans Projets, où l’on crée les projets, les renomme et règle leurs routes.
+set-porch-projects-help = Chaque projet coché a sa file sur le Porche. Les courriels des autres restent sur leur page dans Projets, où l’on crée les projets, les renomme et règle leurs routes.
 loss-billable = si son temps se facture
 time-export = Le temps facturable, en tableur (CSV)…
 time-export-project = Projet
@@ -2717,7 +2717,7 @@ sounds-storm = Un orage au loin
 
 ## Partage entre vos appareils (Paramètres)
 share-title = Entre vos appareils
-share-help = Le courrier, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres appareils. Le reste peut voyager par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe, pour que son serveur ne le lise jamais : ce que Sioul garde sur cet appareil (réglages, qui peut vous écrire, temps, brouillons, factures, santé, listes gardées ici) et, quand aucune synchronisation ne les transporte, vos notes, vos projets et vos papiers.
+share-help = Les courriels, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres appareils. Le reste peut voyager par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe, pour que son serveur ne le lise jamais : ce que Sioul garde sur cet appareil (réglages, qui peut vous écrire, temps, brouillons, factures, santé, listes gardées ici) et, quand aucune synchronisation ne les transporte, vos notes, vos projets et vos papiers.
 share-off = Pas de partage : tout reste sur cet appareil.
 share-on = Partagé par { $folder }.
 share-others = { $count ->
@@ -2789,14 +2789,14 @@ share-part-settings-carries = Vos réglages et vos comptes (jamais leurs mots de
 share-part-senders = Expéditeurs
 share-part-senders-carries = Qui est sur quelle liste, et comment les listes le nomment (connus, bloqués, sûrs, neutres, restreints : adresses, numéros, fiches), les personnes qui passent toujours, ce que le bouclier a lu, les clés publiques des autres.
 share-part-calls = Appels
-share-part-calls-carries = Les appels filtrés par vos téléphones : quand, le numéro, qui c’était selon vos listes, le moment de la journée, s’il a sonné ou est allé sur votre messagerie, et pourquoi ; et les appels marqués Vu. Scellés. Jamais l’appel d’un numéro que vous avez bloqué, jamais le son d’un message : il vient avec votre courrier.
+share-part-calls-carries = Les appels filtrés par vos téléphones : quand, le numéro, qui c’était selon vos listes, le moment de la journée, s’il a sonné ou est allé sur votre messagerie, et pourquoi ; et les appels marqués Vu. Scellés. Jamais l’appel d’un numéro que vous avez bloqué, jamais le son d’un message : il vient avec vos courriels.
 share-part-phone-messages = Messages de votre téléphone
-share-part-phone-messages-carries = Tirés des notifications des applications que vous choisissez sur votre téléphone (Réglages ▸ Ce téléphone ▸ Sur vos ordinateurs ; son application de SMS, sauf avis contraire) : qui a écrit, quand, dans quelle conversation, et les mots, ou seulement qui et quand ; et les messages marqués Vu. Scellés, gardés une semaine. Jamais un code, jamais une image, jamais le message d’un expéditeur bloqué. Désactivé tant que vous ne l’activez pas : sur votre téléphone pour les envoyer, sur un ordinateur pour les y montrer.
+share-part-phone-messages-carries = Tirés des notifications des applications que vous choisissez sur votre téléphone (Paramètres ▸ Ce téléphone ▸ Sur vos ordinateurs ; son application de SMS, sauf avis contraire) : qui a écrit, quand, dans quelle conversation, et les mots, ou seulement qui et quand ; et les messages marqués Vu. Scellés, gardés une semaine. Jamais un code, jamais une image, jamais le message d’un expéditeur bloqué. Désactivé tant que vous ne l’activez pas : sur votre téléphone pour les envoyer, sur un ordinateur pour les y montrer.
 # texts: the sharing's part for texts (SMS phase b).
 share-part-texts = SMS
 share-part-texts-carries = Les SMS de votre téléphone, tout l’historique avec les images, sons et vidéos des messages multimédias, lus sur le téléphone et gardés sur vos ordinateurs comme une archive qui ne fait que grandir ; les SMS que vous écrivez sur un ordinateur pour que votre téléphone les envoie, et ce qu’il est advenu de chacun. Scellés, sur chaque appareil aussi : la copie d’un ordinateur ne s’ouvre qu’avec votre clé de partage. Désactivé tant que vous ne l’activez pas : sur votre téléphone, et sur chaque ordinateur qui doit les lire ou les écrire.
 share-part-spam = Filtre à indésirables
-share-part-spam-carries = La table que fait l’apprentissage sur votre ordinateur, pour que chaque appareil juge le courrier pareil, et ce que vous avez dit indésirable ou pas sur chaque appareil (quel message, où et quand ; jamais un mot de lui), pour qu’aucun appareil ne signale à nouveau ce que vous avez corrigé sur un autre : scellés. Jamais le courrier dont il a appris, ni les mots qu’il a appris.
+share-part-spam-carries = La table que fait l’apprentissage sur votre ordinateur, pour que chaque appareil juge les courriels pareil, et ce que vous avez dit indésirable ou pas sur chaque appareil (quel courriel, où et quand ; jamais un mot de lui), pour qu’aucun appareil ne signale à nouveau ce que vous avez corrigé sur un autre : scellés. Jamais les courriels dont il a appris, ni les mots qu’il a appris.
 share-part-health = Santé
 share-part-health-carries = Les médicaments, les ordonnances et les prises.
 share-part-time = Temps
@@ -2804,7 +2804,7 @@ share-part-time-carries = Le temps noté, la séance en cours, les choix du jour
 share-part-drafts = Brouillons et factures
 share-part-drafts-carries = Les courriels en cours d’écriture, les factures faites.
 share-part-projects = Projets et argent
-share-part-projects-carries = De votre dossier de notes : les projets et leurs routes de courrier, les budgets, les comptes et mouvements bancaires, les contrats.
+share-part-projects-carries = De votre dossier de notes : les projets et leurs routes de courriels, les budgets, les comptes et mouvements bancaires, les contrats.
 share-part-lists = Listes gardées ici
 share-part-lists-carries = Les agendas et contacts gardés sur cet appareil seulement.
 share-part-notes = Notes
@@ -3015,21 +3015,21 @@ event-remind-before = { $lead } avant
 event-reminds = Rappel : { $when }
 event-reminds-none = Pas de rappel avant
 events-channel = Événements
-# Le nouveau courrier, dit aux heures où il peut venir (docs/porch.md, « Notifications »).
-mail-note-title = { $Countf } { $n ->
-        [one] lettre
-       *[other] lettres
+# Les nouveaux courriels, dits aux heures où ils peuvent venir (docs/porch.md, « Notifications »).
+mail-note-title = { $Count } { $n ->
+        [one] courriel
+       *[other] courriels
     }
-mail-note-opens = Le Porche ouvre : { $countf } { $n ->
-        [one] lettre vous attend
-       *[other] lettres vous attendent
+mail-note-opens = Le Porche ouvre : { $count } { $n ->
+        [one] courriel vous attend
+       *[other] courriels vous attendent
     }.
 mail-note-letter = { $sender }, { $subject }
-mail-channel = Nouveau courrier
-set-reminders-mail = Me dire le nouveau courrier
-set-reminders-mail-help = Quand arrive du courrier que sa ligne laisse venir maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Le courrier qui attendait son moment est dit une fois, quand il vient. Quand il peut venir, ce sont les lignes Courrier, plus bas ; jamais pour les codes (ils ont leur propre ligne), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos comptes moins importants.
-set-reminders-mail-newsletters = Avec les lettres d’information
-set-reminders-mail-newsletters-help = Les lettres d’information et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon.
+mail-channel = Nouveaux courriels
+set-reminders-mail = Me dire les nouveaux courriels
+set-reminders-mail-help = Quand arrivent des courriels que leur ligne laisse venir maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Les courriels qui attendaient leur moment sont dits une fois, quand ils viennent. Quand ils peuvent venir, ce sont les lignes Courriels, plus bas ; jamais pour les codes (ils ont leur propre ligne), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos comptes moins importants.
+set-reminders-mail-newsletters = Avec les infolettres
+set-reminders-mail-newsletters-help = Les infolettres et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon.
 reminders-closed-unavailable = Pas encore sous Windows : les rappels viennent quand la fenêtre de Sioul est ouverte.
 reminders-closed-no-command = La commande « sioul » n’est pas installée à côté de Sioul : les rappels viennent quand la fenêtre est ouverte.
 set-reminders-group = Rappels
@@ -3052,9 +3052,10 @@ paper-renew-warranty = Sa garantie finit : quelque chose à signaler avant ?
 paper-renew-other = Il finit bientôt.
 ui-papers = Papiers
 new-paper = Un papier
+new-letter = Une lettre papier (scan)…
 papers-help = Les papiers demandés encore et encore, chacun avec son fichier et sa durée. Gardés dans le dossier des notes (papers/) : ils voyagent avec lui. Un rappel vient quand l’un est à renouveler.
 papers-add = Ajouter un papier
-papers-none = Aucun papier pour l’instant. Ajoutez-en un depuis un fichier (un scan, une photo), ou gardez une pièce jointe d’un courrier avec « Garder dans les papiers ».
+papers-none = Aucun papier pour l’instant. Ajoutez-en un depuis un fichier (un scan, une photo), ou gardez une pièce jointe d’un courriel avec « Garder dans les papiers ».
 papers-new = Un nouveau papier
 papers-change = Un papier
 papers-kind = Quoi
@@ -3363,10 +3364,10 @@ bank-movement-auto = Selon les règles
 bank-movement-where = Où il va
 bank-place-reserve = Avec { $reserve }, par { $budget }
 bank-place-transfer = Passé avec { $account }
-bank-place-known = Compté d’après le courrier ({ $label })
+bank-place-known = Compté d’après les courriels ({ $label })
 bank-place-none = Dans aucun budget
 bank-why-hand = votre choix
-bank-why-mail = le même paiement qu’une ligne venue du courrier
+bank-why-mail = le même paiement qu’une ligne venue d’un courriel
 bank-why-rule = par une règle
 bank-why-between = entre vos comptes
 bank-why-preset = un paiement régulier
@@ -3412,6 +3413,23 @@ bank-attention = { $count ->
 }
 letters = Courrier papier
 letters-no-ocr = Des scans attendent dans le dossier du courrier, non lus : aucun programme ici ne les lit. Pour les lire : { $hint }
+# La place du courrier papier sur le Porche d’un ordinateur, avant tout scan (LettersSection.qml, docs/porch.md, « Paper letters »).
+letters-place = Les scans de votre courrier papier, en PDF ou en images, vont dans { $folder } : Sioul lit chacun d’eux et le montre ici.
+letters-place-unset = Les scans de votre courrier papier vont dans un dossier de votre choix : Sioul lit chacun d’eux et le montre ici.
+letters-reader-missing = Aucun programme de cet ordinateur ne lit encore les scans. Pour les lire : { $hint }
+letters-open-folder = Ouvrir le dossier
+letters-add-scan = Ajouter un scan…
+letters-choose-folder = Choisir le dossier…
+letters-add-scan-title = Le scan d’une lettre papier
+letters-add-scan-filter = PDF et images
+letters-added = { $n ->
+        [one] Dans le dossier : Sioul le lit d’ici une minute ou deux.
+       *[other] { $Count } scans dans le dossier : Sioul les lit d’ici une minute ou deux.
+    }
+letters-add-not-scan = { $name } n’est ni un PDF ni une image : Sioul ne lit que ceux-là.
+letters-add-failed = { $name } n’a pas pu être copié dans le dossier ({ $detail }).
+letters-folder-failed = Le dossier { $folder } n’a pas pu être créé ({ $detail }).
+letters-no-folder = Pas encore de dossier pour les scans : Porche ⚙ ▸ Courrier papier ▸ Où arrivent les scans.
 letters-unread = Son texte n’a pas pu être lu ({ $problem }) ; son scan est là.
 letters-scan = Voir le scan
 letters-task = Une tâche pour cette date
@@ -3766,7 +3784,7 @@ reminders-entry-comment = Rappels avant les dates, fenêtre de Sioul fermée
 bank-rule-gone = Cette règle n’existe plus.
 budget-line-gone = Cette ligne n’est plus dans le fichier des budgets telle qu’elle est montrée ici : rien n’a été changé. Elle a peut-être changé entre-temps, sur un autre appareil ou à la main.
 mail-no-such-folder = { $account } n’a pas de dossier nommé « { $folder } » ; sioul mail folders { $account } les liste.
-mail-not-in-accounts = { $file } n’est pas dans le courrier de l’un de vos comptes.
+mail-not-in-accounts = { $file } n’est pas parmi les courriels de l’un de vos comptes.
 mail-move-needs-to = Quel dossier ? Nommez-le avec --to.
 list-read-only-mark = (lecture seule)
 import-bad-key = « { $key } » ne peut pas être une clé : les clés nomment des fichiers, donc ni « / », ni « \ », ni « : » dedans.
@@ -3847,10 +3865,10 @@ sender-from-address = { $list } : son propre choix.
 sender-from-category = { $list }, comme le dit la catégorie { $name }.
 sender-from-domain = { $list }, comme le dit { $name }.
 sender-from-default = { $list } : dans aucun de vos carnets d’adresses, sur aucune liste.
-sender-now-restricted = { $entry } est restreint : son courrier ne vient que comme le dit la ligne Restreints, dans Ce qui vous joint.
+sender-now-restricted = { $entry } est restreint : ses courriels ne viennent que comme le dit la ligne Restreints, dans Ce qui vous joint.
 sender-now-categories = { $entry } : comme le disent ses catégories.
 set-restricted = Restreints
-set-restricted-help = Ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont le courrier pèse. Ils ne vous joignent que comme le dit la ligne Restreints, plus haut. Une adresse, un numéro, ou un motif avec *.
+set-restricted-help = Ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont les courriels pèsent. Ils ne vous joignent que comme le dit la ligne Restreints, plus haut. Une adresse, un numéro, ou un motif avec *.
 set-sender-categories-group = Les catégories de vos contacts
 set-sender-categories-note = Le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis les catégories de sa fiche, puis un domaine ; toute autre personne de vos carnets d’adresses est neutre, et toute autre encore inconnue. Rien ne va sur une liste tout seul.
 set-sender-category = Une catégorie de vos contacts
@@ -3972,7 +3990,7 @@ free-offers = Si vous voulez :
 free-offers-none = Rien à faire ici.
 # L’écran de la pause : des faits sur Sioul, jamais sur vous (P11–P12).
 pause-title = En pause.
-pause-text = Sioul garde tout en attente : courrier, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien.
+pause-text = Sioul garde tout en attente : courriels, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien.
 pause-doses-come = Les rappels de prises viennent toujours.
 pause-helps = Ce qui vous aide
 pause-breathing = Guide de respiration
@@ -4158,7 +4176,7 @@ dnd-why-sleep = Pendant votre sommeil.
 dnd-why-paused = Pendant la pause.
 dnd-why-free-time = Pendant votre temps libre.
 dnd-switch = Ne pas déranger
-dnd-switch-tip-off = Ne pas déranger, sur tous vos appareils : appels, messages et courrier attendent, sauf ceux des personnes qui passent toujours. Un clic droit, ou un appui long, pour choisir jusqu’à quand.
+dnd-switch-tip-off = Ne pas déranger, sur tous vos appareils : appels, messages et courriels attendent, sauf ceux des personnes qui passent toujours. Un clic droit, ou un appui long, pour choisir jusqu’à quand.
 dnd-switch-tip-on = { $line } { $why } Un clic le désactive, sur tous vos appareils.
 dnd-for-30 = Pendant 30 minutes
 dnd-for-60 = Pendant une heure
@@ -4176,10 +4194,10 @@ set-dnd-pauses-help = Le temps libre et la pause mettent aussi vos appareils en 
 set-dnd-sleep = Pendant mon sommeil
 set-dnd-sleep-help = « Ne pas déranger » tient du moment de se préparer au coucher jusqu’au réveil, et pendant les siestes, sur tous vos appareils. Les alarmes et les rappels de prises viennent toujours.
 set-dnd-background = Garder ce téléphone à jour en arrière-plan
-set-dnd-background-help = Sioul fermé, une notification discrète reste dans le volet pendant que Sioul suit vos autres appareils : « Ne pas déranger » en quelques minutes, le courrier à ses heures. Décoché, les changements arrivent quand vous ouvrez Sioul. Ce téléphone seulement.
+set-dnd-background-help = Sioul fermé, une notification discrète reste dans le volet pendant que Sioul suit vos autres appareils : « Ne pas déranger » en quelques minutes, les courriels à leurs heures. Décoché, les changements arrivent quand vous ouvrez Sioul. Ce téléphone seulement.
 dnd-setup-here = Sur cet appareil
 dnd-setup-critical = Pendant « Ne pas déranger », les notifications de Sioul pour les personnes qui passent toujours partent comme importantes, et ce bureau les affiche.
-dnd-setup-plasma-mail = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : le courrier des personnes qui passent toujours ne peut pas s’afficher ici pendant ce temps, sauf si Sioul peut s’afficher dans ce mode dans les paramètres de notification de Plasma.
+dnd-setup-plasma-mail = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : les courriels des personnes qui passent toujours ne peuvent pas s’afficher ici pendant ce temps, sauf si Sioul peut s’afficher dans ce mode dans les paramètres de notification de Plasma.
 dnd-setup-list = Passent toujours
 dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Ce qui vous joint de leur part, c’est la ligne Passent toujours de chaque canal, ci-dessus ; jamais les bloqués, même sur la liste. Sur un téléphone, les modes « Ne pas déranger » de Sioul laissent sonner leurs messages une fois ces personnes mises en favori dans ses contacts. Leurs appels sonnent aussi une fois en favori ou, tant que Sioul filtre les appels du téléphone, dès qu’elles sont dans ses contacts.
 dnd-setup-empty = Personne pour l’instant.
@@ -4205,7 +4223,7 @@ dnd-setup-patterns = { $n ->
    *[other] { $Countf } entrées de la liste « Sûrs » sont des motifs, qui ne nomment personne : laissées de côté.
 }
 dnd-setup-no-number = Pas de numéro : ses appels et messages ne peuvent pas passer.
-dnd-setup-no-email = Pas d’adresse : son courrier n’est pas notifié pendant « Ne pas déranger ».
+dnd-setup-no-email = Pas d’adresse : ses courriels ne sont pas notifiés pendant « Ne pas déranger ».
 dnd-setup-unreadable = La liste n’a pas pu être lue, rien n’a donc été changé : { $why }
 dnd-stars-title = En favori sur ce téléphone
 dnd-stars-all = Chaque personne de votre liste qui a un numéro est en favori sur ce téléphone : ses appels et messages sonnent pendant « Ne pas déranger ».
@@ -4258,11 +4276,11 @@ home-card-code-plain = { $kind ->
     }
 home-card-dose = { $dose }, { $time }
 home-card-dose-check = { $dose }, { $time } : vérifiez avant de la prendre.
-# La liste sous les lignes de la carte : les derniers messages du Porche, puis les prochains événements. Jamais de compte.
-home-card-mail = Courrier
+# La liste sous les lignes de la carte : les derniers courriels du Porche, puis les prochains événements. Jamais de compte.
+home-card-mail = Courriels
 home-card-agenda = Agenda
 home-card-porch-empty = Rien n’attend sur le Porche.
-home-card-mail-waits = Du courrier attend sur le Porche.
+home-card-mail-waits = Des courriels attendent sur le Porche.
 home-card-yesterday = hier
 home-card-today = Aujourd’hui, { $day }
 home-card-tomorrow = Demain, { $day }
@@ -4280,28 +4298,28 @@ home-card-overlap-plain = Aujourd’hui, deux événements en même temps.
 home-card-stopped = Où vous en étiez : { $text }
 home-card-stopped-plain = Votre ligne sur où vous en étiez attend dans Sioul.
 set-home-card-details = Détails sur l’écran d’accueil
-set-home-card-details-help = Les cartes de Sioul sur l’écran d’accueil de ce téléphone nomment ce qu’elles montrent : une prise prévue, un code que vous venez de demander à un site, vos rappels, un appel refusé, le titre de la prochaine étape ; les derniers messages du Porche, avec leur expéditeur, leur objet et leur première ligne ; les prochains événements, avec leur titre. Sans ce réglage, elles ne nomment rien : la date, la météo et ce à quoi sert ce moment, puis qu’un code, un rappel ou du courrier attend, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
+set-home-card-details-help = Les cartes de Sioul sur l’écran d’accueil de ce téléphone nomment ce qu’elles montrent : une prise prévue, un code que vous venez de demander à un site, vos rappels, un appel refusé, le titre de la prochaine étape ; les derniers courriels du Porche, avec leur expéditeur, leur objet et leur première ligne ; les prochains événements, avec leur titre. Sans ce réglage, elles ne nomment rien : la date, la météo et ce à quoi sert ce moment, puis qu’un code, un rappel ou des courriels attendent, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
-# Quitter une liste de diffusion depuis un message (Reader.qml, unsubscribe.rs) : un clic, dix secondes pour annuler.
+# Quitter une liste de diffusion depuis un courriel (Reader.qml, unsubscribe.rs) : un clic, dix secondes pour annuler.
 unsubscribe-label = Se désabonner
 unsubscribe-done-label = Abonnement arrêté
-unsubscribe-done = Vous avez quitté { $list } le { $date }, { $way }. Si ses messages continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ Son courrier.
+unsubscribe-done = Vous avez quitté { $list } le { $date }, { $way }. Si ses courriels continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ Comment cette personne vous joint…
 unsubscribe-way-one-click = en un clic
 unsubscribe-way-mail = par courriel
 unsubscribe-way-page = sur sa page
 unsubscribe-tip-one-click = Quitter { $list } en un clic : Sioul prévient son serveur ({ $host }), comme la liste le demande. Dix secondes pour annuler.
-unsubscribe-tip-mail = Quitter { $list } : Sioul envoie le message que la liste demande, de { $from } à { $to }. Dix secondes pour annuler.
+unsubscribe-tip-mail = Quitter { $list } : Sioul envoie le courriel que la liste demande, de { $from } à { $to }. Dix secondes pour annuler.
 unsubscribe-tip-page = { $list } ne prend les désabonnements que sur sa page web : elle s’ouvre dans votre navigateur ({ $host }), où vous terminez.
 unsubscribe-page-opened = Sa page a été ouverte le { $date }.
-unsubscribe-not-forged = Pas proposé : ce message est falsifié. Sioul ne contacte aucune adresse qu’il donne.
-unsubscribe-not-spam = Pas proposé : ce message a été mis de côté comme indésirable. Y répondre dirait à son expéditeur que votre adresse est lue.
-unsubscribe-not-borrowed = Pas proposé : ce message emprunte un nom qui n’est pas celui de son expéditeur.
-unsubscribe-not-blocked = Pas proposé : vous avez bloqué cet expéditeur ; ses messages sont déjà mis de côté.
-unsubscribe-not-hostile = Pas proposé : on ne répond jamais à un message hostile.
+unsubscribe-not-forged = Pas proposé : ce courriel est falsifié. Sioul ne contacte aucune adresse qu’il donne.
+unsubscribe-not-spam = Pas proposé : ce courriel a été mis de côté comme indésirable. Y répondre dirait à son expéditeur que votre adresse est lue.
+unsubscribe-not-borrowed = Pas proposé : ce courriel emprunte un nom qui n’est pas celui de son expéditeur.
+unsubscribe-not-blocked = Pas proposé : vous avez bloqué cet expéditeur ; ses courriels sont déjà mis de côté.
+unsubscribe-not-hostile = Pas proposé : on ne répond jamais à un courriel hostile.
 unsubscribe-not-unproven = Pas proposé : son expéditeur n’est pas vérifié, donc rien ne prouve que l’adresse de désabonnement qu’il donne est bien celle de sa liste.
-unsubscribe-not-ambiguous = Pas proposé : ce message donne plusieurs façons de se désabonner, et Sioul ne choisit pas entre elles.
-unsubscribe-not-unusable = Pas proposé : son adresse de désabonnement n’est ni une page web publique ni une seule adresse de courriel.
-unsubscribe-not-no-sender = Pas proposé : cette liste prend les désabonnements par courriel, et l’adresse où ce message est arrivé n’envoie rien depuis Sioul.
+unsubscribe-not-ambiguous = Pas proposé : ce courriel donne plusieurs façons de se désabonner, et Sioul ne choisit pas entre elles.
+unsubscribe-not-unusable = Pas proposé : son adresse de désabonnement n’est ni une page web publique ni une seule adresse électronique.
+unsubscribe-not-no-sender = Pas proposé : cette liste prend les désabonnements par courriel, et l’adresse où ce courriel est arrivé n’envoie rien depuis Sioul.
 unsubscribe-pending = Désabonnement de { $list } dans dix secondes.
 unsubscribe-done-one-click = Désabonnement de { $list } fait.
 unsubscribe-done-mail = Désabonnement de { $list } fait : la demande est partie par courriel à { $to }.
@@ -4314,7 +4332,7 @@ unsubscribe-why-network = son serveur est injoignable ({ $detail }).
 unsubscribe-why-tls = le certificat de son serveur n’a pas pu être vérifié, donc rien n’a été envoyé ({ $detail }).
 unsubscribe-demo = Rien ne quitte cet ordinateur dans la démo : pas de désabonnement.
 unsubscribed-group = Listes quittées
-unsubscribed-note = Chaque liste quittée depuis un message, quand et comment ; gardé sur cet appareil seulement.
+unsubscribed-note = Chaque liste quittée depuis un courriel, quand et comment ; gardé sur cet appareil seulement.
 unsubscribed-line = { $list } : { $date }, { $way }
 
 ## Notifications des autres applications, sur un téléphone (crates/sioul-core/src/appnotes.rs, docs/android.md)
@@ -4343,7 +4361,7 @@ appnotes-why-again = Retenue encore et encore, à quelques minutes d’intervall
 appnotes-why-times = Comme vous l’avez choisi pour ce moment : laissée passer.
 appnotes-why-times-held = Comme vous l’avez choisi pour ce moment : retenue jusqu’à { $when }.
 appnotes-title = Notifications des autres applications
-appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courrier) suivent leurs lignes dans Paramètres ▸ Ce qui vous joint ▸ Par personne (Messages ; Courrier pour une application de courrier), comme votre courrier ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
+appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courriels) suivent leurs lignes dans Paramètres ▸ Ce qui vous joint ▸ Par personne (Messages ; Courriels pour une application de courriel), comme vos courriels ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
 appnotes-never = Sioul ne garde ni n’envoie jamais ce qu’elles disent, ne répond jamais, ne marque rien comme lu, et ne touche jamais aux accusés de lecture ni à « en train d’écrire » : les applications et les personnes qui y sont n’en voient rien. Une notification retenue revient entière, avec son propre toucher et ses actions ; aucune n’est jamais supprimée.
 appnotes-access-on = Accès aux notifications : donné.
 appnotes-access-off = Accès aux notifications : pas donné. Sans lui, les notifications des autres applications viennent comme elles sont envoyées, et seul « Ne pas déranger » les retient : le vôtre, et celui de Sioul (son interrupteur, les pauses ; votre sommeil et vos séances de concentration quand Ce qui vous joint ▸ Ne pas déranger le dit).
@@ -4466,7 +4484,7 @@ calls-block-title = Bloquer ce numéro ?
 calls-block-ask = Les appels du { $number } iront sur votre messagerie à chaque fois, sans être listés. Ses SMS arrivent encore : les numéros bloqués d’Android les arrêtent.
 calls-blocked-said = Bloqué : ses appels vont sur votre messagerie, sans être listés.
 calls-open-blocked = Numéros bloqués d’Android (appels et SMS)
-calls-listen-gone = Le son de ce message n’est plus dans votre courrier.
+calls-listen-gone = Le son de ce message n’est plus dans vos courriels.
 calls-copy = Copier le numéro
 calls-copied = Numéro copié.
 calls-seen-said = Marqué vu : cette ligne quitte le Porche de chacun de vos appareils.
@@ -4507,33 +4525,33 @@ calls-setup-texts = Sioul ne filtre pas les SMS : « Ne pas déranger » l
 calls-setup-try = Pour essayer : demandez à quelqu’un d’absent de vos contacts de vous appeler à un moment où ces numéros ne passent pas ; l’appel va sur votre messagerie, et le Porche le liste quand cette personne peut vous joindre.
 
 ## sioul spam : le filtre antispam de Sioul, appris sur cet ordinateur (crates/sioul-learn)
-spam-stage-labels = Lecture du corpus, et de l’étiquette de chaque message…
-spam-stage-tokens = Les mots de chaque message…
-spam-stage-language = Apprentissage des mots de votre courrier (fastText) : c’est long, et rien ne s’affiche avant la fin.
-spam-stage-features = Le vecteur de chaque message…
+spam-stage-labels = Lecture du corpus, et de l’étiquette de chaque courriel…
+spam-stage-tokens = Les mots de chaque courriel…
+spam-stage-language = Apprentissage des mots de vos courriels (fastText) : c’est long, et rien ne s’affiche avant la fin.
+spam-stage-features = Le vecteur de chaque courriel…
 spam-stage-classifier = Le classifieur : chaque coût, puis son calibrage…
-spam-stage-evaluation = Test sur les messages les plus récents…
+spam-stage-evaluation = Test sur les courriels les plus récents…
 spam-stage-export = La table…
-spam-stage-verify = Vérification de chaque message comme Sioul vérifie le courrier qu’il range, ses signatures et son expéditeur (chacun téléchargé entier une fois, en mémoire seulement)…
+spam-stage-verify = Vérification de chaque courriel comme Sioul vérifie les courriels qu’il range, ses signatures et son expéditeur (chacun téléchargé entier une fois, en mémoire seulement)…
 spam-account-failed = { $account } : pas lu ({ $detail }).
-spam-left-out = Laissé de côté : { $addresses }. Le filtre n’apprend du courrier d’une adresse Microsoft qu’une fois celle-ci nommée sous « Entraîner maintenant », dans la fenêtre, quand vous appuyez dessus ; d’une adresse professionnelle ou scolaire, jamais.
+spam-left-out = Laissé de côté : { $addresses }. Le filtre n’apprend des courriels d’une adresse Microsoft qu’une fois celle-ci nommée sous « Entraîner maintenant », dans la fenêtre, quand vous appuyez dessus ; d’une adresse professionnelle ou scolaire, jamais.
 spam-fetch-added = { $n ->
-    [one] Un message ajouté au corpus.
-   *[other] { $n } messages ajoutés au corpus.
+    [one] Un courriel ajouté au corpus.
+   *[other] { $n } courriels ajoutés au corpus.
 }
 spam-held = Arrêté pour garder de la place sur le disque : { $free } Mo libres, et Sioul garde 1 Go libre. Faites de la place, puis relancez : il reprend là où il s’est arrêté.
 spam-stopped = Arrêté.
-spam-too-few = Trop peu de messages pour apprendre : { $ham } légitimes et { $spam } indésirables ; il en faut au moins { $least } de chaque.
+spam-too-few = Trop peu de courriels pour apprendre : { $ham } légitimes et { $spam } indésirables ; il en faut au moins { $least } de chaque.
 spam-disk = Pas assez de place sur le disque : { $detail }.
 spam-fold = La table ne donnerait pas les scores du modèle ({ $detail }) : rien n’a changé.
 spam-no-table = Pas encore de table : « sioul spam train » en fait une.
 spam-error = Apprentissage arrêté : { $detail }
-spam-replaced-no-table = La table est écrite : le filtre peut maintenant dire ce qu’il pense de votre courrier.
+spam-replaced-no-table = La table est écrite : le filtre peut maintenant dire ce qu’il pense de vos courriels.
 spam-replaced-unreadable = La table est remplacée : celle en place venait d’une autre version de Sioul, ou était abîmée.
-spam-replaced-no-worse = La table est remplacée : sur les { $n } messages les plus récents que celle en place n’a jamais vus, la nouvelle met de côté { $new } messages légitimes, celle en place { $old }. La précédente est gardée.
+spam-replaced-no-worse = La table est remplacée : sur les { $n } courriels les plus récents que celle en place n’a jamais vus, la nouvelle met de côté { $new } courriels légitimes, celle en place { $old }. La précédente est gardée.
 spam-replaced-nothing-new = La table est remplacée : rien n’est arrivé depuis l’apprentissage de celle en place, donc rien ne les départage. La précédente est gardée.
-spam-refit = La table en service a réappris sur les { $n } messages, les plus récents compris ; les chiffres ci-dessous sont ceux du même modèle appris sur les 80 % les plus anciens, testé sur les 20 % les plus récents.
-spam-kept-worse = La table en place est gardée : sur les { $n } messages les plus récents qu’elle n’a jamais vus, la nouvelle mettrait de côté { $new } messages légitimes, celle en place { $old }.
+spam-refit = La table en service a réappris sur les { $n } courriels, les plus récents compris ; les chiffres ci-dessous sont ceux du même modèle appris sur les 80 % les plus anciens, testé sur les 20 % les plus récents.
+spam-kept-worse = La table en place est gardée : sur les { $n } courriels les plus récents qu’elle n’a jamais vus, la nouvelle mettrait de côté { $new } courriels légitimes, celle en place { $old }.
 spam-labels = Étiquettes : { $ham } légitimes, { $spam } indésirables ; { $folder } par leur dossier, { $junk } par un dossier Indésirables, { $filter } par le signalement de votre propre filtre, { $keyword } par un mot-clé, { $log } par ce que vous avez fait. { $ambiguous } laissés de côté : leurs copies se contredisent.
 spam-labels-filtered = Le mot de votre propre filtre, appris tant que vous ne dites pas le contraire : { $moved } déplacés dans un dossier Indésirables, { $flagged } signalés comme probablement indésirables.
 spam-labels-unsure = { $n } signalés comme peut-être indésirables : laissés de côté tant que vous n’avez rien dit.
@@ -4541,14 +4559,14 @@ spam-import-lines = { $n ->
         [one] Une ligne lue.
        *[other] { $n } lignes lues.
     }
-spam-import-done = { $source } : { $ham } légitimes et { $spam } indésirables gardés, du { $first } au { $last }. Gardés à part de votre courrier, jamais partagés.
+spam-import-done = { $source } : { $ham } légitimes et { $spam } indésirables gardés, du { $first } au { $last }. Gardés à part de vos courriels, jamais partagés.
 spam-import-refused = Laissées de côté : { $n } ({ $why }).
 spam-import-why-not-json = pas un objet JSON
 spam-import-why-label = pas d’étiquette « spam » ou « ham »
 spam-import-why-date = pas de date lisible (RFC 3339 ou secondes Unix)
 spam-import-why-fields = pas de champ « subject » ou « text »
 spam-import-why-empty = rien à lire
-spam-import-why-copy = le même message encore
+spam-import-why-copy = le même courriel encore
 spam-import-removed = { $source } retiré : le prochain apprentissage se fera sans lui.
 spam-import-none = Aucun apport extérieur nommé { $source } (« sioul spam status » les liste).
 spam-outside = Apport extérieur, { $source } : { $ham } légitimes et { $spam } indésirables, du { $first } au { $last } ; { $size } Mo, jamais partagé.
@@ -4560,24 +4578,24 @@ spam-at-threshold = À partir de { $threshold } ({ $what }) : légitimes pris 
 spam-what-set-aside = mis de côté
 spam-what-unsure = incertain ou mis de côté
 spam-intervals = Entre parenthèses : où se trouve la vraie part, 19 fois sur 20.
-spam-unsure-share = Incertains : { $share } des messages.
+spam-unsure-share = Incertains : { $share } des courriels.
 spam-auc = Aire sous la courbe ROC : { $auc } (1 : un ordre parfait).
-spam-current = La table en place, sur les { $n } de ces messages qu’elle n’a jamais vus :
+spam-current = La table en place, sur les { $n } de ces courriels qu’elle n’a jamais vus :
 spam-model = { $vocabulary } mots appris, { $dim } dimensions ; coût { $c } ; { $seconds } s ; une table de { $bytes } Ko.
 spam-table = La table en place : apprise le { $date }, sur { $ham } légitimes et { $spam } indésirables.
 spam-corpus-empty = Le corpus est vide : « sioul spam fetch » le remplit.
-spam-corpus-account = { $account } : { $records } messages gardés, { $size } Mo, { $folders } dossiers.
+spam-corpus-account = { $account } : { $records } courriels gardés, { $size } Mo, { $folders } dossiers.
 spam-corpus-folder = { $folder } : { $records } gardés, { $server } sur le serveur au dernier passage.
 spam-corpus-last = Dernier téléchargement : { $date }.
 spam-last-training = Dernier apprentissage : { $date }.
 spam-never-trained = Pas encore d’apprentissage : « sioul spam train ».
 spam-fetch-checked = { $n ->
-    [one] Un message vérifié par Sioul, dont { $gone } absent de son serveur.
-   *[other] { $n } messages vérifiés par Sioul, dont { $gone } absents de leur serveur.
+    [one] Un courriel vérifié par Sioul, dont { $gone } absent de son serveur.
+   *[other] { $n } courriels vérifiés par Sioul, dont { $gone } absents de leur serveur.
 }
-spam-fetch-offline = Aucun serveur DNS n’a répondu : les messages restants seront vérifiés au prochain téléchargement.
-spam-checks = { $account } : Sioul a vérifié { $checked } messages sur { $records } ({ $gone } absents de leur serveur). DKIM : { $dkim_pass } valides, { $dkim_fail } en échec, { $dkim_unknown } inconnus, { $dkim_none } non signés. SPF : { $spf_pass } valides, { $spf_fail } en échec, { $spf_unknown } inconnus. DMARC : { $dmarc_pass } valides, { $dmarc_fail } en échec, { $dmarc_unknown } inconnus. Expéditeur vérifié : { $verified }. Courrier ancien dont les échecs se lisent inconnus : { $late }.
-spam-verdicts = { $account } : { $with } messages sur { $records } portent le verdict d’un filtre antispam ; { $read } d’entre eux ont été écrits par votre fournisseur à l’arrivée du courrier, et ceux-là comptent ({ $flagged } disent indésirable).
+spam-fetch-offline = Aucun serveur DNS n’a répondu : les courriels restants seront vérifiés au prochain téléchargement.
+spam-checks = { $account } : Sioul a vérifié { $checked } courriels sur { $records } ({ $gone } absents de leur serveur). DKIM : { $dkim_pass } valides, { $dkim_fail } en échec, { $dkim_unknown } inconnus, { $dkim_none } non signés. SPF : { $spf_pass } valides, { $spf_fail } en échec, { $spf_unknown } inconnus. DMARC : { $dmarc_pass } valides, { $dmarc_fail } en échec, { $dmarc_unknown } inconnus. Expéditeur vérifié : { $verified }. Courriels anciens dont les échecs se lisent inconnus : { $late }.
+spam-verdicts = { $account } : { $with } courriels sur { $records } portent le verdict d’un filtre antispam ; { $read } d’entre eux ont été écrits par votre fournisseur à l’arrivée des courriels, et ceux-là comptent ({ $flagged } disent indésirable).
 spam-why-none = Pas de verdict : { $detail }
 spam-why-score = Probabilité d’indésirable : { $p } (score { $f } ; au-dessus de 0, indésirable).
 spam-why-words = Les mots qui ont le plus pesé vers l’indésirable :
@@ -4591,15 +4609,15 @@ spam-trial = Un essai : rien du filtre n’a changé (la table, la précédent
 spam-trial-no-table = Il n’y a pas encore de table : un apprentissage écrirait celle-ci.
 spam-trial-unreadable = La table en place vient d’une autre version de Sioul, ou est abîmée : un apprentissage la remplacerait.
 spam-trial-nothing-new = Rien n’est arrivé depuis l’apprentissage de la table en place, donc rien ne les départage : un apprentissage la remplacerait.
-spam-trial-no-worse = Un apprentissage remplacerait la table en place : sur les { $n } messages les plus récents qu’elle n’a jamais vus, celle-ci met de côté { $new } messages légitimes, celle en place { $old }.
-spam-trial-worse = Un apprentissage garderait la table en place : sur les { $n } messages les plus récents qu’elle n’a jamais vus, celle-ci mettrait de côté { $new } messages légitimes, celle en place { $old }.
+spam-trial-no-worse = Un apprentissage remplacerait la table en place : sur les { $n } courriels les plus récents qu’elle n’a jamais vus, celle-ci met de côté { $new } courriels légitimes, celle en place { $old }.
+spam-trial-worse = Un apprentissage garderait la table en place : sur les { $n } courriels les plus récents qu’elle n’a jamais vus, celle-ci mettrait de côté { $new } courriels légitimes, celle en place { $old }.
 spam-model-classifier = Le classifieur de fastText : { $vocabulary } mots appris, { $dim } dimensions ; { $seconds } s ; une table de { $bytes } Ko.
 spam-model-asked-classifier = fastText : { $epochs } passes, taux d’apprentissage { $lr }, n-grammes de { $minn } à { $maxn } caractères dans { $bucket } cases, mots vus { $mincount } fois et plus, { $threads } fils.
 spam-model-asked = fastText : { $epochs } passes, n-grammes de { $minn } à { $maxn } caractères dans { $bucket } cases, mots vus { $mincount } fois et plus, { $threads } fils ; le classifieur : les légitimes pèsent { $hamweight }, son coût choisi parmi { $costs }.
 spam-confusion = { $name } : { $ham } légitimes ({ $hamspam } pris pour indésirables, { $hamunsure } peut-être indésirables, { $hamham } non) ; { $spam } indésirables ({ $spamspam } repérés, { $spamunsure } peut-être indésirables, { $spamham } manqués).
 spam-by-account = Par compte, tel que le filtre a jugé le cinquième le plus récent :
 spam-by-folder = Par dossier :
-spam-grid = À d’autres seuils, sur les mêmes messages :
+spam-grid = À d’autres seuils, sur les mêmes courriels :
 spam-grid-row = À partir de { $threshold } : légitimes pris pour indésirables { $ham } ({ $hamcount } sur { $hamof }), indésirables repérés { $spam } ({ $spamcount } sur { $spamof }).
 spam-errors-ham = Légitimes pris pour indésirables ou peut-être indésirables, les plus sûrs d’abord ({ $n }) :
 spam-errors-spam = Indésirables non reconnus, les moins sûrs d’abord ({ $n }) :
@@ -4616,12 +4634,12 @@ spam-evidence-log = par ce que vous avez dit
 spam-evidence-outside = apport extérieur
 spam-learned-from = déjà appris
 spam-unseen = Parmi eux, { $n } sont arrivés après l’apprentissage de la table ({ $since }) : elle n’en a rien appris. Sur ceux-là :
-spam-unseen-none = La table en place a appris de tous ces messages (tout ce qui précède le { $since }) : sur eux, elle est jugée sur ce qu’on lui a appris. Un essai, « sioul spam train --no-replace --errors 20 », teste un modèle sur du courrier qu’il n’a jamais vu.
-spam-dry-title = S’il arrivait maintenant : ce que votre propre filtre ferait du courrier de chaque boîte de réception ({ $n } messages). Un essai à blanc : rien n’est déplacé.
+spam-unseen-none = La table en place a appris de tous ces courriels (tout ce qui précède le { $since }) : sur eux, elle est jugée sur ce qu’on lui a appris. Un essai, « sioul spam train --no-replace --errors 20 », teste un modèle sur des courriels qu’il n’a jamais vus.
+spam-dry-title = S’ils arrivaient maintenant : ce que votre propre filtre ferait des courriels de chaque boîte de réception ({ $n } courriels). Un essai à blanc : rien n’est déplacé.
 spam-dry-matrix = Probablement indésirable à partir de { $spam } : { $spamaction }. Peut-être indésirable à partir de { $unsure } : { $unsureaction }. Probablement pas indésirable : { $hamaction }.
 spam-dry-thresholds = Les seuils vont de 0 à 1, « peut-être » jamais au-dessus de « probablement ».
 spam-dry-no-table = Pas encore de table : rien ne serait jugé. « sioul spam train » en fait une.
-spam-dry-account = { $account } : { $messages } messages dans la boîte de réception ; { $judged } jugés ; { $protected } protégés (des gens que vous connaissez, des codes, des projets, votre propre courrier, dits non indésirables) ; { $aside } mis de côté avant (le verdict de votre fournisseur, contrefaits, un nom emprunté) ; { $hostile } hostiles ; { $blocked } laissés de côté (expéditeurs bloqués, fichiers illisibles).
+spam-dry-account = { $account } : { $messages } courriels dans la boîte de réception ; { $judged } jugés ; { $protected } protégés (des gens que vous connaissez, des codes, des projets, vos propres courriels, dits non indésirables) ; { $aside } mis de côté avant (le verdict de votre fournisseur, contrefaits, un nom emprunté) ; { $hostile } hostiles ; { $blocked } laissés de côté (expéditeurs bloqués, fichiers illisibles).
 spam-dry-class = { $class } : { $n } ({ $action })
 spam-dry-would-move = Seraient déplacés dans le dossier Indésirables ({ $n }) :
 spam-dry-would-flag = Seraient signalés là où ils sont ({ $n }) :
@@ -4643,8 +4661,8 @@ spam-label-acted-into-junk = Marqué indésirable et déplacé dans le dossier I
 spam-label-acted-back-to-inbox = Marqué non indésirable et ramené dans la boîte de réception, sur le serveur.
 spam-label-acted-marked-where-it-is = Marqué non indésirable sur le serveur ; il reste là où il est.
 spam-fetch-estimate = { $n ->
-    [one] Environ un message à relever.
-   *[other] Environ { $n } messages à relever.
+    [one] Environ un courriel à relever.
+   *[other] Environ { $n } courriels à relever.
 }
 spam-job-started = Lancé à part : { $id } ({ $kind }). « sioul spam job { $id } », ou spam_job, dit où il en est.
 spam-job-busy = Un travail « { $kind } » tourne déjà : { $id }.
@@ -4657,11 +4675,11 @@ spam-job-state-stopped = arrêté
 spam-job-state-died = fini sans un mot
 spam-job-stopping = Arrêt demandé : il s’arrête à sa prochaine étape.
 spam-job-none = Aucun travail gardé.
-spam-settled = Sans les messages légitimes qu’une boîte de réception garde depuis moins de { $days } jours ({ $n } messages laissés de côté : ce sont peut-être des indésirables que personne n’a encore regardés) :
+spam-settled = Sans les courriels légitimes qu’une boîte de réception garde depuis moins de { $days } jours ({ $n } courriels laissés de côté : ce sont peut-être des indésirables que personne n’a encore regardés) :
 spam-strict = Au plus un légitime sur deux cents pris pour indésirable : à partir de { $threshold }, indésirables repérés { $spam } (de { $spamlow } à { $spamhigh }).
-spam-features = La moyenne de chaque fait d’en-tête, par compte et par étiquette (entre parenthèses, combien de messages ; un tiret là où aucun message ne le connaît) :
+spam-features = La moyenne de chaque fait d’en-tête, par compte et par étiquette (entre parenthèses, combien de courriels ; un tiret là où aucun courriel ne le connaît) :
 
-## Le filtre à indésirables dans la fenêtre : Courrier ▸ ⚙, son propre bloc (crates/sioul-app/src/spam.rs, SpamFilter.qml)
+## Le filtre à indésirables dans la fenêtre : Courriels ▸ ⚙, son propre bloc (crates/sioul-app/src/spam.rs, SpamFilter.qml)
 spam-app-train = Entraîner maintenant
 spam-app-stop = Arrêter
 spam-app-stopping = Arrêt à la prochaine étape…
@@ -4677,54 +4695,54 @@ spam-app-by-itself-kept = Réappris de lui-même { $when } : la table en servi
 spam-app-by-itself-stopped = Arrêté { $when }, débranché ou en économie d’énergie : il réessaiera plus tard.
 spam-app-by-itself-failed = Son réentraînement de lui-même { $when } n’a pas abouti : il réessaiera un jour plus tard.
 spam-app-phone-trains-not = Un téléphone n’entraîne jamais le filtre : votre ordinateur le fait.
-spam-app-train-about = Télécharge ce dont l’apprentissage a besoin, de chaque dossier de { $addresses } (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend, sur cet ordinateur : « Entraîner maintenant » est votre accord, pour ces adresses. La première fois est longue ; « Arrêter » garde ce qui est venu, et la fois suivante reprend de là. La table ne change que si elle ne prend pas plus de vos messages pour indésirables que celle en service.
+spam-app-train-about = Télécharge ce dont l’apprentissage a besoin, de chaque dossier de { $addresses } (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend, sur cet ordinateur : « Entraîner maintenant » est votre accord, pour ces adresses. La première fois est longue ; « Arrêter » garde ce qui est venu, et la fois suivante reprend de là. La table ne change que si elle ne prend pas plus de vos courriels pour indésirables que celle en service.
 spam-app-train-microsoft = Pour une adresse Microsoft, appuyer sur « Entraîner maintenant » est l’accord que demandent les conditions de Microsoft : le réentraînement de lui-même, et les téléchargements et entraînements d’un agent d’IA, n’apprennent que des adresses Microsoft nommées ici lors de votre dernier appui.
-spam-app-train-work = Il n’apprend jamais de { $addresses } : le courrier d’une adresse Microsoft professionnelle ou scolaire est aussi celui de son organisation.
+spam-app-train-work = Il n’apprend jamais de { $addresses } : les courriels d’une adresse Microsoft professionnelle ou scolaire sont aussi ceux de son organisation.
 spam-app-fetching-start = Parcours de { $place }…
-spam-app-fetching = Messages téléchargés : { $done } sur environ { $total } ({ $place }).
+spam-app-fetching = Courriels téléchargés : { $done } sur environ { $total } ({ $place }).
 spam-app-step = { $stage } { $done } sur { $total }.
 spam-app-stopped = Arrêté. Ce qui a été téléchargé est gardé : « Entraîner maintenant » reprend de là.
-spam-app-too-few = Trop peu de messages pour apprendre : { $ham } légitimes et { $spam } indésirables ; il en faut au moins { $least } de chaque. Vos dossiers Indésirables, et les messages que vous marquez indésirables, lui apprennent l’indésirable.
+spam-app-too-few = Trop peu de courriels pour apprendre : { $ham } légitimes et { $spam } indésirables ; il en faut au moins { $least } de chaque. Vos dossiers Indésirables, et les courriels que vous marquez indésirables, lui apprennent l’indésirable.
 spam-app-disk = Pas assez de place sur le disque pour apprendre : faites de la place (Sioul garde 1 Go libre), puis relancez.
 spam-app-fold = La nouvelle table ne donnerait pas les scores du modèle lui-même : rien n’a changé. C’est une faute de Sioul : signalez-la, s’il vous plaît.
 spam-app-error = L’apprentissage s’est arrêté : { $detail }
-spam-app-none = Pas encore de table : « Entraîner maintenant » en fait une à partir de votre courrier. D’ici là, le filtre ne dit rien.
-spam-app-none-phone = Pas encore de table : entraînez le filtre sur votre ordinateur (Courrier ▸ ⚙, « Entraîner maintenant »). Sa table arrive ici scellée, avec la partie « Filtre à indésirables » partagée sur les deux appareils.
-spam-app-table = En service : appris par { $device } { $when }, sur { $ham } messages légitimes et { $spam } indésirables.
-spam-app-table-here = En service : appris ici { $when }, sur { $ham } messages légitimes et { $spam } indésirables.
-spam-app-table-somewhere = En service : appris { $when }, sur { $ham } messages légitimes et { $spam } indésirables.
-spam-app-table-numbers = Testé sur votre courrier le plus récent avant de l’apprendre aussi : à partir de { $threshold }, { $ham } des messages légitimes pris pour indésirables, { $spam } des indésirables repérés.
+spam-app-none = Pas encore de table : « Entraîner maintenant » en fait une à partir de vos courriels. D’ici là, le filtre ne dit rien.
+spam-app-none-phone = Pas encore de table : entraînez le filtre sur votre ordinateur (Courriels ▸ ⚙, « Entraîner maintenant »). Sa table arrive ici scellée, avec la partie « Filtre à indésirables » partagée sur les deux appareils.
+spam-app-table = En service : appris par { $device } { $when }, sur { $ham } courriels légitimes et { $spam } indésirables.
+spam-app-table-here = En service : appris ici { $when }, sur { $ham } courriels légitimes et { $spam } indésirables.
+spam-app-table-somewhere = En service : appris { $when }, sur { $ham } courriels légitimes et { $spam } indésirables.
+spam-app-table-numbers = Testé sur vos courriels les plus récents avant de les apprendre aussi : à partir de { $threshold }, { $ham } des courriels légitimes pris pour indésirables, { $spam } des indésirables repérés.
 spam-app-refused = La table la plus récente ne peut pas servir ici : { $why }. Celle d’avant reste en service.
 spam-app-refused-none = La table la plus récente ne peut pas servir ici : { $why }. D’ici là, le filtre ne dit rien.
 spam-app-refused-version = une autre version de Sioul l’a faite ; donnez la même version à chaque appareil
 spam-app-refused-damaged = elle est abîmée ; relancez l’apprentissage sur l’ordinateur
 spam-app-last-title = Le dernier apprentissage
-spam-app-last-new = Appris { $when } : la table est écrite ; le filtre peut maintenant dire ce qu’il pense de votre courrier.
-spam-app-last-replaced = Appris { $when } : la nouvelle table est en service. Sur les { $n } messages les plus récents que la précédente n’a jamais vus, elle prend { $new ->
-    [one] { $new } message légitime
-   *[other] { $new } messages légitimes
+spam-app-last-new = Appris { $when } : la table est écrite ; le filtre peut maintenant dire ce qu’il pense de vos courriels.
+spam-app-last-replaced = Appris { $when } : la nouvelle table est en service. Sur les { $n } courriels les plus récents que la précédente n’a jamais vus, elle prend { $new ->
+    [one] { $new } courriel légitime
+   *[other] { $new } courriels légitimes
 } pour indésirables, la précédente { $old }.
 spam-app-last-unreadable = Appris { $when } : la nouvelle table est en service ; celle d’avant venait d’une autre version, ou était abîmée.
 spam-app-last-nothing-new = Appris { $when } : la nouvelle table est en service ; rien n’est arrivé depuis l’apprentissage de la précédente, donc rien ne les départageait.
-spam-app-refit = En service : appris à nouveau sur les { $n } messages, les plus récents compris.
-spam-app-last-kept = Appris { $when } : la table en service est gardée. Sur les { $n } messages les plus récents qu’elle n’a jamais vus, la nouvelle prendrait { $new ->
-    [one] { $new } message légitime
-   *[other] { $new } messages légitimes
+spam-app-refit = En service : appris à nouveau sur les { $n } courriels, les plus récents compris.
+spam-app-last-kept = Appris { $when } : la table en service est gardée. Sur les { $n } courriels les plus récents qu’elle n’a jamais vus, la nouvelle prendrait { $new ->
+    [one] { $new } courriel légitime
+   *[other] { $new } courriels légitimes
 } pour indésirables, celle en service { $old }.
-spam-app-learned = Ses chiffres : le même modèle appris sur les messages les plus anciens ({ $ham } légitimes, { $spam } indésirables), testé sur le cinquième le plus récent, depuis le { $since } ({ $testham } légitimes, { $testspam } indésirables).
-spam-app-at-spam = À partir de { $threshold }, indésirable : { $ham } des messages légitimes (de { $hamlow } à { $hamhigh }), { $spam } des indésirables repérés (de { $spamlow } à { $spamhigh }).
-spam-app-at-unsure = À partir de { $threshold }, peut-être indésirable ou indésirable : { $ham } des messages légitimes (de { $hamlow } à { $hamhigh }), { $spam } des indésirables (de { $spamlow } à { $spamhigh }).
+spam-app-learned = Ses chiffres : le même modèle appris sur les courriels les plus anciens ({ $ham } légitimes, { $spam } indésirables), testé sur le cinquième le plus récent, depuis le { $since } ({ $testham } légitimes, { $testspam } indésirables).
+spam-app-at-spam = À partir de { $threshold }, indésirable : { $ham } des courriels légitimes (de { $hamlow } à { $hamhigh }), { $spam } des indésirables repérés (de { $spamlow } à { $spamhigh }).
+spam-app-at-unsure = À partir de { $threshold }, peut-être indésirable ou indésirable : { $ham } des courriels légitimes (de { $hamlow } à { $hamhigh }), { $spam } des indésirables (de { $spamlow } à { $spamhigh }).
 spam-app-thresholds-then = Mesuré aux seuils d’alors, { $spam } et { $unsure } : relancez l’apprentissage pour mesurer les vôtres.
 spam-app-corpus-title = Ce dont il apprend
 spam-app-corpus-none = Rien de téléchargé pour l’instant.
-spam-app-corpus = { $records } messages gardés de { $accounts ->
+spam-app-corpus = { $records } courriels gardés de { $accounts ->
     [one] une adresse
    *[other] { $accounts } adresses
 }, { $size } Mo ; dernier téléchargement { $when }. Ils restent sur cet ordinateur : jamais partagés, jamais montrés à une IA.
 spam-app-room = { $free } Go libres sur ce disque ; le téléchargement s’arrête avant qu’il reste moins de 1 Go.
-spam-app-outside = Apport extérieur, { $source } : { $ham } messages légitimes et { $spam } indésirables, du { $first } au { $last } ; sur cet ordinateur seulement, jamais partagé.
+spam-app-outside = Apport extérieur, { $source } : { $ham } courriels légitimes et { $spam } indésirables, du { $first } au { $last } ; sur cet ordinateur seulement, jamais partagé.
 spam-app-outside-learned = Apport extérieur, { $source } : appris sur { $trainham } légitimes et { $trainspam } indésirables ; ses { $heldham } légitimes et { $heldspam } indésirables les plus récents mis à part pour le mesurer :
-spam-app-outside-baseline = Là, à partir de { $threshold }, { $ham } des messages légitimes pris pour indésirables, { $spam } des indésirables repérés ; aire sous la courbe ROC { $auc }.
+spam-app-outside-baseline = Là, à partir de { $threshold }, { $ham } des courriels légitimes pris pour indésirables, { $spam } des indésirables repérés ; aire sous la courbe ROC { $auc }.
 
 ## La grille de ce qui vous joint (AttentionGrid.qml)
 attention-legend-fixed = Grisé : fixe, pour votre sécurité.
@@ -4767,7 +4785,7 @@ attention-source-said-now = tout de suite : { $columns }
 attention-source-said-gathered = aux heures de regroupement : { $columns }
 attention-source-said-later = retenues : { $columns }
 attention-source-said-as = comme d’habitude le reste du temps
-attention-group-mail = Courrier
+attention-group-mail = Courriels
 attention-group-calls = Appels
 attention-group-messages = Messages
 attention-group-asked = Ce que vous avez réglé ou demandé
@@ -4784,7 +4802,7 @@ attention-person-neutral-help = Toute personne de vos carnets d’adresses, lais
 attention-person-restricted = Restreints
 attention-person-restricted-help = Des personnes connues, dont vous n’avez de nouvelles qu’aux moments choisis.
 attention-person-stranger = Inconnus
-attention-person-stranger-help = Dans aucun de vos carnets d’adresses et sur aucune liste ; et le courrier que rien ne prouve être le leur.
+attention-person-stranger-help = Dans aucun de vos carnets d’adresses et sur aucune liste ; et les courriels que rien ne prouve être les leurs.
 attention-person-hidden = Numéros masqués
 attention-person-hidden-help = Les appels qui ne montrent aucun numéro : quelqu’un qui le cache, le standard d’un hôpital.
 attention-person-groups = Groupes
@@ -4792,7 +4810,7 @@ attention-person-groups-help = Les conversations où plusieurs personnes écrive
 attention-person-blocked = Bloqués
 attention-person-blocked-help = Jamais, sur aucun canal, quoi que dise le reste.
 attention-row-codes = Codes et liens demandés
-attention-row-codes-help = Un code à usage unique ou un lien de connexion d’un site que vous venez d’utiliser, dans votre courrier. Un code ou une validation dans une autre application n’est jamais retenu.
+attention-row-codes-help = Un code à usage unique ou un lien de connexion d’un site que vous venez d’utiliser, dans vos courriels. Un code ou une validation dans une autre application n’est jamais retenu.
 attention-row-doses = Prises
 attention-row-doses-help = Le rappel d’une prise à son heure, et la question sur les prises dues pendant que Sioul était fermé. Retenu pendant le sommeil ou une pause, il vient au réveil ou à votre retour.
 attention-row-wake = Le réveil
@@ -4874,7 +4892,7 @@ phonemsgs-setup-title = Sur vos ordinateurs
 phonemsgs-setup-help = Cette partie du partage activée, ce téléphone envoie à vos ordinateurs les messages qu’apportent ses notifications, scellés, pour les applications que vous choisissez : qui a écrit, quand, et les mots, coupés à 1 000 caractères. Un ordinateur les montre sur son Porche une fois la partie activée là aussi, aux moments où leur expéditeur peut vous joindre, jamais en notification. Ils sont gardés une semaine.
 phonemsgs-setup-never = Jamais envoyés : les codes et les validations (une ligne dit qu’un code est arrivé, et qu’il reste sur votre téléphone), les images (dites « une image »), les messages d’un expéditeur bloqué, les notifications qu’une application marque secrètes, celles en cours, celles de Sioul. Vu sur un ordinateur retire la ligne partout ; il ne touche jamais à la notification de votre téléphone et ne marque jamais rien comme lu.
 phonemsgs-setup-part = Messages de votre téléphone
-phonemsgs-setup-no-sharing = Mettez d’abord en place votre partage (Réglages ▸ Votre dossier et le partage) : les messages passent par lui.
+phonemsgs-setup-no-sharing = Mettez d’abord en place votre partage (Paramètres ▸ Votre dossier et le partage) : les messages passent par lui.
 phonemsgs-setup-apps = Par application
 phonemsgs-setup-apps-help = L’application de SMS du téléphone envoie ses mots, sauf avis contraire ; toute autre application n’envoie rien tant que vous ne la choisissez pas.
 phonemsgs-setup-sms = L’application de SMS du téléphone
@@ -4902,8 +4920,8 @@ texts-clocks = Pas envoyé : l’horloge de votre téléphone et celle de cet 
 texts-doubt = Votre téléphone ne l’a peut-être pas envoyé : regardez dans ses messages avant de le renvoyer.
 # texts: the Texts page, and Settings ▸ This phone ▸ Texts (SMS phase b).
 texts-page-title = SMS
-texts-page-off = Vos SMS s’affichent ici une fois la partie SMS du partage activée, sur cet appareil et sur votre téléphone (Réglages ▸ Votre dossier et le partage).
-texts-page-no-phone = Aucun téléphone ne partage ses SMS avec cet ordinateur : activez la partie SMS sur votre téléphone, dans Réglages ▸ Ce téléphone ▸ SMS.
+texts-page-off = Vos SMS s’affichent ici une fois la partie SMS du partage activée, sur cet appareil et sur votre téléphone (Paramètres ▸ Votre dossier et le partage).
+texts-page-no-phone = Aucun téléphone ne partage ses SMS avec cet ordinateur : activez la partie SMS sur votre téléphone, dans Paramètres ▸ Ce téléphone ▸ SMS.
 texts-page-never = Les brouillons, les SMS qui ont échoué ou attendent de partir, et les messages multimédias encore à télécharger restent dans l’application de messages de votre téléphone : Android ne les montre qu’à elle.
 texts-page-back = Conversations
 texts-page-shared = Dernier partage de votre téléphone à { $time }.
@@ -4967,7 +4985,7 @@ texts-setup-done = { $count ->
 texts-setup-cap = Plus gros fichier envoyé à vos ordinateurs
 texts-setup-cap-help = Une image, un son ou une vidéo plus gros reste sur votre téléphone, et la page le dit. Les messages multimédias sont petits : les opérateurs les limitent entre quelques centaines de kilo-octets et quelques mégaoctets.
 texts-setup-cap-value = { $size }
-mail-through-channel = Courrier des personnes qui passent toujours
+mail-through-channel = Courriels des personnes qui passent toujours
 alarms-channel = Alarmes des événements
 dnd-events-channel = Alarmes des événements pendant une pause
 
@@ -5016,20 +5034,20 @@ attention-sheet-off-always = { $name } n’est plus sur votre liste Passent touj
 attention-sheet-off-blocked = { $name } n’est plus dans les bloqués.
 attention-sheet-on-always = { $name } est maintenant sur votre liste Passent toujours.
 attention-sheet-line-mail-now = { $first ->
-    [yes] Son courrier arrive tout de suite { $during }.
-   *[other] Il arrive tout de suite { $during }.
+    [yes] Ses courriels arrivent tout de suite { $during }.
+   *[other] Ils arrivent tout de suite { $during }.
 }
 attention-sheet-line-mail-quiet = { $first ->
-    [yes] Son courrier s’affiche dans Sioul sans notification { $during }.
-   *[other] Il s’affiche dans Sioul sans notification { $during }.
+    [yes] Ses courriels s’affichent dans Sioul sans notification { $during }.
+   *[other] Ils s’affichent dans Sioul sans notification { $during }.
 }
 attention-sheet-line-mail-later = { $first ->
-    [yes] Son courrier attend { $during }.
-   *[other] Il attend { $during }.
+    [yes] Ses courriels attendent { $during }.
+   *[other] Ils attendent { $during }.
 }
 attention-sheet-line-mail-never = { $first ->
-    [yes] Son courrier reste dans sa file, sans notification, { $during }.
-   *[other] Il reste dans sa file, sans notification, { $during }.
+    [yes] Ses courriels restent dans leur file, sans notification, { $during }.
+   *[other] Ils restent dans leur file, sans notification, { $during }.
 }
 attention-sheet-line-calls-now = { $first ->
     [yes] Ses appels sonnent { $during }.
@@ -5064,24 +5082,24 @@ attention-sheet-line-messages-quiet = { $first ->
    *[other] Ils sont retenus { $during }.
 }
 attention-always-line-mail-now = { $first ->
-    [yes] Le courrier des personnes qui passent toujours arrive tout de suite { $during }.
-   *[other] Il arrive tout de suite { $during }.
+    [yes] Les courriels des personnes qui passent toujours arrivent tout de suite { $during }.
+   *[other] Ils arrivent tout de suite { $during }.
 }
 attention-always-line-mail-quiet = { $first ->
-    [yes] Le courrier des personnes qui passent toujours s’affiche dans Sioul sans notification { $during }.
-   *[other] Il s’affiche dans Sioul sans notification { $during }.
+    [yes] Les courriels des personnes qui passent toujours s’affichent dans Sioul sans notification { $during }.
+   *[other] Ils s’affichent dans Sioul sans notification { $during }.
 }
 attention-always-line-mail-later = { $first ->
-    [yes] Le courrier des personnes qui passent toujours attend { $during }.
-   *[other] Il attend { $during }.
+    [yes] Les courriels des personnes qui passent toujours attendent { $during }.
+   *[other] Ils attendent { $during }.
 }
 attention-always-line-mail-never = { $first ->
-    [yes] Le courrier des personnes qui passent toujours reste dans sa file, sans notification, { $during }.
-   *[other] Il reste dans sa file, sans notification, { $during }.
+    [yes] Les courriels des personnes qui passent toujours restent dans leur file, sans notification, { $during }.
+   *[other] Ils restent dans leur file, sans notification, { $during }.
 }
 attention-always-line-mail-as = { $first ->
-    [yes] Le courrier des personnes qui passent toujours arrive comme le dit leur propre liste { $during }.
-   *[other] Il arrive comme le dit leur propre liste { $during }.
+    [yes] Les courriels des personnes qui passent toujours arrivent comme le dit leur propre liste { $during }.
+   *[other] Ils arrivent comme le dit leur propre liste { $during }.
 }
 attention-always-line-calls-now = { $first ->
     [yes] Les appels des personnes qui passent toujours sonnent { $during }.
@@ -5127,17 +5145,17 @@ attention-sheet-line-layer-mail-quiet = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, son courrier est au plus affiché, sans notification.
+}, ses courriels sont au plus affichés, sans notification.
 attention-sheet-line-layer-mail-later = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, son courrier attend.
+}, ses courriels attendent.
 attention-sheet-line-layer-mail-never = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, son courrier reste dans sa file, sans notification.
+}, ses courriels restent dans leur file, sans notification.
 attention-sheet-line-layer-calls-later = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
@@ -5162,17 +5180,17 @@ attention-always-line-layer-mail-quiet = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, leur courrier est au plus affiché, sans notification.
+}, leurs courriels sont au plus affichés, sans notification.
 attention-always-line-layer-mail-later = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, leur courrier attend.
+}, leurs courriels attendent.
 attention-always-line-layer-mail-never = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
-}, leur courrier reste dans sa file, sans notification.
+}, leurs courriels restent dans leur file, sans notification.
 attention-always-line-layer-calls-later = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
@@ -5193,7 +5211,7 @@ attention-always-line-layer-messages-never = { $layer ->
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
 }, leurs messages sont retenus.
-attention-sheet-line-blocked-mail = Son courrier ne vous joint jamais : il est mis de côté, sans notification.
+attention-sheet-line-blocked-mail = Ses courriels ne vous joignent jamais : ils sont mis de côté, sans notification.
 attention-sheet-line-blocked-calls = Ses appels ne sonnent jamais : ils sont refusés, et jamais listés.
 attention-sheet-line-blocked-messages = Ses messages ne viennent jamais.
 attention-during = pendant { $times }
@@ -5224,7 +5242,8 @@ attention-who-stranger = des inconnus
 attention-who-hidden = des numéros masqués
 attention-who-groups = des groupes
 attention-who-always = des personnes qui passent toujours
-attention-of-mail = le courrier
+attention-of-mail = les courriels
+    .plural = yes
 attention-of-calls = les appels
 attention-of-messages = les messages
 attention-from = { $channels } { $who }
@@ -5341,19 +5360,19 @@ attention-when-slot = Les créneaux que le plan du jour garde pour vous.
 attention-when-dnd = Tant que son interrupteur de la ligne d’état est mis.
 attention-when-dnd-focus = Tant que son interrupteur de la ligne d’état est mis, et pendant que vous vous concentrez sur une tâche.
 attention-also-meeting = Pendant une réunion, les avis de Santé et « Les heures de travail sont finies » ne viennent pas.
-attention-also-areas = Ce qui est pour un autre moment l’attend : le courrier d’une adresse pour le travail, un site ou une application pour le travail, les dates d’une tâche de travail. Le courrier de vos expéditeurs sûrs et les personnes qui passent toujours viennent quand même.
-attention-also-porch-rests = Après la pause, le Porche se repose jusqu’à vos prochaines heures de démarches : le nouveau courrier s’y affiche, sans notification.
+attention-also-areas = Ce qui est pour un autre moment l’attend : les courriels d’une adresse pour le travail, un site ou une application pour le travail, les dates d’une tâche de travail. Les courriels de vos expéditeurs sûrs et les personnes qui passent toujours viennent quand même.
+attention-also-porch-rests = Après la pause, le Porche se repose jusqu’à vos prochaines heures de démarches : les nouveaux courriels s’y affichent, sans notification.
 attention-switch-through-off = Laisser passer tous les appels est éteint : dans la ligne d’état, il fait sonner chaque appel pour un temps, sauf ceux des bloqués.
-attention-switch-realtime-on = Le temps réel est mis : le courrier est relevé chaque minute, et les notifications de chaque site arrivent tout de suite.
-attention-switch-realtime-off = Le temps réel est éteint : dans le menu du Porche, il relève le courrier chaque minute et fait venir tout de suite les notifications de chaque site.
+attention-switch-realtime-on = Le temps réel est mis : les courriels sont relevés chaque minute, et les notifications de chaque site arrivent tout de suite.
+attention-switch-realtime-off = Le temps réel est éteint : dans le menu du Porche, il relève les courriels chaque minute et fait venir tout de suite les notifications de chaque site.
 attention-channel-calls-none = Aucun de vos téléphones ne filtre encore les appels : ces lignes s’appliquent dès que l’un d’eux le fait (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-channel-messages-none = Sioul ne connaît encore aucun de vos téléphones : ces lignes s’appliquent sur un téléphone qui retient les notifications des autres applications (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-channel-messages-no-access = Aucun de vos téléphones ne donne à Sioul l’accès aux notifications, d’après ce que chacun a dit en dernier : ces lignes s’appliquent dès que l’un le fait (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-channel-messages-phone = Ces lignes s’appliquent sur votre téléphone, où Sioul retient les notifications des autres applications (Paramètres ▸ Ce téléphone, sur le téléphone).
 attention-gathered-at = Sioul les regroupe à { $times } ; les heures sont dans Paramètres ▸ Rappels.
-attention-spam-held = Le courrier que votre filtre à indésirables juge peut-être ou probablement indésirable attend sur le Porche, dans « Retenu par votre filtre à indésirables », sans notification : Courrier ⚙ ▸ Votre filtre à indésirables.
-attention-spam-told = Votre filtre à indésirables laisse le courrier des inconnus là où il est, notifié comme le dit sa ligne : Courrier ⚙ ▸ Votre filtre à indésirables.
-attention-mail-areas = Le courrier d’une adresse pour un autre moment attend ce moment, sauf celui de vos expéditeurs sûrs et des personnes qui passent toujours : « À quoi sert cette adresse », sur chaque adresse, dans Comptes.
+attention-spam-held = Les courriels que votre filtre à indésirables juge peut-être ou probablement indésirables attendent sur le Porche, dans « Retenu par votre filtre à indésirables », sans notification : Courriels ⚙ ▸ Votre filtre à indésirables.
+attention-spam-told = Votre filtre à indésirables laisse les courriels des inconnus là où ils sont, notifiés comme le dit leur ligne : Courriels ⚙ ▸ Votre filtre à indésirables.
+attention-mail-areas = Les courriels d’une adresse pour un autre moment attendent ce moment, sauf ceux de vos expéditeurs sûrs et des personnes qui passent toujours : « À quoi sert cette adresse », sur chaque adresse, dans Comptes.
 attention-site-line = { $name } : { $how }.
 attention-site-live = en temps réel, ses notifications arrivent tout de suite
 attention-site-muted = en silence, ses notifications ne viennent jamais
@@ -5381,17 +5400,17 @@ words-language-es = Espagnol
 words-language-es-in = en espagnol
 words-language-it = Italien
 words-language-it-in = en italien
-words-family-mail = Le courrier
+words-family-mail = Les courriels
 words-family-money = L’argent et les papiers
 words-family-phone = Le téléphone
 words-family-tasks = Les tâches et une adresse publique
 words-line-codes = Codes et liens de connexion
 words-line-codes-help = Un courriel qui porte ces mots et un code à côté arrive tout de suite, même d’un expéditeur automatique ; son code est montré, et caché aux agents IA. Retirez un mot, et ce courriel attend dans sa file.
 words-line-senders = Expéditeurs automatiques
-words-line-senders-help = Un expéditeur dont l’adresse contient l’un de ces mots est automatique : son courrier est rangé avec les lettres d’information. Retirez un mot, et ce courrier arrive comme un autre.
+words-line-senders-help = Un expéditeur dont l’adresse contient l’un de ces mots est automatique : ses courriels sont rangés avec les infolettres. Retirez un mot, et ces courriels arrivent comme les autres.
 words-line-replies = Réponses et transferts
-words-line-replies-help = Un objet qui commence par l’un de ces préfixes n’en reçoit pas un second quand vous répondez ou transférez ; l’historique d’un message après ces lignes est replié. Retirez-en un, et le préfixe se double, ou l’historique reste ouvert.
-words-line-folders = Dossiers de courrier
+words-line-replies-help = Un objet qui commence par l’un de ces préfixes n’en reçoit pas un second quand vous répondez ou transférez ; l’historique d’un courriel après ces lignes est replié. Retirez-en un, et le préfixe se double, ou l’historique reste ouvert.
+words-line-folders = Dossiers de courriels
 words-line-folders-help = Un dossier qui porte l’un de ces noms, quand son serveur ne dit pas à quoi il sert, est celui des envoyés, des brouillons, des indésirables, la corbeille ou les archives. Retirez un nom, et ce dossier est un dossier comme les autres.
 words-line-brands = Noms empruntés
 words-line-brands-help = Un expéditeur qui affiche l’un de ces noms hors de ses domaines est mis de côté comme l’empruntant. Un nom qui est aussi un mot courant ou un lieu ne compte que seul ou à côté des mots d’un service (« Service client Orange »), si bien que « Café de la Poste » est le nom de quelqu’un. Retirez un nom, et ses imitations vous parviennent.
@@ -5414,9 +5433,9 @@ words-line-voicemail-help = Certains opérateurs vous envoient par courriel chaq
 words-line-tasks = Vos tâches
 words-line-tasks-help = Les catégories de vos tâches qui portent ces mots ne sont jamais planifiées, ou gardées pour ce que vous faites par plaisir, ou laissées hors du Temps libre quand le mouvement est coupé ; le premier mot d’une ligne rapide, ou un mot après @, dit son type. Retirez un mot, et c’est un mot comme un autre.
 words-line-spam = Les marques de spam de votre fournisseur
-words-line-spam-help = Une marque que votre fournisseur met au début d’un objet (« [SPAM] », « ***Potentiel-SPAM*** ») est enlevée avant que votre filtre à indésirables lise le message, pour qu’il n’apprenne jamais à copier votre fournisseur. Un changement compte à partir du prochain entraînement du filtre, sur tous les appareils à la fois.
+words-line-spam-help = Une marque que votre fournisseur met au début d’un objet (« [SPAM] », « ***Potentiel-SPAM*** ») est enlevée avant que votre filtre à indésirables lise le courriel, pour qu’il n’apprenne jamais à copier votre fournisseur. Un changement compte à partir du prochain entraînement du filtre, sur tous les appareils à la fois.
 words-line-shield = Une adresse publique
-words-line-shield-help = Le courrier d’une adresse que vous protégez est lu d’abord : ces mots le rendent hostile (mis de côté sans que ses mots soient montrés) ou grossier, et disent de quoi il parle. Retirez un mot, et il ne pèse plus rien.
+words-line-shield-help = Chaque courriel d’une adresse que vous protégez est lu d’abord : ces mots le rendent hostile (mis de côté sans que ses mots soient montrés) ou grossier, et disent de quoi il parle. Retirez un mot, et il ne pèse plus rien.
 words-list-codes-code = Noms d’un code
 words-list-codes-password = Un mot de passe donné
 words-list-codes-reset = Un mot de passe à réinitialiser
@@ -5427,7 +5446,7 @@ words-list-codes-promo = Un code de boutique, pas un secret
 words-list-senders-automatic = Mots dans une adresse
 words-list-replies-reply = Préfixes de réponse (« Ré : »)
 words-list-replies-forward = Préfixes de transfert (« Tr : »)
-words-list-quotes-openings = Lignes qui ouvrent un message transféré
+words-list-quotes-openings = Lignes qui ouvrent un courriel transféré
 words-list-quotes-wrote = Fins de « … a écrit : »
 words-list-folders-sent = Envoyés
 words-list-folders-drafts = Brouillons
@@ -5527,7 +5546,7 @@ words-line-removed = { $n ->
 
 ## Microsoft's mail: Outlook.com, Hotmail, Live, MSN, Microsoft 365 (crates/sioul-sync/src/microsoft.rs,
 ## crates/sioul-app/src/outlook.rs, MicrosoftMail.qml, docs/microsoft.md)
-account-by-microsoft = les serveurs de Microsoft, puisque Microsoft garde le courrier de cette adresse
+account-by-microsoft = les serveurs de Microsoft, puisque Microsoft garde les courriels de cette adresse
 sync-error-microsoft-again = { $account } : Microsoft demande de vous reconnecter.
 sync-error-microsoft-again-password = { $account } : Microsoft a mis fin à la connexion après le changement de votre mot de passe : reconnectez-vous.
 sync-error-microsoft-again-unused = { $account } : Microsoft a mis fin à la connexion, inutilisée depuis 90 jours : reconnectez-vous.
@@ -5541,10 +5560,10 @@ sync-error-microsoft-confidential = { $account } : l’application est réglé
 sync-error-microsoft-secret-sent = { $account } : Sioul a envoyé à Microsoft un secret qu’il ne devrait jamais envoyer. C’est une faute de Sioul : signalez-la, s’il vous plaît.
 sync-error-microsoft-account-types = { $account } : l’application ne prend pas ce type de compte. Dans Microsoft Entra, ses types de comptes pris en charge doivent comprendre les comptes Microsoft personnels et ceux de toute organisation.
 sync-error-microsoft-scopes = { $account } : Microsoft a donné à Sioul la lecture ou l’envoi, pas les deux : reconnectez-vous et acceptez les deux.
-sync-error-microsoft-password = { $account } : Microsoft ne prend plus de mot de passe des logiciels de courrier, mots de passe d’application compris. Utilisez plutôt « Se connecter avec Microsoft », sur la carte de ce compte.
-sync-said-microsoft-not-connected-personal = { $account } : Outlook.com a laissé Sioul se connecter, mais garde la boîte fermée aux logiciels de courrier. Dans les paramètres d’Outlook.com (Courrier ▸ Transfert et IMAP), activez l’accès IMAP des appareils et des applications, puis enregistrez ; s’il l’est déjà, confirmez que cette connexion est la vôtre sur account.live.com/activity.
+sync-error-microsoft-password = { $account } : Microsoft ne prend plus de mot de passe des logiciels de courriel, mots de passe d’application compris. Utilisez plutôt « Se connecter avec Microsoft », sur la carte de ce compte.
+sync-said-microsoft-not-connected-personal = { $account } : Outlook.com a laissé Sioul se connecter, mais garde la boîte fermée aux logiciels de courriel. Dans les paramètres d’Outlook.com (Courrier ▸ Transfert et IMAP), activez l’accès IMAP des appareils et des applications, puis enregistrez ; s’il l’est déjà, confirmez que cette connexion est la vôtre sur account.live.com/activity.
 sync-said-microsoft-not-connected-work = { $account } : Microsoft a laissé Sioul se connecter, mais la boîte ne s’est pas ouverte. Votre organisation y a peut-être coupé IMAP (son administrateur peut le rétablir), ou la page de Microsoft a connecté un autre de vos comptes : reconnectez-vous et choisissez celui-ci.
-sync-said-microsoft-smtp-off = { $account } : votre organisation a coupé l’envoi par les logiciels de courrier (SMTP authentifié) pour cette boîte, et le message n’est pas parti. Son administrateur peut le rétablir pour vous : aka.ms/smtp_auth_disabled.
+sync-said-microsoft-smtp-off = { $account } : votre organisation a coupé l’envoi par les logiciels de courriel (SMTP authentifié) pour cette boîte, et le courriel n’est pas parti. Son administrateur peut le rétablir pour vous : aka.ms/smtp_auth_disabled.
 sync-said-microsoft-other-host = { $account } : ce compte se connecte avec Microsoft, mais son serveur est { $detail }, pas celui de Microsoft : Sioul ne lui a rien envoyé. Retirez le compte et ajoutez de nouveau son adresse.
 microsoft-cancelled = Arrêté : rien n’a changé.
 microsoft-timeout = Microsoft n’a pas répondu en cinq minutes : rien n’a changé.
@@ -5554,7 +5573,7 @@ microsoft-other-account = Vous vous êtes connecté à Microsoft en tant que { $
 microsoft-mailbox-refused = { $account } : Microsoft a donné l’accès à Sioul, mais la boîte est restée fermée, et rien n’a été gardé. Pour une adresse Outlook.com, activez l’accès IMAP des appareils et des applications dans les paramètres d’Outlook.com (Courrier ▸ Transfert et IMAP), ou, s’il l’est déjà, confirmez que cette connexion est la vôtre sur account.live.com/activity ; pour une adresse professionnelle ou scolaire, votre organisation a peut-être coupé IMAP pour cette boîte. Puis reconnectez-vous.
 microsoft-login-taken = Un autre de vos comptes se connecte déjà à Microsoft en tant que { $detail } : deux comptes ne partagent jamais une connexion, car retirer l’un déconnecterait l’autre. Rien n’a été gardé.
 microsoft-other-login-question = La page de Microsoft a connecté { $login }, pas { $address }, et seule la boîte de { $login } s’est ouverte (celle d’un alias, ou un autre compte choisi sur la page de Microsoft). Utiliser la boîte de { $login } pour { $address } ?
-microsoft-other-declined = Rien n’a été gardé pour { $account }. Pour lire le courrier de { $detail }, ajoutez { $detail } lui-même ; pour { $account }, reconnectez-vous et choisissez { $account } sur la page de Microsoft.
+microsoft-other-declined = Rien n’a été gardé pour { $account }. Pour lire les courriels de { $detail }, ajoutez { $detail } lui-même ; pour { $account }, reconnectez-vous et choisissez { $account } sur la page de Microsoft.
 microsoft-page-granted = Sioul a l’accès. Vous pouvez fermer cet onglet.
 microsoft-page-granted-phone = Sioul a l’accès. Revenez à Sioul maintenant : il termine là-bas.
 microsoft-page-refused = Microsoft n’a donné aucun accès à Sioul : rien n’a changé. Sioul dit pourquoi. Vous pouvez fermer cet onglet.
@@ -5563,26 +5582,26 @@ account-row-sign-in = Connexion
 account-signed-in-microsoft-personal = avec Microsoft, comme compte personnel (l’accès dans le trousseau)
 account-signed-in-microsoft-work = avec Microsoft, comme compte professionnel ou scolaire (l’accès dans le trousseau)
 account-signed-in-microsoft = connecté avec Microsoft (l’accès dans le trousseau)
-set-account-shield-ai-work = La lecture par l’IA n’est pas proposée pour un compte Microsoft professionnel ou scolaire : son courrier est aussi celui de son organisation, et les conditions de Microsoft demandent l’accord de l’organisation avant qu’il aille chez une autre entreprise. Les listes de mots protègent toujours cette adresse.
+set-account-shield-ai-work = La lecture par l’IA n’est pas proposée pour un compte Microsoft professionnel ou scolaire : ses courriels sont aussi ceux de son organisation, et les conditions de Microsoft demandent l’accord de l’organisation avant qu’ils aillent chez une autre entreprise. Les listes de mots protègent toujours cette adresse.
 set-mcp-work-accounts = Comptes Microsoft professionnels et scolaires
-set-mcp-work-accounts-help = Leur courrier reste fermé aux agents tant que vous ne l’ouvrez pas ici, quels que soient ses projets : les conditions de Microsoft laissent l’organisation, pas vous seul, permettre d’utiliser son courrier au-delà de la synchronisation. Ouvrez-le seulement si votre organisation le permet.
+set-mcp-work-accounts-help = Leurs courriels restent fermés aux agents tant que vous ne les ouvrez pas ici, quels que soient leurs projets : les conditions de Microsoft laissent l’organisation, pas vous seul, permettre d’utiliser ses courriels au-delà de la synchronisation. Ouvrez-les seulement si votre organisation le permet.
 microsoft-cli-no-app = Cette copie de Sioul ne porte aucune application Microsoft : donnez l’ID d’application (client) de l’une des vôtres avec --client-id (docs/microsoft.md dit comment l’inscrire, une fois). Aucun secret n’est jamais nécessaire.
-microsoft-cli-open = Microsoft ne prend pas de mot de passe des logiciels de courrier : ouvrez la page ci-dessous dans un navigateur de cet ordinateur, connectez-vous, puis revenez ici. Sioul attend cinq minutes ; Ctrl+C arrête.
+microsoft-cli-open = Microsoft ne prend pas de mot de passe des logiciels de courriel : ouvrez la page ci-dessous dans un navigateur de cet ordinateur, connectez-vous, puis revenez ici. Sioul attend cinq minutes ; Ctrl+C arrête.
 microsoft-cli-signed-in = { $account } : connecté { $how }.
-microsoft-cli-again = { $account } : reconnecté avec Microsoft ; son courrier revient.
+microsoft-cli-again = { $account } : reconnecté avec Microsoft ; ses courriels reviennent.
 microsoft-cli-not-microsoft = « { $id } » n’est pas chez Microsoft : il se connecte avec son mot de passe (sioul account password { $id }).
 microsoft-cli-no-password = « { $id } » est chez Microsoft, qui ne prend aucun mot de passe, mots de passe d’application compris : sioul account sign-in { $id } le connecte sur la page de Microsoft.
-microsoft-cli-remove-close = Si la fenêtre de Sioul ou un sioul watch est ouvert, fermez-le d’abord : tant qu’il est ouvert, il continue de relever le courrier de ce compte, qui reviendrait sur cet appareil.
+microsoft-cli-remove-close = Si la fenêtre de Sioul ou un sioul watch est ouvert, fermez-le d’abord : tant qu’il est ouvert, il continue de relever les courriels de ce compte, qui reviendraient sur cet appareil.
 microsoft-admin-steps = Ce que fait l’administrateur de votre organisation, une fois, pour tout le monde :
     1. Approuver Sioul : ouvrir ce lien connecté comme administrateur, et accepter. Microsoft envoie ensuite le navigateur vers 127.0.0.1, où rien ne répond : l’approbation est faite. { $link }
        Ou, dans le centre d’administration Microsoft Entra, intitulés anglais : Enterprise apps ▸ l’application (Sioul) ▸ Permissions ▸ Grant admin consent.
     2. Pour votre boîte : IMAP activé, et SMTP authentifié activé (centre d’administration Microsoft 365, intitulés anglais : Users ▸ Active users ▸ votre nom ▸ Mail ▸ Manage email apps).
-ui-remove-microsoft-mail = Supprimer aussi le courrier que Sioul garde sur cet appareil pour ce compte ?
-account-removed-microsoft-mail = « { $id } » retiré, avec sa connexion et le courrier que Sioul en gardait sur cet appareil. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
-account-removed-microsoft = « { $id } » retiré, avec sa connexion. Son courrier reste dans { $path }. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
+ui-remove-microsoft-mail = Supprimer aussi les courriels que Sioul garde sur cet appareil pour ce compte ?
+account-removed-microsoft-mail = « { $id } » retiré, avec sa connexion et les courriels que Sioul en gardait sur cet appareil. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
+account-removed-microsoft = « { $id } » retiré, avec sa connexion. Ses courriels restent dans { $path }. Microsoft compte encore Sioul parmi les applications que vous avez autorisées, jusqu’à ce que vous l’y retiriez : { $page }
 cli-yes-no = [O/n]
 cli-no-yes = [o/N]
-ui-microsoft-sign-in-note = Microsoft ne prend aucun mot de passe des logiciels de courrier, mots de passe d’application compris : vous vous connectez sur la page de Microsoft, dans votre navigateur, et Sioul garde l’accès dans le trousseau du système.
+ui-microsoft-sign-in-note = Microsoft ne prend aucun mot de passe des logiciels de courriel, mots de passe d’application compris : vous vous connectez sur la page de Microsoft, dans votre navigateur, et Sioul garde l’accès dans le trousseau du système.
 ui-microsoft-app-kept = La page de Microsoft s’ouvre dans votre navigateur, avec votre application gardée sur cet appareil. Sioul garde l’accès dans le trousseau du système : aucun mot de passe.
 ui-microsoft-imap-switch = Outlook.com garde IMAP coupé tant que vous ne l’activez pas, une fois : dans les paramètres d’Outlook.com, Courrier ▸ Transfert et IMAP, activez l’accès IMAP des appareils et des applications, puis enregistrez.
 ui-microsoft-imap-how = La page de Microsoft à ce sujet
@@ -5606,9 +5625,9 @@ ui-microsoft-waiting-phone = Votre navigateur est ouvert sur la page de Microsof
 ui-microsoft-other-use = Utiliser cette boîte
 ui-microsoft-other-not = Ne rien garder
 ui-microsoft-again = Se reconnecter
-ui-remove-confirm-microsoft = Retirer « { $id } » ? Sa connexion quitte le trousseau ; son courrier reste sur le serveur. Microsoft n’offre aux applications aucun moyen de rendre l’accès : une fois le compte retiré, Sioul dit où le retirer du côté de Microsoft.
+ui-remove-confirm-microsoft = Retirer « { $id } » ? Sa connexion quitte le trousseau ; ses courriels restent sur le serveur. Microsoft n’offre aux applications aucun moyen de rendre l’accès : une fois le compte retiré, Sioul dit où le retirer du côté de Microsoft.
 microsoft-no-app = Cette copie de Sioul ne porte aucune application Microsoft : utilisez une application à vous (son ID d’application (client)).
-account-signed-in-again-microsoft = { $account } : reconnecté avec Microsoft ; son courrier revient.
+account-signed-in-again-microsoft = { $account } : reconnecté avec Microsoft ; ses courriels reviennent.
 spam-app-no-address = aucune adresse encore
-ui-microsoft-privacy = Ce que Sioul fait de votre courrier Microsoft, et ce qu’il ne fait jamais : sa [politique de confidentialité](https://aurelienpierre.github.io/sioul/fr/privacy.html#microsoft-mail) et ses [conditions d’utilisation](https://aurelienpierre.github.io/sioul/fr/terms.html).
+ui-microsoft-privacy = Ce que Sioul fait de vos courriels Microsoft, et ce qu’il ne fait jamais : sa [politique de confidentialité](https://aurelienpierre.github.io/sioul/fr/privacy.html#microsoft-mail) et ses [conditions d’utilisation](https://aurelienpierre.github.io/sioul/fr/terms.html).
 ui-at-microsoft = Cette adresse est chez Microsoft (Microsoft 365, professionnelle ou scolaire) : se connecter avec Microsoft

@@ -2,8 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Something new, of any kind, from anywhere: a message, a task, an event, a
-// contact, a note, a budget movement, time spent, a project. One button and
-// one key (Ctrl+N) for all of them; each opens where that kind lives.
+// contact, a note, a budget movement, a paper, a paper letter's scan, time
+// spent, a project. One button and one key (Ctrl+N) for all of them; each
+// opens where that kind lives. A phone reads no scans: no paper letter there.
 
 pragma ComponentBehavior: Bound
 
@@ -27,6 +28,7 @@ SioulMenu {
         { kind: "note", words: "new-note", icon: "view-pim-notes" },
         { kind: "movement", words: "new-movement", icon: "view-financial-account-add" },
         { kind: "paper", words: "new-paper", icon: "document-new" },
+        { kind: "letter", words: "new-letter", icon: "mail-mark-unread" },
         { kind: "time", words: "new-time", icon: "chronometer-start" },
         { kind: "project", words: "new-project", icon: "folder-new" },
         // One line on where you stopped, for when you are back.
@@ -34,7 +36,7 @@ SioulMenu {
     ]
 
     Repeater {
-        model: newMenu.kinds
+        model: newMenu.kinds.filter(k => k.kind !== "letter" || Qt.platform.os !== "android")
 
         delegate: MenuItem {
             required property var modelData

@@ -377,6 +377,11 @@ SioulWindow {
         } else if (kind === "paper") {
             window.page = 13
             papersPage.startNew()
+        } else if (kind === "letter") {
+            // Paper letters live on the Porch: a scan chosen, copied where scans are read.
+            window.page = 0
+            if (window.porchPage)
+                window.porchPage.addScan()
         } else if (kind === "stopped") {
             window.askNeed("")
         }

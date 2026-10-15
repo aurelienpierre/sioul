@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "fr"
-checked = "2026-10-09"
+checked = "2026-10-15"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -378,15 +378,15 @@ you = ["tu", "toi", "te", "t'", "ton", "ta", "tes", "vous", "votre", "vos"]
 # Each topic's words: work comes first.
 [shield.topics]
 work = [
-    "freelance", "consulting", "consultant", "mission", "budget", "collaboration", "interview", "poste", "offre", "emploi",
+    "freelance", "consulting", "consultant", "mission", "budget", "collaboration", "poste", "offre", "emploi",
     "recrutement", "recruteur", "contrat", "prestation", "devis", "tarif", "tjm", "proposition", "partenariat",
     "opportunite", "entretien", "salaire", "projet", "collaborer",
 ]
 support = [
-    "bug", "crash", "version", "plugin", "erreur", "probleme", "aide", "comment faire", "plantage", "plante", "installer",
+    "bug", "crash", "version", "erreur", "probleme", "aide", "comment faire", "plantage", "ca plante", "installer",
     "mise a jour", "fonctionnalite",
 ]
-press = ["article", "podcast", "magazine", "media", "reportage", "journaliste", "presse", "medias", "chronique"]
+press = ["article", "podcast", "magazine", "media", "reportage", "journaliste", "presse", "medias", "chronique", "interview"]
 thanks = ["merci", "reconnaissant", "reconnaissante", "bravo", "felicitations"]
 donation = ["donation", "sponsor", "don", "soutien financier", "faire un don"]
 

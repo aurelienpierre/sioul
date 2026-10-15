@@ -1,18 +1,18 @@
 ---
-description: Budgets, réserves et comptes bancaires dans Sioul – dans les temps ou non, dit en mots, jamais en rouge ; les paiements lus dans le courrier, les fichiers d’export de votre banque lus sur votre appareil, une veille discrète sur ce qui n’est pas sorti, et vos contrats avec leurs dates de préavis.
+description: Budgets, réserves et comptes bancaires dans Sioul – dans les temps ou non, dit en mots, jamais en rouge ; les paiements lus dans les courriels, les fichiers d’export de votre banque lus sur votre appareil, une veille discrète sur ce qui n’est pas sorti, et vos contrats avec leurs dates de préavis.
 ---
 
 # Les budgets et les comptes bancaires {#budgets-and-bank-accounts}
 
 ## En bref {#in-short}
 
-L’argent va et vient par courrier : factures, reçus, avis de paiement, versements, avis d’impôt. La page Budgets vous dit où en est votre argent, en phrases, et sépare trois choses :
+L’argent va et vient par courriel : factures, reçus, avis de paiement, versements, avis d’impôt. La page Budgets vous dit où en est votre argent, en phrases, et sépare trois choses :
 
 - les **comptes bancaires**, là où est l’argent : un compte courant, PayPal, Stripe ;
 - les **réserves**, là où il est mis de côté : un Livret A, une assurance vie ;
 - les **budgets**, ce à quoi il sert : vos charges (loyer, énergie, courses), vos loisirs, votre travail, un projet.
 
-Sioul lit les fichiers d’export de votre banque et le courrier qui parle de paiements, les compare aux paiements que vous attendez, et dit calmement quand l’un n’est pas sorti, ou quand un compte risque de ne pas tenir le suivant, assez tôt pour virer de l’argent. Il ne se connecte jamais à votre banque, ne montre jamais de rouge, et ne montre jamais d’offres.
+Sioul lit les fichiers d’export de votre banque et les courriels qui parlent de paiements, les compare aux paiements que vous attendez, et dit calmement quand l’un n’est pas sorti, ou quand un compte risque de ne pas tenir le suivant, assez tôt pour virer de l’argent. Il ne se connecte jamais à votre banque, ne montre jamais de rouge, et ne montre jamais d’offres.
 
 <figure markdown="span">
   [![La page Budgets, « Budgets, octobre 2026 », avec Nouveau budget : trois budgets (travail, charges du foyer, loisirs), chacun sur une carte avec son nom et sa période, « Dans les temps » sur sa propre ligne, une phrase comme « 16 % du mois écoulé ; 51 % de ce qu’il peut dépenser est dépensé. », puis Jusqu’ici, Attendu au 31 octobre et Objectif, un par ligne.](../assets/screens/fr/budgets.png){ loading=lazy }](../assets/screens/fr/budgets.png "Ouvrir l’image en grand")
@@ -24,13 +24,13 @@ Sioul lit les fichiers d’export de votre banque et le courrier qui parle de pa
 - **Sioul ne se connecte jamais à votre banque** et ne garde aucun mot de passe bancaire : vous téléchargez le fichier de votre banque, et Sioul le lit sur votre appareil.
 - **Vos budgets, les mouvements de votre banque et vos contrats sont des fichiers lisibles** dans votre propre dossier de notes. Il n’y a pas de serveur de Sioul.
 - **Entre vos appareils**, ils voyagent par la synchronisation de votre dossier, ou scellés par le partage de Sioul une fois **Projets et argent** activé : le dossier et son serveur n’en peuvent rien lire ([Le partage](sharing.md)).
-- **Un courriel n’est lu comme un paiement qu’après avoir passé les vérifications de Sioul** : le courrier falsifié, les indésirables, un expéditeur qui emprunte le nom d’une banque ou d’une boutique, et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un paiement venu de quelqu’un de nouveau et non vérifié demande de vérifier d’abord : un faux « votre paiement » est une ruse courante.
+- **Un courriel n’est lu comme un paiement qu’après avoir passé les vérifications de Sioul** : les courriels falsifiés, les indésirables, un expéditeur qui emprunte le nom d’une banque ou d’une boutique, et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un paiement venu de quelqu’un de nouveau et non vérifié demande de vérifier d’abord : un faux « votre paiement » est une ruse courante.
 - **Un agent d’IA**, seulement si vous en connectez un, lit un résumé de vos budgets, ne déplace jamais d’argent, et voit les numéros de compte masqués.
 - **Pas d’offres**, pas de comparatifs, pas de « meilleures affaires », pas de publicité, pas de mesure d’audience.
 
 ## Les budgets {#budgets}
 
-**Nouveau budget** :
+**Nouveau budget** :
 
 - **Nom**.
 - **Compté par** : le mois ou l’année.
@@ -63,11 +63,11 @@ Chaque réserve montre son solde aujourd’hui, ce qui a bougé ce mois-ci, son 
 
 Quelle réserve couvre quel budget s’écrit dans le fichier des budgets : à la fin de chaque période, ce qui manque à un budget est pris sur sa réserve.
 
-## Le courrier qui parle d’argent {#mail-about-money}
+## Les courriels qui parlent d’argent {#mail-about-money}
 
-Sous les budgets, le courrier qui parle d’argent, du plus récent au plus ancien. Sioul lit, en français et en anglais, ce que dit un message : un paiement reçu ou fait, une commande, une facture, un remboursement ; le montant ; qui a payé, ou qui a été payé.
+Sous les budgets, les courriels qui parlent d’argent, du plus récent au plus ancien. Sioul lit, en français et en anglais, ce que dit un courriel : un paiement reçu ou fait, une commande, une facture, un remboursement ; le montant ; qui a payé, ou qui a été payé.
 
-Chaque ligne dit où elle en est : *Compté dans* un budget, *Même paiement que* tel autre message (une commande et son paiement ne comptent qu’une fois), ou en attente de vous, avec **Ajouter** et **Pas un paiement**. Une ligne venue d’un expéditeur nouveau et non vérifié demande de vérifier d’abord que le message est authentique. Le courrier falsifié, les indésirables et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un montant dans une autre monnaie est marqué « à convertir » : Sioul ne le convertit pas encore.
+Chaque ligne dit où elle en est : *Compté dans* un budget, *Même paiement que* tel autre courriel (une commande et son paiement ne comptent qu’une fois), ou en attente de vous, avec **Ajouter** et **Pas un paiement**. Une ligne venue d’un expéditeur nouveau et non vérifié demande de vérifier d’abord que le courriel est authentique. Les courriels falsifiés, les indésirables et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un montant dans une autre monnaie est marqué « à convertir » : Sioul ne le convertit pas encore.
 
 Des règles dans le fichier des budgets peuvent envoyer d’elles-mêmes vers un budget les paiements d’un expéditeur, ou ceux qui portent un mot.
 
@@ -109,7 +109,7 @@ Ce qui vous engage : loyer, énergie, téléphone et internet, assurances, com
 - **Un rappel**, une fois, deux semaines avant le dernier jour où un préavis peut partir, pour les contrats qui se renouvellent chaque année. Comme les rappels sur l’argent, il ne vient que d’un ordinateur.
 - **L’arrêter…** : **Ouvrir sa page de résiliation**, ou **Écrire la lettre** : un brouillon de lettre de résiliation, à son adresse, avec votre numéro, qui demande une confirmation écrite. Vous la relisez, la signez et l’envoyez. **Il est fini** garde le contrat, estompé, comme trace.
 
-Les paiements réguliers sans contrat noté sont listés dessous, chacun avec **Le noter**. Un message peut en devenir un avec **Garder comme contrat…**, dans son menu.
+Les paiements réguliers sans contrat noté sont listés dessous, chacun avec **Le noter**. Un courriel peut en devenir un avec **Garder comme contrat…**, dans son menu.
 
 Sioul ne montre jamais d’offres, de comparatifs ni de « meilleures affaires » : seulement des faits sur vos contrats.
 
@@ -126,7 +126,7 @@ Pendant les loisirs, un repas et le sommeil, seuls les budgets de loisirs sont e
 Dans cet ordre :
 
 1. **Votre choix** : **Où il va**, sur la ligne d’un mouvement, le place dans un budget, ou dans aucun.
-2. **Le même paiement qu’une ligne déjà comptée**, venue du courrier ou ajoutée à la main : compté une fois.
+2. **Le même paiement qu’une ligne déjà comptée**, venue d’un courriel ou ajoutée à la main : compté une fois.
 3. **Un virement entre vos propres comptes** : dans aucun budget, puisque l’autre côté est lu aussi.
 4. **La première de vos règles qui tient** (**Règles…**, sur la carte du compte) : des mots du libellé, une entrée ou une sortie, et la destination : un budget, le paiement régulier qu’il représente, une réserve, un autre compte. Une règle sans mots prend tous les mouvements de son sens.
 5. **Le paiement régulier qu’il représente**, par son nom ou son montant, près de son jour : le vrai montant remplace celui qui était prévu.
@@ -144,7 +144,7 @@ Le site de votre banque peut être gardé dans [Sites](sites.md) : Sioul rempl
 
 ### Dans le terminal {#in-the-terminal}
 
-`sioul budgets` affiche les budgets, les réserves et les paiements que propose le courrier, comme la page les dit.
+`sioul budgets` affiche les budgets, les réserves et les paiements que proposent les courriels, comme la page les dit.
 
 ### Avec un agent d’IA {#with-an-ai-agent}
 
@@ -169,7 +169,7 @@ En octobre 2026, d’après la documentation de chaque application.
 | Les paiements attendus, rapprochés des mouvements de la banque | ✓ | ✓ | ✓ | ✓ | ✓ | en partie⁶ |
 | Dit quand un paiement attendu n’est pas sorti, ou a pris un autre montant | ✓ | ✗ | en partie⁷ | en partie⁸ | ✗ | ✗ |
 | Dit à l’avance qu’un compte ne tiendra pas un paiement, et quoi virer d’ici quand | ✓ | ✗ | ✗ | ✗ | ✗ | en partie⁹ |
-| Des paiements lus dans votre courrier, comptés une fois | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Des paiements lus dans vos courriels, comptés une fois | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Des contrats : renouvellement, date limite de préavis, lettre de résiliation | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Lit les fichiers d’export de votre banque | ✓ | ✓¹⁰ | ✓ | ✓¹¹ | ✓ | ✗ |
 | Se connecte à votre banque de lui-même | ✗¹² | ✓ | ✓ | ✓¹¹ | en partie¹³ | ✓ |
@@ -213,7 +213,7 @@ En octobre 2026, d’après la documentation de chaque application.
 3. Facultatif ; les jetons de synchronisation bancaire ne sont pas couverts, et la copie sur votre appareil n’est pas chiffrée.
 4. Indiqué comme « not accepting new accounts ».
 
-D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ se connectent d’eux-mêmes à la banque, et GnuCash le fait pour les banques allemandes ; GnuCash et Firefly III tiennent une comptabilité en partie double, des placements et plusieurs monnaies ; les quatre applications de budget font des rapports plus complets, et leurs applications pour téléphone ont plus d’usage derrière elles. Ce que Sioul ajoute, c’est la veille en phrases, le courrier lu comme des paiements et compté une fois, et vos contrats avec leurs dates de préavis, le tout sans connexion bancaire.
+D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ se connectent d’eux-mêmes à la banque, et GnuCash le fait pour les banques allemandes ; GnuCash et Firefly III tiennent une comptabilité en partie double, des placements et plusieurs monnaies ; les quatre applications de budget font des rapports plus complets, et leurs applications pour téléphone ont plus d’usage derrière elles. Ce que Sioul ajoute, c’est la veille en phrases, les courriels lus comme des paiements et comptés une fois, et vos contrats avec leurs dates de préavis, le tout sans connexion bancaire.
 
 ??? info "Sources"
     Toutes lues le 8 octobre 2026.
@@ -226,7 +226,7 @@ D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ 
 
 ## Côté technique {#for-technical-readers}
 
-**Les fichiers.** `sioul-budgets.toml` (budgets, paiements réguliers, lignes, réserves, couvertures, règles du courrier, comptes bancaires, leurs règles et vos choix au cas par cas), `sioul-bank.toml` (les mouvements de chaque compte par l’identifiant de la banque, son solde le plus récent), `sioul-contracts.toml` : du TOML à la racine de votre dossier de notes, écrit en gardant ses commentaires. Les messages dont vous avez dit qu’ils ne sont pas des paiements sont listés dans `~/.local/state/sioul/money.toml` sous Linux. Les montants sont gardés en centimes entiers, pour que les sommes ne dérivent jamais, et les montants écrits à la façon de chaque pays sont lus (« 1 234,56 € », « €1,234.56 », « (62.00) »).
+**Les fichiers.** `sioul-budgets.toml` (budgets, paiements réguliers, lignes, réserves, couvertures, règles des courriels, comptes bancaires, leurs règles et vos choix au cas par cas), `sioul-bank.toml` (les mouvements de chaque compte par l’identifiant de la banque, son solde le plus récent), `sioul-contracts.toml` : du TOML à la racine de votre dossier de notes, écrit en gardant ses commentaires. Les courriels dont vous avez dit qu’ils ne sont pas des paiements sont listés dans `~/.local/state/sioul/money.toml` sous Linux. Les montants sont gardés en centimes entiers, pour que les sommes ne dérivent jamais, et les montants écrits à la façon de chaque pays sont lus (« 1 234,56 € », « €1,234.56 », « (62.00) »).
 
 **Les exports.** OFX 1.x (SGML) et 2.x (XML), par le `FITID` de chaque mouvement ; camt.053 de l’ISO 20022, des versions 001.02 à 001.08 (les écritures comptabilisées, le solde de clôture comptabilisé, les noms sous `Pty`) ; le CSV d’une banque, son en-tête trouvé par ses mots, avec `;` ou `,`, la virgule décimale, débit et crédit séparés ou non, et un solde écrit au-dessus du tableau ; l’activité de PayPal (nette de frais ; les lignes en attente, refusées et pour mémoire laissées de côté, ainsi que celles dans une autre monnaie que la plupart du fichier) ; l’historique du solde de Stripe. Un mouvement sans identifiant en reçoit un, fait de son jour, de son montant et de son libellé : un fichier lu deux fois n’ajoute rien.
 
@@ -234,7 +234,7 @@ D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ 
 
 **La veille.** Un paiement attendu est cherché de trois jours avant sa date à sept jours après, par un mot de son nom, ou par son montant (à 1 % près, à trois jours près). « A pris un autre montant » veut dire plus de 5 % et 2 € d’écart. Le solde est projeté 31 jours en avant, les dépenses du quotidien réparties sur leurs jours. Un renflouement est arrondi à la dizaine au-dessus et demandé autant de jours à l’avance que sa réserve en met.
 
-**Le courrier.** Seul le courrier qui a passé les vérifications d’authentification est lu pour y trouver des paiements ([Chaque message vérifié](privacy-security.md#every-message-checked)) : jamais le courrier mis de côté (falsifié, indésirable, un nom emprunté, un expéditeur bloqué), ni la file à examiner. Les paiements sont lus par des règles, en français et en anglais, dans l’objet et le début du texte ; un capital social dans des mentions légales n’est jamais pris pour un montant.
+**Les courriels.** Seuls les courriels qui ont passé les vérifications d’authentification sont lus pour y trouver des paiements ([Chaque courriel vérifié](privacy-security.md#every-message-checked)) : jamais les courriels mis de côté (falsifiés, indésirables, un nom emprunté, un expéditeur bloqué), ni la file à examiner. Les paiements sont lus par des règles, en français et en anglais, dans l’objet et le début du texte ; un capital social dans des mentions légales n’est jamais pris pour un montant.
 
 **Scellé entre vos appareils.** Avec **Projets et argent** activé, chaque changement des trois fichiers est scellé avec XChaCha20-Poly1305 (un nonce aléatoire de 192 bits chacun), lié à l’appareil qui l’a écrit, à sa place et à son heure, sous une clé tirée de votre phrase de passe par Argon2id (64 Mio, trois passes) et gardée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 

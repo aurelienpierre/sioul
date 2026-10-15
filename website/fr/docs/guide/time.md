@@ -18,7 +18,7 @@ Sioul note le temps que vous passez, pendant que vous travaillez ou après coup,
 - Votre temps, vos clients et vos factures restent dans des fichiers lisibles sur vos appareils. Pas de compte à ouvrir, pas d’abonnement, pas de serveur de Sioul.
 - Un numéro de facture n’est jamais donné deux fois, même avec plusieurs appareils : un seul appareil numérote les factures, et Sioul attend plutôt que de risquer un numéro en double.
 - Le temps déjà facturé ne peut plus être changé, ni facturé de nouveau.
-- Le tableur pour votre comptable ne peut pas porter de formule cachée : un titre de tâche venu du courrier de quelqu’un est écrit comme du simple texte.
+- Le tableur pour votre comptable ne peut pas porter de formule cachée : un titre de tâche venu d’un courriel de quelqu’un est écrit comme du simple texte.
 - Quand vos appareils partagent, votre temps et vos factures voyagent scellés, par un dossier que votre propre synchronisation transporte : le dossier et son serveur voient que quelque chose a changé, jamais quoi ([Le partage](sharing.md)).
 
 ## La page Temps {#the-time-page}
@@ -42,8 +42,8 @@ Un minuteur oublié est coupé quand vous l’arrêtez : au-delà du double du
 
 Chaque moment dit discrètement comment ses minutes ont été connues :
 
-- *chronométré* ;
-- *noté à la main* ;
+- *chronométré* ;
+- *noté à la main* ;
 - *chronométré, puis corrigé*, une fois que vous avez changé la durée d’un moment chronométré, ou que Sioul a coupé un minuteur resté lancé ;
 - *on ne sait pas comment*, pour le temps noté avant que Sioul ne le garde.
 
@@ -61,7 +61,7 @@ Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de p
 
 ## Un tableur du temps facturable {#a-spreadsheet-of-billable-time}
 
-Le bouton d’export, en haut à droite de la page Temps : **Le temps facturable, en tableur (CSV)…**, pour un projet et une période (cette semaine, la semaine dernière, ce mois-ci, le mois dernier, depuis toujours, ou d’un jour à un autre). Une ligne par tâche, avec ses heures, le taux horaire et le montant, puis le total. En français, le fichier utilise `;` et la virgule décimale, comme les tableurs français les lisent. Un titre de tâche venu du courrier de quelqu’un est écrit comme du simple texte : un tableur ne l’exécute jamais comme une formule.
+Le bouton d’export, en haut à droite de la page Temps : **Le temps facturable, en tableur (CSV)…**, pour un projet et une période (cette semaine, la semaine dernière, ce mois-ci, le mois dernier, depuis toujours, ou d’un jour à un autre). Une ligne par tâche, avec ses heures, le taux horaire et le montant, puis le total. En français, le fichier utilise `;` et la virgule décimale, comme les tableurs français les lisent. Un titre de tâche venu d’un courriel de quelqu’un est écrit comme du simple texte : un tableur ne l’exécute jamais comme une formule.
 
 ## Les factures {#invoices}
 

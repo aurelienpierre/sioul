@@ -6,10 +6,10 @@ description: Les heures dans Sioul – heures de travail et heures pour vos dém
 
 Deux questions décident de ce que Sioul met en avant, et elles restent séparées :
 
-- **Qui peut vous joindre, et quand** : vos listes (sûrs, neutres, restreints, inconnus, les bloqués, jamais), les personnes qui passent toujours, et pour le courrier, les appels et les messages des autres applications, ce que fait chaque liste à chaque moment ([Ce qui vous joint, et quand](notifications.md#by-person)).
+- **Qui peut vous joindre, et quand** : vos listes (sûrs, neutres, restreints, inconnus, les bloqués, jamais), les personnes qui passent toujours, et pour les courriels, les appels et les messages des autres applications, ce que fait chaque liste à chaque moment ([Ce qui vous joint, et quand](notifications.md#by-person)).
 - **À quoi sert une chose, et si ce moment est fait pour elle** : cette page.
 
-Elles se rejoignent en un point, le courrier : celui de vos expéditeurs sûrs vient quand leur ligne le laisse, à n’importe laquelle de vos adresses ; celui des autres (neutres, restreints, inconnus) quand leur ligne le laisse, à une adresse faite pour le moment présent. Celui des personnes qui passent toujours vient à n’importe quelle adresse aussi. Les appels et les messages des autres applications suivent leurs propres lignes, seules. Le courrier que vous vous envoyez s’affiche tout de suite, et les codes et liens que vous venez de demander à un site arrivent tout de suite.
+Elles se rejoignent en un point, les courriels : ceux de vos expéditeurs sûrs viennent quand leur ligne les laisse, à n’importe laquelle de vos adresses ; ceux des autres (neutres, restreints, inconnus) quand leur ligne les laisse, à une adresse faite pour le moment présent. Ceux des personnes qui passent toujours viennent à n’importe quelle adresse aussi. Les appels et les messages des autres applications suivent leurs propres lignes, seules. Les courriels que vous vous envoyez s’affichent tout de suite, et les codes et liens que vous venez de demander à un site arrivent tout de suite.
 
 C’est une question de santé avant d’être un filtre. Le travail qui atteint la soirée empêche de récupérer, et le risque est le plus fort pour les personnes qui travaillent chez elles ou à leur compte, pour qui rien d’autre ne marque la fin de la journée. Des démarches étalées sur toutes les soirées pèsent aussi, même pour qui ne travaille pas.
 
@@ -61,7 +61,7 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 
 ## Ce qui suit le moment présent {#what-follows-the-time}
 
-- **Le courrier** : quand la ligne de l’expéditeur le laisse ([Ce qui vous joint, et quand](notifications.md#by-person)). Le courrier de vos expéditeurs sûrs et des personnes qui passent toujours vient à n’importe quelle adresse ; celui des autres seulement à une adresse faite pour le moment présent, sauf si les deux ne se rencontrent jamais dans votre semaine : les moments de leur ligne décident alors seuls, pour que rien n’attende pour toujours.
+- **Les courriels** : quand la ligne de l’expéditeur les laisse ([Ce qui vous joint, et quand](notifications.md#by-person)). Les courriels de vos expéditeurs sûrs et des personnes qui passent toujours viennent à n’importe quelle adresse ; ceux des autres seulement à une adresse faite pour le moment présent, sauf si les deux ne se rencontrent jamais dans votre semaine : les moments de leur ligne décident alors seuls, pour que rien n’attende pour toujours.
 - **Les sites** : ceux du moment présent viennent en premier ; les autres se replient sous « Autres heures ». Leurs notifications attendent leurs heures, temps réel et appels compris, et aucune ne vient pendant le sommeil.
 - **Les tâches** : les pages de tâches gardent ce qui convient, et le plan place chaque tâche dans les heures prévues pour elle : le travail aux heures de travail, vos démarches aux heures de démarches. Les loisirs n’ont pas d’heures : ce qui n’est que pour les loisirs ne prend pas de place dans le plan et n’attend rien. La prochaine étape n’est jamais un appel à un bureau fermé à ce moment.
 - **Les budgets** : selon ce à quoi chacun sert.
@@ -70,8 +70,8 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 
 Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
 
-- le Porche montre les codes, et le courrier que vos listes laissent passer à ce moment ;
-- les adresses de travail se replient sur la page du courrier, sans leurs points ;
+- le Porche montre les codes, et les courriels que vos listes laissent passer à ce moment ;
+- les adresses de travail se replient sur la page Courriels, sans leurs points ;
 - les sites de travail gardent leurs notifications pour plus tard ;
 - Projets ne montre que les vôtres, et Temps attend derrière **Montrer quand même** ;
 - Tâches ne montre que ce qui convient au moment présent.
@@ -89,8 +89,8 @@ Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange 
 - **presque aucune notification**, sauf si vous le changez ([Ce qui vous joint, et quand](notifications.md#by-time)) : ni site, ni rappel avant une date, ni pause pour bouger, ni avis de repas ou de sieste, ni message, ni appel sauf ceux des personnes qui passent toujours. Ce qui a encore du sens au réveil vient alors ;
 - **les codes que vous venez de demander viennent** : vous les avez demandés, et un code ne vaut que quelques minutes. Pour qu’ils restent sur le Porche pendant le sommeil, choisissez **Sur le Porche seulement** pour Codes ▸ Sommeil dans Paramètres ▸ Ce qui vous joint ▸ [Celles de Sioul](notifications.md#sioul-s-own) ;
 - **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Plus tard** pour Prises ▸ Sommeil dans Paramètres ▸ Ce qui vous joint ▸ [Celles de Sioul](notifications.md#doses) : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
-- si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un message sur un projet vient parmi les personnes que vous connaissez ;
-- chaque adresse se replie sur la page du courrier ; seuls les sites de loisirs sont listés ;
+- si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un courriel sur un projet vient parmi les personnes que vous connaissez ;
+- chaque adresse se replie sur la page Courriels ; seuls les sites de loisirs sont listés ;
 - Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une idée peut encore être notée pour plus tard.
 
 Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.

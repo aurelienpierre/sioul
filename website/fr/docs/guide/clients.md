@@ -1,22 +1,22 @@
 ---
-description: Sioul pour les indépendants, les consultants et les micro-entrepreneurs – un projet par client, son courrier qui lui arrive tout seul, son temps compté pendant le travail, et la facture faite de ce temps, numérotée sans trou. Une seule fenêtre, vos propres fichiers, pas d’abonnement.
+description: Sioul pour les indépendants, les consultants et les micro-entrepreneurs – un projet par client, ses courriels qui lui arrivent tout seuls, son temps compté pendant le travail, et la facture faite de ce temps, numérotée sans trou. Une seule fenêtre, vos propres fichiers, pas d’abonnement.
 ---
 
 # Travailler pour des clients {#working-for-clients}
 
-Indépendants, consultants, micro-entrepreneurs : vous vendez votre temps. D’habitude, il y faut un outil de suivi du temps, un tableur des heures, un service de facturation, et votre messagerie ouverte à côté, avec votre mémoire pour tenir le tout.
+Indépendants, consultants, micro-entrepreneurs : vous vendez votre temps. D’habitude, il y faut un outil de suivi du temps, un tableur des heures, un service de facturation, et votre boîte de courriel ouverte à côté, avec votre mémoire pour tenir le tout.
 
-Dans Sioul, c’est une seule boucle, dans une seule fenêtre. Le courrier du client arrive à son projet. Le travail se compte pendant que vous le faites. La facture est faite de ce qui a été compté, et attend dans votre budget jusqu’à son paiement.
+Dans Sioul, c’est une seule boucle, dans une seule fenêtre. Les courriels du client arrivent à son projet. Le travail se compte pendant que vous le faites. La facture est faite de ce qui a été compté, et attend dans votre budget jusqu’à son paiement.
 
 <figure markdown="span">
-  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Le courrier qui arrive ici tout seul », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](../assets/screens/fr/projects.png){ loading=lazy }](../assets/screens/fr/projects.png "Ouvrir l’image en grand")
-  <figcaption>Le projet d’un client : ses tâches, son temps, son courrier, ses factures, sur une ligne de temps.</figcaption>
+  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Les courriels qui arrivent ici tout seuls », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](../assets/screens/fr/projects.png){ loading=lazy }](../assets/screens/fr/projects.png "Ouvrir l’image en grand")
+  <figcaption>Le projet d’un client : ses tâches, son temps, ses courriels, ses factures, sur une ligne de temps.</figcaption>
 </figure>
 
-## La boucle, du premier courrier à la facture payée {#the-loop-from-the-first-mail-to-the-paid-invoice}
+## La boucle, du premier courriel à la facture payée {#the-loop-from-the-first-mail-to-the-paid-invoice}
 
 1. **Un projet par client.** **Nouveau ▾ ▸ Un projet**, puis **Pour un client : son temps se facture à un taux horaire** : pour qui, ce que coûte une heure, et le budget où son argent est attendu. Quand **Pour** nomme l’un de vos contacts (son nom, ou son organisation), la facture prend l’adresse postale du contact. **Lier à…**, au bas du projet, y lie le contact du client, avec tout ce qui en fait partie : une note, un événement, un site. [Les projets](projects.md#making-a-project)
-2. **Son courrier arrive tout seul.** Donnez au projet le domaine ou les adresses du client, des mots d’un objet, ou du nom d’une pièce jointe (« devis ») : les messages qui correspondent y sont rangés à leur arrivée, chacun avec la raison de sa venue. Les réponses suivent leur conversation. Sioul vérifie d’abord qui a envoyé chaque message : un courrier falsifié n’est jamais rangé dans le projet d’un client, même quand son adresse ressemble à la sienne. [Le courrier qui arrive ici tout seul](projects.md#mail-that-comes-here-by-itself)
+2. **Ses courriels arrivent tout seuls.** Donnez au projet le domaine ou les adresses du client, des mots d’un objet, ou du nom d’une pièce jointe (« devis ») : les courriels qui correspondent y sont rangés à leur arrivée, chacun avec la raison de sa venue. Les réponses suivent leur conversation. Sioul vérifie d’abord qui a envoyé chaque courriel : un courriel falsifié n’est jamais rangé dans le projet d’un client, même quand son adresse ressemble à la sienne. [Les courriels qui arrivent ici tout seuls](projects.md#mail-that-comes-here-by-itself)
 3. **Le travail tient dans vos heures de travail.** Les tâches du projet, en tableau, en liste ou en calendrier ; la prochaine étape, placée dans les heures que vous gardez pour le travail. [Les tâches](tasks.md)
 4. **Le temps se compte pendant que vous travaillez.** Les minutes d’une séance de concentration vont à sa tâche, et au projet de la tâche. Une réunion, un appel, un travail fait loin du minuteur : **Noter du temps**, `1h30`. Une tâche peut rester hors de la facture. [D’où vient le temps](time.md#where-time-comes-from)
 5. **Ce qui reste à facturer reste en vue** : pour chaque projet, en heures et en argent, sur la page Temps et à côté du projet. [La page Temps](time.md#the-time-page)
@@ -38,7 +38,7 @@ Avec le préfixe habituel, l’année, les numéros de facture repartent chaque 
 
 ## Pour votre comptable {#for-your-accountant}
 
-**Le temps facturable, en tableur (CSV)** : un projet, une période (ce mois-ci, le mois dernier, d’un jour à un autre), une ligne par tâche avec ses heures, son taux et son montant, puis le total. Un titre venu du courrier de quelqu’un est écrit comme du simple texte, jamais comme une formule. [Un tableur du temps facturable](time.md#a-spreadsheet-of-billable-time)
+**Le temps facturable, en tableur (CSV)** : un projet, une période (ce mois-ci, le mois dernier, d’un jour à un autre), une ligne par tâche avec ses heures, son taux et son montant, puis le total. Un titre venu d’un courriel de quelqu’un est écrit comme du simple texte, jamais comme une formule. [Un tableur du temps facturable](time.md#a-spreadsheet-of-billable-time)
 
 ## Sur votre ordinateur de bureau et votre portable {#on-your-desktop-and-your-laptop}
 
@@ -58,7 +58,7 @@ En dehors de vos heures de travail, les projets des clients et la page Temps se 
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-Toggl Track, Clockify, Harvest, Kimai et Freebe en font plus pour les devis, les frais et la TVA, et Freebe fait déjà les factures électroniques que la France va demander. Sioul garde toute la boucle, du courrier du client à la facture payée, dans une seule fenêtre et dans des fichiers sur vos appareils. Les tableaux, en octobre 2026 : [Le temps et les factures](time.md#compared-with-other-apps) et [Les projets](projects.md#compared-with-other-apps).
+Toggl Track, Clockify, Harvest, Kimai et Freebe en font plus pour les devis, les frais et la TVA, et Freebe fait déjà les factures électroniques que la France va demander. Sioul garde toute la boucle, des courriels du client à la facture payée, dans une seule fenêtre et dans des fichiers sur vos appareils. Les tableaux, en octobre 2026 : [Le temps et les factures](time.md#compared-with-other-apps) et [Les projets](projects.md#compared-with-other-apps).
 
 ## À vous {#yours}
 

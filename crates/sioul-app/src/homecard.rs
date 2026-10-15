@@ -1965,7 +1965,7 @@ mod tests {
         }
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), false, "fr", &[]);
         assert_eq!(fr.card.codes[0].line, "Un code attend sur le Porche.");
-        assert_eq!(fr.at("2026-10-05T10:00[Europe/Paris]").porch.as_ref().unwrap().line, "Du courrier attend sur le Porche.");
+        assert_eq!(fr.at("2026-10-05T10:00[Europe/Paris]").porch.as_ref().unwrap().line, "Des courriels attendent sur le Porche.");
         assert!(fr.card.agenda.as_ref().unwrap().events.iter().all(|e| e.title == "Un événement"));
     }
 
@@ -2028,7 +2028,7 @@ mod tests {
         assert_eq!(names(&agenda.days[7])[0].1, "lun. 12 oct.");
         assert_eq!(agenda.events.iter().find(|e| e.title == "Trip to the sea").unwrap().time, "Jusqu’au ven. 16 oct.");
         assert_eq!(agenda.events.iter().find(|e| e.title == "Night train").unwrap().time, "22:30 – mer. 21 oct. 06:45");
-        assert_eq!(fr.card.words.mail, "Courrier");
+        assert_eq!(fr.card.words.mail, "Courriels");
     }
 
     #[test]
@@ -2052,7 +2052,7 @@ mod tests {
                         let shown = words(&card, frame);
                         assert!(!digits(&shown), "a number on the card: {shown}");
                         // Never how many came, in words either.
-                        for count in ["letters came", "letter came", "lettres sont arrivées", "lettre est arrivée", "Many", "Beaucoup", "Seven", "Sept", "Twelve", "Douze"] {
+                        for count in ["e-mails came", "e-mail came", "courriels sont arrivés", "courriel est arrivé", "Many", "Beaucoup", "Seven", "Sept", "Twelve", "Douze"] {
                             assert!(!shown.contains(count), "a count on the card: {shown}");
                         }
                     }

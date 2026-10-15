@@ -39,7 +39,7 @@ Finir dit ce que cela a changé, une fois, dans la ligne d’état : « Fait
 
 ## Une nouvelle tâche {#a-new-task}
 
-**Nouvelle tâche**, à côté de la ligne en haut de la page, ouvre à droite le formulaire complet d’une nouvelle tâche (sur un téléphone, il prend la page), son titre d’abord. **Nouveau ▾ ▸ Une tâche** fait de même où que vous soyez, tout comme **Ajouter ▾ ▸ Une tâche** sur un message, un événement, une note, un contact ou un projet, son titre et son lien déjà donnés.
+**Nouvelle tâche**, à côté de la ligne en haut de la page, ouvre à droite le formulaire complet d’une nouvelle tâche (sur un téléphone, il prend la page), son titre d’abord. **Nouveau ▾ ▸ Une tâche** fait de même où que vous soyez, tout comme **Ajouter ▾ ▸ Une tâche** sur un courriel, un événement, une note, un contact ou un projet, son titre et son lien déjà donnés.
 
 - Tous les champs sont là d’un coup : la liste, les dates, le temps qu’elle prend, ce qu’elle attend, le temps avant et après, ce qu’elle demande et ce qu’elle apporte, les notes.
 - La tâche est créée dès qu’elle a un titre : Entrée, ou un autre champ. Ensuite, chaque champ est gardé au fur et à mesure, comme pour toute tâche.
@@ -105,7 +105,7 @@ Le temps est noté pour la tâche, et pour son projet : pour le facturer, et p
 
 ### Qu’est-ce qui rend cela difficile ? {#what-makes-it-hard}
 
-Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cela me pèse*, *C’est ennuyeux*, *Pas d’énergie aujourd’hui*. Chacune apporte une aide : les détails de la tâche ouverts, avec ses notes et ses messages ; une étape ajoutée ; deux minutes proposées (**Juste deux minutes**, sous la carte : le temps ne démarre que si vous appuyez) ; ou une journée plus légère. Seul **Commencer** fait démarrer le temps.
+Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cela me pèse*, *C’est ennuyeux*, *Pas d’énergie aujourd’hui*. Chacune apporte une aide : les détails de la tâche ouverts, avec ses notes et ses courriels ; une étape ajoutée ; deux minutes proposées (**Juste deux minutes**, sous la carte : le temps ne démarre que si vous appuyez) ; ou une journée plus légère. Seul **Commencer** fait démarrer le temps.
 
 ## La journée {#the-day}
 
@@ -159,14 +159,14 @@ Une tâche s’ouvre à droite avec ses détails, depuis n’importe quelle vue�
 - **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
 - ses étiquettes, **ses étapes** (chacune se coche ici ; leurs minutes s’additionnent), **ce qu’elle attend**, chaque attente avec son délai quand elle en a un (« deux semaines après elle »), et ce qu’elle libère ;
 - ses champs en mots, ceux qui sont dits : **Peut commencer le**, **Avant** et **Après**, ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Projet**, **Facturé**, **Type**, **Pour**, **Demande un bureau ouvert**, **Revient**, **Liste** ; ses notes ;
-- **Lié à cela** : le courrier d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un message aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
+- **Lié à cela** : le courriel d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un courriel aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
 
 **Modifier**, en haut, change les détails en son formulaire, et **Détails** revient aux détails. Chaque champ est gardé au fur et à mesure :
 
 - **ses étapes**, et une de plus en une ligne (« Une étape, en une ligne ») ; **ce qu’elle attend** (« Attend… » : une autre tâche, trouvée par son titre), et, pour la prochaine attente ajoutée, **Puis attendre** : un délai en jours ou en semaines une fois l’autre faite (« la réponse arrive sous deux semaines » ; 0, aucun) ;
 - sous **Plus** : **Peut commencer le**, **Date demandée**, **Prend environ**, **Projet**, **Étiquettes**, **Revient** (la répétition), **Avant** et **Après** (le temps de se préparer, d’y aller et d’en revenir : gardé libre autour d’elle dans votre plan, jamais compté comme une pause ; la journée ne coupe jamais une telle tâche en morceaux), ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Facturé** ([Temps](time.md)), **Demande un bureau ouvert**, **Liste**, et **Notes, en Markdown**. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord.
 
-Tout peut devenir une tâche : un message, une ligne d’une note, un événement à préparer.
+Tout peut devenir une tâche : un courriel, une ligne d’une note, un événement à préparer.
 
 ## La fin de la journée {#the-end-of-the-day}
 
@@ -175,7 +175,7 @@ Tout peut devenir une tâche : un message, une ligne d’une note, un événem
 - ce que vous avez dit du matin, et ce que le plan en a fait : « Ce matin : brume. Le plan a gardé une journée plus légère. » ;
 - **La journée a été :** légère, habituelle, lourde ou ressourçante ;
 - **Le mélange :** trop plein, juste ce qu’il faut ou trop vide ;
-- une note si vous voulez, en Markdown, avec **Aperçu** ;
+- une note si vous voulez, en Markdown, avec **Aperçu** ;
 - vos notes des derniers jours, repliées, avec les mots que vous aviez alors.
 
 Chaque réponse est facultative. **Clore la journée de travail** la clôt sans réponse comme avec ; **Pas maintenant** ne change rien. Rien ne demande s’il faut s’arrêter, et rien ne compare ce qui était prévu à ce qui a été fait. « Annuler » attend dans la ligne d’état.
@@ -326,7 +326,7 @@ Le ⚙ en haut de la page :
 - **Les créneaux vont dans** : l’agenda des tâches que vous fixez à une heure ; sauf si vous en choisissez un, « Tâches planifiées », créé la première fois avec la liste de chaque tâche (sur cet appareil pour une liste gardée ici, ou pour un compte Google).
 - **Une alarme dans chaque créneau** : désactivée sauf si vous l’activez ; cinq minutes avant lui, dans les créneaux faits ou déplacés à partir de là.
 - **Ce que tient une journée** ([plus haut](#what-a-day-holds)) :
-    - **Partir de** : *Comme maintenant*, *Plus léger* ou *Bien plus léger* ;
+    - **Partir de** : *Comme maintenant*, *Plus léger* ou *Bien plus léger* ;
     - **Jours dont le plan apprend** : 28 sauf si vous changez, de 14 à 90 ;
     - **Des journées égales** : désactivé sauf si vous l’activez ;
     - **Du temps pour vous** : activé sauf si vous le désactivez.
@@ -479,7 +479,7 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 | Le temps qu’elle prend | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
 | Son type ; « demande un bureau ouvert » | `CONCEPT` avec une URI tag (RFC 9253 §8.1, RFC 4151) |
 | Son projet | `REFID` (RFC 9253 §8.3) |
-| Ses notes, le courrier d’où elle vient, ses brouillons, un événement | `LINK` avec un `LINKREL` `describedby`, `via` ou `related` ; un message en `mid:` (RFC 2392) |
+| Ses notes, le courriel d’où elle vient, ses brouillons, un événement | `LINK` avec un `LINKREL` `describedby`, `via` ou `related` ; un courriel en `mid:` (RFC 2392) |
 | Les personnes et les bureaux concernés | `CONTACT;ALTREP="sioul:contact/<UID>"` |
 | Coûts, apport, notes ressenties, première estimation, temps avant et après, domaine, horaires du bureau, facturé | `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN`, `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-AREA`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-BILLABLE` |
 | Fixée à une heure | un `VEVENT` dans un agenda, lié dans les deux sens : un `LINK` avec un `LINKREL` en URI tag dans chacun, et `X-SIOUL-TASK` dans l’événement |

@@ -5,8 +5,8 @@
 //!
 //! The core decides and returns facts: lanes, reasons, counts. This module
 //! turns them into sentences with Project Fluent, which handles plurals and
-//! agreement per language ("une lettre est arrivée", "deux lettres sont
-//! arrivées") where gettext's plural forms alone cannot. Each language is one
+//! agreement per language ("un courriel est arrivé", "deux courriels sont
+//! arrivés") where gettext's plural forms alone cannot. Each language is one
 //! file, `locales/<language>/sioul.ftl`; English stands in for any message a
 //! translation lacks (docs/i18n.md).
 
@@ -78,7 +78,9 @@ impl Translator {
             .unwrap_or_else(|| id.to_string())
     }
 
-    fn attribute(&self, id: &str, attribute: &str) -> Option<String> {
+    /// One attribute of a message (`.cap`, `.plural`…); the English one if this
+    /// language lacks it; none if neither has it.
+    pub fn attribute(&self, id: &str, attribute: &str) -> Option<String> {
         format(&self.bundle, id, Some(attribute), None)
             .or_else(|| self.fallback(id).and_then(|english| format(english, id, Some(attribute), None)))
     }

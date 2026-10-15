@@ -2,7 +2,7 @@
 # Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
-checked = "2026-10-08"
+checked = "2026-10-15"
 
 
 # Automatic senders (porch.rs): an address holding one of these is filed.
@@ -50,7 +50,7 @@ archive = ["archive", "archives"]
 # Library", "Apple Pie Bakery"): borrowed only alone or beside the words of a
 # service ("Apple Support", "Amazon.com"). Any other brand counts anywhere in a name.
 everyday = ["Amazon", "Apple", "Outlook", "UPS"]
-# Mail providers whose domains millions share: an address there is nobody's own domain.
+# Mail providers anyone can sign up to: an address there is nobody's own domain.
 shared = [
     "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr",
     "msn.com", "yahoo.com", "yahoo.fr", "ymail.com", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com",
@@ -61,12 +61,11 @@ shared = [
 
 # Brands and public services, and their domains: a sender naming one from elsewhere is set aside.
 [brands.brands]
-Amazon = ["amazon.fr", "amazon.com", "amazon.de", "amazon.co.uk", "amazon.it", "amazon.es", "primevideo.com", "amazonaws.com"]
-"Prime Video" = ["primevideo.com", "amazon.fr", "amazon.com"]
+Amazon = ["amazon.fr", "amazon.com", "amazon.de", "amazon.co.uk", "amazon.it", "amazon.es", "primevideo.com"]
+"Prime Video" = ["primevideo.com", "amazon.fr", "amazon.com", "amazon.de", "amazon.co.uk", "amazon.it", "amazon.es"]
 PayPal = ["paypal.com", "paypal.fr", "paypal.de", "paypal.co.uk", "paypal.it", "paypal.es", "paypal.nl", "paypal.be"]
 Netflix = ["netflix.com"]
 Spotify = ["spotify.com"]
-"Disney+" = ["disneyplus.com", "disney.com"]
 Apple = ["apple.com", "icloud.com", "itunes.com"]
 iCloud = ["apple.com", "icloud.com"]
 Microsoft = ["microsoft.com", "outlook.com", "office.com", "office365.com", "microsoftonline.com", "microsoft"]

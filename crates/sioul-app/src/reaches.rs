@@ -206,7 +206,13 @@ fn who_words(persons: &[Person], everyone: bool, rest: bool) -> String {
     listed(&items, false)
 }
 
-/// "mail, calls and messages", in the language's own words (French: "le courrier…").
+/// Whether the mail channel's words take a plural verb: English "mail" is
+/// one mass noun, French says « les courriels » (`attention-of-mail`'s `.plural`).
+fn mail_plural() -> bool {
+    tr().attribute("attention-of-mail", "plural").is_some_and(|p| p == "yes")
+}
+
+/// "mail, calls and messages", in the language's own words (French: "les courriels…").
 fn channels_words(channels: &[Channel]) -> String {
     listed(&channels.iter().map(|c| text(&format!("attention-of-{}", c.id()))).collect::<Vec<_>>(), false)
 }
@@ -251,7 +257,7 @@ fn people_words(subjects: &[(Channel, Person)], said: &mut Vec<(Channel, Person)
         said.extend(persons.iter().map(|p| (*channel, *p)));
     }
     let parts: Vec<String> = worded.iter().map(|(channels, who)| from_words(channels, who)).collect();
-    let plural = parts.len() > 1 || worded.iter().any(|(channels, _)| channels.len() > 1 || channels[0] != Channel::Mail);
+    let plural = parts.len() > 1 || worded.iter().any(|(channels, _)| channels.len() > 1 || channels[0] != Channel::Mail || mail_plural());
     Some((listed(&parts, false), plural))
 }
 
@@ -341,7 +347,7 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
     }
     for (level, channels) in &always {
         let what = from_words(channels, &text("attention-who-always"));
-        let plural = channels.len() > 1 || channels[0] != Channel::Mail;
+        let plural = channels.len() > 1 || channels[0] != Channel::Mail || mail_plural();
         let line = match level {
             Level::Through => text_with("attention-card-always-through", "", true, &[]),
             Level::Now => text_with("attention-card-always-now", &what, plural, &[]),
@@ -1202,8 +1208,8 @@ mod tests {
         );
         assert!(channel_line(&usual, Channel::Calls, Person::Neutral, true, "attention-sheet-line").unwrap().starts_with("Their calls ring at any time."));
         speak("fr");
-        has(&card_lines(&usual, &config, Column::Work, computer), "Le courrier de tout le monde arrive tout de suite.");
-        has(&card_lines(&usual, &config, Column::Leisure, computer), "Le courrier de vos expéditeurs sûrs arrive tout de suite.");
+        has(&card_lines(&usual, &config, Column::Work, computer), "Les courriels de tout le monde arrivent tout de suite.");
+        has(&card_lines(&usual, &config, Column::Leisure, computer), "Les courriels de vos expéditeurs sûrs arrivent tout de suite.");
     }
 
     #[test]
@@ -1215,7 +1221,7 @@ mod tests {
         assert_eq!(when_words(&config, Column::Admin), text("attention-when-admin-none"));
         speak("fr");
         assert_eq!(hours_words(&config, "work").as_deref(), Some("Du lundi au vendredi, de 09:00 à 17:00\u{202f}; samedi, de 10:00 à 12:00"));
-        assert_eq!(capital("le courrier"), "Le courrier");
+        assert_eq!(capital("les courriels"), "Les courriels");
         assert_eq!(small("Temps libre"), "temps libre");
     }
 }

@@ -18,16 +18,16 @@
 
   <description>
     <p>Most software expects people to adapt to it. Sioul adapts the demands of the world to the person: it starts from what you can give today (your attention, your energy, your health, your rest) and fits work, institutions and money into what is left. Mail, tasks and everyday admin in one quiet window, on your own devices.</p>
-    <p xml:lang="fr">La plupart des logiciels attendent des gens qu’ils s’adaptent à eux. Sioul adapte les exigences du monde à la personne : il part de ce que vous pouvez donner aujourd’hui (votre attention, votre énergie, votre santé, votre repos) et range le travail, les institutions et l’argent dans ce qui reste. Le courrier, les tâches et les démarches du quotidien dans une seule fenêtre calme, sur vos propres appareils.</p>
+    <p xml:lang="fr">La plupart des logiciels attendent des gens qu’ils s’adaptent à eux. Sioul adapte les exigences du monde à la personne : il part de ce que vous pouvez donner aujourd’hui (votre attention, votre énergie, votre santé, votre repos) et range le travail, les institutions et l’argent dans ce qui reste. Les courriels, les tâches et les démarches du quotidien dans une seule fenêtre calme, sur vos propres appareils.</p>
     <p>It is designed for anyone whose capacity is limited or changes, and for whom admin hurts: autistic people, people with ADHD, people who are anxious, burnt out, depressed or exhausted, people living with long COVID or another condition that limits energy, and freelancers, whose work brings more admin. No diagnosis is needed: you say what you can do.</p>
     <p xml:lang="fr">Il est pensé pour toute personne dont les forces sont limitées ou changent, et que l’administratif fait souffrir : les personnes autistes, avec un TDAH, anxieuses, en épuisement, déprimées ou épuisées, vivant avec un covid long ou une autre maladie qui limite l’énergie, et les indépendants, dont le travail amène plus de démarches. Aucun diagnostic n’est demandé : vous dites ce que vous pouvez faire.</p>
     <ul>
       <li>Your needs first: meals, rest, sleep and your hours are kept; the work is planned in what remains, one next step at a time, nothing ever overdue.</li>
       <li xml:lang="fr">Vos besoins d’abord : les repas, le repos, le sommeil et vos heures sont gardés ; le travail se place dans ce qui reste, une étape suivante à la fois, sans jamais de retard.</li>
       <li>Mail waits on a porch, checked and sorted, in the hours you chose; the codes and links you ask sites for come at once.</li>
-      <li xml:lang="fr">Le courrier attend sous un porche, vérifié et trié, aux heures que vous avez choisies ; les codes et les liens que vous demandez aux sites arrivent tout de suite.</li>
+      <li xml:lang="fr">Les courriels attendent sous un porche, vérifiés et triés, aux heures que vous avez choisies ; les codes et les liens que vous demandez aux sites arrivent tout de suite.</li>
       <li>Everything tied together, the software keeping the links: mail, agenda, contacts, notes, projects, time and invoices, budgets and bank accounts, papers, medicines, and the websites you have to check.</li>
-      <li xml:lang="fr">Tout relié, le logiciel gardant les liens : courrier, agenda, contacts, notes, projets, temps et factures, budgets et comptes, papiers, médicaments, et les sites que vous devez consulter.</li>
+      <li xml:lang="fr">Tout relié, le logiciel gardant les liens : courriels, agenda, contacts, notes, projets, temps et factures, budgets et comptes, papiers, médicaments, et les sites que vous devez consulter.</li>
       <li>No counters, no red, no sounds, no streaks, no words that judge; Undo after anything moved, deleted or sent.</li>
       <li xml:lang="fr">Ni compteurs, ni rouge, ni sons, ni séries, ni mots qui jugent ; Annuler après tout déplacement, suppression ou envoi.</li>
       <li>Your data stays on your device and in your own accounts, and travels between your devices sealed: no server of ours.</li>
@@ -46,7 +46,7 @@
   <screenshots>
     <screenshot type="default">
       <caption>The Porch: codes and links first, then the new mail sorted into lanes</caption>
-      <caption xml:lang="fr">Le Porche : les codes et les liens d’abord, puis le nouveau courrier trié en files</caption>
+      <caption xml:lang="fr">Le Porche : les codes et les liens d’abord, puis les nouveaux courriels triés en files</caption>
       <image>https://aurelienpierre.github.io/sioul/assets/screens/porch.png</image>
     </screenshot>
     <screenshot>
@@ -56,7 +56,7 @@
     </screenshot>
     <screenshot>
       <caption>A message, with who sent it and how far that is verified</caption>
-      <caption xml:lang="fr">Un message, avec qui l’a envoyé et à quel point c’est vérifié</caption>
+      <caption xml:lang="fr">Un courriel, avec qui l’a envoyé et à quel point c’est vérifié</caption>
       <image>https://aurelienpierre.github.io/sioul/assets/screens/mail-reader.png</image>
     </screenshot>
     <screenshot>
@@ -94,6 +94,7 @@
     <keyword>tasks</keyword>
     <keyword>budget</keyword>
     <keyword>calendar</keyword>
+    <keyword xml:lang="fr">courriel</keyword>
     <keyword xml:lang="fr">courrier</keyword>
     <keyword xml:lang="fr">démarches</keyword>
     <keyword xml:lang="fr">tâches</keyword>

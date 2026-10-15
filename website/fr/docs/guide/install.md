@@ -24,7 +24,7 @@ Mesuré sur un ordinateur Linux à 8 cœurs, Sioul et tous les processus qu’i
 | | Mémoire | Processeur |
 |---|---|---|
 | **Sioul seul** : un profil inventé, aucun site ouvert, pendant cinq minutes | environ 80 Mo au repos, 190 Mo une fois chaque page ouverte, en un seul processus | presque rien au repos (0,2 % d’un cœur) |
-| **Sioul au quotidien** : une vraie boîte aux lettres, des notes et des tâches, et trois sites ouverts en temps réel, pendant trois minutes | environ 1,15 Go en tout : le processus de Sioul 0,4 Go, les pages des trois sites 0,7 Go | moins de 1 % d’un cœur la plupart du temps (la moitié du temps moins de 0,4 %), quelques secondes jusqu’à 40 % d’un cœur de temps en temps |
+| **Sioul au quotidien** : une vraie boîte de courriel, des notes et des tâches, et trois sites ouverts en temps réel, pendant trois minutes | environ 1,15 Go en tout : le processus de Sioul 0,4 Go, les pages des trois sites 0,7 Go | moins de 1 % d’un cœur la plupart du temps (la moitié du temps moins de 0,4 %), quelques secondes jusqu’à 40 % d’un cœur de temps en temps |
 
 - **Ce qui n’est pas ouvert ne coûte rien.** Chaque page de la fenêtre, chaque formulaire et chaque menu est fait la première fois que vous l’ouvrez, le moteur qui affiche les sites démarre avec le premier site ouvert, et ce qui liste caméras et micros avec le premier appel. Le 4 octobre, avant cela, Sioul seul prenait 280 Mo, et 1,9 Go au quotidien (son propre processus 0,7 Go).
 - **Les sites sont la part lourde.** Le moteur qui les affiche prend environ 75 Mo dans le processus de Sioul, une fois, quel que soit leur nombre. Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
@@ -113,9 +113,9 @@ Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul 
 
 Dans le dossier `sioul` : `git pull`, puis à nouveau les deux lignes `cargo build` et les trois lignes `install`. Vos réglages et vos données sont gardés à part du programme, dans vos propres dossiers : ils restent tels quels.
 
-## L’essayer d’abord sur du courrier inventé {#trying-it-on-invented-mail-first}
+## L’essayer d’abord sur des courriels inventés {#trying-it-on-invented-mail-first}
 
-Depuis le dossier `sioul`, la ligne de commande peut montrer le Porche sur quelques messages inventés, sans aucun compte :
+Depuis le dossier `sioul`, la ligne de commande peut montrer le Porche sur quelques courriels inventés, sans aucun compte :
 
 ```
 cargo run -q -- --config examples/demo.toml porch
@@ -148,4 +148,4 @@ Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléph
 
 ## Ensuite {#next}
 
-[Premiers pas](first-steps.md) : ajouter votre courrier, vos agendas et contacts, Google, et les sites que vous consultez.
+[Premiers pas](first-steps.md) : ajouter vos courriels, vos agendas et contacts, Google, et les sites que vous consultez.

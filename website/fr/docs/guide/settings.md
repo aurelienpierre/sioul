@@ -26,7 +26,7 @@ La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affi
 <!-- colour: the sites' colours (docs/colour.md). -->
 - **Couleurs adaptées à l’écran** (sur un ordinateur) : les sites s’affichent dans les couleurs propres à votre écran, lues dans son profil de couleurs, pour qu’un écran à gamut large ne les rende pas plus criardes qu’elles ne sont. Une phrase dessous dit ce que reçoit cet écran : le nom de son profil, ou que votre bureau adapte déjà les couleurs (sous Wayland, sous macOS), ou que l’écran n’a pas de profil. Activé tant que vous ne le désactivez pas. [Sites](sites.md#colours) en dit plus.
 - **Couleurs plus calmes sur les sites** (sur un ordinateur) : Non, Un peu, Davantage. Les couleurs vives des sites sont adoucies, les gris et les teintes douces restent tels quels. Tous les sites le suivent aussitôt.
-- **Détails sur l’écran d’accueil** (sur un téléphone) : les cartes de Sioul sur l’écran d’accueil du téléphone nomment ce qu’elles montrent : une prise prévue, un code que vous venez de demander à un site, vos rappels, un appel refusé, le titre de la prochaine étape ; les derniers messages du Porche, avec leur expéditeur, leur objet et leur première ligne ; les prochains événements de vos agendas, avec leur titre ([Premiers pas](first-steps.md#on-a-phone)). Sans ce réglage, elles ne nomment rien : la date, la météo et ce à quoi sert ce moment, puis qu’un code, un rappel ou du courrier attend, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
+- **Détails sur l’écran d’accueil** (sur un téléphone) : les cartes de Sioul sur l’écran d’accueil du téléphone nomment ce qu’elles montrent : une prise prévue, un code que vous venez de demander à un site, vos rappels, un appel refusé, le titre de la prochaine étape ; les derniers courriels du Porche, avec leur expéditeur, leur objet et leur première ligne ; les prochains événements de vos agendas, avec leur titre ([Premiers pas](first-steps.md#on-a-phone)). Sans ce réglage, elles ne nomment rien : la date, la météo et ce à quoi sert ce moment, puis qu’un code, un rappel ou des courriels attendent, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
 ## Heures {#hours}
 
@@ -44,10 +44,10 @@ Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusie
 
 ## Ce qui vous joint {#what-reaches-you}
 
-Un seul endroit pour quand chaque chose vous joint : le courrier, les appels et les messages des autres applications selon qui les envoie, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues :
+Un seul endroit pour quand chaque chose vous joint : les courriels, les appels et les messages des autres applications selon qui les envoie, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues :
 
 - **Par moment** : une carte pour chaque moment de votre journée, en phrases ; **Changer…** ouvre ses lignes.
-- **Par personne** : ce qui vous joint par courrier, par téléphone et par message de la part de chaque liste de personnes, **Me dire le nouveau courrier**, **Avec les lettres d’information**, et qui est sur quelle liste.
+- **Par personne** : ce qui vous joint par courriel, par téléphone et par message de la part de chaque liste de personnes, **Me dire les nouveaux courriels**, **Avec les infolettres**, et qui est sur quelle liste.
 - **Celles de Sioul** : les codes, les prises, les rappels, les avis de Santé, vos sites et les autres applications, avec **Notifications des sites regroupées**.
 - **Exceptions** : les personnes qui passent toujours, et chaque conversation, application ou site qui a un choix à lui.
 - **Ne pas déranger** : ce qui le met, ce qui tient pendant ce temps, ce que fait chaque appareil.
@@ -63,10 +63,10 @@ Chaque rappel vient une fois, en notification discrète, sans son, jamais répé
 - **Dates demandées : jours travaillés avant** : au début du travail, tant de jours travaillés avant la date demandée d’une tâche (2, sauf si vous changez ce nombre) ; 0 pour aucun.
 - **Une attente finie** : quand une attente après une étape faite est finie (une réponse due), une fois, quand le travail est là.
 - **Paiements prévus : jours travaillés avant** : au début du travail, tant de jours travaillés avant un paiement prévu (une facture, un impôt) ; 0 pour aucun. Le rappel dit si le compte le tiendra.
-- **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courrier n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
+- **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courriel n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
 - **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Sur un téléphone, les notifications des automates des autres applications reviennent alors. Voir [Les heures de regroupement](notifications.md#the-gathered-times).
 
-Quand chaque rappel peut venir, et le nouveau courrier, c’est [Ce qui vous joint](#what-reaches-you). Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et le nouveau courrier sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)).
+Quand chaque rappel peut venir, et les nouveaux courriels, c’est [Ce qui vous joint](#what-reaches-you). Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et les nouveaux courriels sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)).
 
 ## Pauses {#pauses}
 
@@ -109,8 +109,8 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 
 | Page | Derrière son ⚙ |
 |---|---|
-| [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, les appels refusés par vos téléphones, la lecture d’un message, comment le courrier est trié |
-| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, la lecture d’un message, les listes quittées |
+| [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, les appels refusés par vos téléphones, la lecture d’un courriel, comment les courriels sont triés |
+| [Courriels](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, la lecture d’un courriel, les listes quittées |
 | [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
@@ -120,15 +120,15 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 
 Le ⚙ les ouvre à droite de la page, qui reste à côté : deux cinquièmes de la fenêtre et un peu plus, de 520 à 760 pixels ; sur un téléphone, sur tout l’écran. Échap ou un clic à côté les ferme.
 
-Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des pages où se lisent les messages, Courrier et Porche, et derrière **Aa** dans les Notes : un seul réglage, montré là où il sert.
+Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des pages où se lisent les courriels, Courriels et Porche, et derrière **Aa** dans les Notes : un seul réglage, montré là où il sert.
 
 ### Vos filtres {#your-filters}
 
-Dans le ⚙ de la page Courrier, sous **Filtres** : ce qui est fait au courrier qui arrive, sur son serveur, selon des conditions (dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, un mot-clé), une seule liste pour toutes vos adresses, chaque filtre en une phrase. **Les appliquer aux boîtes de réception…** dit d’abord ce qui changerait. Vos filtres voyagent avec vos réglages. Comment en faire un, et quand ils agissent : [Courrier, Filtres](mail.md#filters).
+Dans le ⚙ de la page Courriels, sous **Filtres** : ce qui est fait aux courriels qui arrivent, sur leur serveur, selon des conditions (dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, un mot-clé), une seule liste pour toutes vos adresses, chaque filtre en une phrase. **Les appliquer aux boîtes de réception…** dit d’abord ce qui changerait. Vos filtres voyagent avec vos réglages. Comment en faire un, et quand ils agissent : [Courriels, Filtres](mail.md#filters).
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 
-Dans le ⚙ de la page Courrier, sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur le courrier d’un inconnu (**Déplacer dans les indésirables**, **Signaler seulement** ou **Ne rien faire**), à quel point il doit être sûr (**Indésirable à partir de**, 95 % sauf si vous le changez ; **Peut-être indésirable à partir de**, 50 %), et son apprentissage, sur un seul ordinateur : à la main avec **Entraîner maintenant**, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif, sauf si vous le désactivez. Votre téléphone ne l’entraîne jamais : il se sert de la table de l’ordinateur, qui arrive scellée avec le partage. Ses réglages : [Courrier, Votre filtre à indésirables](mail.md#your-own-spam-filter) ; ce qu’il fait sur le Porche : [Les indésirables, et votre propre filtre](porch.md#spam-and-your-own-filter) ; ce que l’apprentissage lit et garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
+Dans le ⚙ de la page Courriels, sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur les courriels d’un inconnu (**Déplacer dans les indésirables**, **Signaler seulement** ou **Ne rien faire**), à quel point il doit être sûr (**Indésirable à partir de**, 95 % sauf si vous le changez ; **Peut-être indésirable à partir de**, 50 %), et son apprentissage, sur un seul ordinateur : à la main avec **Entraîner maintenant**, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif, sauf si vous le désactivez. Votre téléphone ne l’entraîne jamais : il se sert de la table de l’ordinateur, qui arrive scellée avec le partage. Ses réglages : [Courriels, Votre filtre à indésirables](mail.md#your-own-spam-filter) ; ce qu’il fait sur le Porche : [Les indésirables, et votre propre filtre](porch.md#spam-and-your-own-filter) ; ce que l’apprentissage lit et garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
 ## Ce qui voyage avec vous {#what-travels-with-you}
 
@@ -143,19 +143,19 @@ Dans un seul fichier de texte brut, `config.toml`, dans votre dossier de configu
 ## Pour aller plus loin {#going-further}
 
 - **Revenir à la valeur par défaut** : effacer un réglage retire sa ligne de `config.toml`, et sa valeur par défaut revient.
-- **Les listes voyagent entières** : vos sites épinglés, vos heures, vos jours de congé et vos filtres de courrier voyagent chacun comme une seule liste ; quand deux appareils changent la même liste avant de s’échanger leurs changements, la liste la plus récente est gardée. Changez une telle liste sur un appareil à la fois.
+- **Les listes voyagent entières** : vos sites épinglés, vos heures, vos jours de congé et vos filtres de courriel voyagent chacun comme une seule liste ; quand deux appareils changent la même liste avant de s’échanger leurs changements, la liste la plus récente est gardée. Changez une telle liste sur un appareil à la fois.
 - **Pas vidé partout d’un coup** : un fichier de réglages trouvé vide ou disparu, après une panne ou avec un disque plein, ne compte comme retiré que s’il le reste dix minutes ; entre-temps, la ligne d’état le dit, et rien n’en est retiré sur vos autres appareils.
 
 ### Mots que Sioul repère {#words}
 
-Sioul reconnaît les choses à leurs mots : un code dans un message, une facture, un courrier des impôts, le dossier qui est votre courrier indésirable, un appel qui sonne dans une messagerie, un expéditeur qui emprunte le nom d’une banque. Ces mots viennent de paquets de langue (le français et l’anglais ; l’allemand, l’espagnol et l’italien pour les codes, les validations, les dossiers, les réponses et les dates) et de paquets de pays (la France), et **Paramètres ▸ Mots** les montre : ajoutez les vôtres, retirez ceux qui se trompent.
+Sioul reconnaît les choses à leurs mots : un code dans un courriel, une facture, un courrier des impôts, le dossier de vos courriels indésirables, un appel qui sonne dans une messagerie, un expéditeur qui emprunte le nom d’une banque. Ces mots viennent de paquets de langue (le français et l’anglais ; l’allemand, l’espagnol et l’italien pour les codes, les validations, les dossiers, les réponses et les dates) et de paquets de pays (la France), et **Paramètres ▸ Mots** les montre : ajoutez les vôtres, retirez ceux qui se trompent.
 
 - **Langues lues et pays**, en haut : une case pour chaque langue dont Sioul a les mots, et pour chaque pays dont il a les noms (ses organismes publics, les services de validation de ses banques, ses marques). Une langue cochée ajoute ses mots à chaque liste ; Sioul n’en coche jamais une de lui-même.
-- **Une ligne pour chaque chose reconnue**, en quatre groupes (le courrier ; l’argent et les papiers ; le téléphone ; les tâches et une adresse publique), avec le nombre de ses mots et, une fois que vous l’avez changée, combien vous en avez ajouté et retiré. Ouvrez une ligne : une phrase dit ce que font ses mots, puis chaque liste, un mot par pastille : **×** retire un mot, le champ en ajoute un. Mots entiers ; les majuscules et les accents ne comptent pas. **Revenir aux mots par défaut** retire les changements de cette ligne.
+- **Une ligne pour chaque chose reconnue**, en quatre groupes (les courriels ; l’argent et les papiers ; le téléphone ; les tâches et une adresse publique), avec le nombre de ses mots et, une fois que vous l’avez changée, combien vous en avez ajouté et retiré. Ouvrez une ligne : une phrase dit ce que font ses mots, puis chaque liste, un mot par pastille : **×** retire un mot, le champ en ajoute un. Mots entiers ; les majuscules et les accents ne comptent pas. **Revenir aux mots par défaut** retire les changements de cette ligne.
 - **Vos changements sont gardés comme des différences** : les mots ajoutés et ceux retirés, jamais une copie d’une liste, pour que les mots d’un Sioul plus récent vous parviennent encore. Un mot retiré puis ajouté de nouveau est là. Vos changements voyagent avec vos autres réglages.
-- **Les marques de spam de votre fournisseur** (« [SPAM] » au début d’un objet) sont enlevées avant que votre filtre à indésirables lise un message. Un changement compte à partir du prochain entraînement du filtre, sur tous les appareils à la fois.
+- **Les marques de spam de votre fournisseur** (« [SPAM] » au début d’un objet) sont enlevées avant que votre filtre à indésirables lise un courriel. Un changement compte à partir du prochain entraînement du filtre, sur tous les appareils à la fois.
 - **La messagerie vocale par courriel** n’est lue que pour les opérateurs que vous nommez, par le domaine d’où viennent leurs courriels ; aucun n’est nommé au départ ([Appels](calls.md#afterwards-on-the-porch)).
-- **Une adresse publique** : les mots qui rendent un message hostile ou grossier, et ceux de chaque sujet. Ajoutez au sujet de l’assistance les mots de votre propre domaine.
+- **Une adresse publique** : les mots qui rendent un courriel hostile ou grossier, et ceux de chaque sujet. Ajoutez au sujet de l’assistance les mots de votre propre domaine.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
