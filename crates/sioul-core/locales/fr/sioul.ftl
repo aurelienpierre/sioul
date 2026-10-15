@@ -2741,6 +2741,7 @@ share-device-ahead = Son horloge est en avance d’au moins { $minutes ->
     [one] une minute
    *[other] { $minutes } minutes
 } sur celle-ci.
+share-device-future = Son horloge avance de plus de dix minutes sur celle-ci : ce qu’il dit est mis de côté ici jusqu’à ce qu’elle soit remise à l’heure.
 share-device-count-again = Le compter de nouveau
 share-device-forget = Oublier cet appareil
 share-outside = Vos notes et vos projets ({ $store }) ne semblent pas être dans un dossier que votre synchronisation transporte : l’autre appareil ne les verrait pas. Allumez Notes, et Projets et argent, ci-dessous pour les faire voyager par ce dossier, scellés ; ou déplacez-les dans un dossier synchronisé (et choisissez-le à nouveau dans Paramètres ▸ Votre dossier et le partage).
