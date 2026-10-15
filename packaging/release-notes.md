@@ -8,7 +8,6 @@ Sioul's packages, built by GitHub from this version's sources. Sioul is young: k
 | Linux, with Flatpak | `Sioul-<version>.flatpak` | `flatpak install --user Sioul-<version>.flatpak` (the KDE runtime and Qt WebEngine come from Flathub). |
 | Android 9 and later, 64-bit phones | `Sioul-<version>-android-arm64.apk` | Download it on the phone and open it; when Android asks, allow your browser or file manager to install apps. Signed with Sioul's key: the next version installs over it, your data kept. |
 
-Updating from Sioul 0.0.5 or earlier: the sharing folder now keeps a replaced note or paper two weeks, and each device keeps its earlier versions of them as pointers to the folder for 12 days. Pointers kept more than 12 days ago leave the list of earlier versions at the first tidy after the update (within the hour); copies keep their 20 versions and 30 days.
 
 The command line, `sioul`, comes with each computer's package (`sioul mcp` connects an AI agent: see the guide).
 
