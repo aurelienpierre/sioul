@@ -614,6 +614,13 @@ pub struct Peer {
     /// on it go back (the eighth review's N3).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub latest_opening: i64,
+    /// Its entry read now is dated more than ten minutes ahead of this
+    /// device's clock (sioul-app's `FUTURE`): set aside until one of the two
+    /// clocks is set right. Nothing it says counts, nor a word it gives; its
+    /// doubt says why (`Doubt::Ahead`), never "an older Sioul" (the final
+    /// review before 0.0.6, F1H and its words).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub set_aside: bool,
 }
 
 fn is_zero_i64(n: &i64) -> bool {
@@ -672,6 +679,9 @@ pub enum Doubt {
     /// It does not share its doses (its Health part switched off), and it was
     /// not closed before the dose was due.
     Apart { device: Named },
+    /// Its clock runs more than ten minutes ahead of this device's: what it
+    /// says is set aside here (`Peer::set_aside`), so nothing of it is known.
+    Ahead { device: Named },
 }
 
 /// The longest a closed computer's news may take to come here for it to count
@@ -782,6 +792,11 @@ pub fn doubts_at(due: i64, waking: i64, now: i64, record_lost: Option<i64>, peer
     let phones = phones_counted(peers, now);
     for peer in peers.iter().filter(|p| counts(p, now)) {
         let device = named(peer, phones);
+        // Its entry set aside, its clock far ahead of this one's: nothing it says is known.
+        if peer.set_aside {
+            out.push(Doubt::Ahead { device });
+            continue;
+        }
         // A line lost from around the dose's time may have been its answer:
         // one written before it, or within `BROKEN_SPAN` after (a dose marked
         // ahead of its time). The line is dated by its own time, never by when
@@ -874,7 +889,7 @@ pub fn doubts_unread_at(due: i64, waking: i64, now: i64, record_lost: Option<i64
     for peer in peers.iter().filter(|p| counts(p, now) && !heard.contains(&p.id)) {
         let device = named(peer, phones);
         let names = |doubt: &Doubt| match doubt {
-            Doubt::Unheard { device: d, .. } | Doubt::Broken { device: d } | Doubt::Working { device: d, .. } | Doubt::Coming { device: d, .. } | Doubt::Apart { device: d } => *d == device,
+            Doubt::Unheard { device: d, .. } | Doubt::Broken { device: d } | Doubt::Working { device: d, .. } | Doubt::Coming { device: d, .. } | Doubt::Apart { device: d } | Doubt::Ahead { device: d } => *d == device,
             Doubt::Record { .. } => false,
         };
         if out.iter().any(names) {

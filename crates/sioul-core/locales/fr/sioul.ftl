@@ -3566,6 +3566,7 @@ dose-doubt-maybe = { $name } a peut-être affiché son rappel { $when }
 dose-doubt-maybe-late = { $name } n’a pas pu afficher son rappel { $when }, et l’a peut-être affiché depuis
 dose-doubt-unknown = { $name } était utilisé et vous l’a peut-être rappelée { $when }
 dose-doubt-alarm = { $name } vous l’a peut-être rappelée aussi, par sa propre alarme
+dose-doubt-ahead = { $name } a son horloge en avance de plus de dix minutes sur celle-ci, et ce qu’il dit est mis de côté ici
 dose-doubt-other = un autre de vos appareils vous l’a peut-être rappelée { $when }
 dose-doubt-unconfirmed = son rappel, prévu { $when }, n’a pas été confirmé à temps, et elle a peut-être été prise depuis sans être notée
 dose-doubt-and = { $first } ; { $then }

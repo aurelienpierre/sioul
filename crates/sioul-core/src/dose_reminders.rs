@@ -209,6 +209,9 @@ pub enum Elsewhere {
     /// Another phone, or a device whose entry does not say what it is (an
     /// older Sioul, one not read): its own alarm may remind it too.
     Alarm { device: crate::health::Named },
+    /// Its clock runs more than ten minutes ahead of this device's: what it
+    /// says, and did, is set aside here (`Peer::set_aside`).
+    Ahead { device: crate::health::Named },
     /// The reminders' file does not read here: what the others did is not known.
     Unread,
 }
@@ -236,6 +239,8 @@ pub const QUIET_AFTER: i64 = crate::health::ALARM_AFTER + 5 * 60;
 /// became of a reminder"). Of each other device that counts and shares its
 /// doses (`health::counts`):
 /// - its notice shown: reminded;
+/// - its entry set aside here, its clock far ahead of this one's
+///   (`Peer::set_aside`): its times and promises say nothing, said so;
 /// - a notice sent, not known shown: it may be on the screen;
 /// - its promise covering `at` (no notice from it until then, its clock's
 ///   lead and `SKEW` allowed), nothing sent: it did not remind it;
@@ -270,6 +275,11 @@ pub fn others(key: &str, since: i64, at: i64, me: &str, me_phone: bool, entries:
         let phone = peer.said.as_ref().is_some_and(|s| s.phone);
         let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: phone && phones == 1 };
         let margin = SKEW + peer.ahead.max(0);
+        // Its entry set aside, its clock far ahead of this one's: its times say nothing here, its promise neither.
+        if peer.set_aside {
+            doubts.push(Elsewhere::Ahead { device });
+            continue;
+        }
         match entries.of(key, &peer.id) {
             Some(tried) if tried.maybe > 0 => doubts.push(Elsewhere::Sent { device, at: tried.maybe }),
             Some(tried) if tried.quiet == NEVER || tried.quiet.saturating_sub(margin) >= at => {}
