@@ -79,6 +79,7 @@ If Sioul was closed at the time, a dose of the last twelve hours that was neithe
 - a computer that stays on while it cannot reach the sharing either way (its network or the server down), said off on your phone within the two hours after it lost touch;
 - a phone you forgot on a computer while it still rings;
 - a phone whose clock runs two to ten minutes ahead of the computer's while its news comes slowly;
+- a computer you say is off on a phone whose clock was just set back, while one of the two ways that computer reads the phone's news (its sync app, Sioul's own pull from your server) lags behind the other, for up to two hours;
 - quitting Sioul on the computer in the very minute of a dose.
 
 **When a computer's reminder may not have reached you.** Sioul never counts a reminder it does not know appeared, and never reminds you of a dose twice without saying so:

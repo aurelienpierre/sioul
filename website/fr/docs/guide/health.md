@@ -79,6 +79,7 @@ Si Sioul était fermé à ce moment-là, une prise des douze dernières heures q
 - un ordinateur resté allumé alors qu’il ne peut joindre le partage dans aucun sens (son réseau ou le serveur en panne), dit éteint sur votre téléphone dans les deux heures après qu’il a perdu le contact ;
 - un téléphone oublié sur un ordinateur alors qu’il sonne encore ;
 - un téléphone dont l’horloge avance de deux à dix minutes sur celle de l’ordinateur, quand ses nouvelles arrivent lentement ;
+- un ordinateur dit éteint sur un téléphone dont l’horloge vient d’être reculée, pendant que l’une des deux voies par lesquelles cet ordinateur lit les nouvelles du téléphone (son application de synchronisation, la récupération propre de Sioul sur votre serveur) est en retard sur l’autre, jusqu’à deux heures ;
 - quitter Sioul sur l’ordinateur dans la minute même d’une prise.
 
 **Quand le rappel d’un ordinateur ne vous a peut-être pas atteint.** Sioul ne compte jamais un rappel dont il ne sait pas qu’il s’est affiché, et ne vous rappelle jamais une prise deux fois sans le dire :

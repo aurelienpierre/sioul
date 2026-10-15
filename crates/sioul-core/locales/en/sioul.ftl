@@ -3548,6 +3548,7 @@ dose-doubt-maybe = { $name } may have shown its reminder { $when }
 dose-doubt-maybe-late = { $name } could not show its reminder { $when }, and may have shown it since
 dose-doubt-unknown = { $name } was in use and may have reminded you { $when }
 dose-doubt-alarm = { $name } may have reminded you too, by its own alarm
+dose-doubt-ahead = { $name } has its clock more than ten minutes ahead of this one's, so what it says is set aside here
 dose-doubt-other = another of your devices may have reminded you { $when }
 dose-doubt-unconfirmed = its reminder, due { $when }, was not confirmed in time, and it may have been taken since without being marked
 dose-doubt-and = { $first }; { $then }

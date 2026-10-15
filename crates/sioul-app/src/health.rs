@@ -1973,10 +1973,13 @@ struct PeerSeen {
     /// older copy put back, nor taken from a clock more than `FUTURE` ahead.
     #[serde(default)]
     entry: Option<sioul_sync::devices::Entry>,
-    /// How far its entry read now runs ahead of this device's clock, in
-    /// seconds, when more than `FUTURE`: set aside, and Settings says why; 0 else.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    future: i64,
+    /// The words (`Entry::acked`) of the copy of its entry read now, when one
+    /// reads and is not set aside (`Peer::set_aside`): a phone's word stands
+    /// here only where this copy says it as well as the newest one, so that a
+    /// copy that is no news may take a word away, never give one (the final
+    /// review before 0.0.6, F1H). Not kept from one reading to the next.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acked_now: Option<std::collections::BTreeMap<String, i64>>,
     /// Its export's date (its clock) less when it was seen here (this one's),
     /// the last sixty: how far its clock is ahead, at least, is the largest.
     #[serde(default)]
@@ -2003,9 +2006,10 @@ fn is_zero(n: &i64) -> bool {
 
 /// How far ahead of this device's clock another device's times may run and
 /// still be taken (ten minutes: a clock left to drift; one set wrong by hours
-/// or a year is not): beyond it, its copy is no news, and an opening of it
-/// from then is not kept, so that a clock once far ahead holds nothing for as
-/// long (the ninth review's F1).
+/// or a year is not): beyond it, its copy is no news and is set aside
+/// (`Peer::set_aside`): nothing it says counts, nor a word it gives, and its
+/// doubt says its clock runs ahead (the ninth review's F1; the final review's
+/// F1H).
 const FUTURE: i64 = 10 * 60;
 
 /// The latest of an entry's times (its device's clock).
@@ -2125,13 +2129,26 @@ fn know() -> Knowledge {
 
 /// Each other device's newest entry read here (`learn_with`: an older copy
 /// put back never replaces it), as `know` last kept them, of the devices
-/// whose entry reads now only (`Peer::said`): one no longer read says nothing.
+/// whose entry reads now only (`Peer::said`), and not set aside: one no
+/// longer read, or dated far ahead, says nothing. Its words (`Entry::acked`)
+/// only those the copy read now says too: a copy that is no news (an older
+/// one, one written in the same second, one of a phone whose clock was set
+/// back) may take a word away, never give one (the final review's F1H).
 fn newest_entries() -> Vec<sioul_sync::devices::Entry> {
     newest_of(&load_peers())
 }
 
 fn newest_of(kept: &Peers) -> Vec<sioul_sync::devices::Entry> {
-    kept.peers.values().filter(|seen| seen.peer.said.is_some()).filter_map(|seen| seen.entry.clone()).collect()
+    kept.peers
+        .values()
+        .filter(|seen| seen.peer.said.is_some() && !seen.peer.set_aside)
+        .filter_map(|seen| {
+            let now = seen.acked_now.as_ref()?;
+            let mut entry = seen.entry.clone()?;
+            entry.acked.retain(|computer, opening| now.get(computer) == Some(opening));
+            Some(entry)
+        })
+        .collect()
 }
 
 fn load_peers() -> Peers {
@@ -2210,7 +2227,8 @@ fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[
     for seen in kept.peers.values_mut() {
         seen.peer.said = None;
         seen.peer.complete = false;
-        seen.future = 0;
+        seen.peer.set_aside = false;
+        seen.acked_now = None;
     }
     for entry in entries {
         let seen = kept.peers.entry(entry.id.clone()).or_default();
@@ -2218,17 +2236,26 @@ fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[
         if !entry.name.is_empty() {
             seen.peer.name = entry.name.clone();
         }
-        // A copy kept from a clock far ahead, since set right: dropped, so
-        // that what it says now counts again (the ninth review's F1).
-        if seen.entry.as_ref().is_some_and(|last| from_the_future(last, now)) {
+        // A copy kept from a clock far ahead already when it came (by a
+        // Sioul before this rule), that clock since set right: dropped, so
+        // that what it says now counts again (the ninth review's F1). One
+        // that only looks ahead because this clock went back since is kept,
+        // and so are the marks set against it: an older copy put back is no
+        // news when this clock is set right (W1), and a device said off or
+        // forgotten stays so (the final review's F1L).
+        let came = seen.peer.seen;
+        let ahead_when_kept = |at: i64| at > now + FUTURE && at > came + FUTURE;
+        if seen.entry.as_ref().is_some_and(|last| ahead_when_kept(latest_time(last))) {
             seen.entry = None;
         }
-        if from_the_future(entry, now) {
-            seen.future = latest_time(entry) - now;
-        }
-        if seen.peer.latest_opening > now + FUTURE {
+        if ahead_when_kept(seen.peer.latest_opening) {
             seen.peer.latest_opening = 0;
         }
+        // A copy dated far ahead of this clock is set aside: no news, no word,
+        // said so. The words of the one read now, kept for `newest_of`.
+        let aside = from_the_future(entry, now);
+        seen.peer.set_aside = aside;
+        seen.acked_now = (!aside).then(|| entry.acked.clone());
         // News of it only from a copy newer by its own times than the newest
         // read here: an older genuine copy put back (a server replaying them)
         // is no news, and never keeps a phone's word "fresh" (the ninth
@@ -2250,6 +2277,16 @@ fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[
                 note_wake(seen, now - entry.started + ahead, news);
             }
             seen.entry = Some(entry.clone());
+            // Said off, or forgotten, until it says anything newer: a new
+            // start or a later export, in a copy taken as news (a claim renewed
+            // since: below). A copy set aside or dropped lifts nothing (F1L).
+            let spoke = |mark: &Mark| entry.started != mark.started || entry.exported > mark.exported;
+            if seen.off.as_ref().is_some_and(spoke) {
+                seen.off = None;
+            }
+            if seen.forgotten.as_ref().is_some_and(spoke) {
+                seen.forgotten = None;
+            }
         }
         seen.peer.ahead = seen.aheads.iter().copied().max().unwrap_or(0).max(0);
         // What it says: its newest copy read here, never an older one put back.
@@ -2259,8 +2296,10 @@ fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[
         // minute after that close (both on its own clock), says it runs: an
         // older Sioul there now (a version put back), which updates no entry.
         // The entry is not trusted: known by its claims, as an older Sioul is.
+        // Not so of one set aside: its claims, dated ahead as its entry is,
+        // come after any close it said (its doubt says its clock runs ahead).
         let alive_since = claims.iter().any(|c| c.computer == entry.id && !c.closed && c.renewed > entry.closed + 60);
-        if !entry.working && alive_since {
+        if !entry.working && alive_since && !aside {
             continue;
         }
         seen.peer.said = Some(entry.said());
@@ -2271,12 +2310,12 @@ fn learn_with(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], entries: &[
         seen.peer.heard = seen.peer.heard.max(entry.exported);
         seen.peer.broken = heard.broken.get(&entry.id).copied();
     }
-    // Said off, or forgotten, until it says anything newer: a new start, a new
-    // export, a claim renewed since.
+    // Said off, or forgotten, until it says anything newer: a new start or a
+    // new export (above, in a copy taken as news), a claim renewed since.
     for seen in kept.peers.values_mut() {
         seen.peer.wake = seen.wakes.iter().copied().max();
-        let (started, exported, renewed) = (seen.entry.as_ref().map_or(0, |e| e.started), seen.entry.as_ref().map_or(0, |e| e.exported), seen.renewed);
-        let newer = |mark: &Mark| started != mark.started || exported > mark.exported || renewed > mark.renewed;
+        let renewed = seen.renewed;
+        let newer = |mark: &Mark| renewed > mark.renewed;
         if seen.off.as_ref().is_some_and(newer) {
             seen.off = None;
         }
@@ -2395,7 +2434,7 @@ fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) ->
             let off = peer.off;
             let counted = sioul_core::health::counts(&Peer { off: false, ..peer.clone() }, now);
             // Its entry from a clock far ahead of this one's, set aside (`FUTURE`): said, so that its clock is set right.
-            let future = seen.is_some_and(|s| s.future > 0);
+            let future = peer.set_aside;
             let state = if off {
                 words.text("share-device-off", None)
             } else if future && entry.is_none() {
@@ -2464,6 +2503,7 @@ fn why_parts(doubts: &[Doubt], words: &Translator) -> Vec<String> {
             Doubt::Working { device, shared, quiet: true } => said(words, "dose-doubt-quiet", &[("name", named(device)), ("when", when(*shared))]),
             Doubt::Coming { device, shared } => said(words, "dose-doubt-coming", &[("name", named(device)), ("when", when(*shared))]),
             Doubt::Apart { device } => said(words, "dose-doubt-apart", &[("name", named(device))]),
+            Doubt::Ahead { device } => said(words, "dose-doubt-ahead", &[("name", named(device))]),
         })
         .collect();
     parts
@@ -2496,6 +2536,8 @@ fn elsewhere_said(elsewhere: &[Elsewhere], since: i64, words: &Translator) -> St
             Elsewhere::Unknown { device } => said(words, "dose-doubt-unknown", &[("name", device_word(device, words)), ("when", when(since))]),
             Elsewhere::Closed { device, at } => said(words, "dose-doubt-closed", &[("name", device_word(device, words)), ("when", when(*at))]),
             Elsewhere::Alarm { device } => said(words, "dose-doubt-alarm", &[("name", device_word(device, words))]),
+            // The same words as its doubt (`why_parts`): said once (`joined`, `doubt_unread_with`).
+            Elsewhere::Ahead { device } => said(words, "dose-doubt-ahead", &[("name", device_word(device, words))]),
             Elsewhere::Unread => words.text("dose-doubt-reminders", None),
         })
         .collect();
@@ -4855,6 +4897,150 @@ mod tests {
         kept.peers.get_mut("desk-id").unwrap().peer.latest_opening = t0 + year;
         learn(&mut kept, &[], &[desk(t0 + 4_800)], &none, t0 + 5_520);
         assert_eq!(kept.peers["desk-id"].peer.latest_opening, t0 + 4_800);
+    }
+
+    /// The final review before 0.0.6 (15 October 2026), F1H: the desk hears
+    /// the phone but cannot send; at 06:40 the phone's clock jumps a quarter
+    /// of an hour ahead, and at 07:05 "This device is off" is said there of
+    /// the desk: the word goes, in copies the desk sets aside. The desk keeps
+    /// the 06:30 copy, word included, but a phone whose copy read now is set
+    /// aside gives no word: at 08:00 the desk is not the first (quiet, then
+    /// the doubt, which says why), and the phone alone reminds plainly. The
+    /// smaller windows of the same class: a copy without the word written in
+    /// the same second as the one before (W1S), and one of a phone whose clock
+    /// was set back half an hour (W1B), take the word away at once, no news
+    /// though they are; and a copy that is no news never gives a word.
+    #[test]
+    fn a_copy_that_is_no_news_takes_a_word_away_and_never_gives_one() {
+        use sioul_core::dose_reminders::QUIET_AFTER;
+        let due: i64 = 1_791_360_000; // 08:00
+        let opening = due - 82_800; // the desk opened yesterday at 09:00, the phone's word on it since
+        let none = sioul_sync::share::Heard::default();
+        let copy = |exported: i64, word: bool| sioul_sync::devices::Entry {
+            id: "phone-id".into(),
+            kind: sioul_sync::devices::PHONE.into(),
+            started: due - 10_800,
+            closed: due - 10_700,
+            exported,
+            imported: exported,
+            doses: true,
+            acked: if word { [("desk-id".to_string(), opening)].into_iter().collect() } else { std::collections::BTreeMap::new() },
+            ..sioul_sync::devices::Entry::default()
+        };
+        // The phone's word as the tick reads it.
+        let word_here = |kept: &Peers| acknowledgements("desk-id", &newest_of(kept));
+        // F1H. Its 06:30 restatement, read at 06:31: the word stands.
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[copy(due - 5_400, true)], &none, due - 5_340);
+        assert_eq!(word_here(&kept).get("phone-id"), Some(&opening));
+        // From 06:40 its clock runs a quarter of an hour ahead: its copies set aside, the word taken back in them at 07:05.
+        for (real, word) in [(due - 4_740, true), (due - 3_300, false), (due - 1_800, false), (due - 60, false)] {
+            learn(&mut kept, &[], &[copy(real + 900, word)], &none, real + 30);
+        }
+        let seen = &kept.peers["phone-id"];
+        assert!(seen.peer.set_aside && seen.entry.as_ref().is_some_and(|e| e.acked.get("desk-id") == Some(&opening)), "the 06:30 copy kept, its word in it");
+        assert!(word_here(&kept).is_empty(), "a phone whose copy read now is set aside gives no word");
+        let knows = Knowledge { record_lost: None, peers: kept.peers.values().map(|s| s.peer.clone()).collect() };
+        let at = due - 30;
+        assert!(!all_acknowledged(&knows, opening, &word_here(&kept), at));
+        let acked = acked_after(Some((opening, opening + 180)), all_acknowledged(&knows, opening, &word_here(&kept), at), opening, at);
+        let first = first_here(false, true, opening, acked.map(|(_, at)| at), due, word_lead(&knows));
+        assert!(!first);
+        assert_eq!(plan(None, true, first, due, due + 10, true), Plan::Quiet(due + QUIET_AFTER), "quiet, then the doubt: the phone's reminder the only plain one");
+        let english = Translator::new("en");
+        assert_eq!(why_in(&sioul_core::health::doubts_now(due, due + QUIET_AFTER, None, &knows.peers), &english), "the phone has its clock more than ten minutes ahead of this one's, so what it says is set aside here");
+        // W1S: a copy without the word written in the same second as the one before: no news, and no word.
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[copy(due - 3_600, true)], &none, due - 3_590);
+        learn(&mut kept, &[], &[copy(due - 3_600, false)], &none, due - 3_580);
+        assert_eq!(kept.peers["phone-id"].peer.seen, due - 3_590, "no news");
+        assert!(word_here(&kept).is_empty(), "the word taken back at once");
+        // W1B: its clock set back half an hour at 07:01. A copy saying the word as the newest does keeps it;
+        // the one taking it back at 07:05 takes it away at once, no news though both are.
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[copy(due - 3_600, true)], &none, due - 3_590);
+        learn(&mut kept, &[], &[copy(due - 3_480 - 1_800, true)], &none, due - 3_470);
+        assert_eq!(word_here(&kept).get("phone-id"), Some(&opening), "said by both: it stands");
+        learn(&mut kept, &[], &[copy(due - 3_300 - 1_800, false)], &none, due - 3_290);
+        assert_eq!(kept.peers["phone-id"].peer.seen, due - 3_590, "no news");
+        assert!(word_here(&kept).is_empty(), "taken away at 07:05, not at 07:31");
+        // A copy that is no news never gives a word: the newest says none, an older one put back says it.
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[copy(due - 3_600, false)], &none, due - 3_590);
+        learn(&mut kept, &[], &[copy(due - 7_200, true)], &none, due - 3_500);
+        assert!(word_here(&kept).is_empty());
+    }
+
+    /// The final review's F1L: a device said off and forgotten here stays so
+    /// while this clock goes back an hour and is set right again (its copy
+    /// then looks ahead: set aside, never dropped), until it says anything
+    /// newer. A copy kept from a clock already far ahead when it came (by a
+    /// Sioul before the rule) is dropped, and the copy read now taken.
+    #[test]
+    fn a_device_said_off_stays_so_until_it_says_anything_newer() {
+        let t: i64 = 1_791_349_200;
+        let desk = |started: i64, exported: i64| sioul_sync::devices::Entry { id: "desk-id".into(), name: "desk".into(), kind: sioul_sync::devices::COMPUTER.into(), started, closed: exported + 10, exported, imported: exported, doses: true, ..sioul_sync::devices::Entry::default() };
+        let none = sioul_sync::share::Heard::default();
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[desk(t, t + 600)], &none, t + 660);
+        let mark = Mark { started: t, exported: t + 600, renewed: 0, at: t + 700 };
+        let seen = kept.peers.get_mut("desk-id").unwrap();
+        (seen.off, seen.forgotten) = (Some(mark.clone()), Some(mark));
+        // This clock set back an hour: the same copy looks ahead, set aside; kept, and the marks with it.
+        learn(&mut kept, &[], &[desk(t, t + 600)], &none, t - 2_900);
+        let seen = &kept.peers["desk-id"];
+        assert!(seen.peer.set_aside && seen.entry.is_some() && seen.peer.off && seen.peer.forgotten);
+        // Set right again: the same copy, nothing newer.
+        learn(&mut kept, &[], &[desk(t, t + 600)], &none, t + 800);
+        let seen = &kept.peers["desk-id"];
+        assert!(!seen.peer.set_aside && seen.peer.off && seen.peer.forgotten);
+        // It speaks again: a new start.
+        learn(&mut kept, &[], &[desk(t + 900, t + 960)], &none, t + 1_000);
+        let seen = &kept.peers["desk-id"];
+        assert!(!seen.peer.off && !seen.peer.forgotten, "it spoke again");
+        // A copy kept from a clock already a day ahead when it came: dropped, the copy read now taken.
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[desk(t, t + 600)], &none, t + 660);
+        kept.peers.get_mut("desk-id").unwrap().entry = Some(desk(t + 86_400, t + 86_400));
+        learn(&mut kept, &[], &[desk(t + 700, t + 760)], &none, t + 800);
+        assert_eq!(kept.peers["desk-id"].entry.as_ref().map(|e| e.started), Some(t + 700));
+    }
+
+    /// The final review's words: on the phone, a desk whose clock runs an hour
+    /// ahead (its copies set aside, last night's kept, its claims dated ahead)
+    /// is said as it is, never "an older Sioul there?", in the alarm's reason
+    /// and the doubt alike, said once; its word stays on last night's opening,
+    /// so the desk, opened anew, is never the first.
+    #[test]
+    fn a_computer_whose_clock_runs_ahead_is_said_so() {
+        use sioul_core::dose_reminders::{DoseReminders, others};
+        let due: i64 = 1_791_360_000; // 08:00
+        let key = format!("levo@{due}");
+        let desk = |started: i64, closed: i64, working: bool, exported: i64| sioul_sync::devices::Entry { id: "desk-id".into(), name: "desk".into(), kind: sioul_sync::devices::COMPUTER.into(), started, closed, working, exported, imported: exported, doses: true, ..sioul_sync::devices::Entry::default() };
+        let none = sioul_sync::share::Heard::default();
+        let mut kept = Peers::default();
+        // Last night's: open at 22:00, closed at 23:00, read at 23:06.
+        learn(&mut kept, &[], &[desk(due - 36_000, due - 32_400, false, due - 32_410)], &none, due - 32_000);
+        // This morning its clock runs an hour ahead: opened at 07:00 (08:00 by its clock), its claim renewed at 07:59 (08:59).
+        let claim = sioul_sync::lease::Claim { computer: "desk-id".into(), name: "desk".into(), since: due, renewed: due + 3_540, until: due + 3_840, active: due + 3_540, taken: 0, wrote: None, closed: false, pad: String::new() };
+        learn(&mut kept, std::slice::from_ref(&claim), &[desk(due, 0, true, due + 3_540)], &none, due - 40);
+        let peer = kept.peers["desk-id"].peer.clone();
+        assert!(peer.set_aside && peer.said.as_ref().is_some_and(|s| s.started == due - 36_000), "set aside, last night's kept: never an older Sioul");
+        let english = Translator::new("en");
+        let french = Translator::new("fr");
+        let words = "desk has its clock more than ten minutes ahead of this one's, so what it says is set aside here";
+        let Others::Doubt(e) = others(&key, due, due + 600, "phone-id", true, Some(&DoseReminders::default()), std::slice::from_ref(&peer), true) else { panic!("never plain") };
+        assert_eq!(elsewhere_said(&e, due, &english), words);
+        assert_eq!(elsewhere_said(&e, due, &french), "desk a son horloge en avance de plus de dix minutes sur celle-ci, et ce qu’il dit est mis de côté ici");
+        let doubts = sioul_core::health::doubts_now(due, due + 600, None, std::slice::from_ref(&peer));
+        assert_eq!(why_in(&doubts, &english), words);
+        assert!(!why_in(&doubts, &french).contains("plus ancien"));
+        // The alarm's notice: the reason said once.
+        let knows = Knowledge { record_lost: None, peers: vec![peer.clone()] };
+        let first = elsewhere_said(&e, due, tr());
+        assert_eq!(doubt_unread_with(&knows, due, due, due + 600, None, Some(&first)), say("dose-doubt", &[("why", first.clone())]));
+        // The phone's word stays on last night's opening: the desk, opened anew, is never the first.
+        assert_eq!(peer.said.as_ref().map(|s| s.started.max(peer.latest_opening)), Some(due - 36_000));
     }
 
     /// At waking (doses kept for it), the desk's first reminder counts its
