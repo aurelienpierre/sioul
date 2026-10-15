@@ -194,8 +194,8 @@ pub fn publish(folder: &Path, key: &[u8; 32], entry: &Entry) -> Result<(), Strin
 /// older Sioul's sharing that knows no `working`): those are no entry, never
 /// one read as closed. Files of other names (a sync app's conflicted copies,
 /// half-written ones) are not read. Of an entry fetched from the server too
-/// (`remote::overlay`), the later of the two copies (`written`); the
-/// folder's on a tie.
+/// (`remote::overlay`), the later of the two copies, its words as both say
+/// them (`chosen`).
 pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     let (mut entries, mut unread) = (Vec::new(), Vec::new());
     let fetched = crate::remote::overlay(folder);
@@ -210,7 +210,7 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     let read = |dir: &Path, id: &str| crate::share::read_small(&file_of(dir, id)).and_then(|text| crate::share::open(key, &bound(id), text.trim())).and_then(|plain| serde_json::from_slice::<Entry>(&plain).ok()).filter(|entry| entry.id == id);
     for id in all {
         let entry = match (read(folder, &id), fetched.as_deref().and_then(|f| read(f, &id))) {
-            (Some(here), Some(fetched)) => Some(if written(&fetched) > written(&here) { fetched } else { here }),
+            (Some(here), Some(fetched)) => Some(chosen(here, fetched)),
             (here, fetched) => here.or(fetched),
         };
         match entry {
@@ -221,6 +221,22 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     entries.sort_by(|a, b| a.id.cmp(&b.id));
     unread.sort();
     (entries, unread)
+}
+
+/// Of an entry read in two copies, the folder's and the one fetched beside
+/// it: the later by its own times (`written`), the folder's on a tie, with
+/// its words (`Entry::acked`) only on the computers the other copy names too.
+/// A phone that no longer names a computer in either copy has stopped
+/// counting it (said off, forgotten, silent a week), whichever copy is dated
+/// later: a phone's clock set back, or two copies written in one second, no
+/// longer keep its word there from the lagging copy. One naming an older
+/// opening of it is only behind, and takes nothing away. The cost: a phone
+/// that counts a computer again, or is paired anew, gives its word there
+/// once both copies name it (the re-check before 0.0.6, LOW-2).
+pub fn chosen(here: Entry, fetched: Entry) -> Entry {
+    let (mut chosen, other) = if written(&fetched) > written(&here) { (fetched, here) } else { (here, fetched) };
+    chosen.acked.retain(|computer, _| other.acked.contains_key(computer));
+    chosen
 }
 
 /// When an entry was written, as far as its times tell: each writing sets
@@ -1114,6 +1130,27 @@ mod tests {
     /// sealed entry (`Entry::acked`), read by the computer with the rest of
     /// it; a word written in the folder otherwise (a file not sealed with the
     /// key, another device's name) is no entry at all.
+    /// Of two copies of a phone's entry (the folder's, the one fetched): the
+    /// later by its times, the folder's on a tie; a computer either copy no
+    /// longer names is withdrawn, whichever is later, while a copy naming an
+    /// older opening of it takes nothing away (the re-check before 0.0.6, LOW-2).
+    #[test]
+    fn of_two_copies_the_later_and_a_word_both_name() {
+        let copy = |exported: i64, word: Option<i64>| Entry { id: "phone".into(), kind: PHONE.into(), working: true, started: 1_000, exported, imported: exported, acked: word.map(|opening| ("desk".to_string(), opening)).into_iter().collect(), ..Entry::default() };
+        // The phone's clock set back: its newest copy, dated earlier, no longer names the desk; the lagging one does.
+        let picked = chosen(copy(9_000, Some(500)), copy(7_000, None));
+        assert_eq!((picked.exported, picked.acked.get("desk")), (9_000, None), "withdrawn, though the copy naming it is dated later");
+        // Two copies written in one second: the folder's, with the word; the fetched one, without.
+        assert!(chosen(copy(9_000, Some(500)), copy(9_000, None)).acked.is_empty());
+        // A lagging copy naming an older opening takes nothing away: the new word stands.
+        assert_eq!(chosen(copy(7_000, Some(500)), copy(9_000, Some(800))).acked.get("desk"), Some(&800));
+        assert_eq!(chosen(copy(9_000, Some(800)), copy(7_000, Some(500))).acked.get("desk"), Some(&800));
+        // The cost: counted again (or paired anew) while the other copy lags without it, its word waits for that copy.
+        assert!(chosen(copy(7_000, None), copy(9_000, Some(800))).acked.is_empty());
+        // Both alike: the later as it is.
+        assert_eq!(chosen(copy(7_000, Some(800)), copy(9_000, Some(800))).acked.get("desk"), Some(&800));
+    }
+
     #[test]
     fn a_phones_word_on_an_opening_travels_sealed_in_its_entry() {
         let base = scratch("acknowledged");

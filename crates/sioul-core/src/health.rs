@@ -615,10 +615,11 @@ pub struct Peer {
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub latest_opening: i64,
     /// Its entry read now is dated more than ten minutes ahead of this
-    /// device's clock (sioul-app's `FUTURE`): set aside until one of the two
-    /// clocks is set right. Nothing it says counts, nor a word it gives; its
-    /// doubt says why (`Doubt::Ahead`), never "an older Sioul" (the final
-    /// review before 0.0.6, F1H and its words).
+    /// device's clock (sioul-app's `FUTURE`): set aside while it reads so (a
+    /// copy read later, or arriving late, within ten minutes by then, is
+    /// taken). Nothing it says counts, nor a word it gives; its doubt says
+    /// why (`Doubt::Ahead`), never "an older Sioul" (the final review before
+    /// 0.0.6, F1H and its words; the re-check's LOW-1).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub set_aside: bool,
 }

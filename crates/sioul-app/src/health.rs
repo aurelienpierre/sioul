@@ -5031,7 +5031,7 @@ mod tests {
         let words = "desk has its clock more than ten minutes ahead of this one's, so what it says is set aside here";
         let Others::Doubt(e) = others(&key, due, due + 600, "phone-id", true, Some(&DoseReminders::default()), std::slice::from_ref(&peer), true) else { panic!("never plain") };
         assert_eq!(elsewhere_said(&e, due, &english), words);
-        assert_eq!(elsewhere_said(&e, due, &french), "desk a son horloge en avance de plus de dix minutes sur celle-ci, et ce qu’il dit est mis de côté ici");
+        assert_eq!(elsewhere_said(&e, due, &french), "desk a son horloge en avance de plus de dix minutes sur celle de cet appareil, et ce qu’il dit est mis de côté ici");
         let doubts = sioul_core::health::doubts_now(due, due + 600, None, std::slice::from_ref(&peer));
         assert_eq!(why_in(&doubts, &english), words);
         assert!(!why_in(&doubts, &french).contains("plus ancien"));
@@ -5041,6 +5041,99 @@ mod tests {
         assert_eq!(doubt_unread_with(&knows, due, due, due + 600, None, Some(&first)), say("dose-doubt", &[("why", first.clone())]));
         // The phone's word stays on last night's opening: the desk, opened anew, is never the first.
         assert_eq!(peer.said.as_ref().map(|s| s.started.max(peer.latest_opening)), Some(due - 36_000));
+    }
+
+    /// The re-check before 0.0.6 (LOW-2): the residual the final round left,
+    /// composed as the tick reads it (`devices::chosen` of the folder's copy
+    /// and the one fetched, `learn`, `newest_of`). The folder stops at the
+    /// phone's 06:30 copy, its word on the desk in it; Sioul's own pull stays
+    /// current. At 06:35 the phone's clock is set back three hours, and at
+    /// 07:05 "This device is off" is said there of the desk. From the phone's
+    /// next copy (07:10, dated 04:10) the word is withdrawn, though the
+    /// folder's copy, dated later, still names the desk: at 08:00 the desk is
+    /// not the first, where it reminded plainly (with the phone: two plain).
+    #[test]
+    fn a_word_the_lagging_copy_still_names_is_withdrawn() {
+        use sioul_core::dose_reminders::QUIET_AFTER;
+        let due: i64 = 1_791_360_000; // 08:00
+        let opening = due - 82_800; // the desk opened yesterday at 09:00
+        let none = sioul_sync::share::Heard::default();
+        let copy = |dated: i64, word: bool| sioul_sync::devices::Entry {
+            id: "phone-id".into(),
+            kind: sioul_sync::devices::PHONE.into(),
+            started: due - 10_800,
+            closed: due - 10_700,
+            exported: dated,
+            imported: dated,
+            doses: true,
+            acked: if word { [("desk-id".to_string(), opening)].into_iter().collect() } else { std::collections::BTreeMap::new() },
+            ..sioul_sync::devices::Entry::default()
+        };
+        let folder = copy(due - 5_400, true);
+        let mut kept = Peers::default();
+        learn(&mut kept, &[], &[sioul_sync::devices::chosen(folder.clone(), folder.clone())], &none, due - 5_340);
+        let mut word_until = 0;
+        // Every ten minutes from 06:40 a copy, dated three hours behind; the word taken back at 07:05.
+        for real in (due - 4_800..due).step_by(600) {
+            let fetched = copy(real - 10_800, real < due - 3_300);
+            let read = sioul_sync::devices::chosen(folder.clone(), fetched);
+            assert_eq!(read.exported, due - 5_400, "the folder's copy, dated later, is the one read");
+            learn(&mut kept, &[], &[read], &none, real + 60);
+            if acknowledgements("desk-id", &newest_of(&kept)).get("phone-id") == Some(&opening) {
+                word_until = real + 60;
+            }
+        }
+        assert_eq!(word_until, due - 3_540, "the word stood until 07:01, gone from 07:11");
+        let knows = Knowledge { record_lost: None, peers: kept.peers.values().map(|s| s.peer.clone()).collect() };
+        let at = due - 30;
+        let acks = acknowledgements("desk-id", &newest_of(&kept));
+        let acked = acked_after(Some((opening, opening + 180)), all_acknowledged(&knows, opening, &acks, at), opening, at);
+        let first = first_here(false, true, opening, acked.map(|(_, at)| at), due, word_lead(&knows));
+        assert!(!first);
+        assert_eq!(plan(None, true, first, due, due + 10, true), Plan::Quiet(due + QUIET_AFTER), "no plain reminder at 08:00");
+    }
+
+    /// The re-check before 0.0.6 (LOW-2): a new word stands while one channel
+    /// lags. The desk opened anew at 07:00; the phone names that opening from
+    /// 07:02, in every copy Sioul's own pull brings; the folder stays on the
+    /// phone's 06:30 copy, which names the desk's opening before: only behind,
+    /// it takes nothing away, and the desk reminds plainly at 08:00. The cost:
+    /// had the lagging copy named the desk not at all (counted again, paired
+    /// anew), the word would wait for it.
+    #[test]
+    fn a_new_word_stands_while_one_channel_lags() {
+        let due: i64 = 1_791_360_000; // 08:00
+        let (before, opening) = (due - 82_800, due - 3_600); // yesterday 09:00; today 07:00
+        let none = sioul_sync::share::Heard::default();
+        let copy = |dated: i64, word: Option<i64>| sioul_sync::devices::Entry {
+            id: "phone-id".into(),
+            kind: sioul_sync::devices::PHONE.into(),
+            started: due - 10_800,
+            closed: due - 10_700,
+            exported: dated,
+            imported: dated,
+            doses: true,
+            acked: word.map(|at| ("desk-id".to_string(), at)).into_iter().collect(),
+            ..sioul_sync::devices::Entry::default()
+        };
+        let run = |folder: &sioul_sync::devices::Entry| {
+            let mut kept = Peers::default();
+            let mut acked = None;
+            for real in (due - 3_480..due).step_by(600) {
+                learn(&mut kept, &[], &[sioul_sync::devices::chosen(folder.clone(), copy(real, Some(opening)))], &none, real + 60);
+                let knows = Knowledge { record_lost: None, peers: kept.peers.values().map(|s| s.peer.clone()).collect() };
+                acked = acked_after(acked, all_acknowledged(&knows, opening, &acknowledgements("desk-id", &newest_of(&kept)), real + 60), opening, real + 60);
+            }
+            let knows = Knowledge { record_lost: None, peers: kept.peers.values().map(|s| s.peer.clone()).collect() };
+            (acked, first_here(false, true, opening, acked.map(|(_, at)| at), due, word_lead(&knows)))
+        };
+        let (acked, first) = run(&copy(due - 5_400, Some(before)));
+        assert_eq!(acked, Some((opening, due - 3_420)), "the word from 07:03");
+        assert!(first);
+        assert_eq!(plan(None, true, first, due, due + 10, true), Plan::First, "plain at 08:00, as before");
+        // The cost: a lagging copy that names the desk not at all holds the word back until it catches up.
+        let (acked, first) = run(&copy(due - 5_400, None));
+        assert!(acked.is_none() && !first);
     }
 
     /// At waking (doses kept for it), the desk's first reminder counts its
