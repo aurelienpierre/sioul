@@ -2634,7 +2634,7 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         };
         // Listed, its records past their time still there are taken out (`Sender::take_out_past`).
         let past = if lane == Lane::Main && check { crate::share::rounds_past(folder, memory, own, now * 1000) } else { None };
-        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past }.run(&files, check, again));
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past }.run(&files, check, again));
         match outcome {
             Ok(()) => {
                 sending.tries = 0;
@@ -2767,6 +2767,8 @@ enum Went {
 struct Sender<'a> {
     server: &'a Server,
     folder: &'a Path,
+    /// The sharing's memory (`share::rounds_past` reads where its rounds stand).
+    memory: &'a Path,
     own: &'a str,
     /// The folder there, an address ending with "/".
     url: &'a str,
@@ -3023,15 +3025,22 @@ impl Sender<'_> {
     fn take_out_gone(&mut self) -> Result<(), Stop> {
         let latest = own_latest(self.folder, self.own);
         let gone: Vec<(String, Sent)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.clone())).collect();
+        // A round gone here is past its time only below the readers' floor
+        // (`share::rounds_past`), as `remove_old_rounds` judged it: one gone
+        // from a folder synced again in part, a backup put back or a file
+        // kept on demand stays there for a reader that has not read it
+        // (review of 15 October 2026, L2). Read only when a round went.
+        let rounds = gone.iter().any(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))));
+        let floor = if rounds { crate::share::rounds_past(self.folder, self.memory, self.own, self.now * 1000) } else { None };
         for (relative, sent) in gone {
             let round = relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok());
-            let past = matches!(kind_of(&relative), Some((Kind::Round, _))) && round.zip(latest).is_some_and(|(round, latest)| round < latest);
+            let past = matches!(kind_of(&relative), Some((Kind::Round, _))) && round.zip(latest).is_some_and(|(round, latest)| round < latest) && round.zip(floor).is_some_and(|(round, floor)| round < floor);
             let swept = relative.strip_prefix("blobs/").is_some_and(|name| !self.sealed.contains_key(name));
             if past || swept {
                 match self.server.delete(&self.url(&relative), Some(&sent.etag).filter(|e| !e.is_empty()).map(String::as_str))? {
                     200 | 204 => self.pulled.taken_out += 1,
                     404 => {}
-                    412 => self.again_after_412(&relative, &sent, past)?,
+                    412 => self.again_after_412(&relative, &sent, past),
                     status => return Err(Stop::Failed(SyncError::Server(format!("DELETE: {status}")))),
                 }
             }
@@ -3055,19 +3064,20 @@ impl Sender<'_> {
     /// otherwise was sent there again by another device that uses that
     /// content again (`blobs::put` makes it fresh, and its sync app sends the
     /// new time): its use, never taken out. Otherwise, or refused again, or
-    /// any other answer: left there, forgotten here (this device's past
-    /// rounds are looked for again at each listing: `take_out_past`).
-    fn again_after_412(&mut self, relative: &str, sent: &Sent, records: bool) -> Result<(), Stop> {
+    /// any other answer, a failure too (a server's error, a timeout): left
+    /// there, forgotten here, the send going on and not held back (review of
+    /// 15 October 2026, L1); this device's past rounds are looked for again
+    /// at each listing (`take_out_past`).
+    fn again_after_412(&mut self, relative: &str, sent: &Sent, records: bool) {
         let url = self.url(relative);
-        let Some(there) = self.server.stat(&url)? else { return Ok(()) };
+        let Ok(Some(there)) = self.server.stat(&url) else { return };
         let dated = records || there.modified == Some((sent.modified / 1_000_000_000) as i64);
         if there.dir || there.etag.is_empty() || there.size != sent.size || !dated {
-            return Ok(());
+            return;
         }
-        if matches!(self.server.delete(&url, Some(&there.etag))?, 200 | 204) {
+        if matches!(self.server.delete(&url, Some(&there.etag)), Ok(200 | 204)) {
             self.pulled.taken_out += 1;
         }
-        Ok(())
     }
 
     /// This device's records past their time still listed there (below
@@ -5984,6 +5994,17 @@ mod tests {
         walk(server).into_keys().filter(|r| r.starts_with(id) && r.ends_with(".jsonl")).filter_map(|r| r.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse().ok())).collect()
     }
 
+    /// Where the phone's rounds stand, as `share::rounds_past` reads it: its
+    /// last round and its last full round in its memory, and how far the desk
+    /// read it in the desk's notes, as its sync app brought them (at `at`).
+    fn rounds_stand(w: &World, round: u32, full_round: u32, read: u32, at: i64) {
+        let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&w.phone.memory).unwrap()).unwrap();
+        memory["round"] = round.into();
+        memory["full_round"] = full_round.into();
+        std::fs::write(&w.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+        put(&w.phone_folder, &format!("{}.toml", w.desk.id), &format!("at = {at}\nround = 1\n\n[read]\n\"{}\" = {read}\n", w.phone.id));
+    }
+
     /// eDrive sends again each file Sioul sent, the same bytes, and Nextcloud
     /// gives it a new ETag: a past round or a swept sealed file then met `412`
     /// and was forgotten, left on the server for good (a phone's past full
@@ -6031,10 +6052,12 @@ mod tests {
             fake::bump(&again);
             set_mtime(&again, SystemTime::now() + Duration::from_secs(3600));
         }
-        // Rounds 40 and 41 past their time here, both sealed files swept.
+        // Rounds 40 and 41 past their time here (every device read past them,
+        // and 42 is the phone's last full round), both sealed files swept.
         for relative in [round(40), round(41), format!("blobs/{mine}"), format!("blobs/{used}")] {
             std::fs::remove_file(w.phone_folder.join(relative)).unwrap();
         }
+        rounds_stand(&w, 43, 42, 43, DUE + 15);
         w.fake.forget_seen();
         let gone = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, false, TEST);
         assert!(gone.problem.is_none(), "{gone:?}");
@@ -6143,6 +6166,72 @@ mod tests {
         // Never another device's file.
         assert!(w.server.join(format!("{stranger}-1.jsonl")).exists());
         assert_eq!(walk(&w.server).into_iter().filter(|(r, _)| r.contains(&w.desk.id)).collect::<BTreeMap<_, _>>(), desks);
+    }
+
+    /// A refused delete (`412`) whose look at the server's copy then fails (a
+    /// server's error on `PROPFIND`) leaves that file there and lets the send
+    /// go on: the other files go, nothing is held back, no backoff; the next
+    /// listing takes the round out (review of 15 October 2026, L1).
+    #[test]
+    fn a_failed_look_after_a_refused_delete_holds_nothing_back() {
+        let w = World::new("look-fails");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let round = |n: u32| format!("{}-{n}.jsonl", w.phone.id);
+        for n in 40..=42 {
+            put(&w.phone_folder, &round(n), &format!("{{\"round\":{n}}}\n"));
+        }
+        assert!(send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 10, false, TEST).problem.is_none());
+        {
+            let _turn = w.fake.turn.lock().unwrap();
+            sync_up(&w.phone_folder.join(round(40)), &w.server.join(round(40)));
+        }
+        std::fs::remove_file(w.phone_folder.join(round(40))).unwrap();
+        rounds_stand(&w, 42, 41, 42, DUE + 15);
+        put(&w.phone_folder, &round(43), "{\"round\":43}\n");
+        let looked = round(40);
+        w.fake.fault(move |r| (r.method == "PROPFIND" && r.path.ends_with(&looked)).then_some(Fault::Status(500)));
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, false, TEST);
+        assert!(sent.problem.is_none() && sent.failure.is_none(), "the send goes on: {sent:?}");
+        assert_eq!((sent.sent, sent.taken_out), (1, 0), "the new round went, the refused one stayed");
+        let sending = Sending::load(&w.phone.memory);
+        assert_eq!((sending.tries, sending.retry_at), (0, 0), "no backoff");
+        assert!(w.server.join(round(40)).exists() && w.server.join(round(43)).exists());
+        // Forgotten here: the next send asks nothing of it; the listing takes it out.
+        w.fake.clear_faults();
+        w.fake.forget_seen();
+        send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 30, false, TEST);
+        assert!(w.fake.seen().iter().all(|l| !l.contains(&round(40))), "{:?}", w.fake.seen());
+        let listed = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 10 + 6 * 3600, false, TEST);
+        assert_eq!(listed.taken_out, 1, "{listed:?}");
+        assert!(!w.server.join(round(40)).exists());
+    }
+
+    /// A round of this device gone from the folder here but not past its time
+    /// for every reader (a folder synced again in part, a backup put back) is
+    /// not taken out there: only below the readers' floor (`share::rounds_past`),
+    /// as `remove_old_rounds` judges it; then at the next send (review of
+    /// 15 October 2026, L2).
+    #[test]
+    fn a_round_gone_here_goes_there_only_below_the_readers_floor() {
+        let w = World::new("readers-floor");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let round = |n: u32| format!("{}-{n}.jsonl", w.phone.id);
+        for n in 40..=43 {
+            put(&w.phone_folder, &round(n), &format!("{{\"round\":{n}}}\n"));
+        }
+        assert!(send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 10, false, TEST).problem.is_none());
+        // The desk read the phone to round 41 only, and 40 is its last full round.
+        rounds_stand(&w, 43, 40, 41, DUE + 15);
+        std::fs::remove_file(w.phone_folder.join(round(41))).unwrap();
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, false, TEST);
+        assert!(sent.problem.is_none() && sent.taken_out == 0, "{sent:?}");
+        assert!(w.server.join(round(41)).exists(), "below the latest round, not below the readers' floor: kept there");
+        // Every reader read past it, and a later round is full: it goes.
+        rounds_stand(&w, 43, 42, 43, DUE + 25);
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 30, false, TEST);
+        assert_eq!(sent.taken_out, 1, "{sent:?}");
+        assert!(!w.server.join(round(41)).exists());
+        assert!([40, 42, 43].iter().all(|n| w.server.join(round(*n)).exists()), "never one here");
     }
 
     // ------------------------------------------------ weeks of edits: what the server holds settles

@@ -1069,30 +1069,34 @@ pub(crate) fn nudge_carriers() {
 }
 
 /// The doses' record read again from every computer's records at the next
-/// exchange, this computer forgetting it held it: one lost or broken here,
-/// started again empty, takes nothing out elsewhere. Waits for an exchange
-/// running. Returns what went wrong, else "".
-pub(crate) fn rebuild_health_record() -> String {
-    let here = share::Here::load(&state_dir());
-    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    share::rebuild(&memory_path(), &here.id, &["state/health-state.toml"]).err().unwrap_or_default()
+/// exchange, this computer forgetting it held it, and `then` (the record set
+/// aside) done before any exchange can run: one lost or broken here, started
+/// again empty, takes nothing out elsewhere. One step, under the window's
+/// exchanges (`BUSY`) and the exchanges' lock: an exchange between the two
+/// filled the record again, which then went aside, and the next mark took
+/// every other mark out on every device (review of 15 October 2026, P1).
+/// Waits for an exchange running. Returns what `then` gave, or what went wrong.
+pub(crate) fn rebuild_health_record<T>(then: impl FnOnce() -> T) -> Result<T, String> {
+    rebuild_then(&["state/health-state.toml"], then)
 }
 
-/// The same for the doses' records (`sioul_core::doses`): one lost or broken
-/// here is read again from every device's records, nothing of it taken out elsewhere.
-pub(crate) fn rebuild_dose_records() -> String {
-    let here = share::Here::load(&state_dir());
-    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    share::rebuild(&memory_path(), &here.id, &["state/health-doses.toml"]).err().unwrap_or_default()
+/// The same for the doses' records (`sioul_core::doses`): those lost or broken
+/// here are read again from every device's records, nothing of them taken out elsewhere.
+pub(crate) fn rebuild_dose_records<T>(then: impl FnOnce() -> T) -> Result<T, String> {
+    rebuild_then(&["state/health-doses.toml"], then)
 }
 
 /// The same for what each device did to remind each dose
 /// (`sioul_core::dose_reminders`): one lost or broken here is read again from
 /// every device's, nothing of it taken out elsewhere.
-pub(crate) fn rebuild_dose_reminders() -> String {
+pub(crate) fn rebuild_dose_reminders<T>(then: impl FnOnce() -> T) -> Result<T, String> {
+    rebuild_then(&["state/health-reminders.toml"], then)
+}
+
+fn rebuild_then<T>(files: &[&str], then: impl FnOnce() -> T) -> Result<T, String> {
     let here = share::Here::load(&state_dir());
     let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    share::rebuild(&memory_path(), &here.id, &["state/health-reminders.toml"]).err().unwrap_or_default()
+    share::rebuild_then(&memory_path(), &here.id, files, then)
 }
 
 /// Sync apps that can be asked to look for changes now, on a phone: their

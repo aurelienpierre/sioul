@@ -342,4 +342,37 @@ mod tests {
         assert_eq!(versions(&root, "notes", "files/notes/big.md").first().map(|v| v.at), Some(start + 70 * DAY + 4), "the newest stays");
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    /// The window's help and the guides say what holds: copies, the last 20
+    /// and those of 30 days; a note or a paper kept as a pointer to the
+    /// sharing folder, 12 days whatever its rank. Until the review of 15
+    /// October 2026 (M1) they promised the 20 and the 30 days to every version.
+    #[test]
+    fn the_help_and_the_guides_say_how_long_versions_stay() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let read = |relative: &str| std::fs::read_to_string(root.join(relative)).unwrap();
+        let help = |relative: &str| read(relative).lines().find(|l| l.starts_with("share-history-help =")).unwrap().to_string();
+        let en = help("crates/sioul-core/locales/en/sioul.ftl");
+        for said in [format!("last {VERSIONS} versions"), format!("last {DAYS} days"), format!("for {SEALED_DAYS} days")] {
+            assert!(en.contains(&said), "{said}: {en}");
+        }
+        let fr = help("crates/sioul-core/locales/fr/sioul.ftl");
+        for said in [format!("{VERSIONS} dernières versions"), format!("{DAYS} derniers jours"), format!("pendant {SEALED_DAYS} jours")] {
+            assert!(fr.contains(&said), "{said}: {fr}");
+        }
+        // Every line of the guides giving the copies' 20 gives the pointers' 12 days too.
+        for (guide, copies, pointers) in [
+            ("website/docs/guide/notes.md", format!("last {VERSIONS}"), format!("{SEALED_DAYS} days")),
+            ("website/fr/docs/guide/notes.md", format!("{VERSIONS} dernières"), format!("{SEALED_DAYS} jours")),
+            ("website/docs/guide/sharing.md", format!("last {VERSIONS}"), format!("for {SEALED_DAYS} days")),
+            ("website/fr/docs/guide/sharing.md", format!("{VERSIONS} dernières"), format!("pendant {SEALED_DAYS} jours")),
+        ] {
+            let text = read(guide);
+            let lines: Vec<&str> = text.lines().filter(|l| l.contains(&copies)).collect();
+            assert!(!lines.is_empty(), "{guide}");
+            for line in lines {
+                assert!(line.contains(&pointers), "{guide}: {line}");
+            }
+        }
+    }
 }

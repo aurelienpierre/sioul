@@ -1774,17 +1774,26 @@ fn record() -> HealthState {
 
 /// A record that cannot be trusted: nothing it held may be taken out on your
 /// other devices, so the sharing forgets it first and reads it again from
-/// every device's records at the next exchange; then it is kept aside and a
-/// new one starts. Sharing failing that, it is left as it is: never started
-/// again empty where the sharing could take marks out elsewhere.
+/// every device's records at the next exchange; it is kept aside in the same
+/// step, before any exchange can run, and a new one starts. Sharing failing
+/// that, it is left as it is: never started again empty where the sharing
+/// could take marks out elsewhere.
 fn repair() {
     let now = Timestamp::now().as_second();
-    if crate::share::on() && !crate::share::rebuild_health_record().is_empty() {
-        write_record_doubt(now, "");
-        return;
-    }
-    let aside = HealthState::set_aside(&HealthState::default_path(), now).ok().flatten().map(|p| p.display().to_string()).unwrap_or_default();
-    write_record_doubt(now, &aside);
+    let path = HealthState::default_path();
+    let set_aside = || HealthState::set_aside(&path, now);
+    let aside = if crate::share::on() {
+        match crate::share::rebuild_health_record(set_aside) {
+            Ok(aside) => aside,
+            Err(_) => {
+                write_record_doubt(now, "");
+                return;
+            }
+        }
+    } else {
+        set_aside()
+    };
+    write_record_doubt(now, &aside.ok().flatten().map(|p| p.display().to_string()).unwrap_or_default());
 }
 
 /// The record changed by `change`, under its lock; one that cannot be trusted
@@ -1840,15 +1849,23 @@ fn records() -> DoseRecords {
 
 /// Records that cannot be trusted, as `repair` does the marks: the sharing
 /// first forgets holding them and reads them again from every device's
-/// records; then they are kept aside and new ones start.
+/// records; they are kept aside in the same step, and new ones start.
 fn repair_records() {
     let now = Timestamp::now().as_second();
-    if crate::share::on() && !crate::share::rebuild_dose_records().is_empty() {
-        write_record_doubt(now, "");
-        return;
-    }
-    let aside = DoseRecords::set_aside(&DoseRecords::default_path(), now).ok().flatten().map(|p| p.display().to_string()).unwrap_or_default();
-    write_record_doubt(now, &aside);
+    let path = DoseRecords::default_path();
+    let set_aside = || DoseRecords::set_aside(&path, now);
+    let aside = if crate::share::on() {
+        match crate::share::rebuild_dose_records(set_aside) {
+            Ok(aside) => aside,
+            Err(_) => {
+                write_record_doubt(now, "");
+                return;
+            }
+        }
+    } else {
+        set_aside()
+    };
+    write_record_doubt(now, &aside.ok().flatten().map(|p| p.display().to_string()).unwrap_or_default());
 }
 
 /// The records changed by `change`, under their lock; ones that cannot be
@@ -3347,17 +3364,25 @@ fn told() -> Option<DoseReminders> {
 }
 
 /// A reminders' file that cannot be trusted, as `repair_records` does the
-/// records: read again from every device's at the next exchange, then kept
-/// aside; the doses due before said not known for a day (`write_record_doubt`).
+/// records: read again from every device's at the next exchange, kept aside
+/// in the same step; the doses due before said not known for a day
+/// (`write_record_doubt`).
 fn repair_told() {
     let now = Timestamp::now().as_second();
-    if crate::share::on() && !crate::share::rebuild_dose_reminders().is_empty() {
-        write_record_doubt(now, "");
-        return;
-    }
     let path = DoseReminders::default_path();
-    let aside = sioul_core::health::HealthState::set_aside(&path, now).ok().flatten().map(|p| p.display().to_string()).unwrap_or_default();
-    write_record_doubt(now, &aside);
+    let set_aside = || sioul_core::health::HealthState::set_aside(&path, now);
+    let aside = if crate::share::on() {
+        match crate::share::rebuild_dose_reminders(set_aside) {
+            Ok(aside) => aside,
+            Err(_) => {
+                write_record_doubt(now, "");
+                return;
+            }
+        }
+    } else {
+        set_aside()
+    };
+    write_record_doubt(now, &aside.ok().flatten().map(|p| p.display().to_string()).unwrap_or_default());
 }
 
 /// This computer's entry for the dose `key` changed by `change`; false when

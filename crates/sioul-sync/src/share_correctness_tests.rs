@@ -1178,3 +1178,133 @@ fn an_asked_full_round_goes_after_six_hours_metered() {
     set_frugal(&desk.memory, false);
     let _ = std::fs::remove_dir_all(&base);
 }
+
+// ---------------------------------------------------------------- the review of 15 October 2026
+
+/// The doses' record, written as the window writes it (witnessed): `taken`,
+/// each at one time, and the day's chat minutes.
+fn record_with(path: &Path, taken: &[&str], chat_minutes: u32) {
+    sioul_core::health::HealthState::update(path, NOW / 1000, |state| {
+        for dose in taken {
+            state.taken.insert((*dose).to_string(), NOW / 1000);
+        }
+        state.chat_minutes = chat_minutes;
+    })
+    .unwrap();
+}
+
+fn marks(c: &Computer) -> (Vec<String>, u32) {
+    let state = sioul_core::health::HealthState::read(&c.path("state/health-state.toml")).unwrap();
+    (state.taken.into_keys().collect(), state.chat_minutes)
+}
+
+/// RV-P2: a record rebuilt (`rebuild`) joins as a store new here does: read
+/// from the records first, then only what they lack goes out. The desk still
+/// holds a mark the phone took back, not read here yet: its copy no longer
+/// goes out first, with a clock later than everything it read, which put the
+/// mark back on both devices.
+#[test]
+fn a_rebuilt_record_never_sends_an_old_mark_again() {
+    let base = scratch("rebuilt-old-mark");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    record_with(&desk.path("state/health-state.toml"), &["a@1790000600", "b@1790003600"], 0);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    assert_eq!(marks(&phone).0, ["a@1790000600", "b@1790003600"]);
+    // The phone takes the second back; the desk's record is rebuilt before it reads that.
+    sioul_core::health::HealthState::update(&phone.path("state/health-state.toml"), NOW / 1000, |state| {
+        state.taken.remove("b@1790003600");
+    })
+    .unwrap();
+    phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+    rebuild(&desk.memory, &desk.id, &["state/health-state.toml"]).unwrap();
+    let outcome = desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+    assert_eq!(outcome.sent, 0, "nothing of the rebuilt record goes out: the records hold it all ({outcome:?})");
+    phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+    assert_eq!(marks(&desk).0, ["a@1790000600"], "the phone's later word, read first");
+    assert_eq!(marks(&phone).0, ["a@1790000600"], "the mark taken back stays taken back");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// RV-P3 (P1): the doses' repair forgets the record and sets it aside in one
+/// step, under the exchanges' lock (`rebuild_then`). An exchange run between
+/// the two filled the lost record again from the records; the full record
+/// then went aside, and the next mark written made every other mark look
+/// taken out, on every device. An exchange asked meanwhile now waits for both
+/// steps, and every mark stays.
+#[test]
+fn the_doses_repair_is_one_step_and_takes_no_mark_out() {
+    use sioul_core::health::{HealthState, Unsound};
+    let base = scratch("repair-one-step");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let path = desk.path("state/health-state.toml");
+    record_with(&path, &["a@1790000600", "b@1790003600"], 0);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    // The desk's record lost (a crash: gone, its witness left), and repaired
+    // while another exchange is asked for (a second Sioul, the command line).
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(HealthState::read(&path), Err(Unsound::Lost));
+    let (asked, asking) = std::sync::mpsc::channel();
+    let (other_desk, other_folder, other_key) = (&desk, &folder, &key);
+    std::thread::scope(|s| {
+        let other = s.spawn(move || {
+            asking.recv().unwrap();
+            other_desk.exchange(other_folder, other_key, NOW + 2 * MINUTE)
+        });
+        let aside = rebuild_then(&desk.memory, &desk.id, &["state/health-state.toml"], || {
+            asked.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(!path.exists(), "no exchange filled the record between the two steps");
+            HealthState::set_aside(&path, NOW / 1000 + 120)
+        })
+        .unwrap();
+        assert!(aside.is_ok());
+        other.join().unwrap();
+    });
+    // A new mark, then the exchanges: every mark on both devices.
+    HealthState::update(&path, NOW / 1000 + 180, |state| {
+        state.taken.insert("c@1790007200".into(), NOW / 1000 + 180);
+    })
+    .unwrap();
+    desk.exchange(&folder, &key, NOW + 4 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 5 * MINUTE);
+    for c in [&desk, &phone] {
+        assert_eq!(marks(c).0, ["a@1790000600", "b@1790003600", "c@1790007200"], "nothing taken out");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// RV-P4: the repair, then a new mark, as the window does it: every mark on
+/// both devices, and the day's chat minutes as the record held them. Before,
+/// the new record's default (no chat minutes) went out with a fresh clock
+/// after any repair, and reset the day's chat minutes on every device.
+#[test]
+fn after_the_doses_repair_every_mark_and_the_chat_minutes_stay() {
+    use sioul_core::health::HealthState;
+    let base = scratch("repair-chat");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let path = desk.path("state/health-state.toml");
+    record_with(&path, &["a@1790000600", "b@1790003600"], 37);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    assert_eq!(marks(&phone).1, 37);
+    std::fs::write(&path, "[taken\n").unwrap();
+    rebuild_then(&desk.memory, &desk.id, &["state/health-state.toml"], || HealthState::set_aside(&path, NOW / 1000 + 120)).unwrap().unwrap();
+    HealthState::update(&path, NOW / 1000 + 180, |state| {
+        state.taken.insert("c@1790007200".into(), NOW / 1000 + 180);
+    })
+    .unwrap();
+    desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+    for c in [&desk, &phone] {
+        assert_eq!(marks(c), (vec!["a@1790000600".to_string(), "b@1790003600".to_string(), "c@1790007200".to_string()], 37), "every mark, and the chat minutes not reset");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
