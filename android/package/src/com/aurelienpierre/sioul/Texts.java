@@ -4,7 +4,6 @@
 package com.aurelienpierre.sioul;
 
 import android.Manifest;
-import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -46,9 +45,10 @@ import org.json.JSONObject;
  *
  * Asked through {@link StepService#call} ("texts-…", from either process): the
  * permissions and the SIMs, Android's question for the permissions
- * (TextsAsk), the texts since the reader's marks (the whole history, every
- * column, multimedia messages and their parts), a part's content, the ids
- * there are now, the texts Sioul sent lately (to find one after a crash),
+ * (TextsAsk), the rows Rust's reader asks for by their ids (the whole
+ * history, every column, multimedia messages and their parts), a part's
+ * content, every row there is with its date, the texts Sioul sent lately
+ * (to find one after a crash),
  * and a text to send (TextSend), whether the phone's texts changed since the
  * last look and whether it charges (`changes`). Heard: a new text, which
  * brings a step soon. The background service watches Android's provider of
@@ -342,10 +342,8 @@ public final class Texts
             // No telephony.
         }
         out.put("sms_app", sms == null ? "" : sms);
-        // Android keeping restricted settings from Sioul, as it says; null when it does not say.
-        Boolean restricted = restrictedSettings(context);
-        out.put("restricted", restricted == null ? JSONObject.NULL : restricted);
-        // The last question for these permissions answered at once, nothing given: none was shown.
+        // The texts' question asked here once at least, and its last answer at once, nothing given: none was shown.
+        out.put("asked", asked(context) != null);
         out.put("at_once", askedAtOnce(context));
         JSONArray sims = new JSONArray();
         if (phoneState) {
@@ -374,45 +372,21 @@ public final class Texts
     /** Java's own file, in the private texts folder: how Android answered the last question (TextsAsk). */
     static final String ASKED = "asked.json";
 
-    /**
-     * Whether Android keeps "restricted settings" from Sioul: from Android 13
-     * an app installed from a file gets no notification access, and from
-     * Android 15 none of the texts' permissions, until the person allows its
-     * restricted settings in App info ▸ ⋮ ▸ Allow restricted settings
-     * (confirmed with the phone's PIN). Android says it in the app op
-     * ACCESS_RESTRICTED_SETTINGS (`restrictedMode`). Null when this Android
-     * does not say: the op unknown to it, or not readable.
+    /*
+     * Whether Android keeps "restricted settings" from Sioul (Android 13 and
+     * later, an app installed from a file) cannot be read by an app: the app
+     * op that says it, ACCESS_RESTRICTED_SETTINGS, is restrict-read on every
+     * release that has it (MANAGE_APPOPS and the like, which no app holds),
+     * and Android 15's enhanced confirmation asks a permission of its own.
+     * Sioul says the steps that hold either way instead (docs/android.md,
+     * "What Android withholds").
      */
-    static Boolean restrictedSettings(Context context)
-    {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)
-            return Boolean.FALSE;
-        try {
-            AppOpsManager ops = context.getSystemService(AppOpsManager.class);
-            if (ops == null)
-                return null;
-            // Android 16's name for the check (the "unsafe" ones of Android 10 to 15 are deprecated there); there since Android 4.4.
-            return restrictedMode(ops.checkOpNoThrow("android:access_restricted_settings", android.os.Process.myUid(), context.getPackageName()));
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
 
     /**
-     * The op's mode as Android reads it for restricted settings: "errored" for
-     * an app installed from a file, until allowed; "ignored" once a request
-     * was refused for it (App info's ⋮ then offers Allow restricted
-     * settings); "allowed" after. Pure: android/jvm-checks/TextsCheck.java.
-     */
-    static boolean restrictedMode(int mode)
-    {
-        return mode == AppOpsManager.MODE_ERRORED || mode == AppOpsManager.MODE_IGNORED;
-    }
-
-    /**
-     * Whether Android answered the question at once, giving nothing: it showed
-     * none (restricted settings, or "Don't allow" chosen twice before).
-     * `took` is -1 when not measured. Pure: android/jvm-checks/TextsCheck.java.
+     * Whether Android answered the texts' question at once, giving none of
+     * the three: it showed none (Android 15's restricted settings after the
+     * first time, or "Don't allow" chosen twice before). `took` is -1 when
+     * not measured. Pure: android/jvm-checks/TextsCheck.java.
      */
     static boolean atOnce(int given, long took)
     {
@@ -431,15 +405,21 @@ public final class Texts
         }
     }
 
+    /** How Android answered the texts' last question (`remember`); null when none was asked here. */
+    static JSONObject asked(Context context)
+    {
+        try {
+            return new JSONObject(new String(Files.readAllBytes(new File(new File(context.getFilesDir(), FOLDER), ASKED).toPath()), StandardCharsets.UTF_8));
+        } catch (IOException | JSONException | RuntimeException e) {
+            return null;
+        }
+    }
+
     /** Whether the last question was answered at once, nothing given (`atOnce`); false when none was asked. */
     static boolean askedAtOnce(Context context)
     {
-        try {
-            JSONObject asked = new JSONObject(new String(Files.readAllBytes(new File(new File(context.getFilesDir(), FOLDER), ASKED).toPath()), StandardCharsets.UTF_8));
-            return atOnce(asked.optInt("given", 0), asked.optLong("took", -1));
-        } catch (IOException | JSONException | RuntimeException e) {
-            return false;
-        }
+        JSONObject asked = asked(context);
+        return asked != null && atOnce(asked.optInt("given", 0), asked.optLong("took", -1));
     }
 
     /** Android's App info for Sioul, where ⋮ ▸ Allow restricted settings and the permissions are. */
@@ -568,9 +548,9 @@ public final class Texts
     }
 
     /**
-     * Which rows a read takes: those after the mark, or, given `ids` (rows the
-     * daily look found on the phone and not in the archive: a text that was
-     * in the outbox, hidden, when the mark passed it), those rows only.
+     * Which rows a read takes: given `ids` (the rows Rust's reader asks for:
+     * those its log lacks, by their ids), those rows only; else those after
+     * the mark (no reader asks so since its version 4, 16 October 2026).
      */
     static String rows(JSONArray ids)
     {
@@ -583,10 +563,10 @@ public final class Texts
     }
 
     /**
-     * The texts after the reader's marks (`sms`, `mms`: the last provider ids
-     * read), or the rows `smsIds` and `mmsIds` name; `limit` at most, the
-     * plain texts first, oldest first, every column; each conversation's
-     * people; and the new marks. The whole history: no date.
+     * The rows `smsIds` and `mmsIds` name (else those after the marks `sms`,
+     * `mms`: `rows`); `limit` at most, the plain texts first, by id, every
+     * column, the date among them (Rust tells a row by its id and its date);
+     * each conversation's people; and the new marks.
      */
     static JSONObject read(ContentResolver resolver, long smsMark, long mmsMark, int limit, JSONArray smsIds, JSONArray mmsIds) throws JSONException
     {
@@ -639,26 +619,20 @@ public final class Texts
     }
 
     /**
-     * Every provider id there is now and, when `measure`, how much media the
-     * multimedia messages hold: which texts were deleted on the phone (gone
-     * from it), and the sizes the settings say before and during the import.
+     * Every row there is now, each id with its own date ("sms" with "sms_at",
+     * "mms" with "mms_at": the plain texts' table gives a deleted newest
+     * text's id to the next one, and the date tells the two apart; Rust's
+     * `texts::Row`) and, when `measure`, how much media the multimedia
+     * messages hold: the rows to read, the texts deleted on the phone, and
+     * the sizes the settings say. A table that could not be listed whole is
+     * left out: Rust then reads nothing and marks nothing deleted, never
+     * taking "not known" for "none there".
      */
     static JSONObject ids(ContentResolver resolver, boolean measure) throws JSONException
     {
-        JSONArray sms = new JSONArray();
-        try (Cursor cursor = resolver.query(Telephony.Sms.CONTENT_URI, new String[] { "_id" }, null, null, null)) {
-            while (cursor != null && cursor.moveToNext())
-                sms.put(cursor.getLong(0));
-        } catch (RuntimeException e) {
-            Log.w(TAG, "Texts: the texts could not be counted: " + e.getClass().getSimpleName());
-        }
-        JSONArray mms = new JSONArray();
-        try (Cursor cursor = resolver.query(Telephony.Mms.CONTENT_URI, new String[] { "_id" }, null, null, null)) {
-            while (cursor != null && cursor.moveToNext())
-                mms.put(cursor.getLong(0));
-        } catch (RuntimeException e) {
-            Log.w(TAG, "Texts: the multimedia messages could not be counted: " + e.getClass().getSimpleName());
-        }
+        JSONObject out = new JSONObject();
+        listed(resolver, Telephony.Sms.CONTENT_URI, "sms", out);
+        listed(resolver, Telephony.Mms.CONTENT_URI, "mms", out);
         long media = 0;
         if (measure) {
             try (Cursor cursor = resolver.query(Uri.parse("content://mms/part"), new String[] { "_id", "ct" }, null, null, null)) {
@@ -669,7 +643,26 @@ public final class Texts
                 Log.w(TAG, "Texts: the media could not be measured: " + e.getClass().getSimpleName());
             }
         }
-        return new JSONObject().put("sms", sms).put("mms", mms).put("media", media);
+        return out.put("media", media);
+    }
+
+    /** A table's ids and dates (`ids`), put in `out` under `name` and `name_at` only when listed whole. */
+    private static void listed(ContentResolver resolver, Uri table, String name, JSONObject out) throws JSONException
+    {
+        JSONArray ids = new JSONArray();
+        JSONArray dates = new JSONArray();
+        try (Cursor cursor = resolver.query(table, new String[] { "_id", "date" }, null, null, null)) {
+            if (cursor == null)
+                return;
+            while (cursor.moveToNext()) {
+                ids.put(cursor.getLong(0));
+                dates.put(cursor.getLong(1));
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Texts: the " + name + " rows could not be listed: " + e.getClass().getSimpleName());
+            return;
+        }
+        out.put(name, ids).put(name + "_at", dates);
     }
 
     /** A part's content copied to `target` (Sioul's own folder), for Rust to seal and share: {copied: bytes}, or -1. */

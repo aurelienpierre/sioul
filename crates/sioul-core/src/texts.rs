@@ -157,7 +157,9 @@ fn is_zero_u64(value: &u64) -> bool {
 /// A text as the phone's provider holds it, as it travels.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Text {
-    /// "sms-<_id>", "mms-<_id>": the provider's own row on that phone.
+    /// Its row's name on that phone (`Row::name`): `sms-<_id>@<date>`,
+    /// `mms-<_id>@<date>`; `sms-<_id>`, `mms-<_id>` for a line written
+    /// before 16 October 2026.
     pub id: String,
     /// When (ms): received, or sent.
     pub at: i64,
@@ -227,6 +229,55 @@ impl Text {
     pub fn media_bytes(&self) -> u64 {
         self.parts.iter().filter(|p| p.state == "here").map(|p| p.size).sum()
     }
+
+    /// Its row on its phone: table, id and the row's own date (`Row`).
+    pub fn row(&self) -> Option<Row> {
+        Row::of(&self.id, self.at)
+    }
+}
+
+/// A text's row in its phone's provider of texts: its table, Android's
+/// `_id`, and the row's own date there (milliseconds for a plain text,
+/// seconds for a multimedia message, as the provider counts them): what
+/// tells two texts apart on one phone. The plain texts' table has no
+/// AUTOINCREMENT, so the next text takes a deleted newest text's id again,
+/// and a provider emptied starts again at 1; the date tells those rows
+/// apart (docs/texts.md, "A row's name").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Row {
+    pub mms: bool,
+    pub id: i64,
+    pub date: i64,
+}
+
+impl Row {
+    /// Its name in the log, the text's `id`: `sms-12@1791446340000`, `mms-31@1791446340`.
+    pub fn name(&self) -> String {
+        format!("{}-{}@{}", if self.mms { "mms" } else { "sms" }, self.id, self.date)
+    }
+
+    /// A line's row, from its name and its time (`at`, ms): `sms-12@1791…`;
+    /// or, for a line named before 16 October 2026 (`sms-12`, `mms-31`), the
+    /// date its time holds (a multimedia message's in seconds). None for a
+    /// name of no row.
+    pub fn of(name: &str, at: i64) -> Option<Row> {
+        let (table, rest) = name.split_once('-')?;
+        let mms = match table {
+            "sms" => false,
+            "mms" => true,
+            _ => return None,
+        };
+        let (id, date) = match rest.split_once('@') {
+            Some((id, date)) => (id.parse().ok()?, date.parse().ok()?),
+            None => (rest.parse().ok()?, if mms { at.div_euclid(1000) } else { at }),
+        };
+        Some(Row { mms, id, date })
+    }
+
+    /// Its time, in milliseconds: a multimedia message's seconds made so.
+    pub fn at(&self) -> i64 {
+        if self.mms { self.date.saturating_mul(1000) } else { self.date }
+    }
 }
 
 /// A text to send, as a computer writes it.
@@ -271,7 +322,9 @@ pub struct Outcome {
     /// "short-number", "several", "empty", "too-long", "before-mark"…
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    /// The provider's row Android filed it as ("sms-123"), when known.
+    /// The provider's row Android filed it as, by its name in the log
+    /// (`Row::name`, "sms-123@1791446340000"; "sms-123" before 16 October
+    /// 2026), when known: never a bare id an older text may hold.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub row: String,
     /// The phone that wrote it. Never written.
@@ -314,7 +367,12 @@ pub fn own_file(root: &Path, store: &str, device: &str) -> PathBuf {
 
 /// Every line of a file that opens and reads, in order; the rest passed over.
 pub fn read_file<T: for<'de> Deserialize<'de>>(path: &Path, sealer: &dyn Sealer) -> Vec<T> {
-    std::fs::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| sealer.open(l.trim())).filter_map(|plain| serde_json::from_str(&plain).ok()).collect()
+    read_lines(&std::fs::read_to_string(path).unwrap_or_default(), sealer)
+}
+
+/// Every line of a file's text that opens and reads, in order; the rest passed over.
+pub fn read_lines<T: for<'de> Deserialize<'de>>(text: &str, sealer: &dyn Sealer) -> Vec<T> {
+    text.lines().filter(|l| !l.trim().is_empty()).filter_map(|l| sealer.open(l.trim())).filter_map(|plain| serde_json::from_str(&plain).ok()).collect()
 }
 
 /// Every device's lines of a store under `root`, each with its device.
@@ -332,7 +390,13 @@ fn read_store<T: for<'de> Deserialize<'de>>(root: &Path, store: &str, sealer: &d
 /// Every phone's texts, oldest first, each once (by phone and row), a
 /// deletion's line folded into its text (`deleted`); the whole history.
 pub fn read_logs(root: &Path, sealer: &dyn Sealer) -> Vec<Text> {
-    let lines: Vec<Text> = read_store(root, LOG, sealer, |t: &mut Text, d| t.device = d.to_string());
+    fold_logs(read_store(root, LOG, sealer, |t: &mut Text, d| t.device = d.to_string()))
+}
+
+/// The phones' log lines (each with its `device`) as `read_logs` gives
+/// them: oldest first, each text once (by phone and row), a deletion's
+/// line folded into its text.
+pub fn fold_logs(lines: Vec<Text>) -> Vec<Text> {
     let deletions: BTreeMap<(String, String), i64> = lines.iter().filter(|t| t.deleted > 0).map(|t| ((t.device.clone(), t.id.clone()), t.deleted)).collect();
     let mut seen = BTreeSet::new();
     let mut texts: Vec<Text> = lines
@@ -345,6 +409,118 @@ pub fn read_logs(root: &Path, sealer: &dyn Sealer) -> Vec<Text> {
         .collect();
     texts.sort_by(|a, b| (a.at, &a.device, &a.id).cmp(&(b.at, &b.device, &b.id)));
     texts
+}
+
+/// A phone's log as `Logs` read it: its lines, how far, the bytes just
+/// before that place (to tell the same file grown from another one), and
+/// the file's size and time then.
+#[derive(Debug, Default)]
+struct LogRead {
+    lines: Vec<Text>,
+    upto: u64,
+    before: Vec<u8>,
+    seen: (u64, Option<std::time::SystemTime>),
+}
+
+/// How many bytes before the place a log was read to tell the same file grown.
+const LOG_CHECK: u64 = 64;
+
+/// Every phone's log under a root as `read_logs` gives it, kept between two
+/// reads and read again only where a file grew (a log only grows: a line is
+/// added at its end, never changed); a file that changed otherwise (another
+/// file under its name, cut short) is read again whole. With each text's
+/// fingerprint kept by phone and row (`one_each`): the window's refresh after
+/// an exchange that brought one text opened 20,000 sealed lines and hashed
+/// them all, 0.3 s on its thread (the review of 16 October 2026, LOW 3).
+#[derive(Debug, Default)]
+pub struct Logs {
+    files: BTreeMap<String, (PathBuf, LogRead)>,
+    prints: BTreeMap<(String, String), String>,
+    region: Option<&'static str>,
+}
+
+impl Logs {
+    /// Each phone's log under `root` read again where it changed; whether one did.
+    pub fn refresh(&mut self, root: &Path, sealer: &dyn Sealer) -> bool {
+        let found = calls::device_files(&root.join(LOG));
+        let mut changed = self.files.len() != found.len() || self.files.keys().zip(&found).any(|(kept, (device, _))| kept != device);
+        self.files.retain(|device, _| found.iter().any(|(d, _)| d == device));
+        for (device, path) in found {
+            let entry = self.files.entry(device.clone()).or_insert_with(|| (path.clone(), LogRead::default()));
+            if entry.0 != path {
+                *entry = (path.clone(), LogRead::default());
+            }
+            changed |= grow(&path, &device, &mut entry.1, sealer);
+        }
+        changed
+    }
+
+    /// Every phone's texts, oldest first, each once by phone and row, a
+    /// deletion folded into its text (`fold_logs`).
+    pub fn texts(&self) -> Vec<Text> {
+        fold_logs(self.files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect())
+    }
+
+    /// `texts`, each text once across phones (`one_each`), the numbers keyed
+    /// for `region`: each fingerprint made once for a phone's row and kept.
+    pub fn one_each(&mut self, region: Option<&'static Region>) -> Vec<Text> {
+        let code = region.map(|r| r.code);
+        if code != self.region {
+            self.prints.clear();
+            self.region = code;
+        }
+        let prints = &mut self.prints;
+        let texts = fold_logs(self.files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect());
+        one_each_by(texts, &mut |t: &Text| prints.entry((t.device.clone(), t.id.clone())).or_insert_with(|| Print::of(t).key(region)).clone())
+    }
+}
+
+/// A log read on from where it was read (`LogRead`), or again whole when it
+/// is not that file grown; only whole lines. Whether its lines changed.
+fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(meta) = std::fs::metadata(path) else {
+        let had = !read.lines.is_empty();
+        *read = LogRead::default();
+        return had;
+    };
+    let seen = (meta.len(), meta.modified().ok());
+    if seen == read.seen {
+        return false;
+    }
+    let Ok(mut file) = std::fs::File::open(path) else { return false };
+    // The bytes before the place it was read to, as they were: the same file, grown.
+    let from = read.upto - read.before.len() as u64;
+    let mut before = vec![0u8; read.before.len()];
+    let same = seen.0 > read.upto && file.seek(SeekFrom::Start(from)).is_ok() && file.read_exact(&mut before).is_ok() && before == read.before;
+    let mut changed = false;
+    if !same {
+        changed = !read.lines.is_empty();
+        *read = LogRead::default();
+        if file.seek(SeekFrom::Start(0)).is_err() {
+            return changed;
+        }
+    }
+    let mut bytes = Vec::new();
+    if file.take(seen.0.saturating_sub(read.upto)).read_to_end(&mut bytes).is_err() {
+        return changed;
+    }
+    // Whole lines only: one being written is read at the next look.
+    let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else {
+        read.seen = (read.upto, None);
+        return changed;
+    };
+    let whole = &bytes[..=end];
+    let lines: Vec<Text> = read_lines(&String::from_utf8_lossy(whole), sealer);
+    changed |= !lines.is_empty();
+    read.lines.extend(lines.into_iter().map(|t| Text { device: device.to_string(), ..t }));
+    let mut tail = std::mem::take(&mut read.before);
+    tail.extend_from_slice(whole);
+    read.before = tail[tail.len().saturating_sub(LOG_CHECK as usize)..].to_vec();
+    read.upto += whole.len() as u64;
+    // A line still being written: the next look reads on.
+    read.seen = if read.upto == seen.0 { seen } else { (read.upto, None) };
+    changed
 }
 
 pub fn read_requests(root: &Path, sealer: &dyn Sealer) -> Vec<Request> {
@@ -539,6 +715,13 @@ pub fn number(value: Option<&Value>) -> i64 {
 /// `read_logs`. For what the page, the search and agents read; the phones'
 /// logs themselves keep every copy (nothing is lost if one goes).
 pub fn one_each(texts: Vec<Text>, region: Option<&Region>) -> Vec<Text> {
+    one_each_by(texts, &mut |t: &Text| Print::of(t).key(region))
+}
+
+/// `one_each` with each text's fingerprint as `print` gives it (`Print::key`
+/// with the region of the numbers, kept by phone and row between two reads:
+/// `Logs`).
+pub fn one_each_by(texts: Vec<Text>, print: &mut dyn FnMut(&Text) -> String) -> Vec<Text> {
     let phones: BTreeSet<&str> = texts.iter().map(|t| t.device.as_str()).collect();
     if phones.len() < 2 {
         return texts;
@@ -546,7 +729,7 @@ pub fn one_each(texts: Vec<Text>, region: Option<&Region>) -> Vec<Text> {
     // By fingerprint, then by phone: each copy's place, in its log's order.
     let mut groups: BTreeMap<String, BTreeMap<String, Vec<usize>>> = BTreeMap::new();
     for (i, t) in texts.iter().enumerate() {
-        groups.entry(Print::of(t).key(region)).or_default().entry(t.device.clone()).or_default().push(i);
+        groups.entry(print(t)).or_default().entry(t.device.clone()).or_default().push(i);
     }
     let media = |t: &Text| t.parts.iter().filter(|p| p.state == "here" && !p.hash.is_empty()).count();
     let mut slots: Vec<Option<Text>> = texts.into_iter().map(Some).collect();
@@ -1046,12 +1229,19 @@ pub fn conversations(texts: &[Text], requests: &[Request], v: &Viewer) -> Vec<Co
 /// (`Outcome::row`): its own row or one of its copies' (`Text::also`), each
 /// on its own phone, never another phone's row of the same number. An
 /// outcome that names no phone matches the row on any (as before phones were
-/// two).
-fn row_key(t: &Text, key_of_row: &BTreeMap<&str, Vec<(&str, &str)>>) -> String {
+/// two). A row is its name with its date (`Row::name`); an outcome written
+/// before 16 October 2026 names it by its id alone, and matches that id's
+/// text only from when its request could be sent (`from`): never an older
+/// text whose id the text sent took again.
+fn row_key(t: &Text, key_of_row: &BTreeMap<String, Vec<(&str, &str, i64)>>) -> String {
     let own = (t.device.as_str(), t.id.as_str());
     std::iter::once(own)
         .chain(t.also.iter().filter_map(|copy| copy.split_once('/')))
-        .find_map(|(phone, row)| key_of_row.get(row)?.iter().find(|(device, _)| device.is_empty() || *device == phone).map(|(_, key)| key.to_string()))
+        .find_map(|(phone, id)| {
+            let row = Row::of(id, t.at)?;
+            let bare = format!("{}-{}", if row.mms { "mms" } else { "sms" }, row.id);
+            [row.name(), bare].iter().find_map(|name| key_of_row.get(name)?.iter().find(|(device, _, from)| (device.is_empty() || *device == phone) && t.at >= *from).map(|(_, key, _)| key.to_string()))
+        })
         .unwrap_or_default()
 }
 
@@ -1060,9 +1250,15 @@ fn row_key(t: &Text, key_of_row: &BTreeMap<&str, Vec<(&str, &str)>>) -> String {
 /// Android filed is said on its row, once. A row is its phone's own: another
 /// phone's row of the same number is another text (`row_key`).
 pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outcome], v: &Viewer) -> Vec<Message> {
-    let mut key_of_row: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    // A text Android filed for a request is dated no earlier than the
+    // request's time on the phone's clock, less what `verdict` lets pass.
+    let from: BTreeMap<&str, i64> = requests.iter().map(|r| (r.key.as_str(), r.written - r.ahead - AHEAD_MS)).collect();
+    let mut key_of_row: BTreeMap<String, Vec<(&str, &str, i64)>> = BTreeMap::new();
     for o in outcomes.iter().filter(|o| !o.row.is_empty()) {
-        key_of_row.entry(o.row.as_str()).or_default().push((o.device.as_str(), o.key.as_str()));
+        let named = o.row.contains('@');
+        let since = if named { i64::MIN } else { from.get(o.key.as_str()).copied().unwrap_or(i64::MIN) };
+        let name = if named { Row::of(&o.row, 0).map_or_else(|| o.row.clone(), |r| r.name()) } else { o.row.clone() };
+        key_of_row.entry(name).or_default().push((o.device.as_str(), o.key.as_str(), since));
     }
     let mut out: Vec<Message> = Vec::new();
     let mut shown_keys = BTreeSet::new();
@@ -1610,5 +1806,115 @@ mod tests {
         assert!(sent[0].id.starts_with("new-phone/sms-50") && sent[0].said.as_ref().is_some_and(|s| s.state == "sent"), "{:?}", sent[0]);
         assert!(thread.iter().any(|m| m.id == "new-phone/sms-11" && m.key.is_empty()), "another phone's row of that number: another text");
         assert_eq!(search("rendez", &shown, &requests, &outcomes, &v, 10).len(), 1);
+    }
+
+    /// A row's name: the provider's id with the row's own date, so that a
+    /// text taking a deleted newest text's id (the plain texts' table has no
+    /// AUTOINCREMENT) is a line of its own; a line named before (`sms-12`)
+    /// reads its date from its time; a request's state goes on its own row.
+    #[test]
+    fn a_row_is_its_id_with_its_date() {
+        let first = Row { mms: false, id: 12, date: 1_791_446_340_000 };
+        assert_eq!(first.name(), "sms-12@1791446340000");
+        assert_eq!(Row::of("sms-12@1791446340000", 0), Some(first));
+        assert_eq!(Row::of("sms-12", 1_791_446_340_000), Some(first), "a line named before: its date from its time");
+        let picture = Row { mms: true, id: 31, date: 1_791_446_340 };
+        assert_eq!((Row::of("mms-31", 1_791_446_340_000), Row::of(&picture.name(), 0), picture.at()), (Some(picture), Some(picture), 1_791_446_340_000));
+        assert_ne!(Row::of("sms-12@1791446400000", 0), Some(first), "the same id, another text");
+        assert_eq!((Row::of("request/abc", 0), Row::of("sms-x", 0), Row::of("sms-12@x", 0)), (None, None, None));
+        // Two texts of one id: each its line; the first's deletion its own.
+        let second = Row { mms: false, id: 12, date: 1_791_446_400_000 };
+        let line = |row: Row, deleted: i64| Text { id: row.name(), at: row.at(), device: "p".into(), deleted, with: vec!["+33199001234".into()], ..Text::default() };
+        let folded = fold_logs(vec![line(first, 0), line(second, 0), line(first, 1_791_446_500_000)]);
+        assert_eq!(folded.iter().map(|t| (t.id.as_str(), t.deleted > 0)).collect::<Vec<_>>(), [("sms-12@1791446340000", true), ("sms-12@1791446400000", false)]);
+        // The state of a text sent from here names its own row, never the older text of that id.
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| true;
+        let v = viewer(&now, &tr, &names, &here);
+        let requests = [request("k9", "p", 1_791_446_390_000)];
+        let outcomes = [Outcome { key: "k9".into(), state: "sent".into(), at: 1_791_446_400_000, row: second.name(), device: "p".into(), ..Outcome::default() }];
+        let thread = messages("+33199001234", &folded, &requests, &outcomes, &v);
+        assert_eq!(thread.iter().map(|m| (m.id.as_str(), m.key.as_str())).collect::<Vec<_>>(), [("p/sms-12@1791446340000", ""), ("p/sms-12@1791446400000", "k9")]);
+        // An outcome written before (its row by its id alone): never the older text of that id
+        // (named before too), whether the text sent is read yet or not.
+        let late = Row { mms: false, id: 12, date: 1_791_446_530_000 };
+        let requests = [request("k8", "p", 1_791_446_520_000)];
+        let bare = [Outcome { key: "k8".into(), state: "sent".into(), at: 1_791_446_535_000, row: "sms-12".into(), device: "p".into(), ..Outcome::default() }];
+        let older = Text { id: "sms-12".into(), ..line(first, 0) };
+        let thread = messages("+33199001234", &fold_logs(vec![older.clone(), line(late, 0)]), &requests, &bare, &v);
+        assert_eq!(thread.iter().map(|m| (m.id.as_str(), m.key.as_str())).collect::<Vec<_>>(), [("p/sms-12", ""), ("p/sms-12@1791446530000", "k8")]);
+        let thread = messages("+33199001234", &fold_logs(vec![older]), &requests, &bare, &v);
+        assert!(thread.iter().find(|m| m.id == "p/sms-12").is_some_and(|m| m.key.is_empty()), "the text sent not read yet: not the older one's");
+    }
+
+    /// The logs read again only where they grew: the lines added read alone,
+    /// a line being written left for the next look, a file put in another's
+    /// place or cut short read again whole, a phone's file gone taken out;
+    /// each time as `read_logs` and `one_each` give them.
+    #[test]
+    fn the_logs_are_read_again_only_where_they_grew() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        /// The stand-in sealer, counting the lines it opens.
+        struct Counted(AtomicUsize);
+        impl Sealer for Counted {
+            fn seal(&self, plain: &str) -> String {
+                Stand.seal(plain)
+            }
+            fn open(&self, sealed: &str) -> Option<String> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Stand.open(sealed)
+            }
+        }
+        let dir = scratch("logs");
+        let seal = Counted(AtomicUsize::new(0));
+        let opened = || seal.0.swap(0, Ordering::Relaxed);
+        let text = |id: i64, body: &str| Text { id: Row { mms: false, id, date: NOW + id }.name(), at: NOW + id, direction: "in".into(), with: vec!["+33199001234".into()], body: body.into(), ..Text::default() };
+        let (a, b) = (own_file(&dir, LOG, "a"), own_file(&dir, LOG, "b"));
+        append(&a, &[text(1, "Un."), text(2, "Deux.")], &seal, None).unwrap();
+        append(&b, &[text(7, "Un.")], &seal, None).unwrap();
+        opened();
+        let mut logs = Logs::default();
+        let same = |logs: &mut Logs| {
+            let n = seal.0.load(Ordering::Relaxed);
+            assert_eq!(logs.texts(), read_logs(&dir, &seal));
+            assert_eq!(logs.one_each(fr()), one_each(read_logs(&dir, &seal), fr()));
+            seal.0.store(n, Ordering::Relaxed);
+        };
+        assert!(logs.refresh(&dir, &seal));
+        assert_eq!(opened(), 3);
+        same(&mut logs);
+        assert!(!logs.refresh(&dir, &seal), "nothing changed");
+        assert_eq!(opened(), 0);
+        // Two lines added, then half a line being written: the two alone, then the rest.
+        append(&a, &[text(3, "Trois."), Text { deleted: NOW + 9, ..text(1, "") }], &seal, None).unwrap();
+        let line = format!("{}\n", seal.seal(&serde_json::to_string(&text(4, "Quatre.")).unwrap()));
+        let (half, rest) = line.split_at(line.len() / 2);
+        calls::append_private(&a, half).unwrap();
+        assert!(logs.refresh(&dir, &seal));
+        assert_eq!(opened(), 2, "the lines added, alone");
+        same(&mut logs);
+        calls::append_private(&a, rest).unwrap();
+        assert!(logs.refresh(&dir, &seal));
+        assert_eq!(opened(), 1);
+        same(&mut logs);
+        assert_eq!(logs.texts().iter().filter(|t| t.device == "a").count(), 4);
+        // Another file put in its place, longer; then cut short: read again whole.
+        std::fs::remove_file(&a).unwrap();
+        append(&a, &(10..16).map(|id| text(id, "Autre.")).collect::<Vec<_>>(), &seal, None).unwrap();
+        assert!(logs.refresh(&dir, &seal));
+        assert_eq!(opened(), 6);
+        same(&mut logs);
+        std::fs::remove_file(&a).unwrap();
+        append(&a, &[text(20, "Court.")], &seal, None).unwrap();
+        assert!(logs.refresh(&dir, &seal));
+        same(&mut logs);
+        // A phone's file gone: its texts too.
+        std::fs::remove_file(&b).unwrap();
+        assert!(logs.refresh(&dir, &seal));
+        same(&mut logs);
+        assert!(logs.texts().iter().all(|t| t.device == "a"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

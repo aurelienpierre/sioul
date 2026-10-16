@@ -481,6 +481,7 @@ Item {
                 // here, said once, until you put it away (docs/android.md, "What Android withholds").
                 AccessCard {
                     Layout.fillWidth: true
+                    active: page.visible
                     sioul: page.sioul
                     theme: page.theme
                 }
