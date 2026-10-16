@@ -3,11 +3,12 @@
 
 // What Android has not allowed Sioul yet on a phone, on the Porch
 // (AccessCard.qml), on a stand-in for Sioul: each thing in a line with
-// Allow in Android…, and Sioul's app info first where Android keeps
+// Allow in Android…, and Sioul's app info beside where Android may keep
 // restricted settings from Sioul installed from a file; Not now puts the
 // card away for those things for good; a thing Android allows leaves it;
-// nothing to say, no card. Which lines are said is tested in the app
-// (access.rs). Run by tools/qml-test.sh.
+// nothing to say, no card; Android's state read only while the Porch is in
+// view. Which lines are said is tested in the app (access.rs). Run by
+// tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -32,8 +33,8 @@ Item {
         property var flags: ({})
         // Made up: a new phone on Android 16, as access.rs would say it.
         property var lines: [
-            { what: "texts", said: "Texts: Android keeps them from Sioul until you allow its restricted settings.", restricted: true },
-            { what: "notifications", said: "Other apps' notifications: Android has not given Sioul notification access yet.", restricted: false }
+            { what: "texts", said: "Texts: Android has not allowed them yet. Press Allow in Android… once, then Sioul's app info.", info: true },
+            { what: "notifications", said: "Other apps' notifications: Android has not given Sioul notification access yet.", info: false }
         ]
 
         signal porchChanged()
@@ -99,18 +100,19 @@ Item {
             mock.asked = []
             mock.flags = {}
             mock.lines = [
-                { what: "texts", said: "Texts: Android keeps them from Sioul until you allow its restricted settings.", restricted: true },
-                { what: "notifications", said: "Other apps' notifications: Android has not given Sioul notification access yet.", restricted: false }
+                { what: "texts", said: "Texts: Android has not allowed them yet. Press Allow in Android… once, then Sioul's app info.", info: true },
+                { what: "notifications", said: "Other apps' notifications: Android has not given Sioul notification access yet.", info: false }
             ]
+            card.active = true
             card.reload()
         }
 
-        // Each line with what Android wants: app info first where restricted settings keep it.
+        // Each line with what Android wants: app info beside where restricted settings may keep it.
         function test_each_thing_with_what_android_wants() {
             verify(card.visible)
             verify(shown("Android has not allowed all that Sioul needs here"))
             verify(shown(mock.lines[0].said) && shown(mock.lines[1].said))
-            compare(buttons("Sioul's app info").length, 1, "only where Android keeps restricted settings")
+            compare(buttons("Sioul's app info").length, 1, "only where Android may keep restricted settings")
             compare(buttons("Allow in Android…").length, 2)
             buttons("Sioul's app info")[0].clicked()
             buttons("Allow in Android…")[0].clicked()
@@ -128,13 +130,23 @@ Item {
             mock.porchChanged()
             verify(!card.visible, "still away")
             // Another thing later: said.
-            mock.lines = [{ what: "contacts", said: "Contacts: Android has not allowed Sioul to read them.", restricted: false }]
+            mock.lines = [{ what: "contacts", said: "Contacts: Android has not allowed Sioul to read them.", info: false }]
             mock.porchChanged()
             verify(card.visible && shown("Contacts: Android has not allowed Sioul to read them."))
             // Allowed: the card goes.
             mock.lines = []
             mock.porchChanged()
             verify(!card.visible)
+        }
+
+        // The Porch out of view: Android's state not read, then read as it comes back.
+        function test_read_only_while_the_porch_is_in_view() {
+            card.active = false
+            mock.asked = []
+            mock.porchChanged()
+            compare(mock.asked.length, 0, "out of view: nothing asked")
+            card.active = true
+            compare(mock.asked, ["access"], "in view again: read")
         }
     }
 }

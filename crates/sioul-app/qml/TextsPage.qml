@@ -80,13 +80,17 @@ Item {
             return
         const listed = page.sioul.texts("view", JSON.stringify({ query: page.query }))
         if (listed !== page.listedText) {
-            const top = list.indexAt(1, list.contentY + 1)
+            // At its top, the list stays at its top: the conversation that just got a text shows there.
+            const atTop = list.contentY <= list.originY + 1
+            const top = atTop ? -1 : list.indexAt(1, list.contentY + 1)
             const topId = top >= 0 && top < page.rows.length ? page.rows[top].id : ""
             const chosen = list.currentIndex >= 0 && list.currentIndex < page.rows.length ? page.rows[list.currentIndex].id : page.openId
             page.listedText = listed
             list.currentIndex = page.rows.findIndex(r => r.id === chosen)
             const back = page.rows.findIndex(r => r.id === topId)
-            if (back > 0)
+            if (atTop)
+                Qt.callLater(() => list.positionViewAtBeginning())
+            else if (back >= 0)
                 Qt.callLater(() => list.positionViewAtIndex(back, ListView.Beginning))
         }
         if (page.openId === "") {
@@ -97,13 +101,32 @@ Item {
         if (talk === page.talkText)
             return
         page.atEnd = page.atEnd || page.talkText === "" || thread.atYEnd
-        const first = page.atEnd ? -1 : thread.indexAt(1, thread.contentY + 1)
-        const firstId = first >= 0 && first < page.messages.length ? page.messages[first].id : ""
+        // Read back: the message at the top of the view, found a few pixels
+        // down past the rows' spacing, kept by its time and words (the copy
+        // shown may come from another phone now) with its offset from the
+        // top; nothing found again, the view stays where it was.
+        let anchor = null
+        for (let dy = 1; !page.atEnd && anchor === null && dy <= 48; dy += 4) {
+            const i = thread.indexAt(1, thread.contentY + dy)
+            if (i >= 0 && i < page.messages.length) {
+                const item = thread.itemAtIndex(i)
+                anchor = { at: page.messages[i].at, body: page.messages[i].body, offset: item ? item.y - thread.contentY : 0 }
+            }
+        }
+        const keptY = thread.contentY
         page.talkText = talk
         if (page.atEnd)
             Qt.callLater(() => thread.positionViewAtEnd())
-        else if (firstId !== "")
-            Qt.callLater(() => thread.positionViewAtIndex(Math.max(0, page.messages.findIndex(m => m.id === firstId)), ListView.Beginning))
+        else
+            Qt.callLater(() => {
+                const i = anchor === null ? -1 : page.messages.findIndex(m => m.at === anchor.at && m.body === anchor.body)
+                if (i >= 0) {
+                    thread.positionViewAtIndex(i, ListView.Beginning)
+                    thread.contentY = thread.contentY - anchor.offset
+                } else {
+                    thread.contentY = keptY
+                }
+            })
     }
 
     // A conversation opened: from the list, the Porch's Text back, a person's

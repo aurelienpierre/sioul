@@ -111,15 +111,16 @@ ColumnLayout {
             asking.restart()
         }
     }
-    // Refused at once: Android keeps restricted settings from Sioul installed
-    // from a file, or showed no question at all; what Android wants, and its page.
+    // Asked and still refused: the steps that hold whether Android keeps
+    // restricted settings from Sioul installed from a file or not (no app can
+    // read which), in their order; on Android 12, a question refused for good.
     Line {
-        visible: !setup.all && (setup.shown.blocked || "") !== ""
-        text: setup.sioul.text(setup.shown.blocked === "restricted" ? "texts-setup-restricted" : "texts-setup-at-once")
+        visible: !setup.all && (setup.shown.guard || "") !== ""
+        text: setup.sioul.text(setup.shown.guard === "guarded" ? "texts-setup-guarded" : "texts-setup-at-once")
         color: setup.theme.muted
     }
     Button {
-        visible: !setup.all && (setup.shown.blocked || "") !== ""
+        visible: !setup.all && (setup.shown.guard || "") !== ""
         text: setup.sioul.text("appnotes-open-info")
         onClicked: {
             setup.act("info", {})

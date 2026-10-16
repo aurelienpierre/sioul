@@ -136,12 +136,10 @@ public final class AppNotes extends NotificationListenerService
                 return openConversation(context, asked) ? "true" : "false";
             case "access":
                 return granted(context) ? "true" : "false";
-            case "restricted": {
-                // Android 13 and later grey the access out for an app installed from a file, until allowed:
-                // as Android says it (Texts.restrictedSettings), else from Android 13 on.
-                Boolean restricted = Texts.restrictedSettings(context);
-                return (restricted == null ? Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU : restricted) ? "true" : "false";
-            }
+            case "restricted":
+                // Android 13 and later grey the access out for an app installed from a file, until
+                // allowed; whether they do for Sioul no app can read (Texts.java), so from Android 13 on.
+                return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "true" : "false";
             case "open-access":
                 return openAccess(context) ? "true" : "false";
             case "open-info":

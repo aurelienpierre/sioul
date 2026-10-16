@@ -74,15 +74,12 @@ public final class TextsCheck
         expect("result code", line.getInt("code") == -1 && "content://sms/414".equals(line.getString("uri")));
         expect("result no uri", "".equals(TextSend.line("k", "delivered", 0, 1, -1, null, 0, at).getString("uri")));
 
-        // Android's answer to the texts' question: at once and nothing given, no question was shown
-        // (restricted settings, or "Don't allow" chosen twice before); restricted settings as its app op says them.
+        // Android's answer to the texts' three, asked alone: at once and none given, no question was shown
+        // (restricted settings after the first time, or "Don't allow" chosen twice before).
         expect("answered at once, nothing given", Texts.atOnce(0, 120));
         expect("answered after a question", !Texts.atOnce(0, 4000));
         expect("something given", !Texts.atOnce(2, 50));
         expect("no time measured", !Texts.atOnce(0, -1));
-        expect("restricted: errored until allowed", Texts.restrictedMode(2));
-        expect("restricted: ignored once refused", Texts.restrictedMode(1));
-        expect("allowed, or Android's default", !Texts.restrictedMode(0) && !Texts.restrictedMode(3));
 
         System.out.println("TextsCheck: " + checked + " checked, " + failed + " failed");
         if (failed > 0)

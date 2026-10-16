@@ -3,12 +3,15 @@
 
 // On a phone's Porch: what Android has not allowed Sioul yet that it needs
 // here (access.rs; docs/android.md, "What Android withholds"): the texts'
-// permissions while the part Texts is on, notification access, the contacts
-// where calls are screened or the phone's messages go to your computers.
-// Each thing in a line with what Android wants: Allow in Android…, and,
-// where Android keeps restricted settings from Sioul installed from a file,
-// Sioul's app info first. Said once: Not now puts the card away for those
-// things for good (a view flag each), and a thing Android allows leaves it.
+// permissions while the part Texts is on, notification access while other
+// apps' notifications are held or the phone's messages go to your
+// computers, the contacts where calls are screened or the phone's messages
+// go to your computers. Each thing in a line with what Android wants, in
+// its steps' order: Allow in Android…, and, where Android may keep
+// restricted settings from Sioul installed from a file (Android 13 and
+// later, once asked), Sioul's app info beside. Said once: Not now puts the
+// card away for those things for good (a view flag each), and a thing
+// Android allows leaves it. Read only while the Porch is in view (`active`).
 // Never counted, never red. Nothing on a computer.
 
 pragma ComponentBehavior: Bound
@@ -21,8 +24,10 @@ Panel {
     id: card
 
     required property var sioul
+    // The Porch in view: Android's state is read only then (and when it comes into view).
+    property bool active: true
 
-    // access.rs's lines: {what, said, restricted}.
+    // access.rs's lines: {what, said, info (Sioul's app info beside), switch}.
     property var lines: []
     // Those not put away: read again with the lines (a view flag is no binding).
     property var shown: []
@@ -53,13 +58,18 @@ Panel {
 
     visible: card.shown.length > 0
     Component.onCompleted: card.reload()
+    onActiveChanged: {
+        if (card.active)
+            card.reload()
+    }
 
-    // Android's question or page answered, the Porch's news: read again.
+    // Android's question or page answered, the Porch's news: read again, while the Porch is in view.
     Connections {
         target: card.sioul
 
         function onPorchChanged() {
-            card.reload()
+            if (card.active)
+                card.reload()
         }
     }
 
@@ -114,7 +124,7 @@ Panel {
                     spacing: 6
 
                     Button {
-                        visible: line.modelData.restricted === true
+                        visible: line.modelData.info === true
                         width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
                         text: card.sioul.text("appnotes-open-info")
                         onClicked: card.info()

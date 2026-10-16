@@ -59,6 +59,7 @@ Item {
                 "share-device-forget-now-help": "Silent for a day or more. Forgotten, it no longer holds your doses’ reminders back here; it counts again if it ever shares again, and nothing of it is deleted.",
                 "appnotes-open-info": "Sioul's app info",
                 "texts-setup-ask": "Allow in Android…",
+                "share-part-texts": "Texts",
                 "ui-cancel": "Cancel"
             },
             "fr": {
@@ -147,7 +148,9 @@ Item {
         property var withheld: []
         function texts(verb, json) {
             const args = JSON.parse(json)
-            if (verb !== "access")
+            if (verb === "part")
+                mock.said("part " + args.on)
+            else if (verb !== "access")
                 mock.said(verb + (args.what ? " " + args.what : ""))
             return JSON.stringify({ lines: mock.withheld })
         }
@@ -302,12 +305,26 @@ Item {
 
         // A phone joined while Android withholds what Sioul needs here: each said, with what Android wants.
         function test_joined_says_what_android_has_not_allowed_yet() {
-            mock.withheld = [{ what: "texts", said: "Texts: Android keeps them from Sioul until you allow its restricted settings.", restricted: true }]
+            mock.withheld = [{ what: "texts", said: "Texts: Android has not allowed them yet. Press Allow in Android… once, then Sioul's app info.", info: true, switch: false }]
             mock.move({ step: "joined", lines: ["This device now shares with desk."], needs: [] })
-            verify(shown("Texts: Android keeps them from Sioul until you allow its restricted settings.") !== null)
+            verify(shown("Texts: Android has not allowed them yet. Press Allow in Android… once, then Sioul's app info.") !== null)
             press("Sioul's app info")
             press("Allow in Android…")
             compare(mock.calls, ["access-info", "access-ask texts"])
+            mock.withheld = []
+        }
+
+        // A phone joined with the part Texts off (every device's default): said, with its switch.
+        function test_joined_says_the_part_texts_is_off_with_its_switch() {
+            mock.withheld = [{ what: "texts-part", said: "Texts: the part Texts is off on this phone.", info: false, switch: true }]
+            mock.move({ step: "joined", lines: ["This device now shares with desk."], needs: [] })
+            verify(shown("Texts: the part Texts is off on this phone.") !== null)
+            verify(button("Allow in Android…") === null, "no question to ask while the part is off")
+            const toggle = walk(panel, i => i.text === "Texts" && i.checkable === true && seen(i), [])[0]
+            verify(toggle !== undefined, "its switch")
+            toggle.toggle()
+            toggle.toggled()
+            compare(mock.calls, ["part true"])
             mock.withheld = []
         }
 

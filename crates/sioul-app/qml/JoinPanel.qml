@@ -38,20 +38,28 @@ ColumnLayout {
     readonly property bool typed: join.step === "none" || join.step === "unchecked" || join.otherPlace
     // A new sharing may start there (every place looked at, none found): the passphrase twice.
     readonly property bool starting: join.step === "none"
-    // Joined, on a phone: what Android has not allowed Sioul yet that it needs here (access.rs).
+    // Joined, on a phone: what Android has not allowed Sioul yet that it needs
+    // here, and the part Texts when it is off (access.rs's lines: {what, said,
+    // info: Sioul's app info beside, switch: the part's own}).
     property var withheld: []
 
     function readWithheld() {
         // A stand-in for Sioul without the texts (an older test's), or a computer: nothing.
-        const answer = typeof join.sioul.texts === "function" ? JSON.parse(join.sioul.texts("access", "{}") || "null") : null
+        const answer = typeof join.sioul.texts === "function" ? JSON.parse(join.sioul.texts("access", JSON.stringify({ join: true })) || "null") : null
         join.withheld = answer && answer.lines ? answer.lines : []
     }
 
     // Android's question, its page, or Sioul's app info: then read again for half a minute.
     function askAndroid(verb, what) {
-        join.sioul.texts(verb, JSON.stringify({ what: what }))
+        join.sioul.texts(verb, JSON.stringify({ what: what, join: true }))
         asking.left = 15
         asking.restart()
+    }
+
+    // The part Texts turned on or off here, from its line: the lines read again.
+    function setTexts(on) {
+        join.sioul.texts("part", JSON.stringify({ on: on }))
+        join.readWithheld()
     }
 
     function reload() {
@@ -418,13 +426,21 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
 
+                // The part Texts off: its switch.
+                Switch {
+                    visible: withheldLine.modelData.switch === true
+                    text: join.sioul.text("share-part-texts")
+                    checked: false
+                    onToggled: join.setTexts(checked)
+                }
                 Button {
-                    visible: withheldLine.modelData.restricted === true
+                    visible: withheldLine.modelData.info === true
                     width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
                     text: join.sioul.text("appnotes-open-info")
                     onClicked: join.askAndroid("access-info", "")
                 }
                 Button {
+                    visible: withheldLine.modelData.switch !== true
                     width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
                     text: join.sioul.text("texts-setup-ask")
                     onClicked: join.askAndroid("access-ask", withheldLine.modelData.what)
