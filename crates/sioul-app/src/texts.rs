@@ -216,6 +216,10 @@ struct Reader {
     mms_top: i64,
     /// The newest text read (ms): on the battery, a history is read only above it.
     newest_at: i64,
+    /// When the history to read was found (ms): a block of old texts above
+    /// the marks; for a first import, `started`. On the battery, nothing older
+    /// than a day before it is read.
+    since: i64,
     started: i64,
     /// What the phone holds, as last measured (texts; media bytes), and when.
     total_texts: u64,
@@ -623,6 +627,7 @@ fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault,
         if raws(&answer).len() >= rules::BATCH {
             // A block of old texts above the marks: a history, read newest first below.
             reader.behind = true;
+            reader.since = now;
         } else {
             let taken = take(android, files, &answer, vault, region, &mut budget);
             reader.left = taken.texts.len() < taken.rows;
@@ -645,9 +650,10 @@ fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault,
         reader.mms_top = reader.mms_top.max(highest("mms"));
         let (sms, mms) = (unread(&listed, "sms", &reader.sms_read), unread(&listed, "mms", &reader.mms_read));
         // On the battery, only what is newer than all read before (a text that
-        // came), a little at a time; a text dated ahead of the phone's clock
-        // never lifts that floor past now.
-        let floor = if all { i64::MIN } else { reader.newest_at.min(now).max(reader.started - DAY_MS) };
+        // came), and than a day before the history was found, a little at a
+        // time; a text dated ahead of the phone's clock never lifts that floor
+        // past now.
+        let floor = if all { i64::MIN } else { reader.newest_at.min(now).max(reader.since.max(reader.started) - DAY_MS) };
         let (mut done_sms, mut done_mms) = (0, 0);
         // Each table read on until a text older than the floor, or media that do not fit.
         let (mut sms_on, mut mms_on) = (true, true);
@@ -1598,6 +1604,8 @@ fn setup() -> Value {
         "sharing": here.folder.is_some(),
         "progress": progress,
         "importing": reader.measured > 0 && reader.done_texts < reader.total_texts,
+        // Refused at once: Android keeps restricted settings from Sioul installed from a file ("restricted"), or showed no question ("at-once").
+        "blocked": if state["restricted"] == true { "restricted" } else if state["at_once"] == true { "at-once" } else { "" },
         "cap": { "key": "cap", "kind": "choice", "label": tr.text("texts-setup-cap", None), "help": tr.text("texts-setup-cap-help", None), "value": cap_mb().to_string(), "choices": choices },
     })
 }
@@ -1617,8 +1625,9 @@ fn set_cap(value: &str) -> Result<(), String> {
 /// "send" {to, body}, "again" {key}, "parts" {body}, "media" {hash, ct} (its
 /// address, to show or open it), "save-media" {hash, ct, path}, "close" (the
 /// page closed: the media opened for it deleted), "setup", "ask" (Android's
-/// question for the permissions), "part" {on}, "cap" {value}. Its JSON, and
-/// whether what travels changed (to share now).
+/// question for the permissions), "info" (Sioul's app info), "part" {on},
+/// "cap" {value}; and "access…", what Android withholds here (`access::call`).
+/// Its JSON, and whether what travels changed (to share now).
 pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     let asked: Value = serde_json::from_str(json).unwrap_or_default();
     let text = |key: &str| asked[key].as_str().unwrap_or_default().to_string();
@@ -1644,6 +1653,13 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             (json!({}), false)
         }
         "setup" => (setup(), false),
+        // Sioul's app info, where Android's restricted settings and the permissions are.
+        "info" => {
+            crate::steps::java("texts-info", "{}");
+            (setup(), false)
+        }
+        // What Android withholds here, for the join's result and the Porch (access.rs).
+        v if v.starts_with("access") => (crate::access::call(v, &asked), false),
         "ask" => {
             crate::steps::java("texts-ask", "{}");
             (setup(), false)
@@ -1978,6 +1994,33 @@ mod tests {
         let (sms, mms): (BTreeSet<i64>, BTreeSet<i64>) = (phone.sms.borrow().keys().copied().collect(), phone.mms.borrow().keys().copied().collect());
         assert_eq!(gaps_in(&all, &sms, &mms, &r.sms_read, &r.mms_read), Gaps::default());
         assert_eq!((r.sms_read.clone(), r.mms_read.clone()), (vec![[0, 2_107]], vec![[0, 3]]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A restore onto a phone that had read no text yet, its import begun a
+    /// month before: on the battery, only the texts of the day before the
+    /// block was found, never the month's history.
+    #[test]
+    fn a_block_found_late_reads_only_its_last_day_on_the_battery() {
+        let base = std::env::temp_dir().join(format!("sioul-texts-late-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let files = Files { log: base.join("data/texts/log/phone.jsonl"), reader: base.join("state/texts/reader.json"), incoming: base.join("state/texts/incoming") };
+        let vault: Vault = (base.join("folder"), [5u8; 32]);
+        std::fs::create_dir_all(&vault.0).unwrap();
+        let seal = Seal::Key(TextSeal::new(&[6u8; 32]));
+        let day = 86_400_000;
+        let phone = Provider::default();
+        // A month ago: a first import, of nothing.
+        assert!(!import_step(&phone, &files, &seal, &vault, None, NOW - 30 * day, false));
+        assert!(!Reader::load_at(&files.reader).behind);
+        // Now: 600 texts of the last twenty days, put at once.
+        for id in 1..=600 {
+            phone.text(id, NOW - 20 * day + id * 2_880_000, "Restauré.");
+        }
+        assert!(import_step(&phone, &files, &seal, &vault, None, NOW, false));
+        let read = rules::read_file::<Text>(&files.log, &seal);
+        assert!(!read.is_empty() && read.iter().all(|t| t.at >= NOW - day), "the last day's alone: {}", read.len());
+        assert_eq!(read.len(), 31, "a text every 48 minutes: 31 from a day before to now");
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -69,7 +69,7 @@ What differs on a phone:
 
 ## Join your other devices
 
-Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
+Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on a phone, what Android has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
 
 ## Add your mail
 

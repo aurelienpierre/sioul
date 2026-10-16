@@ -57,6 +57,8 @@ Item {
                 "share-add-title": "Add a device",
                 "share-device-forget-now": "Forget it now",
                 "share-device-forget-now-help": "Silent for a day or more. Forgotten, it no longer holds your doses’ reminders back here; it counts again if it ever shares again, and nothing of it is deleted.",
+                "appnotes-open-info": "Sioul's app info",
+                "texts-setup-ask": "Allow in Android…",
                 "ui-cancel": "Cancel"
             },
             "fr": {
@@ -79,6 +81,8 @@ Item {
                 "share-add-title": "Ajouter un appareil",
                 "share-device-forget-now": "L’oublier maintenant",
                 "share-device-forget-now-help": "Silencieux depuis un jour ou plus.",
+                "appnotes-open-info": "Infos de l’application Sioul",
+                "texts-setup-ask": "Autoriser dans Android…",
                 "ui-cancel": "Annuler"
             }
         })
@@ -138,6 +142,14 @@ Item {
         function deviceForget(device) {
             mock.said("forget " + device)
             return ""
+        }
+        // What Android withholds on this phone (access.rs's lines), and the presses for it.
+        property var withheld: []
+        function texts(verb, json) {
+            const args = JSON.parse(json)
+            if (verb !== "access")
+                mock.said(verb + (args.what ? " " + args.what : ""))
+            return JSON.stringify({ lines: mock.withheld })
         }
         // join.rs moved on: the panel reads it again.
         function move(stand) {
@@ -286,6 +298,17 @@ Item {
                 verify(shown(line) !== null, line)
             press("Done")
             compare(mock.calls, ["done"])
+        }
+
+        // A phone joined while Android withholds what Sioul needs here: each said, with what Android wants.
+        function test_joined_says_what_android_has_not_allowed_yet() {
+            mock.withheld = [{ what: "texts", said: "Texts: Android keeps them from Sioul until you allow its restricted settings.", restricted: true }]
+            mock.move({ step: "joined", lines: ["This device now shares with desk."], needs: [] })
+            verify(shown("Texts: Android keeps them from Sioul until you allow its restricted settings.") !== null)
+            press("Sioul's app info")
+            press("Allow in Android…")
+            compare(mock.calls, ["access-info", "access-ask texts"])
+            mock.withheld = []
         }
 
         function test_a_phone_is_asked_whether_it_replaces_another() {

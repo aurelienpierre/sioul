@@ -111,6 +111,22 @@ ColumnLayout {
             asking.restart()
         }
     }
+    // Refused at once: Android keeps restricted settings from Sioul installed
+    // from a file, or showed no question at all; what Android wants, and its page.
+    Line {
+        visible: !setup.all && (setup.shown.blocked || "") !== ""
+        text: setup.sioul.text(setup.shown.blocked === "restricted" ? "texts-setup-restricted" : "texts-setup-at-once")
+        color: setup.theme.muted
+    }
+    Button {
+        visible: !setup.all && (setup.shown.blocked || "") !== ""
+        text: setup.sioul.text("appnotes-open-info")
+        onClicked: {
+            setup.act("info", {})
+            asking.left = 15
+            asking.restart()
+        }
+    }
     Line {
         visible: setup.shown.sharing !== true
         text: setup.sioul.text("phonemsgs-setup-no-sharing")
