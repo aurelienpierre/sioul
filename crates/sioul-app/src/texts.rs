@@ -25,7 +25,8 @@
 //!   made from the sharing key (`sioul_sync::textseal`): no sharing key here,
 //!   nothing is read or written.
 
-use crate::backend::{load_config, tr};
+use crate::backend::{QtThread, load_config, tr};
+use cxx_qt_lib::QString;
 use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -158,18 +159,63 @@ fn cap_mb() -> u64 {
     choice().media_cap_mb.unwrap_or(rules::MEDIA_CAP_MB).clamp(1, sioul_sync::blobs::LARGEST >> 20)
 }
 
+// ---------------------------------------------------------------- the phone: what Android is asked
+
+/// What the import asks Android (Java's `Texts.call`, through
+/// `steps::java`): the phone's own provider of texts; a stand-in in tests.
+trait Android {
+    fn ask(&self, verb: &str, asked: &Value) -> Value;
+}
+
+/// This phone's Android.
+struct Phone;
+
+impl Android for Phone {
+    fn ask(&self, verb: &str, asked: &Value) -> Value {
+        crate::steps::java(verb, &asked.to_string())
+    }
+}
+
+/// Where the import writes: this phone's log, its reader, the media copied from Android for a moment.
+struct Files {
+    log: PathBuf,
+    reader: PathBuf,
+    incoming: PathBuf,
+}
+
+impl Files {
+    /// This phone's: its log in the data folder, the rest in the private texts folder.
+    fn of(here: &str) -> Files {
+        Files { log: rules::own_file(&root(), rules::LOG, here), reader: Reader::path(), incoming: private().join("incoming") }
+    }
+}
+
 // ---------------------------------------------------------------- the phone: the whole history
 
 /// The reader's marks and the import's measures, private to the phone
-/// (`texts/reader.json` in the state folder): the provider's last rows read,
-/// when the import began, what the phone holds and how much has gone.
+/// (`texts/reader.json` in the state folder): the rows read of each of the
+/// provider's tables, when the import began, what the phone holds and how
+/// much has gone.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct Reader {
-    /// `READER_VERSION`; 0, the first version's (30 days, before the archive).
+    /// `READER_VERSION`; 0, the first version's (30 days, before the
+    /// archive); 2, the reader that read the oldest first only.
     version: u32,
+    /// Every row to these ids was read (the provider's `_id`): the end of
+    /// the first range of `sms_read` and `mms_read` when it starts at the
+    /// first row. Kept for the readers of version 2.
     sms: i64,
     mms: i64,
+    /// The rows read, as ranges of ids: each `[after, to]` holds the rows
+    /// above `after` up to `to`.
+    sms_read: Vec<[i64; 2]>,
+    mms_read: Vec<[i64; 2]>,
+    /// The newest rows listed (`texts-ids`): a row up to them in no range is still to read.
+    sms_top: i64,
+    mms_top: i64,
+    /// The newest text read (ms): on the battery, a history is read only above it.
+    newest_at: i64,
     started: i64,
     /// What the phone holds, as last measured (texts; media bytes), and when.
     total_texts: u64,
@@ -180,14 +226,26 @@ struct Reader {
     done_media: u64,
     /// When the deletions were last looked for.
     looked: i64,
-    /// The last batch left texts to read: full, or a message's media that did
-    /// not fit. The import goes on only while the phone charges (`import_now`).
+    /// Texts listed and not read yet (a first import, or a block of old ones
+    /// put at once): read newest first, all of them only while the phone
+    /// charges (`import_now`), the newest meanwhile (`recent_now`).
     behind: bool,
+    /// The last step left texts that came, their media over its share: the next step reads on.
+    left: bool,
 }
 
 /// The reader of the archive. The first version read 30 days: its marks
 /// would pass the history, so its reader starts again from the first row.
-const READER_VERSION: u32 = 2;
+/// The second read the oldest first only: its marks are kept as its first
+/// ranges, and what it had still to read is listed and read newest first.
+const READER_VERSION: u32 = 3;
+
+/// How many of the newest texts a step looks at, at a time, on the battery.
+const RECENT_LOOK: usize = 50;
+/// How many multimedia messages, at most, a step of the history reads beside the texts.
+const MMS_SHARE: usize = 100;
+/// A day, in milliseconds.
+const DAY_MS: i64 = 86_400_000;
 
 impl Reader {
     fn path() -> PathBuf {
@@ -195,13 +253,21 @@ impl Reader {
     }
 
     fn load() -> Reader {
+        Reader::load_at(&Reader::path())
+    }
+
+    fn load_at(path: &Path) -> Reader {
         let fresh = || Reader { version: READER_VERSION, ..Reader::default() };
-        match std::fs::read_to_string(Reader::path()).ok().and_then(|t| serde_json::from_str::<Reader>(&t).ok()) {
+        match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Reader>(&t).ok()) {
             Some(reader) if reader.version == READER_VERSION => reader,
+            // Every row to its marks read; behind, the rest is listed and read newest first at the next step.
+            Some(reader) if reader.version == 2 => Reader { version: READER_VERSION, sms_read: with(&[], 0, reader.sms), mms_read: with(&[], 0, reader.mms), sms_top: reader.sms, mms_top: reader.mms, ..reader },
             Some(_) => {
                 // The first version's stores, in the state folder then: sealed copies of 30 days, read again whole now.
-                for old in ["log", "send", "outcome", "ask", "answer"] {
-                    let _ = std::fs::remove_dir_all(private().join(old));
+                if let Some(dir) = path.parent() {
+                    for old in ["log", "send", "outcome", "ask", "answer"] {
+                        let _ = std::fs::remove_dir_all(dir.join(old));
+                    }
                 }
                 eprintln!("sioul: texts: the reader starts again from the first text, for the archive");
                 fresh()
@@ -211,7 +277,11 @@ impl Reader {
     }
 
     fn save(&self) -> Result<(), String> {
-        write_whole(&Reader::path(), serde_json::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+        self.save_at(&Reader::path())
+    }
+
+    fn save_at(&self, path: &Path) -> Result<(), String> {
+        write_whole(path, serde_json::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
     /// What `texts-ids` measured: how many texts, how many media bytes.
@@ -221,7 +291,41 @@ impl Reader {
         self.total_media = answer["media"].as_u64().unwrap_or(0);
         self.measured = now;
     }
+
+    /// Ranges given back, the marks said with them (every row to them read).
+    fn set_read(&mut self, sms: Vec<[i64; 2]>, mms: Vec<[i64; 2]>) {
+        self.sms = mark_of(&sms);
+        self.mms = mark_of(&mms);
+        self.sms_read = sms;
+        self.mms_read = mms;
+    }
 }
+
+/// Whether a row was read: inside one of the ranges.
+fn holds(read: &[[i64; 2]], id: i64) -> bool {
+    read.iter().any(|[after, to]| id > *after && id <= *to)
+}
+
+/// The ranges with the rows above `after` up to `to` added, in order, those
+/// that touch or overlap made one.
+fn with(read: &[[i64; 2]], after: i64, to: i64) -> Vec<[i64; 2]> {
+    let mut all: Vec<[i64; 2]> = read.iter().copied().chain(std::iter::once([after, to])).filter(|[a, b]| b > a).collect();
+    all.sort_unstable();
+    let mut out: Vec<[i64; 2]> = Vec::new();
+    for [a, b] in all {
+        match out.last_mut() {
+            Some(last) if a <= last[1] => last[1] = last[1].max(b),
+            _ => out.push([a, b]),
+        }
+    }
+    out
+}
+
+/// Every row to this id read: the first range's end, when it starts at the first row.
+fn mark_of(read: &[[i64; 2]]) -> i64 {
+    read.first().filter(|[after, _]| *after <= 0).map_or(0, |[_, to]| *to)
+}
+
 
 /// A row as Java read it (Texts.sms, Texts.mms; android/jvm-checks/TextsCheck.java): every column.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -340,14 +444,14 @@ fn raws(answer: &Value) -> Vec<Raw> {
 /// a line), the copy deleted; within `budget` bytes, the first part of a
 /// step always. Whether every part was brought (else the message waits for
 /// the next step).
-fn bring_media(text: &mut Text, vault: &Vault, budget: &mut u64) -> bool {
+fn bring_media(android: &dyn Android, incoming: &Path, text: &mut Text, vault: &Vault, budget: &mut u64) -> bool {
     let (folder, key) = vault;
     for part in text.parts.iter_mut().filter(|p| p.state == "here" && p.hash.is_empty()) {
         if part.size > *budget && *budget < rules::MEDIA_BATCH {
             return false;
         }
-        let incoming = private().join("incoming").join(format!("{}-{}", text.id, part.seq));
-        let answer = crate::steps::java("texts-part", &json!({ "id": int(&part.fields, "_id"), "target": incoming.display().to_string() }).to_string());
+        let copy = incoming.join(format!("{}-{}", text.id, part.seq));
+        let answer = android.ask("texts-part", &json!({ "id": int(&part.fields, "_id"), "target": copy.display().to_string() }));
         if answer["allowed"] != true {
             return false;
         }
@@ -356,8 +460,8 @@ fn bring_media(text: &mut Text, vault: &Vault, budget: &mut u64) -> bool {
             part.state = "not-downloaded".into();
             continue;
         }
-        let put = sioul_sync::blobs::hash_file(&incoming).map_err(|e| e.to_string()).and_then(|(hash, size)| sioul_sync::blobs::put(folder, key, &incoming, &hash).map(|_| (hash, size)));
-        let _ = std::fs::remove_file(&incoming);
+        let put = sioul_sync::blobs::hash_file(&copy).map_err(|e| e.to_string()).and_then(|(hash, size)| sioul_sync::blobs::put(folder, key, &copy, &hash).map(|_| (hash, size)));
+        let _ = std::fs::remove_file(&copy);
         match put {
             Ok((hash, size)) => {
                 part.hash = hash;
@@ -392,13 +496,12 @@ struct Taken {
     rows: usize,
 }
 
-/// The texts of a `texts-read` answer as they travel, `BATCH` at most, the
-/// media of each multimedia message brought within `MEDIA_BATCH` bytes; a
+/// The texts of a `texts-read` answer as they travel, `BATCH` at most, oldest
+/// first, the media of each multimedia message brought within `budget`; a
 /// message whose media do not fit ends the list there, for the next step.
-fn take(answer: &Value, vault: &Vault, region: Option<&phones::Region>) -> Taken {
+fn take(android: &dyn Android, files: &Files, answer: &Value, vault: &Vault, region: Option<&phones::Region>, budget: &mut u64) -> Taken {
     let threads = threads_of(answer);
     let cap = cap_mb() << 20;
-    let mut budget = rules::MEDIA_BATCH;
     let raws = raws(answer);
     let mut taken = Taken { texts: Vec::new(), sms: 0, mms: 0, media: 0, rows: raws.len() };
     for raw in raws {
@@ -408,11 +511,11 @@ fn take(answer: &Value, vault: &Vault, region: Option<&phones::Region>) -> Taken
         let id = int(&raw.fields, "_id");
         let mut text = text_of(&raw, &threads, region, cap);
         if raw.kind == "mms" {
-            let before = budget;
-            if !bring_media(&mut text, vault, &mut budget) {
+            let before = *budget;
+            if !bring_media(android, &files.incoming, &mut text, vault, budget) {
                 break;
             }
-            taken.media += before - budget;
+            taken.media += before - *budget;
             taken.mms = taken.mms.max(id);
         } else {
             taken.sms = taken.sms.max(id);
@@ -422,37 +525,166 @@ fn take(answer: &Value, vault: &Vault, region: Option<&phones::Region>) -> Taken
     taken
 }
 
+/// What a step read of the history, newest first: its texts, how many of
+/// each table's ids asked were done (read, or gone from the phone
+/// meanwhile), the media bytes put in the sharing.
+struct Newest {
+    texts: Vec<Text>,
+    sms: usize,
+    mms: usize,
+    media: u64,
+}
+
+/// The rows `sms` and `mms` name (each newest first) read from Android:
+/// each table's taken in that order until a text older than `floor` (on the
+/// battery: the history waits for the charger), the multimedia ones also
+/// until their media do not fit `budget`. A row gone meanwhile is done.
+#[allow(clippy::too_many_arguments)]
+fn take_newest(android: &dyn Android, files: &Files, sms: &[i64], mms: &[i64], floor: i64, vault: &Vault, region: Option<&phones::Region>, budget: &mut u64) -> Option<Newest> {
+    let answer = android.ask("texts-read", &json!({ "sms_ids": sms, "mms_ids": mms, "limit": sms.len() + mms.len() }));
+    if answer["allowed"] != true {
+        return None;
+    }
+    let threads = threads_of(&answer);
+    let cap = cap_mb() << 20;
+    let mut rows: BTreeMap<(bool, i64), Raw> = raws(&answer).into_iter().map(|raw| ((raw.kind == "mms", int(&raw.fields, "_id")), raw)).collect();
+    let mut out = Newest { texts: Vec::new(), sms: 0, mms: 0, media: 0 };
+    for (mms_table, ids) in [(false, sms), (true, mms)] {
+        for id in ids {
+            let Some(raw) = rows.remove(&(mms_table, *id)) else {
+                // Gone from the phone meanwhile: nothing to read.
+                if mms_table { out.mms += 1 } else { out.sms += 1 }
+                continue;
+            };
+            let mut text = text_of(&raw, &threads, region, cap);
+            if text.at < floor {
+                break;
+            }
+            if mms_table {
+                let before = *budget;
+                if !bring_media(android, &files.incoming, &mut text, vault, budget) {
+                    break;
+                }
+                out.media += before - *budget;
+                out.mms += 1;
+            } else {
+                out.sms += 1;
+            }
+            out.texts.push(text);
+        }
+    }
+    Some(out)
+}
+
 /// Texts added to this phone's log, each line once; how many were written.
-fn write_log(here: &str, seal: &Seal, texts: &[Text]) -> usize {
+fn write_log(log: &Path, seal: &Seal, texts: &[Text]) -> usize {
     let line = |t: &Text| t.line_id();
-    rules::append(&rules::own_file(&root(), rules::LOG, here), texts, seal, Some(&line)).unwrap_or_else(|e| {
+    rules::append(log, texts, seal, Some(&line)).unwrap_or_else(|e| {
         eprintln!("sioul: texts: {e}");
         0
     })
 }
 
-/// One step of the import, the first and every one after: the texts after
-/// the reader's marks, `BATCH` at most (the plain texts first, then the
-/// multimedia ones), their media within `MEDIA_BATCH` bytes, written to this
-/// phone's log. A multimedia message whose media do not fit waits, with every
-/// one after it, for the next step. Whether anything was written.
-fn import_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Region>, now: i64) -> bool {
-    let mut reader = Reader::load();
+/// The newest texts of a `texts-ids` answer not read yet, newest first, by table.
+fn unread(listed: &Value, name: &str, read: &[[i64; 2]]) -> Vec<i64> {
+    let mut ids: Vec<i64> = listed[name].as_array().map(|a| a.iter().filter_map(Value::as_i64).filter(|id| !holds(read, *id)).collect()).unwrap_or_default();
+    ids.sort_unstable_by(|a, b| b.cmp(a));
+    ids.dedup();
+    ids
+}
+
+/// One step of the import (docs/texts.md, "Reading, on the phone: paced").
+/// Caught up: the texts after the marks, `BATCH` at most, oldest first, as
+/// they come. A full batch there is no texts that came but a block of old
+/// ones put at once (SMS Backup & Restore restoring a history): then, as at
+/// a first import, the rows are listed and read newest first: with `all`
+/// (on the charger) `BATCH` at a time, else only those newer than the newest
+/// text read before, or than a day before a first import began, so that a
+/// text that comes meanwhile reaches your computers within a minute or two,
+/// whatever history waits. Media within `MEDIA_BATCH` bytes, the first always.
+/// Whether anything was written.
+#[allow(clippy::too_many_arguments)]
+fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault, region: Option<&phones::Region>, now: i64, all: bool) -> bool {
+    let mut reader = Reader::load_at(&files.reader);
     if reader.started == 0 {
+        // A first import: the whole history, listed below.
         reader.started = now;
+        reader.behind = true;
     }
-    let answer = crate::steps::java("texts-read", &json!({ "sms": reader.sms, "mms": reader.mms, "limit": rules::BATCH }).to_string());
-    if answer["allowed"] != true {
-        return false;
+    let mut budget = rules::MEDIA_BATCH;
+    let mut texts: Vec<Text> = Vec::new();
+    let mut media = 0;
+    if !reader.behind {
+        let (sms, mms) = (mark_of(&reader.sms_read), mark_of(&reader.mms_read));
+        let answer = android.ask("texts-read", &json!({ "sms": sms, "mms": mms, "limit": rules::BATCH }));
+        if answer["allowed"] != true {
+            return false;
+        }
+        if raws(&answer).len() >= rules::BATCH {
+            // A block of old texts above the marks: a history, read newest first below.
+            reader.behind = true;
+        } else {
+            let taken = take(android, files, &answer, vault, region, &mut budget);
+            reader.left = taken.texts.len() < taken.rows;
+            let (sms_read, mms_read) = (with(&reader.sms_read, sms, taken.sms), with(&reader.mms_read, mms, taken.mms));
+            reader.set_read(sms_read, mms_read);
+            reader.sms_top = reader.sms_top.max(taken.sms);
+            reader.mms_top = reader.mms_top.max(taken.mms);
+            media += taken.media;
+            texts = taken.texts;
+        }
     }
-    let taken = take(&answer, vault, region);
-    let written = write_log(here, seal, &taken.texts);
-    reader.sms = reader.sms.max(taken.sms);
-    reader.mms = reader.mms.max(taken.mms);
+    if reader.behind {
+        let listed = android.ask("texts-ids", &json!({ "measure": false }));
+        if listed["allowed"] != true {
+            let _ = reader.save_at(&files.reader);
+            return false;
+        }
+        let highest = |name: &str| listed[name].as_array().and_then(|a| a.iter().filter_map(Value::as_i64).max()).unwrap_or(0);
+        reader.sms_top = reader.sms_top.max(highest("sms"));
+        reader.mms_top = reader.mms_top.max(highest("mms"));
+        let (sms, mms) = (unread(&listed, "sms", &reader.sms_read), unread(&listed, "mms", &reader.mms_read));
+        // On the battery, only what is newer than all read before (a text that
+        // came), a little at a time; a text dated ahead of the phone's clock
+        // never lifts that floor past now.
+        let floor = if all { i64::MIN } else { reader.newest_at.min(now).max(reader.started - DAY_MS) };
+        let (mut done_sms, mut done_mms) = (0, 0);
+        // Each table read on until a text older than the floor, or media that do not fit.
+        let (mut sms_on, mut mms_on) = (true, true);
+        loop {
+            let room = rules::BATCH.saturating_sub(done_sms + done_mms);
+            let left_sms = if sms_on { sms.len() - done_sms } else { 0 };
+            let left_mms = if mms_on { mms.len() - done_mms } else { 0 };
+            let look = if all { room } else { RECENT_LOOK.min(room) };
+            let ask_mms = left_mms.min(MMS_SHARE).min(look);
+            let ask_sms = left_sms.min(if all { room - ask_mms } else { look });
+            if ask_sms + ask_mms == 0 {
+                break;
+            }
+            let (ask_sms, ask_mms) = (&sms[done_sms..done_sms + ask_sms], &mms[done_mms..done_mms + ask_mms]);
+            let Some(newest) = take_newest(android, files, ask_sms, ask_mms, floor, vault, region, &mut budget) else { break };
+            done_sms += newest.sms;
+            done_mms += newest.mms;
+            media += newest.media;
+            sms_on &= newest.sms == ask_sms.len();
+            mms_on &= newest.mms == ask_mms.len();
+            texts.extend(newest.texts);
+        }
+        // The rows read: every unread one above the first left, up to the newest listed; all, when none is left.
+        let read = |list: &[i64], done: usize, ranges: &[[i64; 2]], top: i64| match list.get(done) {
+            Some(left) => with(ranges, *left, top),
+            None => with(ranges, 0, top),
+        };
+        let (sms_read, mms_read) = (read(&sms, done_sms, &reader.sms_read, reader.sms_top), read(&mms, done_mms, &reader.mms_read, reader.mms_top));
+        reader.set_read(sms_read, mms_read);
+        reader.behind = done_sms < sms.len() || done_mms < mms.len();
+        reader.left = false;
+    }
+    let written = write_log(&files.log, seal, &texts);
+    reader.newest_at = texts.iter().map(|t| t.at).fold(reader.newest_at, i64::max);
     reader.done_texts += written as u64;
-    reader.done_media += taken.media;
-    reader.behind = taken.rows >= rules::BATCH || taken.texts.len() < taken.rows;
-    if let Err(e) = reader.save() {
+    reader.done_media += media;
+    if let Err(e) = reader.save_at(&files.reader) {
         eprintln!("sioul: texts: {e}");
     }
     if written > 0 {
@@ -462,8 +694,8 @@ fn import_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::R
     written > 0
 }
 
-/// The rows on the phone at or under the marks that its log lacks, and the
-/// rows its log holds that the phone no longer has; by table.
+/// The rows on the phone the reader read that its log lacks, and the rows
+/// its log holds that the phone no longer has; by table (`gaps_in`).
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Gaps {
     missing_sms: Vec<i64>,
@@ -471,45 +703,54 @@ struct Gaps {
     gone: Vec<String>,
 }
 
+/// `gaps_in`, every row read up to the marks (the reader of version 2's view, for its test).
+#[cfg(test)]
 fn gaps(log: &[Text], sms: &BTreeSet<i64>, mms: &BTreeSet<i64>, sms_mark: i64, mms_mark: i64) -> Gaps {
+    gaps_in(log, sms, mms, &with(&[], 0, sms_mark), &with(&[], 0, mms_mark))
+}
+
+/// The rows on the phone the reader read (`sms_read`, `mms_read`: never the
+/// history still to read) that its log lacks, and the rows its log holds
+/// that the phone no longer has; by table.
+fn gaps_in(log: &[Text], sms: &BTreeSet<i64>, mms: &BTreeSet<i64>, sms_read: &[[i64; 2]], mms_read: &[[i64; 2]]) -> Gaps {
     let row = |id: &str| id.split_once('-').map(|(table, n)| (table.to_string(), n.parse::<i64>().unwrap_or(0)));
     let logged: BTreeSet<(String, i64)> = log.iter().filter(|t| t.deleted == 0).filter_map(|t| row(&t.id)).collect();
     let marked: BTreeSet<&str> = log.iter().filter(|t| t.deleted > 0).map(|t| t.id.as_str()).collect();
-    let missing = |table: &str, there: &BTreeSet<i64>, mark: i64| -> Vec<i64> { there.iter().copied().filter(|n| *n <= mark && !logged.contains(&(table.to_string(), *n))).take(rules::BATCH).collect() };
+    let missing = |table: &str, there: &BTreeSet<i64>, read: &[[i64; 2]]| -> Vec<i64> { there.iter().copied().filter(|n| holds(read, *n) && !logged.contains(&(table.to_string(), *n))).take(rules::BATCH).collect() };
     let gone = logged
         .iter()
         .filter(|(table, n)| match table.as_str() {
-            "sms" => *n <= sms_mark && !sms.contains(n),
-            "mms" => *n <= mms_mark && !mms.contains(n),
+            "sms" => holds(sms_read, *n) && !sms.contains(n),
+            "mms" => holds(mms_read, *n) && !mms.contains(n),
             _ => false,
         })
         .map(|(table, n)| format!("{table}-{n}"))
         .filter(|id| !marked.contains(id.as_str()))
         .collect();
-    Gaps { missing_sms: missing("sms", sms, sms_mark), missing_mms: missing("mms", mms, mms_mark), gone }
+    Gaps { missing_sms: missing("sms", sms, sms_read), missing_mms: missing("mms", mms, mms_read), gone }
 }
 
 /// Once a day: what the phone holds measured for the settings; the texts
 /// deleted on it marked so in its log, a line each (the archive keeps the
 /// text); and a text the reader passed while Android hid it (in the outbox
 /// as a newer one came) read now. Whether a line was written.
-fn look_again(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Region>, now: i64) -> bool {
-    let mut reader = Reader::load();
-    if now - reader.looked < 86_400_000 {
+fn look_again(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault, region: Option<&phones::Region>, now: i64) -> bool {
+    let mut reader = Reader::load_at(&files.reader);
+    if now - reader.looked < DAY_MS {
         return false;
     }
-    let answer = crate::steps::java("texts-ids", &json!({ "measure": true }).to_string());
+    let answer = android.ask("texts-ids", &json!({ "measure": true }));
     if answer["allowed"] != true {
         return false;
     }
     let ids = |name: &str| -> BTreeSet<i64> { answer[name].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default() };
     reader.looked = now;
     reader.measure(&answer, now);
-    if let Err(e) = reader.save() {
+    if let Err(e) = reader.save_at(&files.reader) {
         eprintln!("sioul: texts: {e}");
     }
-    let log: Vec<Text> = rules::read_file(&rules::own_file(&root(), rules::LOG, here), seal);
-    let found = gaps(&log, &ids("sms"), &ids("mms"), reader.sms, reader.mms);
+    let log: Vec<Text> = rules::read_file(&files.log, seal);
+    let found = gaps_in(&log, &ids("sms"), &ids("mms"), &reader.sms_read, &reader.mms_read);
     let by_id: BTreeMap<&str, &Text> = log.iter().filter(|t| t.deleted == 0).map(|t| (t.id.as_str(), t)).collect();
     let marks: Vec<Text> = found
         .gone
@@ -517,20 +758,22 @@ fn look_again(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Re
         .filter_map(|id| by_id.get(id.as_str()))
         .map(|t| Text { id: t.id.clone(), at: t.at, direction: t.direction.clone(), with: t.with.clone(), deleted: now, ..Text::default() })
         .collect();
-    let mut written = write_log(here, seal, &marks);
+    let mut written = write_log(&files.log, seal, &marks);
     if written > 0 {
         eprintln!("sioul: texts: {written} deleted on the phone, marked so");
     }
     if !found.missing_sms.is_empty() || !found.missing_mms.is_empty() {
-        let answer = crate::steps::java("texts-read", &json!({ "sms_ids": found.missing_sms, "mms_ids": found.missing_mms, "limit": rules::BATCH }).to_string());
+        let answer = android.ask("texts-read", &json!({ "sms_ids": found.missing_sms, "mms_ids": found.missing_mms, "limit": rules::BATCH }));
         if answer["allowed"] == true {
-            let taken = take(&answer, vault, region);
-            let caught = write_log(here, seal, &taken.texts);
+            let mut budget = rules::MEDIA_BATCH;
+            let taken = take(android, files, &answer, vault, region, &mut budget);
+            let caught = write_log(&files.log, seal, &taken.texts);
             if caught > 0 {
                 eprintln!("sioul: texts: {caught} passed earlier, read now");
                 reader.done_texts += caught as u64;
                 reader.done_media += taken.media;
-                let _ = reader.save();
+                reader.newest_at = taken.texts.iter().map(|t| t.at).fold(reader.newest_at, i64::max);
+                let _ = reader.save_at(&files.reader);
             }
             written += caught;
         }
@@ -749,15 +992,24 @@ fn light_step(here: &str, seal: &Seal, region: Option<&'static phones::Region>) 
     })
 }
 
-/// The part that may take a while, never inside an exchange: the history's
-/// next batch and its media when due (`import_now`), and the day's look for
-/// deletions. Under its own lock: one import at a time on the phone.
+/// The part that may take a while, never inside an exchange: the import's
+/// next step when due (`import_now`: caught up, what came; a history, all of
+/// it, on the charger), else the newest texts while a history waits for the
+/// charger (`recent_now`); and the day's look for deletions. Under its own
+/// lock: one import at a time on the phone.
 fn heavy_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Region>) -> bool {
     sioul_core::filelock::with_lock(&private().join(".import"), || {
         let now = now_ms();
         let (texts_changed, plugged) = changes(true);
-        let mut changed = import_now(&Reader::load(), texts_changed, plugged, now) && import_step(here, seal, vault, region, now);
-        changed |= look_again(here, seal, vault, region, now);
+        let reader = Reader::load();
+        let files = Files::of(here);
+        let mut changed = false;
+        if import_now(&reader, texts_changed, plugged, now) {
+            changed = import_step(&Phone, &files, seal, vault, region, now, plugged);
+        } else if recent_now(&reader, texts_changed) {
+            changed = import_step(&Phone, &files, seal, vault, region, now, false);
+        }
+        changed |= look_again(&Phone, &files, seal, vault, region, now);
         changed
     })
 }
@@ -773,15 +1025,24 @@ fn changes(clear: bool) -> (bool, bool) {
 }
 
 /// Whether the import reads the phone's texts now, at `now` (ms;
-/// docs/texts.md, "Reading, on the phone: paced"). A heavy import, the first
-/// (the whole history) or one the last batch left behind (full, or media
-/// that did not fit), only while the phone charges: it may write and send
-/// hundreds of megabytes, on mobile data too. Caught up, when the phone's
-/// texts changed since the last look, and with the day's look for deletions
-/// all the same (a change Android did not say): most steps find nothing new,
-/// and ask Android nothing.
+/// docs/texts.md, "Reading, on the phone: paced"). A history (the first
+/// import's, or a block of old texts put at once), all of it only while the
+/// phone charges: it may write and send hundreds of megabytes, on mobile
+/// data too. Caught up, when the phone's texts changed since the last look,
+/// when the last step left texts that came (their media over its share), and
+/// with the day's look for deletions all the same (a change Android did not
+/// say): most steps find nothing new, and ask Android nothing.
 fn import_now(reader: &Reader, changed: bool, plugged: bool, now: i64) -> bool {
-    if reader.started == 0 || reader.behind { plugged } else { changed || now - reader.looked >= 86_400_000 }
+    if reader.started == 0 || reader.behind { plugged } else { changed || reader.left || now - reader.looked >= DAY_MS }
+}
+
+/// Whether the newest texts are read now while a history waits for the
+/// charger (`import_now`): at a first import, then each time the phone's
+/// texts changed, on the battery too; only those newer than all read before
+/// (`import_step`), so that a text that comes during a long import reaches
+/// your computers within a minute or two.
+fn recent_now(reader: &Reader, changed: bool) -> bool {
+    reader.started == 0 || (reader.behind && changed)
 }
 
 /// A bulk import going on, on the charger or waiting for it (`import_now`):
@@ -815,9 +1076,11 @@ static WORKING: AtomicBool = AtomicBool::new(false);
 /// computer, how far its clock may run ahead of the phone's. Then, in a
 /// thread of its own that never holds the exchange: the import's next batch
 /// (a phone's window; the background service runs it after its exchange) or
-/// the media brought here (a computer). Once a day, old requests and
-/// outcomes out (texts never).
-pub(crate) fn before_exchange() {
+/// the media brought here (a computer); what came said to the window (`qt`)
+/// as an exchange's news are (`shared_in`), so that the pages showing texts
+/// read them again at once. Once a day, old requests and outcomes out
+/// (texts never).
+pub(crate) fn before_exchange(qt: Option<&QtThread>) {
     let Some((here, seal, vault)) = sealed() else { return };
     if phone() {
         light_step(&here, &seal, sioul_core::reach::region(&load_config()));
@@ -825,15 +1088,17 @@ pub(crate) fn before_exchange() {
         measure_clock();
     }
     if vault.is_some() && !crate::steps::in_service() && !WORKING.swap(true, Ordering::AcqRel) {
-        std::thread::spawn(|| {
+        let qt = qt.cloned();
+        std::thread::spawn(move || {
+            let mut came = false;
             if let Some((here, seal, Some(vault))) = sealed() {
-                if phone() {
-                    heavy_step(&here, &seal, &vault, sioul_core::reach::region(&load_config()));
-                } else {
-                    fetch_media(&seal, &vault);
-                }
+                came = if phone() { heavy_step(&here, &seal, &vault, sioul_core::reach::region(&load_config())) } else { fetch_media(&seal, &vault) };
             }
             WORKING.store(false, Ordering::Release);
+            if came && let Some(qt) = qt {
+                let store = if phone() { "data/texts/log/" } else { "data/texts/media/" };
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(store)));
+            }
         });
     }
     let now = now_ms();
@@ -873,7 +1138,8 @@ static FETCHED: Mutex<(Vec<(u64, u128)>, bool)> = Mutex::new((Vec::new(), true))
 /// The media the texts name and this device has not yet: brought from the
 /// sharing's blobs, sealed here, `MEDIA_BATCH` bytes at a time (the first
 /// always); one the sync app has not brought yet waits for next time.
-fn fetch_media(seal: &Seal, vault: &Vault) {
+/// Whether one was brought.
+fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
     let (folder, key) = vault;
     let mut logs: Vec<(u64, u128)> = std::fs::read_dir(root().join(rules::LOG))
         .into_iter()
@@ -883,7 +1149,7 @@ fn fetch_media(seal: &Seal, vault: &Vault) {
         .collect();
     logs.sort_unstable();
     if FETCHED.lock().is_ok_and(|seen| seen.0 == logs && !seen.1) {
-        return;
+        return false;
     }
     let mut wanted: Vec<(String, u64)> = rules::read_logs(&root(), seal).iter().flat_map(|t| t.parts.iter()).filter(|p| p.state == "here" && !p.hash.is_empty() && !here_media(&p.hash)).map(|p| (p.hash.clone(), p.size)).collect();
     wanted.sort();
@@ -923,6 +1189,7 @@ fn fetch_media(seal: &Seal, vault: &Vault) {
     if brought > 0 {
         eprintln!("sioul: texts: {brought} media file(s) brought");
     }
+    brought > 0
 }
 
 /// Where a media file is opened for the page: Sioul's cache (yours alone), emptied when the page closes.
@@ -1544,6 +1811,196 @@ mod tests {
         assert!(!phone_step());
         let (answer, shared) = call("send", r#"{"to":"01 99 00 12 34","body":"Bonjour"}"#);
         assert!(!shared, "{answer}");
+    }
+
+    /// A stand-in phone's provider of texts, answering as Java does
+    /// (Texts.read, Texts.ids, Texts.part; android/jvm-checks/TextsCheck.java):
+    /// plain texts and multimedia messages by their ids, oldest first; a
+    /// part's bytes; the rows Android hides (in the outbox) left out of all.
+    #[derive(Default)]
+    struct Provider {
+        sms: std::cell::RefCell<BTreeMap<i64, Value>>,
+        mms: std::cell::RefCell<BTreeMap<i64, Value>>,
+        media: std::cell::RefCell<BTreeMap<i64, Vec<u8>>>,
+        hidden: std::cell::RefCell<BTreeSet<i64>>,
+    }
+
+    impl Android for Provider {
+        fn ask(&self, verb: &str, asked: &Value) -> Value {
+            let hidden = self.hidden.borrow();
+            // Those named, else those after the mark.
+            let chosen = |list: &Value, mark: &Value, id: i64| match list.as_array() {
+                Some(ids) => ids.iter().any(|v| v.as_i64() == Some(id)),
+                None => id > mark.as_i64().unwrap_or(0),
+            };
+            match verb {
+                "texts-read" => {
+                    let limit = asked["limit"].as_u64().unwrap_or(500) as usize;
+                    let mut texts = Vec::new();
+                    let (mut sms, mut mms) = (asked["sms"].as_i64().unwrap_or(0), asked["mms"].as_i64().unwrap_or(0));
+                    for (id, fields) in self.sms.borrow().iter().filter(|(id, _)| !hidden.contains(id) && chosen(&asked["sms_ids"], &asked["sms"], **id)) {
+                        if texts.len() >= limit {
+                            break;
+                        }
+                        sms = sms.max(*id);
+                        texts.push(json!({ "kind": "sms", "fields": fields }));
+                    }
+                    for (id, row) in self.mms.borrow().iter().filter(|(id, _)| chosen(&asked["mms_ids"], &asked["mms"], **id)) {
+                        if texts.len() >= limit {
+                            break;
+                        }
+                        mms = mms.max(*id);
+                        let mut row = row.clone();
+                        row["kind"] = json!("mms");
+                        texts.push(row);
+                    }
+                    json!({ "texts": texts, "threads": {}, "sms": sms, "mms": mms, "allowed": true })
+                }
+                "texts-ids" => json!({
+                    "sms": self.sms.borrow().keys().filter(|id| !hidden.contains(id)).collect::<Vec<_>>(),
+                    "mms": self.mms.borrow().keys().collect::<Vec<_>>(),
+                    "media": self.media.borrow().values().map(Vec::len).sum::<usize>(),
+                    "allowed": true,
+                }),
+                "texts-part" => {
+                    let target = PathBuf::from(asked["target"].as_str().unwrap_or_default());
+                    match self.media.borrow().get(&asked["id"].as_i64().unwrap_or(0)) {
+                        Some(bytes) => {
+                            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+                            std::fs::write(&target, bytes).unwrap();
+                            json!({ "copied": bytes.len(), "allowed": true })
+                        }
+                        None => json!({ "copied": -1, "allowed": true }),
+                    }
+                }
+                _ => Value::Null,
+            }
+        }
+    }
+
+    impl Provider {
+        fn text(&self, id: i64, at: i64, body: &str) {
+            self.sms.borrow_mut().insert(id, json!({ "_id": id, "thread_id": 3, "address": "04 65 71 00 42", "date": at, "date_sent": at, "type": 1, "read": 1, "body": body }));
+        }
+        fn picture(&self, id: i64, at: i64) {
+            let part = 1000 + 10 * id;
+            self.mms.borrow_mut().insert(id, json!({
+                "fields": { "_id": id, "thread_id": 4, "date": at / 1000, "msg_box": 1, "m_type": 132, "sub_id": 1 },
+                "addrs": [{ "address": "+33465710042", "type": 137, "charset": 106 }],
+                "parts": [{ "_id": part, "mid": id, "seq": 0, "ct": "image/png", "name": "colis.png", "size": 4 }, { "_id": part + 1, "mid": id, "seq": 1, "ct": "text/plain", "text": "Le colis." }],
+            }));
+            self.media.borrow_mut().insert(part, vec![0x89, b'P', b'N', u8::try_from(id % 200).unwrap()]);
+        }
+    }
+
+    /// A long history never holds back a text that comes meanwhile
+    /// (docs/texts.md, "Reading, on the phone: paced"). A first import reads
+    /// the newest first, on the battery only the last day's; a text that
+    /// comes then is read at the next step; on the charger the rest, newest
+    /// first, 500 at a time. Caught up, a block of old texts put at once
+    /// above the marks (SMS Backup & Restore restoring a history, with a text
+    /// that came after it) is read the same way. Each row once in the log,
+    /// none passed: one hidden in the outbox meanwhile is found by the daily
+    /// look, and nothing else is missing or gone.
+    #[test]
+    fn a_text_that_comes_during_a_long_import_goes_first() {
+        let base = std::env::temp_dir().join(format!("sioul-texts-import-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let files = Files { log: base.join("data/texts/log/phone.jsonl"), reader: base.join("state/texts/reader.json"), incoming: base.join("state/texts/incoming") };
+        let vault: Vault = (base.join("folder"), [5u8; 32]);
+        std::fs::create_dir_all(&vault.0).unwrap();
+        let seal = Seal::Key(TextSeal::new(&[6u8; 32]));
+        let region = phones::region_named("FR");
+        let day = 86_400_000;
+        let phone = Provider::default();
+        // Two years of history, three pictures among it; then this morning's.
+        for id in 1..=1_200 {
+            phone.text(id, NOW - 700 * day + id * 60_000, "Un ancien texte.");
+        }
+        for id in 1..=3 {
+            phone.picture(id, NOW - 600 * day + id * 60_000);
+        }
+        for id in 1_201..=1_205 {
+            phone.text(id, NOW - 3 * 3_600_000 + id, "Ce matin.");
+        }
+        let log = || rules::read_file::<Text>(&files.log, &seal);
+        let reader = || Reader::load_at(&files.reader);
+        // The first step, on the battery: this morning's alone, newest first; the history waits for the charger.
+        assert!(recent_now(&reader(), false) && !import_now(&reader(), true, false, NOW));
+        assert!(import_step(&phone, &files, &seal, &vault, region, NOW, false));
+        assert_eq!(log().iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["sms-1205", "sms-1204", "sms-1203", "sms-1202", "sms-1201"]);
+        assert!(reader().behind && !import_now(&reader(), true, false, NOW + 60_000) && recent_now(&reader(), true));
+        assert!(!recent_now(&reader(), false), "nothing new: Android not asked");
+        // A text comes meanwhile: read at the next step, on the battery.
+        phone.text(1_206, NOW + 60_000, "Et maintenant ?");
+        assert!(import_step(&phone, &files, &seal, &vault, region, NOW + 70_000, false));
+        assert_eq!(log().last().map(|t| t.id.clone()).as_deref(), Some("sms-1206"));
+        assert_eq!(log().len(), 6);
+        // On the charger: the rest, newest first, 500 rows a step.
+        let mut steps = 0;
+        while reader().behind {
+            assert!(import_step(&phone, &files, &seal, &vault, region, NOW + 100_000, true));
+            steps += 1;
+            assert!(steps <= 3, "1,203 rows: three steps");
+        }
+        let all = log();
+        assert_eq!(all.len(), 1_209);
+        assert_eq!(all[6].id, "sms-1200", "the history's newest first");
+        assert!(all.iter().filter(|t| t.id.starts_with("mms-")).all(|t| t.parts[0].state == "here" && !t.parts[0].hash.is_empty()), "the pictures put in the sharing");
+        assert!(!reader().behind && reader().sms == 1_206 && reader().mms == 3, "caught up: {:?}", reader());
+        // Caught up, a restore puts 900 old texts above the marks, one of them
+        // in the outbox for now, then a text comes after it.
+        for id in 1_207..=2_106 {
+            phone.text(id, NOW - 500 * day + id * 60_000, "Restauré.");
+        }
+        phone.hidden.borrow_mut().insert(1_500);
+        phone.text(2_107, NOW + 3_600_000, "Après la restauration.");
+        assert!(import_now(&reader(), true, false, NOW + 3_700_000), "caught up: a new text, on the battery");
+        assert!(import_step(&phone, &files, &seal, &vault, region, NOW + 3_700_000, false), "the text that came, not the block");
+        assert_eq!(log().last().map(|t| t.id.clone()).as_deref(), Some("sms-2107"));
+        assert_eq!(log().len(), 1_210);
+        assert!(reader().behind);
+        let mut steps = 0;
+        while reader().behind {
+            assert!(import_step(&phone, &files, &seal, &vault, region, NOW + 3_800_000, true));
+            steps += 1;
+            assert!(steps <= 2, "899 rows: two steps");
+        }
+        assert_eq!(log()[1_210].id, "sms-2106", "the block's newest first");
+        assert_eq!(log().len(), 2_109);
+        // Out of the outbox: the daily look reads it; nothing else missing, nothing gone.
+        phone.hidden.borrow_mut().clear();
+        assert!(look_again(&phone, &files, &seal, &vault, region, NOW + 2 * day));
+        let all = log();
+        let ids: BTreeSet<&str> = all.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!((all.len(), ids.len()), (2_110, 2_110), "each row once");
+        let r = reader();
+        let (sms, mms): (BTreeSet<i64>, BTreeSet<i64>) = (phone.sms.borrow().keys().copied().collect(), phone.mms.borrow().keys().copied().collect());
+        assert_eq!(gaps_in(&all, &sms, &mms, &r.sms_read, &r.mms_read), Gaps::default());
+        assert_eq!((r.sms_read.clone(), r.mms_read.clone()), (vec![[0, 2_107]], vec![[0, 3]]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The reader of version 2 (oldest first): its marks kept as its first
+    /// ranges; behind, the rest listed and read newest first at the next step.
+    #[test]
+    fn a_reader_of_version_2_keeps_its_marks() {
+        let base = std::env::temp_dir().join(format!("sioul-texts-reader-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let path = base.join("reader.json");
+        std::fs::write(&path, r#"{"version":2,"sms":3500,"mms":40,"started":1,"behind":true,"done_texts":3540}"#).unwrap();
+        let reader = Reader::load_at(&path);
+        assert_eq!((reader.version, reader.sms_read.clone(), reader.mms_read.clone(), reader.behind, reader.done_texts), (READER_VERSION, vec![[0, 3_500]], vec![[0, 40]], true, 3_540));
+        std::fs::write(&path, r#"{"version":2,"sms":10,"mms":3,"started":1}"#).unwrap();
+        let caught_up = Reader::load_at(&path);
+        assert!(!caught_up.behind && caught_up.sms == 10 && holds(&caught_up.sms_read, 10) && !holds(&caught_up.sms_read, 11));
+        // The ranges: added, merged, held.
+        assert_eq!(with(&[[0, 10], [20, 30]], 10, 20), [[0, 30]]);
+        assert_eq!(with(&[[0, 10]], 25, 30), [[0, 10], [25, 30]]);
+        assert_eq!(mark_of(&[[0, 10], [25, 30]]), 10);
+        assert_eq!(mark_of(&[[5, 10]]), 0);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 
