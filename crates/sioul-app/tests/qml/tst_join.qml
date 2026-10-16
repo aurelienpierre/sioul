@@ -47,6 +47,7 @@ Item {
                 "join-found": "Your other devices share through { $place } there. Type the passphrase you chose on them.",
                 "join-none": "No folder shared by Sioul was found there.",
                 "join-join": "Join",
+                "join-look-again": "Look again",
                 "join-start": "Start sharing there",
                 "join-done": "Done",
                 "join-needs-title": "Still to sign in on this device:",
@@ -68,6 +69,7 @@ Item {
                 "join-found": "Vos autres appareils partagent par { $place } là-bas. Tapez la phrase de passe choisie sur eux.",
                 "join-none": "Aucun dossier partagé par Sioul n’a été trouvé là-bas.",
                 "join-join": "Rejoindre",
+                "join-look-again": "Chercher de nouveau",
                 "join-start": "Commencer à partager là-bas",
                 "join-done": "Terminé",
                 "join-needs-title": "Reste à vous connecter sur cet appareil :",
@@ -119,6 +121,9 @@ Item {
         }
         function joinOpenAgain() {
             mock.said("open again")
+        }
+        function joinLookAgain() {
+            mock.said("look again")
         }
         function joinFolder(place, passphrase, again) {
             mock.said(["folder", place, passphrase, again].join("|"))
@@ -247,6 +252,20 @@ Item {
             typed[0].text = "quiet harbour at dawn"
             press("Join")
             compare(mock.calls, ["folder|Documents/Sioul|quiet harbour at dawn|"])
+        }
+
+        // The look could not go through (M3): never "none found", never a new sharing;
+        // look again, or its place typed and the passphrase once.
+        function test_a_look_that_could_not_go_through_offers_no_new_sharing() {
+            mock.move({ step: "unchecked", host: "murena.io", signed: "Signed in to murena.io as jane.", places: [], problem: "Sioul could not look through all your files on murena.io." })
+            verify(shown("Sioul could not look through all your files on murena.io.") !== null)
+            verify(button("Start sharing there") === null, "no new sharing offered")
+            const typed = fields()
+            compare(typed.length, 2, "its place, the passphrase once")
+            typed[1].text = "quiet harbour at dawn"
+            press("Join")
+            press("Look again")
+            compare(mock.calls, ["folder|Documents/Sioul|quiet harbour at dawn|", "look again"])
         }
 
         function test_none_found_starts_sharing_there_with_the_passphrase_twice() {

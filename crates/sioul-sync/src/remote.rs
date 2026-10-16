@@ -2251,38 +2251,83 @@ pub const SOUGHT: [&str; 2] = ["Documents/Sioul", "Sioul"];
 /// The folders one level under `Documents` looked at, at most (by name).
 const SOUGHT_UNDER: usize = 40;
 
+/// What the look for the sharing folder found (`seek`): the places holding a
+/// seal of Sioul's, in the order looked at, and whether every place it looks
+/// at was looked at (`complete`): a listing or a seal that could not be read,
+/// or the time running out, leaves it incomplete, and then "none found" is
+/// never said, nor a new sharing offered (the review of the join, M3).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Sought {
+    pub found: Vec<String>,
+    pub complete: bool,
+}
+
+/// Whether `place` is one the look goes through by itself (`seek`): one of
+/// `SOUGHT`, or a folder one level under `Documents`.
+pub fn sought(place: &str) -> bool {
+    let place = place.trim().trim_matches('/');
+    SOUGHT.contains(&place) || place.strip_prefix("Documents/").is_some_and(|name| !name.is_empty() && !name.contains('/') && !name.starts_with('.'))
+}
+
 /// Where the sharing folder is among `login`'s files, for a device joining
 /// with nothing set up (docs/database.md, "Joining through your Nextcloud's
-/// sign-in"): each of `SOUGHT`, then each folder one level under
+/// sign-in"): each of `SOUGHT` first, then each folder one level under
 /// `Documents` (the first 40 by name, hidden ones left out), that holds a
 /// seal of Sioul's (`share::is_seal`), in that order. Only `PROPFIND` and
-/// `GET` of `seal.toml` files, on the account's own server. Why not, in a
-/// code as `open` has them ("login:murena.io", "no-files:murena.io").
-pub fn seek(login: &Login) -> Result<Vec<String>, String> {
+/// `GET` of `seal.toml` files, on the account's own server. A listing of
+/// `Documents` that fails only ends the extra places; one place that cannot
+/// be read leaves the others looked at; the time running out ends the look
+/// with what was found: each makes the look incomplete (`Sought`). Why it
+/// could not look at all, in a code as `open` has them ("login:murena.io",
+/// "no-files:murena.io"): a refused login, a certificate, the files not found.
+pub fn seek(login: &Login) -> Result<Sought, String> {
     seek_with(login, LIMITS)
 }
 
-pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Vec<String>, String> {
+pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Sought, String> {
     let host = host_of(&login.url);
     let server = Server::new(login, limits).map_err(|e| code(&e, &host))?;
     let root = files_root(&server, login).map_err(|e| code(&e, &host))?.ok_or_else(|| format!("no-files:{host}"))?;
-    let mut places: Vec<String> = SOUGHT.iter().map(|p| (*p).to_string()).collect();
-    match server.list(&format!("{root}Documents/")) {
-        Ok(listing) => places.extend(listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").take(SOUGHT_UNDER).map(|(name, _)| format!("Documents/{name}"))),
-        Err(SyncError::NotFound(_)) => {}
-        Err(e) => return Err(code(&e, &host)),
-    }
-    let mut found = Vec::new();
-    for place in places {
-        match server.small(&format!("{root}{}/seal.toml", encode_path(&place))) {
-            Ok(Some((bytes, _))) if crate::share::is_seal(&bytes) => found.push(place),
+    let mut sought = Sought { found: Vec::new(), complete: true };
+    let out_of_time = |e: &SyncError| matches!(e, SyncError::Network(d) if d == "out of time");
+    // Each place's seal: found, none, or not read (the look incomplete). Err ends the look.
+    let look = |place: &str, sought: &mut Sought| -> Result<(), SyncError> {
+        match server.small(&format!("{root}{}/seal.toml", encode_path(place))) {
+            Ok(Some((bytes, _))) if crate::share::is_seal(&bytes) => sought.found.push(place.to_string()),
             Ok(_) => {}
-            // A refused login, a certificate, the time out: said; one folder unreadable: the others looked at.
-            Err(e) if e.is_lasting() || matches!(&e, SyncError::Network(d) if d == "out of time") => return Err(code(&e, &host)),
-            Err(_) => {}
+            Err(e) if e.is_lasting() || out_of_time(&e) => return Err(e),
+            Err(_) => sought.complete = false,
+        }
+        Ok(())
+    };
+    // A refused login, a certificate, before anything was found: said; after, or the time out: what was found.
+    let ended = |e: SyncError, mut sought: Sought| -> Result<Sought, String> {
+        if sought.found.is_empty() && e.is_lasting() {
+            return Err(code(&e, &host));
+        }
+        sought.complete = false;
+        Ok(sought)
+    };
+    for place in SOUGHT {
+        if let Err(e) = look(place, &mut sought) {
+            return ended(e, sought);
         }
     }
-    Ok(found)
+    let extra: Vec<String> = match server.list(&format!("{root}Documents/")) {
+        Ok(listing) => listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").take(SOUGHT_UNDER).map(|(name, _)| format!("Documents/{name}")).collect(),
+        Err(SyncError::NotFound(_)) => Vec::new(),
+        Err(e) if e.is_lasting() || out_of_time(&e) => return ended(e, sought),
+        Err(_) => {
+            sought.complete = false;
+            return Ok(sought);
+        }
+    };
+    for place in extra {
+        if let Err(e) = look(&place, &mut sought) {
+            return ended(e, sought);
+        }
+    }
+    Ok(sought)
 }
 
 /// One step of Sioul keeping the folder itself (`MIRROR`): with `whole`, the
@@ -6696,23 +6741,66 @@ mod tests {
         std::fs::create_dir_all(files.join("Documents/Photos")).unwrap();
         let fake = Fake::start(&files);
         let login = crate::loginflow::Grant::of(&fake.base, USER, PASSWORD).login_for("cloud");
-        assert_eq!(seek_with(&login, TEST).unwrap(), Vec::<String>::new(), "none yet");
+        let found = |login: &Login| seek_with(login, TEST).unwrap().found;
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: Vec::new(), complete: true }, "none yet, every place looked at");
         put(&files, "Documents/Sioul/seal.toml", SEAL);
-        assert_eq!(seek_with(&login, TEST).unwrap(), ["Documents/Sioul"]);
+        assert_eq!(found(&login), ["Documents/Sioul"]);
         std::fs::remove_dir_all(files.join("Documents/Sioul")).unwrap();
         put(&files, "Sioul/seal.toml", SEAL);
         put(&files, "Documents/Partagé/seal.toml", OTHER_SEAL);
         put(&files, "Documents/Notes/seal.toml", "not a seal");
         put(&files, "Documents/.hidden/seal.toml", SEAL);
-        assert_eq!(seek_with(&login, TEST).unwrap(), ["Sioul", "Documents/Partagé"]);
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into(), "Documents/Partagé".into()], complete: true });
         // Only listings and seals asked; nothing written there.
         assert!(fake.seen().iter().all(|l| l.starts_with("PROPFIND ") || (l.starts_with("GET ") && l.contains("/seal.toml "))), "{:?}", fake.seen());
         // No Documents folder at all: the top still looked at.
         std::fs::remove_dir_all(files.join("Documents")).unwrap();
-        assert_eq!(seek_with(&login, TEST).unwrap(), ["Sioul"]);
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into()], complete: true });
         // A refused login said, as `open` says it.
         let refused = Login { password: Some("wrong".into()), ..login };
         assert!(seek_with(&refused, TEST).unwrap_err().starts_with("login:"));
+        // Which places the look goes through by itself (what "Add a device" may say is found by itself).
+        assert!(sought("Documents/Sioul") && sought("/Sioul/") && sought("Documents/Partagé"));
+        assert!(!sought("Documents/A/B") && !sought("Partage/Sioul") && !sought("Documents/.hidden") && !sought("Documents/"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The look on a slow or failing server (the review of the join, M3):
+    /// Sioul's own places are looked at first, before any listing; a listing of
+    /// `Documents` that fails only ends the extra places; the time running out
+    /// ends the look with what was found; a seal that cannot be read leaves the
+    /// look incomplete, so that "none found" is never said, nor a new sharing
+    /// offered, when the folder may be there.
+    #[test]
+    fn a_slow_or_failing_look_keeps_what_it_found_and_says_it_is_incomplete() {
+        use super::fake::USER;
+        let base = scratch("seek-slow");
+        let files = base.join("cloud");
+        for folder in 0..12 {
+            std::fs::create_dir_all(files.join(format!("Documents/Dossier {folder:02}"))).unwrap();
+        }
+        put(&files, "Documents/Sioul/seal.toml", SEAL);
+        let fake = Fake::start(&files);
+        let login = crate::loginflow::Grant::of(&fake.base, USER, PASSWORD).login_for("cloud");
+        // Documents/Sioul is read before Documents is listed.
+        let _ = seek_with(&login, TEST).unwrap();
+        let seen = fake.seen();
+        let seal_at = seen.iter().position(|l| l.contains("/Documents/Sioul/seal.toml")).unwrap();
+        let listed_at = seen.iter().position(|l| l.starts_with("PROPFIND ") && l.ends_with("/Documents 207")).unwrap();
+        assert!(seal_at < listed_at, "{seen:?}");
+        // The listing of Documents fails: what was found stays, the look incomplete.
+        fake.fault(|r| (r.method == "PROPFIND" && r.path.ends_with("/files/jane/Documents")).then_some(Fault::Status(500)));
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Documents/Sioul".into()], complete: false });
+        fake.clear_faults();
+        // The time runs out among the extra places: what was found stays.
+        let tight = Limits { pull: Duration::from_millis(800), ..TEST };
+        fake.fault(|r| (r.method == "GET" && r.path.contains("/Dossier ")).then_some(Fault::Late(Duration::from_millis(300))));
+        assert_eq!(seek_with(&login, tight).unwrap(), Sought { found: vec!["Documents/Sioul".into()], complete: false });
+        fake.clear_faults();
+        // Its own seal cannot be read (the server's error): nothing found, but never "none found".
+        fake.fault(|r| (r.method == "GET" && r.path.ends_with("/Documents/Sioul/seal.toml")).then_some(Fault::Status(503)));
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: Vec::new(), complete: false });
+        fake.clear_faults();
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -6760,7 +6848,7 @@ mod tests {
         let grant = crate::loginflow::wait(&flow, &std::sync::atomic::AtomicBool::new(false), Duration::from_secs(10), Duration::from_millis(50)).unwrap();
         let login = grant.login_for("cloud-agenda");
         // The folder found at Sioul's own place, its seal brought into the phone's own copy.
-        assert_eq!(seek_with(&login, TEST).unwrap(), ["Documents/Sioul"]);
+        assert_eq!(seek_with(&login, TEST).unwrap().found, ["Documents/Sioul"]);
         let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
         let phone = Device::new(&base, "phone", PHONE);
         let mirror = mirror_of(&phone.memory);
@@ -6788,6 +6876,55 @@ mod tests {
         for (relative, bytes) in walk(&phone.roots.state).into_iter().chain(walk(&phone.roots.config)) {
             assert!(!String::from_utf8_lossy(&bytes).contains(grant.password()), "{relative}");
         }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A first look cut short (the time out among the desk's records) is
+    /// never taken for a whole one (the review of the join, M2): its state
+    /// says an error and no whole look since the join, so that the window
+    /// decides nothing about the contacts and calendars on it (`join.rs`);
+    /// the next look goes through, says so, and the exchange then brings the
+    /// desk's account, which the window then uses rather than make a second.
+    #[test]
+    fn a_first_look_cut_short_is_never_taken_for_a_whole_one() {
+        use super::fake::USER;
+        let base = scratch("join-late");
+        let files = base.join("cloud");
+        let server = files.join("Documents").join("Sioul");
+        std::fs::create_dir_all(&server).unwrap();
+        let fake = Fake::start(&files);
+        let passphrase = "a few words you keep";
+        let key = crate::share::key_for(&server, passphrase).unwrap();
+        let desk = Device::new(&base, "desk", COMPUTER);
+        put(&desk.roots.config, "config.toml", "[[account]]\nid = \"murena\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"cloud.example.org\"\nurl = \"https://cloud.example.org/remote.php/dav/calendars/jane/\"\n");
+        keyed_exchange(&desk, &server, &key, DUE - 600);
+        let grant = crate::loginflow::Grant::of(&fake.base, USER, PASSWORD);
+        let login = grant.login_for("cloud-agenda");
+        let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
+        let phone = Device::new(&base, "phone", PHONE);
+        let mirror = mirror_of(&phone.memory);
+        put_bytes(&mirror, "seal.toml", opened.seal.as_deref().unwrap());
+        assert_eq!(crate::share::key_for(&mirror, passphrase).unwrap(), key);
+        begin_signed_in(&phone.memory, &mirror, &login, &opened, DUE - 500).unwrap();
+        // The desk's records slow to come: the look's time runs out.
+        let id = desk.id.clone();
+        fake.fault(move |r| (r.method == "GET" && r.path.contains(&id) && r.path.ends_with(".jsonl")).then_some(Fault::Late(Duration::from_millis(900))));
+        let tight = Limits { pull: Duration::from_millis(600), ..TEST };
+        let cut = step_with(&phone.memory, &mirror, &phone.id, &login, DUE - 400, true, tight);
+        assert!(cut.problem.is_some(), "{cut:?}");
+        let state = State::load(&phone.memory);
+        assert!(!state.said.is_empty() && state.last < DUE - 500, "no whole look since the join: {state:?}");
+        keyed_exchange(&phone, &mirror, &key, DUE - 400);
+        assert!(!std::fs::read_to_string(phone.roots.config.join("config.toml")).unwrap_or_default().contains("id = \"murena\""), "the desk's account not here yet");
+        // The next look goes through: said so, and the desk's account comes.
+        fake.clear_faults();
+        let whole = step_with(&phone.memory, &mirror, &phone.id, &login, DUE - 300, true, TEST);
+        assert!(whole.problem.is_none(), "{whole:?}");
+        let state = State::load(&phone.memory);
+        assert!(state.said.is_empty() && state.last >= DUE - 300 && state.left.is_empty(), "{state:?}");
+        keyed_exchange(&phone, &mirror, &key, DUE - 300);
+        let config = std::fs::read_to_string(phone.roots.config.join("config.toml")).unwrap_or_default();
+        assert!(config.contains("id = \"murena\""), "{config}");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

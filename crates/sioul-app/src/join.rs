@@ -13,16 +13,21 @@
 //!    address); the app password it gives goes to the keyring at once
 //!    (`loginflow::keep`), never to a file nor a log.
 //! 2. **The folder found** there (`remote::seek`): Documents/Sioul, Sioul, or
-//!    a folder in Documents; proposed, or a place you type; none found: you
-//!    may start sharing there, as before.
+//!    a folder in Documents; proposed, or a place you type; none found, every
+//!    place looked at: you may start sharing there, as before; the look
+//!    incomplete (a slow or failing server): look again, or type its place,
+//!    never a new sharing offered.
 //! 3. **Joined** (`join`): the passphrase typed once, checked against the
 //!    seal (twice for a new sharing); Sioul keeps its own copy of the folder
 //!    in step with that login (`remote::begin_signed_in`); a first exchange
-//!    runs at once and brings the shared settings, accounts and hours.
-//! 4. **The contacts and calendars** (`bind_agenda`): an account of yours for
-//!    that server and login, come with the settings or here already, is used,
-//!    the app password kept for it when none was and it opens it there; else
-//!    one is made, its homes found on that server alone.
+//!    runs at once and brings the shared settings, accounts and hours. A
+//!    sharing started there instead is said as such, never as joined.
+//! 4. **The contacts and calendars** (`bind_agenda`), once the first
+//!    exchange brought everything (`complete_since`), else at a later one
+//!    (`agenda_later`): an account of yours on that server (its address's
+//!    origin) with that login, come with the settings or here already, is
+//!    used, given the homes found there and the app password when it has none
+//!    and it opens it there; else one is made, its homes found on that server alone.
 //! 5. **Said** (`Stand`): who this device shares with now, what came, and
 //!    what still needs a sign-in here; on a phone, whether it replaces
 //!    another phone (`replacing`).
@@ -44,8 +49,10 @@ use std::sync::{Arc, Mutex};
 struct Stand {
     /// "" nothing under way; "signing": the browser open, waited for;
     /// "looking": signed in, the folder looked for; "found": places found;
-    /// "none": none found; "joining": the first exchange running; "joined":
-    /// done, said below; "failed": the sign-in did not go (`problem`).
+    /// "none": none found, every place looked at (a new sharing may start);
+    /// "unchecked": the look could not go through (look again, or a place
+    /// typed, never a new sharing); "joining": the first exchange running;
+    /// "joined": done, said below; "failed": the sign-in did not go (`problem`).
     step: String,
     /// The server, by its name: "murena.io".
     host: String,
@@ -190,23 +197,13 @@ pub(crate) fn sign_in(qt: &QtThread, typed: String) {
                 s.signed = say("join-signed", &[("host", signed.host()), ("login", signed.login.clone())]);
             });
             told(&qt);
-            let places = remote::seek(&signed.login_for("")).map_err(|code| crate::share::server_problem(&code));
+            let sought = remote::seek(&signed.login_for(""));
             if STOP.load(Ordering::SeqCst) {
                 give_back(&signed);
                 return Err(String::new());
             }
+            set(|s| looked(s, &signed.host(), sought));
             *grant() = Some(signed);
-            match places {
-                Ok(places) => set(|s| {
-                    s.step = if places.is_empty() { "none".into() } else { "found".into() };
-                    s.places = places;
-                }),
-                // Signed in, the folder not looked through: a place may be typed all the same.
-                Err(problem) => set(|s| {
-                    s.step = "none".into();
-                    s.problem = problem;
-                }),
-            }
             Ok(())
         })();
         if let Err(problem) = outcome {
@@ -223,6 +220,54 @@ pub(crate) fn sign_in(qt: &QtThread, typed: String) {
             give_back(&late);
             set(|s| *s = Stand::default());
         }
+        told(&qt);
+    });
+}
+
+/// What the look found, said (`Stand`): places found, proposed; none found,
+/// every place looked at, a new sharing may start there; the look
+/// incomplete, or not possible at all (a slow server, a failing listing):
+/// "could not look", look again or type a place, never a new sharing
+/// offered where the folder may be (the review of the join, M3).
+fn looked(stand: &mut Stand, host: &str, sought: Result<remote::Sought, String>) {
+    stand.places.clear();
+    stand.problem.clear();
+    match sought {
+        Ok(sought) if !sought.found.is_empty() => {
+            stand.step = "found".into();
+            stand.places = sought.found;
+        }
+        Ok(sought) if sought.complete => stand.step = "none".into(),
+        Ok(_) => {
+            stand.step = "unchecked".into();
+            stand.problem = say("join-unchecked", &[("host", host.to_string())]);
+        }
+        Err(code) => {
+            stand.step = "unchecked".into();
+            stand.problem = [say("join-unchecked", &[("host", host.to_string())]), crate::share::server_problem(&code)].join(" ");
+        }
+    }
+}
+
+/// "Look again", the look having found nothing it could trust (`unchecked`)
+/// or not the place you expected: the server looked through again with the
+/// sign-in held, off the window's thread.
+pub(crate) fn look_again(qt: &QtThread) {
+    let Some(held) = grant().as_ref().map(|g| Grant::of(&g.server, &g.login, g.password())) else { return };
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    set(|s| {
+        s.step = "looking".into();
+        s.problem.clear();
+    });
+    told(qt);
+    let qt = qt.clone();
+    std::thread::spawn(move || {
+        let running = Running;
+        let sought = remote::seek(&held.login_for(""));
+        set(|s| looked(s, &held.host(), sought));
+        drop(running);
         told(&qt);
     });
 }
@@ -271,6 +316,8 @@ pub(crate) fn join(qt: &QtThread, shared: &Arc<Shared>, place: String, passphras
     }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     let back = stand().step.clone();
+    // A new sharing only where every place was looked at and none found.
+    let may_start = back == "none";
     set(|s| {
         s.step = "joining".into();
         s.problem.clear();
@@ -281,7 +328,7 @@ pub(crate) fn join(qt: &QtThread, shared: &Arc<Shared>, place: String, passphras
         let held = grant().as_ref().map(|g| Grant::of(&g.server, &g.login, g.password()));
         let outcome = match held {
             None => Err(tr().text("join-why-signed-out", None)),
-            Some(signed) => joined(&qt, &shared, &signed, &place, &passphrase, &again),
+            Some(signed) => joined(&qt, &shared, &signed, &place, &passphrase, &again, may_start),
         };
         match outcome {
             Ok((lines, needs)) => {
@@ -306,20 +353,96 @@ pub(crate) fn join(qt: &QtThread, shared: &Arc<Shared>, place: String, passphras
 }
 
 /// The join itself, on its thread: what it said, and what still needs a sign-in here.
-fn joined(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant, place: &str, passphrase: &str, again: &str) -> Result<(Vec<String>, Vec<String>), String> {
+#[allow(clippy::too_many_arguments)]
+fn joined(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant, place: &str, passphrase: &str, again: &str, may_start: bool) -> Result<(Vec<String>, Vec<String>), String> {
     let before = load_config();
     let before_text = std::fs::read_to_string(crate::backend::config_path()).unwrap_or_default();
     let login = signed.login_for(&agenda_id(&before, signed));
-    crate::share::begin_on_server(&login, place, passphrase, again, true)?;
+    let since = jiff::Timestamp::now().as_second();
+    let begun = crate::share::begin_on_server(&login, place, passphrase, again, true, may_start)?;
     // The first exchange: the server looked through, the others' files read, this device's sent.
     crate::share::exchange_at_once(qt, shared);
-    let agenda = bind_agenda(qt, shared, signed);
-    let after = load_config();
-    let after_text = std::fs::read_to_string(crate::backend::config_path()).unwrap_or_default();
-    let mut lines = said_joined(&after, before_text != after_text);
+    let host = signed.host();
+    let mut lines = match begun {
+        // A new sharing: nothing to wait for from other devices, never "joined".
+        crate::share::Begun::Started => vec![say("join-started", &[("host", host.clone()), ("place", place.trim().trim_matches('/').to_string())])],
+        crate::share::Begun::Joined => {
+            let after_text = std::fs::read_to_string(crate::backend::config_path()).unwrap_or_default();
+            said_joined(&load_config(), before_text != after_text)
+        }
+    };
+    // The contacts and calendars once everything the others shared came, never on half of it (M2).
+    let agenda = if begun == crate::share::Begun::Started || complete_since(since) {
+        bind_agenda(qt, shared, signed).and_then(|bound| line_of(bound, &host))
+    } else {
+        defer_agenda(signed, since);
+        Some(say("join-agenda-later", &[("host", host.clone())]))
+    };
     lines.extend(agenda);
-    let needs = still_to_sign_in(&after);
+    let needs = still_to_sign_in(&load_config());
     Ok((lines, needs))
+}
+
+/// Whether a whole look through the server went through since `since`
+/// (Unix seconds), every other device's records, entries and claims brought
+/// into this device's copy, nothing left there to bring, and an exchange read
+/// them since: then the settings and the accounts your other devices share
+/// are all here, and the contacts and calendars may be decided (M2).
+fn complete_since(since: i64) -> bool {
+    let state = remote::State::load(&crate::share::memory_path());
+    state_complete(&state, since) && crate::share::last_exchange().is_some_and(|(at, _)| at >= since)
+}
+
+/// `complete_since`'s reading of the state: Sioul keeping the folder itself,
+/// a whole step gone through at or after `since`, no error said since, nothing
+/// too large left on the server.
+fn state_complete(state: &remote::State, since: i64) -> bool {
+    state.mode == remote::MIRROR && state.last >= since && state.said.is_empty() && state.left.is_empty()
+}
+
+/// The contacts and calendars left for a later exchange, the first one not
+/// having brought everything: what to decide them with, this device's own
+/// (`share/agenda-pending.toml`), never shared, never a secret (the app
+/// password stays in the keyring, `loginflow::kept`).
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+struct Pending {
+    server: String,
+    login: String,
+    since: i64,
+}
+
+fn pending_path() -> std::path::PathBuf {
+    state_dir().join("share").join("agenda-pending.toml")
+}
+
+fn defer_agenda(signed: &Grant, since: i64) {
+    let pending = Pending { server: signed.server.clone(), login: signed.login.clone(), since };
+    if let Ok(text) = toml::to_string(&pending) {
+        let _ = sioul_sync::share::write_atomically(&pending_path(), format!("# Sioul: the contacts and calendars of the server signed in to, decided once your other devices' settings came (docs/database.md). Never shared.\n{text}").as_bytes());
+    }
+}
+
+/// After an exchange of the window's: the contacts and calendars left for
+/// later (`defer_agenda`) decided once a whole look and an exchange went
+/// through, with the app password the keyring keeps; said in the status
+/// line. Nothing while none is left. Off the window's thread.
+pub(crate) fn agenda_later(qt: &QtThread, shared: &Arc<Shared>) {
+    let path = pending_path();
+    let Some(pending) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Pending>(&t).ok()) else { return };
+    if !complete_since(pending.since) {
+        return;
+    }
+    let host = remote::host_of(&pending.server);
+    let Some(password) = loginflow::kept(&pending.login, &host) else {
+        let _ = std::fs::remove_file(&path);
+        return;
+    };
+    let signed = Grant::of(&pending.server, &pending.login, &password);
+    let line = bind_agenda(qt, shared, &signed).and_then(|bound| line_of(bound, &host));
+    let _ = std::fs::remove_file(&path);
+    if let Some(line) = line {
+        crate::backend::set_status(qt, line);
+    }
 }
 
 // ---------------------------------------------------------------- the contacts and calendars
@@ -365,13 +488,23 @@ fn account_host(account: &Account) -> String {
     account.host.clone().filter(|h| !h.is_empty()).unwrap_or_else(|| account.url.as_deref().map(remote::host_of).unwrap_or_default())
 }
 
+/// Whether an account's address is on `server`'s origin (scheme, host and
+/// port), so that the sign-in's app password may go to it: an account
+/// without an address, or one whose host is the server's but whose address
+/// points elsewhere, never (the review of the join, L2).
+fn on_server(account: &Account, server: &str) -> bool {
+    let origin = sioul_sync::dav::origin(server);
+    origin.is_some() && account.url.as_deref().and_then(sioul_sync::dav::origin) == origin
+}
+
 /// Your contacts-and-calendars account for that server and login, if there
-/// is one (switched off ones too): on the same server (by its name), with
-/// the same login (case aside) or the same user in its address (`user_of`).
-/// Google's are never.
-fn matching<'a>(config: &'a Config, host: &str, login: &str, user: Option<&str>) -> Option<&'a Account> {
+/// is one (switched off ones too): its address on the server's origin
+/// (`on_server`: scheme, host and port, never the host's name alone, which
+/// Accounts keeps without its port), with the same login (case aside) or the
+/// same user in its address (`user_of`). Google's are never.
+fn matching<'a>(config: &'a Config, server: &str, login: &str, user: Option<&str>) -> Option<&'a Account> {
     config.every_account().filter(|a| a.kind == AccountKind::Dav && a.auth.is_none()).find(|a| {
-        account_host(a).eq_ignore_ascii_case(host) && (a.login().is_some_and(|l| l.trim().eq_ignore_ascii_case(login.trim())) || user.is_some_and(|u| a.url.as_deref().and_then(user_of).as_deref() == Some(u)))
+        on_server(a, server) && (a.login().is_some_and(|l| l.trim().eq_ignore_ascii_case(login.trim())) || user.is_some_and(|u| a.url.as_deref().and_then(user_of).as_deref() == Some(u)))
     })
 }
 
@@ -387,8 +520,7 @@ fn new_id(config: &Config, host: &str) -> String {
 /// login: yours when there is one, else the one it would be made under.
 /// A name only: the folder is kept with the sign-in's own login (`State::user`).
 fn agenda_id(config: &Config, signed: &Grant) -> String {
-    let host = signed.host();
-    matching(config, &host, &signed.login, None).map_or_else(|| new_id(config, &host), |a| a.id.clone())
+    matching(config, &signed.server, &signed.login, None).map_or_else(|| new_id(config, &signed.host()), |a| a.id.clone())
 }
 
 /// What becomes of the contacts and calendars of the server signed in to.
@@ -402,36 +534,69 @@ enum Agenda {
 }
 
 /// The decision, from your accounts as they are after the first exchange
-/// (those another device brought among them): the server's name, the
-/// sign-in's login, its user as the homes name it, and where its homes are.
-fn agenda_for(config: &Config, host: &str, login: &str, homes: &sioul_sync::dav::Homes) -> Agenda {
+/// (those another device brought among them): the server as the sign-in
+/// named it, the sign-in's login, its user as the homes name it, and where
+/// its homes are.
+fn agenda_for(config: &Config, server: &str, login: &str, homes: &sioul_sync::dav::Homes) -> Agenda {
+    let host = remote::host_of(server);
     let user = homes.calendars.as_deref().or(homes.contacts.as_deref()).and_then(user_of);
-    match matching(config, host, login, user.as_deref()) {
+    match matching(config, server, login, user.as_deref()) {
         Some(account) => Agenda::Use { id: account.id.clone(), same: account.login().is_some_and(|l| l.trim() == login.trim()) },
         None => {
             let found = homes.calendars.clone().or_else(|| homes.contacts.clone()).unwrap_or_default();
-            Agenda::Make(Account::dav(&new_id(config, host), login, host, Some(&found), Some(login)))
+            Agenda::Make(Account::dav(&new_id(config, &host), login, &host, Some(&found), Some(login)))
         }
     }
 }
 
+/// What became of the contacts and calendars of the server signed in to (`bind_agenda`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bound {
+    /// An account made from the sign-in, synced now.
+    Made,
+    /// Yours, given the app password, synced now.
+    Kept,
+    /// Yours, which keeps the password it has here.
+    Own,
+    /// Yours, which the app password does not open: it asks for its own (`still_to_sign_in`).
+    Needs,
+}
+
+/// A binding's line, said with the rest: "use this sign-in" only where they
+/// do (the review of the join, L4); none for an account that keeps its own
+/// password, and none for one that needs one (its line under "Still to sign in").
+fn line_of(bound: Bound, host: &str) -> Option<String> {
+    match bound {
+        Bound::Made => Some(say("join-agenda-made", &[("host", host.to_string())])),
+        Bound::Kept => Some(say("join-agenda-kept", &[("host", host.to_string())])),
+        Bound::Own | Bound::Needs => None,
+    }
+}
+
 /// The contacts and calendars of the server signed in to, once the first
-/// exchange brought your accounts: yours used (the app password kept for it
-/// when it has none here and opens it there), else one made and synced. Its
-/// line, said with the rest; none when nothing could be found there.
-fn bind_agenda(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant) -> Option<String> {
-    let host = signed.host();
+/// exchange brought your accounts: yours used, given the homes found there
+/// when it has none here (its first sync then never looks for them
+/// elsewhere with the app password: L1) and the app password when it has
+/// none here and opens it there; else one made and synced. None when nothing
+/// could be found there.
+fn bind_agenda(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant) -> Option<Bound> {
     let homes = loginflow::homes(signed).ok()?;
     let config = load_config();
-    match agenda_for(&config, &host, &signed.login, &homes) {
+    match agenda_for(&config, &signed.server, &signed.login, &homes) {
         Agenda::Use { id, same } => {
             let account = config.every_account().find(|a| a.id == id).cloned()?;
-            let has = secret::password(&account).is_ok();
-            let login = account.login().unwrap_or_default().to_string();
-            if !has && (same || loginflow::opens(signed, &login).unwrap_or(false)) && secret::save(&account, signed.password()).is_ok() {
-                crate::pim::start_dav_watcher(qt, shared, account);
+            if sioul_sync::dav::Homes::load(&account.id).is_empty() {
+                let _ = homes.save(&account.id);
             }
-            Some(say("join-agenda-kept", &[("host", host)]))
+            if secret::password(&account).is_ok() {
+                return Some(Bound::Own);
+            }
+            let login = account.login().unwrap_or_default().to_string();
+            if (same || loginflow::opens(signed, &login).unwrap_or(false)) && secret::save(&account, signed.password()).is_ok() {
+                crate::pim::start_dav_watcher(qt, shared, account);
+                return Some(Bound::Kept);
+            }
+            Some(Bound::Needs)
         }
         Agenda::Make(account) => {
             secret::save(&account, signed.password()).ok()?;
@@ -439,7 +604,7 @@ fn bind_agenda(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant) -> Option<St
             let _ = homes.save(&account.id);
             crate::pim::start_dav_watcher(qt, shared, account);
             crate::pim::show_pim(qt, shared);
-            Some(say("join-agenda-made", &[("host", host)]))
+            Some(Bound::Made)
         }
     }
 }
@@ -535,7 +700,8 @@ pub(crate) fn add_device(found: Option<(String, String)>) -> Vec<String> {
     match found {
         Some((host, place)) => {
             lines.push(if host.eq_ignore_ascii_case(&remote::host_of(loginflow::MURENA)) { tr().text("share-add-murena", None) } else { say("share-add-nextcloud", &[("host", host)]) });
-            lines.push(say("share-add-place", &[("place", place)]));
+            // "Found by itself" only of the places the look goes through (L5); another, to type.
+            lines.push(say(if remote::sought(&place) { "share-add-place" } else { "share-add-place-typed" }, &[("place", place)]));
         }
         None => lines.push(tr().text("share-add-folder", None)),
     }
@@ -596,12 +762,14 @@ fn moment(seconds: i64) -> String {
     if at.date() == jiff::Zoned::now().date() { at.strftime("%H:%M").to_string() } else { tr().date(&at, true) }
 }
 
-/// How long another phone says nothing before this one asks whether it
-/// replaces it (`to_ask`): two hours, the time within which a phone that
-/// shares restates its entry twice (`devices::RESTATED`). One heard since is
-/// sharing now: a second phone, never asked about while it speaks, so that a
-/// slip of the finger never takes a phone in use out of the doses' handshake.
-const ASK_AFTER: i64 = 2 * sioul_sync::devices::RESTATED;
+/// How long another phone says nothing, as this device sees it, before this
+/// one asks whether it replaces it (`to_ask`): a day, as a computer offers
+/// "Forget it now" (`health::FORGET_NOW_AFTER`). A phone in use goes silent
+/// for hours at times (no network, switched off, Android deferring its
+/// steps), and a Yes about one would leave the doses without its word (the
+/// review of the join, M1); judged by this device's sight of its entry and
+/// its own last word, the later, never by its clock alone.
+const ASK_AFTER: i64 = 86_400;
 
 /// The latest time an entry says, by its device's clock.
 fn latest_of(entry: &sioul_sync::devices::Entry) -> i64 {
@@ -610,12 +778,15 @@ fn latest_of(entry: &sioul_sync::devices::Entry) -> i64 {
 
 /// Of the other phones in the folder, the one to ask about, if any: on a
 /// phone sharing, one that has not stopped sharing, nor said anything for
-/// `ASK_AFTER` (by its clock, at `now`), nor been asked about (`Asked`), nor
-/// been replaced or forgotten here; the one heard of last.
-fn to_ask(own: &str, own_entry: &sioul_sync::devices::Entry, entries: &[sioul_sync::devices::Entry], answered: &[String], forgotten: &dyn Fn(&str) -> bool, now: i64) -> Option<sioul_sync::devices::Entry> {
+/// `ASK_AFTER` as this device sees it (`quiet_since`: the later of when this
+/// device saw its entry change and its own last word; none known: not
+/// asked), nor been asked about (`Asked`), nor been replaced or forgotten
+/// here; the one heard of last.
+#[allow(clippy::too_many_arguments)]
+fn to_ask(own: &str, own_entry: &sioul_sync::devices::Entry, entries: &[sioul_sync::devices::Entry], answered: &[String], forgotten: &dyn Fn(&str) -> bool, quiet_since: &dyn Fn(&str) -> Option<i64>, now: i64) -> Option<sioul_sync::devices::Entry> {
     entries
         .iter()
-        .filter(|e| e.id != own && e.kind == sioul_sync::devices::PHONE && !e.left && now - latest_of(e) >= ASK_AFTER)
+        .filter(|e| e.id != own && e.kind == sioul_sync::devices::PHONE && !e.left && quiet_since(&e.id).is_some_and(|since| now - since >= ASK_AFTER))
         .filter(|e| !answered.contains(&e.id) && own_entry.replaces.iter().all(|r| r.id != e.id) && !forgotten(&e.id))
         .max_by_key(|e| sioul_sync::devices::written(e))
         .cloned()
@@ -631,7 +802,7 @@ pub(crate) fn replacing() -> Option<Replacing> {
     }
     let (own, entries) = crate::devices::entries()?;
     let own_entry = sioul_sync::devices::own(&sioul_sync::devices::own_path(&state_dir()));
-    let other = to_ask(&own, &own_entry, &entries, &asked().answered, &crate::health::forgotten_here, jiff::Timestamp::now().as_second())?;
+    let other = to_ask(&own, &own_entry, &entries, &asked().answered, &crate::health::forgotten_here, &crate::health::quiet_since, jiff::Timestamp::now().as_second())?;
     let when = moment(latest_of(&other));
     Some(Replacing { ask: say("join-replace-ask", &[("name", device_label(&other)), ("when", when)]), id: other.id })
 }
@@ -687,36 +858,98 @@ mod tests {
     /// one is made at its homes, named as Accounts names one; yours for
     /// them, come with the shared settings or here already, used instead,
     /// never a second: by its login (case aside), by the user its address
-    /// names; another login's, another server's, Google's, never.
+    /// names; matched by its address's origin, so that a server on its own
+    /// port is found again, and an account naming the server's host but
+    /// pointing elsewhere never receives the app password (M2, L2); another
+    /// login's, another server's, Google's, never.
     #[test]
     fn the_account_is_made_from_the_sign_in_or_yours_is_used() {
         let homes = Homes { calendars: Some("https://murena.io/remote.php/dav/calendars/jane/".into()), contacts: Some("https://murena.io/remote.php/dav/addressbooks/users/jane/".into()) };
+        let server = "https://murena.io";
         // None yet: made, at the calendars' home, its login the sign-in's.
         let empty = config("");
-        let Agenda::Make(made) = agenda_for(&empty, "murena.io", "jane", &homes) else { panic!("made") };
+        let Agenda::Make(made) = agenda_for(&empty, server, "jane", &homes) else { panic!("made") };
         assert_eq!((made.id.as_str(), made.kind, made.host.as_deref(), made.url.as_deref(), made.login()), ("murena-agenda", AccountKind::Dav, Some("murena.io"), Some("https://murena.io/remote.php/dav/calendars/jane/"), Some("jane")));
-        assert_eq!(agenda_id(&empty, &Grant::of("https://murena.io", "jane", "x")), "murena-agenda");
+        assert_eq!(agenda_id(&empty, &Grant::of(server, "jane", "x")), "murena-agenda");
         // The desk's, come with the settings: used, never a second.
         let desk = config("[[account]]\nid = \"murena\"\nkind = \"dav\"\naddress = \"Jane\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/jane/\"\n");
-        assert!(matches!(agenda_for(&desk, "murena.io", "jane", &homes), Agenda::Use { id, same: false } if id == "murena"), "its login Jane: the same account, the app password tried with it first");
+        assert!(matches!(agenda_for(&desk, server, "jane", &homes), Agenda::Use { id, same: false } if id == "murena"), "its login Jane: the same account, the app password tried with it first");
         let exact = config("[[account]]\nid = \"murena\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/jane/\"\n");
-        assert!(matches!(agenda_for(&exact, "murena.io", "jane", &homes), Agenda::Use { id, same: true } if id == "murena"));
-        assert_eq!(agenda_id(&desk, &Grant::of("https://murena.io", "jane", "x")), "murena");
+        assert!(matches!(agenda_for(&exact, server, "jane", &homes), Agenda::Use { id, same: true } if id == "murena"));
+        assert_eq!(agenda_id(&desk, &Grant::of(server, "jane", "x")), "murena");
         // Its login the address, the sign-in's the user: the same account, by the user its address names.
-        let by_address = config("[[account]]\nid = \"cloud\"\nkind = \"dav\"\naddress = \"jane@murena.io\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/jane/\"\n");
-        assert!(matches!(agenda_for(&by_address, "murena.io", "jane", &homes), Agenda::Use { id, same: false } if id == "cloud"));
+        let by_address = config("[[account]]\nid = \"cloud\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/jane/\"\n");
+        assert!(matches!(agenda_for(&by_address, server, "jane", &homes), Agenda::Use { id, same: false } if id == "cloud"));
+        // A Nextcloud on its own port: Accounts keeps its host without the port; its address's origin finds it again.
+        let ported = config("[[account]]\nid = \"cloud\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"cloud.example.org\"\nurl = \"https://cloud.example.org:8443/nc/remote.php/dav/calendars/jane/\"\n");
+        let ported_homes = Homes { calendars: Some("https://cloud.example.org:8443/nc/remote.php/dav/calendars/jane/".into()), contacts: None };
+        assert!(matches!(agenda_for(&ported, "https://cloud.example.org:8443/nc", "jane", &ported_homes), Agenda::Use { id, .. } if id == "cloud"));
+        // The server's host in its name, its address elsewhere (a hand's edit): never given the app password.
+        let elsewhere = config("[[account]]\nid = \"odd\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"murena.io\"\nurl = \"https://dav.example.org/remote.php/dav/calendars/jane/\"\n");
+        assert!(matches!(agenda_for(&elsewhere, server, "jane", &homes), Agenda::Make(_)));
+        assert!(!on_server(&elsewhere.accounts[0], server) && on_server(&exact.accounts[0], server) && !on_server(&exact.accounts[0], "http://murena.io"));
         // Another login, another server, Google's: none of them; made, under a free name.
         let others = config(
-            "[[account]]\nid = \"murena-agenda\"\nkind = \"dav\"\naddress = \"paul@murena.io\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/paul/\"\n\n[[account]]\nid = \"work\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"cloud.example.org\"\nurl = \"https://cloud.example.org/remote.php/dav/calendars/jane/\"\n\n[[account]]\nid = \"google\"\nkind = \"dav\"\naddress = \"jane@murena.io\"\nhost = \"murena.io\"\nauth = \"google\"\n",
+            "[[account]]\nid = \"murena-agenda\"\nkind = \"dav\"\naddress = \"paul@example.org\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/paul/\"\n\n[[account]]\nid = \"work\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"cloud.example.org\"\nurl = \"https://cloud.example.org/remote.php/dav/calendars/jane/\"\n\n[[account]]\nid = \"google\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"murena.io\"\nauth = \"google\"\n",
         );
-        let Agenda::Make(made) = agenda_for(&others, "murena.io", "jane", &homes) else { panic!("made") };
+        let Agenda::Make(made) = agenda_for(&others, server, "jane", &homes) else { panic!("made") };
         assert_eq!(made.id, "murena-agenda-2");
+    }
+
+    /// The desk's Murena account arriving late (the review of the join, M2):
+    /// a first exchange that did not bring everything (the time out, an error
+    /// said, records left on the server, no exchange since) decides nothing,
+    /// so no account is made beside the desk's, which the later exchange
+    /// brings: used then, never doubled, on any device (an account made here
+    /// would travel to the others under another id).
+    #[test]
+    fn the_contacts_and_calendars_wait_for_a_complete_first_exchange() {
+        let since: i64 = 1_791_360_000;
+        let whole = remote::State { mode: remote::MIRROR.into(), last: since + 20, ..remote::State::default() };
+        assert!(state_complete(&whole, since));
+        assert!(!state_complete(&remote::State { last: since - 1, ..whole.clone() }, since), "no whole look since the join");
+        assert!(!state_complete(&remote::State { said: "network:murena.io".into(), ..whole.clone() }, since), "the look cut by the time out, or an error");
+        assert!(!state_complete(&remote::State { left: [("desk-1.jsonl".to_string(), 70 << 20)].into(), ..whole.clone() }, since), "records left on the server");
+        assert!(!state_complete(&remote::State { mode: String::new(), ..whole.clone() }, since), "not Sioul keeping the folder");
+        // Decided at the first exchange, the desk's account not here yet, one would be made beside it;
+        // decided once it came, the desk's is used.
+        let homes = Homes { calendars: Some("https://murena.io/remote.php/dav/calendars/jane/".into()), contacts: None };
+        assert!(matches!(agenda_for(&config(""), "https://murena.io", "jane", &homes), Agenda::Make(_)), "what deciding early would do");
+        let arrived = config("[[account]]\nid = \"murena\"\nkind = \"dav\"\naddress = \"jane\"\nhost = \"murena.io\"\nurl = \"https://murena.io/remote.php/dav/calendars/jane/\"\n");
+        assert!(matches!(agenda_for(&arrived, "https://murena.io", "jane", &homes), Agenda::Use { id, .. } if id == "murena"));
+        // What each binding says: "use this sign-in" only where they do (L4).
+        assert!(line_of(Bound::Kept, "murena.io").is_some_and(|l| l.contains("murena.io")) && line_of(Bound::Made, "murena.io").is_some());
+        assert_eq!((line_of(Bound::Own, "murena.io"), line_of(Bound::Needs, "murena.io")), (None, None));
+    }
+
+    /// What the look found, said (M3): places found are proposed; none found
+    /// with every place looked at, a new sharing may start; the look
+    /// incomplete or not possible, "could not look", never "none found".
+    #[test]
+    fn a_look_that_could_not_go_through_never_offers_a_new_sharing() {
+        let mut stand = Stand::default();
+        looked(&mut stand, "murena.io", Ok(remote::Sought { found: vec!["Documents/Sioul".into()], complete: false }));
+        assert_eq!((stand.step.as_str(), stand.places.as_slice()), ("found", ["Documents/Sioul".to_string()].as_slice()));
+        looked(&mut stand, "murena.io", Ok(remote::Sought { found: Vec::new(), complete: true }));
+        assert_eq!(stand.step, "none");
+        assert!(stand.places.is_empty() && stand.problem.is_empty());
+        looked(&mut stand, "murena.io", Ok(remote::Sought { found: Vec::new(), complete: false }));
+        assert_eq!(stand.step, "unchecked");
+        assert!(stand.problem.contains("murena.io"), "{}", stand.problem);
+        looked(&mut stand, "murena.io", Err("network:murena.io".into()));
+        assert_eq!(stand.step, "unchecked");
+        // "Add a device" says "found by itself" only of the places the look goes through.
+        let deep = add_device(Some(("murena.io".into(), "Documents/Partage/Sioul".into())));
+        let own = add_device(Some(("murena.io".into(), "Documents/Sioul".into())));
+        assert_ne!(deep[2], own[2]);
+        assert!(deep[2].contains("Documents/Partage/Sioul") && own[2].contains("Documents/Sioul"));
     }
 
     /// "Does this phone replace …?", asked once (the owner's, 16 October
     /// 2026): of the other phones that have not stopped sharing, the one
-    /// heard of last; never one asked about, replaced or forgotten here,
-    /// nor a computer.
+    /// heard of last, silent a day as this device sees it (M1: never by the
+    /// other phone's clock alone; a phone first seen now waits a day); never
+    /// one asked about, replaced or forgotten here, nor a computer.
     #[test]
     fn a_phone_is_asked_once_whether_it_replaces_another() {
         use sioul_sync::devices::{COMPUTER, Entry, PHONE, Replaced};
@@ -726,13 +959,27 @@ mod tests {
         let own = phone("new", now);
         let entries = vec![own.clone(), desk, phone("old", now - 3 * 86_400), phone("older", now - 9 * 86_400), Entry { left: true, ..phone("gone", now - 86_400) }, phone("second", now - 600)];
         let never = |_: &str| false;
-        assert_eq!(to_ask("new", &own, &entries, &[], &never, now).map(|e| e.id), Some("old".into()), "the one heard of last, silent two hours or more");
-        assert_eq!(to_ask("new", &own, &entries, &["old".into()], &never, now).map(|e| e.id), Some("older".into()), "asked once");
+        // This device's view: the later of when it saw each entry change and its own last word.
+        let seen = |id: &str| match id {
+            "old" => Some(now - 3 * 86_400),
+            "older" => Some(now - 9 * 86_400),
+            "second" => Some(now - 600),
+            "fresh" => Some(now - 60),
+            _ => None,
+        };
+        assert_eq!(to_ask("new", &own, &entries, &[], &never, &seen, now).map(|e| e.id), Some("old".into()), "the one heard of last, silent a day or more");
+        assert_eq!(to_ask("new", &own, &entries, &["old".into()], &never, &seen, now).map(|e| e.id), Some("older".into()), "asked once");
         let replacing = Entry { replaces: vec![Replaced { id: "old".into(), started: now - 3 * 86_400 - 60, heard: (now - 3 * 86_400) * 1000 }], ..own.clone() };
-        assert_eq!(to_ask("new", &replacing, &entries, &["older".into()], &never, now), None, "replaced already");
-        assert_eq!(to_ask("new", &own, &entries, &["older".into()], &|id| id == "old", now), None, "forgotten here");
-        assert_eq!(to_ask("new", &own, &entries[..2], &[], &never, now), None, "a computer is never asked about");
-        assert_eq!(to_ask("new", &own, &[own.clone(), phone("second", now - 600)], &[], &never, now), None, "a phone heard ten minutes ago shares now: a second phone");
-        assert_eq!(to_ask("new", &own, &[own.clone(), phone("second", now - 600)], &[], &never, now + ASK_AFTER).map(|e| e.id), Some("second".into()), "silent two hours since: asked");
+        assert_eq!(to_ask("new", &replacing, &entries, &["older".into()], &never, &seen, now), None, "replaced already");
+        assert_eq!(to_ask("new", &own, &entries, &["older".into()], &|id| id == "old", &seen, now), None, "forgotten here");
+        assert_eq!(to_ask("new", &own, &entries[..2], &[], &never, &seen, now), None, "a computer is never asked about");
+        // A phone in use, heard ten minutes ago, or silent five hours (no network): a second phone, never asked about.
+        assert_eq!(to_ask("new", &own, &[own.clone(), phone("second", now - 600)], &[], &never, &seen, now), None);
+        assert_eq!(to_ask("new", &own, &[own.clone(), phone("second", now - 600)], &[], &never, &seen, now + 5 * 3_600), None, "five hours of silence are no proof");
+        assert_eq!(to_ask("new", &own, &[own.clone(), phone("second", now - 600)], &[], &never, &seen, now + ASK_AFTER).map(|e| e.id), Some("second".into()), "a day of silence: asked");
+        // Its own clock three days back, but first seen here a minute ago: this device's view decides, a day on.
+        assert_eq!(to_ask("new", &own, &[own.clone(), phone("fresh", now - 3 * 86_400)], &[], &never, &seen, now), None);
+        // Nothing known of it here yet: not asked.
+        assert_eq!(to_ask("new", &own, &[own.clone(), phone("unknown", now - 9 * 86_400)], &[], &never, &seen, now), None);
     }
 }

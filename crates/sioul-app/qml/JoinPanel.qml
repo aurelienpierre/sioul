@@ -6,8 +6,9 @@
 // Murena's, or another Nextcloud by its address. Its page opens in the
 // browser and Sioul waits for it (Cancel stops it); the sharing folder found
 // there is proposed, or a place is typed; the passphrase typed once joins it
-// (twice for a new sharing); then what came is said, and what still needs a
-// sign-in here. In Settings ▸ Your folder and sharing (SharePanel.qml), which
+// (twice for a new sharing, offered only once every place was looked at and
+// none found); a look that could not go through says so, with "Look again";
+// then what came is said, and what still needs a sign-in here. In Settings ▸ Your folder and sharing (SharePanel.qml), which
 // the Porch's card opens on a device that does not share yet.
 
 pragma ComponentBehavior: Bound
@@ -33,8 +34,10 @@ ColumnLayout {
     // The place chosen among those found; "Another place" pressed: one typed.
     property string place: ""
     property bool otherPlace: false
-    // A place typed: a new sharing there asks the passphrase twice.
-    readonly property bool typed: join.step === "none" || join.otherPlace
+    // A place typed: none found, the look incomplete, or "Another place".
+    readonly property bool typed: join.step === "none" || join.step === "unchecked" || join.otherPlace
+    // A new sharing may start there (every place looked at, none found): the passphrase twice.
+    readonly property bool starting: join.step === "none"
 
     function reload() {
         // A stand-in for Sioul without the join (an older test's) says nothing under way.
@@ -65,7 +68,7 @@ ColumnLayout {
     }
 
     function joinNow() {
-        join.sioul.joinFolder(join.typed ? placeField.text : join.place, passphrase.text, join.typed ? again.text : "")
+        join.sioul.joinFolder(join.typed ? placeField.text : join.place, passphrase.text, join.starting ? again.text : "")
     }
 
     spacing: 6
@@ -153,7 +156,7 @@ ColumnLayout {
     }
     // Signed in: as whom, where.
     Label {
-        visible: (join.stand.signed || "") !== "" && ["looking", "found", "none", "joining"].includes(join.step)
+        visible: (join.stand.signed || "") !== "" && ["looking", "found", "none", "unchecked", "joining"].includes(join.step)
         Layout.fillWidth: true
         text: join.stand.signed || ""
         textFormat: Text.PlainText
@@ -204,7 +207,7 @@ ColumnLayout {
         color: join.theme.text
     }
     GridLayout {
-        visible: join.step === "found" || join.step === "none"
+        visible: ["found", "none", "unchecked"].includes(join.step)
         Layout.fillWidth: true
         columns: 2
         columnSpacing: 8
@@ -234,17 +237,17 @@ ColumnLayout {
             Layout.fillWidth: true
             sioul: join.sioul
             Accessible.name: join.sioul.text("share-passphrase")
-            onAccepted: if (!join.typed) join.joinNow()
+            onAccepted: if (!join.starting) join.joinNow()
         }
         Label {
-            visible: join.typed
+            visible: join.starting
             text: join.sioul.text("share-again")
             color: join.theme.muted
         }
         PasswordField {
             id: again
 
-            visible: join.typed
+            visible: join.starting
             Layout.fillWidth: true
             sioul: join.sioul
             Accessible.name: join.sioul.text("share-again")
@@ -252,7 +255,7 @@ ColumnLayout {
         Label {
             Layout.columnSpan: 2
             Layout.fillWidth: true
-            text: join.sioul.text(join.typed ? "share-server-passphrase-hint" : "share-passphrase-hint")
+            text: join.sioul.text(join.starting ? "share-server-passphrase-hint" : "share-passphrase-known")
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: join.theme.muted
@@ -275,12 +278,12 @@ ColumnLayout {
         color: join.theme.muted
     }
     Flow {
-        visible: ["signing", "looking", "found", "none"].includes(join.step)
+        visible: ["signing", "looking", "found", "none", "unchecked"].includes(join.step)
         Layout.fillWidth: true
         spacing: 8
 
         Button {
-            visible: join.step === "found"
+            visible: join.step === "found" || join.step === "unchecked"
             highlighted: true
             enabled: passphrase.text.length > 0
             text: join.sioul.text("join-join")
@@ -292,6 +295,12 @@ ColumnLayout {
             enabled: passphrase.text.length > 0
             text: join.sioul.text("join-start")
             onClicked: join.joinNow()
+        }
+        Button {
+            visible: join.step === "unchecked"
+            flat: true
+            text: join.sioul.text("join-look-again")
+            onClicked: join.sioul.joinLookAgain()
         }
         Button {
             visible: join.step === "found" && !join.otherPlace

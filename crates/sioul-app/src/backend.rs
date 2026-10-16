@@ -1313,6 +1313,11 @@ pub mod qobject {
         #[qinvokable]
         fn join_open_again(self: Pin<&mut Sioul>);
 
+        /// "Look again": the server looked through again for the sharing
+        /// folder, with the sign-in held, off the window's thread (`join::look_again`).
+        #[qinvokable]
+        fn join_look_again(self: Pin<&mut Sioul>);
+
         /// Cancel: the sign-in stops where it is; an app password given
         /// already is given back to its server and forgotten here.
         #[qinvokable]
@@ -6037,6 +6042,10 @@ impl qobject::Sioul {
 
     fn join_open_again(self: Pin<&mut Self>) {
         crate::join::open_again(&self.qt_thread());
+    }
+
+    fn join_look_again(self: Pin<&mut Self>) {
+        crate::join::look_again(&self.qt_thread());
     }
 
     fn join_cancel(self: Pin<&mut Self>) {
