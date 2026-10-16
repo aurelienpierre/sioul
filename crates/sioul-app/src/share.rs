@@ -1339,7 +1339,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     crate::calls::before_exchange();
     crate::phonemsgs::before_exchange();
     // texts: the phone's step (read, decide, send), the clock, the trims.
-    crate::texts::before_exchange();
+    crate::texts::before_exchange(None);
     let mirror = mirrored().is_some();
     // Sioul keeping the folder itself: the server looked through now, no sync app to wait for.
     if mirror && fetch_first {
@@ -1522,8 +1522,9 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // A phone's calls copied into its own log first, so that they go now (`calls`).
         crate::calls::before_exchange();
         crate::phonemsgs::before_exchange();
-        // texts: the phone's step (read, decide, send), the clock, the trims.
-        crate::texts::before_exchange();
+        // texts: the phone's step (read, decide, send), the clock, the trims;
+        // what its thread reads or brings then said to the window.
+        crate::texts::before_exchange(Some(&qt));
         let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();

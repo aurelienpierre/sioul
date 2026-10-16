@@ -17,8 +17,11 @@
 // been sent; and "Send again", which makes a new text. Under it, an AI
 // agent's drafts, then writing, with how many texts it takes. Never sent from
 // here: short numbers, several people at once, pictures. In a narrow window,
-// one at a time, as Mail: the list, then the conversation, and Back. A phone
-// has its own SMS app: no page there (main.qml).
+// one at a time, as Mail: the list, then the conversation, and Back. Read
+// again at once whenever the sharing brings texts, while the page is open:
+// the conversation open, the draft, the row chosen and the place read back
+// to all stay (tests/qml/tst_texts.qml). A phone has its own SMS app: no
+// page there (main.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -68,14 +71,24 @@ Item {
         return JSON.parse(page.sioul.texts(verb, JSON.stringify(args || {})) || "null") || ({})
     }
 
-    // Read while shown, as Mail. What did not change keeps its place; a thread
-    // read to its end stays at its end as a new text comes.
+    // Read while shown, as Mail, and again whenever the sharing brings texts
+    // (`onSharedIn`). What did not change keeps its place: the list keeps the
+    // row chosen and the row at its top; a thread read to its end stays at
+    // its end as a new text comes, one read back keeps the message at its top.
     function reload() {
         if (!page.sioul)
             return
         const listed = page.sioul.texts("view", JSON.stringify({ query: page.query }))
-        if (listed !== page.listedText)
+        if (listed !== page.listedText) {
+            const top = list.indexAt(1, list.contentY + 1)
+            const topId = top >= 0 && top < page.rows.length ? page.rows[top].id : ""
+            const chosen = list.currentIndex >= 0 && list.currentIndex < page.rows.length ? page.rows[list.currentIndex].id : page.openId
             page.listedText = listed
+            list.currentIndex = page.rows.findIndex(r => r.id === chosen)
+            const back = page.rows.findIndex(r => r.id === topId)
+            if (back > 0)
+                Qt.callLater(() => list.positionViewAtIndex(back, ListView.Beginning))
+        }
         if (page.openId === "") {
             page.talkText = ""
             return
@@ -84,9 +97,13 @@ Item {
         if (talk === page.talkText)
             return
         page.atEnd = page.atEnd || page.talkText === "" || thread.atYEnd
+        const first = page.atEnd ? -1 : thread.indexAt(1, thread.contentY + 1)
+        const firstId = first >= 0 && first < page.messages.length ? page.messages[first].id : ""
         page.talkText = talk
         if (page.atEnd)
             Qt.callLater(() => thread.positionViewAtEnd())
+        else if (firstId !== "")
+            Qt.callLater(() => thread.positionViewAtIndex(Math.max(0, page.messages.findIndex(m => m.id === firstId)), ListView.Beginning))
     }
 
     // A conversation opened: from the list, the Porch's Text back, a person's
@@ -160,6 +177,13 @@ Item {
 
         function onPorchChanged() {
             if (page.visible)
+                page.reload()
+        }
+        // Texts, your phone's word on one sent, or media come through the
+        // sharing (an exchange's end, the media brought here): read again at
+        // once, the conversation open, the draft and the place in it kept.
+        function onSharedIn(stores) {
+            if (page.visible && stores.indexOf("data/texts/") >= 0)
                 page.reload()
         }
     }
@@ -283,6 +307,7 @@ Item {
             ListView {
                 id: list
 
+                objectName: "textsList"
                 visible: page.listed.can && page.rows.length > 0
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -429,6 +454,7 @@ Item {
             ListView {
                 id: thread
 
+                objectName: "textsThread"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -764,6 +790,7 @@ Item {
                     TextArea {
                         id: draft
 
+                        objectName: "textsDraft"
                         placeholderText: page.sioul.text("texts-write")
                         wrapMode: TextEdit.Wrap
                         Accessible.name: page.sioul.text("texts-write")

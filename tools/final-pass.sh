@@ -40,6 +40,12 @@ export CARGO_INCREMENTAL=0 DEBUGINFOD_URLS=
 out=${1:-${XDG_CACHE_HOME:-$HOME/.cache}/sioul-final-pass/$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$out" || exit 1
 out=$(cd "$out" && pwd)
+# The tests and the QML tests run with folders of their own, empty, as on CI:
+# a test that reads or writes `config::state_dir()` (or the data, the
+# configuration, the caches) never reaches the folders of whoever runs it.
+xdg="$out/xdg"
+rm -rf "$xdg" && mkdir -p "$xdg/config" "$xdg/data" "$xdg/state" "$xdg/cache" || exit 1
+apart=(XDG_CONFIG_HOME="$xdg/config" XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache")
 min_free_gb=${MIN_FREE_GB:-1.5}
 crates=(sioul-core sioul-sync sioul-learn sioul-cli sioul-app)
 failed=()
@@ -92,14 +98,14 @@ for crate in "${crates[@]}"; do
     echo "$(date +%H:%M:%S) test $crate, $(free_gb) GB free"
     env=()
     [[ "$crate" == sioul-core && -s "$sample" ]] && env=(SIOUL_CALLS_SAMPLE="$sample")
-    env "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate.log" 2>&1
+    env "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate.log" 2>&1
     status=$?
     grep -E "^test result: [A-Za-z]+\. [0-9]+ passed|FAILED|panicked|^error" "$out/test-$crate.log" | grep -v " 0 passed; 0 failed" | sort | uniq -c | head -12
     [[ $status -eq 0 ]] || { echo "  exit $status"; failed+=("test-$crate"); }
     # Again with no locale, as CI runs them: a test that names no language
     # reads English only there, and a French word it relies on is missed
     # (8 October 2026: CI failed on such a test that passed here).
-    env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
+    env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
     status=$?
     grep -E "FAILED|panicked|^error" "$out/test-$crate-no-locale.log" | sort | uniq -c | head -8 | sed 's/^/  no locale: /'
     [[ $status -eq 0 ]] || { echo "  exit $status with no locale"; failed+=("test-$crate-no-locale"); }
@@ -142,7 +148,7 @@ status=$?
 echo "$(date +%H:%M:%S) lint-qml exit $status, $(grep -c '^Warning' "$out/lint-qml.log") warnings"
 grep '^Warning' "$out/lint-qml.log" | grep -v 'missing-property' | head -5
 [[ $status -eq 0 ]] || failed+=(lint-qml)
-bash tools/qml-test.sh > "$out/qml-test.log" 2>&1
+env "${apart[@]}" bash tools/qml-test.sh > "$out/qml-test.log" 2>&1
 status=$?
 echo "$(date +%H:%M:%S) $(tail -1 "$out/qml-test.log")"
 [[ $status -eq 0 ]] || { grep -E "^FAIL" "$out/qml-test.log" | head -8; failed+=(qml-test); }

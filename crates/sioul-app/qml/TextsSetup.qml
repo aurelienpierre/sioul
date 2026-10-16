@@ -53,6 +53,17 @@ ColumnLayout {
         }
     }
 
+    // Texts this window read for your computers (its own import), or the
+    // sharing's news of them: what the phone holds and how much has gone, read again.
+    Connections {
+        target: setup.sioul
+
+        function onSharedIn(stores) {
+            if (setup.visible && stores.indexOf("data/texts/") >= 0)
+                setup.act("setup", {})
+        }
+    }
+
     // While the history goes to your computers: its progress read again every ten seconds.
     Timer {
         interval: 10000
