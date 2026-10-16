@@ -204,9 +204,11 @@ fn sealer() -> Result<sioul_sync::textseal::TextSeal, String> {
     }
 }
 
-/// The texts as an agent may read them: each one's words with its codes
-/// masked (as in mail: never given, never found by their digits), those of a
-/// conversation kept from agents left out, and how many were.
+/// The texts as an agent may read them: each once, a text found in two
+/// phones' logs (a restore onto a new phone) given once (`texts::one_each`);
+/// each one's words with its codes masked (as in mail: never given, never
+/// found by their digits), those of a conversation kept from agents left
+/// out, and how many were.
 struct Shelf {
     texts: Vec<sioul_core::texts::Text>,
     requests: Vec<sioul_core::texts::Request>,
@@ -225,7 +227,8 @@ impl Shelf {
         let kept_people = Kept::of(s, &loaded, &consent);
         let looked = sioul_core::words::Words::of(&s.config);
         let masked = |body: &str| if body.is_empty() { String::new() } else { mask::message(&looked, "", body).1 };
-        let all = texts::read_logs(&root, seal);
+        let region = sioul_core::reach::region(&s.config);
+        let all = texts::one_each(texts::read_logs(&root, seal), region);
         let any = !all.is_empty();
         let open = |with: &[String]| consent.outside && !with.iter().any(|k| kept_people.holds("", k));
         let (open_texts, closed): (Vec<texts::Text>, Vec<texts::Text>) = all.into_iter().partition(|t| open(&t.with));
@@ -236,7 +239,6 @@ impl Shelf {
                 texts::Text { body: masked(&t.body), parts, fields: Default::default(), addrs: Vec::new(), ..t }
             })
             .collect();
-        let region = sioul_core::reach::region(&s.config);
         let requests = texts::read_requests(&root, seal).into_iter().filter(|r| open(&[phones::key(&r.to, region)])).map(|r| texts::Request { body: masked(&r.body), ..r }).collect();
         Shelf { texts, requests, outcomes: texts::read_outcomes(&root, seal), kept: closed.len(), any, loaded }
     }

@@ -1065,10 +1065,13 @@ fn looks() -> (std::rc::Rc<Config>, std::rc::Rc<Senders>) {
 /// The texts, the requests and their outcomes as last read, kept while their
 /// files stay as they were (size and time) for this device: the whole
 /// history is opened once, not at each look of the page (9,800 sealed lines
-/// read twice per conversation opened froze the window for seconds).
+/// read twice per conversation opened froze the window for seconds). The
+/// texts each once across phones (`rules::one_each`), with the country their
+/// numbers were keyed by.
 struct Kept {
     here: String,
     stamp: Vec<(PathBuf, u64, std::time::SystemTime)>,
+    region: Option<&'static str>,
     texts: std::sync::Arc<Vec<Text>>,
     requests: std::sync::Arc<Vec<Request>>,
     outcomes: std::sync::Arc<Vec<Outcome>>,
@@ -1090,19 +1093,22 @@ fn stamps(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
     all
 }
 
-/// The texts, the requests and their outcomes (`KEPT`), read again only when a file changed.
+/// The texts, the requests and their outcomes (`KEPT`), read again only when
+/// a file changed; the texts each once, a text found in two phones' logs
+/// (a restore onto a new phone) shown once (`rules::one_each`).
 #[allow(clippy::type_complexity)]
 fn records(here: &str, seal: &Seal) -> (std::sync::Arc<Vec<Text>>, std::sync::Arc<Vec<Request>>, std::sync::Arc<Vec<Outcome>>) {
     let root = root();
     let stamp = stamps(&root);
+    let region = sioul_core::reach::region(&looks().0);
     let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(k) = kept.as_ref().filter(|k| k.here == here && k.stamp == stamp) {
+    if let Some(k) = kept.as_ref().filter(|k| k.here == here && k.stamp == stamp && k.region == region.map(|r| r.code)) {
         return (std::sync::Arc::clone(&k.texts), std::sync::Arc::clone(&k.requests), std::sync::Arc::clone(&k.outcomes));
     }
-    let texts = std::sync::Arc::new(rules::read_logs(&root, seal));
+    let texts = std::sync::Arc::new(rules::one_each(rules::read_logs(&root, seal), region));
     let requests = std::sync::Arc::new(rules::read_requests(&root, seal));
     let outcomes = std::sync::Arc::new(rules::read_outcomes(&root, seal));
-    *kept = Some(Kept { here: here.to_string(), stamp, texts: std::sync::Arc::clone(&texts), requests: std::sync::Arc::clone(&requests), outcomes: std::sync::Arc::clone(&outcomes) });
+    *kept = Some(Kept { here: here.to_string(), stamp, region: region.map(|r| r.code), texts: std::sync::Arc::clone(&texts), requests: std::sync::Arc::clone(&requests), outcomes: std::sync::Arc::clone(&outcomes) });
     (texts, requests, outcomes)
 }
 
