@@ -2217,6 +2217,28 @@ struct Memory {
     /// stops counting 180 days later.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     unclocked: BTreeMap<String, i64>,
+    /// The other devices that count, as the last exchange found them by
+    /// sealed facts (`counted`), and those sealed facts say no longer count
+    /// (they left, you forgot them, another replaces them, silent
+    /// `SILENT_DAYS`): who holds this device's rounds back, as the sending
+    /// reads it without the key (`rounds_past`). None in a memory saved
+    /// before 16 October 2026: the rule as it was, until the next exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    counting: Option<BTreeSet<String>>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    uncounted: BTreeSet<String>,
+    /// Each device that no longer counts by a sealed fact and has rounds
+    /// here: the round below which they are past their time (`departed_rounds`),
+    /// taken out of the folder here, never fetched again, taken out of the
+    /// server by the sending (`departed_past`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    departed: BTreeMap<String, u32>,
+    /// Sealed files swept here as written by a device that no longer counts
+    /// (`sweep_theirs`), and when (milliseconds): the sending takes each out
+    /// of the server too (`swept_theirs`); forgotten after `UNUSED_DAYS`, or
+    /// once one is back in the folder (a device uses that content again).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    taken: BTreeMap<String, i64>,
     /// What the whole lists of format 1 seen here held (lists format 2
     /// divides), by format 2's names: each list record read, at its clock, in
     /// whatever order (`note_whole_record`), and, while this device writes
@@ -2264,6 +2286,16 @@ struct Sealed {
     /// time sealed files stay (`unused_days`: two weeks, or 90 days) of that.
     #[serde(default)]
     named_at: BTreeMap<String, i64>,
+    /// Sealed files of the others' notes and papers that stopped being
+    /// current here (replaced, taken out, or passed by a later change read in
+    /// the same exchange), by name: the device whose record named it, and its
+    /// last use here (milliseconds). Its writer sweeps it (`blobs::sweep`);
+    /// forgotten here once it left the folder. A writer that no longer counts
+    /// by a sealed fact never will (a phone dead for good): swept here then,
+    /// `unused_days` after that last use (`sweep_theirs`). Empty in an older
+    /// Sioul's memory, which passes it over.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    theirs: BTreeMap<String, (String, i64)>,
     /// Sealed files found damaged, as they were then (`blobs::fingerprint`):
     /// not opened again until another copy comes.
     #[serde(default)]
@@ -2334,6 +2366,130 @@ fn prune_tables(folder: &Path, sealed: &mut Sealed, used: &BTreeSet<String>) {
         let _ = std::fs::remove_file(folder.join("blobs").join(&old));
         sealed.mine.remove(&old);
     }
+}
+
+/// A change read in as the winner of its entry. The content of a file sealed
+/// apart that another device's change named, and that this one passes,
+/// noted as theirs (`theirs_now`, `Sealed::theirs`).
+fn win(winners: &mut BTreeMap<String, (Option<String>, u64, String)>, theirs_now: &mut Vec<(String, String)>, computer: &str, key: String, change: (Option<String>, u64, String)) {
+    let files = key.starts_with(FILES).then(|| key.clone());
+    if let Some((Some(value), _, writer)) = winners.insert(key, change)
+        && writer != computer
+        && let Some(key) = files
+    {
+        let h = value_hash(&key, &value);
+        if !h.is_empty() {
+            theirs_now.push((h, writer));
+        }
+    }
+}
+
+/// The others' contents of notes and papers that stopped being current in
+/// this exchange (`theirs_now`: replaced, taken out, or passed by a later
+/// change read in it), noted (`Sealed::theirs`); and those whose writer no
+/// longer counts by a sealed fact (`Counted::departed`: it left, you forgot
+/// it, another replaces it) swept, since that writer never sweeps them again
+/// (a phone dead for good), with the care `blobs::sweep` takes of this
+/// device's own (`blobs::sweep_after`): unused `unused_days` since their last
+/// use here, never fresh in the folder (another device uses that content
+/// again, `blobs::put`), never one a current record names (a note's, a change
+/// waiting, one the others named lately, one this device sealed itself, the
+/// texts' media: `texts_media`), and nothing at all while the texts' media are
+/// not known here. Each one swept is said for the server (`Memory::taken`).
+/// A device that counts sweeps them, each its own folder; two at once find
+/// it gone, and their sending a file gone (`404`) or changed (`412`).
+fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counted: &[(String, Counted)], theirs_now: Vec<(String, String)>, current_before: &BTreeSet<String>, now_ms: i64) {
+    let blobs = sharing.folder.join("blobs");
+    memory.taken.retain(|name, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY && !blobs.join(name).exists());
+    let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+    for (h, writer) in theirs_now.into_iter().filter(|(h, _)| !current.contains(h)) {
+        memory.sealed.theirs.insert(crate::blobs::name(sharing.key, &h), (writer, now_ms));
+    }
+    if memory.sealed.theirs.is_empty() {
+        return;
+    }
+    let days = unused_days(sharing, memory, now_ms);
+    let departed: BTreeSet<&str> = counted.iter().filter(|(_, counted)| counted.departed()).map(|(id, _)| id.as_str()).collect();
+    // A writer that counts sweeps its own: forgotten here once it left the folder.
+    memory.sealed.theirs.retain(|name, (writer, at)| departed.contains(writer.as_str()) || now_ms - *at < days * DAY || blobs.join(name).exists());
+    let mut last: BTreeMap<String, i64> = memory.sealed.theirs.iter().filter(|(_, (writer, _))| departed.contains(writer.as_str())).map(|(name, (_, at))| (name.clone(), *at)).collect();
+    if last.is_empty() {
+        return;
+    }
+    let used: BTreeSet<String> = current
+        .iter()
+        .chain(current_before)
+        .cloned()
+        .chain(memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| value_hash(key, v))))
+        .map(|h| crate::blobs::name(sharing.key, &h))
+        .chain(memory.sealed.named_at.keys().cloned())
+        .chain(memory.sealed.mine.keys().cloned())
+        .collect();
+    let unused = days * DAY;
+    let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+    let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
+    if due && let Some(media) = texts_media(sharing, stores, memory, counted) {
+        let used: BTreeSet<String> = used.into_iter().chain(media).collect();
+        let before: Vec<String> = last.keys().cloned().collect();
+        crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
+        for name in before.into_iter().filter(|name| !last.contains_key(name)) {
+            memory.sealed.theirs.remove(&name);
+            memory.taken.insert(name, now_ms);
+        }
+    } else {
+        // Used again: its use now (once a day at most, as `blobs::sweep_after` does).
+        for (_, at) in last.iter_mut().filter(|(name, _)| used.contains(*name)) {
+            if now_ms - *at >= DAY {
+                *at = now_ms;
+            }
+        }
+    }
+    for (name, at) in last {
+        if let Some(theirs) = memory.sealed.theirs.get_mut(&name) {
+            theirs.1 = at;
+        }
+    }
+}
+
+/// The sealed files the texts name, by name (`blobs::name`): each part of
+/// every text in each phone's log as this device holds it (`TEXTS_LOG`, each
+/// line sealed at rest, `textseal`), the texts taken out included. None when
+/// they are not known here: the texts not shared on this device, or a line
+/// of their log that does not open or read; then no other device's sealed
+/// file is swept here (`sweep_theirs`). A sharing where no phone was ever
+/// seen (every other device known here by its entry, none a phone, nor this
+/// one) holds none: only a phone brings the texts' media.
+fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[(String, Counted)]) -> Option<BTreeSet<String>> {
+    if let Some(store) = stores.iter().find(|s| s.name == TEXTS_LOG) {
+        use sioul_core::texts::Sealer;
+        #[derive(Deserialize)]
+        struct Text {
+            #[serde(default)]
+            parts: Vec<Part>,
+        }
+        #[derive(Deserialize)]
+        struct Part {
+            #[serde(default)]
+            hash: String,
+        }
+        let seal = crate::textseal::TextSeal::new(sharing.key);
+        let mut out = BTreeSet::new();
+        for entry in std::fs::read_dir(&store.path).into_iter().flatten().filter_map(Result::ok) {
+            let path = entry.path();
+            if !path.is_file() || path.extension().is_none_or(|e| e != "jsonl") || entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).ok()?;
+            for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+                let text: Text = serde_json::from_str(&seal.open(line)?).ok()?;
+                out.extend(text.parts.into_iter().filter(|part| !part.hash.is_empty()).map(|part| crate::blobs::name(sharing.key, &part.hash)));
+            }
+        }
+        return Some(out);
+    }
+    let phone = |entry: Option<&crate::devices::Entry>| entry.is_none_or(|e| e.kind == crate::devices::PHONE);
+    let phones = crate::devices::own(&sharing.memory.with_file_name("device.toml")).kind == crate::devices::PHONE || counted.iter().any(|(id, _)| phone(memory.seen.get(id)));
+    (!phones).then(BTreeSet::new)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3006,8 +3162,53 @@ fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) 
 /// those not heard of for `SILENT_DAYS` (one of which no clock is known at
 /// all, from when this device first found it so, `Memory::unclocked`). A
 /// file alone (plain notes, an entry that does not read) with no record is a
-/// stray file, not a device.
+/// stray file, not a device. The same devices as `counted` says count.
 fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Option<crate::devices::Entry>, bool)> {
+    counted(folder, key, computer, memory, now_ms)
+        .into_iter()
+        .filter_map(|(id, counted)| match counted {
+            Counted::Yes(entry, unread) => Some((id, entry, unread)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Where another device of the sharing stands, by sealed facts (`counted`):
+/// what `present` keeps, and why it leaves a device out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Counted {
+    /// It counts: its latest sealed entry seen here (none: known by its
+    /// records alone), and whether its entry does not read here.
+    Yes(Option<crate::devices::Entry>, bool),
+    /// Its entry says it stopped sharing.
+    Left,
+    /// You said it is gone (`forget_device`), and it said nothing newer since.
+    Forgotten,
+    /// Another device's entry says it replaces it (`devices::Entry::replaces`),
+    /// and it said nothing newer since.
+    Replaced,
+    /// Not heard of for `SILENT_DAYS`, by sealed facts.
+    Silent,
+    /// A file alone (plain notes, an entry that does not read) with no
+    /// record: a stray file, not a device; a device whose entry has not come yet.
+    Stray,
+}
+
+impl Counted {
+    /// Gone by a sealed fact that a device of its own never undoes by
+    /// silence: it left, you forgot it, another device replaces it. Its past
+    /// rounds and the sealed files it wrote that no record names any more are
+    /// the others' to take out (`departed_rounds`, `sweep_theirs`).
+    fn departed(&self) -> bool {
+        matches!(self, Counted::Left | Counted::Forgotten | Counted::Replaced)
+    }
+}
+
+/// Every other device known here, and where it stands (`Counted`): every
+/// device known by a sealed fact, as `present` says, and the stray files of
+/// the folder (notes alone). A stray file you forgot, or that a replacement
+/// names, is said so.
+fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Counted)> {
     let (entries, unread) = crate::devices::all(folder, key);
     // Every replacement said: by the entries read now and the latest seen
     // here (an older copy put back never takes one away), this device's own among them.
@@ -3019,34 +3220,65 @@ fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
     ids.extend(recorded.iter().cloned());
     ids.into_iter()
         .filter(|id| id != computer)
-        .filter_map(|id| {
+        .map(|id| {
             let here = entries.iter().find(|e| e.id == id).cloned();
             let entry = match (here, memory.seen.get(&id)) {
                 (Some(here), Some(seen)) if entry_stamp(seen) > entry_stamp(&here) => Some(seen.clone()),
                 (None, Some(seen)) => Some(seen.clone()),
                 (here, _) => here,
             };
-            if entry.is_none() && !recorded.contains(&id) {
-                return None;
-            }
-            if entry.as_ref().is_some_and(|e| e.left) {
-                return None;
-            }
             let last = last_heard(entry.as_ref(), memory, &id);
-            if memory.forgotten.get(&id).is_some_and(|mark| last <= *mark) {
-                return None;
-            }
-            if replaced.iter().any(|r| r.id == id && r.holds(entry.as_ref().map(|e| e.started), last)) {
-                return None;
-            }
-            // No clock known at all: aged from when this device first found it so.
-            let aged = if last > 0 { last } else { memory.unclocked.get(&id).copied().unwrap_or(0) };
-            if aged > 0 && now_ms - aged > SILENT_DAYS * DAY {
-                return None;
-            }
-            let unread = unread.contains(&id) && entries.iter().all(|e| e.id != id);
-            Some((id, entry, unread))
+            let forgotten = memory.forgotten.get(&id).is_some_and(|mark| last <= *mark);
+            let replaces = replaced.iter().any(|r| r.id == id && r.holds(entry.as_ref().map(|e| e.started), last));
+            let counted = if entry.is_none() && !recorded.contains(&id) {
+                if forgotten {
+                    Counted::Forgotten
+                } else if replaces {
+                    Counted::Replaced
+                } else {
+                    Counted::Stray
+                }
+            } else if entry.as_ref().is_some_and(|e| e.left) {
+                Counted::Left
+            } else if forgotten {
+                Counted::Forgotten
+            } else if replaces {
+                Counted::Replaced
+            } else {
+                // No clock known at all: aged from when this device first found it so.
+                let aged = if last > 0 { last } else { memory.unclocked.get(&id).copied().unwrap_or(0) };
+                if aged > 0 && now_ms - aged > SILENT_DAYS * DAY {
+                    Counted::Silent
+                } else {
+                    let unread = unread.contains(&id) && entries.iter().all(|e| e.id != id);
+                    Counted::Yes(entry, unread)
+                }
+            };
+            (id, counted)
         })
+        .collect()
+}
+
+/// The devices whose reading holds back the removal of a device's rounds
+/// (`past_below`): every device that counts (`counted`), whose notes say how
+/// far it read (none in the folder: nothing read, everything held back; a
+/// hostile folder hiding them never makes a round go), and a file of notes
+/// alone whose notes say it read within `SILENT_DAYS` (a device whose entry
+/// has not come yet: plain notes only ever hold more back). Never a device
+/// that left, that you forgot, that another replaces, or silent for
+/// `SILENT_DAYS` by sealed facts, whatever its notes say: until 16 October
+/// 2026 every device whose plain notes were heard within 180 days held them
+/// back, a phone dead for good among them, and nothing of the others' left
+/// the folder for half a year.
+fn readers(folder: &Path, counted: &[(String, Counted)], now_ms: i64) -> BTreeSet<String> {
+    counted
+        .iter()
+        .filter(|(id, counted)| match counted {
+            Counted::Yes(..) => true,
+            Counted::Stray => read_seen(folder, id).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400),
+            _ => false,
+        })
+        .map(|(id, _)| id.clone())
         .collect()
 }
 
@@ -4210,6 +4442,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // read now) is swept two weeks from now, not from its last use this device
     // noted, which may be days old after days away (`blobs::sweep_after`).
     let current_before: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+    // Those of them the others' records named, by content, with whose record:
+    // one no longer current at the end is noted as theirs (`Sealed::theirs`).
+    // So are the others' contents passed by a later change in this reading.
+    let mut theirs_now: Vec<(String, String)> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty() && known.w != sharing.computer).map(|(_, known)| (known.h.clone(), known.w.clone())).collect();
 
     // Changes made here since the last look, dated by their file. When joining,
     // the others' records come first, and only what they do not hold goes out.
@@ -4517,7 +4753,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                         later(&mut older_format, change.k, change.v, record.c, computer);
                     } else if rebuilt(file_of(&change.k)) && !off(&change.k) && !below_whole_floor(&memory, &change.k, record.c) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
                         bases.insert(change.k.clone(), change.b);
-                        winners.insert(change.k, (change.v, record.c, computer.clone()));
+                        win(&mut winners, &mut theirs_now, sharing.computer, change.k, (change.v, record.c, computer.clone()));
                     }
                     continue;
                 }
@@ -4624,7 +4860,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 };
                 if wins {
                     bases.insert(change.k.clone(), change.b);
-                    winners.insert(change.k, (change.v, record.c, computer.clone()));
+                    win(&mut winners, &mut theirs_now, sharing.computer, change.k, (change.v, record.c, computer.clone()));
                 }
             }
             if !own {
@@ -4951,6 +5187,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
+    // Where each other device stands (`counted`): who holds rounds back
+    // (`readers`), and whose past files are another device's to take out.
+    let counts = counted(sharing.folder, sharing.key, sharing.computer, &memory, now_ms);
+    // The others' contents that stopped being current here; those of a
+    // device that no longer counts swept in time (`sweep_theirs`).
+    sweep_theirs(sharing, stores, &mut memory, &counts, theirs_now, &current_before, now_ms);
     // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly.
     if kept || now_ms - memory.tidied >= HOUR {
         crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
@@ -5011,7 +5253,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // others then doubt rather than know (docs/health.md, "Knowing").
     outcome.looked = if memory.newer.contains_key("health") { 0 } else { clock };
     outcome.wrote = memory.joined.then_some((memory.round.max(1), memory.seq));
-    remove_old_rounds(sharing, &memory, now_ms);
+    // Who holds rounds back, by sealed facts, kept for the sending, which
+    // has no key (`rounds_past`); the past rounds of the devices that no
+    // longer count (`departed_rounds`); then the rounds past their time go.
+    let reading = readers(sharing.folder, &counts, now_ms);
+    memory.counting = Some(counts.iter().filter(|(_, counted)| matches!(counted, Counted::Yes(..))).map(|(id, _)| id.clone()).collect());
+    memory.uncounted = counts.iter().filter(|(_, counted)| !matches!(counted, Counted::Yes(..) | Counted::Stray)).map(|(id, _)| id.clone()).collect();
+    memory.departed = departed_rounds(sharing, &memory, &counts, &reading);
+    remove_old_rounds(sharing, &memory, &reading);
     // Still on format 1: what each whole list holds now, and what one took out (`Floor::removed` at the switch).
     if memory.format < 2 {
         note_whole_lists(originals, &mut memory);
@@ -5251,22 +5500,33 @@ fn say_broken(memory: &mut Memory, computer: &str, at: i64) {
 /// end of an earlier round, which may never come (an older copy of it put
 /// back), reads on from there. Each round's first line read alone.
 fn later_full(sharing: &Sharing, computer: &str, rounds: &[u32], round: u32) -> Option<u32> {
-    rounds.iter().copied().filter(|r| *r > round).find(|r| {
-        // A round's first line never changes (records only grow): read once per process.
-        let at = (sharing.folder.to_path_buf(), computer.to_string(), *r);
-        if let Some(full) = FIRST_LINES.lock().ok().and_then(|seen| seen.get(&at).copied()) {
-            return full;
-        }
-        let Ok(file) = open_round(sharing.folder, computer, *r) else { return false };
-        let Some((line, _)) = LineReader::new(file).next() else { return false };
-        let Some(record) = std::str::from_utf8(&line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else { return false };
-        let Some(turn) = open(sharing.key, &bound(computer, *r, record.n, record.c), &record.s).and_then(|plain| serde_json::from_slice::<Turn>(&plain).ok()) else { return false };
-        let full = record.n == 1 && turn.full;
-        if let Ok(mut seen) = FIRST_LINES.lock() {
-            seen.insert(at, full);
-        }
-        full
-    })
+    rounds.iter().copied().filter(|r| *r > round).find(|r| opens_full(sharing, computer, *r))
+}
+
+/// The last of a computer's rounds in the folder that opens full (`Turn`):
+/// it restates all that computer held then, and every round before it is
+/// past for whoever read that far (`departed_rounds`).
+fn last_full(sharing: &Sharing, computer: &str, rounds: &[u32]) -> Option<u32> {
+    rounds.iter().rev().copied().find(|r| opens_full(sharing, computer, *r))
+}
+
+/// Whether a computer's round opens full: its first line opens with the key,
+/// bound to that computer and round, and says so (`Turn::full`).
+fn opens_full(sharing: &Sharing, computer: &str, round: u32) -> bool {
+    // A round's first line never changes (records only grow): read once per process.
+    let at = (sharing.folder.to_path_buf(), computer.to_string(), round);
+    if let Some(full) = FIRST_LINES.lock().ok().and_then(|seen| seen.get(&at).copied()) {
+        return full;
+    }
+    let Ok(file) = open_round(sharing.folder, computer, round) else { return false };
+    let Some((line, _)) = LineReader::new(file).next() else { return false };
+    let Some(record) = std::str::from_utf8(&line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else { return false };
+    let Some(turn) = open(sharing.key, &bound(computer, round, record.n, record.c), &record.s).and_then(|plain| serde_json::from_slice::<Turn>(&plain).ok()) else { return false };
+    let full = record.n == 1 && turn.full;
+    if let Ok(mut seen) = FIRST_LINES.lock() {
+        seen.insert(at, full);
+    }
+    full
 }
 
 /// Whether each round's first line read by `later_full` opens a full round,
@@ -5427,7 +5687,14 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     }
     let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", path.display()));
     let size_here = std::fs::metadata(path).map_or(0, |m| m.len());
-    let diverged = current.as_deref().is_some_and(|here| !seen(here));
+    // The version this device last received from another device, unchanged
+    // here since (a change made here is this device's own word, `Known::w`,
+    // sent before the others' records are read): an older version, never a
+    // change of its own, even when no record read now names it. A device back
+    // after its rounds went reads only what a full round restates, and made a
+    // conflicted copy of every note changed twice meanwhile (16 October 2026).
+    let received = |here: &str| known.is_some_and(|k| k.h == here && k.w != sharing.computer);
+    let diverged = current.as_deref().is_some_and(|here| !seen(here) && !received(here));
     // The version here kept by reference when a record named it and its
     // content is in the folder, or fetched beside it; else copied, as any
     // file is: a device back after weeks away, whose content left the folder
@@ -6229,31 +6496,60 @@ fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
     }
 }
 
-/// This computer's old files, once every other computer heard lately has read past them.
-fn remove_old_rounds(sharing: &Sharing, memory: &Memory, now_ms: i64) {
+/// This computer's old files, once every device that counts has read past
+/// them (`readers`), and the past rounds of the devices that no longer count
+/// by a sealed fact (`Memory::departed`), here and in the copy fetched from
+/// the server beside (`remote::overlay`): never fetched again, and taken out
+/// of the server by the sending (`remote`).
+fn remove_old_rounds(sharing: &Sharing, memory: &Memory, readers: &BTreeSet<String>) {
     let all = rounds(sharing.folder);
-    let below = past_below(sharing.folder, sharing.computer, memory.round, memory.full_round, now_ms);
+    let below = past_below(sharing.folder, sharing.computer, memory.round, memory.full_round, readers);
     for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < below) {
         let _ = std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round));
+    }
+    if memory.departed.is_empty() {
+        return;
+    }
+    for dir in std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)) {
+        let theirs = if dir == sharing.folder { all.clone() } else { rounds(&dir) };
+        for (id, floor) in &memory.departed {
+            for round in theirs.get(id).into_iter().flatten().filter(|r| **r < *floor) {
+                let _ = std::fs::remove_file(round_file(&dir, id, *round));
+            }
+        }
     }
 }
 
 /// The round below which a computer's rounds are past their time: every
-/// other computer heard within `SILENT_DAYS` read past them (its notes say a
-/// later round: it met their end, `Memory::met`, or read on from a later
-/// full round), and never its last full round nor the rounds continuing it:
-/// a device joining reads from the oldest kept, and finds every entry there.
-fn past_below(folder: &Path, computer: &str, round: u32, full_round: u32, now_ms: i64) -> u32 {
-    let others: Vec<Seen> = computers(folder).iter().filter(|c| *c != computer).filter_map(|c| read_seen(folder, c)).filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400).collect();
-    let read_up_to = others.iter().map(|s| s.read.get(computer).copied().unwrap_or(0)).min().unwrap_or(round);
+/// reader (`readers`) read past them (its notes say a later round: it met
+/// their end, `Memory::met`, or read on from a later full round; a reader
+/// without notes in the folder read none), and never its last full round nor
+/// the rounds continuing it: a device joining reads from the oldest kept, and
+/// finds every entry there (`share::rounds_tests`). A device forgotten that
+/// comes back counts again at once, its notes with it, and reads from the
+/// oldest kept the same way.
+fn past_below(folder: &Path, computer: &str, round: u32, full_round: u32, readers: &BTreeSet<String>) -> u32 {
+    let read_up_to = readers.iter().filter(|r| *r != computer).map(|r| read_seen(folder, r).and_then(|s| s.read.get(computer).copied()).unwrap_or(0)).min().unwrap_or(round);
     let full = if full_round == 0 { round } else { full_round };
     full.min(read_up_to)
+}
+
+/// The readers as the rule was until 16 October 2026: every other computer
+/// whose plain notes were heard within `SILENT_DAYS`. For a memory that does
+/// not say who counts yet (`Memory::counting`: one saved by an older Sioul,
+/// before its first exchange since).
+fn readers_by_notes(folder: &Path, computer: &str, now_ms: i64) -> BTreeSet<String> {
+    computers(folder).into_iter().filter(|c| c != computer).filter(|c| read_seen(folder, c).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400)).collect()
 }
 
 /// This computer's rounds below the one returned are past their time, as
 /// `remove_old_rounds` judges them from its memory as last saved and the
 /// others' notes: its sending takes those still on the server out of it
 /// (`remote`), where a sync app left them (eDrive passes no deletion on).
+/// Who counts comes from the memory, as the last exchange found it by sealed
+/// facts (`Memory::counting`, `Memory::uncounted`: the sending has no key);
+/// a file of notes alone that it did not know of holds back as before, by its
+/// notes; a memory that does not say: the rule as it was (`readers_by_notes`).
 /// None when the memory does not read, or is not this computer's.
 pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) -> Option<u32> {
     #[derive(Deserialize)]
@@ -6264,9 +6560,82 @@ pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) ->
         round: u32,
         #[serde(default)]
         full_round: u32,
+        #[serde(default)]
+        counting: Option<BTreeSet<String>>,
+        #[serde(default)]
+        uncounted: BTreeSet<String>,
     }
     let part = std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok())?;
-    (part.computer == computer && part.round > 0).then(|| past_below(folder, computer, part.round, part.full_round, now_ms))
+    if part.computer != computer || part.round == 0 {
+        return None;
+    }
+    let readers = match part.counting {
+        Some(counting) => {
+            let strays: Vec<String> = readers_by_notes(folder, computer, now_ms).into_iter().filter(|id| !counting.contains(id) && !part.uncounted.contains(id)).collect();
+            counting.into_iter().chain(strays).collect()
+        }
+        None => readers_by_notes(folder, computer, now_ms),
+    };
+    Some(past_below(folder, computer, part.round, part.full_round, &readers))
+}
+
+/// The past rounds of the devices that no longer count by a sealed fact
+/// (`Counted::departed`: they left, you forgot them, another device replaces
+/// them), each device's below the round returned: below its last full round
+/// found in the folder (`Turn::full` on its first line, sealed: a hostile
+/// folder can hide a later one, never show one that is not), never that round
+/// nor those continuing it, and only those every reader read past
+/// (`readers`, this device's own reading among them). Such a device never
+/// takes its own out again (a phone dead for good): any device that counts
+/// does, each in its own folder, and its sending on the server over the ETag
+/// listed there; two at once find it gone (`404`) or changed (`412`), and
+/// leave it. A device with no full round found (an older Sioul's rounds say
+/// none) keeps every round. A device forgotten that says anything newer
+/// counts again at once (`counted`), and its rounds are its own again.
+fn departed_rounds(sharing: &Sharing, memory: &Memory, counted: &[(String, Counted)], readers: &BTreeSet<String>) -> BTreeMap<String, u32> {
+    let all = rounds_with(sharing.folder);
+    let mut out = BTreeMap::new();
+    for (id, _) in counted.iter().filter(|(_, counted)| counted.departed()) {
+        let Some(theirs) = all.get(id).filter(|rounds| !rounds.is_empty()) else { continue };
+        let Some(full) = last_full(sharing, id, theirs) else { continue };
+        let own = memory.read.get(id).map_or(0, |(round, _)| *round);
+        let others = readers.iter().filter(|r| *r != id).map(|r| read_seen(sharing.folder, r).and_then(|s| s.read.get(id).copied()).unwrap_or(0));
+        let floor = std::iter::once(full).chain(std::iter::once(own)).chain(others).min().unwrap_or(0);
+        out.insert(id.clone(), floor);
+    }
+    out
+}
+
+/// What the sending and the pull ask of the memory without the key
+/// (`remote`), as the last exchange left it: each device that no longer
+/// counts by a sealed fact, and the round below which its rounds are past
+/// their time here (`Memory::departed`): never fetched again, taken out of
+/// the server at a listing. Empty when the memory is not this computer's.
+pub fn departed_past(memory: &Path, computer: &str) -> BTreeMap<String, u32> {
+    #[derive(Deserialize)]
+    struct Part {
+        #[serde(default)]
+        computer: String,
+        #[serde(default)]
+        departed: BTreeMap<String, u32>,
+    }
+    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.departed).unwrap_or_default()
+}
+
+/// The sealed files this device swept as written by a device that no longer
+/// counts (`Memory::taken`, `sweep_theirs`), by name, and when (milliseconds):
+/// the sending takes each out of the server too, when it is still as old
+/// there, and the pull of Sioul keeping the folder itself never brings it
+/// again. Empty when the memory is not this computer's.
+pub fn swept_theirs(memory: &Path, computer: &str) -> BTreeMap<String, i64> {
+    #[derive(Deserialize)]
+    struct Part {
+        #[serde(default)]
+        computer: String,
+        #[serde(default)]
+        taken: BTreeMap<String, i64>,
+    }
+    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.taken).unwrap_or_default()
 }
 
 /// Another computer sharing through the folder, and when it last exchanged (Unix seconds).
@@ -9416,6 +9785,10 @@ mod correctness_tests;
 #[cfg(test)]
 #[path = "share_storage_tests.rs"]
 mod storage_tests;
+
+#[cfg(test)]
+#[path = "share_rounds_tests.rs"]
+mod rounds_tests;
 
 #[cfg(test)]
 mod probe {
