@@ -57,7 +57,7 @@ fn sealed(folder: Option<PathBuf>) -> Option<(PathBuf, [u8; 32])> {
     Some((folder, key()?))
 }
 
-fn memory_path() -> PathBuf {
+pub(crate) fn memory_path() -> PathBuf {
     state_dir().join("share").join("memory.json")
 }
 
@@ -1574,6 +1574,9 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         if mirror {
             send_texts(&here);
             mirror_step(&here, false, false);
+            // Joined through the server's sign-in, its contacts and calendars left for
+            // an exchange that brought everything: decided now, when this one did.
+            crate::join::agenda_later(&qt, &shared);
         } else {
             send_to_server(&here, false);
             if sent > 0 {
@@ -2057,7 +2060,7 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
             if login.password.is_none() {
                 return Err(tr().text("share-server-no-password", None));
             }
-            begin_on_server(&login, &place, &passphrase, &again, false)
+            begin_on_server(&login, &place, &passphrase, &again, false, true).map(drop)
         })();
         let problem = started.err().unwrap_or_default();
         // The first exchange brings what the others shared there.
@@ -2068,18 +2071,30 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
     });
 }
 
+/// How sharing began on a server (`begin_on_server`): joined, another
+/// device sharing through that folder already; or started there, new.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Begun {
+    Joined,
+    Started,
+}
+
 /// Sharing begun through `place` among `login`'s files, Sioul keeping the
 /// folder itself (`remote::MIRROR`): joined when another device shares
 /// through it already (its seal, the passphrase chosen there, typed once and
-/// checked against it), else made there and sealed (the passphrase typed
-/// twice). `signed_in`: `login` is the server's own sign-in's
-/// (`loginflow`), the folder kept with it (`remote::begin_signed_in`). On
-/// the calling thread, never the window's: "" or why not, in words.
-pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, passphrase: &str, again: &str, signed_in: bool) -> Result<(), String> {
+/// checked against it), else, when `may_start`, made there and sealed (the
+/// passphrase typed twice); a join that finds no seal there, nothing made.
+/// `signed_in`: `login` is the server's own sign-in's (`loginflow`), the
+/// folder kept with it (`remote::begin_signed_in`). On the calling thread,
+/// never the window's: which, or why not, in words.
+pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, passphrase: &str, again: &str, signed_in: bool, may_start: bool) -> Result<Begun, String> {
     if passphrase.chars().count() < 12 {
         return Err(tr().text("share-short", None));
     }
     let opened = sioul_sync::remote::open(login, place).map_err(|code| server_problem(&code))?;
+    if opened.seal.is_none() && !may_start {
+        return Err(say("join-not-there", &[("place", opened.place.clone()), ("host", sioul_sync::remote::host_of(&opened.url))]));
+    }
     let memory = memory_path();
     let mirror = sioul_sync::remote::mirror_of(&memory);
     // A copy of its own, new: what an earlier sharing left there goes.
@@ -2122,7 +2137,8 @@ pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, pa
     let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut here = share::Here::load(&state);
     here.folder = Some(mirror.display().to_string());
-    here.save(&state)
+    here.save(&state)?;
+    Ok(if opened.seal.is_some() { Begun::Joined } else { Begun::Started })
 }
 
 /// An exchange now, on the calling thread (never the window's), as the

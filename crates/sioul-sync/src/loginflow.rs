@@ -311,7 +311,8 @@ pub fn poll(flow: &Flow) -> Result<Option<Grant>, Refusal> {
         // Made by the server chosen all the same: given back to it, never kept.
         let named = crate::remote::host_of(&server);
         let _ = revoke(&Grant { server: flow.base.clone(), login: answered.login_name, password });
-        return Err(Refusal::Elsewhere(host, named));
+        // The same server named over plain HTTP (a server's own setting): said as not encrypted.
+        return Err(if named == host { Refusal::NotHttps(host) } else { Refusal::Elsewhere(host, named) });
     }
     if answered.login_name.trim().is_empty() || password.is_empty() {
         return Err(Refusal::NotNextcloud(host));
@@ -550,6 +551,11 @@ mod tests {
         assert_eq!(refused, Refusal::Elsewhere(crate::remote::host_of(&base), crate::remote::host_of(&other.base)));
         assert!(fake.app_passwords.lock().unwrap().is_empty(), "given back");
         assert!(other.seen().is_empty(), "nothing asked of the other server");
+        // The same server named under another scheme (plain HTTP, where it was chosen on HTTPS): refused, said as not encrypted.
+        fake.signing.lock().unwrap().server = format!("https://{}", crate::remote::host_of(&base));
+        let flow = begin(&base, "Sioul (test)").unwrap();
+        fake.grant_flows();
+        assert_eq!(poll(&flow).unwrap_err(), Refusal::NotHttps(crate::remote::host_of(&base)), "its own host on another scheme");
         // On HTTPS there, refused all the same: another origin.
         fake.signing.lock().unwrap().server = "https://cloud.example.org".into();
         let flow = begin(&base, "Sioul (test)").unwrap();

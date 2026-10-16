@@ -338,7 +338,7 @@ pub(crate) fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), 
 /// An address's origin, what a login is kept to: its scheme, host and port,
 /// in lowercase, the port written even when it is the scheme's own
 /// (`https://dav.example.org:443`). None without a scheme or a host.
-pub(crate) fn origin(url: &str) -> Option<String> {
+pub fn origin(url: &str) -> Option<String> {
     let (scheme, rest) = url.split_once("://")?;
     let scheme = scheme.to_ascii_lowercase();
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");

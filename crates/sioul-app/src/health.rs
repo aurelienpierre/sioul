@@ -2383,6 +2383,14 @@ pub(crate) fn device_off(id: &str, off: bool) -> String {
     mark_device(id, |seen, mark| seen.off = off.then_some(mark))
 }
 
+/// Since when another device has said nothing, as this device sees it: the
+/// later of when this device saw its entry change and its own last word
+/// (`Peer::seen`, `Peer::heard`), as "Forget it now" judges it
+/// (`FORGET_NOW_AFTER`); none while this device knows nothing of it.
+pub(crate) fn quiet_since(id: &str) -> Option<i64> {
+    load_peers().peers.get(id).map(|seen| seen.peer.seen.max(seen.peer.heard)).filter(|since| *since > 0)
+}
+
 /// Whether `id` is forgotten here (Forget this device), or replaced by
 /// another device (`apply_replaced`), as this device last knew it.
 pub(crate) fn forgotten_here(id: &str) -> bool {
