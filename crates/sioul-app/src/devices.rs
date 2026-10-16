@@ -353,6 +353,17 @@ pub(crate) fn exported(outcome: &sioul_sync::share::Outcome) {
     }
 }
 
+/// This device replaces another (a phone that will never share again: dead,
+/// lost), as you said when it joined (`join::replace`): written into its
+/// entry, sealed, for every device to read (`Entry::replaces`), what that
+/// one last said with it. Whether it went into the folder.
+pub(crate) fn replace(replaced: sioul_sync::devices::Replaced) -> bool {
+    write(|entry| {
+        entry.replaces.retain(|r| r.id != replaced.id);
+        entry.replaces.push(replaced);
+    })
+}
+
 /// Sharing stopped here: down, and said to count no more.
 pub(crate) fn left() {
     write(|entry| {

@@ -95,6 +95,7 @@
 //! ## Your devices
 //!
 //! - [`share`](share/index.html): sharing with your other devices: set up, one exchange a minute, versions put back.
+//! - [`join`](join/index.html): a device joining the others through your Nextcloud's own sign-in, a phone in another's place.
 //! - [`devices`](devices/index.html): this device's sessions, as your other devices learn them.
 //!
 //! ## On a phone
@@ -137,6 +138,8 @@ mod gmail;
 mod health;
 mod homecard;
 mod hours;
+// A device joining the others through your Nextcloud's sign-in (docs/database.md).
+mod join;
 mod mail;
 mod mailsearch;
 mod mailnote;

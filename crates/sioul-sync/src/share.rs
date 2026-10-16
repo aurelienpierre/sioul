@@ -1843,6 +1843,14 @@ fn derive(passphrase: &str, salt: &[u8], memory_kib: u32, passes: u32) -> Result
     Ok(key)
 }
 
+/// Whether `bytes` are a seal of Sioul's (a folder's `seal.toml`): a few
+/// lines that read as one, with a salt and a check. Says nothing of the
+/// passphrase (`key_for` does): for finding the folder on a server
+/// (`remote::seek`).
+pub fn is_seal(bytes: &[u8]) -> bool {
+    bytes.len() <= 4096 && std::str::from_utf8(bytes).ok().and_then(|text| toml::from_str::<SealFile>(text).ok()).is_some_and(|seal| !seal.salt.is_empty() && !seal.check.is_empty())
+}
+
 /// The key for a folder: made from the passphrase and the folder's seal, which
 /// the first computer writes (64 MiB, 3 passes: half a second, once per computer).
 pub fn key_for(folder: &Path, passphrase: &str) -> Result<[u8; 32], Refused> {
@@ -2993,12 +3001,17 @@ fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) 
 /// before, `read_n`, `heard_at`, whatever the folder shows now: a hostile
 /// folder hiding a device's files never makes it go), but those that left
 /// (their entry says so), those you forgot until they say anything newer
-/// (`forget_device`), and those not heard of for `SILENT_DAYS` (one of which
-/// no clock is known at all, from when this device first found it so,
-/// `Memory::unclocked`). A file alone (plain notes, an entry that does not
-/// read) with no record is a stray file, not a device.
+/// (`forget_device`), those another device's entry says it replaces, until
+/// they say anything newer than it says (`devices::Entry::replaces`), and
+/// those not heard of for `SILENT_DAYS` (one of which no clock is known at
+/// all, from when this device first found it so, `Memory::unclocked`). A
+/// file alone (plain notes, an entry that does not read) with no record is a
+/// stray file, not a device.
 fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Option<crate::devices::Entry>, bool)> {
     let (entries, unread) = crate::devices::all(folder, key);
+    // Every replacement said: by the entries read now and the latest seen
+    // here (an older copy put back never takes one away), this device's own among them.
+    let replaced: Vec<crate::devices::Replaced> = entries.iter().chain(memory.seen.values()).flat_map(|e| e.replaces.iter().cloned()).collect();
     let recorded: BTreeSet<String> = rounds_with(folder).into_keys().chain(memory.read_n.keys().cloned()).chain(memory.heard_at.keys().cloned()).collect();
     let mut ids = computers(folder);
     ids.extend(entries.iter().map(|e| e.id.clone()));
@@ -3021,6 +3034,9 @@ fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
             }
             let last = last_heard(entry.as_ref(), memory, &id);
             if memory.forgotten.get(&id).is_some_and(|mark| last <= *mark) {
+                return None;
+            }
+            if replaced.iter().any(|r| r.id == id && r.holds(entry.as_ref().map(|e| e.started), last)) {
                 return None;
             }
             // No clock known at all: aged from when this device first found it so.
@@ -3076,6 +3092,22 @@ fn unused_days(sharing: &Sharing, memory: &Memory, now_ms: i64) -> i64 {
 /// it reads format 2 is enough, and it joins in format 2.
 fn format_open(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     !present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).is_empty() && format_holders(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().all(|(_, holds)| !memory.joined && *holds == Holds::Unheard)
+}
+
+/// When `device` was last heard of here, from sealed facts only (`last_heard`:
+/// its latest entry read here, its records' last clock read), in
+/// milliseconds; 0 when nothing is known. What a replacement says of it
+/// (`devices::Replaced::heard`).
+pub fn heard_of(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, device: &str) -> i64 {
+    let state = Memory::load_all(memory, computer);
+    let (entries, _) = crate::devices::all(folder, key);
+    let here = entries.iter().find(|e| e.id == device);
+    let entry = match (here, state.seen.get(device)) {
+        (Some(here), Some(seen)) if entry_stamp(seen) > entry_stamp(here) => Some(seen),
+        (None, Some(seen)) => Some(seen),
+        (here, _) => here,
+    };
+    last_heard(entry, &state, device)
 }
 
 /// A device you said is gone (Settings ▸ Your folder and sharing ▸ Forget

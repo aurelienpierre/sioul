@@ -1302,6 +1302,43 @@ pub mod qobject {
         #[qinvokable]
         fn start_sharing_on_server(self: Pin<&mut Sioul>, account: &QString, place: &QString, passphrase: &QString, again: &QString);
 
+        /// Signs in to a Nextcloud through its own page, in the browser
+        /// ("murena", or another's address), to join your other devices
+        /// (`join::sign_in`), off the window's thread: `join_changed` says
+        /// each step, `join_status` where it stands.
+        #[qinvokable]
+        fn join_sign_in(self: Pin<&mut Sioul>, server: &QString);
+
+        /// The sign-in's page opened again in the browser.
+        #[qinvokable]
+        fn join_open_again(self: Pin<&mut Sioul>);
+
+        /// Cancel: the sign-in stops where it is; an app password given
+        /// already is given back to its server and forgotten here.
+        #[qinvokable]
+        fn join_cancel(self: Pin<&mut Sioul>);
+
+        /// Where a sign-in and its joining stand, as JSON (`join::status`):
+        /// {step, host, signed, places, problem, lines, needs}.
+        #[qinvokable]
+        fn join_status(self: &Sioul) -> QString;
+
+        /// Joins the sharing through `place` on the server signed in to, with
+        /// the passphrase (typed once, checked against the seal; `again` for
+        /// a new sharing there), off the window's thread (`join::join`).
+        #[qinvokable]
+        fn join_folder(self: Pin<&mut Sioul>, place: &QString, passphrase: &QString, again: &QString);
+
+        /// The join's result read, or a failed sign-in left: nothing said any more.
+        #[qinvokable]
+        fn join_done(self: Pin<&mut Sioul>);
+
+        /// "Does this phone replace …?" answered, once (`join::replace`):
+        /// `yes`, this phone's entry says it replaces `device`. Returns what
+        /// went wrong, else "".
+        #[qinvokable]
+        fn join_replace(self: Pin<&mut Sioul>, device: &QString, yes: bool) -> QString;
+
         /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
         #[qinvokable]
         fn folders_in(self: &Sioul, path: &QString) -> QString;
@@ -1796,6 +1833,10 @@ pub mod qobject {
         /// (`start_sharing_on_server`): "" when it started, else why not.
         #[qsignal]
         fn share_started(self: Pin<&mut Sioul>, problem: QString);
+
+        /// A sign-in or a join moved on (`join`): `join_status` says where it stands.
+        #[qsignal]
+        fn join_changed(self: Pin<&mut Sioul>);
 
         /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
         #[qsignal]
@@ -2433,6 +2474,8 @@ pub(crate) fn mode_json() -> String {
         "work_hours": set("work"),
         "admin_hours": set("admin"),
         "night": crate::hours::night_set(),
+        // Sharing set up here: the Porch offers to join your other devices while it is not.
+        "shares": crate::share::configured(),
         "work_now": mode.reason == Reason::WorkNow,
         "today": today,
         // The work day or the day can be closed now (docs/reviews.md); nothing at work or asleep.
@@ -2940,10 +2983,12 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 }
 
 /// One quiet notification per verified code among new mail, with a copy button.
+/// A phone has none yet: its codes show on the Porch and on the home screen's
+/// card (docs/android.md, "Notifications"), and nothing is tried there.
 fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
     // As the matrix of what reaches you says (as usual, at once at any time;
     // "On the Porch only" a choice while you sleep): a code not told waits on the Porch.
-    if !crate::hours::comes(sioul_core::attention::Kind::Codes) {
+    if cfg!(target_os = "android") || !crate::hours::comes(sioul_core::attention::Kind::Codes) {
         return;
     }
     let config = load_config();
@@ -5799,7 +5844,10 @@ impl qobject::Sioul {
         // by person, Sioul's own, its exceptions and do not disturb, and a person's sheet
         // (docs/attention.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
-        // sharing's tab before sharing, its two ways (docs/database.md), "share-send" sharing
+        // sharing's tab before sharing, its two ways (docs/database.md), "join" the Porch's card
+        // and the sign-in's panel at each step, stood in for, and a sharing device's "Add a
+        // device", "Forget it now" and a phone's question whether it replaces another
+        // (docs/database.md), "share-send" sharing
         // started in the profile, the build, the send's switch and "Send everything again",
         // then "Stop sharing" asking first, cancelled (docs/database.md), "spam" the spam
         // filter's settings and the words it puts beside mail (docs/spam-filter.md), "mail-search" the
@@ -5826,7 +5874,7 @@ impl qobject::Sioul {
         // set: no server asked), "tray" the window hidden as to the tray and brought back,
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -5982,6 +6030,34 @@ impl qobject::Sioul {
     fn start_sharing_on_server(self: Pin<&mut Self>, account: &QString, place: &QString, passphrase: &QString, again: &QString) {
         crate::share::start_on_server(&self.qt_thread(), &self.shared(), account.to_string(), place.to_string(), passphrase.to_string(), again.to_string());
     }
+
+    fn join_sign_in(self: Pin<&mut Self>, server: &QString) {
+        crate::join::sign_in(&self.qt_thread(), server.to_string());
+    }
+
+    fn join_open_again(self: Pin<&mut Self>) {
+        crate::join::open_again(&self.qt_thread());
+    }
+
+    fn join_cancel(self: Pin<&mut Self>) {
+        crate::join::cancel(&self.qt_thread());
+    }
+
+    fn join_status(&self) -> QString {
+        QString::from(&crate::join::status())
+    }
+
+    fn join_folder(self: Pin<&mut Self>, place: &QString, passphrase: &QString, again: &QString) {
+        crate::join::join(&self.qt_thread(), &self.shared(), place.to_string(), passphrase.to_string(), again.to_string());
+    }
+
+    fn join_done(self: Pin<&mut Self>) {
+        crate::join::done(&self.qt_thread());
+    }
+
+    fn join_replace(self: Pin<&mut Self>, device: &QString, yes: bool) -> QString {
+        QString::from(&crate::join::replace(&self.qt_thread(), &self.shared(), &device.to_string(), yes))
+    }
 }
 
 #[cfg(test)]
@@ -6001,6 +6077,47 @@ mod tests {
         assert_eq!(windows_slashed(r"\\?\UNC\server\share\a"), "//server/share/a");
         assert_eq!(windows_path("/C:/Users/me/a b.pdf"), r"C:\Users\me\a b.pdf");
         assert_eq!(windows_path("server/share/a"), r"\\server\share\a");
+    }
+
+    /// A phone makes its notices through Java only (docs/android.md,
+    /// "Notifications"): every caller of `sioul_sync::notify` whose error
+    /// would go to the status line (`tell`, `set_status`) stops on Android
+    /// before it tries, so that a phone's status line never says
+    /// "notifications are not made on Android yet" (the owner's new phone,
+    /// 16 October 2026: the pause to move, on by default, said it after 45
+    /// minutes). Read in the sources, as the cfg of a phone's build cannot run here.
+    #[test]
+    fn no_notice_tried_on_a_phone_says_its_error_in_the_status_line() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let calls = ["notify::remind(", "notify::code(", "notify::remind_offering(", "notify::mail("];
+        let mut checked = Vec::new();
+        for entry in std::fs::read_dir(&src).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            // The tests' own lines are no callers.
+            let text = text.split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
+            let lines: Vec<&str> = text.lines().collect();
+            for (at, line) in lines.iter().enumerate() {
+                if line.trim_start().starts_with("//") || !calls.iter().any(|call| line.contains(call)) {
+                    continue;
+                }
+                // Its error said in the status line, within the lines after it.
+                if !lines[at..(at + 4).min(lines.len())].iter().any(|l| l.contains("tell(") || l.contains("set_status(")) {
+                    continue;
+                }
+                // The function it is in, from its first line.
+                let start = (0..at).rev().find(|i| ["fn ", "pub fn ", "pub(crate) fn "].iter().any(|f| lines[*i].trim_start().starts_with(f))).unwrap_or(0);
+                let before = lines[start..at].join("\n");
+                let name = format!("{}:{}", path.file_name().unwrap().to_string_lossy(), at + 1);
+                assert!(before.contains("cfg!(target_os = \"android\")") || before.contains("cfg(not(target_os = \"android\"))"), "{name}: a notice whose error goes to the status line is tried on a phone too");
+                checked.push(name);
+            }
+        }
+        // The pause to move, the codes, the sites' two, the doses due while closed.
+        assert!(checked.len() >= 5, "{checked:?}");
     }
 
     #[test]

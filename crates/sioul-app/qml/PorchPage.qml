@@ -318,6 +318,65 @@ Item {
                     color: page.theme.muted
                 }
 
+                // A device that does not share yet: joining your other devices,
+                // through your Nextcloud's own sign-in or a sync app's folder
+                // (docs/database.md, "Joining through your Nextcloud's sign-in");
+                // first, since what they bring sets the hours and the night below.
+                // Asked here until it shares, or until you leave it as it is.
+                Panel {
+                    id: joinCard
+
+                    property bool leftAsIs: page.sioul.viewFlag("porch-join-left")
+
+                    visible: page.window.moment.shares === false && !joinCard.leftAsIs
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("join-title")
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("join-card-why")
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Button {
+                                text: page.sioul.text("join-murena")
+                                onClicked: page.window.joinDevices("murena")
+                            }
+                            Button {
+                                text: page.sioul.text("join-other")
+                                onClicked: page.window.joinDevices("nextcloud")
+                            }
+                            Button {
+                                text: page.sioul.text("join-folder")
+                                onClicked: page.window.joinDevices("folder")
+                            }
+                            Button {
+                                flat: true
+                                text: page.sioul.text("porch-hours-leave")
+                                onClicked: {
+                                    page.sioul.setViewFlag("porch-join-left", true)
+                                    joinCard.leftAsIs = true
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // The hours not set yet: work, your admin (docs/areas.md); every
                 // other time is leisure. Asked here until they are, or until you
                 // leave them as they are.

@@ -5,6 +5,10 @@
 // how, the folder a sync carries, a passphrase typed once on each computer
 // (twice on the first), then where things stand; what travels from this
 // device, part by part; the versions kept before other devices' changes, to put back.
+// Not shared yet: joining your other devices through your Nextcloud's own
+// sign-in (JoinPanel.qml), beside the two ways. A phone sharing beside
+// another phone: whether it replaces it, asked once. A computer that shares:
+// what a new device needs ("Add a device"), and a phone silent a day forgotten now.
 
 pragma ComponentBehavior: Bound
 
@@ -42,6 +46,25 @@ ColumnLayout {
     property string againBefore: ""
     // "Stop sharing" pressed: what stops and what stays, said first.
     property bool stopping: false
+    // A sign-in through the server under way, or its result to read: the two ways wait meanwhile.
+    readonly property bool joining: joinPanel.busy
+    // Not shared yet, nothing joining: the two ways and their form.
+    readonly property bool setting: !panel.status.on && !panel.joining
+    // "Add a device" pressed: what a new device needs, said.
+    property bool adding: false
+    // The sign-in's panel, for the window's pictures (main.qml's grabber).
+    property alias join: joinPanel
+
+    // The Porch's card ("Join your other devices"): Murena's sign-in, another
+    // Nextcloud's address, or the folder of a sync app.
+    function startJoin(how) {
+        if (how === "folder") {
+            panel.byServer = false
+            folderField.forceActiveFocus()
+            return
+        }
+        joinPanel.begin(how)
+    }
 
     // "Send everything again", off the window's thread: what it did is read a few seconds later.
     function sendAgain() {
@@ -161,29 +184,81 @@ ColumnLayout {
             color: panel.theme.warm
         }
     }
+    // On a phone sharing while another phone shares: whether this one replaces it, asked once.
+    Label {
+        visible: !!panel.status.replace
+        Layout.topMargin: 6
+        Layout.fillWidth: true
+        text: panel.status.replace ? panel.status.replace.ask : ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.weight: Font.DemiBold
+        color: panel.theme.text
+    }
+    Label {
+        visible: !!panel.status.replace
+        Layout.fillWidth: true
+        text: panel.sioul.text("join-replace-help")
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: panel.theme.muted
+    }
+    Flow {
+        visible: !!panel.status.replace
+        Layout.fillWidth: true
+        spacing: 8
+
+        Button {
+            text: panel.sioul.text("join-replace-yes")
+            onClicked: {
+                panel.problem = panel.sioul.joinReplace(panel.status.replace.id, true)
+                panel.reload()
+            }
+        }
+        Button {
+            flat: true
+            text: panel.sioul.text("join-replace-no")
+            onClicked: {
+                panel.problem = panel.sioul.joinReplace(panel.status.replace.id, false)
+                panel.reload()
+            }
+        }
+    }
+    // Not shared yet: joining through your Nextcloud's own sign-in (JoinPanel.qml);
+    // its result stays to read once sharing is on.
+    JoinPanel {
+        id: joinPanel
+
+        visible: !panel.status.on || joinPanel.busy
+        Layout.topMargin: 6
+        Layout.fillWidth: true
+        sioul: panel.sioul
+        theme: panel.theme
+        onStepChanged: panel.reload()
+    }
     // Android: the folder your sync app carries is read by its path, once Android allows it.
     Label {
-        visible: panel.android && !panel.filesAccess
+        visible: panel.android && !panel.filesAccess && !panel.joining
         Layout.fillWidth: true
         text: panel.sioul.text("share-files-access")
         wrapMode: Text.Wrap
         color: panel.theme.text
     }
     Button {
-        visible: panel.android && !panel.filesAccess
+        visible: panel.android && !panel.filesAccess && !panel.joining
         text: panel.sioul.text("share-files-allow")
         onClicked: panel.sioul.askFilesAccess()
     }
     // The folders your other devices already share through: one tap.
     Label {
-        visible: panel.candidates.length > 0 && !panel.byServer
+        visible: panel.candidates.length > 0 && !panel.byServer && !panel.joining
         Layout.fillWidth: true
         text: panel.sioul.text("share-found")
         wrapMode: Text.Wrap
         color: panel.theme.muted
     }
     Repeater {
-        model: panel.byServer ? [] : panel.candidates
+        model: panel.byServer || panel.joining ? [] : panel.candidates
 
         delegate: Button {
             required property string modelData
@@ -196,7 +271,7 @@ ColumnLayout {
     }
     // Not shared yet: how, the folder, and the passphrase.
     ColumnLayout {
-        visible: !panel.status.on
+        visible: panel.setting
         Layout.fillWidth: true
         spacing: 0
 
@@ -222,7 +297,7 @@ ColumnLayout {
         }
     }
     GridLayout {
-        visible: !panel.status.on
+        visible: panel.setting
         Layout.fillWidth: true
         columns: 3
         columnSpacing: 8
@@ -329,7 +404,7 @@ ColumnLayout {
         spacing: 8
 
         Button {
-            visible: !panel.status.on
+            visible: panel.setting
             enabled: !panel.starting && (!panel.byServer || (panel.status.servers || []).length > 0)
             highlighted: true
             text: panel.sioul.text("share-start")
@@ -440,8 +515,17 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: panel.theme.muted
             }
+            // A phone silent a day, on a computer: forgotten now, said first what it changes.
+            Label {
+                visible: device.modelData.forget_now === true
+                Layout.fillWidth: true
+                text: panel.sioul.text("share-device-forget-now-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
             RowLayout {
-                visible: device.modelData.off || device.modelData.forget
+                visible: device.modelData.off || device.modelData.forget || device.modelData.forget_now === true
                 spacing: 6
 
                 Button {
@@ -462,7 +546,39 @@ ColumnLayout {
                         panel.reload()
                     }
                 }
+                Button {
+                    visible: device.modelData.forget_now === true
+                    flat: true
+                    text: panel.sioul.text("share-device-forget-now")
+                    onClicked: {
+                        panel.problem = panel.sioul.deviceForget(device.modelData.id)
+                        panel.reload()
+                    }
+                }
             }
+        }
+    }
+    // On a computer that shares: what a new device needs, in a few lines, on a press.
+    Button {
+        visible: (panel.status.add_device || []).length > 0
+        Layout.topMargin: 6
+        flat: true
+        checkable: true
+        checked: panel.adding
+        text: panel.sioul.text("share-add-title")
+        onToggled: panel.adding = checked
+    }
+    Repeater {
+        model: panel.adding ? (panel.status.add_device || []) : []
+
+        delegate: Label {
+            required property string modelData
+
+            Layout.fillWidth: true
+            text: modelData
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: panel.theme.text
         }
     }
     // This device's own build (docs/building.md, "Which build").

@@ -191,6 +191,14 @@ pub struct State {
     /// The folder's place in the account's files, as given ("Documents/Sioul"): to say where.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub place: String,
+    /// Joined through the server's own sign-in (`loginflow`, `MIRROR`): the
+    /// login name it gave, whose app password the keyring keeps under that
+    /// name on the server (`<user> on <host>`, as an account's). The folder
+    /// is then kept with that login, whatever account the contacts and
+    /// calendars use; "" when kept with the account's own (`account`). Never
+    /// the password.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
     /// When this device's own files last went up (`MIRROR`, Unix seconds).
     #[serde(default)]
     pub pushed: i64,
@@ -2217,10 +2225,64 @@ pub(crate) fn create_with(login: &Login, opened: &Opened, folder: &Path, limits:
 /// From now on Sioul keeps `folder` in step with `opened` itself (`MIRROR`),
 /// with `login`'s account: what the backup knew goes.
 pub fn begin(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i64) -> Result<(), String> {
+    begin_as(memory, folder, login, opened, now, String::new())
+}
+
+/// The same, joined through the server's own sign-in (`loginflow`): the
+/// folder kept with that login (`State::user`), its app password from the
+/// keyring under that login, whatever account the contacts and calendars
+/// use; `login.account` names the account of this server and login, made or
+/// found here.
+pub fn begin_signed_in(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i64) -> Result<(), String> {
+    begin_as(memory, folder, login, opened, now, login.user.clone())
+}
+
+fn begin_as(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i64, user: String) -> Result<(), String> {
     let _ = std::fs::remove_dir_all(cache_of(memory));
-    let state = State { mode: MIRROR.into(), place: opened.place.clone(), folder: shown(folder), account: login.account.clone(), url: opened.url.clone(), confirmed: now, sealed: now, ..State::default() };
+    let state = State { mode: MIRROR.into(), place: opened.place.clone(), folder: shown(folder), account: login.account.clone(), url: opened.url.clone(), confirmed: now, sealed: now, user, ..State::default() };
     let path = state_path(memory);
     sioul_core::filelock::with_lock(&path, || state.write(memory))
+}
+
+/// Where a device joining through its Nextcloud's sign-in looks for the
+/// sharing folder first (`seek`): Sioul's own place, then the top of the files.
+pub const SOUGHT: [&str; 2] = ["Documents/Sioul", "Sioul"];
+
+/// The folders one level under `Documents` looked at, at most (by name).
+const SOUGHT_UNDER: usize = 40;
+
+/// Where the sharing folder is among `login`'s files, for a device joining
+/// with nothing set up (docs/database.md, "Joining through your Nextcloud's
+/// sign-in"): each of `SOUGHT`, then each folder one level under
+/// `Documents` (the first 40 by name, hidden ones left out), that holds a
+/// seal of Sioul's (`share::is_seal`), in that order. Only `PROPFIND` and
+/// `GET` of `seal.toml` files, on the account's own server. Why not, in a
+/// code as `open` has them ("login:murena.io", "no-files:murena.io").
+pub fn seek(login: &Login) -> Result<Vec<String>, String> {
+    seek_with(login, LIMITS)
+}
+
+pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Vec<String>, String> {
+    let host = host_of(&login.url);
+    let server = Server::new(login, limits).map_err(|e| code(&e, &host))?;
+    let root = files_root(&server, login).map_err(|e| code(&e, &host))?.ok_or_else(|| format!("no-files:{host}"))?;
+    let mut places: Vec<String> = SOUGHT.iter().map(|p| (*p).to_string()).collect();
+    match server.list(&format!("{root}Documents/")) {
+        Ok(listing) => places.extend(listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").take(SOUGHT_UNDER).map(|(name, _)| format!("Documents/{name}"))),
+        Err(SyncError::NotFound(_)) => {}
+        Err(e) => return Err(code(&e, &host)),
+    }
+    let mut found = Vec::new();
+    for place in places {
+        match server.small(&format!("{root}{}/seal.toml", encode_path(&place))) {
+            Ok(Some((bytes, _))) if crate::share::is_seal(&bytes) => found.push(place),
+            Ok(_) => {}
+            // A refused login, a certificate, the time out: said; one folder unreadable: the others looked at.
+            Err(e) if e.is_lasting() || matches!(&e, SyncError::Network(d) if d == "out of time") => return Err(code(&e, &host)),
+            Err(_) => {}
+        }
+    }
+    Ok(found)
 }
 
 /// One step of Sioul keeping the folder itself (`MIRROR`): with `whole`, the
@@ -3159,7 +3221,12 @@ pub(crate) mod fake {
     //! A Nextcloud in a test: an account's files, a folder on the disk,
     //! served over WebDAV on 127.0.0.1 (plain HTTP, which only a test build
     //! reaches: `dav::allowed`), a request and a thread per connection; faults
-    //! to inject, and every request seen.
+    //! to inject, and every request seen. Its sign-in in the browser too
+    //! (Login Flow v2, `loginflow`): a flow begun, granted when a test says
+    //! the person signed in (`grant_flows`), answered once, the app password
+    //! it made then opening the account as the password does, until given
+    //! back (`DELETE /ocs/v2.php/core/apppassword`); its principal names the
+    //! homes of the calendars and the address books (`dav::discover_on`).
 
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -3172,6 +3239,26 @@ pub(crate) mod fake {
     pub(crate) const USER: &str = "jane";
     pub(crate) const PASSWORD: &str = "correct horse battery staple";
     const FILES: &str = "/remote.php/dav/files/jane";
+    /// The app passwords the sign-in makes: this, and a number.
+    pub(crate) const APP_PASSWORD: &str = "stand-in-app-password-";
+
+    /// A sign-in begun (Login Flow v2): its poll token, whether the person
+    /// granted access in the browser, whether its answer was given (once).
+    #[derive(Debug, Clone, Default)]
+    pub(crate) struct Flow {
+        pub(crate) token: String,
+        pub(crate) granted: bool,
+        pub(crate) answered: bool,
+    }
+
+    /// What the stand-in's sign-in says: where its poll address is ("" its
+    /// own), which server its answer names ("" its own), the login name it gives.
+    #[derive(Debug, Clone, Default)]
+    pub(crate) struct Signing {
+        pub(crate) endpoint: String,
+        pub(crate) server: String,
+        pub(crate) login: String,
+    }
 
     /// How the server misbehaves, for one request.
     #[derive(Debug, Clone, Copy)]
@@ -3219,6 +3306,11 @@ pub(crate) mod fake {
         seen: Mutex<Vec<String>>,
         /// Serving one request at a time: a listing never sees a file half written by a test's own copy.
         pub(crate) turn: Mutex<()>,
+        /// The sign-ins begun (`loginflow`), and what they say.
+        pub(crate) flows: Mutex<Vec<Flow>>,
+        pub(crate) signing: Mutex<Signing>,
+        /// The app passwords it made and that still open the account.
+        pub(crate) app_passwords: Mutex<Vec<String>>,
     }
 
     impl Fake {
@@ -3234,6 +3326,9 @@ pub(crate) mod fake {
                 faults: Mutex::new(Vec::new()),
                 seen: Mutex::new(Vec::new()),
                 turn: Mutex::new(()),
+                flows: Mutex::new(Vec::new()),
+                signing: Mutex::new(Signing::default()),
+                app_passwords: Mutex::new(Vec::new()),
             });
             let serving = Arc::clone(&fake);
             std::thread::spawn(move || {
@@ -3352,15 +3447,77 @@ pub(crate) mod fake {
             self.seen.lock().unwrap().push(format!("{} {} {what}", request.method, request.path));
         }
 
+        /// The person signed in and granted access in the browser, for every sign-in begun.
+        pub(crate) fn grant_flows(&self) {
+            for flow in self.flows.lock().unwrap().iter_mut() {
+                flow.granted = true;
+            }
+        }
+
+        /// A sign-in begun: its poll token, and the page to open, a token of its own in it.
+        fn flow_begin(&self) -> Reply {
+            let mut flows = self.flows.lock().unwrap();
+            let token = format!("polltoken{}x{}", flows.len(), "A".repeat(100));
+            flows.push(Flow { token: token.clone(), ..Flow::default() });
+            let signing = self.signing.lock().unwrap().clone();
+            let endpoint = if signing.endpoint.is_empty() { format!("{}/login/v2/poll", self.base) } else { signing.endpoint };
+            let body = serde_json::json!({ "poll": { "token": token, "endpoint": endpoint }, "login": format!("{}/login/v2/flow/pagetoken{}", self.base, flows.len()) });
+            (200, vec![("Content-Type", "application/json".into())], body.to_string().into_bytes())
+        }
+
+        /// A poll: 404 until granted, then the server, the login name and a new app password, once.
+        fn flow_poll(&self, request: &Request) -> Reply {
+            let body = String::from_utf8_lossy(&request.body).to_string();
+            let Some(token) = body.strip_prefix("token=") else { return (404, Vec::new(), b"[]".to_vec()) };
+            let mut flows = self.flows.lock().unwrap();
+            let Some(flow) = flows.iter_mut().find(|f| f.token == token) else { return (404, Vec::new(), b"[]".to_vec()) };
+            if !flow.granted || flow.answered {
+                return (404, Vec::new(), b"[]".to_vec());
+            }
+            flow.answered = true;
+            let mut made = self.app_passwords.lock().unwrap();
+            let password = format!("{APP_PASSWORD}{}", made.len() + 1);
+            made.push(password.clone());
+            let signing = self.signing.lock().unwrap().clone();
+            let server = if signing.server.is_empty() { self.base.clone() } else { signing.server };
+            let login = if signing.login.is_empty() { USER.to_string() } else { signing.login };
+            let body = serde_json::json!({ "server": server, "loginName": login, "appPassword": password });
+            (200, vec![("Content-Type", "application/json".into())], body.to_string().into_bytes())
+        }
+
         pub(crate) fn answer(&self, request: &Request) -> Reply {
             let _turn = self.turn.lock().unwrap();
-            let expected = format!("Basic {}", sioul_core::lines::base64_encode(format!("{USER}:{PASSWORD}").as_bytes()));
-            if request.header("Authorization") != Some(expected.as_str()) {
+            // The sign-in in the browser, before any login.
+            if request.method == "POST" && request.path == "/index.php/login/v2" {
+                return self.flow_begin();
+            }
+            if request.method == "POST" && request.path == "/login/v2/poll" {
+                return self.flow_poll(request);
+            }
+            let basic = |login: &str, password: &str| format!("Basic {}", sioul_core::lines::base64_encode(format!("{login}:{password}").as_bytes()));
+            let given = request.header("Authorization").unwrap_or_default().to_string();
+            let app = self.app_passwords.lock().unwrap().iter().find(|password| given == basic(USER, password)).cloned();
+            if given != basic(USER, PASSWORD) && app.is_none() {
                 return (401, Vec::new(), Vec::new());
+            }
+            // An app password given back: it opens nothing any more.
+            if request.method == "DELETE" && request.path == "/ocs/v2.php/core/apppassword" {
+                return match app {
+                    Some(password) => {
+                        self.app_passwords.lock().unwrap().retain(|p| *p != password);
+                        (200, Vec::new(), Vec::new())
+                    }
+                    None => (403, Vec::new(), Vec::new()),
+                };
             }
             if request.method == "PROPFIND" && request.path == "/remote.php/dav" {
                 let principal = format!("<d:response><d:href>/remote.php/dav/</d:href><d:propstat><d:prop><d:current-user-principal><d:href>/remote.php/dav/principals/users/{USER}/</d:href></d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>");
                 return (207, vec![("Content-Type", "application/xml".into())], multistatus(&principal));
+            }
+            // The principal's homes: its calendars' and its address books'.
+            if request.method == "PROPFIND" && request.path == format!("/remote.php/dav/principals/users/{USER}") {
+                let homes = format!("<d:response><d:href>/remote.php/dav/principals/users/{USER}/</d:href><d:propstat><d:prop><c:calendar-home-set xmlns:c=\"urn:ietf:params:xml:ns:caldav\"><d:href>/remote.php/dav/calendars/{USER}/</d:href></c:calendar-home-set><a:addressbook-home-set xmlns:a=\"urn:ietf:params:xml:ns:carddav\"><d:href>/remote.php/dav/addressbooks/users/{USER}/</d:href></a:addressbook-home-set></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>");
+                return (207, vec![("Content-Type", "application/xml".into())], multistatus(&homes));
             }
             let Some(relative) = request.path.strip_prefix(FILES).map(|r| r.trim_start_matches('/').to_string()) else { return (404, Vec::new(), Vec::new()) };
             let path = if relative.is_empty() { self.files.clone() } else { self.files.join(&relative) };
@@ -6523,5 +6680,114 @@ mod tests {
         assert!(weeks(35, 42) <= weeks(21, 28) + (1 << 20) + 200_000, "settled: {} then {}", weeks(21, 28), weeks(35, 42));
         assert!(taken_out > 0 && edrive.uploads > 0, "eDrive sent the phone's files again, and Sioul took them out there");
         crate::share::LARGE_SETTLE.with(|s| s.set(0));
+    }
+
+    // ------------------------------------------------ joining through the server's sign-in
+
+    /// What a device joining with nothing set up finds of the sharing folder
+    /// on its server (`seek`): Sioul's own place first, then the top of the
+    /// files, then each folder one level under Documents; a file that is no
+    /// seal never taken for one; nothing written there.
+    #[test]
+    fn the_seal_is_found_at_documents_sioul_and_elsewhere() {
+        use super::fake::USER;
+        let base = scratch("seek");
+        let files = base.join("cloud");
+        std::fs::create_dir_all(files.join("Documents/Photos")).unwrap();
+        let fake = Fake::start(&files);
+        let login = crate::loginflow::Grant::of(&fake.base, USER, PASSWORD).login_for("cloud");
+        assert_eq!(seek_with(&login, TEST).unwrap(), Vec::<String>::new(), "none yet");
+        put(&files, "Documents/Sioul/seal.toml", SEAL);
+        assert_eq!(seek_with(&login, TEST).unwrap(), ["Documents/Sioul"]);
+        std::fs::remove_dir_all(files.join("Documents/Sioul")).unwrap();
+        put(&files, "Sioul/seal.toml", SEAL);
+        put(&files, "Documents/Partagé/seal.toml", OTHER_SEAL);
+        put(&files, "Documents/Notes/seal.toml", "not a seal");
+        put(&files, "Documents/.hidden/seal.toml", SEAL);
+        assert_eq!(seek_with(&login, TEST).unwrap(), ["Sioul", "Documents/Partagé"]);
+        // Only listings and seals asked; nothing written there.
+        assert!(fake.seen().iter().all(|l| l.starts_with("PROPFIND ") || (l.starts_with("GET ") && l.contains("/seal.toml "))), "{:?}", fake.seen());
+        // No Documents folder at all: the top still looked at.
+        std::fs::remove_dir_all(files.join("Documents")).unwrap();
+        assert_eq!(seek_with(&login, TEST).unwrap(), ["Sioul"]);
+        // A refused login said, as `open` says it.
+        let refused = Login { password: Some("wrong".into()), ..login };
+        assert!(seek_with(&refused, TEST).unwrap_err().starts_with("login:"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// An exchange with the folder's own key (made from a passphrase), its entry written after.
+    fn keyed_exchange(device: &Device, folder: &Path, key: &[u8; 32], now: i64) -> Outcome {
+        let outcome = crate::share::exchange(&Sharing { folder, computer: &device.id, key, memory: &device.memory, files: false, hurry: None }, &device.stores(), now * 1000).unwrap();
+        crate::devices::change(&crate::devices::own_path(&device.roots.state), Some((folder, key)), |e| {
+            e.id = device.id.clone();
+            e.kind = device.kind.into();
+            if e.started == 0 {
+                e.start(now);
+            }
+            e.exported(now * 1000, outcome.wrote, now);
+        })
+        .unwrap();
+        outcome
+    }
+
+    /// A fresh device joins through its Nextcloud's sign-in alone
+    /// (docs/database.md, "Joining through your Nextcloud's sign-in"): the
+    /// desk shares through its sync app's folder, the server's; the phone has
+    /// nothing set up, no sync app, no account, no configuration. Signed in in
+    /// the browser, it finds the folder there, the passphrase is checked
+    /// against the seal (a wrong one refused), and Sioul keeps its own copy in
+    /// step with that login alone: the desk's settings and accounts arrive at
+    /// its first exchange, and the desk hears of the phone.
+    #[test]
+    fn a_fresh_device_joins_through_the_sign_in_and_receives_the_others_settings() {
+        use super::fake::USER;
+        let base = scratch("join");
+        let files = base.join("cloud");
+        let server = files.join("Documents").join("Sioul");
+        std::fs::create_dir_all(&server).unwrap();
+        let fake = Fake::start(&files);
+        // The desk: its folder the server's (its sync app keeps the two equal), sealed with its passphrase.
+        let passphrase = "a few words you keep";
+        let key = crate::share::key_for(&server, passphrase).unwrap();
+        let desk = Device::new(&base, "desk", COMPUTER);
+        put(&desk.roots.config, "config.toml", "language = \"fr\"\n\n[[account]]\nid = \"agenda\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"cloud.example.org\"\nurl = \"https://cloud.example.org/remote.php/dav/calendars/jane/\"\n");
+        keyed_exchange(&desk, &server, &key, DUE - 600);
+        // The phone signs in, in its browser.
+        let address = crate::loginflow::address_of(&fake.base).unwrap();
+        let flow = crate::loginflow::begin(&address, "Sioul (Android)").unwrap();
+        fake.grant_flows();
+        let grant = crate::loginflow::wait(&flow, &std::sync::atomic::AtomicBool::new(false), Duration::from_secs(10), Duration::from_millis(50)).unwrap();
+        let login = grant.login_for("cloud-agenda");
+        // The folder found at Sioul's own place, its seal brought into the phone's own copy.
+        assert_eq!(seek_with(&login, TEST).unwrap(), ["Documents/Sioul"]);
+        let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
+        let phone = Device::new(&base, "phone", PHONE);
+        let mirror = mirror_of(&phone.memory);
+        put_bytes(&mirror, "seal.toml", opened.seal.as_deref().expect("sealed there"));
+        // A wrong passphrase refused; the one chosen on the desk opens the seal.
+        assert_eq!(crate::share::key_for(&mirror, "not the one chosen there").unwrap_err(), crate::share::Refused::WrongPassphrase);
+        assert_eq!(crate::share::key_for(&mirror, passphrase).unwrap(), key);
+        begin_signed_in(&phone.memory, &mirror, &login, &opened, DUE - 500).unwrap();
+        let state = State::load(&phone.memory);
+        assert_eq!((state.user.as_str(), state.mode.as_str(), state.account.as_str()), (USER, MIRROR, "cloud-agenda"));
+        assert!(!std::fs::read_to_string(state_path(&phone.memory)).unwrap().contains(grant.password()), "never the app password");
+        // Its first exchange: the server looked through, the others' files read, its own sent.
+        let pulled = step_with(&phone.memory, &mirror, &phone.id, &login, DUE - 400, true, TEST);
+        assert!(pulled.problem.is_none() && pulled.fetched > 0, "{pulled:?}");
+        let outcome = keyed_exchange(&phone, &mirror, &key, DUE - 400);
+        assert!(outcome.received > 0, "{outcome:?}");
+        let pushed = step_with(&phone.memory, &mirror, &phone.id, &login, DUE - 399, false, TEST);
+        assert!(pushed.problem.is_none() && pushed.sent > 0, "{pushed:?}");
+        let config = std::fs::read_to_string(phone.roots.config.join("config.toml")).unwrap_or_default();
+        assert!(config.contains("language = \"fr\"") && config.contains("id = \"agenda\""), "the desk's settings and accounts: {config}");
+        // The desk, at its next exchange, hears of the phone: its records and its entry, on the server.
+        keyed_exchange(&desk, &server, &key, DUE - 300);
+        assert!(crate::devices::all(&server, &key).0.iter().any(|e| e.id == phone.id && e.kind == PHONE));
+        // The app password, the only secret, went to that server alone, and is in no file of the phone's.
+        for (relative, bytes) in walk(&phone.roots.state).into_iter().chain(walk(&phone.roots.config)) {
+            assert!(!String::from_utf8_lossy(&bytes).contains(grant.password()), "{relative}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

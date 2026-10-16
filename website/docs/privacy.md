@@ -5,7 +5,7 @@ description: Sioul's privacy policy - Sioul runs on your device and has no serve
 
 # Privacy policy
 
-*Last updated on 15 October 2026 (2026-10-15).*
+*Last updated on 16 October 2026 (2026-10-16).*
 
 Sioul is a free and open-source desktop application, published by Aurélien Pierre under the GPL-3.0-or-later licence. This policy says what Sioul does with your data, and in particular with the data it receives from Google when you sign in with a Google account, and from Microsoft when you sign in with a Microsoft account for your mail.
 
@@ -24,7 +24,9 @@ Sioul is made and published by Aurélien Pierre. Since Sioul has no server, its 
 
 ## How Sioul works
 
-Sioul connects, from your device, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google, Microsoft. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS), never into a file.
+Sioul connects, from your device, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google, Microsoft. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS, Android's KeyStore on a phone), never into a file.
+
+Joining your other devices through your Nextcloud's own sign-in (Murena's included: [Sharing](guide/sharing.md#a-new-device-through-your-nextclouds-sign-in)), you sign in on that server's page, in your browser; Sioul never sees your password. The server then gives Sioul an app password of its own, which Sioul keeps in your keyring (for the sharing, and for your contacts and calendars there when they use it), sends to that server only, over HTTPS, and to no one else. Your Nextcloud lists it among its devices and sessions, as "Sioul" and your system's name, where you can revoke it; Sioul gives it back to the server itself when you cancel after signing in, or stop sharing (unless your contacts and calendars use it).
 
 ## Google calendars, contacts and tasks
 
@@ -148,7 +150,7 @@ Sioul has no analytics, no advertising, no tracking, and no crash reports.
 
 ## Security
 
-Connections to Google and Microsoft use HTTPS. Each sign-in follows the provider's guidance for installed applications: its page opens in your browser, and Sioul receives the answer on your own device only (a loopback address), checked with PKCE and a state value. With Microsoft, Sioul holds no secret at all, and its tokens go to Microsoft's sign-in service and to Microsoft's own mail servers, named exactly, never elsewhere. Passwords and tokens are kept in your system's keyring. What you share between your devices is encrypted on your device before it leaves it.
+Connections to Google and Microsoft use HTTPS. Each sign-in follows the provider's guidance for installed applications: its page opens in your browser, and Sioul receives the answer on your own device only (a loopback address), checked with PKCE and a state value. With Microsoft, Sioul holds no secret at all, and its tokens go to Microsoft's sign-in service and to Microsoft's own mail servers, named exactly, never elsewhere. A Nextcloud's sign-in follows its own login flow: its page opens in your browser, and Sioul asks that server alone for the result; an answer that names another server is refused, and nothing of it is kept. Passwords and tokens are kept in your system's keyring. What you share between your devices is encrypted on your device before it leaves it.
 
 ## This website
 

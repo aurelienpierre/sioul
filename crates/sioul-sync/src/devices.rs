@@ -115,9 +115,41 @@ pub struct Entry {
     /// phone stops counting (said off, forgotten, silent a week) goes from it.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub acked: std::collections::BTreeMap<String, i64>,
+    /// The devices this one replaces, as you said when it joined (a phone
+    /// that will never share again: dead, lost; docs/database.md, "Devices"),
+    /// each with what it had last said of itself then. Every device then
+    /// treats it as forgotten (it no longer holds the doses' reminders back,
+    /// nor the newer form of what travels) until it says anything newer:
+    /// a phone wrongly said replaced comes back by itself. Nothing of it is
+    /// deleted. Sealed with the rest; an older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replaces: Vec<Replaced>,
     /// Its size changed at each writing (`share::pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pad: String,
+}
+
+/// A device replaced (`Entry::replaces`): its id, and the latest it had said
+/// when you said so, by its own clock: its entry's last start (Unix seconds),
+/// and the latest of its entry's times, its claims' renewals and its records'
+/// clocks read (`heard`, milliseconds). Anything it says later (a new start,
+/// a later time) makes it count again.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Replaced {
+    pub id: String,
+    #[serde(default)]
+    pub started: i64,
+    #[serde(default)]
+    pub heard: i64,
+}
+
+impl Replaced {
+    /// Whether the device it names said nothing newer since: its entry still
+    /// that start (`started`), nothing of it later than `heard`
+    /// (milliseconds, its clock): `latest_ms`, the latest this device read of it.
+    pub fn holds(&self, started: Option<i64>, latest_ms: i64) -> bool {
+        started.is_none_or(|started| started == self.started) && latest_ms <= self.heard
+    }
 }
 
 fn is_zero(n: &u32) -> bool {

@@ -7,7 +7,7 @@ description: "La politique de confidentialité de Sioul : Sioul fonctionne sur
 
 Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/privacy.html) fait foi.
 
-*Dernière mise à jour le 15 octobre 2026 (2026-10-15).*
+*Dernière mise à jour le 16 octobre 2026 (2026-10-16).*
 
 Sioul est une application de bureau libre et à code source ouvert, publiée par Aurélien Pierre sous la licence GPL-3.0-or-later. Cette politique dit ce que Sioul fait de vos données, et en particulier des données qu’il reçoit de Google quand vous vous connectez avec un compte Google, et de Microsoft quand vous vous connectez avec un compte Microsoft pour vos courriels.
 
@@ -26,7 +26,9 @@ Sioul est fait et publié par Aurélien Pierre. Comme Sioul n’a pas de serveur
 
 ## Comment Sioul fonctionne {#how-sioul-works}
 
-Sioul se connecte, depuis votre appareil, aux services que vous lui ajoutez : votre fournisseur de courriel (IMAP et SMTP), votre serveur d’agendas et de contacts (CalDAV et CardDAV), Google, Microsoft. Il garde une copie de ce qu’il récupère dans des fichiers de vos propres dossiers d’utilisateur, pour pouvoir fonctionner sans attendre le réseau. Les mots de passe et les jetons d’accès vont dans le trousseau de votre système (le Secret Service sur Linux, le Gestionnaire d’identification sur Windows, le Trousseau d’accès sur macOS), jamais dans un fichier.
+Sioul se connecte, depuis votre appareil, aux services que vous lui ajoutez : votre fournisseur de courriel (IMAP et SMTP), votre serveur d’agendas et de contacts (CalDAV et CardDAV), Google, Microsoft. Il garde une copie de ce qu’il récupère dans des fichiers de vos propres dossiers d’utilisateur, pour pouvoir fonctionner sans attendre le réseau. Les mots de passe et les jetons d’accès vont dans le trousseau de votre système (le Secret Service sur Linux, le Gestionnaire d’identification sur Windows, le Trousseau d’accès sur macOS, le KeyStore d’Android sur un téléphone), jamais dans un fichier.
+
+Quand vous rejoignez vos autres appareils par la connexion de votre Nextcloud (celui de Murena compris : [Le partage](guide/sharing.md#a-new-device-through-your-nextclouds-sign-in)), vous vous connectez sur la page de ce serveur, dans votre navigateur ; Sioul ne voit jamais votre mot de passe. Le serveur donne ensuite à Sioul un mot de passe d’application à lui, que Sioul garde dans votre trousseau (pour le partage, et pour vos contacts et agendas là-bas quand ils l’utilisent), n’envoie qu’à ce serveur, en HTTPS, et à personne d’autre. Votre Nextcloud le liste parmi ses appareils et sessions, sous « Sioul » et le nom de votre système, où vous pouvez le révoquer ; Sioul le rend lui-même au serveur quand vous annulez après vous être connecté, ou arrêtez le partage (sauf si vos contacts et agendas l’utilisent).
 
 ## Agendas, contacts et tâches Google {#google-calendars-contacts-and-tasks}
 
@@ -153,7 +155,7 @@ Sioul n’a ni mesure d’audience, ni publicité, ni pistage, ni rapports de pl
 
 ## Sécurité {#security}
 
-Les connexions à Google et à Microsoft passent par HTTPS. Chaque connexion au compte suit les recommandations du fournisseur pour les applications installées : sa page s’ouvre dans votre navigateur, et Sioul reçoit la réponse sur votre propre appareil seulement (une adresse de bouclage), vérifiée avec PKCE et une valeur d’état. Avec Microsoft, Sioul ne détient aucun secret, et ses jetons ne vont qu’au service de connexion de Microsoft et aux serveurs de courriel de Microsoft lui-même, nommés exactement, jamais ailleurs. Les mots de passe et les jetons sont gardés dans le trousseau de votre système. Ce que vous partagez entre vos appareils est chiffré sur votre appareil avant de le quitter.
+Les connexions à Google et à Microsoft passent par HTTPS. Chaque connexion au compte suit les recommandations du fournisseur pour les applications installées : sa page s’ouvre dans votre navigateur, et Sioul reçoit la réponse sur votre propre appareil seulement (une adresse de bouclage), vérifiée avec PKCE et une valeur d’état. Avec Microsoft, Sioul ne détient aucun secret, et ses jetons ne vont qu’au service de connexion de Microsoft et aux serveurs de courriel de Microsoft lui-même, nommés exactement, jamais ailleurs. La connexion à un Nextcloud suit sa propre façon de faire : sa page s’ouvre dans votre navigateur, et Sioul demande le résultat à ce seul serveur ; une réponse qui nomme un autre serveur est refusée, et rien n’en est gardé. Les mots de passe et les jetons sont gardés dans le trousseau de votre système. Ce que vous partagez entre vos appareils est chiffré sur votre appareil avant de le quitter.
 
 ## Ce site {#this-website}
 

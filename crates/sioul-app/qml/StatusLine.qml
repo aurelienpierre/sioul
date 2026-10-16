@@ -206,16 +206,14 @@ Item {
             onChosen: line.sioul.undo()
         }
         // The keys, when nothing else needs the room; cut short before the
-        // buttons beside them are.
-        Label {
-            visible: line.moment.line === "" && !line.compact && !howButton.visible
+        // buttons beside them are. On a computer only (KeysHint.qml).
+        KeysHint {
+            sioul: line.sioul
+            theme: line.theme
+            room: line.moment.line === "" && !line.compact && !howButton.visible
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             Layout.maximumWidth: implicitWidth
-            text: line.sioul.text("ui-keys")
-            elide: Text.ElideRight
-            color: line.theme.muted
-            font.pixelSize: 12
         }
         // Do-not-disturb on every device (DndApplet.qml): its switch, apart
         // from the pauses' buttons at the line's end.
