@@ -131,6 +131,7 @@ fn main() {
         "qml/TimeField.qml",
         "qml/ShowMedicines.qml",
         "qml/StoppedCard.qml",
+        "qml/AccessCard.qml",
         "qml/Interruption.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",

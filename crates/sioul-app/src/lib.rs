@@ -109,7 +109,10 @@
 //! - [`attachments`](attachments/index.html): mail attachments opened in the app you choose and saved where you choose, without an antivirus to call.
 //! - [`appnotes`](appnotes/index.html): other apps' notifications on a phone: now, or how long they wait.
 //! - [`reaches`](reaches/index.html): Settings ▸ What reaches you in words, and a person's sheet.
+//! - [`access`](access/index.html): what Android withholds from Sioul on a phone, said where you look.
 
+// What Android withholds from Sioul on a phone, said in the join's result and on the Porch (docs/android.md).
+mod access;
 mod alarms;
 mod appnotes;
 // Mail attachments on a phone: opened in the app you choose, saved where you choose (docs/client.md, "Antivirus").

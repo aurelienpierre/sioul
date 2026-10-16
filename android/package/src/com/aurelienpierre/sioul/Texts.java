@@ -4,6 +4,7 @@
 package com.aurelienpierre.sioul;
 
 import android.Manifest;
+import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -17,10 +18,16 @@ import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.provider.Telephony;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.util.Log;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -306,6 +313,8 @@ public final class Texts
             return TextSend.send(context, asked.optString("key", ""), asked.optString("to", ""), asked.optString("body", ""), asked.optInt("sub", -1)).toString();
         case "texts-changes":
             return changes(context, asked.optBoolean("clear", true)).toString();
+        case "texts-info":
+            return info(context) ? "true" : "false";
         default:
             return null;
         }
@@ -333,6 +342,11 @@ public final class Texts
             // No telephony.
         }
         out.put("sms_app", sms == null ? "" : sms);
+        // Android keeping restricted settings from Sioul, as it says; null when it does not say.
+        Boolean restricted = restrictedSettings(context);
+        out.put("restricted", restricted == null ? JSONObject.NULL : restricted);
+        // The last question for these permissions answered at once, nothing given: none was shown.
+        out.put("at_once", askedAtOnce(context));
         JSONArray sims = new JSONArray();
         if (phoneState) {
             try {
@@ -348,6 +362,96 @@ public final class Texts
         }
         out.put("sims", sims);
         return out;
+    }
+
+    // ---------------------------------------------------------------- what Android withholds
+
+    /**
+     * How quickly Android must answer the question, giving nothing, for no
+     * question to have been shown: a person reads one longer (ms).
+     */
+    static final long AT_ONCE_MS = 700;
+    /** Java's own file, in the private texts folder: how Android answered the last question (TextsAsk). */
+    static final String ASKED = "asked.json";
+
+    /**
+     * Whether Android keeps "restricted settings" from Sioul: from Android 13
+     * an app installed from a file gets no notification access, and from
+     * Android 15 none of the texts' permissions, until the person allows its
+     * restricted settings in App info ▸ ⋮ ▸ Allow restricted settings
+     * (confirmed with the phone's PIN). Android says it in the app op
+     * ACCESS_RESTRICTED_SETTINGS (`restrictedMode`). Null when this Android
+     * does not say: the op unknown to it, or not readable.
+     */
+    static Boolean restrictedSettings(Context context)
+    {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU)
+            return Boolean.FALSE;
+        try {
+            AppOpsManager ops = context.getSystemService(AppOpsManager.class);
+            if (ops == null)
+                return null;
+            // Android 16's name for the check (the "unsafe" ones of Android 10 to 15 are deprecated there); there since Android 4.4.
+            return restrictedMode(ops.checkOpNoThrow("android:access_restricted_settings", android.os.Process.myUid(), context.getPackageName()));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The op's mode as Android reads it for restricted settings: "errored" for
+     * an app installed from a file, until allowed; "ignored" once a request
+     * was refused for it (App info's ⋮ then offers Allow restricted
+     * settings); "allowed" after. Pure: android/jvm-checks/TextsCheck.java.
+     */
+    static boolean restrictedMode(int mode)
+    {
+        return mode == AppOpsManager.MODE_ERRORED || mode == AppOpsManager.MODE_IGNORED;
+    }
+
+    /**
+     * Whether Android answered the question at once, giving nothing: it showed
+     * none (restricted settings, or "Don't allow" chosen twice before).
+     * `took` is -1 when not measured. Pure: android/jvm-checks/TextsCheck.java.
+     */
+    static boolean atOnce(int given, long took)
+    {
+        return given == 0 && took >= 0 && took < AT_ONCE_MS;
+    }
+
+    /** How Android answered the question (TextsAsk), kept in Java's own file for `state`: how many of how many, how fast. */
+    static void remember(Context context, int given, int of, long took)
+    {
+        File folder = new File(context.getFilesDir(), FOLDER);
+        folder.mkdirs();
+        try (FileOutputStream out = new FileOutputStream(new File(folder, ASKED))) {
+            out.write(new JSONObject().put("at", System.currentTimeMillis()).put("given", given).put("of", of).put("took", took).toString().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException | JSONException e) {
+            Log.w(TAG, "Texts: the answer could not be kept: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** Whether the last question was answered at once, nothing given (`atOnce`); false when none was asked. */
+    static boolean askedAtOnce(Context context)
+    {
+        try {
+            JSONObject asked = new JSONObject(new String(Files.readAllBytes(new File(new File(context.getFilesDir(), FOLDER), ASKED).toPath()), StandardCharsets.UTF_8));
+            return atOnce(asked.optInt("given", 0), asked.optLong("took", -1));
+        } catch (IOException | JSONException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Android's App info for Sioul, where ⋮ ▸ Allow restricted settings and the permissions are. */
+    static boolean info(Context context)
+    {
+        try {
+            context.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Texts: App info could not be opened: " + e.getClass().getSimpleName());
+            return false;
+        }
     }
 
     /** Android's question for the texts' permissions: an activity never seen (TextsAsk), from Sioul's window. */

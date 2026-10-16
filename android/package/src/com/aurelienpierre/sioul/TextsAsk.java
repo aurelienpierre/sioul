@@ -6,6 +6,7 @@ package com.aurelienpierre.sioul;
 import android.Manifest;
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 
 /**
@@ -18,6 +19,8 @@ import android.util.Log;
 public final class TextsAsk extends Activity
 {
     private static final int ASK = 0x5140;
+    /** When the question was asked (elapsed time, ms): its answer at once means none was shown (`Texts.atOnce`). */
+    private long asked = -1;
 
     @Override
     protected void onCreate(Bundle saved)
@@ -25,6 +28,7 @@ public final class TextsAsk extends Activity
         super.onCreate(saved);
         if (saved != null)
             return;
+        asked = SystemClock.elapsedRealtime();
         requestPermissions(new String[] { Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE }, ASK);
     }
 
@@ -36,7 +40,9 @@ public final class TextsAsk extends Activity
         for (int result : results)
             if (result == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 given++;
-        Log.i(Texts.TAG, "Texts: " + given + " of " + results.length + " permissions given.");
+        long took = asked < 0 ? -1 : SystemClock.elapsedRealtime() - asked;
+        Log.i(Texts.TAG, "Texts: " + given + " of " + results.length + " permissions given" + (Texts.atOnce(given, took) ? ", at once: no question was shown." : "."));
+        Texts.remember(this, given, results.length, took);
         finish();
     }
 }

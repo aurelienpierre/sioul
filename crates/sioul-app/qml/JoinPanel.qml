@@ -38,6 +38,21 @@ ColumnLayout {
     readonly property bool typed: join.step === "none" || join.step === "unchecked" || join.otherPlace
     // A new sharing may start there (every place looked at, none found): the passphrase twice.
     readonly property bool starting: join.step === "none"
+    // Joined, on a phone: what Android has not allowed Sioul yet that it needs here (access.rs).
+    property var withheld: []
+
+    function readWithheld() {
+        // A stand-in for Sioul without the texts (an older test's), or a computer: nothing.
+        const answer = typeof join.sioul.texts === "function" ? JSON.parse(join.sioul.texts("access", "{}") || "null") : null
+        join.withheld = answer && answer.lines ? answer.lines : []
+    }
+
+    // Android's question, its page, or Sioul's app info: then read again for half a minute.
+    function askAndroid(verb, what) {
+        join.sioul.texts(verb, JSON.stringify({ what: what }))
+        asking.left = 15
+        asking.restart()
+    }
 
     function reload() {
         // A stand-in for Sioul without the join (an older test's) says nothing under way.
@@ -48,6 +63,8 @@ ColumnLayout {
             passphrase.clear()
             again.clear()
         }
+        if (join.step === "joined")
+            join.readWithheld()
     }
 
     // From the Porch's card: Murena's sign-in at once, or another's address asked.
@@ -74,6 +91,21 @@ ColumnLayout {
     spacing: 6
     Component.onCompleted: join.reload()
     onVisibleChanged: if (visible) join.reload()
+
+    Timer {
+        id: asking
+
+        property int left: 0
+
+        interval: 2000
+        repeat: true
+        onTriggered: {
+            join.readWithheld()
+            asking.left -= 1
+            if (asking.left <= 0 || join.withheld.length === 0)
+                asking.stop()
+        }
+    }
 
     Connections {
         target: join.sioul
@@ -360,6 +392,44 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: join.theme.text
+        }
+    }
+    // What Android has not allowed Sioul yet here, each with what Android wants (a phone's).
+    Repeater {
+        model: join.step === "joined" ? join.withheld : []
+
+        delegate: ColumnLayout {
+            id: withheldLine
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: withheldLine.modelData.said
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: join.theme.text
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Button {
+                    visible: withheldLine.modelData.restricted === true
+                    width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                    text: join.sioul.text("appnotes-open-info")
+                    onClicked: join.askAndroid("access-info", "")
+                }
+                Button {
+                    width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                    text: join.sioul.text("texts-setup-ask")
+                    onClicked: join.askAndroid("access-ask", withheldLine.modelData.what)
+                }
+            }
         }
     }
     Button {

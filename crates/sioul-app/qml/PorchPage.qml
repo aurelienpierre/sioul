@@ -477,6 +477,14 @@ Item {
                     }
                 }
 
+                // On a phone: what Android has not allowed Sioul yet that it needs
+                // here, said once, until you put it away (docs/android.md, "What Android withholds").
+                AccessCard {
+                    Layout.fillWidth: true
+                    sioul: page.sioul
+                    theme: page.theme
+                }
+
                 // Where you stopped, when something interrupted you: first, until it is done.
                 StoppedCard {
                     Layout.fillWidth: true
