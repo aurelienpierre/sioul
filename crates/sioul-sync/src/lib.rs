@@ -90,6 +90,7 @@
 //! - [`devices`]: each device says how it is: when it started, closed, last read and wrote.
 //! - [`lease`]: one computer at a time for a part of the work: reminding doses, numbering invoices.
 //! - [`remote`]: the shared folder read from its server too, when the sync app is late.
+//! - [`loginflow`]: signing in to a Nextcloud through its own page in the browser, for a device joining the others.
 //!
 //! ## The computer
 //!
@@ -129,6 +130,8 @@ pub mod history;
 pub mod imap;
 pub mod keys;
 pub mod lease;
+// Signing in to a Nextcloud through its own page in the browser (Login Flow v2): a new device joins through it.
+pub mod loginflow;
 // The door a browser comes back to after Google's or Microsoft's sign-in page (RFC 8252).
 mod loopback;
 pub mod mailbox;

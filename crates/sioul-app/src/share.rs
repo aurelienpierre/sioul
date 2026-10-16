@@ -422,6 +422,10 @@ struct Status {
     /// there carries the notes folder, asked (Sioul cannot read its settings);
     /// "" on a computer, or once you said.
     carried_ask: String,
+    /// On a phone sharing while another phone shares: "Does this phone replace …?", asked once (`join::replacing`).
+    replace: Option<crate::join::Replacing>,
+    /// On a computer that shares: what a new device needs, in a few lines ("Add a device", `join::add_device`).
+    add_device: Vec<String>,
 }
 
 /// Files gone at once from a folder of notes or papers, held until you say.
@@ -573,7 +577,28 @@ pub(crate) fn status(folder: &str) -> String {
         Some(store) if cfg!(target_os = "android") && here.notes_said(&store).is_none() => say("share-carried-ask", &[("store", shorten(&store))]),
         _ => String::new(),
     };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask })
+    let replace = if on { crate::join::replacing() } else { None };
+    let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+}
+
+/// Where the sharing folder is on a Nextcloud, as this device knows it: the
+/// server's name and the folder's place among its files ("murena.io",
+/// "Documents/Sioul"), Sioul keeping it itself or the backup having found it
+/// there beside the sync app; none otherwise (another sync app's folder).
+fn server_place(mirror: Option<&sioul_sync::remote::State>, folder: &Path) -> Option<(String, String)> {
+    if let Some(state) = mirror {
+        return Some((state.host(), state.place.clone()));
+    }
+    let state = sioul_sync::remote::State::load(&memory_path());
+    if !state.confirmed_for(folder) {
+        return None;
+    }
+    // The folder's address there: …/remote.php/dav/files/<user>/<place>/.
+    let (_, rest) = state.url.split_once("/remote.php/dav/files/")?;
+    let (_, place) = rest.split_once('/')?;
+    let place = place.trim_matches('/');
+    (!place.is_empty()).then(|| (state.host(), crate::join::decoded_path(place)))
 }
 
 fn problem_text(code: &str) -> String {
@@ -843,10 +868,12 @@ pub(crate) fn stop() -> String {
         // Sioul keeping the folder itself: this device's last word (it left)
         // goes up first, off the window's thread, then its own copy goes.
         if let Some(folder) = here.folder_path() {
-            if mirrored().is_some() {
+            if let Some(state) = mirrored() {
                 let (memory, id) = (memory_path(), here.id.clone());
                 std::thread::spawn(move || {
                     mirror_step_for(&folder, &id, false, false);
+                    // Joined through the server's sign-in: its app password let go (`join::let_go`).
+                    crate::join::let_go(&state);
                     sioul_sync::remote::forget(&memory, &folder);
                     let _ = std::fs::remove_dir_all(sioul_sync::remote::mirror_of(&memory));
                 });
@@ -1839,8 +1866,7 @@ fn send_texts(here: &share::Here) {
     if !state.confirmed_for(&folder) || !(state.mode == sioul_sync::remote::MIRROR || state.sending()) {
         return;
     }
-    let config = load_config();
-    let Some(login) = config.accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return };
+    let Some(login) = server_login(&state, &load_config()) else { return };
     let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second());
     if sent.sent > 0 || sent.failure.is_some() {
         let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
@@ -1881,7 +1907,7 @@ pub(crate) fn send_again(qt: &QtThread, shared: &Arc<Shared>) {
         let memory = memory_path();
         let now = jiff::Timestamp::now().as_second();
         match (mirrored(), here.folder_path()) {
-            (Some(state), Some(folder)) => match load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of) {
+            (Some(state), Some(folder)) => match server_login(&state, &load_config()) {
                 Some(login) => {
                     sioul_sync::remote::again_mirror(&memory, &folder, &here.id, &login, now);
                 }
@@ -1911,6 +1937,19 @@ fn mirrored() -> Option<sioul_sync::remote::State> {
     (state.mode == sioul_sync::remote::MIRROR).then_some(state)
 }
 
+/// The login the server's folder is reached with: joined through the
+/// server's own sign-in (`State::user`), that login and its app password
+/// from the keyring (`loginflow::kept`), whatever account the contacts and
+/// calendars use; else the account's, by its id, with its password. None
+/// without either. The password for the requests only, never kept nor said.
+fn server_login(state: &sioul_sync::remote::State, config: &Config) -> Option<sioul_sync::remote::Login> {
+    if !state.user.is_empty() {
+        let password = sioul_sync::loginflow::kept(&state.user, &state.host());
+        return Some(sioul_sync::remote::Login { account: state.account.clone(), url: state.url.clone(), user: state.user.clone(), password });
+    }
+    config.accounts.iter().find(|a| a.id == state.account).and_then(login_of)
+}
+
 /// A step of Sioul keeping the folder itself (`sioul_sync::remote::step`):
 /// `whole`, the server looked through first and what is new there brought
 /// (at most every twenty seconds, unless `urgent`); then what changed here
@@ -1925,8 +1964,7 @@ fn mirror_step_for(folder: &Path, own: &str, whole: bool, urgent: bool) {
     let Some(state) = mirrored().filter(|s| s.confirmed_for(folder)) else { return };
     let now = jiff::Timestamp::now().as_second();
     let whole = whole && (urgent || now - state.tried >= 20);
-    let config = load_config();
-    let Some(login) = config.accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return };
+    let Some(login) = server_login(&state, &load_config()) else { return };
     let stepped = sioul_sync::remote::step(&memory_path(), folder, own, &login, now, whole);
     // On a phone, its log (adb logcat): counts and a code, never a name nor an address.
     if cfg!(target_os = "android") && (stepped.fetched + stepped.sent > 0 || stepped.problem.is_some()) {
@@ -1987,7 +2025,7 @@ fn mirror_line(state: &sioul_sync::remote::State) -> String {
 }
 
 /// A start or a join that did not go, in words.
-fn server_problem(code: &str) -> String {
+pub(crate) fn server_problem(code: &str) -> String {
     let (kind, about) = code.split_once(':').unwrap_or((code, ""));
     let about = || about.to_string();
     match kind {
@@ -2019,45 +2057,7 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
             if login.password.is_none() {
                 return Err(tr().text("share-server-no-password", None));
             }
-            let opened = sioul_sync::remote::open(&login, &place).map_err(|code| server_problem(&code))?;
-            let memory = memory_path();
-            let mirror = sioul_sync::remote::mirror_of(&memory);
-            // A copy of its own, new: what an earlier sharing left there goes.
-            let _ = std::fs::remove_dir_all(&mirror);
-            share::private_dirs(&mirror).map_err(|e| format!("{}: {e}", mirror.display()))?;
-            let key = match &opened.seal {
-                // Joining: the folder's seal, the passphrase chosen there.
-                Some(seal) => {
-                    share::write_atomically(&mirror.join("seal.toml"), seal)?;
-                    share::key_for(&mirror, &passphrase)
-                }
-                None if passphrase != again => return Err(tr().text("share-differ", None)),
-                None => share::key_for(&mirror, &passphrase),
-            };
-            let key = match key {
-                Ok(key) => key,
-                Err(share::Refused::WrongPassphrase) => {
-                    let _ = std::fs::remove_dir_all(&mirror);
-                    return Err(tr().text("share-wrong", None));
-                }
-                Err(share::Refused::Other(e)) => return Err(e),
-            };
-            if opened.seal.is_none() {
-                sioul_sync::remote::create(&login, &opened, &mirror).map_err(|code| {
-                    let _ = std::fs::remove_dir_all(&mirror);
-                    server_problem(&code)
-                })?;
-            }
-            sioul_sync::secret::save_named(share::KEY_NAME, &hex(&key)).map_err(|e| e.sentence(tr(), "Sioul"))?;
-            if let Ok(mut held) = KEY.lock() {
-                *held = Some(key);
-            }
-            sioul_sync::remote::begin(&memory, &mirror, &login, &opened, jiff::Timestamp::now().as_second())?;
-            let state = state_dir();
-            let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut here = share::Here::load(&state);
-            here.folder = Some(mirror.display().to_string());
-            here.save(&state)
+            begin_on_server(&login, &place, &passphrase, &again, false)
         })();
         let problem = started.err().unwrap_or_default();
         // The first exchange brings what the others shared there.
@@ -2066,6 +2066,78 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
         }
         let _ = qt.queue(move |mut sioul| sioul.as_mut().share_started(QString::from(&problem)));
     });
+}
+
+/// Sharing begun through `place` among `login`'s files, Sioul keeping the
+/// folder itself (`remote::MIRROR`): joined when another device shares
+/// through it already (its seal, the passphrase chosen there, typed once and
+/// checked against it), else made there and sealed (the passphrase typed
+/// twice). `signed_in`: `login` is the server's own sign-in's
+/// (`loginflow`), the folder kept with it (`remote::begin_signed_in`). On
+/// the calling thread, never the window's: "" or why not, in words.
+pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, passphrase: &str, again: &str, signed_in: bool) -> Result<(), String> {
+    if passphrase.chars().count() < 12 {
+        return Err(tr().text("share-short", None));
+    }
+    let opened = sioul_sync::remote::open(login, place).map_err(|code| server_problem(&code))?;
+    let memory = memory_path();
+    let mirror = sioul_sync::remote::mirror_of(&memory);
+    // A copy of its own, new: what an earlier sharing left there goes.
+    let _ = std::fs::remove_dir_all(&mirror);
+    share::private_dirs(&mirror).map_err(|e| format!("{}: {e}", mirror.display()))?;
+    let key = match &opened.seal {
+        // Joining: the folder's seal, the passphrase chosen there.
+        Some(seal) => {
+            share::write_atomically(&mirror.join("seal.toml"), seal)?;
+            share::key_for(&mirror, passphrase)
+        }
+        None if passphrase != again => return Err(tr().text("share-differ", None)),
+        None => share::key_for(&mirror, passphrase),
+    };
+    let key = match key {
+        Ok(key) => key,
+        Err(share::Refused::WrongPassphrase) => {
+            let _ = std::fs::remove_dir_all(&mirror);
+            return Err(tr().text("share-wrong", None));
+        }
+        Err(share::Refused::Other(e)) => return Err(e),
+    };
+    if opened.seal.is_none() {
+        sioul_sync::remote::create(login, &opened, &mirror).map_err(|code| {
+            let _ = std::fs::remove_dir_all(&mirror);
+            server_problem(&code)
+        })?;
+    }
+    sioul_sync::secret::save_named(share::KEY_NAME, &hex(&key)).map_err(|e| e.sentence(tr(), "Sioul"))?;
+    if let Ok(mut held) = KEY.lock() {
+        *held = Some(key);
+    }
+    let now = jiff::Timestamp::now().as_second();
+    if signed_in {
+        sioul_sync::remote::begin_signed_in(&memory, &mirror, login, &opened, now)?;
+    } else {
+        sioul_sync::remote::begin(&memory, &mirror, login, &opened, now)?;
+    }
+    let state = state_dir();
+    let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut here = share::Here::load(&state);
+    here.folder = Some(mirror.display().to_string());
+    here.save(&state)
+}
+
+/// An exchange now, on the calling thread (never the window's), as the
+/// minute's runs it (`exchange_now`): Sioul keeping the folder itself, the
+/// server looked through first, what this device wrote sent after. A device
+/// joining waits for it, to say what came (`join`).
+pub(crate) fn exchange_at_once(qt: &QtThread, shared: &Arc<Shared>) {
+    exchange_now(qt, shared);
+}
+
+/// When `device` was last heard of here (`share::heard_of`), in milliseconds; 0 when sharing is off or nothing is known.
+pub(crate) fn heard_of(device: &str) -> i64 {
+    let here = here();
+    let Some((folder, key)) = sealed(attached(&here)) else { return 0 };
+    share::heard_of(&folder, &key, &memory_path(), &here.id, device)
 }
 
 // ---------------------------------------------------------------- fetched from the server too

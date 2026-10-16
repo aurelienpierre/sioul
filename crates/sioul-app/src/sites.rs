@@ -262,10 +262,11 @@ static GATHERED: Mutex<i64> = Mutex::new(0);
 /// came at once already; the rest waits for the Porch as before. A gathered
 /// time the matrix of what reaches you holds (as usual: sleep, a pause, Free
 /// time, a slot of time for you, do-not-disturb) is skipped: what the sites
-/// said waits for the next one.
+/// said waits for the next one. A phone makes no such notice (docs/android.md,
+/// "Notifications"): what its sites said waits for the Porch.
 pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let config = load_config();
-    if !config.reminders.gather || crate::hours::level(sioul_core::attention::Kind::Sites) != sioul_core::attention::Level::Gathered {
+    if cfg!(target_os = "android") || !config.reminders.gather || crate::hours::level(sioul_core::attention::Kind::Sites) != sioul_core::attention::Level::Gathered {
         return;
     }
     let now = jiff::Zoned::now();
@@ -354,7 +355,9 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &st
     if out.level == Level::Never {
         return;
     }
-    if (site.realtime || everywhere || call) && out.told {
+    // A phone makes no notification of its own for a site yet (docs/android.md,
+    // "Notifications"): kept for the Porch, never told to the status line.
+    if (site.realtime || everywhere || call) && out.told && !cfg!(target_os = "android") {
         let heading = format!("{} · {}", site.name, title);
         if let Err(e) = sioul_sync::notify::code(&heading, text, None) {
             crate::backend::tell(qt, shared, e);

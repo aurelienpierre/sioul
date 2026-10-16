@@ -818,6 +818,19 @@ SioulWindow {
         parametersPage.showSetting(key)
     }
 
+    // The Porch's card "Join your other devices": Settings ▸ Your folder and
+    // sharing, where the join begins (SharePanel.qml, JoinPanel.qml): "murena",
+    // "nextcloud" (its address asked), "folder" (a sync app's).
+    function joinDevices(how) {
+        window.showParameters("files")
+        // Once the page and its panel are made (the panel is, the first time its tab shows).
+        Qt.callLater(() => {
+            const share = window.parametersPage ? window.parametersPage.share as SharePanel : null
+            if (share)
+                share.startJoin(how)
+        })
+    }
+
     Component.onCompleted: {
         sioul.mark("the window's own objects made")
         window.makePages()
@@ -994,7 +1007,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2695,6 +2708,61 @@ SioulWindow {
                 () => parametersPage.scrollBy(0.25),
                 () => {},
                 () => grabber.save("share-panel-server-down"),
+                () => window.close()
+            ]
+            // Joining your other devices through your Nextcloud's own sign-in
+            // (SIOUL_GRAB_STEPS=join, docs/database.md), on a demo profile, which
+            // reaches no server: the Porch's card on a device that does not share
+            // yet; Settings ▸ Your folder and sharing, its sign-in offered; then the
+            // panel's steps stood in for (`JoinPanel.stand`, as join.rs says them):
+            // signing in in the browser, the folder found, joined. Then a sharing
+            // device's sights, the panel shown as sharing: "Add a device" on a
+            // computer, a phone silent a day forgotten now, and on a phone whether
+            // it replaces another phone. Nothing signed in, sent nor asked.
+            readonly property var joinSteps: [
+                () => window.page = 0,
+                () => {},
+                () => grabber.save("join-card"),
+                () => {
+                    window.page = 12
+                    parametersPage.section = "files"
+                },
+                () => {},
+                () => grabber.save("join-panel"),
+                () => parametersPage.share.join.stand = { step: "signing", host: "murena.io" },
+                () => {},
+                () => grabber.save("join-signing"),
+                () => parametersPage.share.join.stand = { step: "found", host: "murena.io", signed: sioul.textArgs("join-signed", JSON.stringify({ host: "murena.io", login: "jane@murena.io" })), places: ["Documents/Sioul"] },
+                () => {},
+                () => grabber.save("join-found"),
+                () => parametersPage.share.join.stand = {
+                    step: "joined",
+                    host: "murena.io",
+                    lines: [
+                        sioul.textWith("join-with", "names", sioul.textArgs("join-and", JSON.stringify({ first: "desk", last: "laptop" }))),
+                        sioul.text("join-settings"),
+                        sioul.textWith("join-accounts", "accounts", sioul.textArgs("join-and", JSON.stringify({ first: "jane@example.org", last: sioul.textWith("join-agenda", "host", "murena.io") }))),
+                        sioul.textWith("join-hours", "which", sioul.textArgs("join-and", JSON.stringify({ first: sioul.text("join-hours-work"), last: sioul.text("join-hours-admin") }))),
+                        sioul.textWith("join-agenda-kept", "host", "murena.io")
+                    ],
+                    needs: [sioul.textWith("join-needs-password", "account", "jane@example.org")]
+                },
+                () => {},
+                () => grabber.save("join-joined"),
+                () => parametersPage.share.join.stand = { step: "" },
+                () => {},
+                () => {
+                    const share = parametersPage.share
+                    const when = grabber.demoFrench ? "sam. 10 oct. 21:40" : "Sat 10 Oct 21:40"
+                    const device = { id: "phone-id", name: sioul.text("device-the-phone") + " (Moss)", state: sioul.textArgs("share-device-closed", JSON.stringify({ when: when, shared: when })), notes: [], off: false, forget: false, forget_now: true, build: "" }
+                    const adding = [sioul.text("share-add-intro"), sioul.text("share-add-murena"), sioul.textWith("share-add-place", "place", "Documents/Sioul"), sioul.text("share-add-passphrase")]
+                    const asking = window.phoneGrab ? { id: "phone-id", ask: sioul.textArgs("join-replace-ask", JSON.stringify({ name: "Moss", when: when })) } : null
+                    share.status = Object.assign({}, share.status, { on: true, devices: window.phoneGrab ? [] : [device], add_device: window.phoneGrab ? [] : adding, replace: asking })
+                    share.adding = true
+                },
+                () => grabber.save(window.phoneGrab ? "share-replace" : "share-add-device"),
+                () => parametersPage.scrollBy(0.3),
+                () => grabber.save(window.phoneGrab ? "share-replace-down" : "share-forget-now"),
                 () => window.close()
             ]
             // This device's files sent to the server beside the sync app

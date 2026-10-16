@@ -100,6 +100,7 @@ fn main() {
         "qml/LineDialog.qml",
         "qml/TimeExport.qml",
         "qml/SharePanel.qml",
+        "qml/JoinPanel.qml",
         "qml/PapersPage.qml",
         "qml/PaperDialog.qml",
         "qml/DayView.qml",
@@ -148,6 +149,7 @@ fn main() {
         "qml/TextsSetup.qml",
         "qml/LineButton.qml",
         "qml/StatusLine.qml",
+        "qml/KeysHint.qml",
         "qml/TitleBar.qml",
         "qml/WindowEdges.qml",
     ];

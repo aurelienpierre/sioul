@@ -174,6 +174,13 @@ impl Client {
         *self.own.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(own);
     }
 
+    /// From now on, the login goes to `server`'s origin only, even while the
+    /// homes are found (`discover_on`): a sign-in's app password is the
+    /// server's own, for it alone.
+    pub(crate) fn keep_to_origin(&self, server: &str) {
+        *self.own.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(origin(server).into_iter().collect());
+    }
+
     /// Whether a request may go to `url` with the login: before the homes
     /// are known, finding them (`discover`) keeps to the account's domain.
     fn mine(&self, url: &str) -> Result<(), SyncError> {
@@ -484,6 +491,45 @@ pub fn discover(client: &Client, address: &str, given: Option<&str>, mail_host: 
     if homes.is_empty() {
         let domain = address.rsplit_once('@').map_or(address, |(_, d)| d).to_string();
         return Err(last_error.unwrap_or(SyncError::NotFound(domain)));
+    }
+    Ok(homes)
+}
+
+/// Finds the homes on one Nextcloud only, `server` as its sign-in named it
+/// (`https://murena.io`, `https://cloud.example.org/nextcloud`): its own
+/// `remote.php/dav/`, then its well-known addresses, every request (and every
+/// redirect) on that server's origin alone, whatever its answers name
+/// (`Client::keep_to_origin`): an app password from its sign-in
+/// (`loginflow`) never goes anywhere else, the domain of your login neither.
+pub(crate) fn discover_on(client: &Client, server: &str) -> Result<Homes, SyncError> {
+    let server = server.trim_end_matches('/');
+    let Some(origin) = origin(server) else { return Err(SyncError::NotFound(server.to_string())) };
+    client.keep_to_origin(server);
+    let root = server.split_once("://").and_then(|(scheme, rest)| rest.split('/').next().map(|host| format!("{scheme}://{host}"))).unwrap_or_else(|| server.to_string());
+    let mut homes = Homes::default();
+    let mut last_error = None;
+    for kind in [Kind::Calendars, Kind::Contacts] {
+        let service = match kind {
+            Kind::Calendars => "caldav",
+            Kind::Contacts => "carddav",
+        };
+        for start in [format!("{server}/remote.php/dav/"), format!("{root}/.well-known/{service}")] {
+            match home(client, kind, &start) {
+                Ok(Some(found)) if self::origin(&found).as_deref() == Some(origin.as_str()) => {
+                    match kind {
+                        Kind::Calendars => homes.calendars = Some(found),
+                        Kind::Contacts => homes.contacts = Some(found),
+                    }
+                    break;
+                }
+                Ok(_) => {}
+                Err(e @ SyncError::Login(_)) => return Err(e),
+                Err(e) => last_error = Some(e),
+            }
+        }
+    }
+    if homes.is_empty() {
+        return Err(last_error.unwrap_or_else(|| SyncError::NotFound(crate::remote::host_of(server))));
     }
     Ok(homes)
 }

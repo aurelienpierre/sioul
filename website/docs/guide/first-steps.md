@@ -32,7 +32,7 @@ Each icon's name, with its key, shows when the pointer rests on it, when the key
 
 ### Keys
 
-Everything works from the keyboard: Tab to move, Enter to choose, Escape to go back.
+Everything works from the keyboard: Tab to move, Enter to choose, Escape to go back. On a computer, the status line names the main keys when nothing else needs its room; never on a phone, held upright or sideways.
 
 | Keys | What they do |
 |---|---|
@@ -64,8 +64,12 @@ What differs on a phone:
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
 - **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
 - **Paper letters** are not read, and attachments are not checked by an antivirus: the programs Sioul uses for that on a computer do not exist on a phone.
-- **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself ([Sharing](sharing.md)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
+- **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself; a new phone joins them through Murena's sign-in, or another Nextcloud's, from the Porch's **Join your other devices** ([below](#join-your-other-devices)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
 - **Cards on the home screen**: Sioul's widgets (a long press on the home screen, **Widgets**). The full card, "Sioul", begins with today: the date, the weather now and, on the same row, each of the next four hours, the next morning, afternoon, evening and night, then the next seven days, at the place you chose for the weather (tap the weather in Sioul's status line to choose one). Under it, what the Porch has for you, one short line each: a dose due, never as "not taken" ("check before taking it" when another device may know), a code you just asked a site for, the reminders of dates, waits, payments and papers, a call Sioul declined, two events at once. Last, what now is for and, in work or admin time, the next step. Never a count. A tap on a dose, a code or a call opens the Porch; on a reminder, what it is about; on the step, **Now**. The mail and your events have cards of their own, "Sioul — Mail" and "Sioul — Agenda", in the same list of widgets, to place and order as you like: the latest messages on the Porch (who wrote, in bold while you have not read it, when, the subject, a line of the text; outside the hours chosen for mail, only when the Porch opens), and your coming events, day by day, each in its calendar's colour. With **Details on the home screen** turned off ([Settings](settings.md#display)), they name no sender, subject, event, code, dose, reminder, call or step; the date and the weather still show.
+
+## Join your other devices
+
+Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
 
 ## Add your mail
 

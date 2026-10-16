@@ -1330,9 +1330,15 @@ static MOVED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0
 /// The pause to move and stretch, every so many minutes since Sioul started
 /// or since the last one, without waiting for a focus session; a session
 /// running offers its own (`FocusWindow.qml`). A desktop notification: it
-/// reaches you with the window hidden, from the computer you are at.
+/// reaches you with the window hidden, from the computer you are at. A phone
+/// makes none (docs/android.md, "Notifications"): nothing is tried there, so
+/// that its status line never says notifications are not made on Android
+/// (seen on a phone, 16 October 2026).
 fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned, here: bool) {
     use std::sync::atomic::Ordering;
+    if cfg!(target_os = "android") {
+        return;
+    }
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
     // At a time the matrix of what reaches you drops it (as usual: sleep, the pauses, a slot
@@ -2096,10 +2102,14 @@ fn know() -> Knowledge {
     };
     PULLED.store(others.news == Some(true), std::sync::atomic::Ordering::Relaxed);
     let _held = KNOWING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // This device's own entry: its word on each one's opening, the devices it replaces.
+    let own = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir()));
     // Read, learned, written under its lock: a phone's background service learns too, in its own process.
     let kept = sioul_core::filelock::with_lock(&peers_path(), || {
         let mut kept = load_peers();
         learn_with(&mut kept, &others.claims, &others.entries, &others.heard, others.news, now);
+        let replaced = replacements(&kept, &others.entries, &own);
+        apply_replaced(&mut kept, &replaced);
         save_peers(&kept);
         kept
     });
@@ -2109,7 +2119,6 @@ fn know() -> Knowledge {
     // battery part C, the fifth review's C1).
     let mut peers: Vec<Peer> = kept.peers.values().map(|s| s.peer.clone()).collect();
     // This device's own word on each one's opening, as its sealed entry says it (`acknowledged_openings`).
-    let own = sioul_sync::devices::own(&sioul_sync::devices::own_path(&sioul_core::config::state_dir()));
     for peer in &mut peers {
         peer.acknowledged = own.acked.get(&peer.id).copied().unwrap_or(0);
     }
@@ -2125,6 +2134,45 @@ fn know() -> Knowledge {
         peers.push(Peer { id, name: tr().text("share-other-device", None), heard: now, ..Peer::default() });
     }
     Knowledge { record_lost, peers }
+}
+
+/// Every replacement said (`devices::Entry::replaces`): by the entries read
+/// now, by the newest copy of each kept here (an older copy put back never
+/// takes one away), and by this device's own entry (a phone that joined in
+/// another's place).
+fn replacements(kept: &Peers, entries: &[sioul_sync::devices::Entry], own: &sioul_sync::devices::Entry) -> Vec<sioul_sync::devices::Replaced> {
+    let newest = kept.peers.values().filter_map(|seen| seen.entry.as_ref());
+    entries.iter().chain(newest).chain(std::iter::once(own)).flat_map(|e| e.replaces.iter().cloned()).collect()
+}
+
+/// The devices another device says it replaces (`devices::Entry::replaces`;
+/// this device's own entry's too), counted as forgotten here (`Peer::off`,
+/// `Peer::forgotten`: no word owed on this computer's openings, no doses
+/// waited for from them) while they said nothing newer than the replacement
+/// says: a new start, a later time of their entry, a claim renewed since. A
+/// phone said replaced wrongly counts again by itself the moment it speaks.
+/// Read anew at each look, never kept as a mark.
+fn apply_replaced(kept: &mut Peers, replaced: &[sioul_sync::devices::Replaced]) {
+    for r in replaced {
+        let Some(seen) = kept.peers.get_mut(&r.id) else { continue };
+        let latest = seen.entry.as_ref().map_or(0, latest_time).max(seen.renewed).max(seen.peer.heard).saturating_mul(1000);
+        if r.holds(seen.entry.as_ref().map(|e| e.started), latest) {
+            seen.peer.off = true;
+            seen.peer.forgotten = true;
+        }
+    }
+}
+
+/// What a replacement says of `id` now (`devices::Replaced`): its last start
+/// as kept here, and the latest it was heard of, from its entry, its claims
+/// and its records (`share::heard_of`), in milliseconds.
+pub(crate) fn replaced_now(id: &str) -> sioul_sync::devices::Replaced {
+    let _ = know();
+    let kept = load_peers();
+    let seen = kept.peers.get(id);
+    let entry = seen.and_then(|s| s.entry.as_ref());
+    let latest = entry.map_or(0, latest_time).max(seen.map_or(0, |s| s.renewed.max(s.peer.heard))).saturating_mul(1000);
+    sioul_sync::devices::Replaced { id: id.to_string(), started: entry.map_or(0, |e| e.started), heard: latest.max(crate::share::heard_of(id)) }
 }
 
 /// Each other device's newest entry read here (`learn_with`: an older copy
@@ -2335,6 +2383,12 @@ pub(crate) fn device_off(id: &str, off: bool) -> String {
     mark_device(id, |seen, mark| seen.off = off.then_some(mark))
 }
 
+/// Whether `id` is forgotten here (Forget this device), or replaced by
+/// another device (`apply_replaced`), as this device last knew it.
+pub(crate) fn forgotten_here(id: &str) -> bool {
+    load_peers().peers.get(id).is_some_and(|seen| seen.forgotten.is_some() || seen.peer.forgotten)
+}
+
 /// A device silent for a week, forgotten: not listed until it says anything newer.
 pub(crate) fn device_forget(id: &str) -> String {
     // Forgotten by the sharing too: it no longer holds its newer form back (docs/database.md).
@@ -2360,6 +2414,11 @@ fn mark_device(id: &str, set: impl FnOnce(&mut PeerSeen, Mark)) -> String {
     })
 }
 
+/// How long a phone says nothing before a computer offers to forget it now
+/// (`DeviceRow::forget_now`): a day, where a living phone restates its entry
+/// every hour (`devices::RESTATED`).
+const FORGET_NOW_AFTER: i64 = 86_400;
+
 /// A device as Settings ▸ Your folder and sharing lists it (`share::status`).
 #[derive(Serialize, Debug)]
 pub(crate) struct DeviceRow {
@@ -2373,6 +2432,10 @@ pub(crate) struct DeviceRow {
     off: bool,
     /// Silent for a week: "Forget this device".
     forget: bool,
+    /// On a computer, a phone silent for a day or more, still counted:
+    /// "Forget it now", said with what it changes (a phone that will never
+    /// share again, dead or lost, holds the doses' reminders back for a week otherwise).
+    forget_now: bool,
     /// The Sioul it runs, as its entry says it: "Sioul 0.0.3 (eff8661abcde)", said
     /// calmly when older than this device's; "" when its entry does not say.
     build: String,
@@ -2412,7 +2475,7 @@ fn holder_rows(rows: &mut Vec<DeviceRow>, holders: &[(String, i64, bool)], words
             (false, true) => said(words, "share-device-older", &[("when", when(*heard))]),
             (false, false) => words.text("share-device-unread", None),
         };
-        rows.push(DeviceRow { id: id.clone(), name: capitalized(&words.text("share-other-device", None)), state, notes: Vec::new(), off: false, forget: true, build: String::new() });
+        rows.push(DeviceRow { id: id.clone(), name: capitalized(&words.text("share-other-device", None)), state, notes: Vec::new(), off: false, forget: true, forget_now: false, build: String::new() });
     }
     rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 }
@@ -2422,7 +2485,8 @@ fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) ->
     let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
     let mut rows: Vec<DeviceRow> = peers
         .iter()
-        .filter(|peer| !peer.id.is_empty() && kept.peers.get(&peer.id).is_none_or(|seen| seen.forgotten.is_none()))
+        // Forgotten here, or replaced by another device (`apply_replaced`): not listed until it says anything newer.
+        .filter(|peer| !peer.id.is_empty() && !peer.forgotten && kept.peers.get(&peer.id).is_none_or(|seen| seen.forgotten.is_none()))
         .map(|peer| {
             let seen = kept.peers.get(&peer.id);
             let entry = seen.and_then(|s| s.entry.as_ref()).filter(|_| peer.said.is_some());
@@ -2469,7 +2533,12 @@ fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) ->
                 None => String::new(),
             };
             // Forgotten once silent a week, or once said off (a phone that never gives its word holds the computers until then: L2).
-            DeviceRow { id: peer.id.clone(), name, state, notes, off, forget: !counted || off, build }
+            let forget = !counted || off;
+            // On a computer, a phone silent a day (its entry not changed here since: a living
+            // phone restates it each hour): "Forget it now", rather than a week's wait.
+            let phone = peer.said.as_ref().is_some_and(|s| s.phone) || entry.is_some_and(|e| e.kind == sioul_sync::devices::PHONE);
+            let forget_now = !forget && phone && crate::devices::kind() == sioul_sync::devices::COMPUTER && now - peer.seen.max(peer.heard) >= FORGET_NOW_AFTER;
+            DeviceRow { id: peer.id.clone(), name, state, notes, off, forget, forget_now, build }
         })
         .collect();
     rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -5004,6 +5073,150 @@ mod tests {
         kept.peers.get_mut("desk-id").unwrap().entry = Some(desk(t + 86_400, t + 86_400));
         learn(&mut kept, &[], &[desk(t + 700, t + 760)], &none, t + 800);
         assert_eq!(kept.peers["desk-id"].entry.as_ref().map(|e| e.started), Some(t + 700));
+    }
+
+    /// A phone that will never share again (for example, its
+    /// battery dead, its USB broken), and the new phone that replaces it
+    /// (`devices::Entry::replaces`), or the computer's "Forget it now": never
+    /// two plain reminders of a dose, nor none. Silent, the old phone reminds
+    /// nothing; replaced or forgotten, it owes the desk no word on its opening,
+    /// and the desk is the dose's first again once the new phone said it read
+    /// that opening; until then it keeps quiet around the phone's alarm, then
+    /// reminds with the doubt. The new phone's alarm owes the old one nothing
+    /// either: the desk's own word decides. Should the old phone speak again
+    /// (said replaced by mistake), it counts again at once: the desk owes its
+    /// word again, and is not the first until it gives it. An older copy of
+    /// its entry put back is no news; nothing of it is deleted.
+    #[test]
+    fn a_replaced_or_forgotten_phone_never_makes_two_plain_reminders_nor_none() {
+        use sioul_core::dose_reminders::{DoseReminders, QUIET_AFTER, Tried, others};
+        use sioul_sync::devices::{Entry, PHONE, Replaced};
+        let due: i64 = 1_791_360_000; // 08:00
+        let key = format!("levo@{due}");
+        let opened = due - 3_600; // the desk opened at 07:00, the doses kept there since
+        let none = sioul_sync::share::Heard::default();
+        let phone = |id: &str, started: i64, exported: i64, acked: Option<i64>| Entry {
+            id: id.into(),
+            name: format!("{id} model"),
+            kind: PHONE.into(),
+            started,
+            closed: exported + 5,
+            working: false,
+            imported: exported,
+            exported,
+            doses: true,
+            acked: acked.map(|opening| [("desk-id".to_string(), opening)].into_iter().collect()).unwrap_or_default(),
+            ..Entry::default()
+        };
+        let knows = |kept: &Peers| Knowledge { record_lost: None, peers: kept.peers.values().map(|s| s.peer.clone()).collect() };
+        let learned = |kept: &mut Peers, entries: &[Entry], now: i64| {
+            learn(kept, &[], entries, &none, now);
+            let replaced = replacements(kept, entries, &Entry::default());
+            apply_replaced(kept, &replaced);
+        };
+        let must = |kept: &Peers| must_acknowledge(&knows(kept)).iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+        // The old phone, silent since three days, its word on an opening of the desk long gone.
+        let old = phone("old-id", due - 3 * 86_400 - 600, due - 3 * 86_400, Some(due - 4 * 86_400));
+        let mut kept = Peers::default();
+        learned(&mut kept, std::slice::from_ref(&old), due - 3 * 86_400 + 60);
+        assert_eq!(must(&kept), ["old-id"], "silent, its word is asked all the same");
+        assert!(!all_acknowledged(&knows(&kept), opened, &acknowledgements("desk-id", std::slice::from_ref(&old)), due - 600), "never given: the desk is never the first");
+        // The new phone joins in its place, its entry saying so, with what the old one last said.
+        let replaces = Replaced { id: "old-id".into(), started: old.started, heard: (old.closed.max(old.exported)) * 1000 };
+        let new = Entry { replaces: vec![replaces.clone()], ..phone("new-id", due - 1_800, due - 1_700, None) };
+        learned(&mut kept, &[old.clone(), new.clone()], due - 1_690);
+        let seen_old = kept.peers["old-id"].peer.clone();
+        assert!(seen_old.off && seen_old.forgotten, "replaced: as forgotten here");
+        assert_eq!(must(&kept), ["new-id"], "the old phone owes no word any more");
+        // An older copy of the old phone's entry put back by whoever serves the files: no news, still replaced.
+        let older = phone("old-id", due - 5 * 86_400, due - 5 * 86_400 + 60, None);
+        learned(&mut kept, &[older, new.clone()], due - 1_680);
+        assert!(kept.peers["old-id"].peer.forgotten, "an older copy is no news");
+        // Before the new phone said it read the desk's opening: not the first; quiet around
+        // the phone's alarm, then the doubt first: never plain, never none.
+        let acks = acknowledgements("desk-id", &[old.clone(), new.clone()]);
+        assert!(!all_acknowledged(&knows(&kept), opened, &acks, due - 1_680));
+        assert_eq!(plan(None, true, false, due, due + 180, true), Plan::Quiet(due + QUIET_AFTER));
+        assert_eq!(plan(Some(Tried { quiet: due + QUIET_AFTER, ..Tried::default() }), true, false, due, due + QUIET_AFTER + 60, true), Plan::Late(None));
+        // The new phone said it read this very opening: the desk is the first again, plainly, at the dose's time.
+        let new = Entry { replaces: vec![replaces.clone()], ..phone("new-id", due - 1_800, due - 1_200, Some(opened)) };
+        learned(&mut kept, &[old.clone(), new.clone()], due - 1_190);
+        let acks = acknowledgements("desk-id", &[old.clone(), new.clone()]);
+        let knowledge = knows(&kept);
+        assert!(all_acknowledged(&knowledge, opened, &acks, due - 1_190));
+        assert!(first_here(false, true, opened, Some(due - 1_190), due, word_lead(&knowledge)));
+        assert_eq!(plan(None, true, true, due, due + 30, true), Plan::First);
+        // The new phone's alarm: the old phone, replaced there too, owes it no word; the desk's own decides.
+        let desk = Peer {
+            name: "desk".into(),
+            id: "desk-id".into(),
+            said: Some(sioul_core::health::Said { started: opened, closed: 0, working: true, exported: due + 570, imported: due + 570, doses: true, left: false, phone: false }),
+            complete: true,
+            seen: due + 575,
+            heard: due + 570,
+            ..Peer::default()
+        };
+        let gone = Peer { off: true, forgotten: true, ..seen_old.clone() };
+        let mut shown = DoseReminders::default();
+        *shown.entry(&key, "desk-id") = Tried { maybe: due + 2, shown: due + 3, ..Tried::default() };
+        assert!(matches!(others(&key, due, due + WAIT_FOR_NEWS, "new-id", true, Some(&shown), &[desk.clone(), gone.clone()], true), Others::Reminded), "the desk reminded it: the phone stays silent");
+        let mut quiet = DoseReminders::default();
+        *quiet.entry(&key, "desk-id") = Tried { quiet: due + QUIET_AFTER, ..Tried::default() };
+        assert!(matches!(others(&key, due, due + WAIT_FOR_NEWS, "new-id", true, Some(&quiet), &[desk.clone(), gone.clone()], true), Others::First), "the desk promised none: the phone's alarm is the first");
+        let counted = Peer { off: false, forgotten: false, ..gone.clone() };
+        assert!(matches!(others(&key, due, due + WAIT_FOR_NEWS, "new-id", true, Some(&quiet), &[desk, counted], true), Others::Doubt(_)), "counted, the old phone's alarm could ring: the doubt");
+        // The old phone speaks again (said replaced by mistake): a new start. It counts again at
+        // once, and owes its word on the desk's opening: the desk is not the first until it gives it.
+        let back = phone("old-id", due - 900, due - 890, Some(due - 4 * 86_400));
+        learned(&mut kept, &[back.clone(), new.clone()], due - 880);
+        let seen_back = kept.peers["old-id"].peer.clone();
+        assert!(!seen_back.off && !seen_back.forgotten, "it spoke again: counted");
+        assert_eq!(must(&kept).len(), 2);
+        assert!(!all_acknowledged(&knows(&kept), opened, &acknowledgements("desk-id", &[back.clone(), new.clone()]), due - 880), "never plain beside it");
+        // Its word on this opening, given: the desk the first again.
+        let back = phone("old-id", due - 900, due - 860, Some(opened));
+        learned(&mut kept, &[back.clone(), new.clone()], due - 850);
+        assert!(all_acknowledged(&knows(&kept), opened, &acknowledgements("desk-id", &[back, new]), due - 850));
+        // "Forget it now" on the desk, the same for a phone silent a day: forgotten until it says anything newer.
+        let mut kept = Peers::default();
+        let silent = phone("old-id", due - 86_400 - 600, due - 86_400, Some(due - 2 * 86_400));
+        learned(&mut kept, std::slice::from_ref(&silent), due - 86_400 + 60);
+        let seen = kept.peers.get_mut("old-id").unwrap();
+        seen.forgotten = Some(Mark { started: silent.started, exported: silent.exported, renewed: 0, at: due - 600 });
+        learned(&mut kept, std::slice::from_ref(&silent), due - 590);
+        assert!(must(&kept).is_empty() && kept.peers["old-id"].peer.forgotten);
+        let rows = device_rows_of(&knows(&kept).peers, &kept, due - 590, &Translator::new("en"));
+        assert!(rows.iter().all(|r| r.id != "old-id"), "forgotten: not listed");
+        learned(&mut kept, &[phone("old-id", due - 300, due - 290, None)], due - 280);
+        assert_eq!(must(&kept), ["old-id"], "it spoke again: its word owed again");
+        // What the replacement says: still that start, nothing later than its time.
+        assert!(replaces.holds(Some(old.started), old.exported * 1000) && !replaces.holds(Some(due - 900), old.exported * 1000) && !replaces.holds(Some(old.started), (old.exported + 60) * 1000));
+    }
+
+    /// On a computer, a phone silent for a day or more is offered "Forget it
+    /// now" (a dead phone could hold every dose back a
+    /// week); one heard within the day, or already offered "Forget this
+    /// device", is not; nor is a computer.
+    #[test]
+    fn a_phone_silent_a_day_is_offered_to_be_forgotten_now() {
+        use sioul_core::health::Said;
+        let now: i64 = 1_791_360_000;
+        let peer = |id: &str, phone: bool, seen: i64| Peer {
+            id: id.into(),
+            name: id.into(),
+            said: Some(Said { started: seen - 60, closed: seen, working: false, exported: seen, imported: seen, doses: true, left: false, phone }),
+            complete: true,
+            seen,
+            heard: seen,
+            ..Peer::default()
+        };
+        let peers = [peer("silent-phone", true, now - FORGET_NOW_AFTER - 60), peer("fresh-phone", true, now - 3_600), peer("silent-desk", false, now - FORGET_NOW_AFTER - 60), peer("week-phone", true, now - 8 * 86_400)];
+        let rows = device_rows_of(&peers, &Peers::default(), now, &Translator::new("en"));
+        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
+        assert!(row("silent-phone").forget_now && !row("silent-phone").forget);
+        assert!(!row("fresh-phone").forget_now);
+        assert!(!row("silent-desk").forget_now, "a computer is not offered it");
+        assert!(row("week-phone").forget && !row("week-phone").forget_now, "silent a week: Forget this device, as before");
     }
 
     /// The final review's words: on the phone, a desk whose clock runs an hour
