@@ -221,6 +221,9 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     ];
     let log = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-1");
     sioul_core::texts::append(&log, &texts, &seal, None).unwrap();
+    // A new phone that SMS Backup & Restore gave the old history: the same text under its own row, given once.
+    let restored = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-2");
+    sioul_core::texts::append(&restored, &[sms("sms-902", &["+33199001234"], "See you tomorrow at the market.", 40)], &seal, None).unwrap();
     let _ = std::fs::read_to_string(store.join("sioul-budgets.toml")).map(|budgets| std::fs::write(store.join("sioul-budgets.toml"), format!("{budgets}\n[[budget]]\nid = \"zeugma\"\ntitle = \"Zeugma income\"\nperiod = \"month\"\ntarget = 0\n")));
 }
 
@@ -714,6 +717,8 @@ fn texts_only_when_allowed_and_never_sent() {
     let talk = call(&mut server, "texts", json!({ "conversation": "+33199001234" }));
     let said = text(&talk);
     assert!(said.contains("See you tomorrow at the market.") && said.contains("[code hidden]") && !talk.to_string().contains("830 517"), "{said}");
+    // In both phones' logs (a restore onto a new phone): given once.
+    assert_eq!(said.matches("See you tomorrow at the market.").count(), 1, "{said}");
     assert_eq!(call(&mut server, "search_texts", json!({ "query": "market" }))["structuredContent"]["found"].as_array().unwrap().len(), 1);
     for digits in ["830517", "830 517", "Zeugma"] {
         let found = call(&mut server, "search_texts", json!({ "query": digits }));

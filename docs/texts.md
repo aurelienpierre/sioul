@@ -71,6 +71,20 @@ A text sent twice can harm, as a dose taken twice can; a text sent hours late ca
 - **Where**: the places on the left; the Porch's "From your phone" lines (**Text back** opens the conversation, when texts are read on this computer) and a person's sheet (**Texts with them…**), through `window.openTexts`. A phone has no Texts page: its own SMS app is where a conversation opens there.
 - **One phone sends**: the phone chosen in `texts.toml` (configuration, this computer's own), else the only phone, else the one that shared last.
 
+## Each text once, across phones
+A text can be in two phones' logs. After SMS Backup & Restore puts an old phone's texts on a new one, the new phone's import reads them again and writes them in its own log, under its own rows and conversations. Everything that lists texts on a computer shows each such text once: the Texts page's conversations and threads, its search, the part's line in the sharing panel ("Keeps 4,830 texts…"), and the agents' tools `texts` and `search_texts` ([mcp.md](mcp.md)). The phones' logs keep every copy: a text is folded when it is read, never left out when it is written, so nothing is lost if either phone's log goes (`texts::one_each`). The Porch's lines from your phone are the phones' notifications ([android.md](android.md#messages-on-your-computers)), which a restore never makes.
+- **The matching rule** (`texts::Print`): two copies are one text when they agree on
+  - the kind (a text or a multimedia message) and the way (received or sent);
+  - the moment, to the second (the multimedia provider counts in seconds);
+  - the other people, keyed as Sioul keys numbers, in any order: a text's address; a multimedia message's sender when it was received, those it went to (to, copy, hidden copy) when it was sent, this phone's own address left out however Android or a backup wrote it;
+  - the words (each text part's, for a multimedia message), with the control characters XML cannot carry left out, since a backup never holds them; an empty part, or one a backup wrote "null", counts as none;
+  - the media's content types, whatever their case.
+
+  Never the provider's row or conversation, which each phone numbers its own way, nor whether a medium came: a picture over one phone's size is the same message.
+- **A text truly there twice stays twice**: for each fingerprint, the page shows as many as the phone holding most of them. The same words sent twice within one second, two rows on each phone, are two texts.
+- **The copy shown** has the most media here, else is the one not deleted, else is the first phone's by name. It is said deleted on the phone only when every copy is. A text sent from a computer is said on its own phone's row (an outcome names its phone as well as its row), never on another phone's row of the same number.
+- Tested, either way round: `texts::tests::a_text_in_two_phones_logs_shows_once_and_one_sent_twice_stays_twice`, `texts::tests::the_matching_rule_is_what_a_restore_keeps`, and the agents' tools in `sioul-cli` (`mcp::tests::texts_only_when_allowed_and_never_sent`, a text in two phones' logs).
+
 ## On the demo profile
 `SIOUL_DEMO_TEXTS=1 tools/demo/run.sh OUT en texts` shows the page on stand-in texts written by `tools/demo/make-demo.py --texts`: four conversations, among them a week's with Priya from the choir, a text deleted on the phone, a multimedia message with a drawn picture and a video left on the phone, texts sent from the computer in each state, and an AI agent's draft. The steps take the page at 1100 pixels, at the window's narrowest (680) and at 1600, and say in the log what passes the window's edge (`OVERFLOW`, `WIDE`). They are plain lines marked "demo:", and a plain media file, which only a demo profile reads (`SIOUL_DEMO`), with a stand-in phone.
 

@@ -199,6 +199,10 @@ pub struct Text {
     /// The phone that wrote it (its file's name). Never written.
     #[serde(skip)]
     pub device: String,
+    /// The same text in other phones' logs (`<phone>/<row>`), when `one_each`
+    /// kept this copy for them all (a restore onto a new phone). Never written.
+    #[serde(skip)]
+    pub also: Vec<String>,
 }
 
 fn no_sim() -> i32 {
@@ -418,6 +422,165 @@ pub fn kept(texts: &[Text], media_here: &dyn Fn(&str) -> bool) -> (usize, u64) {
     let mut hashes = BTreeSet::new();
     let bytes = texts.iter().flat_map(|t| t.parts.iter()).filter(|p| p.state == "here" && !p.hash.is_empty() && media_here(&p.hash) && hashes.insert(p.hash.clone())).map(|p| p.size).sum();
     (texts.len(), bytes)
+}
+
+// ---------------------------------------------------------------- each text once
+
+/// What Android writes for "this phone" among a multimedia message's addresses.
+pub const OWN_ADDRESS: &str = "insert-address-token";
+/// A multimedia message's address types (`addr.type`, OMA's PduHeaders): from, to, copy, hidden copy.
+pub const ADDR_FROM: i64 = 137;
+pub const ADDR_TO: i64 = 151;
+pub const ADDR_CC: i64 = 130;
+pub const ADDR_BCC: i64 = 129;
+
+/// What a message is, whichever phone or backup holds it: what SMS Backup &
+/// Restore carries from one phone to another unchanged, and what its own
+/// backups hold of the rows Sioul's archive keeps (docs/texts.md, "Each text
+/// once"). Never the provider's row or conversation, which another phone
+/// numbers its own way.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Print {
+    /// A multimedia message (else a plain text).
+    pub mms: bool,
+    pub outgoing: bool,
+    /// When, to the second: the multimedia provider counts in seconds.
+    pub second: i64,
+    /// The other people, as written: a text's address; a multimedia
+    /// message's sender when received, those it went to when sent (this
+    /// phone's own address left out, as `OWN_ADDRESS` or as its number).
+    pub people: Vec<String>,
+    /// Its words: a text's; each text part's of a multimedia message.
+    pub words: Vec<String>,
+    /// Its media's content types ("image/jpeg").
+    pub media: Vec<String>,
+}
+
+/// Whether a multimedia message's addresses of this type are its other
+/// people for `Print`: a received one's sender; a sent one's recipients.
+pub fn print_people(outgoing: bool, kind: i64) -> bool {
+    if outgoing { matches!(kind, ADDR_TO | ADDR_CC | ADDR_BCC) } else { kind == ADDR_FROM }
+}
+
+/// A part's content type that is words, never a medium: the text and the SMIL that lays it out.
+pub fn is_words(ct: &str) -> bool {
+    ct.starts_with("text/plain") || ct == "application/smil"
+}
+
+/// Words as XML 1.0 can carry them: the control characters it refuses (all
+/// below a space but the tab, the line feed and the carriage return, and
+/// U+FFFE, U+FFFF) left out. SMS Backup & Restore's backups are XML, so a
+/// text restored from one never holds them.
+pub fn carried(words: &str) -> std::borrow::Cow<'_, str> {
+    if words.chars().any(|c| !xml_char(c)) { std::borrow::Cow::Owned(words.chars().filter(|c| xml_char(*c)).collect()) } else { std::borrow::Cow::Borrowed(words) }
+}
+
+/// A character XML 1.0 can carry (its `Char`; Rust's strings hold no lone surrogate).
+pub fn xml_char(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\r') || (c >= ' ' && c != '\u{fffe}' && c != '\u{ffff}')
+}
+
+impl Print {
+    /// A message of a phone's log: its kind, way, second, other people, words and media.
+    pub fn of(t: &Text) -> Print {
+        let mms = t.id.starts_with("mms-");
+        let outgoing = t.direction == "out";
+        let field = |name: &str| t.fields.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
+        let (people, words, media) = if mms {
+            let people: Vec<String> = t.addrs.iter().filter(|a| print_people(outgoing, number(a.get("type")))).filter_map(|a| a.get("address").and_then(Value::as_str)).filter(|a| !a.trim().is_empty() && *a != OWN_ADDRESS).map(str::to_string).collect();
+            let people = if people.is_empty() { t.with.clone() } else { people };
+            let words = t.parts.iter().filter(|p| p.ct.starts_with("text/plain")).map(|p| p.text.clone()).collect();
+            let media = t.parts.iter().filter(|p| !is_words(&p.ct)).map(|p| p.ct.clone()).collect();
+            (people, words, media)
+        } else {
+            let address = field("address");
+            let people = if address.trim().is_empty() { t.with.clone() } else { vec![address] };
+            (people, vec![t.body.clone()], Vec::new())
+        };
+        Print { mms, outgoing, second: t.at.div_euclid(1000), people, words, media }
+    }
+
+    /// Its fingerprint: the same for the same message on any phone and in any
+    /// backup, whatever their rows and conversations (SHA-256, hex). The
+    /// people keyed as Sioul keys numbers (`phones::key`), in any order; the
+    /// words as XML carries them; an empty text part, or one SMS Backup &
+    /// Restore wrote "null", is none.
+    pub fn key(&self, region: Option<&Region>) -> String {
+        use sha2::{Digest, Sha256};
+        let mut people: Vec<String> = self.people.iter().flat_map(|p| p.split('~')).map(|p| phones::key(p, region)).filter(|k| !k.is_empty()).collect();
+        people.sort_unstable();
+        people.dedup();
+        let mut words: Vec<String> = self.words.iter().map(|w| carried(w).into_owned()).filter(|w| !w.is_empty() && !(self.mms && w == "null")).collect();
+        words.sort_unstable();
+        let mut media: Vec<String> = self.media.iter().map(|m| m.trim().to_ascii_lowercase()).collect();
+        media.sort_unstable();
+        let mut hasher = Sha256::new();
+        for piece in [if self.mms { "mms" } else { "sms" }, if self.outgoing { "out" } else { "in" }, &self.second.to_string(), &people.join("\u{1f}"), &words.join("\u{1e}"), &media.join("\u{1f}")] {
+            hasher.update(piece.as_bytes());
+            hasher.update([0u8]);
+        }
+        hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+/// A column's number, written as a number or as words.
+pub fn number(value: Option<&Value>) -> i64 {
+    value.and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))).unwrap_or(0)
+}
+
+/// Every phone's texts with each text once (docs/texts.md, "Each text
+/// once"): a text found in several phones' logs, as after a restore onto a
+/// new phone, once; a text there twice in one phone's log (truly sent
+/// twice), twice: for each fingerprint (`Print::key`), as many as the phone
+/// holding most, its copies paired with the others' in their logs' order.
+/// The copy kept of each pair has the most media here, else is not deleted,
+/// else is the first phone's by name; it is said deleted only when every
+/// copy is, and names the others (`Text::also`). Oldest first, as
+/// `read_logs`. For what the page, the search and agents read; the phones'
+/// logs themselves keep every copy (nothing is lost if one goes).
+pub fn one_each(texts: Vec<Text>, region: Option<&Region>) -> Vec<Text> {
+    let phones: BTreeSet<&str> = texts.iter().map(|t| t.device.as_str()).collect();
+    if phones.len() < 2 {
+        return texts;
+    }
+    // By fingerprint, then by phone: each copy's place, in its log's order.
+    let mut groups: BTreeMap<String, BTreeMap<String, Vec<usize>>> = BTreeMap::new();
+    for (i, t) in texts.iter().enumerate() {
+        groups.entry(Print::of(t).key(region)).or_default().entry(t.device.clone()).or_default().push(i);
+    }
+    let media = |t: &Text| t.parts.iter().filter(|p| p.state == "here" && !p.hash.is_empty()).count();
+    let mut slots: Vec<Option<Text>> = texts.into_iter().map(Some).collect();
+    let mut out: Vec<Text> = Vec::with_capacity(slots.len());
+    for by_phone in groups.into_values() {
+        let most = by_phone.values().map(Vec::len).max().unwrap_or(0);
+        for k in 0..most {
+            let copies: Vec<usize> = by_phone.values().filter_map(|list| list.get(k).copied()).collect();
+            let best = copies
+                .iter()
+                .copied()
+                .max_by(|&a, &b| {
+                    let (a, b) = (slots[a].as_ref(), slots[b].as_ref());
+                    let rank = |t: Option<&Text>| t.map(|t| (media(t), t.deleted == 0, !t.key.is_empty()));
+                    // On a tie, the first phone's by name.
+                    rank(a).cmp(&rank(b)).then_with(|| b.map(|t| &t.device).cmp(&a.map(|t| &t.device)))
+                })
+                .unwrap_or(copies[0]);
+            let others: Vec<Text> = copies.iter().filter(|&&i| i != best).filter_map(|&i| slots[i].take()).collect();
+            let Some(mut kept) = slots[best].take() else { continue };
+            if others.iter().any(|t| t.deleted == 0) {
+                kept.deleted = 0;
+            } else if kept.deleted > 0 {
+                kept.deleted = others.iter().map(|t| t.deleted).fold(kept.deleted, i64::max);
+            }
+            if kept.key.is_empty() {
+                kept.key = others.iter().map(|t| t.key.clone()).find(|k| !k.is_empty()).unwrap_or_default();
+            }
+            kept.also.extend(others.iter().map(|t| format!("{}/{}", t.device, t.id)));
+            out.push(kept);
+        }
+    }
+    out.sort_by(|a, b| (a.at, &a.device, &a.id).cmp(&(b.at, &b.device, &b.id)));
+    out
 }
 
 // ---------------------------------------------------------------- the phone's ledger
@@ -879,15 +1042,32 @@ pub fn conversations(texts: &[Text], requests: &[Request], v: &Viewer) -> Vec<Co
     list
 }
 
+/// The key of the request a text is, by the row its phone filed it as
+/// (`Outcome::row`): its own row or one of its copies' (`Text::also`), each
+/// on its own phone, never another phone's row of the same number. An
+/// outcome that names no phone matches the row on any (as before phones were
+/// two).
+fn row_key(t: &Text, key_of_row: &BTreeMap<&str, Vec<(&str, &str)>>) -> String {
+    let own = (t.device.as_str(), t.id.as_str());
+    std::iter::once(own)
+        .chain(t.also.iter().filter_map(|copy| copy.split_once('/')))
+        .find_map(|(phone, row)| key_of_row.get(row)?.iter().find(|(device, _)| device.is_empty() || *device == phone).map(|(_, key)| key.to_string()))
+        .unwrap_or_default()
+}
+
 /// A conversation's messages, oldest first: its texts, deleted ones said, and
 /// the texts you wrote to it from a computer with their states; a request
-/// Android filed is said on its row, once.
+/// Android filed is said on its row, once. A row is its phone's own: another
+/// phone's row of the same number is another text (`row_key`).
 pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outcome], v: &Viewer) -> Vec<Message> {
-    let key_of_row: BTreeMap<&str, &str> = outcomes.iter().filter(|o| !o.row.is_empty()).map(|o| (o.row.as_str(), o.key.as_str())).collect();
+    let mut key_of_row: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for o in outcomes.iter().filter(|o| !o.row.is_empty()) {
+        key_of_row.entry(o.row.as_str()).or_default().push((o.device.as_str(), o.key.as_str()));
+    }
     let mut out: Vec<Message> = Vec::new();
     let mut shown_keys = BTreeSet::new();
     for t in texts.iter().filter(|t| conversation_id(&t.with) == id) {
-        let key = if t.key.is_empty() { key_of_row.get(t.id.as_str()).map(|k| k.to_string()).unwrap_or_default() } else { t.key.clone() };
+        let key = if t.key.is_empty() { row_key(t, &key_of_row) } else { t.key.clone() };
         let said = (!key.is_empty() && requests.iter().any(|r| r.key == key)).then(|| self::said(state_of(&key, outcomes), v.phone_shared, v.tr, v.now));
         if !key.is_empty() {
             shown_keys.insert(key.clone());
@@ -1287,5 +1467,148 @@ mod tests {
         assert_eq!(said(state_of("h1", &sent), None, &tr, &now).state, "sent", "no report: sent, never 'not delivered'");
         let delivered = [sent[0].clone(), Outcome { key: "h1".into(), state: "delivered".into(), at: NOW + 2 * MINUTE, ..Outcome::default() }];
         assert_eq!(said(state_of("h1", &delivered), None, &tr, &now).text, "Delivered at 10:02.");
+    }
+
+    /// A text of a phone's log with its provider columns, as Java reads them.
+    fn row(phone: &str, id: &str, at: i64, direction: &str, address: &str, body: &str) -> Text {
+        let fields = [("address", serde_json::json!(address)), ("body", serde_json::json!(body)), ("date", serde_json::json!(at))].into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        Text { id: id.into(), at, thread: "7".into(), direction: direction.into(), with: vec![phones::key(address, fr())], body: body.into(), sub: 1, fields, device: phone.into(), ..Text::default() }
+    }
+
+    /// A multimedia message's address row, as the provider gives it.
+    fn addr(address: &str, kind: i64) -> BTreeMap<String, Value> {
+        [("address", serde_json::json!(address)), ("type", serde_json::json!(kind)), ("charset", serde_json::json!(106))].into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+    }
+
+    /// A courier's multimedia message with its picture (here, or over the
+    /// phone's size), its words, and this phone's own address as given.
+    fn picture_message(phone: &str, id: &str, at: i64, own: &str, state: &str) -> Text {
+        let part = |seq: i64, ct: &str, text: &str, hash: &str, state: &str| Part { seq, ct: ct.into(), text: text.into(), hash: hash.into(), state: state.into(), size: if text.is_empty() { 220_000 } else { 0 }, ..Part::default() };
+        let picture = if state == "here" { "aa".repeat(32) } else { String::new() };
+        Text {
+            id: id.into(),
+            at,
+            thread: "9".into(),
+            direction: "in".into(),
+            with: vec!["+33465710042".into()],
+            body: "Le colis.".into(),
+            picture: true,
+            parts: vec![part(-1, "application/smil", "<smil/>", "", "text"), part(0, "image/jpeg", "", &picture, state), part(1, "text/plain", "Le colis.", "", "text")],
+            addrs: vec![addr("+33465710042", ADDR_FROM), addr(own, ADDR_TO)],
+            device: phone.into(),
+            ..Text::default()
+        }
+    }
+
+    /// Two phones' logs as `read_logs` gives them: oldest first.
+    fn logs(mut all: Vec<Text>) -> Vec<Text> {
+        all.sort_by(|a, b| (a.at, &a.device, &a.id).cmp(&(b.at, &b.device, &b.id)));
+        all
+    }
+
+    /// The old phone's history, and the new phone's after SMS Backup &
+    /// Restore put it back there (other rows, other conversations; a picture
+    /// over the new phone's size; a text deleted on the old phone, there
+    /// again), with texts of the new phone's own: one row number the same as
+    /// an old one's, for another text.
+    fn two_phones(old: &str, new: &str) -> (Vec<Text>, Vec<Text>) {
+        let second = |s: i64| NOW - 2 * DAY_MS + s * 1000;
+        let at = NOW - 3 * DAY_MS + 123;
+        let old_log = vec![
+            row(old, "sms-10", at, "in", "01 99 00 12 34", "Le rendez-vous est à 9 h."),
+            // The same words sent twice within one second: two texts.
+            row(old, "sms-11", second(0) + 100, "out", "0199001234", "OK"),
+            row(old, "sms-12", second(0) + 400, "out", "0199001234", "OK"),
+            picture_message(old, "mms-3", second(60), "+33536490000", "here"),
+            Text { deleted: NOW - DAY_MS, ..row(old, "sms-13", second(120), "in", "+33465710042", "Votre colis arrive demain.") },
+        ];
+        let new_log = vec![
+            Text { thread: "2".into(), ..row(new, "sms-501", at, "in", "01 99 00 12 34", "Le rendez-vous est à 9 h.") },
+            row(new, "sms-502", second(0) + 100, "out", "0199001234", "OK"),
+            row(new, "sms-503", second(0) + 400, "out", "0199001234", "OK"),
+            picture_message(new, "mms-77", second(60), OWN_ADDRESS, "too-big"),
+            row(new, "sms-504", second(120), "in", "+33465710042", "Votre colis arrive demain."),
+            row(new, "sms-600", NOW - MINUTE, "in", "0199001234", "À tout à l'heure."),
+            row(new, "sms-11", second(30), "out", "0199001234", "OK"),
+        ];
+        (old_log, new_log)
+    }
+
+    /// The matching rule: what a restore keeps (the way, the second, the
+    /// other people however written, the words, the media's types), never the
+    /// rows, the conversations, this phone's own address, nor a character XML
+    /// cannot carry.
+    #[test]
+    fn the_matching_rule_is_what_a_restore_keeps() {
+        let key = |t: &Text| Print::of(t).key(fr());
+        let text = row("a", "sms-1", NOW + 250, "in", "01 99 00 12 34", "Bonjour");
+        assert_eq!(key(&text), key(&Text { id: "sms-900".into(), thread: "41".into(), device: "b".into(), ..row("b", "sms-900", NOW + 900, "in", "+33 1 99 00 12 34", "Bonjour") }), "another row and number form, the same second");
+        for other in [row("a", "sms-1", NOW + 1000, "in", "01 99 00 12 34", "Bonjour"), row("a", "sms-1", NOW, "out", "01 99 00 12 34", "Bonjour"), row("a", "sms-1", NOW, "in", "01 99 00 12 35", "Bonjour"), row("a", "sms-1", NOW, "in", "01 99 00 12 34", "Bonjour !")] {
+            assert_ne!(key(&text), key(&other), "{other:?}");
+        }
+        assert_eq!(key(&row("a", "sms-1", NOW, "in", "0199001234", "Page\u{c}break")), key(&row("b", "sms-2", NOW, "in", "0199001234", "Pagebreak")), "a form feed no backup can hold");
+        // A multimedia message: this phone's own address as a token or as its number; the media's types in any case.
+        let picture = picture_message("a", "mms-3", NOW, "+33536490000", "here");
+        let restored = picture_message("b", "mms-77", NOW, OWN_ADDRESS, "too-big");
+        assert_eq!(key(&picture), key(&restored), "here on one phone, too large on the other: the same");
+        let upper = Text { parts: picture.parts.iter().map(|p| if p.ct == "image/jpeg" { Part { ct: "IMAGE/JPEG".into(), ..p.clone() } } else { p.clone() }).collect(), ..picture.clone() };
+        assert_eq!(key(&upper), key(&picture), "a type's case aside");
+        let other_words = Text { parts: picture.parts.iter().map(|p| if p.ct == "text/plain" { Part { text: "Le colis est là.".into(), ..p.clone() } } else { p.clone() }).collect(), ..picture.clone() };
+        assert_ne!(key(&other_words), key(&picture));
+        assert_eq!(Print::of(&picture).people, ["+33465710042"], "received: its sender");
+        // Sent: those it went to, this phone's own address aside however written.
+        let sent = |own: &str| Text { direction: "out".into(), addrs: vec![addr(own, ADDR_FROM), addr("04 65 71 00 42", ADDR_TO), addr("+33199001234", ADDR_CC)], ..picture.clone() };
+        assert_eq!(Print::of(&sent(OWN_ADDRESS)).people, ["04 65 71 00 42", "+33199001234"]);
+        assert_eq!(key(&sent(OWN_ADDRESS)), key(&sent("+33536490000")));
+        assert_ne!(key(&picture), key(&sent(OWN_ADDRESS)), "sent, it is another");
+        let backup_null = Text { parts: [picture.parts.clone(), vec![Part { seq: 2, ct: "text/plain".into(), text: "null".into(), state: "text".into(), ..Part::default() }]].concat(), ..picture.clone() };
+        assert_eq!(key(&backup_null), key(&picture), "a text part SMS Backup & Restore wrote \"null\": none");
+    }
+
+    /// The same history in two phones' logs, either way round: each text
+    /// once, a text truly sent twice twice, the copy with its picture kept,
+    /// deleted only when every copy is; what was sent from a computer said on
+    /// its own phone's row, never on another phone's row of the same number.
+    #[test]
+    fn a_text_in_two_phones_logs_shows_once_and_one_sent_twice_stays_twice() {
+        for (old, new) in [("old-phone", "new-phone"), ("zz-old", "new-phone")] {
+            let (old_log, new_log) = two_phones(old, new);
+            assert_eq!(one_each(logs(old_log.clone()), fr()), logs(old_log.clone()), "one phone: as it is");
+            let shown = one_each(logs([old_log.clone(), new_log.clone()].concat()), fr());
+            assert_eq!(shown.len(), 7, "{old}: {:?}", shown.iter().map(|t| format!("{}/{}", t.device, t.id)).collect::<Vec<_>>());
+            let twice: Vec<&Text> = shown.iter().filter(|t| t.body == "OK" && t.at < NOW - 2 * DAY_MS + 1000).collect();
+            assert_eq!(twice.len(), 2, "sent twice, twice");
+            assert!(twice.iter().all(|t| t.also.len() == 1));
+            let mms = shown.iter().find(|t| t.id.starts_with("mms-")).unwrap();
+            assert_eq!((mms.device.as_str(), mms.parts[1].state.as_str()), (old, "here"), "the copy with its picture");
+            assert_eq!(mms.also, [format!("{new}/mms-77")]);
+            let deleted = shown.iter().find(|t| t.body.starts_with("Votre colis")).unwrap();
+            assert_eq!(deleted.deleted, 0, "still on the new phone");
+            assert_eq!(shown.iter().filter(|t| t.body == "OK").count(), 3, "the new phone's own OK, another second");
+            // Deleted on both: said so.
+            let both_gone = one_each(logs(vec![Text { deleted: NOW - DAY_MS, ..row(old, "sms-1", NOW, "in", "0199001234", "x") }, Text { deleted: NOW - MINUTE, ..row(new, "sms-9", NOW, "in", "0199001234", "x") }]), fr());
+            assert_eq!(both_gone.iter().map(|t| t.deleted).collect::<Vec<_>>(), [NOW - MINUTE]);
+            // Twice in one log, once in the other: twice.
+            let once_there = one_each(logs([old_log.clone(), vec![row(new, "sms-502", NOW - 2 * DAY_MS + 100, "out", "0199001234", "OK")]].concat()), fr());
+            assert_eq!(once_there.iter().filter(|t| t.body == "OK").count(), 2);
+        }
+        // The page: one conversation each; a text sent from here said on its own phone's row.
+        let (old_log, new_log) = two_phones("old-phone", "new-phone");
+        let shown = one_each(logs([old_log, new_log].concat()), fr());
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| true;
+        let v = viewer(&now, &tr, &names, &here);
+        let requests = [Request { to: "0199001234".into(), body: "OK".into(), ..request("k1", "old-phone", NOW - 2 * DAY_MS - 30_000) }];
+        let outcomes = [Outcome { key: "k1".into(), state: "sent".into(), at: NOW - 2 * DAY_MS + 100, row: "sms-11".into(), device: "old-phone".into(), ..Outcome::default() }];
+        assert_eq!(conversations(&shown, &requests, &v).len(), 2);
+        let thread = messages("+33199001234", &shown, &requests, &outcomes, &v);
+        assert_eq!(thread.len(), 5, "{:?}", thread.iter().map(|m| (&m.id, &m.body, &m.key)).collect::<Vec<_>>());
+        let sent: Vec<&Message> = thread.iter().filter(|m| m.key == "k1").collect();
+        assert_eq!(sent.len(), 1, "the request said once, on its row");
+        assert!(sent[0].id.starts_with("new-phone/sms-50") && sent[0].said.as_ref().is_some_and(|s| s.state == "sent"), "{:?}", sent[0]);
+        assert!(thread.iter().any(|m| m.id == "new-phone/sms-11" && m.key.is_empty()), "another phone's row of that number: another text");
+        assert_eq!(search("rendez", &shown, &requests, &outcomes, &v, 10).len(), 1);
     }
 }

@@ -24,7 +24,8 @@
 #    qmllint (tools/lint-qml.sh, which reads the types of the newest build:
 #    `cargo build --release -p sioul-app` first, and runs the plain-text check
 #    again) and the QML tests (tools/qml-test.sh);
-# 6. rustdoc for each crate, its private items included, warnings as errors
+# 6. rustdoc for each crate in release mode (it reuses the release build;
+#    a debug tree would take 1.8 to 2.6 GB), its private items included, warnings as errors
 #    (the website's API reference).
 # Builds without incremental files (CARGO_INCREMENTAL=0: they double target/),
 # and stops before a build when the disk that holds target/ has less than
@@ -149,7 +150,7 @@ echo "$(date +%H:%M:%S) $(tail -1 "$out/qml-test.log")"
 # 6. rustdoc.
 for crate in "${crates[@]}"; do
     room
-    RUSTDOCFLAGS="-D warnings" timeout 1800 cargo doc --no-deps --document-private-items -p "$crate" > "$out/doc-$crate.log" 2>&1
+    RUSTDOCFLAGS="-D warnings" timeout 1800 cargo doc --release --no-deps --document-private-items -p "$crate" > "$out/doc-$crate.log" 2>&1
     status=$?
     echo "$(date +%H:%M:%S) rustdoc $crate exit $status"
     grep -E "^(warning|error)" "$out/doc-$crate.log" | head -3

@@ -57,7 +57,7 @@ Things are named by their addresses, as links name them ([tasks.md](tasks.md)): 
 | `now` | What now is for and until when (work, admin, leisure, a meal, sleep, the pause, Free time), do-not-disturb (why, until when), and what reaches you now, row by row of the matrix (docs/attention.md). Cheap; an agent uses it to respect your hours. |
 
 ### Texts
-Your texts (SMS and MMS, [texts.md](texts.md)), **off unless you turn them on**: `[mcp] texts = true`, the switch "Texts" in Settings ▸ AI agents. Texts carry other people's words, often more private than mail; off, the three tools are neither listed nor called.
+Your texts (SMS and MMS, [texts.md](texts.md)), **off unless you turn them on**: `[mcp] texts = true`, the switch "Texts" in Settings ▸ AI agents. Texts carry other people's words, often more private than mail; off, the three tools are neither listed nor called. A text in two phones' logs, as after a restore onto a new phone, is given once, by the rule the Texts page follows ([texts.md](texts.md), "Each text once, across phones").
 
 | Tool | Reads | Changes |
 |---|---|---|
