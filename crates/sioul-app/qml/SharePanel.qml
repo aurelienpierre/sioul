@@ -52,6 +52,8 @@ ColumnLayout {
     readonly property bool setting: !panel.status.on && !panel.joining
     // "Add a device" pressed: what a new device needs, said.
     property bool adding: false
+    // "Put them back" pressed for held notes (their folder), its answer not come yet.
+    property string bringingBack: ""
     // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
     property string removing: ""
     property var removal: ({ text: "", live: false })
@@ -98,6 +100,11 @@ ColumnLayout {
             panel.confirming = null
             panel.problem = problem
             panel.listHistory()
+            panel.reload()
+        }
+        function onShareWithheldBack(problem) {
+            panel.bringingBack = ""
+            panel.problem = problem
             panel.reload()
         }
         function onShareEstimated(estimate) {
@@ -1059,16 +1066,19 @@ ColumnLayout {
                 spacing: 8
 
                 Button {
-                    text: panel.sioul.text("porch-withheld-put-back")
+                    enabled: panel.bringingBack === ""
+                    text: panel.sioul.text(panel.bringingBack === held.modelData.store ? "porch-withheld-putting-back" : "porch-withheld-put-back")
                     onClicked: {
-                        panel.problem = panel.sioul.sharePutBackWithheld(held.modelData.store)
-                        panel.reload()
+                        panel.problem = ""
+                        panel.bringingBack = held.modelData.store
+                        panel.sioul.sharePutBackWithheld(held.modelData.store)
                     }
                 }
                 Button {
+                    enabled: panel.bringingBack === ""
                     text: panel.sioul.text("porch-withheld-take-out")
                     onClicked: {
-                        panel.problem = panel.sioul.shareConfirmGone(held.modelData.store)
+                        panel.problem = panel.sioul.shareTakeOutWithheld(held.modelData.store)
                         panel.reload()
                     }
                 }

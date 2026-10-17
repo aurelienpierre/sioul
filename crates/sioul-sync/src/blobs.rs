@@ -446,6 +446,12 @@ pub struct Wanted {
     /// By the sealed file's name in the folder (`name`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub blobs: BTreeMap<String, Want>,
+    /// Sioul keeping the folder itself: the texts' media a computer lacks,
+    /// by the sealed file's name, asked by the texts' page as it brings them
+    /// (the window's `texts::fetch_media`), fetched by name as the others
+    /// are (`remote`); never touched by the exchange, which asks `blobs`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub media: BTreeMap<String, Want>,
     /// When a large one last came on a metered or slow connection (Unix seconds).
     #[serde(default)]
     pub large_at: i64,
@@ -491,7 +497,7 @@ impl Wanted {
             if wanted == before {
                 return Ok(());
             }
-            if wanted.blobs.is_empty() {
+            if wanted.blobs.is_empty() && wanted.media.is_empty() {
                 return match std::fs::remove_file(&path) {
                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
                     _ => Ok(()),

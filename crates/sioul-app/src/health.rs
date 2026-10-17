@@ -2436,7 +2436,7 @@ fn mark_device(id: &str, set: impl FnOnce(&mut PeerSeen, Mark)) -> String {
 /// How long a phone says nothing before a computer offers to forget it now
 /// (`DeviceRow::forget_now`): a day, where a living phone restates its entry
 /// every hour (`devices::RESTATED`).
-const FORGET_NOW_AFTER: i64 = 86_400;
+pub(crate) const FORGET_NOW_AFTER: i64 = 86_400;
 
 /// A device as Settings ▸ Your folder and sharing lists it (`share::status`).
 #[derive(Serialize, Debug)]

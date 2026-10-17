@@ -121,18 +121,28 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
 /// copied (it was going anyway), and no reference to its content, which
 /// leaves the sharing folder as soon as every device that counts read that it
 /// was taken out (`share::removed_due`): this version stays its 30 days.
-/// Copied (`keep`) when it cannot be moved (another disk).
-pub fn keep_moved(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<(), String> {
+/// Copied (`keep`) when it cannot be moved (another disk: on a phone, the
+/// notes are in its shared storage, the history in Sioul's own), and when
+/// the file has other names (hard links): moved, the history would hold the
+/// one file they share, and make it yours alone under each. The bytes it
+/// copied (0 when moved), for the exchange's bound on copies
+/// (`share::TAKE_OUT_COPIES`).
+pub fn keep_moved(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<u64, String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
     crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    #[cfg(unix)]
+    let linked = std::fs::metadata(path).is_ok_and(|m| std::os::unix::fs::MetadataExt::nlink(&m) > 1);
+    #[cfg(not(unix))]
+    let linked = false;
     let target = dir.join(new_stamp(&dir, now_ms));
-    if std::fs::rename(path, &target).is_err() {
-        return keep(root, part, file, path, now_ms);
+    if linked || std::fs::rename(path, &target).is_err() {
+        return keep(root, part, file, path, now_ms).map(|()| size);
     }
     // Yours alone, as a copy is.
     crate::share::make_private(&target);
     prune_file(&dir, now_ms, false);
-    Ok(())
+    Ok(0)
 }
 
 /// The part of the history that holds your calendars' and contacts' versions
@@ -392,5 +402,44 @@ mod tests {
                 assert!(line.contains(&pointers), "{guide}: {line}");
             }
         }
+    }
+
+    /// What a bulk's take-outs cost when they are copied (review of 17
+    /// October 2026, L9): 7,000 notes of 500 bytes kept as copies (each
+    /// with another name, so never moved), then moved.
+    /// `cargo test --release -p sioul-sync history::tests::what_a_bulk_s_copies_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    #[cfg(unix)]
+    fn what_a_bulk_s_copies_cost() {
+        let base = scratch("bulk-cost");
+        let (notes, root, links) = (base.join("notes"), base.join("history"), base.join("links"));
+        for dir in [&notes, &links] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let note = "a note of some five hundred bytes, as an agent's run writes it. ".repeat(8);
+        for n in 0..7_000 {
+            std::fs::write(notes.join(format!("{n}.md")), &note[..500]).unwrap();
+            std::fs::hard_link(notes.join(format!("{n}.md")), links.join(format!("{n}.md"))).unwrap();
+        }
+        let started = std::time::Instant::now();
+        let mut copied = 0;
+        for n in 0..7_000 {
+            let path = notes.join(format!("{n}.md"));
+            copied += keep_moved(&root, "notes", &format!("files/notes/agents/{n}.md"), &path, 1_800_000_000_000).unwrap();
+            std::fs::remove_file(&path).unwrap();
+        }
+        let copying = started.elapsed();
+        for n in 0..7_000 {
+            std::fs::rename(links.join(format!("{n}.md")), notes.join(format!("{n}.md"))).unwrap();
+        }
+        let started = std::time::Instant::now();
+        for n in 0..7_000 {
+            keep_moved(&root, "notes", &format!("files/notes/agents/{n}.md"), &notes.join(format!("{n}.md")), 1_800_000_100_000).unwrap();
+        }
+        let moving = started.elapsed();
+        println!("7000 take-outs of 500 bytes: copied ({copied} bytes) in {copying:?}; moved in {moving:?}");
+        assert_eq!(copied, 7_000 * 500);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -14,7 +14,9 @@
 //!    phone is in use); a file the sync app wrote that the pull brought
 //!    already, left out (`brought_already`); then the sealed files of the
 //!    others' notes and papers this phone waits for, fetched by their names
-//!    (`share::fetch_wanted_here`), for the window's exchange to write;
+//!    (`share::fetch_wanted_here`; Sioul keeping the folder itself, `blobs/`
+//!    listed too when due, `remote::sealed_step`), for the window's exchange
+//!    or the next step to write;
 //! 2. do-not-disturb: what this device should ask of its system, compared
 //!    with what was asked last; changed, Sioul's own process is asked to apply
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
@@ -402,9 +404,10 @@ fn step(reason: &str) -> serde_json::Value {
         }
     }
     // The others' sealed notes and papers this phone waits for, fetched
-    // from the server by their names beside the mail (`share::fetch_wanted_here`):
-    // the window's exchange, or the next step, writes them. Waited for before
-    // the answer, with the mail.
+    // from the server by their names beside the mail (`share::fetch_wanted_here`;
+    // Sioul keeping the folder itself, `blobs/` listed too when due): the
+    // window's exchange, or the next step, writes them. Waited for before the
+    // answer, with the mail; never by a dose's alarm.
     let wanted = std::thread::spawn(crate::share::fetch_wanted_here);
     // The calls' table as your devices' news left it, and the notification's words for them.
     let calls = calls.unwrap_or_else(|| crate::calls::step(false));

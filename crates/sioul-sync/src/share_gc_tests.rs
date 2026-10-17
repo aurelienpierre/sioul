@@ -135,7 +135,7 @@ fn notes_gone_at_once_leave_by_themselves_after_two_weeks() {
     let held = outcome.withheld.clone().unwrap();
     assert_eq!(held.len(), 1, "{held:?}");
     assert_eq!((held[0].store.as_str(), held[0].count, held[0].first, held[0].last, held[0].leaves), ("files/notes/", 23, went, went, went + 14 * DAY_MS));
-    assert_eq!(held[0].folders, vec!["archive/2026".to_string(), "old".to_string()], "the folders most were in, at most two levels");
+    assert_eq!(held[0].folders, vec!["archive/2026".to_string()], "the deepest folder that holds four in five of them (`bulk_folders`)");
     assert_eq!(withheld(&desk.memory, &desk.id), held, "kept for the window");
     // Until two weeks have passed: nothing taken out there.
     for at in [went + MINUTE, went + 13 * DAY_MS, went + 14 * DAY_MS - MINUTE] {
@@ -543,6 +543,7 @@ fn a_forgotten_device_s_entry_and_note_stay_a_replaced_one_s_go() {
         // Its last word sealed again lately (another device's use): later.
         std::fs::File::options().write(true).open(o.folder.join("blobs").join(&o.last_word)).unwrap().set_modified(std::time::SystemTime::now()).unwrap();
         with_notes(&o.desk, &o.folder, &o.key, o.now, &o.dn);
+        let claim_before = std::fs::read(o.folder.join("leases").join("health").join(format!("{}.lease", o.old.id))).unwrap();
         let said = device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + 1_000).unwrap();
         assert!(!said.counts && said.entry_stays != replaced && said.notes_stay != replaced, "{replaced}: {said:?}");
         assert!(said.sealed == 1 && said.sealed_later == 1, "{said:?}");
@@ -554,10 +555,14 @@ fn a_forgotten_device_s_entry_and_note_stay_a_replaced_one_s_go() {
         assert_eq!(Memory::load_all(&o.desk.memory, &o.desk.id).sealed.theirs.get(&o.last_word).map(|(w, _)| w.as_str()), Some(o.old.id.as_str()), "swept in its time");
         // The laptop, which may still count it, goes on: nothing held back by its note gone.
         with_notes(&o.laptop, &o.folder, &o.key, o.now + MINUTE, &o.ln);
-        // A sync app bringing its claim back meanwhile: taken out again.
-        put(&o.folder, &format!("leases/health/{}.lease", o.old.id), b"an old copy\n");
+        // A sync app bringing its claim back meanwhile: taken out again; one it wrote since stays.
+        std::fs::write(&claim, &claim_before).unwrap();
         with_notes(&o.desk, &o.folder, &o.key, o.now + 2 * MINUTE, &o.dn);
         assert!(!claim.exists(), "{replaced}: an old copy brought back goes again");
+        put(&o.folder, &format!("leases/health/{}.lease", o.old.id), b"a claim written since, of another size\n");
+        with_notes(&o.desk, &o.folder, &o.key, o.now + 3 * MINUTE, &o.dn);
+        assert!(claim.exists(), "{replaced}: one it wrote since stays (review of 17 October 2026, L7)");
+        std::fs::remove_file(&claim).unwrap();
         // Two weeks on, as old as the sweep wants (once it is dated so): its content goes.
         sealed_long_ago(&o.folder, &o.last_word);
         with_notes(&o.desk, &o.folder, &o.key, o.now + 15 * DAY_MS, &o.dn);
@@ -633,4 +638,362 @@ fn a_text_s_medium_stays_when_a_device_s_files_are_removed() {
     assert!(sealed(&o.folder, &o.last_word));
     assert!(rounds(&o.folder).get(&o.old.id).is_none_or(|r| r.is_empty()), "its rounds go all the same");
     let _ = std::fs::remove_dir_all(&o.base);
+}
+
+
+/// M1 (review of 17 October 2026): "Take them out now" takes out the files
+/// held after going many at once, those alone; a folder that lists empty
+/// beside them (a disk not mounted at its place in the notes) stays unknown
+/// until its own line says so, and then it alone goes.
+#[test]
+fn take_them_out_now_takes_out_the_bulk_alone_never_a_folder_listing_empty() {
+    let base = scratch("gc-confirm-bulk");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..20 {
+        put(&dn, &format!("old/{n}.md"), format!("# old {n}\n").as_bytes());
+    }
+    for n in 0..4 {
+        put(&dn, &format!("disk/{n}.md"), format!("# disk {n}\n").as_bytes());
+        put(&dn, &format!("card/{n}.md"), format!("# card {n}\n").as_bytes());
+    }
+    // Many notes that stay: the two folders' eight are not many at once.
+    for n in 0..60 {
+        put(&dn, &format!("keep/{n}.md"), format!("# keep {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    std::fs::remove_dir_all(dn.join("old")).unwrap();
+    for n in 0..4 {
+        std::fs::remove_file(dn.join(format!("disk/{n}.md"))).unwrap();
+        std::fs::remove_file(dn.join(format!("card/{n}.md"))).unwrap();
+    }
+    let outcome = with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert!(["disk", "card"].iter().all(|f| outcome.problems.iter().any(|p| *p == format!("share-vanished:files/notes/{f}/:4"))) && outcome.problems.iter().any(|p| p == "share-vanished:files/notes/:20"), "{outcome:?}");
+    assert_eq!(confirm_withheld(&desk.memory, &desk.id, "files/notes/"), Ok(20));
+    let outcome = with_notes(&desk, &folder, &key, NOW + 3 * MINUTE, &dn);
+    assert_eq!(outcome.sent, 20, "the bulk alone: {outcome:?}");
+    with_notes(&laptop, &folder, &key, NOW + 4 * MINUTE, &ln);
+    let left = names_in(&ln);
+    assert!(left.iter().all(|f| !f.starts_with("old/")) && left.iter().filter(|f| f.starts_with("disk/") || f.starts_with("card/")).count() == 8, "{left:?}");
+    // Two weeks on, the folders listing empty still never leave.
+    with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 15 * DAY_MS + MINUTE, &ln);
+    assert_eq!(names_in(&ln).iter().filter(|f| f.starts_with("disk/") || f.starts_with("card/")).count(), 8);
+    // One's own line pressed: it alone goes, never the folder beside it.
+    confirm_gone(&desk.memory, &desk.id, "files/notes/disk/").unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS + 2 * MINUTE, &dn).sent, 4);
+    with_notes(&laptop, &folder, &key, NOW + 15 * DAY_MS + 3 * MINUTE, &ln);
+    let left = names_in(&ln);
+    assert!(left.iter().all(|f| !f.starts_with("disk/")) && left.iter().filter(|f| f.starts_with("card/")).count() == 4, "{left:?}");
+    // Nor later: the folder beside it stays unknown.
+    with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS + 20 * MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 15 * DAY_MS + 21 * MINUTE, &ln);
+    assert_eq!(names_in(&ln).iter().filter(|f| f.starts_with("card/")).count(), 4);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// M2 (review of 17 October 2026): two notes holding the same bytes; one
+/// edited (the laptop keeps its earlier version by reference), the other
+/// taken out: that content is replaced lately, and never leaves the folder
+/// early; the earlier version puts back.
+#[test]
+fn a_content_replaced_lately_never_leaves_early_and_its_version_puts_back() {
+    let base = scratch("gc-early-dup");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let same = b"# A template, the same in two notes\n";
+    put(&dn, "x.md", same);
+    put(&dn, "y.md", same);
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let c = content_name(&base, &key, same);
+    sealed_long_ago(&folder, &c);
+    put(&dn, "y.md", b"# y, written over the template\n");
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 3 * MINUTE, &ln);
+    let root = crate::history::root(&laptop.memory);
+    let versions = crate::history::versions(&root, "notes", "files/notes/y.md");
+    assert!(versions.len() == 1 && versions[0].sealed.is_some(), "kept by reference: {versions:?}");
+    std::fs::remove_file(dn.join("x.md")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 4 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn).sent, 1);
+    let round = Memory::load(&desk.memory, &desk.id).round;
+    let now = past_round(&desk, &folder, &key, &dn, NOW + 15 * MINUTE, round);
+    with_notes(&laptop, &folder, &key, now + 10_000, &ln);
+    assert!(read_of(&folder, &laptop, &desk) > round);
+    with_notes(&desk, &folder, &key, now + MINUTE, &dn);
+    assert!(sealed(&folder, &c), "replaced lately: not early");
+    let stamp = versions[0].stamp.clone();
+    match crate::history::version(&root, "notes", "files/notes/y.md", &stamp) {
+        Some(crate::history::Kept::Sealed { hash, .. }) => {
+            let target = base.join("put-back");
+            crate::blobs::get(&folder, &key, &hash, &target).unwrap();
+            assert_eq!(std::fs::read(&target).unwrap(), same, "its earlier version opens");
+        }
+        other => panic!("a reference: {other:?}"),
+    }
+    // In its time, as any replaced content.
+    with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &c));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// M3 (review of 17 October 2026): notes an old computer wrote, deleted
+/// here in bulk and held; that computer leaves; "Remove its files" leaves
+/// their contents: "Put them back" brings them all back.
+#[test]
+fn remove_its_files_leaves_what_put_them_back_needs() {
+    let o = old_one("gc-remove-held");
+    let stores = stores_with(&o.desk, &o.dn, false);
+    for n in 0..12 {
+        put(&o.on, &format!("trip/{n}.md"), format!("# day {n}, written on the old one\n").as_bytes());
+    }
+    with_notes(&o.old, &o.folder, &o.key, o.now, &o.on);
+    with_notes(&o.desk, &o.folder, &o.key, o.now + MINUTE, &o.dn);
+    for n in 0..12 {
+        sealed_long_ago(&o.folder, &content_name(&o.base, &o.key, format!("# day {n}, written on the old one\n").as_bytes()));
+    }
+    std::fs::remove_dir_all(o.dn.join("trip")).unwrap();
+    assert_eq!(with_notes(&o.desk, &o.folder, &o.key, o.now + 2 * MINUTE, &o.dn).withheld.map(|w| w[0].count), Some(12));
+    crate::devices::change(&crate::devices::own_path(&o.old.roots.state), Some((&o.folder, &o.key)), |e| {
+        e.close((o.now + 3 * MINUTE) / 1000);
+        e.left = true;
+    })
+    .unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now + 3 * MINUTE, &o.dn);
+    let removed = remove_device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + 4 * MINUTE).unwrap();
+    assert_eq!(removed.sealed, 2, "its two older last words, never the held notes': {removed:?}");
+    assert_eq!(put_back_withheld(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, "files/notes/"), Ok(12));
+    assert_eq!(names_in(&o.dn).iter().filter(|f| f.starts_with("trip/")).count(), 12);
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
+/// L1 and L2 (review of 17 October 2026): "Put them back" never writes over
+/// a file there, a disk too full stops it, said; a bulk held by a Sioul that
+/// kept no date of its files (up to 17 October 2026) comes back dated as
+/// its last record dates it.
+#[test]
+fn put_back_keeps_its_care_and_dates_an_older_bulk_by_its_records() {
+    let base = scratch("gc-put-back-care");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 3 * DAY_MS) as u64);
+    for n in 0..12 {
+        put(&dn, &format!("trip/{n}.md"), format!("# day {n}\n").as_bytes());
+        std::fs::File::options().write(true).open(dn.join(format!("trip/{n}.md"))).unwrap().set_modified(when).unwrap();
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("trip")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + MINUTE, &dn);
+    // As a Sioul up to 17 October 2026 left it: no date kept of the files held.
+    let sealed_path = desk.memory.with_file_name("files.json");
+    let mut files: serde_json::Value = serde_json::from_slice(&std::fs::read(&sealed_path).unwrap()).unwrap();
+    if let Some(stats) = files["files"].as_object_mut() {
+        stats.retain(|name, _| !name.starts_with("files/notes/trip/"));
+    }
+    std::fs::write(&sealed_path, serde_json::to_vec(&files).unwrap()).unwrap();
+    let stores = stores_with(&desk, &dn, false);
+    // No room: nothing written, said.
+    crate::disk::ROOM.with(|room| room.set(Some(0)));
+    assert!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/").is_err_and(|e| e.starts_with("share-no-room:")));
+    crate::disk::ROOM.with(|room| room.set(Some(u64::MAX)));
+    assert!(!dn.join("trip").join("0.md").exists());
+    // A place taken: never written over.
+    put(&dn, "trip/3.md", b"# written meanwhile\n");
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(11));
+    assert_eq!(std::fs::read(dn.join("trip/3.md")).unwrap(), b"# written meanwhile\n");
+    // Dated as its last record was made (its first exchange, here), not now.
+    let dated = std::fs::metadata(dn.join("trip/5.md")).unwrap().modified().unwrap();
+    let recorded = std::time::UNIX_EPOCH + std::time::Duration::from_millis(NOW as u64);
+    let off = dated.duration_since(recorded).unwrap_or_else(|e| e.duration());
+    assert!(off < std::time::Duration::from_secs(60), "dated as its last record was made: {dated:?} for {recorded:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// L3 (review of 17 October 2026): files held as gone many at once stay so
+/// until their own two weeks are over, whatever leaves beside them.
+#[test]
+fn a_bulk_s_remainder_leaves_in_its_own_time() {
+    let base = scratch("gc-remainder");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    put(&dn, "today.md", b"# Today\n");
+    put(&dn, "old/stays.md", b"# stays\n");
+    for n in 0..14 {
+        put(&dn, &format!("old/{n}.md"), format!("# old {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    for n in 0..12 {
+        std::fs::remove_file(dn.join(format!("old/{n}.md"))).unwrap();
+    }
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    for n in 12..14 {
+        std::fs::remove_file(dn.join(format!("old/{n}.md"))).unwrap();
+    }
+    let five = NOW + 5 * DAY_MS;
+    with_notes(&desk, &folder, &key, five, &dn);
+    // Day 14: the first twelve leave; the two of day 5 stay until their own day 14.
+    with_notes(&desk, &folder, &key, NOW + 14 * DAY_MS + 3 * MINUTE, &dn);
+    with_notes(&desk, &folder, &key, NOW + 14 * DAY_MS + 4 * MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 14 * DAY_MS + 5 * MINUTE, &ln);
+    let left: Vec<String> = names_in(&ln).into_iter().filter(|f| f.starts_with("old/") && f != "old/stays.md").collect();
+    assert_eq!(left, vec!["old/12.md".to_string(), "old/13.md".to_string()], "the remainder held");
+    with_notes(&desk, &folder, &key, five + 14 * DAY_MS - MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, five + 14 * DAY_MS - 30_000, &ln);
+    assert_eq!(names_in(&ln).len(), 4, "until its own two weeks are over");
+    with_notes(&desk, &folder, &key, five + 14 * DAY_MS, &dn);
+    with_notes(&laptop, &folder, &key, five + 14 * DAY_MS + MINUTE, &ln);
+    assert_eq!(names_in(&ln), BTreeSet::from(["today.md".to_string(), "old/stays.md".to_string()]), "and then, in its own time");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// L4 (review of 17 October 2026): a folder moved out of the notes and
+/// linked back in its place is unknown, said, never taken out.
+#[cfg(unix)]
+#[test]
+fn a_folder_replaced_by_a_link_never_leaves() {
+    let base = scratch("gc-linked");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln, elsewhere) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("elsewhere"));
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..20 {
+        put(&dn, &format!("archive/{n}.md"), format!("# {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    std::fs::rename(dn.join("archive"), &elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, dn.join("archive")).unwrap();
+    let outcome = with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/archive/:20") && outcome.sent == 0, "{outcome:?}");
+    assert_eq!(outcome.withheld, Some(Vec::new()), "unknown, not gone");
+    for at in [NOW + 15 * DAY_MS, NOW + 30 * DAY_MS] {
+        assert_eq!(with_notes(&desk, &folder, &key, at, &dn).sent, 0);
+    }
+    with_notes(&laptop, &folder, &key, NOW + 30 * DAY_MS + MINUTE, &ln);
+    assert_eq!(names_in(&ln).len(), 21);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// L5 (review of 17 October 2026): where a bulk was, said shortly: the
+/// deepest folder that holds four in five; else the few that hold most;
+/// else the folder above them all.
+#[test]
+fn a_bulk_s_folders_are_said_shortly() {
+    let many: Vec<String> = (0..300).flat_map(|run| (0..20).map(move |n| format!("agents/{run:04}/{n}.md"))).collect();
+    assert_eq!(bulk_folders(many.iter().map(String::as_str)), vec!["agents".to_string()]);
+    let mostly: Vec<String> = (0..20).map(|n| format!("archive/2026/{n}.md")).chain((0..3).map(|n| format!("old/{n}.md"))).collect();
+    assert_eq!(bulk_folders(mostly.iter().map(String::as_str)), vec!["archive/2026".to_string()]);
+    let two: Vec<String> = (0..10).map(|n| format!("a/{n}.md")).chain((0..10).map(|n| format!("b/{n}.md"))).collect();
+    assert_eq!(bulk_folders(two.iter().map(String::as_str)), vec!["a".to_string(), "b".to_string()]);
+    let top: Vec<String> = (0..10).map(|n| format!("{n}.md")).collect();
+    assert_eq!(bulk_folders(top.iter().map(String::as_str)), vec![String::new()]);
+    let spread: Vec<String> = (0..10).map(|n| format!("d{n}/x.md")).collect();
+    assert_eq!(bulk_folders(spread.iter().map(String::as_str)), vec![String::new()], "spread: the folder above them all");
+}
+
+/// L6 (review of 17 October 2026): a device forgotten here, its files
+/// removed (its entry and note kept: it may still count elsewhere), then
+/// replaced by another device's word: every device stops counting it, and
+/// its entry and note go at the next exchange.
+#[test]
+fn forgotten_then_replaced_its_entry_and_note_go() {
+    let o = old_one("gc-forgotten-replaced");
+    let stores = stores_with(&o.desk, &o.dn, false);
+    forget_device(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &o.old.id).unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now, &o.dn);
+    remove_device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + 1_000).unwrap();
+    let (entry, notes, _, _) = device_paths(&o);
+    assert!(entry.exists() && notes.exists(), "forgotten here only: kept");
+    let r = crate::devices::Replaced { id: o.old.id.clone(), started: Memory::load(&o.desk.memory, &o.desk.id).seen.get(&o.old.id).map_or(0, |e| e.started), heard: heard_of(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &o.old.id) };
+    crate::devices::change(&crate::devices::own_path(&o.laptop.roots.state), Some((&o.folder, &o.key)), |e| e.replaces.push(r)).unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now + MINUTE, &o.dn);
+    assert!(!entry.exists() && !notes.exists(), "replaced now: they go");
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
+/// L9 (review of 17 October 2026): take-outs kept as copies (a file with
+/// other names is copied, never moved: its other names keep their mode) are
+/// bounded per exchange; the rest wait for the next.
+#[cfg(unix)]
+#[test]
+fn copies_of_take_outs_are_bounded_per_exchange() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = scratch("gc-copies");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln, links) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("links"));
+    for n in 0..3 {
+        put(&dn, &format!("n{n}.md"), format!("# note {n}\n").as_bytes());
+    }
+    // Three of twenty: not many at once (they go ten minutes on).
+    let stays: BTreeSet<String> = (0..17).map(|n| format!("stays-{n}.md")).collect();
+    for name in &stays {
+        put(&dn, name, b"# stays\n");
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    std::fs::create_dir_all(&links).unwrap();
+    for n in 0..3 {
+        std::fs::hard_link(ln.join(format!("n{n}.md")), links.join(format!("n{n}.md"))).unwrap();
+        std::fs::set_permissions(links.join(format!("n{n}.md")), std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::remove_file(dn.join(format!("n{n}.md"))).unwrap();
+    }
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 3);
+    // A copy at most, this exchange.
+    TAKE_OUT_BUDGET.with(|budget| budget.set(1));
+    let outcome = with_notes(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln);
+    assert_eq!(outcome.waits.get("copies"), Some(&2), "{outcome:?}");
+    assert_eq!(names_in(&ln).len(), 19, "one out, two waiting");
+    for _ in 0..2 {
+        with_notes(&laptop, &folder, &key, NOW + 15 * MINUTE, &ln);
+    }
+    TAKE_OUT_BUDGET.with(|budget| budget.set(TAKE_OUT_COPIES));
+    assert_eq!(names_in(&ln), stays);
+    for n in 0..3 {
+        let mode = std::fs::metadata(links.join(format!("n{n}.md"))).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o644, "its other name keeps its mode");
+        let versions = crate::history::versions(&crate::history::root(&laptop.memory), "notes", &format!("files/notes/n{n}.md"));
+        assert!(versions.len() == 1 && versions[0].sealed.is_none(), "kept as a copy");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+
+/// L1 (review of 17 October 2026): a file put back takes its place only
+/// while none is there, one written there meanwhile included; the file
+/// beside it goes in any case.
+#[test]
+fn a_file_put_back_never_takes_a_place_taken() {
+    let base = scratch("gc-place-new");
+    let (beside, place) = (base.join(".x.md.tmp"), base.join("x.md"));
+    std::fs::write(&beside, b"# put back\n").unwrap();
+    std::fs::write(&place, b"# written meanwhile\n").unwrap();
+    assert!(!place_new(&beside, &place));
+    assert_eq!(std::fs::read(&place).unwrap(), b"# written meanwhile\n");
+    assert!(!beside.exists());
+    std::fs::write(&beside, b"# put back\n").unwrap();
+    std::fs::remove_file(&place).unwrap();
+    assert!(place_new(&beside, &place));
+    assert_eq!(std::fs::read(&place).unwrap(), b"# put back\n");
+    assert!(!beside.exists());
+    let _ = std::fs::remove_dir_all(&base);
 }

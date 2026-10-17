@@ -2869,18 +2869,21 @@ share-vanished = { $count ->
 } d’un coup de { $folder } ici : rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas (un disque non monté, un dossier déplacé, un accès retiré auraient le même air).
 share-vanished-confirm = Les retirer partout
 porch-withheld = { $count ->
-    [one] Un fichier est parti de { $part } ici { $when }, de { $folders }.
-   *[other] { $count } fichiers sont partis d’un coup de { $part } ici { $when }, la plupart de { $folders }.
+    [one] Un fichier est parti de { $part } ici le { $day }, de { $folders }.
+   *[other] { $count } fichiers sont partis d’un coup de { $part } ici le { $day }, la plupart de { $folders }.
+}
+porch-withheld-days = { $count ->
+    [one] Un fichier est parti de { $part } ici entre le { $first } et le { $last }, de { $folders }.
+   *[other] { $count } fichiers sont partis de { $part } ici entre le { $first } et le { $last }, la plupart de { $folders }.
 }
 porch-withheld-of-notes = vos notes
 porch-withheld-of-papers = vos papiers
-porch-withheld-on = le { $day }
-porch-withheld-between = entre le { $first } et le { $last }
 porch-withheld-leave = { $count ->
     [one] Il part de lui-même de vos autres appareils { $days } jours après, le { $day }, à moins de revenir ici d’ici là. Rien n’est à faire.
    *[other] Ils partent d’eux-mêmes de vos autres appareils { $days } jours après, le { $day } au plus tard, à moins de revenir ici d’ici là. Rien n’est à faire.
 }
 porch-withheld-put-back = Les remettre
+porch-withheld-putting-back = Remise en place…
 porch-withheld-take-out = Les retirer maintenant
 porch-withheld-none-back = Rien n’est revenu : leurs places sont prises, ou leurs contenus ne sont pas sur cet appareil.
 share-devices-gone = Appareils qui ne comptent plus
@@ -2903,9 +2906,11 @@ share-remove-sealed = { $count ->
 }
 share-remove-sealed-unknown = Les contenus scellés de ses notes et papiers restent : cet appareil ne partage pas toutes les parties où ils figurent, ou ne connaît pas les médias des SMS.
 share-remove-sealed-later = { $count ->
-    [one] Un autre, scellé récemment, part quand il a deux semaines.
-   *[other] { $count } autres, scellés récemment, partent quand ils ont deux semaines.
+    [one] Un autre, scellé récemment, part quand il a { $days } jours.
+   *[other] { $count } autres, scellés récemment, partent quand ils ont { $days } jours.
 }
+share-remove-entry-stays = Ce qu’il a dit de lui en dernier reste, quelques centaines d’octets : vos autres appareils y lisent qu’il a quitté le partage, vos prises d’abord.
+share-remove-in-use = Dernier partage { $when } : il sert peut-être encore. Si c’est le cas, il partage de nouveau de lui-même et renvoie tout ce qu’il a ; vos prises continuent de le compter, en disant le doute, jusqu’à ce qu’il se soit tu un jour.
 share-remove-small-stay = Ce qu’il a dit de lui en dernier et jusqu’où il a lu restent, quelques centaines d’octets : vos autres appareils peuvent encore le compter, vos prises d’abord, et y lire comment il s’est fermé.
 share-remove-stays = Ce qui reste : tout ce que vos appareils ont déjà lu de lui, sur chacun ; les médias des SMS que nomme le journal d’un autre téléphone. Un appareil qui arrive plus tard ne reçoit aucun de ses enregistrements, sauf si ceux d’un autre appareil les portent (des SMS restaurés sur un nouveau téléphone).
 share-remove-unread = { $count ->
