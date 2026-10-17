@@ -208,8 +208,9 @@ fn decide(json: &str) -> String {
         }
         (decision, released)
     });
-    // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`).
-    let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision);
+    // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`);
+    // a reply from a computer handed lately, looked for in it as shown (`replies`).
+    let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision) | crate::replies::heard(json, &posted);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
     let mut answer = json!({ "hold": hold, "why": decision.why.id(), "shared": shared });
     if let Some(counted) = released {

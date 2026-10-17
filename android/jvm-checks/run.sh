@@ -54,6 +54,14 @@
 #   which eventalarms.rs's own test reads in this check), the presses kept
 #   apart (DayNotes.requestCode), what a press may open (ReminderOpener.opens),
 #   and no words kept for them (EventAlarms.isDay).
+# - RepliesCheck: a reply from your computers (Replies.choose, refusal, live):
+#   each app's Reply and Mark as read found by what they mean, on stand-ins
+#   shaped as Signal, WhatsApp, Telegram (a bot's buttons), Element X, /e/OS's
+#   Message (Delete, Block filed as Mute, Call) and K-9 Mail make theirs; a
+#   Reply that cannot be filled, one that opens the app, one that asks for an
+#   unlocked phone; swapped titles, another order, the car extender's and the
+#   watch's; the notification by its name (Rust's `replies::notice`), gone, or
+#   another profile's.
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #
@@ -70,7 +78,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

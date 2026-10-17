@@ -15,6 +15,12 @@
 //! "t1:" and the nonce and the sealed bytes in base64, on one line. Each
 //! media file of a multimedia message kept on a computer: the same, bound to
 //! another use, the nonce and the sealed bytes (`seal_bytes`).
+//!
+//! Replies from your computers to the phone's notifications (`ReplySeal`;
+//! `sioul_core::replies`) are sealed the same way with a key of their own
+//! ("sioul-replies 1"), their lines written "r1:…": a computer's requests in
+//! the sharing, and the phone's private file of what is due, which holds
+//! their words; neither opens with the other's key.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -84,10 +90,65 @@ impl sioul_core::texts::Sealer for TextSeal {
     }
 }
 
+/// What a line of the replies' stores starts with, sealed so (`ReplySeal`).
+const REPLY_PREFIX: &str = "r1:";
+/// What each of their lines is bound to.
+const REPLY_BOUND: &[u8] = b"sioul-replies line";
+
+/// The sealer of the replies' lines, from the sharing key (HKDF-SHA-256,
+/// "sioul-replies 1"): it seals nothing else, and the texts' key opens none
+/// of them.
+pub struct ReplySeal {
+    cipher: XChaCha20Poly1305,
+}
+
+impl ReplySeal {
+    pub fn new(sharing_key: &[u8; 32]) -> ReplySeal {
+        let mut key = [0u8; 32];
+        // 32 bytes is always a length HKDF-SHA-256 gives.
+        let _ = hkdf::Hkdf::<Sha256>::new(None, sharing_key).expand(b"sioul-replies 1", &mut key);
+        ReplySeal { cipher: XChaCha20Poly1305::new((&key).into()) }
+    }
+}
+
+impl sioul_core::texts::Sealer for ReplySeal {
+    fn seal(&self, plain: &str) -> String {
+        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let Ok(sealed) = self.cipher.encrypt(&nonce, Payload { msg: plain.as_bytes(), aad: REPLY_BOUND }) else { return String::new() };
+        let mut bytes = nonce.to_vec();
+        bytes.extend(sealed);
+        format!("{REPLY_PREFIX}{}", B64.encode(bytes))
+    }
+
+    fn open(&self, sealed: &str) -> Option<String> {
+        let bytes = B64.decode(sealed.trim().strip_prefix(REPLY_PREFIX)?).ok()?;
+        if bytes.len() < 24 {
+            return None;
+        }
+        let (nonce, rest) = bytes.split_at(24);
+        let plain = self.cipher.decrypt(XNonce::from_slice(nonce), Payload { msg: rest, aad: REPLY_BOUND }).ok()?;
+        String::from_utf8(plain).ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use sioul_core::texts::Sealer;
+
+    /// A reply's line opens with the replies' key only: never the texts'
+    /// key, never another sharing's, never plain.
+    #[test]
+    fn a_reply_s_line_opens_with_its_own_key_only() {
+        let seal = ReplySeal::new(&[7u8; 32]);
+        let line = seal.seal("{\"words\":\"J'arrive dans dix minutes.\"}");
+        assert!(line.starts_with(REPLY_PREFIX) && !line.contains("arrive") && !line.contains('\n'));
+        assert_eq!(seal.open(&line).as_deref(), Some("{\"words\":\"J'arrive dans dix minutes.\"}"));
+        assert!(TextSeal::new(&[7u8; 32]).open(&line).is_none(), "the texts' key, of the same sharing");
+        assert!(seal.open(&TextSeal::new(&[7u8; 32]).seal("{}")).is_none(), "nor the other way");
+        assert!(ReplySeal::new(&[8u8; 32]).open(&line).is_none(), "another sharing's key");
+        assert!(seal.open("{\"words\":\"plain\"}").is_none());
+    }
 
     #[test]
     fn a_line_opens_with_its_key_only_and_never_reads_plain() {

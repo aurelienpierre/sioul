@@ -224,6 +224,7 @@ pub mod reach;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;
+pub mod replies;
 pub mod projects;
 pub mod projectview;
 pub mod reading;
