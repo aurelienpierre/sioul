@@ -653,7 +653,9 @@ fn vanished_of(code: &str) -> Option<Vanished> {
         "" => load_config().notes_root_path().map(|notes| shorten(&notes)).unwrap_or_default(),
         inside => inside.trim_end_matches('/').to_string(),
     };
-    Some(Vanished { store: store.to_string(), text: say("share-vanished", &[("folder", shown), ("count", count.to_string())]) })
+    // A note replaced by a link (its place without the folder's "/"): said as the note it was.
+    let words = if folder.ends_with('/') { "share-vanished" } else { "share-vanished-link" };
+    Some(Vanished { store: store.to_string(), text: say(words, &[("folder", shown), ("count", count.to_string())]) })
 }
 
 /// Notes or papers gone many at once here and held (`share::withheld`), in
@@ -1063,7 +1065,8 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
 /// Files gone at once from a folder of notes or papers ("files/notes/") taken out everywhere at the next exchange, as you said; "" when kept, else why not.
 pub(crate) fn confirm_gone(store: &str) -> String {
     // A folder of the notes, the papers or the spam filter's, by its place in the records ("files/notes/disk/").
-    let named = ["files/notes/", "files/papers/", "files/spam/"].iter().any(|root| store.starts_with(root)) && store.ends_with('/') && !store.split('/').any(|piece| piece == "." || piece == "..");
+    // Or a note replaced by a link, by its place ("files/notes/single.md").
+    let named = ["files/notes/", "files/papers/", "files/spam/"].iter().any(|root| store.starts_with(root)) && !store.split('/').any(|piece| piece == "." || piece == "..") && !store.contains("//");
     if !named {
         return format!("{store}?");
     }
@@ -2228,9 +2231,11 @@ fn mirror_step_for(folder: &Path, own: &str, whole: bool, urgent: bool) {
     // On a phone, its log (adb logcat): counts and a code, never a name nor
     // an address; what the listings read, in bytes, so that a night's mobile
     // data says where it went (review of 17 October 2026, M4).
-    if cfg!(target_os = "android") && (stepped.fetched + stepped.sent > 0 || stepped.listed_bytes > 0 || stepped.problem.is_some()) {
+    // A step that only looked (a few kilobytes) is not said at each minute;
+    // the bytes are those read, the server's compression undone.
+    if cfg!(target_os = "android") && (stepped.fetched + stepped.sent > 0 || stepped.listed_bytes >= 64 << 10 || stepped.problem.is_some()) {
         let code = stepped.problem.as_deref().map(|p| format!("; {}", p.split(':').next().unwrap_or_default())).unwrap_or_default();
-        eprintln!("sioul: sharing: {} fetched ({} bytes), {} sent by Sioul itself; listed {} ({} bytes){code}", stepped.fetched, stepped.bytes, stepped.sent, stepped.listed, stepped.listed_bytes);
+        eprintln!("sioul: sharing: {} fetched ({} bytes), {} sent by Sioul itself; listed {} ({} bytes read){code}", stepped.fetched, stepped.bytes, stepped.sent, stepped.listed, stepped.listed_bytes);
     }
 }
 
@@ -2252,11 +2257,12 @@ fn mirror_sealed(folder: &Path, own: &str, key: &[u8; 32]) -> usize {
         return 0;
     }
     let Some(login) = server_login(&state, &load_config()) else { return 0 };
-    let pulled = sioul_sync::remote::sealed_step(&memory, folder, own, &login, key, now);
-    if cfg!(target_os = "android") && (pulled.fetched + pulled.held + pulled.let_go > 0 || pulled.listed_bytes > 0 || pulled.problem.is_some()) {
+    // A metered or slow connection: a large one at most every ten minutes, as the sending does.
+    let pulled = sioul_sync::remote::sealed_step(&memory, folder, own, &login, key, now, frugal_now());
+    if cfg!(target_os = "android") && (pulled.fetched + pulled.held + pulled.paced + pulled.let_go > 0 || pulled.listed_bytes > 0 || pulled.problem.is_some()) {
         let code = pulled.problem.as_deref().map(|p| format!("; {}", p.split(':').next().unwrap_or_default())).unwrap_or_default();
         let failed = if pulled.listing_failed { "; blobs listing failed" } else { "" };
-        eprintln!("sioul: sharing: sealed files: {} fetched ({} bytes), {} did not open whole; listed {} ({} bytes); let go of {} ({} bytes){failed}{code}", pulled.fetched, pulled.bytes, pulled.held, pulled.listed, pulled.listed_bytes, pulled.let_go, pulled.freed);
+        eprintln!("sioul: sharing: sealed files: {} fetched ({} bytes), {} did not open whole, {} left for later on this connection; listed {} ({} bytes read); let go of {} ({} bytes){failed}{code}", pulled.fetched, pulled.bytes, pulled.held, pulled.paced, pulled.listed, pulled.listed_bytes, pulled.let_go, pulled.freed);
     }
     pulled.fetched
 }
@@ -2584,9 +2590,9 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
 }
 
 /// The background step's (`steps::step`, after its exchange): the sealed
-/// files of notes and papers waited for, fetched (`fetch_wanted`); the
-/// window's exchange, or the next step, writes them. Nothing asked, not even
-/// the key, while nothing waits.
+/// files of notes and papers waited for, fetched (`fetch_wanted`; Sioul
+/// keeping the folder itself, `mirror_sealed`); the window's exchange writes
+/// them, offline too. Nothing asked, not even the key, while nothing waits.
 pub(crate) fn fetch_wanted_here() {
     let here = here();
     let Some(folder) = attached(&here) else { return };
@@ -3015,6 +3021,10 @@ mod tests {
         for wrong in ["files/notes/../config/", "config/", "files/notes"] {
             assert!(confirm_gone(wrong).ends_with('?'), "{wrong}");
         }
+        // A note replaced by a link: said as that note, confirmed alone (review of 18 October 2026, L-9).
+        let link = vanished_of("share-vanished:files/notes/single.md:1").unwrap();
+        assert_eq!(link.store, "files/notes/single.md");
+        assert_eq!(link.text, say("share-vanished-link", &[("folder", "single.md".to_string()), ("count", "1".to_string())]));
     }
 
     /// Before "Remove its files": what goes, with its size, and what stays,

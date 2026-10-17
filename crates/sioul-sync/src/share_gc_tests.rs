@@ -562,6 +562,12 @@ fn a_forgotten_device_s_entry_and_note_stay_a_replaced_one_s_go() {
         put(&o.folder, &format!("leases/health/{}.lease", o.old.id), b"a claim written since, of another size\n");
         with_notes(&o.desk, &o.folder, &o.key, o.now + 3 * MINUTE, &o.dn);
         assert!(claim.exists(), "{replaced}: one it wrote since stays (review of 17 October 2026, L7)");
+        // One written again from nothing has the size its first had, never its bytes: it stays too (L-5).
+        let mut renewed = claim_before.clone();
+        renewed[0] ^= 1;
+        std::fs::write(&claim, &renewed).unwrap();
+        with_notes(&o.desk, &o.folder, &o.key, o.now + 4 * MINUTE, &o.dn);
+        assert!(claim.exists(), "{replaced}: one of the same size written since stays (review of 18 October 2026, L-5)");
         std::fs::remove_file(&claim).unwrap();
         // Two weeks on, as old as the sweep wants (once it is dated so): its content goes.
         sealed_long_ago(&o.folder, &o.last_word);
@@ -995,5 +1001,77 @@ fn a_file_put_back_never_takes_a_place_taken() {
     assert!(place_new(&beside, &place));
     assert_eq!(std::fs::read(&place).unwrap(), b"# put back\n");
     assert!(!beside.exists());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+
+/// L-3 (review of 18 October 2026): "Put them back" of a large bulk never
+/// keeps a dose's exchange waiting a second: the exchanges' lock is held a
+/// quarter of a second at most, then left free a moment.
+#[test]
+fn put_back_never_keeps_a_dose_waiting() {
+    let base = scratch("gc-put-back-lock");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..1_500 {
+        put(&dn, &format!("bulk/{n:04}.md"), format!("# note {n} of a bulk, with a few words in it\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + MINUTE, &dn).withheld.map(|w| w[0].count), Some(1_500));
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let putting = {
+        let (folder, memory, id) = (folder.clone(), memory.clone(), id.clone());
+        std::thread::spawn(move || put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/"))
+    };
+    // A dose's exchange taking the lock as it does, again and again, while the bulk comes back.
+    let (mut longest, mut taken) = (std::time::Duration::ZERO, 0);
+    while !putting.is_finished() {
+        let asked = std::time::Instant::now();
+        let held = exchange_lock(&memory, true).unwrap();
+        longest = longest.max(asked.elapsed());
+        taken += 1;
+        drop(held);
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
+    assert_eq!(putting.join().unwrap(), Ok(1_500));
+    println!("put back of 1,500 notes: a dose's exchange waited {longest:?} at most, {taken} times");
+    assert!(taken > 5 && longest < std::time::Duration::from_secs(1), "a dose's exchange waited {longest:?} at most, {taken} times");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// L-9 (review of 18 October 2026): a note replaced by a link is said as
+/// that note, never left on the others; "Take them out everywhere" on its
+/// line takes it out alone, never a note whose name begins as its.
+#[cfg(unix)]
+#[test]
+fn a_note_replaced_by_a_link_is_said_as_that_note() {
+    let base = scratch("gc-note-linked");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln, elsewhere) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("elsewhere.md"));
+    for name in ["today.md", "single.md", "single.md.bak"] {
+        put(&dn, name, format!("# {name}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    // Both replaced by links: the one whose name begins as the other's stays unknown when the other is confirmed.
+    for (name, away) in [("single.md", elsewhere.clone()), ("single.md.bak", base.join("elsewhere.bak"))] {
+        std::fs::rename(dn.join(name), &away).unwrap();
+        std::os::unix::fs::symlink(&away, dn.join(name)).unwrap();
+    }
+    let outcome = with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/single.md:1") && outcome.problems.iter().any(|p| p == "share-vanished:files/notes/single.md.bak:1") && outcome.sent == 0, "{outcome:?}");
+    with_notes(&desk, &folder, &key, NOW + 30 * DAY_MS, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 30 * DAY_MS + MINUTE, &ln);
+    assert_eq!(names_in(&ln).len(), 3, "never left");
+    confirm_gone(&desk.memory, &desk.id, "files/notes/single.md").unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 30 * DAY_MS + 2 * MINUTE, &dn).sent, 1);
+    with_notes(&laptop, &folder, &key, NOW + 30 * DAY_MS + 3 * MINUTE, &ln);
+    assert_eq!(names_in(&ln), BTreeSet::from(["today.md".to_string(), "single.md.bak".to_string()]));
     let _ = std::fs::remove_dir_all(&base);
 }

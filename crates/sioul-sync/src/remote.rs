@@ -874,10 +874,14 @@ pub(crate) fn encode_path(path: &str) -> String {
 /// namespaces the answer's first element declares), then dropped; what is
 /// kept per name is its ETag, size and checksums. Its bytes too. Never more
 /// than one response and a read's piece held at once, whatever the size of
-/// the folder (review of 17 October 2026, M4).
+/// the folder (review of 17 October 2026, M4). Whole only with the folder's
+/// own response and the answer's last element closed: a listing that leaves
+/// the folder out, or ends early, is no listing (review of 18 October 2026,
+/// L-1 and L-6).
 fn read_listing(mut reader: impl std::io::Read, url: &str) -> Result<(Listing, u64), SyncError> {
     let me = dav::path_key(url);
     let mut listing = Listing::default();
+    let mut itself = false;
     let (mut buf, mut total, mut piece) = (Vec::new(), 0u64, vec![0u8; 64 << 10]);
     let mut namespaces: Option<String> = None;
     loop {
@@ -908,6 +912,7 @@ fn read_listing(mut reader: impl std::io::Read, url: &str) -> Result<(Listing, u
                 let etag = response.text(DAV, "getetag").unwrap_or_default();
                 if path == me {
                     listing.etag = etag;
+                    itself = true;
                     continue;
                 }
                 let Some(name) = path.strip_prefix(&me).and_then(|rest| rest.strip_prefix('/')).filter(|n| !n.is_empty() && !n.contains('/')) else { continue };
@@ -919,8 +924,12 @@ fn read_listing(mut reader: impl std::io::Read, url: &str) -> Result<(Listing, u
         buf.drain(..from);
         if n == 0 {
             // Its last element closed, or the answer ended early: never a part taken for the whole.
-            if !String::from_utf8_lossy(&buf).contains("multistatus>") {
+            if end_tag(&buf, b"multistatus").is_none() {
                 return Err(SyncError::Server("XML: the answer ends before its end".into()));
+            }
+            // The folder's own response missing: what it holds cannot be told whole.
+            if !itself {
+                return Err(SyncError::Server("XML: the folder's own answer is missing".into()));
             }
             return Ok((listing, total));
         }
@@ -957,16 +966,28 @@ fn first_element(buf: &[u8]) -> Option<(String, usize)> {
 /// Where the first whole `<response>` of what came ends (after its closing
 /// tag, whatever its prefix: `</d:response>`, `</D:response>`, `</response>`).
 fn response_end(buf: &[u8]) -> Option<usize> {
+    end_tag(buf, b"response")
+}
+
+/// Where the first end tag of `name` in `buf` ends (`</name>`, `</d:name>`,
+/// spaces allowed before its `>`, as XML allows: `</d:response >`); none
+/// until all of one came.
+fn end_tag(buf: &[u8], name: &[u8]) -> Option<usize> {
     let mut from = 0;
-    while let Some(found) = buf[from..].windows(9).position(|w| w == b"response>") {
+    while let Some(found) = buf[from..].windows(name.len()).position(|w| w == name) {
         let at = from + found;
+        // Its end: spaces maybe, then `>`; not all of it come yet: none so far.
+        let close = at + name.len() + buf[at + name.len()..].iter().position(|b| !b.is_ascii_whitespace())?;
         // Back to the `<` of that tag: `</`, maybe a prefix and its colon.
-        let open = buf[..at].iter().rposition(|b| *b == b'<')?;
-        let between = &buf[open + 1..at];
-        if between.first() == Some(&b'/') && between[1..].iter().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':')) && (between.len() == 1 || between.last() == Some(&b':')) {
-            return Some(at + 9);
+        if buf[close] == b'>'
+            && let Some(open) = buf[..at].iter().rposition(|b| *b == b'<')
+        {
+            let between = &buf[open + 1..at];
+            if between.first() == Some(&b'/') && between[1..].iter().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':')) && (between.len() == 1 || between.last() == Some(&b':')) {
+                return Some(close + 1);
+            }
         }
-        from = at + 9;
+        from = at + name.len();
     }
     None
 }
@@ -2651,7 +2672,11 @@ fn listing_due(state: &State, now: i64) -> bool {
 fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Departed, now: i64) -> Vec<(String, crate::blobs::Want)> {
     let blobs = folder.join("blobs");
     let here = |name: &str| std::fs::metadata(blobs.join(name)).is_ok_and(|m| m.len() > 0);
-    let due: BTreeMap<&String, &crate::blobs::Want> = wanted.blobs.iter().chain(wanted.media.iter()).filter(|(name, want)| want.again <= now && !here(name) && !departed.swept(name)).collect();
+    // A text's medium asked for three days in vain is asked no more, until the
+    // texts' page asks for it again (`blobs::Want::since` renewed there):
+    // never every few minutes for good (review of 18 October 2026, L-8).
+    let fresh = |want: &&crate::blobs::Want| now - want.since < WANTED_KEPT_DAYS as i64 * 86_400;
+    let due: BTreeMap<&String, &crate::blobs::Want> = wanted.blobs.iter().chain(wanted.media.iter().filter(|(_, want)| fresh(want))).filter(|(name, want)| want.again <= now && !here(name) && !departed.swept(name)).collect();
     due.into_iter().map(|(name, want)| (name.clone(), want.clone())).collect()
 }
 
@@ -2668,12 +2693,15 @@ fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Depar
 /// first, 64 MiB at most a step (the first whatever its size), as long as
 /// the step's time lasts, each kept only once it opens whole to its
 /// content (`blobs::check`); one not there, cut, or that does not open is
-/// asked again after its backoff. One at a time on this device.
-pub fn sealed_step(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64) -> Pulled {
-    sealed_step_with(memory, folder, own, login, key, now, LIMITS)
+/// asked again after its backoff. On a metered or slow connection
+/// (`frugal`), one of a megabyte or more at most every ten minutes, as the
+/// sending paces them. One at a time on this device.
+pub fn sealed_step(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64, frugal: bool) -> Pulled {
+    sealed_step_with(memory, folder, own, login, key, now, frugal, LIMITS)
 }
 
-pub(crate) fn sealed_step_with(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64, limits: Limits) -> Pulled {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sealed_step_with(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64, frugal: bool, limits: Limits) -> Pulled {
     sioul_core::filelock::with_lock(&memory.with_file_name("mirror.sealed"), || {
         let mut pulled = Pulled::default();
         let state = State::load(memory);
@@ -2710,7 +2738,7 @@ pub(crate) fn sealed_step_with(memory: &Path, folder: &Path, own: &str, login: &
                 }
             });
         }
-        if let Err(e) = fetch_wanted_into_copy(&server, memory, folder, (own, &login.account), key, now, &url, &mut pulled) {
+        if let Err(e) = fetch_wanted_into_copy(&server, memory, folder, (own, &login.account), (key, frugal), now, &url, &mut pulled) {
             pulled.problem = Some(code(&e, &state.host()));
         }
         pulled.listed_bytes = server.listed_bytes();
@@ -2764,48 +2792,69 @@ fn blobs_looked(state: &mut State, folder: &Path, listing: &Listing, keep: Optio
 /// The sealed files this device waits for (`wanted_in_copy`), fetched by
 /// their names into its copy (`sealed_step`): the smallest first, 64 MiB
 /// at most a step (the first whatever its size), as long as the step's
-/// time lasts; each kept only once it opens whole to its content
-/// (`blobs::check`), put in its place under the step's lock
-/// (`place_fetched`). One not there, cut, or that does not open, asked
-/// again after its backoff. `who`: this device's id, and the account.
+/// time lasts; on a metered or slow connection (`frugal`), one of
+/// `SMALL_WANTED` or more at most every ten minutes. Each kept only once it
+/// opens whole to its content (`blobs::check`), put in its place under the
+/// step's lock some at a time (`place_fetched`). One not there, cut, or that
+/// does not open, asked again after its backoff: within five minutes in its
+/// first hour (a sync app still sending it), then less and less often.
+/// `who`: this device's id, and the account.
 #[allow(clippy::too_many_arguments)]
-fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, account): (&str, &str), key: &[u8; 32], now: i64, url: &dyn Fn(&str) -> String, pulled: &mut Pulled) -> Result<(), SyncError> {
-    let mut due = wanted_in_copy(&crate::blobs::Wanted::load(memory), folder, &Departed::load(memory, own), now);
+fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, account): (&str, &str), (key, frugal): (&[u8; 32], bool), now: i64, url: &dyn Fn(&str) -> String, pulled: &mut Pulled) -> Result<(), SyncError> {
+    let wanted = crate::blobs::Wanted::load(memory);
+    let mut due = wanted_in_copy(&wanted, folder, &Departed::load(memory, own), now);
     if due.is_empty() {
         return Ok(());
     }
     due.sort_by(|a, b| (a.1.size, a.1.since, &a.0).cmp(&(b.1.size, b.1.since, &b.0)));
-    let (mut tried, mut budget, mut first) = (BTreeMap::new(), MIRROR_WANTED_BYTES, true);
-    let mut stopped = None;
+    let (mut tried, mut budget, mut first, mut large_at) = (BTreeMap::new(), MIRROR_WANTED_BYTES, true, wanted.large_at);
+    let (mut stopped, mut ready) = (None, Vec::new());
+    let place = |ready: &mut Vec<(String, PathBuf, u64)>, pulled: &mut Pulled| {
+        for ((_, temporary, size), placed) in ready.iter().zip(place_fetched(memory, folder, account, ready)) {
+            if placed {
+                pulled.fetched += 1;
+                pulled.bytes += size;
+            }
+            let _ = std::fs::remove_file(temporary);
+        }
+        ready.clear();
+    };
     for (name, want) in due {
         if !first && want.size > budget {
             break;
         }
+        let large = want.size >= SMALL_WANTED;
+        if frugal && large && now - large_at < PACE {
+            pulled.paced += 1;
+            continue;
+        }
+        if frugal && large {
+            large_at = now;
+        }
         first = false;
         let failed = |soon: bool| {
             let tries = want.tries + 1;
+            let soon = soon && now - want.since < 3600;
             (tries, now + if soon { backoff(tries).min(WANTED_AGAIN) } else { backoff(tries) })
         };
         let relative = format!("blobs/{name}");
         match server.download_aside(&url(&relative), &folder.join(&relative), BLOB_LIMIT) {
-            Ok(Some((size, temporary))) => {
-                match crate::blobs::check(&temporary, key, &want.hash) {
-                    Ok(()) => {
-                        if place_fetched(memory, folder, account, &relative, &temporary, size) {
-                            pulled.fetched += 1;
-                            pulled.bytes += size;
-                        }
-                        budget = budget.saturating_sub(size);
-                        tried.insert(name, (0, 0));
-                    }
-                    // Not whole, or another content: never kept, asked again after a while.
-                    Err(fault) => {
-                        pulled.held += 1;
-                        tried.insert(name, failed(!matches!(fault, crate::blobs::Fault::Broken)));
+            Ok(Some((size, temporary))) => match crate::blobs::check(&temporary, key, &want.hash) {
+                Ok(()) => {
+                    budget = budget.saturating_sub(size);
+                    tried.insert(name, (0, 0));
+                    ready.push((relative, temporary, size));
+                    if ready.len() >= PLACED_AT_ONCE {
+                        place(&mut ready, pulled);
                     }
                 }
-                let _ = std::fs::remove_file(&temporary);
-            }
+                // Not whole, or another content: never kept, asked again after a while.
+                Err(fault) => {
+                    let _ = std::fs::remove_file(&temporary);
+                    pulled.held += 1;
+                    tried.insert(name, failed(!matches!(fault, crate::blobs::Fault::Broken)));
+                }
+            },
             // Not there yet (its writer has not sent it), or too large.
             Ok(None) => {
                 tried.insert(name, failed(true));
@@ -2819,38 +2868,59 @@ fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, a
             }
         }
     }
+    place(&mut ready, pulled);
     let _ = crate::blobs::Wanted::change(memory, |wanted| {
         for (name, (tries, again)) in tried {
             for want in [wanted.blobs.get_mut(&name), wanted.media.get_mut(&name)].into_iter().flatten() {
                 (want.tries, want.again) = (tries, again);
             }
         }
+        wanted.large_at = wanted.large_at.max(large_at);
     });
     stopped.map_or(Ok(()), Err)
 }
 
-/// A sealed file that came (`temporary`), put in its place in the copy under
-/// the step's lock once the state says it was fetched (`State::files`): a
-/// step never sees it there before, and never takes it for one of this
+/// How many sealed files that came are put in place under one hold of the
+/// step's lock, one writing of the state for them all (review of 18 October
+/// 2026, L-4: once per file, thousands of them rewrote a large state as many
+/// times).
+const PLACED_AT_ONCE: usize = 64;
+
+/// Sealed files that came (`ready`: each one's place in the folder, the
+/// name it came under, its size), put in their places in the copy under the
+/// step's lock once the state says they were fetched (`State::files`): a
+/// step never sees one there before, and never takes it for one of this
 /// device's own. Never over a file there (sealed here meanwhile: the same
-/// content). Whether it was put there.
-fn place_fetched(memory: &Path, folder: &Path, account: &str, relative: &str, temporary: &Path, size: u64) -> bool {
+/// content). Whether each was put there.
+fn place_fetched(memory: &Path, folder: &Path, account: &str, ready: &[(String, PathBuf, u64)]) -> Vec<bool> {
+    if ready.is_empty() {
+        return Vec::new();
+    }
     sioul_core::filelock::with_lock(&memory.with_file_name("mirror.step"), || {
-        let path = folder.join(relative);
         let mut state = State::load(memory);
-        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != account || path.exists() {
-            return false;
+        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != account {
+            return vec![false; ready.len()];
         }
-        state.files.insert(relative.to_string(), Fetched { etag: String::new(), size });
+        let free: Vec<bool> = ready.iter().map(|(relative, _, _)| !folder.join(relative).exists()).collect();
+        for ((relative, _, size), free) in ready.iter().zip(&free) {
+            if *free {
+                state.files.insert(relative.clone(), Fetched { etag: String::new(), size: *size });
+            }
+        }
         if state.save(memory).is_err() {
-            return false;
+            return vec![false; ready.len()];
         }
-        if std::fs::rename(temporary, &path).is_ok() {
-            return true;
+        let placed: Vec<bool> = ready.iter().zip(&free).map(|((relative, temporary, _), free)| *free && std::fs::rename(temporary, folder.join(relative)).is_ok()).collect();
+        // One that could not be put there: the state says so again.
+        if placed != free {
+            for ((relative, _, _), (free, placed)) in ready.iter().zip(free.iter().zip(&placed)) {
+                if *free && !placed {
+                    state.files.remove(relative);
+                }
+            }
+            let _ = state.save(memory);
         }
-        state.files.remove(relative);
-        let _ = state.save(memory);
-        false
+        placed
     })
 }
 
@@ -3481,7 +3551,9 @@ impl Sender<'_> {
                 continue;
             }
             let there = listed.as_ref().filter(|_| !unlisted.contains(dir_of(relative))).map(|listed| listed.get(relative).cloned());
-            let went = self.one(relative, there, again)?;
+            // "Send everything again" while its folder could not be listed: each asked there itself.
+            let look = again && listed.is_some() && unlisted.contains(dir_of(relative));
+            let went = self.one(relative, there, again, look)?;
             records_held |= records && went == Went::Held;
         }
         if self.lane == Lane::Main {
@@ -3576,7 +3648,10 @@ impl Sender<'_> {
     /// meanwhile (`412`): the server's copy looked at; the same as here (the
     /// sync app sent it), nothing more; else sent over it. A folder missing
     /// there (`409`), made first. Too slow or cut: held back (`backoff`).
-    fn one(&mut self, relative: &str, listed: Option<Option<Item>>, again: bool) -> Result<Went, Stop> {
+    /// `look`: "Send everything again" while its folder could not be listed:
+    /// what is there asked of the server itself, never taken as unchanged
+    /// (review of 18 October 2026, L-7).
+    fn one(&mut self, relative: &str, listed: Option<Option<Item>>, again: bool, look: bool) -> Result<Went, Stop> {
         let path = self.folder.join(relative);
         let Ok(meta) = std::fs::metadata(&path) else { return Ok(Went::Left) };
         let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
@@ -3589,7 +3664,7 @@ impl Sender<'_> {
         let sent = self.sending.sent.get(relative).cloned();
         let same_here = sent.as_ref().is_some_and(|s| s.size == size && s.modified == modified);
         match &listed {
-            None if same_here => return Ok(Went::Left),
+            None if same_here && !look => return Ok(Went::Left),
             Some(there) if same_here && !again && there.as_ref().is_some_and(|t| t.etag == sent.as_ref().map_or("", |s| s.etag.as_str())) => return Ok(Went::Left),
             _ => {}
         }
@@ -3616,7 +3691,7 @@ impl Sender<'_> {
         let url = self.url(relative);
         // What is there: as listed; else, never sent or its ETag unsaid, asked.
         let mut there: Option<Option<Item>> = listed;
-        if there.is_none() && sent.as_ref().is_none_or(|s| s.etag.is_empty()) {
+        if there.is_none() && (look || sent.as_ref().is_none_or(|s| s.etag.is_empty())) {
             there = Some(self.server.stat(&url)?);
         }
         let modified_s = modified / 1_000_000_000;
@@ -4356,6 +4431,10 @@ mod tests {
         /// The longest round a pull brings, in this test's thread (`round_cap`).
         pub(super) static ROUND_CAP: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
     }
+    /// For a stand-in that answers slowly (thousands of files below a folder,
+    /// hashed for its ETag before it answers, on Windows' disks): a minute's
+    /// limits, two for a step.
+    const SLOW_STAND_IN: Limits = Limits { wait: Duration::from_secs(30), small: Duration::from_secs(60), large: Duration::from_secs(60), pull: Duration::from_secs(120), ..TEST };
     const DUE: i64 = 1_800_000_000;
 
     fn scratch(name: &str) -> PathBuf {
@@ -4473,12 +4552,24 @@ mod tests {
             outcome
         }
 
+        /// This device's stores with `notes` as its notes folder: notes,
+        /// papers and texts shared besides the parts shared by default.
+        fn all_parts(&self, notes: &Path) -> Vec<Store> {
+            let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+            crate::share::stores_of(&config, &self.roots, &|part| matches!(part, "notes" | "papers" | "texts") || crate::share::shared_by_default(part, &config))
+        }
+
         /// A whole exchange (seconds) with `notes` as its notes folder, notes,
         /// papers and texts shared besides the parts shared by default.
         fn exchange_all_parts(&self, folder: &Path, now: i64, notes: &Path) -> Outcome {
-            let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
-            let stores = crate::share::stores_of(&config, &self.roots, &|part| matches!(part, "notes" | "papers" | "texts") || crate::share::shared_by_default(part, &config));
-            let outcome = crate::share::exchange(&Sharing { folder, computer: &self.id, key: &KEY, memory: &self.memory, files: true, hurry: None }, &stores, now * 1000).unwrap();
+            self.exchange_parts(folder, now, notes, true)
+        }
+
+        /// The same, its notes and papers read or not (`files`: a phone's
+        /// background step reads none).
+        fn exchange_parts(&self, folder: &Path, now: i64, notes: &Path, files: bool) -> Outcome {
+            let stores = self.all_parts(notes);
+            let outcome = crate::share::exchange(&Sharing { folder, computer: &self.id, key: &KEY, memory: &self.memory, files, hurry: None }, &stores, now * 1000).unwrap();
             // As this Sioul's window says it: it keeps sealed files two weeks.
             crate::devices::change(&crate::devices::own_path(&self.roots.state), Some((folder, &KEY)), |e| {
                 e.exported(now * 1000, outcome.wrote, now);
@@ -5520,7 +5611,11 @@ mod tests {
                         reader.read_exact(&mut body).unwrap();
                         served.fetch_add(1, Ordering::SeqCst);
                         let (status, answer) = match line.split_whitespace().next() {
-                            Some("PROPFIND") => ("207 Multi-Status", super::fake::multistatus("")),
+                            // The folder's own response, as every server gives it (a listing without it is none).
+                            Some("PROPFIND") => {
+                                let path = line.split_whitespace().nth(1).unwrap_or("/");
+                                ("207 Multi-Status", super::fake::multistatus(&format!("<d:response><d:href>{path}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")))
+                            }
                             Some("GET") => ("200 OK", b"version = 1\n".to_vec()),
                             _ => ("201 Created", Vec::new()),
                         };
@@ -5673,7 +5768,7 @@ mod tests {
         /// The others' sealed files, after a step (`sealed_step`).
         fn sealed(&self, desk: bool, now: i64) -> Pulled {
             let (device, folder) = self.device(desk);
-            sealed_step_with(&device.memory, folder, &device.id, &self.fake.login(), &KEY, now, TEST)
+            sealed_step_with(&device.memory, folder, &device.id, &self.fake.login(), &KEY, now, false, TEST)
         }
 
         /// As the window does each minute: the server looked through, an
@@ -5833,9 +5928,10 @@ mod tests {
         // memory says nothing of what it needs (an older Sioul's, until this
         // one's first exchange); then let go there too, nothing needing it.
         let _ = p.step(false, DUE + 50 + BLOBS_AGAIN, true);
-        let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&p.phone.memory).unwrap()).unwrap();
-        assert!(memory.as_object_mut().unwrap().remove("needed_sealed").is_some(), "said by each exchange of this Sioul");
-        std::fs::write(&p.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+        let files = p.phone.memory.with_file_name("files.json");
+        let mut said: serde_json::Value = serde_json::from_slice(&std::fs::read(&files).unwrap()).unwrap();
+        assert!(said.as_object_mut().unwrap().remove("needed").is_some(), "said by each exchange of this Sioul");
+        std::fs::write(&files, serde_json::to_vec(&said).unwrap()).unwrap();
         let sealed = p.sealed(false, DUE + 50 + BLOBS_AGAIN);
         assert!(sealed.listed_bytes > 0 && sealed.let_go == 0 && p.phone_folder.join("blobs").join(&name).exists(), "listed, none let go: {sealed:?}");
         p.turn(false, DUE + 60 + BLOBS_AGAIN + CHECK_AGAIN);
@@ -8011,9 +8107,10 @@ mod tests {
             let mut state = State::load(&p.phone.memory);
             state.files.insert(format!("blobs/{needed}"), Fetched { etag: String::new(), size: 38 });
             state.save(&p.phone.memory).unwrap();
-            let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&p.phone.memory).unwrap()).unwrap();
-            memory["needed_sealed"] = serde_json::json!([needed]);
-            std::fs::write(&p.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+            let files = p.phone.memory.with_file_name("files.json");
+            let mut said: serde_json::Value = serde_json::from_slice(&std::fs::read(&files).unwrap()).unwrap();
+            said["needed"].as_array_mut().expect("said by each exchange of this Sioul").push(serde_json::json!(needed));
+            std::fs::write(&files, serde_json::to_vec(&said).unwrap()).unwrap();
         }
         let later = now + BLOBS_AGAIN + 100;
         let stepped = p.step(false, later, true);
@@ -8060,6 +8157,12 @@ mod tests {
     fn blobs_are_listed_seldom_whatever_their_number_and_come_by_name() {
         let p = Pair::new("blobs-many");
         let server = p.fake.files.join("Documents").join("Sioul");
+        // The stand-in hashes every file below a folder for its ETag before it
+        // answers: with 11,000 sealed files, slow on Windows' disks (CI run
+        // 39058463904); a real server keeps each folder's ETag.
+        let login = p.fake.login();
+        let step = |now: i64| step_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &login, now, true, SLOW_STAND_IN);
+        let sealed_step = |now: i64| sealed_step_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &login, &KEY, now, false, SLOW_STAND_IN);
         {
             let _turn = p.fake.turn.lock().unwrap();
             for n in 0..11_000 {
@@ -8069,9 +8172,9 @@ mod tests {
         let lists = |seen: &[String]| seen.iter().filter(|l| l.starts_with("PROPFIND ") && l.split(' ').nth(1).is_some_and(|path| path.ends_with("/blobs"))).count();
         // A whole step: never a listing of blobs/; the sealed step after it lists it in full, fetches nothing (nothing waits).
         p.fake.forget_seen();
-        let stepped = p.step(false, DUE + 100_000, true);
+        let stepped = step(DUE + 100_000);
         assert!(stepped.problem.is_none() && lists(&p.fake.seen()) == 0, "never in a step: {stepped:?}");
-        let sealed = p.sealed(false, DUE + 100_000);
+        let sealed = sealed_step(DUE + 100_000);
         assert!(sealed.problem.is_none() && !sealed.listing_failed, "{sealed:?}");
         assert!(sealed.listed >= 11_000 && sealed.listed_bytes > 4 << 20, "past the old cap: {sealed:?}");
         assert_eq!(sealed.fetched, 0, "none waited for: none fetched");
@@ -8090,8 +8193,8 @@ mod tests {
         })
         .unwrap();
         p.fake.forget_seen();
-        let _ = p.step(false, DUE + 100_600, true);
-        let sealed = p.sealed(false, DUE + 100_600);
+        let _ = step(DUE + 100_600);
+        let sealed = sealed_step(DUE + 100_600);
         assert!(sealed.problem.is_none(), "{sealed:?}");
         assert_eq!(lists(&p.fake.seen()), 0, "within the hour: not listed again");
         assert!(p.phone_folder.join("blobs").join(&name).exists() && sealed.fetched == 1, "fetched by its name: {sealed:?}");
@@ -8103,19 +8206,19 @@ mod tests {
             w.media.insert(other.clone(), crate::blobs::Want { hash: hash.clone(), size: 21, since: DUE, ..Default::default() });
         })
         .unwrap();
-        let sealed = p.sealed(false, DUE + 100_700);
+        let sealed = sealed_step(DUE + 100_700);
         assert!(sealed.held == 1 && !p.phone_folder.join("blobs").join(&other).exists(), "{sealed:?}");
         // An hour on, its ETag changed: listed again; the listing fails: nothing else fails, tried again after its backoff.
         p.fake.fault(move |r| (r.method == "PROPFIND" && r.path.ends_with("/blobs")).then_some(Fault::Status(500)));
-        let _ = p.step(false, DUE + 100_000 + BLOBS_AGAIN + 10, true);
-        let sealed = p.sealed(false, DUE + 100_000 + BLOBS_AGAIN + 10);
+        let _ = step(DUE + 100_000 + BLOBS_AGAIN + 10);
+        let sealed = sealed_step(DUE + 100_000 + BLOBS_AGAIN + 10);
         assert!(sealed.listing_failed && sealed.let_go == 0, "{sealed:?}");
         p.fake.forget_seen();
-        let sealed = p.sealed(false, DUE + 100_000 + BLOBS_AGAIN + 70);
+        let sealed = sealed_step(DUE + 100_000 + BLOBS_AGAIN + 70);
         assert!(!sealed.listing_failed && lists(&p.fake.seen()) == 0, "its backoff: not asked again: {sealed:?}");
         p.fake.clear_faults();
-        let _ = p.step(false, DUE + 100_000 + 3 * BLOBS_AGAIN, true);
-        let sealed = p.sealed(false, DUE + 100_000 + 3 * BLOBS_AGAIN);
+        let _ = step(DUE + 100_000 + 3 * BLOBS_AGAIN);
+        let sealed = sealed_step(DUE + 100_000 + 3 * BLOBS_AGAIN);
         assert!(sealed.problem.is_none() && !sealed.listing_failed && sealed.listed >= 11_002, "{sealed:?}");
         assert!(p.phone_folder.join("blobs").join(&name).exists(), "still listed there: kept");
     }
@@ -8193,5 +8296,201 @@ mod tests {
         assert!(listing.items.contains_key("a") && bytes == whole.len() as u64);
         let cut = &whole[..whole.len() - "</d:multistatus>".len()];
         assert!(read_listing(cut, "https://example.org/dav/blobs/").is_err());
+        // End tags may carry spaces before their `>`, as XML allows: read as any (review of 18 October 2026, L-6).
+        let spaced = String::from_utf8(whole.clone()).unwrap().replace("</d:response>", "</d:response >").replace("</d:multistatus>", "</d:multistatus\r\n>");
+        let (listing, _) = read_listing(spaced.as_bytes(), "https://example.org/dav/blobs/").unwrap();
+        assert!(listing.items.contains_key("a"), "{listing:?}");
+        // The folder's own answer missing: what it holds cannot be told whole (L-1).
+        let without = fake::multistatus(&entry("/dav/blobs/a", "<d:resourcetype/>"));
+        assert!(read_listing(&without[..], "https://example.org/dav/blobs/").is_err());
+    }
+
+    /// L-1 (review of 18 October 2026): a listing of `blobs/` that leaves
+    /// files out (a server restored from an older backup) never makes the
+    /// phone let go of a content its current records name, those of the
+    /// notes it holds after deleting them many at once among them: its "Put
+    /// them back" still works.
+    #[test]
+    fn a_listing_that_leaves_files_out_never_takes_what_records_name() {
+        let p = Pair::new("mirror-short-listing");
+        let (dn, pn) = (p.base.join("desk-notes"), p.base.join("phone-notes"));
+        let turn = |desk: bool, now: i64| {
+            let (device, folder) = p.device(desk);
+            let notes = if desk { &dn } else { &pn };
+            assert!(p.step(desk, now, true).problem.is_none());
+            device.exchange_all_parts(folder, now, notes);
+            assert!(p.step(desk, now, false).problem.is_none());
+            if p.sealed(desk, now).fetched > 0 {
+                device.exchange_all_parts(folder, now, notes);
+                let _ = p.step(desk, now, false);
+            }
+        };
+        put(&dn, "today.md", "# today\n");
+        for n in 0..12 {
+            put(&dn, &format!("trip/{n}.md"), &format!("# day {n} of the trip\n"));
+        }
+        turn(true, DUE);
+        turn(false, DUE + 10);
+        assert_eq!(walk(&pn).len(), 13, "all here");
+        // Deleted many at once on the phone: held there.
+        std::fs::remove_dir_all(pn.join("trip")).unwrap();
+        let held = p.phone.exchange_all_parts(&p.phone_folder, DUE + 20, &pn);
+        assert!(held.withheld.as_ref().is_some_and(|w| w.iter().any(|w| w.count == 12)), "{held:?}");
+        // An hour on, the server lists none of those sealed files (an older backup put back there).
+        let server_blobs = p.fake.files.join("Documents").join("Sioul").join("blobs");
+        let aside = p.base.join("blobs-aside");
+        std::fs::rename(&server_blobs, &aside).unwrap();
+        put(&server_blobs, &"0".repeat(64), "another device's");
+        let now = DUE + 30 + BLOBS_AGAIN;
+        assert!(p.step(false, now, true).problem.is_none());
+        let sealed = p.sealed(false, now);
+        assert!(sealed.listed > 0 && sealed.let_go == 0, "every content a record names kept: {sealed:?}");
+        let back = crate::share::put_back_withheld(&p.phone_folder, &KEY, &p.phone.memory, &p.phone.id, &p.phone.all_parts(&pn), "files/notes/");
+        assert_eq!(back, Ok(12));
+        std::fs::remove_dir_all(&server_blobs).unwrap();
+        std::fs::rename(&aside, &server_blobs).unwrap();
+    }
+
+    /// L-2 (review of 18 October 2026): a phone keeping the folder itself,
+    /// whose background reads no notes (`files: false`), asks for the
+    /// others' new notes' contents all the same; its sealed step brings
+    /// them; the window, opened offline, writes them.
+    #[test]
+    fn the_background_asks_for_new_notes_and_the_window_writes_them_offline() {
+        let p = Pair::new("mirror-background");
+        let (dn, pn) = (p.base.join("desk-notes"), p.base.join("phone-notes"));
+        let desk_turn = |now: i64| {
+            assert!(p.step(true, now, true).problem.is_none());
+            p.desk.exchange_all_parts(&p.desk_folder, now, &dn);
+            assert!(p.step(true, now, false).problem.is_none());
+        };
+        put(&dn, "a.md", "# a\n");
+        desk_turn(DUE);
+        // The phone's window reads them once.
+        assert!(p.step(false, DUE + 10, true).problem.is_none());
+        p.phone.exchange_all_parts(&p.phone_folder, DUE + 10, &pn);
+        let _ = p.sealed(false, DUE + 10);
+        p.phone.exchange_all_parts(&p.phone_folder, DUE + 10, &pn);
+        assert_eq!(std::fs::read_to_string(pn.join("a.md")).unwrap_or_default(), "# a\n");
+        // The desk writes a note; the phone's background step: its records, a quick exchange, its sealed step.
+        put(&dn, "b.md", "# b, written while the phone was put away\n");
+        desk_turn(DUE + 100);
+        assert!(p.step(false, DUE + 200, true).problem.is_none());
+        let quick = p.phone.exchange_parts(&p.phone_folder, DUE + 200, &pn, false);
+        assert!(quick.waits.contains_key("not-read") && !pn.join("b.md").exists(), "{quick:?}");
+        let sealed = p.sealed(false, DUE + 200);
+        assert_eq!(sealed.fetched, 1, "asked for, and brought: {sealed:?}");
+        // The window opened offline: nothing asked of the server; its exchange writes it.
+        p.fake.fault(|_| Some(Fault::Drop));
+        p.phone.exchange_all_parts(&p.phone_folder, DUE + 300, &pn);
+        assert_eq!(std::fs::read_to_string(pn.join("b.md")).unwrap_or_default(), "# b, written while the phone was put away\n");
+    }
+
+    /// L-4 (review of 18 October 2026): sealed files that came are put in
+    /// place together, the state written once for them; never over a file
+    /// there.
+    #[test]
+    fn sealed_files_that_came_are_placed_together_never_over_one_there() {
+        let p = Pair::new("mirror-place");
+        let blobs = p.phone_folder.join("blobs");
+        std::fs::create_dir_all(&blobs).unwrap();
+        let ready: Vec<(String, PathBuf, u64)> = (0..3)
+            .map(|n| {
+                let came = blobs.join(format!(".came-{n}"));
+                std::fs::write(&came, format!("sealed {n}")).unwrap();
+                (format!("blobs/{n:064x}"), came, 8)
+            })
+            .collect();
+        put(&p.phone_folder, &format!("blobs/{:064x}", 1), "sealed here meanwhile");
+        assert_eq!(place_fetched(&p.phone.memory, &p.phone_folder, &p.fake.login().account, &ready), vec![true, false, true]);
+        let state = State::load(&p.phone.memory);
+        assert!(state.files.contains_key(&ready[0].0) && !state.files.contains_key(&ready[1].0) && state.files.contains_key(&ready[2].0));
+        assert_eq!(std::fs::read_to_string(blobs.join(format!("{:064x}", 1))).unwrap(), "sealed here meanwhile");
+    }
+
+    /// L-7 (review of 18 October 2026): "Send everything again" while
+    /// `blobs/` cannot be listed asks each of this device's sealed files of
+    /// the server itself, and sends again the one it lost.
+    #[test]
+    fn send_everything_again_finds_a_sealed_file_lost_while_blobs_cannot_be_listed() {
+        let w = World::new("again-unlisted");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let source = w.base.join("note.md");
+        std::fs::write(&source, "a note\n".repeat(50)).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+        let whole: BTreeMap<String, u64> = [(name.clone(), size)].into();
+        assert!(send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &whole, DUE + 10, false, TEST).problem.is_none());
+        let there = w.server.join("blobs").join(&name);
+        assert!(there.exists());
+        std::fs::remove_file(&there).unwrap();
+        w.fake.fault(|r| (r.method == "PROPFIND" && r.path.ends_with("/blobs")).then_some(Fault::Status(500)));
+        let again = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &whole, DUE + 20, true, TEST);
+        assert!(again.listing_failed && there.exists(), "asked of the server itself, sent again: {again:?}");
+    }
+
+    /// On a metered or slow connection, the mirror's sealed files of a
+    /// megabyte or more come one at a time, ten minutes apart, as the
+    /// sending paces them (review of 18 October 2026, L-2's battery).
+    #[test]
+    fn large_sealed_files_are_paced_on_a_frugal_connection() {
+        let p = Pair::new("mirror-frugal");
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            for n in 0..2 {
+                w.blobs.insert(format!("{n:064x}"), crate::blobs::Want { hash: "h".into(), size: 2 << 20, since: DUE, ..Default::default() });
+            }
+        })
+        .unwrap();
+        let gets = |p: &Pair| p.fake.seen().iter().filter(|l| l.starts_with("GET ") && l.contains("/blobs/")).count();
+        let login = p.fake.login();
+        p.fake.forget_seen();
+        let frugal = sealed_step_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &login, &KEY, DUE + 10, true, TEST);
+        assert!(gets(&p) == 1 && frugal.paced == 1, "one large at a time: {frugal:?}");
+        p.fake.forget_seen();
+        let _ = sealed_step_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &login, &KEY, DUE + 20, true, TEST);
+        assert_eq!(gets(&p), 0, "the next within ten minutes waits");
+        let _ = sealed_step_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &login, &KEY, DUE + 20 + PACE, true, TEST);
+        assert!(gets(&p) >= 1, "ten minutes on, the next");
+    }
+
+    /// L-8 (review of 18 October 2026): a text's medium asked for in vain is
+    /// asked within five minutes in its first hour, then less often, and no
+    /// more after three days, until the texts' page asks for it again.
+    #[test]
+    fn a_medium_never_there_is_asked_three_days_then_left() {
+        let p = Pair::new("mirror-media");
+        let name = "e".repeat(64);
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            w.media.insert(name.clone(), crate::blobs::Want { hash: "h".into(), size: 10, since: DUE, ..Default::default() });
+        })
+        .unwrap();
+        let asked = |p: &Pair| p.fake.seen().iter().filter(|l| l.starts_with("GET ") && l.contains(name.as_str())).count();
+        p.fake.forget_seen();
+        let _ = p.sealed(false, DUE + 10);
+        let _ = p.sealed(false, DUE + 10 + WANTED_AGAIN);
+        assert_eq!(asked(&p), 2, "twice in its first five minutes");
+        // A day on, an hour of sealed steps a minute apart: its backoff grows past five minutes.
+        p.fake.forget_seen();
+        for minute in 0..60 {
+            let _ = p.sealed(false, DUE + 86_400 + minute * 60);
+        }
+        assert!(asked(&p) <= 4, "less often than every five minutes: {}", asked(&p));
+        // Three days on: asked no more.
+        p.fake.forget_seen();
+        for at in [DUE + 3 * 86_400 + 10, DUE + 3 * 86_400 + 4_000, DUE + 4 * 86_400] {
+            let _ = p.sealed(false, at);
+        }
+        assert_eq!(asked(&p), 0, "left");
+        // The page asks for it again (`texts::ask_media_again`): asked again.
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            if let Some(want) = w.media.get_mut(&name) {
+                (want.since, want.again, want.tries) = (DUE + 4 * 86_400 + 60, 0, 0);
+            }
+        })
+        .unwrap();
+        let _ = p.sealed(false, DUE + 4 * 86_400 + 120);
+        assert_eq!(asked(&p), 1, "asked again");
     }
 }
