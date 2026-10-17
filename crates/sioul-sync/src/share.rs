@@ -883,7 +883,7 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
                 if matches!(store.shape, Shape::Files) && held == 0 {
                     continue;
                 }
-                if matches!(store.shape, Shape::Files) && !look.confirmed.iter().any(|folder| store.name.starts_with(folder.as_str())) {
+                if matches!(store.shape, Shape::Files) && !look.confirmed.iter().any(|said| confirms(said, &store.name)) {
                     found.emptied.push((store.name.clone(), held));
                 }
                 found.unknown.insert(store.name.clone());
@@ -993,8 +993,10 @@ impl Listing<'_> {
                         let place = format!("{prefix}{name}");
                         let below = format!("{place}/");
                         let held = self.known.range(place.clone()..).take_while(|(file, _)| file.starts_with(&place)).filter(|(file, _)| **file == place || file.starts_with(&below)).count();
-                        if held > 0 && !self.confirmed.iter().any(|folder| below.starts_with(folder.as_str())) {
-                            self.found.emptied.push((below.clone(), held));
+                        if held > 0 && !self.confirmed.iter().any(|said| confirms(said, &below)) {
+                            // Said as what it stands for: a note ("…/single.md"), or a folder ("…/archive/").
+                            let one = self.known.contains_key(&place);
+                            self.found.emptied.push((if one { place.clone() } else { below.clone() }, held));
                             self.found.unknown.insert(place);
                             self.found.unknown.insert(below);
                         }
@@ -1015,7 +1017,7 @@ impl Listing<'_> {
             }
         }
         let held = self.known.range(prefix.clone()..).take_while(|(file, _)| file.starts_with(&prefix)).count();
-        let confirmed = self.confirmed.iter().any(|folder| prefix.starts_with(folder.as_str()));
+        let confirmed = self.confirmed.iter().any(|said| confirms(said, &prefix));
         if !whole || (count == 0 && held > 0 && !confirmed) {
             if whole {
                 self.found.emptied.push((prefix.clone(), held));
@@ -1024,6 +1026,14 @@ impl Listing<'_> {
         }
         count
     }
+}
+
+/// Whether what you said to take out everywhere (`Sealed::confirmed`: a
+/// folder by its place, "files/notes/disk/", or one note replaced by a
+/// link, "files/notes/single.md") covers `file` (a file's or a folder's
+/// place): what is below that folder, or that note; never a name beside it.
+fn confirms(said: &str, file: &str) -> bool {
+    if said.ends_with('/') { file.starts_with(said) } else { file == said || file.strip_prefix(said).is_some_and(|rest| rest.starts_with('/')) }
 }
 
 /// What a crash left half written by Sioul: its hidden names ending so.
@@ -2309,15 +2319,6 @@ struct Memory {
     /// it counts again.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     removed_devices: BTreeMap<String, RemovedDevice>,
-    /// Sioul keeping the folder itself: the sealed files of others its copy
-    /// must keep though the server no longer has them, by name, for the
-    /// pull, which has no key (`needed_sealed`): those changes waiting here
-    /// name, and those a change replaced lately (`Sealed::replaced`: an
-    /// earlier version kept here by reference opens from that copy). None
-    /// in an older Sioul's memory, until this one's first exchange says it:
-    /// the pull lets go of nothing meanwhile.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    needed_sealed: Option<BTreeSet<String>>,
     /// What the whole lists of format 1 seen here held (lists format 2
     /// divides), by format 2's names: each list record read, at its clock, in
     /// whatever order (`note_whole_record`), and, while this device writes
@@ -2421,10 +2422,23 @@ struct Sealed {
     /// when (milliseconds), for `history::SEALED_DAYS` and a day: a device
     /// that received such a change may keep that content by reference among
     /// its earlier versions. None of them leaves early (`removed_due`), and a
-    /// copy of the folder kept by Sioul itself keeps them (`needed_sealed`)
+    /// copy of the folder kept by Sioul itself keeps them (`needed`)
     /// (review of 17 October 2026, M2).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     replaced: BTreeMap<String, i64>,
+    /// Sioul keeping the folder itself: the sealed files its copy keeps
+    /// though the server may no longer list them, by name, for the pull,
+    /// which has no key (`needed_sealed`): the contents of the current notes
+    /// and papers of the parts shared here, the files held after going many
+    /// at once among them (a listing that leaves files out never takes what
+    /// a record names: review of 18 October 2026, L-1), those changes waiting
+    /// here name, and those a change replaced lately (`replaced`: an earlier
+    /// version kept here by reference opens from that copy). Kept here, out
+    /// of `memory.json`, which is written at every exchange. None in an older
+    /// Sioul's files, until this one's first exchange says it: the pull lets
+    /// go of nothing meanwhile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    needed: Option<BTreeSet<String>>,
     /// When this computer's sealed files were last looked for, and the
     /// history and leftovers last tidied (milliseconds): kept in `memory.json`
     /// now (`Memory::checked`, `tidied`), so that this file, large with many
@@ -4625,7 +4639,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             // You said to take them out: the folder they went from (its own
             // line, `confirm_gone`), or these files ("Take them out now",
             // `confirm_withheld`).
-            let confirmed = |file: &String| memory.sealed.confirmed.iter().any(|folder| file.starts_with(folder.as_str())) || memory.sealed.confirmed_files.contains(file);
+            let confirmed = |file: &String| memory.sealed.confirmed.iter().any(|said| confirms(said, file)) || memory.sealed.confirmed_files.contains(file);
             let mass = gone.len() > MASS || (gone.len() >= 3 && gone.len() * 5 > held);
             let since_of = |file: &String| memory.sealed.gone.get(file).copied().unwrap_or(now_ms);
             // Held as gone many at once: now, or before and until its own grace ends (`Sealed::bulk`).
@@ -5166,6 +5180,21 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             let why = if !reads(store) { "not-read" } else if hurried() { "hurried" } else if found.is_unknown(file) { "unknown" } else { "" };
             if !why.is_empty() {
                 *outcome.waits.entry(why.into()).or_default() += 1;
+                // Sioul keeping the folder itself, an exchange that leaves the
+                // notes for later (a phone's background step, an alarm's): their
+                // contents asked for all the same, nothing written, so that the
+                // window writes them as soon as it opens, offline too (review of
+                // 18 October 2026, L-2).
+                if keeps_itself(sharing)
+                    && let Some(reference) = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok())
+                {
+                    let blob = crate::blobs::name(sharing.key, &reference.h);
+                    if std::fs::metadata(sharing.folder.join("blobs").join(&blob)).is_ok_and(|m| m.len() > 0) {
+                        there.insert(blob);
+                    } else {
+                        wanted.insert(blob, (reference.h.clone(), reference.s));
+                    }
+                }
                 continue;
             }
             // Take-outs copied into the history: so many an exchange, the rest at the next (`TAKE_OUT_COPIES`).
@@ -5550,7 +5579,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
         let last = std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).map(|dir| round_file(&dir, id, removed.last)).filter(|path| std::fs::metadata(path).is_ok_and(|m| removed.holds_round(removed.last, m.len())));
         // A small file only while it is as it was when its files went: a copy brought back, never one it wrote since.
-        let small = device_small_places(sharing.folder, id, removed.entry, removed.notes).into_iter().filter(|(path, place)| removed.small.get(place).is_some_and(|size| std::fs::metadata(path).is_ok_and(|m| m.len() == *size))).map(|(path, _)| path);
+        let as_it_went = |path: &Path, place: &str| match removed.small_seen.get(place) {
+            Some(h) => content_hash(path).as_deref() == Some(h.as_str()),
+            None => removed.small.get(place).is_some_and(|size| std::fs::metadata(path).is_ok_and(|m| m.len() == *size)),
+        };
+        let small = device_small_places(sharing.folder, id, removed.entry, removed.notes).into_iter().filter(|(path, place)| as_it_went(path, place)).map(|(path, _)| path);
         for path in small.chain(last).collect::<Vec<_>>() {
             let _ = std::fs::remove_file(path);
         }
@@ -5585,10 +5618,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.drafts.remove(&key);
     }
     outcome.withheld = Some(memory.withheld.clone());
-    memory.needed_sealed = keeps_itself(sharing).then(|| {
-        let waiting = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v))));
-        waiting.chain(memory.sealed.replaced.keys().cloned()).collect()
+    let needed: Option<BTreeSet<String>> = keeps_itself(sharing).then(|| {
+        let name = |h: &str| crate::blobs::name(sharing.key, h);
+        let waiting = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| name(&value_hash(key, v))));
+        // The current contents of the parts shared here, the held ones among them.
+        let current = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty() && (locate(stores, file_of(key)).is_some() || memory.sealed.gone.contains_key(file_of(key)))).map(|(_, known)| name(&known.h));
+        waiting.chain(current).chain(memory.sealed.replaced.keys().cloned()).collect()
     });
+    memory.sealed.needed = needed;
     memory.save(sharing.memory)?;
     if let Some((standing, _)) = standing.filter(|(standing, taken)| settled && (standing.newest / 1_000_000) as i64 + settling_ms() < *taken) {
         let quiet = Quiet { standing, at: now_ms, until, own: (stamp_at(sharing.memory), stamp_at(&sealed_path(sharing.memory))), round, own_size, wrote: outcome.wrote, pending: outcome.pending };
@@ -6743,8 +6780,9 @@ fn rebuild_with<T>(memory: &Path, computer: &str, files: &[&str], rejoin: bool, 
 /// Notes or papers gone many at once from this device and held (`GONE_GRACE`),
 /// by folder of the records ("files/notes/"): how many, when the first and
 /// the last went and when the last leave your other devices by themselves
-/// (milliseconds), unless they come back, and the folders most of them were
-/// in (at most three, each at most two levels below the notes).
+/// (milliseconds), unless they come back, and where they were, said
+/// shortly (`bulk_folders`: the deepest folder holding four in five of them,
+/// else the few that hold most, else the folder above them all).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Withheld {
     pub store: String,
@@ -6839,11 +6877,11 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
 /// sharing): the next exchange finds them back, and nothing leaves. Never
 /// through a link, nor into the sharing folder or Sioul's state, nor over a
 /// file there, one written there meanwhile included; never without room for
-/// it and some left (as every write of the sharing, `disk::fits`). A few
-/// hundred at a time, the exchanges' lock let go between them, so that a
-/// dose's exchange never waits for a whole bulk (thousands take half a
-/// minute: review of 17 October 2026, L1). How many came back; a disk too
-/// full stops it, said.
+/// it and some left (as every write of the sharing, `disk::fits`). A quarter
+/// of a second's worth at a time, the exchanges' lock then left free a
+/// moment, so that a dose's exchange never waits for more than that
+/// (thousands take half a minute: reviews of 17 and 18 October 2026, L1 and
+/// L-3). How many came back; a disk too full stops it, said.
 pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], store: &str) -> Result<usize, String> {
     // What there is to put back, and its date: read once.
     let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = {
@@ -6865,9 +6903,18 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             .collect()
     };
     let mut back = 0;
-    for batch in held.chunks(PUT_BACK_BATCH) {
-        let _running = exchange_lock(memory, true)?;
-        for (file, h, when, size) in batch {
+    let mut rest = held.as_slice();
+    while !rest.is_empty() {
+        let running = exchange_lock(memory, true)?;
+        let (held_since, mut done) = (std::time::Instant::now(), 0);
+        for (file, h, when, size) in rest {
+            // The lock held a moment at most, then left free a while: a dose's
+            // exchange waiting for it takes it then, never after a whole bulk
+            // nor a whole batch (review of 18 October 2026, L-3).
+            if done >= PUT_BACK_BATCH || held_since.elapsed() >= PUT_BACK_HOLD {
+                break;
+            }
+            done += 1;
             let Some((store, path)) = locate(stores, file) else { continue };
             if std::fs::symlink_metadata(&path).is_ok() || !writable_in(store, &path, Some(folder), memory) {
                 continue;
@@ -6892,12 +6939,23 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             }
             back += 1;
         }
+        rest = &rest[done..];
+        drop(running);
+        if !rest.is_empty() {
+            std::thread::sleep(PUT_BACK_FREE);
+        }
     }
     Ok(back)
 }
 
-/// How many held files are put back under one hold of the exchanges' lock.
+/// How many held files are put back under one hold of the exchanges' lock,
+/// at most, and for how long at most it is held: then it is left free a
+/// while (`PUT_BACK_FREE`), for whatever exchange waits for it, a dose's
+/// first. Until 18 October 2026 the put back took it again at once, and a
+/// dose's exchange waited up to 14 s for it on a computer.
 const PUT_BACK_BATCH: usize = 200;
+const PUT_BACK_HOLD: std::time::Duration = std::time::Duration::from_millis(250);
+const PUT_BACK_FREE: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// A file written beside its place taken there only while none is (a hard
 /// link refuses to take an existing name; where links cannot be made, a
@@ -6916,7 +6974,8 @@ fn place_new(temporary: &Path, path: &Path) -> bool {
 /// The files gone at once from a folder of notes or papers (`share-vanished`)
 /// taken out everywhere at the next exchange, as you said: the folder by its
 /// name in the records ("files/notes/disk/", or a whole store,
-/// "files/notes/"), what is below it too, never a folder beside it.
+/// "files/notes/"), what is below it too, never a folder beside it; or a
+/// note replaced by a link ("files/notes/single.md": `confirms`).
 pub fn confirm_gone(memory: &Path, computer: &str, store: &str) -> Result<(), String> {
     let _running = exchange_lock(memory, true)?;
     let mut state = Memory::load_all(memory, computer);
@@ -7188,12 +7247,13 @@ pub fn swept_theirs(memory: &Path, computer: &str) -> BTreeMap<String, i64> {
 /// back; a device still in use that goes on writing it makes it longer, and
 /// it comes); whether its entry and its note of how far it read go too
 /// (`small_go`, judged again at each exchange: forgotten here, then
-/// replaced, they go then); and the size of each of its small files then,
-/// by its place in the folder: a copy of one is taken out again only while
-/// it is of that size (a sync app bringing it back), never one it wrote
-/// since (a claim renewed, its texts to send: each writing changes the
-/// size, `pad_for`) (review of 17 October 2026, L7). Its claims and its
-/// texts to send went in every case.
+/// replaced, they go then); and each of its small files then, by its place
+/// in the folder and its content (`small_seen`; its size, `small`, for a
+/// removal by an earlier build): a copy of one is taken out again only
+/// while it is the same bytes (a sync app bringing it back), never one it
+/// wrote since (a claim renewed, its texts to send) (reviews of 17 and 18
+/// October 2026, L7 and L-5). Its claims and its texts to send went in
+/// every case.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemovedDevice {
     pub at: i64,
@@ -7206,6 +7266,12 @@ pub struct RemovedDevice {
     pub notes: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub small: BTreeMap<String, u64>,
+    /// The same, by each file's content (`content_hash`), from 18 October
+    /// 2026: a claim written again from nothing has the size its first had
+    /// (`pad_for` pads nothing then), never the same bytes (sealed anew).
+    /// Read before `small`, which a removal by an earlier build kept alone.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub small_seen: BTreeMap<String, String>,
 }
 
 impl RemovedDevice {
@@ -7242,6 +7308,14 @@ fn small_go(counted: &Counted, heard_ms: i64, now_ms: i64) -> (bool, bool) {
 /// `entry`, its note of how far it read when `notes`. Those there only.
 fn device_small_files(folder: &Path, id: &str, entry: bool, notes: bool) -> Vec<PathBuf> {
     device_small_places(folder, id, entry, notes).into_iter().map(|(path, _)| path).collect()
+}
+
+/// A small file's content, by its hash (SHA-256): a copy brought back is the
+/// same bytes; one written since never is, whatever its size.
+fn content_hash(path: &Path) -> Option<String> {
+    use sha2::Digest;
+    let bytes = std::fs::read(path).ok()?;
+    Some(sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// The same, each with its place in the folder (`leases/health/<id>.lease`).
@@ -7441,7 +7515,7 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
         return Err("share-device-counts".into());
     }
     // The size of each of its small files before they go, the entry and note too (they may go later, `small_go`).
-    let small: BTreeMap<String, u64> = device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| std::fs::metadata(&path).ok().map(|m| (place, m.len()))).collect();
+    let small_seen: BTreeMap<String, String> = device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| content_hash(&path).map(|h| (place, h))).collect();
     for path in &paths {
         let _ = std::fs::remove_file(path);
     }
@@ -7454,7 +7528,7 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     for name in later {
         state.sealed.theirs.insert(name, (device.to_string(), now_ms));
     }
-    state.removed_devices.insert(device.to_string(), RemovedDevice { at: now_ms, last: files.last_round, last_size: files.last_size, entry: files.entry_goes, notes: files.notes_go, small });
+    state.removed_devices.insert(device.to_string(), RemovedDevice { at: now_ms, last: files.last_round, last_size: files.last_size, entry: files.entry_goes, notes: files.notes_go, small: BTreeMap::new(), small_seen });
     let floor = state.departed.entry(device.to_string()).or_default();
     *floor = (*floor).max(files.last_round);
     state.save(memory)?;
@@ -7462,21 +7536,21 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     Ok(files)
 }
 
-/// Sioul keeping the folder itself: the others' sealed files its copy keeps
-/// though the server no longer lists them (`Memory::needed_sealed`), by
-/// name, as the last exchange said them; for the pull, which has no key and
-/// lets go of the others (`remote`). None when the memory is not this
-/// computer's, or does not say it yet (an older Sioul's, before this one's
-/// first exchange): then nothing is let go.
+/// Sioul keeping the folder itself: the sealed files its copy keeps though
+/// the server may no longer list them (`Sealed::needed`), by name, as the
+/// last exchange said them; for the pull, which has no key and lets go of
+/// the others (`remote`). None when the memory is not this computer's, or
+/// does not say it yet (an older Sioul's, before this one's first
+/// exchange): then nothing is let go.
 pub fn needed_sealed(memory: &Path, computer: &str) -> Option<BTreeSet<String>> {
     #[derive(Deserialize)]
     struct Part {
         #[serde(default)]
         computer: String,
         #[serde(default)]
-        needed_sealed: Option<BTreeSet<String>>,
+        needed: Option<BTreeSet<String>>,
     }
-    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).and_then(|part| part.needed_sealed)
+    std::fs::read(sealed_path(memory)).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).and_then(|part| part.needed)
 }
 
 /// The devices whose files you removed here (`remove_device_files`), and

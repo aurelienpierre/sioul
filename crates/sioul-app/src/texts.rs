@@ -1187,6 +1187,25 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
     brought > 0
 }
 
+/// A medium the page shows that is not here: Sioul keeping the folder itself
+/// asks for it again as if new, once it had stopped asking (three days in
+/// vain, `sioul_sync::remote::sealed_step`; review of 18 October 2026, L-8).
+fn ask_media_again(hash: &str) {
+    if hash.is_empty() || !crate::share::keeps_itself() {
+        return;
+    }
+    let Some((_, _, Some((_, key)))) = sealed() else { return };
+    let name = sioul_sync::blobs::name(&key, hash);
+    let now = jiff::Timestamp::now().as_second();
+    let _ = sioul_sync::blobs::Wanted::change(&crate::share::memory_path(), |wanted| {
+        if let Some(want) = wanted.media.get_mut(&name)
+            && now - want.since >= 3 * 86_400
+        {
+            (want.since, want.again, want.tries) = (now, 0, 0);
+        }
+    });
+}
+
 /// Where a media file is opened for the page: Sioul's cache (yours alone), emptied when the page closes.
 fn opened_folder() -> PathBuf {
     sioul_core::config::cache_dir().join(rules::FOLDER)
@@ -1671,6 +1690,9 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
         "draft-use" | "draft-discard" => (draft_taken(&text("id")), false),
         "media" => {
             let url = open_media(&text("hash"), &text("ct")).map(|p| crate::backend::file_url(&p)).unwrap_or_default();
+            if url.is_empty() {
+                ask_media_again(&text("hash"));
+            }
             (json!({ "url": url }), false)
         }
         "save-media" => {

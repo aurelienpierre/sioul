@@ -2849,6 +2849,7 @@ share-vanished = { $count ->
     [one] One file
    *[other] { $count } files
 } went from { $folder } here at once: nothing of them is taken out on your other devices until you say so (a disk not mounted, a folder moved, an access withdrawn would look the same).
+share-vanished-link = { $folder } is a link here now: Sioul never follows links, so nothing of it is taken out on your other devices until you say so.
 share-vanished-confirm = Take them out everywhere
 porch-withheld = { $count ->
     [one] One file went from { $part } here on { $day }, from { $folders }.
@@ -2892,7 +2893,7 @@ share-remove-sealed-later = { $count ->
    *[other] { $count } more, sealed lately, go once they are { $days } days old.
 }
 share-remove-entry-stays = What it last said of itself stays, a few hundred bytes: your other devices read there that it left, your doses first.
-share-remove-in-use = It last shared { $when }: it may still be in use. If it is, it shares again by itself, and sends everything it holds again; your doses keep counting it, and say the doubt, until it has been silent a day.
+share-remove-in-use = It last shared { $when }: it may still be in use. If it is, it shares again by itself, and sends everything it holds again; your doses keep counting it, and say the doubt, until it says anything newer, or until you choose “Forget it now” once it has been silent a day.
 share-remove-small-stay = What it last said of itself and how far it read stay, a few hundred bytes: your other devices may still count it, your doses first, and read there how it closed.
 share-remove-stays = What stays: everything your devices already read of it, on each of them; the texts’ media another phone’s log names. A device joining later gets none of its records, unless another device’s records carry them (texts restored on a new phone).
 share-remove-unread = { $count ->

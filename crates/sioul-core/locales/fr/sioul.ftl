@@ -2867,6 +2867,7 @@ share-vanished = { $count ->
     [one] Un fichier est parti
    *[other] { $count } fichiers sont partis
 } d’un coup de { $folder } ici : rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas (un disque non monté, un dossier déplacé, un accès retiré auraient le même air).
+share-vanished-link = { $folder } est maintenant un lien ici : Sioul ne suit jamais les liens, donc rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas.
 share-vanished-confirm = Les retirer partout
 porch-withheld = { $count ->
     [one] Un fichier est parti de { $part } ici le { $day }, de { $folders }.
@@ -2910,7 +2911,7 @@ share-remove-sealed-later = { $count ->
    *[other] { $count } autres, scellés récemment, partent quand ils ont { $days } jours.
 }
 share-remove-entry-stays = Ce qu’il a dit de lui en dernier reste, quelques centaines d’octets : vos autres appareils y lisent qu’il a quitté le partage, vos prises d’abord.
-share-remove-in-use = Dernier partage { $when } : il sert peut-être encore. Si c’est le cas, il partage de nouveau de lui-même et renvoie tout ce qu’il a ; vos prises continuent de le compter, en disant le doute, jusqu’à ce qu’il se soit tu un jour.
+share-remove-in-use = Dernier partage { $when } : il sert peut-être encore. Si c’est le cas, il partage de nouveau de lui-même et renvoie tout ce qu’il a ; vos prises continuent de le compter, en disant le doute, jusqu’à ce qu’il dise quoi que ce soit de plus récent, ou jusqu’à ce que vous choisissiez « L’oublier maintenant » une fois qu’il s’est tu un jour.
 share-remove-small-stay = Ce qu’il a dit de lui en dernier et jusqu’où il a lu restent, quelques centaines d’octets : vos autres appareils peuvent encore le compter, vos prises d’abord, et y lire comment il s’est fermé.
 share-remove-stays = Ce qui reste : tout ce que vos appareils ont déjà lu de lui, sur chacun ; les médias des SMS que nomme le journal d’un autre téléphone. Un appareil qui arrive plus tard ne reçoit aucun de ses enregistrements, sauf si ceux d’un autre appareil les portent (des SMS restaurés sur un nouveau téléphone).
 share-remove-unread = { $count ->
