@@ -23,7 +23,7 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], devices: [], backup: {} })
+    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], withheld: [], devices: [], gone_devices: [], backup: {} })
     // The other devices' files fetched from the server too: {shown, line, on, given, found}.
     readonly property var backup: panel.status.backup || ({})
     property string problem: ""
@@ -52,6 +52,14 @@ ColumnLayout {
     readonly property bool setting: !panel.status.on && !panel.joining
     // "Add a device" pressed: what a new device needs, said.
     property bool adding: false
+    // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
+    property string removing: ""
+    property var removal: ({ text: "", live: false })
+
+    function askRemoval(id) {
+        panel.removal = JSON.parse(panel.sioul.deviceFiles(id) || "{}")
+        panel.removing = id
+    }
     // The sign-in's panel, for the window's pictures (main.qml's grabber).
     property alias join: joinPanel
 
@@ -556,6 +564,71 @@ ColumnLayout {
                     }
                 }
             }
+            // Its files taken out of the folder, forgotten first (docs/database.md, "Removing a device's files").
+            Button {
+                visible: panel.removing !== device.modelData.id
+                flat: true
+                text: panel.sioul.text("share-device-remove-live")
+                onClicked: panel.askRemoval(device.modelData.id)
+            }
+            RemovalAsked {
+                visible: panel.removing === device.modelData.id
+                Layout.fillWidth: true
+                host: panel
+                deviceId: device.modelData.id
+            }
+        }
+    }
+    // The devices that no longer count here (they left, you forgot them,
+    // another replaces them) whose files are still in the folder: each with
+    // "Remove its files".
+    Label {
+        visible: panel.status.on && (panel.status.gone_devices || []).length > 0
+        Layout.topMargin: 12
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-devices-gone")
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: panel.theme.text
+    }
+    Repeater {
+        model: panel.status.on ? (panel.status.gone_devices || []) : []
+
+        delegate: ColumnLayout {
+            id: gone
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 2
+
+            Label {
+                Layout.fillWidth: true
+                text: gone.modelData.name
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: panel.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: gone.modelData.state
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            Button {
+                visible: panel.removing !== gone.modelData.id
+                flat: true
+                text: panel.sioul.text("share-device-remove")
+                onClicked: panel.askRemoval(gone.modelData.id)
+            }
+            RemovalAsked {
+                visible: panel.removing === gone.modelData.id
+                Layout.fillWidth: true
+                host: panel
+                deviceId: gone.modelData.id
+            }
         }
     }
     // On a computer that shares: what a new device needs, in a few lines, on a press.
@@ -952,6 +1025,56 @@ ColumnLayout {
             }
         }
     }
+    // Notes or papers gone many at once here, held until they leave your
+    // other devices by themselves: said as long as it lasts, with what you
+    // may do; nothing has to be pressed.
+    Repeater {
+        model: panel.status.withheld || []
+
+        delegate: ColumnLayout {
+            id: held
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: held.modelData.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: held.modelData.leaves
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Button {
+                    text: panel.sioul.text("porch-withheld-put-back")
+                    onClicked: {
+                        panel.problem = panel.sioul.sharePutBackWithheld(held.modelData.store)
+                        panel.reload()
+                    }
+                }
+                Button {
+                    text: panel.sioul.text("porch-withheld-take-out")
+                    onClicked: {
+                        panel.problem = panel.sioul.shareConfirmGone(held.modelData.store)
+                        panel.reload()
+                    }
+                }
+            }
+        }
+    }
     Label {
         Layout.fillWidth: true
         text: panel.sioul.text("share-not-shared")
@@ -1162,6 +1285,45 @@ ColumnLayout {
                 panel.problem = panel.sioul.text("folder-not-on-device")
             else
                 panel.choose(path)
+        }
+    }
+
+    // Before "Remove its files": what goes, with its size, and what stays,
+    // in plain words; then the press, or Cancel.
+    component RemovalAsked: ColumnLayout {
+        id: asked
+
+        // The panel it is said in: an inline component sees no id of the file's.
+        required property var host
+        // The device's id.
+        required property string deviceId
+
+        spacing: 4
+
+        Label {
+            Layout.fillWidth: true
+            text: asked.host.removal.text || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: asked.host.theme.text
+        }
+        RowLayout {
+            spacing: 6
+
+            Button {
+                text: asked.host.sioul.text("share-device-remove-confirm")
+                onClicked: {
+                    asked.host.problem = asked.host.sioul.deviceRemoveFiles(asked.deviceId)
+                    asked.host.removing = ""
+                    asked.host.reload()
+                }
+            }
+            Button {
+                flat: true
+                text: asked.host.sioul.text("ui-cancel")
+                onClicked: asked.host.removing = ""
+            }
         }
     }
 }

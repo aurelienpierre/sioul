@@ -4,7 +4,9 @@
 // Settings ▸ Your folder and sharing (SharePanel.qml), sharing on, on a
 // stand-in for Sioul: this device's build, each other device's build (an
 // older one said calmly), the switch that sends this device's files to the
-// server beside the sync app, and "Send everything again" with what it said.
+// server beside the sync app, and "Send everything again" with what it said;
+// notes held after going many at once, with Put them back and Take them out
+// now; "Remove its files" for a device, what goes said before the press.
 // The sending itself is tested in sioul-sync (remote.rs); here the window's
 // side, in English and French. Run by tools/qml-test.sh. To see the panel,
 // set `pictures` below to a folder (a change of your own, not to commit).
@@ -34,6 +36,9 @@ Item {
         property var sends: []
         property int again: 0
         property bool sent: false
+        // Notes held after going many at once, and a device that no longer counts (`test_held_notes_and_a_device_s_files`).
+        property bool held: false
+        property var asked: []
         // Made up: no real device, no real server.
         readonly property var words: ({
             "en": {
@@ -105,6 +110,8 @@ Item {
                 problems: [],
                 parts: [],
                 vanished: [],
+                withheld: mock.held ? [{ store: "files/notes/", text: "23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.", leaves: "They leave your other devices by themselves 14 days after they went, by Friday 16 October at the latest, unless they come back here first. Nothing has to be done.", key: "porch-withheld-said:files/notes/:1790000000000" }] : [],
+                gone_devices: mock.held ? [{ id: "c", name: "The phone (Model 7)", state: "Forgotten here. Its files are still in the folder: 16.1 MB." }] : [],
                 devices: [
                     { id: "a", name: "The phone (FP5)", state: "In use now; last shared 10:41.", notes: [], off: false, forget: false, build: said.phone },
                     { id: "b", name: "laptop", state: "Closed 09:12; last shared 09:12.", notes: [], off: false, forget: false, build: said.laptop }
@@ -127,6 +134,22 @@ Item {
         function shareSendAgain() {
             mock.again += 1
             mock.sent = true
+        }
+        function sharePutBackWithheld(store) {
+            mock.asked = mock.asked.concat(["back " + store])
+            return ""
+        }
+        function shareConfirmGone(store) {
+            mock.asked = mock.asked.concat(["out " + store])
+            return ""
+        }
+        function deviceFiles(id) {
+            mock.asked = mock.asked.concat(["files " + id])
+            return JSON.stringify({ text: "What goes: its records (17 files) and the small files it kept there, 16.1 MB. What stays: everything your devices already read of it.", live: id !== "c" })
+        }
+        function deviceRemoveFiles(id) {
+            mock.asked = mock.asked.concat(["remove " + id])
+            return ""
         }
     }
 
@@ -185,6 +208,49 @@ Item {
             mock.sends = []
             mock.again = 0
             mock.sent = false
+            mock.held = false
+            mock.asked = []
+        }
+
+        // Notes held after going many at once, said with what can be done;
+        // a device that no longer counts with "Remove its files…", and one
+        // that counts with "Forget it and remove its files…": what goes and
+        // what stays said first, then the press, or Cancel.
+        function test_held_notes_and_a_device_s_files() {
+            mock.language = "en"
+            mock.held = true
+            panel.reload()
+            wait(50)
+            verify(shown("23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.") !== null, "held notes, said")
+            button("porch-withheld-put-back").clicked()
+            button("porch-withheld-take-out").clicked()
+            compare(mock.asked, ["back files/notes/", "out files/notes/"])
+            verify(shown("share-devices-gone") !== null, "the heading of the devices that no longer count")
+            verify(shown("Forgotten here. Its files are still in the folder: 16.1 MB.") !== null)
+            const what = "What goes: its records (17 files) and the small files it kept there, 16.1 MB. What stays: everything your devices already read of it."
+            verify(shown(what) === null, "nothing said before the press")
+            mock.asked = []
+            button("share-device-remove").clicked()
+            tryVerify(() => shown(what) !== null, 2000, "what goes and what stays, said first")
+            verify(button("share-device-remove") === null, "its button gives way to the question")
+            compare(mock.asked, ["files c"])
+            button("ui-cancel").clicked()
+            tryVerify(() => shown(what) === null, 2000, "Cancel: nothing removed")
+            compare(mock.asked, ["files c"])
+            button("share-device-remove").clicked()
+            tryVerify(() => button("share-device-remove-confirm") !== null, 2000)
+            button("share-device-remove-confirm").clicked()
+            compare(mock.asked, ["files c", "files c", "remove c"])
+            // A device that counts: on its own line, the same question.
+            mock.asked = []
+            const live = walk(panel, i => i.visible && i.text === "share-device-remove-live" && i.clicked !== undefined, [])
+            compare(live.length, 2, "one for each device that counts")
+            live[0].clicked()
+            tryVerify(() => shown(what) !== null, 2000)
+            compare(mock.asked, ["files a"])
+            button("share-device-remove-confirm").clicked()
+            compare(mock.asked, ["files a", "remove a"])
+            save("share-held-and-removal")
         }
 
         function test_the_build_the_switch_and_send_everything_again_data() {

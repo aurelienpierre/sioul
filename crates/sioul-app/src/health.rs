@@ -2404,6 +2404,17 @@ pub(crate) fn device_forget(id: &str) -> String {
     mark_device(id, |seen, mark| seen.forgotten = Some(mark))
 }
 
+/// A device whose files you removed from the folder while it no longer
+/// counted for the sharing (it left, was forgotten or replaced): forgotten
+/// by the doses too, exactly as "Forget it now" does, before its claims go
+/// (its entry too, once nothing needs it): a device whose entry no longer
+/// reads is known by its claims, as an older Sioul, and with none left the
+/// doses would doubt for it until it had been silent `SILENT_DAYS`. It
+/// counts again if it says anything newer. Returns what went wrong, else "".
+pub(crate) fn device_forget_doses(id: &str) -> String {
+    mark_device(id, |seen, mark| seen.forgotten = Some(mark))
+}
+
 fn mark_device(id: &str, set: impl FnOnce(&mut PeerSeen, Mark)) -> String {
     let id = id.trim();
     if id.is_empty() {

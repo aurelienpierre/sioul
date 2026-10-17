@@ -1215,6 +1215,30 @@ pub mod qobject {
         #[qinvokable]
         fn share_confirm_gone(self: Pin<&mut Sioul>, store: &QString) -> QString;
 
+        /// The notes and papers gone many at once here and held until they
+        /// leave by themselves, as the last exchange left them, in words, as
+        /// JSON (`share::withheld`): for the Porch to say once.
+        #[qinvokable]
+        fn share_withheld(self: &Sioul) -> QString;
+
+        /// "Put them back": the notes or papers held after going many at
+        /// once from a folder of the records ("files/notes/") written back
+        /// where they were, then an exchange; returns what went wrong, else "".
+        #[qinvokable]
+        fn share_put_back_withheld(self: Pin<&mut Sioul>, store: &QString) -> QString;
+
+        /// What "Remove its files" would take out for another device, and
+        /// what stays, in words, as JSON (`share::device_files`): `{ text, live }`.
+        #[qinvokable]
+        fn device_files(self: &Sioul, id: &QString) -> QString;
+
+        /// "Remove its files" (Settings ▸ Your folder and sharing): the
+        /// device forgotten first while it counts, then everything it wrote
+        /// in the folder taken out (`share::remove_device_files`), then an
+        /// exchange; returns what went wrong, else "".
+        #[qinvokable]
+        fn device_remove_files(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
         /// What switching Notes or Papers on would send, counted off the
         /// window's thread: `share_estimated` brings it.
         #[qinvokable]
@@ -5952,6 +5976,29 @@ impl qobject::Sioul {
         if problem.is_empty() {
             crate::share::exchange(&self.qt_thread(), &self.shared());
         }
+        QString::from(&problem)
+    }
+
+    fn share_withheld(&self) -> QString {
+        QString::from(&json(&crate::share::withheld(false)))
+    }
+
+    fn share_put_back_withheld(self: Pin<&mut Self>, store: &QString) -> QString {
+        let problem = crate::share::put_back_withheld(&store.to_string());
+        // Found back by the next exchange, as any file written here: nothing leaves.
+        crate::share::exchange(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn device_files(&self, id: &QString) -> QString {
+        QString::from(&crate::share::device_files(&id.to_string()))
+    }
+
+    fn device_remove_files(self: Pin<&mut Self>, id: &QString) -> QString {
+        let problem = crate::share::remove_device_files(&id.to_string());
+        // The doses read what counts now; the server's copies go at the next sending.
+        crate::health::show_health(&self.qt_thread(), &self.shared());
+        crate::share::exchange(&self.qt_thread(), &self.shared());
         QString::from(&problem)
     }
 

@@ -2868,6 +2868,52 @@ share-vanished = { $count ->
    *[other] { $count } fichiers sont partis
 } d’un coup de { $folder } ici : rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas (un disque non monté, un dossier déplacé, un accès retiré auraient le même air).
 share-vanished-confirm = Les retirer partout
+porch-withheld = { $count ->
+    [one] Un fichier est parti de { $part } ici { $when }, de { $folders }.
+   *[other] { $count } fichiers sont partis d’un coup de { $part } ici { $when }, la plupart de { $folders }.
+}
+porch-withheld-of-notes = vos notes
+porch-withheld-of-papers = vos papiers
+porch-withheld-on = le { $day }
+porch-withheld-between = entre le { $first } et le { $last }
+porch-withheld-leave = { $count ->
+    [one] Il part de lui-même de vos autres appareils { $days } jours après, le { $day }, à moins de revenir ici d’ici là. Rien n’est à faire.
+   *[other] Ils partent d’eux-mêmes de vos autres appareils { $days } jours après, le { $day } au plus tard, à moins de revenir ici d’ici là. Rien n’est à faire.
+}
+porch-withheld-put-back = Les remettre
+porch-withheld-take-out = Les retirer maintenant
+porch-withheld-none-back = Rien n’est revenu : leurs places sont prises, ou leurs contenus ne sont pas sur cet appareil.
+share-devices-gone = Appareils qui ne comptent plus
+share-device-gone-left = Il a quitté le partage. Ses fichiers sont encore dans le dossier : { $size }.
+share-device-gone-forgotten = Oublié ici. Ses fichiers sont encore dans le dossier : { $size }.
+share-device-gone-replaced = Un autre appareil le remplace. Ses fichiers sont encore dans le dossier : { $size }.
+share-device-unnamed = Un appareil
+share-device-remove = Retirer ses fichiers…
+share-device-remove-live = L’oublier et retirer ses fichiers…
+share-device-remove-confirm = Les retirer
+share-remove-live = Il compte encore ici : il est d’abord oublié, pour vos prises aussi, jusqu’à ce qu’il dise du nouveau. S’il sert encore, il partage de nouveau de lui-même et renvoie tout ce qu’il a.
+share-remove-rounds = { $count ->
+    [0] Ce qui part : les petits fichiers qu’il y tenait, { $size }.
+    [one] Ce qui part : ses enregistrements (un fichier) et les petits fichiers qu’il y tenait, { $size }.
+   *[other] Ce qui part : ses enregistrements ({ $count } fichiers) et les petits fichiers qu’il y tenait, { $size }.
+}
+share-remove-sealed = { $count ->
+    [one] Aussi le contenu scellé de ses notes et papiers qu’aucun autre enregistrement ne nomme : un fichier, { $size }.
+   *[other] Aussi les contenus scellés de ses notes et papiers qu’aucun autre enregistrement ne nomme : { $count } fichiers, { $size }.
+}
+share-remove-sealed-unknown = Les contenus scellés de ses notes et papiers restent : cet appareil ne partage pas toutes les parties où ils figurent, ou ne connaît pas les médias des SMS.
+share-remove-sealed-later = { $count ->
+    [one] Un autre, scellé récemment, part quand il a deux semaines.
+   *[other] { $count } autres, scellés récemment, partent quand ils ont deux semaines.
+}
+share-remove-small-stay = Ce qu’il a dit de lui en dernier et jusqu’où il a lu restent, quelques centaines d’octets : vos autres appareils peuvent encore le compter, vos prises d’abord, et y lire comment il s’est fermé.
+share-remove-stays = Ce qui reste : tout ce que vos appareils ont déjà lu de lui, sur chacun ; les médias des SMS que nomme le journal d’un autre téléphone. Un appareil qui arrive plus tard ne reçoit aucun de ses enregistrements, sauf si ceux d’un autre appareil les portent (des SMS restaurés sur un nouveau téléphone).
+share-remove-unread = { $count ->
+    [one] { $devices } n’a pas encore tout lu de lui : ce qu’il n’a pas lu ne lui parviendra jamais.
+   *[other] { $devices } n’ont pas encore tout lu de lui : ce qu’ils n’ont pas lu ne leur parviendra jamais.
+}
+share-device-counts = Il compte de nouveau ici (il a dit du nouveau) : rien n’a été retiré.
+share-device-unknown = Cet appareil n’est pas connu ici : rien n’a été retiré.
 share-older-copy = Une copie plus ancienne a été remise ici à la main (sa date est antérieure à la dernière version vue) : cette version est revenue, la copie ancienne gardée à côté sous le nom « { $copy } ». Pour envoyer une version plus ancienne, utilisez Remettre ci-dessous.
 share-missing = { $file } a changé sur un autre appareil il y a un jour, mais son contenu n’est pas arrivé : l’application de synchronisation transporte-t-elle encore le dossier de partage ?
 share-no-room = { $file } attend : cet appareil manque de place pour lui (et pour la copie gardée avant de l’écrire).

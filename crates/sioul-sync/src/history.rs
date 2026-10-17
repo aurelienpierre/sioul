@@ -117,6 +117,24 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
     Ok(())
 }
 
+/// A file another device's change takes out, moved here as it is: nothing
+/// copied (it was going anyway), and no reference to its content, which
+/// leaves the sharing folder as soon as every device that counts read that it
+/// was taken out (`share::removed_due`): this version stays its 30 days.
+/// Copied (`keep`) when it cannot be moved (another disk).
+pub fn keep_moved(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<(), String> {
+    let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let target = dir.join(new_stamp(&dir, now_ms));
+    if std::fs::rename(path, &target).is_err() {
+        return keep(root, part, file, path, now_ms);
+    }
+    // Yours alone, as a copy is.
+    crate::share::make_private(&target);
+    prune_file(&dir, now_ms, false);
+    Ok(())
+}
+
 /// The part of the history that holds your calendars' and contacts' versions
 /// set aside: an item changed both here and on its server, the server's
 /// version kept, yours kept here (`dav`), to be put back from the window, on
