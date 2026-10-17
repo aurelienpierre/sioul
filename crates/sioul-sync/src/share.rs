@@ -120,8 +120,30 @@ fn importing(memory: &Path) -> bool {
 /// A device finding its own file ahead of its memory twice within this
 /// (milliseconds) shares its name with another device (`share-twin`).
 const TWIN_WITHIN: i64 = 6 * 60 * 60_000;
-/// Entries taken out are remembered this long, so an old copy does not bring them back.
-const TOMBSTONE_DAYS: i64 = 90;
+/// Entries taken out are remembered this long, so an old copy does not bring
+/// them back, and each full round restates them (`new_round`): as long as a
+/// device may be away and still count (`SILENT_DAYS`). A device you forgot,
+/// or one another replaces, no longer holds the others' rounds back; back
+/// within that time, it counts again and reads from a full round, which
+/// must still say what was taken out meanwhile (but the lines of the logs
+/// every device ages out by itself: `AGED_TOMBSTONE_DAYS`). Until 17 October
+/// 2026 it was 90 days, and such a device back after more than 90 days kept
+/// for good what the others had taken out (review of 17 October 2026, M1).
+const TOMBSTONE_DAYS: i64 = SILENT_DAYS;
+const _: () = assert!(TOMBSTONE_DAYS >= SILENT_DAYS);
+/// The lines of the logs every device ages out by itself (`ages_out`) taken
+/// out are remembered this long, past the longest one of them keeps a line
+/// anywhere (its writer `KEPT_DAYS`, the others `LATE_DAYS` more): a line
+/// older than that is never shown and goes by itself on a device back after
+/// longer. They are many, a line for each call and for each message of the
+/// phone's, each a few hundred bytes (a message's padded), its whole line its
+/// name, and each full round restates them: 90 days, as before 17 October 2026.
+const AGED_TOMBSTONE_DAYS: i64 = 90;
+const _: () = assert!(
+    AGED_TOMBSTONE_DAYS > sioul_core::calls::KEPT_DAYS + sioul_core::calls::LATE_DAYS
+        && AGED_TOMBSTONE_DAYS > sioul_core::phonemsgs::KEPT_DAYS + sioul_core::phonemsgs::LATE_DAYS
+        && AGED_TOMBSTONE_DAYS > sioul_core::texts::KEPT_DAYS + sioul_core::texts::LATE_DAYS
+);
 /// A computer silent this long no longer holds back the removal of old rounds.
 const SILENT_DAYS: i64 = 180;
 /// How long a file must stay empty, or gone, before its entries count as taken
@@ -430,6 +452,13 @@ const TEXTS: &str = "data/texts/";
 fn calls_store(name: &str) -> bool {
     // texts: their stores too.
     name.starts_with(CALLS) || name.starts_with(PHONE_MESSAGES) || name.starts_with(TEXTS)
+}
+
+/// Whether an entry is a line of a log every device ages out by itself
+/// (`AGED_TOMBSTONE_DAYS`): the calls' logs, the phone's messages' logs, the
+/// texts' requests and outcomes; never the texts themselves, whose log only grows.
+fn ages_out(key: &str) -> bool {
+    key.starts_with(CALLS) || key.starts_with(PHONE_MESSAGES) || key.starts_with(TEXTS_SEND) || key.starts_with(TEXTS_OUTCOME)
 }
 
 /// The spam filter's table (`sioul_core::spam::table`), made by a training
@@ -2384,6 +2413,11 @@ fn win(winners: &mut BTreeMap<String, (Option<String>, u64, String)>, theirs_now
     }
 }
 
+/// The parts whose files are sealed apart (`Shape::Files`): what one of their
+/// records names is a sealed file of the folder, the same bytes the same
+/// file whatever the part (`blobs::name`): a note and a paper alike.
+const FILE_PARTS: [&str; 3] = ["spam", "papers", "notes"];
+
 /// The others' contents of notes and papers that stopped being current in
 /// this exchange (`theirs_now`: replaced, taken out, or passed by a later
 /// change read in it), noted (`Sealed::theirs`); and those whose writer no
@@ -2394,8 +2428,12 @@ fn win(winners: &mut BTreeMap<String, (Option<String>, u64, String)>, theirs_now
 /// use here, never fresh in the folder (another device uses that content
 /// again, `blobs::put`), never one a current record names (a note's, a change
 /// waiting, one the others named lately, one this device sealed itself, the
-/// texts' media: `texts_media`), and nothing at all while the texts' media are
-/// not known here. Each one swept is said for the server (`Memory::taken`).
+/// texts' media: `texts_media`), and nothing at all while the texts' media
+/// are not known here, nor while a part whose files are sealed apart is not
+/// shared here (`FILE_PARTS`): the records of a part a device does not share
+/// are passed over, and a current paper with the same bytes as a departed
+/// device's replaced note would go (review of 17 October 2026, L1). Each
+/// one swept is said for the server (`Memory::taken`).
 /// A device that counts sweeps them, each its own folder; two at once find
 /// it gone, and their sending a file gone (`404`) or changed (`412`).
 fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counted: &[(String, Counted)], theirs_now: Vec<(String, String)>, current_before: &BTreeSet<String>, now_ms: i64) {
@@ -2428,7 +2466,8 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     let unused = days * DAY;
     let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
     let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
-    if due && let Some(media) = texts_media(sharing, stores, memory, counted) {
+    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    if due && every_part && let Some(media) = texts_media(sharing, stores, memory, counted) {
         let used: BTreeSet<String> = used.into_iter().chain(media).collect();
         let before: Vec<String> = last.keys().cloned().collect();
         crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
@@ -2454,8 +2493,10 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
 /// The sealed files the texts name, by name (`blobs::name`): each part of
 /// every text in each phone's log as this device holds it (`TEXTS_LOG`, each
 /// line sealed at rest, `textseal`), the texts taken out included. None when
-/// they are not known here: the texts not shared on this device, or a line
-/// of their log that does not open or read; then no other device's sealed
+/// they are not known here: the texts not shared on this device, or a whole
+/// line of their log that does not open or read (a last line still being
+/// written, with no line break yet, is passed over: its medium went into the
+/// folder before it, and is fresh there); then no other device's sealed
 /// file is swept here (`sweep_theirs`). A sharing where no phone was ever
 /// seen (every other device known here by its entry, none a phone, nor this
 /// one) holds none: only a phone brings the texts' media.
@@ -2480,8 +2521,15 @@ fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[
                 continue;
             }
             let text = std::fs::read_to_string(&path).ok()?;
-            for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
-                let text: Text = serde_json::from_str(&seal.open(line)?).ok()?;
+            for line in text.split_inclusive('\n') {
+                // A last line still being written (no line break yet) names nothing yet: its medium went first, and is fresh.
+                let opened = seal.open(line.trim()).and_then(|plain| serde_json::from_str::<Text>(&plain).ok());
+                let Some(text) = opened else {
+                    if line.trim().is_empty() || !line.ends_with('\n') {
+                        continue;
+                    }
+                    return None;
+                };
                 out.extend(text.parts.into_iter().filter(|part| !part.hash.is_empty()).map(|part| crate::blobs::name(sharing.key, &part.hash)));
             }
         }
@@ -6216,8 +6264,9 @@ fn reads_now(sharing: &Sharing, store: &Store) -> bool {
 /// or found without a line), which a reader that had not read them waits for
 /// until a full round restates all.
 fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &Found, hurried: &dyn Fn() -> bool, now_ms: i64, cut: bool) -> Result<(), String> {
-    let oldest = ((now_ms - TOMBSTONE_DAYS * 86_400_000).max(0) as u64) << 16;
-    memory.entries.retain(|_, known| !known.h.is_empty() || known.c >= oldest);
+    let before = |days: i64| ((now_ms - days * 86_400_000).max(0) as u64) << 16;
+    let (oldest, aged) = (before(TOMBSTONE_DAYS), before(AGED_TOMBSTONE_DAYS));
+    memory.entries.retain(|key, known| !known.h.is_empty() || known.c >= if ages_out(key) { aged } else { oldest });
     let (ours, omitted) = restatement(sharing, memory, stores, found);
     let mut problems = Vec::new();
     for (key, value, _, _) in ours.iter().filter(|_| sharing.files && !hurried()) {
