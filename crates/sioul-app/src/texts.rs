@@ -1129,6 +1129,11 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
     wanted.dedup();
     let mut budget = rules::MEDIA_BATCH;
     let (mut brought, mut left) = (0, false);
+    // Sioul keeping the folder itself fetches a sealed file only by its
+    // name (`blobs::Wanted::media`): the media not in its copy are asked
+    // for, those brought are no longer (review of 17 October 2026, M4).
+    let asking = crate::share::keeps_itself();
+    let (mut ask, mut have): (Vec<(String, String, u64)>, Vec<String>) = (Vec::new(), Vec::new());
     for (hash, size) in wanted {
         if size > budget && budget < rules::MEDIA_BATCH {
             left = true;
@@ -1139,8 +1144,14 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
             let _ = std::fs::create_dir_all(dir);
         }
         if sioul_sync::blobs::get(folder, key, &hash, &incoming).is_err() {
+            if asking {
+                ask.push((sioul_sync::blobs::name(key, &hash), hash.clone(), size));
+            }
             left = true;
             continue;
+        }
+        if asking {
+            have.push(sioul_sync::blobs::name(key, &hash));
         }
         let bytes = std::fs::read(&incoming);
         let _ = std::fs::remove_file(&incoming);
@@ -1155,6 +1166,17 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
         }
         budget = budget.saturating_sub(bytes.len() as u64);
         brought += 1;
+    }
+    if asking && (!ask.is_empty() || !have.is_empty()) {
+        let now = jiff::Timestamp::now().as_second();
+        let _ = sioul_sync::blobs::Wanted::change(&crate::share::memory_path(), |wanted| {
+            for name in &have {
+                wanted.media.remove(name);
+            }
+            for (name, hash, size) in ask {
+                wanted.media.entry(name).or_insert_with(|| sioul_sync::blobs::Want { hash, size, since: now, ..Default::default() });
+            }
+        });
     }
     if let Ok(mut seen) = FETCHED.lock() {
         *seen = (logs, left);

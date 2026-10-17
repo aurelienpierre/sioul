@@ -84,6 +84,7 @@ Item {
         })
 
         signal shareListed(string versions)
+        signal shareWithheldBack(string problem)
         signal sharePutBackDone(string problem)
         signal shareEstimated(string estimate)
         signal shareStarted(string problem)
@@ -137,9 +138,8 @@ Item {
         }
         function sharePutBackWithheld(store) {
             mock.asked = mock.asked.concat(["back " + store])
-            return ""
         }
-        function shareConfirmGone(store) {
+        function shareTakeOutWithheld(store) {
             mock.asked = mock.asked.concat(["out " + store])
             return ""
         }
@@ -222,7 +222,12 @@ Item {
             panel.reload()
             wait(50)
             verify(shown("23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.") !== null, "held notes, said")
+            // Put back off the window's thread: the buttons wait for its answer.
             button("porch-withheld-put-back").clicked()
+            compare(mock.asked, ["back files/notes/"])
+            verify(button("porch-withheld-putting-back") !== null && !button("porch-withheld-putting-back").enabled, "said while it runs")
+            mock.shareWithheldBack("")
+            tryVerify(() => button("porch-withheld-put-back") !== null && button("porch-withheld-put-back").enabled, 2000)
             button("porch-withheld-take-out").clicked()
             compare(mock.asked, ["back files/notes/", "out files/notes/"])
             verify(shown("share-devices-gone") !== null, "the heading of the devices that no longer count")

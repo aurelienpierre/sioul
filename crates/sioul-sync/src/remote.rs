@@ -84,12 +84,23 @@ pub const LOOK_AGAIN: i64 = 6 * 3600;
 const SEAL_AGAIN: i64 = 6 * 3600;
 /// A folder whose ETag did not change is looked through again after this long all the same (seconds).
 const LIST_AGAIN: i64 = 10 * 60;
+/// Sioul keeping the folder itself: `blobs/` is listed again at most this
+/// long after its last listing, once its ETag changed (seconds): it is for
+/// letting go of what the server no longer has, and sending again what it
+/// lost of this device's; what is waited for comes by name.
+const BLOBS_AGAIN: i64 = 3600;
+/// Sioul keeping the folder itself: the sealed files waited for that come
+/// down in one step, at most (the first whatever its size).
+const MIRROR_WANTED_BYTES: u64 = 64 << 20;
 /// A records' file is never fetched past this.
 const LARGEST: u64 = 64 << 20;
 /// A device's texts to send (`texts/send/<id>.jsonl`) are never fetched past this.
 const TEXTS_LARGEST: u64 = 4 << 20;
-/// A listing is never read past this.
-const LISTING: u64 = 4 << 20;
+/// A listing is never read past this: some 130,000 names, read a response
+/// at a time (`read_listing`), never held whole. Until 17 October 2026 a
+/// listing was read whole up to 4 MiB, and `blobs/` past some 8,700 sealed
+/// files failed every step (review of 17 October 2026, M4).
+const LISTING: u64 = 64 << 20;
 /// The last line asked again, to check the copy here joins what is there, when shorter than this.
 const OVERLAP: u64 = 1 << 20;
 
@@ -216,6 +227,22 @@ pub struct State {
     /// seconds): every six hours at most.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub swept_at: i64,
+    /// Sioul keeping the folder itself: a listing of `blobs/` that failed
+    /// (too slow, cut), how many in a row, and none tried again before
+    /// `blobs_again` (Unix seconds): never at every step.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub blobs_tries: u32,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub blobs_again: i64,
+    /// Sioul keeping the folder itself: `blobs/`'s ETag as the last look
+    /// through the folder saw it ("-" there without one; "" not there), for
+    /// `sealed_step`, which lists it once it changed (`listing_due`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub blobs_seen: String,
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 fn is_zero_i64(n: &i64) -> bool {
@@ -460,6 +487,8 @@ pub(crate) struct Server {
     authorization: String,
     started: Instant,
     limits: Limits,
+    /// Bytes the listings of this step read, for the log (`Pulled::listed_bytes`).
+    listed_bytes: std::sync::atomic::AtomicU64,
 }
 
 /// A folder of the server, as listed: its own ETag, and what it holds by name.
@@ -536,6 +565,7 @@ impl Server {
             authorization: format!("Basic {}", sioul_core::lines::base64_encode(format!("{}:{password}", login.user).as_bytes())),
             started: Instant::now(),
             limits,
+            listed_bytes: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -567,29 +597,27 @@ impl Server {
 
     /// A folder's own ETag and what it holds (`Depth: 1`), by name.
     pub(crate) fn list(&self, url: &str) -> Result<Listing, SyncError> {
-        let mut response = self.request(false, "PROPFIND", url, &[("Depth", "1"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
+        self.list_within(self.limits.small, url)
+    }
+
+    /// The same, given `whole` for all of it (a folder of thousands of
+    /// sealed files, on a slow line: `limits.large`).
+    pub(crate) fn list_within(&self, whole: Duration, url: &str) -> Result<Listing, SyncError> {
+        let mut response = self.request_with(whole, "PROPFIND", url, &[("Depth", "1"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
         match response.status().as_u16() {
             207 => {}
             404 => return Err(SyncError::NotFound(String::new())),
             status => return Err(SyncError::Server(format!("PROPFIND: {status}"))),
         }
-        let body = response.body_mut().with_config().limit(LISTING).read_to_string().map_err(|e| failed(&e))?;
-        let (responses, _) = dav::multistatus(&body)?;
-        let sums = checksums(&body, url);
-        let me = dav::path_key(url);
-        let mut listing = Listing::default();
-        for response in responses {
-            let path = dav::path_key(&dav::absolute(url, &response.href));
-            let etag = response.text(DAV, "getetag").unwrap_or_default();
-            if path == me {
-                listing.etag = etag;
-                continue;
-            }
-            let Some(name) = path.strip_prefix(&me).and_then(|rest| rest.strip_prefix('/')).filter(|n| !n.is_empty() && !n.contains('/')) else { continue };
-            let size = response.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0);
-            listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size, checksum: sums.get(&path).cloned().unwrap_or_default(), modified: None });
-        }
+        let reader = response.body_mut().with_config().limit(LISTING).reader();
+        let (listing, bytes) = read_listing(reader, url)?;
+        self.listed_bytes.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
         Ok(listing)
+    }
+
+    /// Bytes the listings read so far.
+    pub(crate) fn listed_bytes(&self) -> u64 {
+        self.listed_bytes.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// One file as the server has it now (`Depth: 0`): its ETag, size,
@@ -785,6 +813,18 @@ impl Server {
     /// at most `limit` bytes, as long as it moves (`Limits::blob`). Its size;
     /// none when it is not there, or larger.
     pub(crate) fn download(&self, url: &str, path: &Path, limit: u64) -> Result<Option<u64>, SyncError> {
+        let Some((size, temporary)) = self.download_aside(url, path, limit)? else { return Ok(None) };
+        if let Err(e) = std::fs::rename(&temporary, path) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(SyncError::Disk(format!("{}: {e}", path.display())));
+        }
+        Ok(Some(size))
+    }
+
+    /// The same, left under its hidden name beside `path` once all of it
+    /// came (`share::temporary`: a crash's leftover is cleaned as any): its
+    /// size and that name, for the caller to put in its place.
+    pub(crate) fn download_aside(&self, url: &str, path: &Path, limit: u64) -> Result<Option<(u64, PathBuf)>, SyncError> {
         let mut response = self.request_with(self.limits.blob, "GET", url, &[("Accept-Encoding", "identity")], Vec::new())?;
         match response.status().as_u16() {
             200 => {}
@@ -812,13 +852,12 @@ impl Server {
                 return Err(SyncError::Network("GET: cut".into()));
             }
             out.sync_all().map_err(disk)?;
-            std::fs::rename(&temporary, path).map_err(disk)?;
             Ok(copied)
         })();
         if written.is_err() {
             let _ = std::fs::remove_file(&temporary);
         }
-        written.map(Some)
+        written.map(|size| Some((size, temporary)))
     }
 }
 
@@ -828,6 +867,108 @@ pub(crate) fn encode_path(path: &str) -> String {
         .map(|name| name.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// A folder's listing read as it comes, a response at a time: each
+/// `<response>` taken out of what came, read on its own (wrapped in the
+/// namespaces the answer's first element declares), then dropped; what is
+/// kept per name is its ETag, size and checksums. Its bytes too. Never more
+/// than one response and a read's piece held at once, whatever the size of
+/// the folder (review of 17 October 2026, M4).
+fn read_listing(mut reader: impl std::io::Read, url: &str) -> Result<(Listing, u64), SyncError> {
+    let me = dav::path_key(url);
+    let mut listing = Listing::default();
+    let (mut buf, mut total, mut piece) = (Vec::new(), 0u64, vec![0u8; 64 << 10]);
+    let mut namespaces: Option<String> = None;
+    loop {
+        let n = reader.read(&mut piece).map_err(|e| SyncError::Network(format!("PROPFIND: {e}")))?;
+        total += n as u64;
+        buf.extend_from_slice(&piece[..n]);
+        if namespaces.is_none() {
+            match first_element(&buf) {
+                Some((declared, end)) => {
+                    namespaces = Some(declared);
+                    buf.drain(..end);
+                }
+                None if n == 0 => return Err(SyncError::Server("XML: no element".into())),
+                None => continue,
+            }
+        }
+        let declared = namespaces.as_deref().unwrap_or_default();
+        let mut from = 0;
+        while let Some(end) = response_end(&buf[from..]) {
+            let chunk = std::str::from_utf8(&buf[from..from + end]).map_err(|e| SyncError::Server(format!("XML: {e}")))?;
+            // What stands before the response's opening (spaces, the end of the one before) is passed over.
+            let start = chunk.find('<').unwrap_or(0);
+            let xml = format!("<listing{declared}>{}</listing>", &chunk[start..]);
+            let (responses, _) = dav::multistatus(&xml)?;
+            let sums = checksums(&xml, url);
+            for response in responses {
+                let path = dav::path_key(&dav::absolute(url, &response.href));
+                let etag = response.text(DAV, "getetag").unwrap_or_default();
+                if path == me {
+                    listing.etag = etag;
+                    continue;
+                }
+                let Some(name) = path.strip_prefix(&me).and_then(|rest| rest.strip_prefix('/')).filter(|n| !n.is_empty() && !n.contains('/')) else { continue };
+                let size = response.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0);
+                listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size, checksum: sums.get(&path).cloned().unwrap_or_default(), modified: None });
+            }
+            from += end;
+        }
+        buf.drain(..from);
+        if n == 0 {
+            // Its last element closed, or the answer ended early: never a part taken for the whole.
+            if !String::from_utf8_lossy(&buf).contains("multistatus>") {
+                return Err(SyncError::Server("XML: the answer ends before its end".into()));
+            }
+            return Ok((listing, total));
+        }
+    }
+}
+
+/// The namespaces an answer's first element declares (` xmlns:d="DAV:"…`,
+/// as written), and where that element's opening ends; none until it all came.
+fn first_element(buf: &[u8]) -> Option<(String, usize)> {
+    let mut at = 0;
+    loop {
+        let open = at + buf[at..].iter().position(|b| *b == b'<')?;
+        let close = open + buf[open..].iter().position(|b| *b == b'>')?;
+        let tag = std::str::from_utf8(&buf[open..=close]).ok()?;
+        if tag.starts_with("<?") || tag.starts_with("<!") {
+            at = close + 1;
+            continue;
+        }
+        let mut declared = String::new();
+        let mut rest = tag;
+        while let Some(found) = rest.find(" xmlns").or_else(|| rest.find("\nxmlns")).or_else(|| rest.find("\txmlns")) {
+            let attribute = &rest[found..];
+            let quote_at = attribute.find(['"', '\''])?;
+            let quote = attribute.as_bytes()[quote_at] as char;
+            let value_end = quote_at + 1 + attribute[quote_at + 1..].find(quote)?;
+            declared.push(' ');
+            declared.push_str(attribute[..=value_end].trim_start());
+            rest = &attribute[value_end + 1..];
+        }
+        return Some((declared, close + 1));
+    }
+}
+
+/// Where the first whole `<response>` of what came ends (after its closing
+/// tag, whatever its prefix: `</d:response>`, `</D:response>`, `</response>`).
+fn response_end(buf: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    while let Some(found) = buf[from..].windows(9).position(|w| w == b"response>") {
+        let at = from + found;
+        // Back to the `<` of that tag: `</`, maybe a prefix and its colon.
+        let open = buf[..at].iter().rposition(|b| *b == b'<')?;
+        let between = &buf[open + 1..at];
+        if between.first() == Some(&b'/') && between[1..].iter().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':')) && (between.len() == 1 || between.last() == Some(&b':')) {
+            return Some(at + 9);
+        }
+        from = at + 9;
+    }
+    None
 }
 
 /// The checksums a multistatus says (`oc:checksums`, Nextcloud's), by the
@@ -1307,6 +1448,14 @@ pub struct Pulled {
     pub bytes: u64,
     /// The other devices' records found past what a pull brings, left to the sync app (`State::left`).
     pub left: usize,
+    /// Bytes the listings read (`Server::listed_bytes`), for the log.
+    pub listed_bytes: u64,
+    /// Sioul keeping the folder itself: the others' sealed files its copy let
+    /// go, the server no longer having them, and their bytes.
+    pub let_go: usize,
+    pub freed: u64,
+    /// The listing of `blobs/` failed this step (the step went on).
+    pub listing_failed: bool,
     /// What went wrong, as `State::said` says it; none when it went through.
     pub problem: Option<String>,
 }
@@ -1363,7 +1512,11 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     state.tried = now;
     let begun = Instant::now();
     let host = state.host();
-    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new(), past: None }.run());
+    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
+        let ran = Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, departed: Departed::load(memory, own), departed_there: Vec::new(), past: None, mine: BTreeSet::new() }.run();
+        pulled.listed_bytes += server.listed_bytes();
+        ran
+    });
     match outcome {
         Ok(()) => {
             state.last = now;
@@ -1647,11 +1800,6 @@ struct Puller<'a> {
     covered: BTreeSet<String>,
     /// Sioul keeping the folder itself, its copy lost: none of its records here.
     lost: bool,
-    /// The others' sealed files to bring (`MIRROR`), listed by `run`, fetched
-    /// last (`fetch_blobs`), once this device's own files went up.
-    blobs: Vec<(String, Item)>,
-    /// `blobs/`'s ETag as listed: kept once every file of it came.
-    blobs_listed: Option<String>,
     /// What this device took out here of the devices that no longer count
     /// (`Departed`): never fetched again; Sioul keeping the folder itself, taken
     /// out there too (`push`).
@@ -1664,6 +1812,10 @@ struct Puller<'a> {
     /// are past their time (`share::rounds_past`): taken out there whatever
     /// it remembers sending (`take_out_own`), never brought back (`restore`).
     past: Option<u32>,
+    /// Sioul keeping the folder itself: the sealed files this device made or
+    /// counts as its own (`share::own_sealed`): one its copy fetched once
+    /// and its own change names now goes up as its own (`own_files`).
+    mine: BTreeSet<String>,
 }
 
 impl Puller<'_> {
@@ -1792,19 +1944,14 @@ impl Puller<'_> {
                 Err(e) => return Err(Stop::Failed(e)),
             }
         }
-        // Sioul keeping the folder itself: the sealed notes and papers the others put there come too.
-        if self.mirror()
-            && let Some(blobs) = root.items.get("blobs").filter(|item| item.dir)
-            && !self.unchanged("blobs/", &blobs.etag)
-        {
-            let listing = self.server.list(&self.url("blobs/"))?;
-            self.pulled.listed += listing.items.len();
-            self.own_listed("blobs/", &listing);
-            // Brought last (`fetch_blobs`): a large one on a slow line never
-            // holds back this device's own records going up.
-            // Never one swept here as a device's that no longer counts (`Departed`).
-            self.blobs = listing.items.iter().filter(|(name, item)| !item.dir && !name.starts_with('.') && !self.departed.swept(name)).map(|(name, item)| (format!("blobs/{name}"), item.clone())).collect();
-            self.blobs_listed = Some(listing.etag.clone());
+        // Sioul keeping the folder itself: `blobs/`'s ETag as seen now, for
+        // `sealed_step`, which lists it once it changed and fetches the
+        // others' sealed files by their names, after the steps and never in
+        // one. Until 17 October 2026 the steps listed it whole every ten
+        // minutes, megabytes of names each time on a phone, and
+        // fetched every sealed file it held (review of 17 October 2026, M4).
+        if self.mirror() {
+            self.state.blobs_seen = root.items.get("blobs").filter(|item| item.dir).map(|item| if item.etag.is_empty() { "-".to_string() } else { item.etag.clone() }).unwrap_or_default();
         }
         self.forget_gone("", &root);
         self.looked("", &root.etag);
@@ -1939,44 +2086,6 @@ impl Puller<'_> {
         Ok(())
     }
 
-    /// The others' sealed files `run` listed, brought one after the other,
-    /// last in the step. One that fails stops the rest until the next step,
-    /// which looks through the folder again rather than ten minutes later.
-    fn fetch_blobs(&mut self) -> Result<(), Stop> {
-        for (relative, item) in std::mem::take(&mut self.blobs) {
-            if let Err(stop) = self.blob(&relative, &item) {
-                self.state.folders.remove("blobs/");
-                self.state.folders.remove("");
-                self.blobs_listed = None;
-                return Err(stop);
-            }
-        }
-        if let Some(etag) = self.blobs_listed.take() {
-            self.looked("blobs/", &etag);
-        }
-        Ok(())
-    }
-
-    /// A sealed file another device put there and not here (`MIRROR`):
-    /// fetched whole, kept only whole. One sent from here never comes back.
-    fn blob(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
-        let here = self.folder.join(relative);
-        if self.state.sent.contains_key(relative) || item.size > BLOB_LIMIT {
-            return Ok(());
-        }
-        let known = Fetched { etag: item.etag.clone(), size: item.size };
-        if std::fs::metadata(&here).is_ok_and(|m| m.len() == item.size) {
-            self.state.files.insert(relative.to_string(), known);
-            return Ok(());
-        }
-        if let Some(size) = self.server.download(&self.url(relative), &here, BLOB_LIMIT)? {
-            self.pulled.fetched += 1;
-            self.pulled.bytes += size;
-            self.state.files.insert(relative.to_string(), known);
-        }
-        Ok(())
-    }
-
     /// This device's own files (`MIRROR`) changed here since they went up, or
     /// changed or gone there since (seen in the folders just looked through),
     /// sent, in `own_files`' order, each over what is there as it was seen
@@ -1986,7 +2095,7 @@ impl Puller<'_> {
     /// sealed files it swept.
     fn push(&mut self) -> Result<(), Stop> {
         let mut stopped: Option<Stop> = None;
-        for relative in own_files(self.folder, self.own, self.state) {
+        for relative in own_files(self.folder, self.own, self.state, &self.mine) {
             let Ok(meta) = std::fs::metadata(self.folder.join(&relative)) else { continue };
             let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
             let sent = self.state.sent.get(&relative).cloned();
@@ -2004,6 +2113,22 @@ impl Puller<'_> {
             let same_there = !covered || there.as_deref() == sent.as_ref().map(|s| s.etag.as_str());
             if same_here && same_there {
                 continue;
+            }
+            // A sealed file fetched once that this device's own change names
+            // now (`share::seal_apart`): sent only where the server no longer
+            // has it, one look first (review of 17 October 2026, H1).
+            if sent.is_none() && relative.starts_with("blobs/") && self.state.files.contains_key(&relative) {
+                match self.server.etag(&self.url(&relative)) {
+                    Ok(Some(etag)) => {
+                        self.state.sent.insert(relative.clone(), Sent { size, modified, etag });
+                        continue;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        stopped = Some(Stop::Failed(e));
+                        break;
+                    }
+                }
             }
             let seen = if covered { there } else { sent.map(|s| s.etag).filter(|e| !e.is_empty()) };
             // One that fails (a large sealed file on a slow line, the space
@@ -2432,9 +2557,9 @@ pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Sought, String>
 /// brought into the copy here, as `pull` brings them beside a synced folder;
 /// then this device's own files changed since they went up, or changed there
 /// since, sent (`Puller::push`), its records first, its sealed files last;
-/// then the others' sealed notes, papers and spam filter's tables brought
-/// (`Puller::fetch_blobs`). A large sealed file on a slow line, going up or
-/// coming down, never holds back the records: the doses' answers go first.
+/// the others' sealed notes, papers and spam filter's tables come after the
+/// steps, by their names (`sealed_step`). A large sealed file on a slow
+/// line, going up, never holds back the records: the doses' answers go first.
 /// Never another device's file written; nothing here lost when the server
 /// refuses. One step at a time on this device, whichever process runs it.
 pub fn step(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, whole: bool) -> Pulled {
@@ -2453,17 +2578,20 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
         if whole {
             state.tried = now;
         }
+        let mine: BTreeSet<String> = crate::share::own_sealed(memory, own).into_keys().collect();
         let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
-            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new(), past: crate::share::rounds_past(folder, memory, own, now * 1000) };
-            if whole {
-                puller.run()?;
-            }
-            // This device's own files first (its records before its sealed
-            // files), the others' sealed files last: nothing large holds back
-            // what the others wait for. Each said when it fails.
-            let pushed = puller.push();
-            let fetched = if whole { puller.fetch_blobs() } else { Ok(()) };
-            pushed.and(fetched)
+            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, departed: Departed::load(memory, own), departed_there: Vec::new(), past: crate::share::rounds_past(folder, memory, own, now * 1000), mine };
+            let ran = (|| {
+                if whole {
+                    puller.run()?;
+                }
+                // This device's own files (its records before its sealed files):
+                // nothing large holds back what the others wait for. The
+                // others' sealed files come after the step (`sealed_step`).
+                puller.push()
+            })();
+            puller.pulled.listed_bytes += server.listed_bytes();
+            ran
         });
         match outcome {
             Ok(()) => {
@@ -2485,6 +2613,247 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     })
 }
 
+// ---------------------------------------------------------------- the others' sealed files, Sioul keeping the folder itself
+
+/// Whether `sealed_step` has something to do now: `blobs/` due to be
+/// listed, or a sealed file waited for and due. Cheap: nothing of the
+/// network, nor of the key.
+pub fn sealed_due(memory: &Path, folder: &Path, own: &str, now: i64) -> bool {
+    let state = State::load(memory);
+    if state.mode != MIRROR || !state.confirmed_for(folder) {
+        return false;
+    }
+    if listing_due(&state, now) {
+        return true;
+    }
+    let wanted = crate::blobs::Wanted::load(memory);
+    (!wanted.blobs.is_empty() || !wanted.media.is_empty()) && !wanted_in_copy(&wanted, folder, &Departed::load(memory, own), now).is_empty()
+}
+
+/// `blobs/` listed again (`sealed_step`): once its ETag changed since its
+/// last listing, an hour at least after it; every six hours whatever (a
+/// server whose folders' ETags lag); never while a failed one waits its
+/// backoff, nor while no look through the folder saw it there.
+fn listing_due(state: &State, now: i64) -> bool {
+    if state.blobs_seen.is_empty() || now < state.blobs_again {
+        return false;
+    }
+    let last = state.folders.get("blobs/");
+    let changed = last.is_none_or(|looked| looked.etag != state.blobs_seen);
+    // The clock set back since: due.
+    let since = last.map_or(i64::MAX, |looked| if now < looked.at { i64::MAX } else { now - looked.at });
+    (changed && since >= BLOBS_AGAIN) || since >= CHECK_AGAIN
+}
+
+/// The sealed files waited for (`blobs::Wanted`: the others' records name
+/// them; a computer lacks a text's medium) not in the copy and due, never
+/// one swept here as a departed device's (`Departed`).
+fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Departed, now: i64) -> Vec<(String, crate::blobs::Want)> {
+    let blobs = folder.join("blobs");
+    let here = |name: &str| std::fs::metadata(blobs.join(name)).is_ok_and(|m| m.len() > 0);
+    let due: BTreeMap<&String, &crate::blobs::Want> = wanted.blobs.iter().chain(wanted.media.iter()).filter(|(name, want)| want.again <= now && !here(name) && !departed.swept(name)).collect();
+    due.into_iter().map(|(name, want)| (name.clone(), want.clone())).collect()
+}
+
+/// Sioul keeping the folder itself (`MIRROR`): the others' sealed files,
+/// after the steps, on a thread of their own (the window's worker after its
+/// exchange, the phone's background step beside its mail), never in a
+/// step: a dose's alarm never waits for them, and a step waits a moment at
+/// most (the step's lock is taken only to note a listing and to put in
+/// place what came, `place_fetched`). First `blobs/`, listed when due
+/// (`listing_due`): this device's own sealed files gone there go up again
+/// at the next push; the others' its copy fetched that the server no longer
+/// lists are let go, but those this device still needs (`blobs_looked`).
+/// Then those waited for (`blobs::Wanted`), by their names, the smallest
+/// first, 64 MiB at most a step (the first whatever its size), as long as
+/// the step's time lasts, each kept only once it opens whole to its
+/// content (`blobs::check`); one not there, cut, or that does not open is
+/// asked again after its backoff. One at a time on this device.
+pub fn sealed_step(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64) -> Pulled {
+    sealed_step_with(memory, folder, own, login, key, now, LIMITS)
+}
+
+pub(crate) fn sealed_step_with(memory: &Path, folder: &Path, own: &str, login: &Login, key: &[u8; 32], now: i64, limits: Limits) -> Pulled {
+    sioul_core::filelock::with_lock(&memory.with_file_name("mirror.sealed"), || {
+        let mut pulled = Pulled::default();
+        let state = State::load(memory);
+        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != login.account {
+            pulled.problem = Some("not-confirmed".into());
+            return pulled;
+        }
+        let server = match Server::new(login, limits) {
+            Ok(server) => server,
+            Err(e) => {
+                pulled.problem = Some(code(&e, &state.host()));
+                return pulled;
+            }
+        };
+        let url = |relative: &str| format!("{}{}", state.url, encode_path(relative));
+        if listing_due(&state, now) {
+            // Given a minute whatever the step's own time: thousands of names on a slow line.
+            let listed = server.list_within(limits.large, &url("blobs/"));
+            let before = |map: Vec<&String>| -> BTreeSet<String> { map.into_iter().filter(|relative| relative.starts_with("blobs/")).cloned().collect() };
+            let (sent_before, fetched_before) = (before(state.sent.keys().collect()), before(state.files.keys().collect()));
+            let etag = state.blobs_seen.clone();
+            in_step(memory, folder, &login.account, |state| match &listed {
+                Ok(listing) => {
+                    let keep: Option<BTreeSet<String>> = crate::share::needed_sealed(memory, own).map(|needed| needed.into_iter().chain(crate::share::own_sealed(memory, own).into_keys()).collect());
+                    blobs_looked(state, folder, listing, keep.as_ref(), (&sent_before, &fetched_before), &mut pulled);
+                    state.folders.insert("blobs/".into(), Looked { etag, at: now });
+                    (state.blobs_tries, state.blobs_again) = (0, 0);
+                }
+                // Too slow, cut, refused: said in the log, tried again after its backoff, an hour at least.
+                Err(_) => {
+                    state.blobs_tries += 1;
+                    state.blobs_again = now + backoff(state.blobs_tries).max(BLOBS_AGAIN);
+                    pulled.listing_failed = true;
+                }
+            });
+        }
+        if let Err(e) = fetch_wanted_into_copy(&server, memory, folder, (own, &login.account), key, now, &url, &mut pulled) {
+            pulled.problem = Some(code(&e, &state.host()));
+        }
+        pulled.listed_bytes = server.listed_bytes();
+        pulled
+    })
+}
+
+/// A change to the state under the step's lock (`mirror.step`), over the
+/// state as it is then, saved: no step runs meanwhile, nor saves over it.
+/// None, nothing changed, when Sioul no longer keeps that folder with that account.
+fn in_step<T>(memory: &Path, folder: &Path, account: &str, change: impl FnOnce(&mut State) -> T) -> Option<T> {
+    sioul_core::filelock::with_lock(&memory.with_file_name("mirror.step"), || {
+        let mut state = State::load(memory);
+        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != account {
+            return None;
+        }
+        let out = change(&mut state);
+        let _ = state.save(memory);
+        Some(out)
+    })
+}
+
+/// What a listing of `blobs/` tells (`sealed_step`): this device's own
+/// sealed files sent before it and gone there go up again at the next push
+/// (forgotten as sent); the others' its copy fetched before it that the
+/// server no longer lists are let go here (their writer swept them), but
+/// those this device still needs (`keep`: changes waiting name them, a
+/// version kept here by reference may, its own); none while this device's
+/// memory does not say what it needs (`keep` none: an older Sioul's, until
+/// this one's first exchange). Until 17 October 2026 the copy kept every
+/// sealed file it ever fetched (the review's finding 1).
+fn blobs_looked(state: &mut State, folder: &Path, listing: &Listing, keep: Option<&BTreeSet<String>>, (sent_before, fetched_before): (&BTreeSet<String>, &BTreeSet<String>), pulled: &mut Pulled) {
+    pulled.listed += listing.items.len();
+    let listed: BTreeSet<&str> = listing.items.iter().filter(|(_, item)| !item.dir).map(|(name, _)| name.as_str()).collect();
+    let gone_there = |relative: &str| relative.strip_prefix("blobs/").is_some_and(|name| !listed.contains(name));
+    state.sent.retain(|relative, _| !(sent_before.contains(relative) && gone_there(relative)));
+    let Some(keep) = keep else { return };
+    let gone: Vec<String> = state.files.keys().filter(|relative| fetched_before.contains(*relative) && gone_there(relative) && relative.strip_prefix("blobs/").is_some_and(|name| !keep.contains(name))).cloned().collect();
+    for relative in gone {
+        state.files.remove(&relative);
+        let path = folder.join(&relative);
+        if let Ok(meta) = std::fs::metadata(&path)
+            && std::fs::remove_file(&path).is_ok()
+        {
+            pulled.let_go += 1;
+            pulled.freed += meta.len();
+        }
+    }
+}
+
+/// The sealed files this device waits for (`wanted_in_copy`), fetched by
+/// their names into its copy (`sealed_step`): the smallest first, 64 MiB
+/// at most a step (the first whatever its size), as long as the step's
+/// time lasts; each kept only once it opens whole to its content
+/// (`blobs::check`), put in its place under the step's lock
+/// (`place_fetched`). One not there, cut, or that does not open, asked
+/// again after its backoff. `who`: this device's id, and the account.
+#[allow(clippy::too_many_arguments)]
+fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, account): (&str, &str), key: &[u8; 32], now: i64, url: &dyn Fn(&str) -> String, pulled: &mut Pulled) -> Result<(), SyncError> {
+    let mut due = wanted_in_copy(&crate::blobs::Wanted::load(memory), folder, &Departed::load(memory, own), now);
+    if due.is_empty() {
+        return Ok(());
+    }
+    due.sort_by(|a, b| (a.1.size, a.1.since, &a.0).cmp(&(b.1.size, b.1.since, &b.0)));
+    let (mut tried, mut budget, mut first) = (BTreeMap::new(), MIRROR_WANTED_BYTES, true);
+    let mut stopped = None;
+    for (name, want) in due {
+        if !first && want.size > budget {
+            break;
+        }
+        first = false;
+        let failed = |soon: bool| {
+            let tries = want.tries + 1;
+            (tries, now + if soon { backoff(tries).min(WANTED_AGAIN) } else { backoff(tries) })
+        };
+        let relative = format!("blobs/{name}");
+        match server.download_aside(&url(&relative), &folder.join(&relative), BLOB_LIMIT) {
+            Ok(Some((size, temporary))) => {
+                match crate::blobs::check(&temporary, key, &want.hash) {
+                    Ok(()) => {
+                        if place_fetched(memory, folder, account, &relative, &temporary, size) {
+                            pulled.fetched += 1;
+                            pulled.bytes += size;
+                        }
+                        budget = budget.saturating_sub(size);
+                        tried.insert(name, (0, 0));
+                    }
+                    // Not whole, or another content: never kept, asked again after a while.
+                    Err(fault) => {
+                        pulled.held += 1;
+                        tried.insert(name, failed(!matches!(fault, crate::blobs::Fault::Broken)));
+                    }
+                }
+                let _ = std::fs::remove_file(&temporary);
+            }
+            // Not there yet (its writer has not sent it), or too large.
+            Ok(None) => {
+                tried.insert(name, failed(true));
+            }
+            // The step's time is out: the rest at the next one.
+            Err(SyncError::Network(why)) if why == "out of time" => break,
+            Err(e) => {
+                tried.insert(name, failed(true));
+                stopped = Some(e);
+                break;
+            }
+        }
+    }
+    let _ = crate::blobs::Wanted::change(memory, |wanted| {
+        for (name, (tries, again)) in tried {
+            for want in [wanted.blobs.get_mut(&name), wanted.media.get_mut(&name)].into_iter().flatten() {
+                (want.tries, want.again) = (tries, again);
+            }
+        }
+    });
+    stopped.map_or(Ok(()), Err)
+}
+
+/// A sealed file that came (`temporary`), put in its place in the copy under
+/// the step's lock once the state says it was fetched (`State::files`): a
+/// step never sees it there before, and never takes it for one of this
+/// device's own. Never over a file there (sealed here meanwhile: the same
+/// content). Whether it was put there.
+fn place_fetched(memory: &Path, folder: &Path, account: &str, relative: &str, temporary: &Path, size: u64) -> bool {
+    sioul_core::filelock::with_lock(&memory.with_file_name("mirror.step"), || {
+        let path = folder.join(relative);
+        let mut state = State::load(memory);
+        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != account || path.exists() {
+            return false;
+        }
+        state.files.insert(relative.to_string(), Fetched { etag: String::new(), size });
+        if state.save(memory).is_err() {
+            return false;
+        }
+        if std::fs::rename(temporary, &path).is_ok() {
+            return true;
+        }
+        state.files.remove(relative);
+        let _ = state.save(memory);
+        false
+    })
+}
+
 /// The folder a file of the folder is in, as the server's listings are kept: "" the folder itself, "devices/", "leases/health/".
 fn dir_of(relative: &str) -> &str {
     relative.rfind('/').map_or("", |at| &relative[..=at])
@@ -2497,9 +2866,10 @@ fn dir_of(relative: &str) -> &str {
 /// holds back the records, the doses' answers among them; a record naming a
 /// sealed file not there yet is read as a sync app's late copy is: the
 /// others wait for it (docs/database.md, "Coming in").
-fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
+fn own_files(folder: &Path, own: &str, state: &State, mine: &BTreeSet<String>) -> Vec<String> {
     let mut out = own_plain(folder, own);
-    out.extend(file_names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)));
+    // Those it made, and one it fetched once that its own change names now (`share::seal_apart`).
+    out.extend(file_names(&folder.join("blobs")).into_iter().filter(|n| !state.files.contains_key(&format!("blobs/{n}")) || mine.contains(n)).map(|n| format!("blobs/{n}")));
     out
 }
 
@@ -2849,7 +3219,11 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         let past = if lane == Lane::Main && check { crate::share::rounds_past(folder, memory, own, now * 1000) } else { None };
         // And what it took out here of the devices that no longer count (`Sender::take_out_departed`).
         let departed = if lane == Lane::Main && check { Departed::load(memory, own) } else { Departed::default() };
-        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed, known: &state.files }.run(&files, check, again));
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
+            let ran = Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed, known: &state.files, unlisted: BTreeSet::new() }.run(&files, check, again);
+            pulled.listed_bytes += server.listed_bytes();
+            ran
+        });
         match outcome {
             Ok(()) => {
                 sending.tries = 0;
@@ -3002,6 +3376,8 @@ struct Sender<'a> {
     /// The others' files as the pull last saw them there (`State::files`): a
     /// removed device's file is taken out only while still as seen.
     known: &'a BTreeMap<String, Fetched>,
+    /// The folders a check could not list (`list_own`).
+    unlisted: BTreeSet<String>,
 }
 
 /// What a device took out of its folder of the devices that no longer count
@@ -3095,13 +3471,16 @@ impl Sender<'_> {
     /// holds the next ones (records go in order); the other files still go.
     fn run(&mut self, files: &[String], check: bool, again: bool) -> Result<(), Stop> {
         let listed = if check { Some(self.list_own()?) } else { None };
+        // A folder that could not be listed (`blobs/`, thousands of names on a
+        // slow line): its files are sent as when no check lists them.
+        let unlisted = std::mem::take(&mut self.unlisted);
         let mut records_held = false;
         for relative in files {
             let records = matches!(kind_of(relative), Some((Kind::Round, _)));
             if records && records_held {
                 continue;
             }
-            let there = listed.as_ref().map(|listed| listed.get(relative).cloned());
+            let there = listed.as_ref().filter(|_| !unlisted.contains(dir_of(relative))).map(|listed| listed.get(relative).cloned());
             let went = self.one(relative, there, again)?;
             records_held |= records && went == Went::Held;
         }
@@ -3148,12 +3527,23 @@ impl Sender<'_> {
             }
         }
         for dir in dirs {
-            match self.server.list(&self.url(&dir)) {
+            // `blobs/` given a minute: thousands of names on a slow line.
+            let listing = if dir == "blobs/" { self.server.list_within(self.server.limits.large, &self.url(&dir)) } else { self.server.list(&self.url(&dir)) };
+            match listing {
                 Ok(listing) => {
                     self.pulled.listed += listing.items.len();
                     out.extend(listing.items.into_iter().filter(|(_, item)| !item.dir).map(|(name, item)| (format!("{dir}{name}"), item)));
                 }
                 Err(SyncError::NotFound(_)) => {}
+                // Too slow, cut: this check goes on without it, said in the
+                // log; its sealed files are sent as without a check. Until 17
+                // October 2026 such a failure failed the whole check, and the
+                // next, and every send after became a check again (review of
+                // 17 October 2026, M4).
+                Err(_) if dir == "blobs/" => {
+                    self.pulled.listing_failed = true;
+                    self.unlisted.insert(dir);
+                }
                 Err(e) => return Err(Stop::Failed(e)),
             }
         }
@@ -5280,13 +5670,25 @@ mod tests {
             step_with(&device.memory, folder, &device.id, &self.fake.login(), now, whole, TEST)
         }
 
-        /// As the window does each minute: the server looked through, an exchange, what it wrote sent.
+        /// The others' sealed files, after a step (`sealed_step`).
+        fn sealed(&self, desk: bool, now: i64) -> Pulled {
+            let (device, folder) = self.device(desk);
+            sealed_step_with(&device.memory, folder, &device.id, &self.fake.login(), &KEY, now, TEST)
+        }
+
+        /// As the window does each minute: the server looked through, an
+        /// exchange, what it wrote sent; then the others' sealed files, and
+        /// another exchange at once when some came.
         fn turn(&self, desk: bool, now: i64) -> Outcome {
             let before = self.step(desk, now, true);
             assert!(before.problem.is_none(), "{before:?}");
             let outcome = self.device(desk).0.exchange(self.device(desk).1, now);
             let after = self.step(desk, now, false);
             assert!(after.problem.is_none(), "{after:?}");
+            if self.sealed(desk, now).fetched > 0 {
+                self.device(desk).0.exchange(self.device(desk).1, now);
+                let _ = self.step(desk, now, false);
+            }
             outcome
         }
     }
@@ -5409,9 +5811,16 @@ mod tests {
         crate::blobs::put(&p.desk_folder, &KEY, &source, &hash).unwrap();
         let name = crate::blobs::name(&KEY, &hash);
         p.turn(true, DUE + 10);
+        // Waited for on the phone (a text's medium a computer lacks, here): fetched by its name, whole.
+        let size = std::fs::metadata(p.desk_folder.join("blobs").join(&name)).unwrap().len();
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            w.media.insert(name.clone(), crate::blobs::Want { hash: hash.clone(), size, since: DUE, ..Default::default() });
+        })
+        .unwrap();
         p.turn(false, DUE + 20);
         let sealed = std::fs::read(p.desk_folder.join("blobs").join(&name)).unwrap();
         assert_eq!(std::fs::read(p.phone_folder.join("blobs").join(&name)).unwrap(), sealed);
+        crate::blobs::Wanted::change(&p.phone.memory, |w| w.media.clear()).unwrap();
         // Never sent back by the phone, which did not make it.
         p.fake.forget_seen();
         p.turn(false, DUE + 30);
@@ -5420,6 +5829,17 @@ mod tests {
         std::fs::remove_file(p.desk_folder.join("blobs").join(&name)).unwrap();
         p.turn(true, DUE + 40);
         assert!(!p.fake.files.join("Documents/Sioul/blobs").join(&name).exists());
+        // The phone's next listing no longer shows it: never let go while its
+        // memory says nothing of what it needs (an older Sioul's, until this
+        // one's first exchange); then let go there too, nothing needing it.
+        let _ = p.step(false, DUE + 50 + BLOBS_AGAIN, true);
+        let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&p.phone.memory).unwrap()).unwrap();
+        assert!(memory.as_object_mut().unwrap().remove("needed_sealed").is_some(), "said by each exchange of this Sioul");
+        std::fs::write(&p.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+        let sealed = p.sealed(false, DUE + 50 + BLOBS_AGAIN);
+        assert!(sealed.listed_bytes > 0 && sealed.let_go == 0 && p.phone_folder.join("blobs").join(&name).exists(), "listed, none let go: {sealed:?}");
+        p.turn(false, DUE + 60 + BLOBS_AGAIN + CHECK_AGAIN);
+        assert!(!p.phone_folder.join("blobs").join(&name).exists(), "let go on the phone");
     }
 
     /// A sealed file going up slowly or not at all, or coming down slowly,
@@ -5466,19 +5886,26 @@ mod tests {
         p.turn(false, DUE + 410);
         let phone_table = p.phone.roots.data.join("spam").join("table.bin");
         assert_eq!(std::fs::read(&phone_table).unwrap(), std::fs::read(&table).unwrap());
-        // A new table coming down slowly to the phone: the phone's own answer went up before it.
+        // A new table coming down slowly to the phone: its step sends the
+        // phone's own answer and never waits for the table, which comes after
+        // the step (`sealed_step`), at its own pace.
         std::fs::write(&table, made(2)).unwrap();
         p.turn(true, DUE + 500);
+        let _ = p.step(false, DUE + 505, true);
         p.phone.write("health-state.toml", &format!("{taken}\"two@1800000000\" = 1800000090\n"));
-        p.phone.exchange(&p.phone_folder, DUE + 505);
+        p.phone.exchange(&p.phone_folder, DUE + 506);
         p.fake.fault(|r| (r.method == "GET" && r.path.contains("/blobs/")).then_some(Fault::Late(Duration::from_secs(2))));
-        let stepped = p.step(false, DUE + 510, true);
-        assert!(stepped.problem.is_some(), "{stepped:?}");
+        let stepped = p.step(false, DUE + 510, false);
+        assert!(stepped.problem.is_none() && stepped.sent > 0, "{stepped:?}");
+        let sealed = p.sealed(false, DUE + 510);
+        assert!(sealed.problem.is_some() && sealed.fetched == 0, "{sealed:?}");
         p.fake.clear_faults();
         p.turn(true, DUE + 520);
         assert!(p.desk.read("health-state.toml").contains("two@1800000000"));
-        // The table comes at the phone's next step: looked for again at once.
+        // The table comes once its backoff is over (a minute at first).
         p.turn(false, DUE + 530);
+        assert_ne!(std::fs::read(&phone_table).unwrap(), std::fs::read(&table).unwrap(), "within its backoff");
+        p.turn(false, DUE + 580);
         assert_eq!(std::fs::read(&phone_table).unwrap(), std::fs::read(&table).unwrap());
     }
 
@@ -7499,5 +7926,272 @@ mod tests {
         p.turn(false, now + 200);
         p.turn(true, now + 230);
         assert!(std::fs::read_to_string(p.desk.roots.config.join("known-senders.txt")).unwrap_or_default().contains(&format!("old-sender-{:06}@example.org", (step + 2) * 1_500 - 1)));
+    }
+
+    /// Both devices keeping the folder themselves, notes shared: the desk
+    /// writes x, the phone gets it; the desk deletes x, the phone keeps it as
+    /// a copy among its earlier versions; once the phone read past the
+    /// take-out, the desk frees x's content and takes it off the server.
+    /// The time each turn is at, and the content's name.
+    fn held_out_of_the_server(p: &Pair, dn: &Path, pn: &Path) -> (String, i64) {
+        let turn = |desk: bool, now: i64| {
+            let (device, folder) = p.device(desk);
+            let before = p.step(desk, now, true);
+            assert!(before.problem.is_none(), "{before:?}");
+            device.exchange_all_parts(folder, now, if desk { dn } else { pn });
+            let after = p.step(desk, now, false);
+            assert!(after.problem.is_none(), "{after:?}");
+            if p.sealed(desk, now).fetched > 0 {
+                device.exchange_all_parts(folder, now, if desk { dn } else { pn });
+                let _ = p.step(desk, now, false);
+            }
+        };
+        put(dn, "x.md", "# x, a note put back later\n");
+        put(dn, "y.md", "# y, a note that stays\n");
+        turn(true, DUE);
+        turn(false, DUE + 10);
+        turn(false, DUE + 20);
+        assert_eq!(std::fs::read_to_string(pn.join("x.md")).unwrap(), "# x, a note put back later\n", "fetched by name, written");
+        let x = {
+            let path = p.base.join("x-content");
+            std::fs::write(&path, "# x, a note put back later\n").unwrap();
+            crate::blobs::name(&KEY, &crate::blobs::hash_file(&path).unwrap().0)
+        };
+        let server = p.fake.files.join("Documents").join("Sioul");
+        for copy in [p.desk_folder.join("blobs").join(&x), server.join("blobs").join(&x)] {
+            set_mtime(&copy, SystemTime::now() - Duration::from_secs(100 * 86_400));
+        }
+        std::fs::remove_file(dn.join("x.md")).unwrap();
+        turn(true, DUE + 100);
+        turn(true, DUE + 800);
+        turn(false, DUE + 900);
+        assert!(!pn.join("x.md").exists(), "taken out on the phone, kept among its earlier versions");
+        // The desk's records go on in a later round, which the phone reads.
+        put(&p.desk.roots.config, "known-senders.txt", &senders(1));
+        turn(true, DUE + 1000);
+        put(&p.desk.roots.config, "known-senders.txt", &senders(2));
+        turn(true, DUE + 1100);
+        turn(false, DUE + 1200);
+        turn(true, DUE + 1300);
+        assert!(!server.join("blobs").join(&x).exists(), "freed, off the server");
+        assert!(p.phone_folder.join("blobs").join(&x).exists(), "still in the phone's copy, as fetched");
+        (x, DUE + 1300)
+    }
+
+    /// The desk gets x back once the phone put it back.
+    fn the_desk_gets_x_back(p: &Pair, dn: &Path, pn: &Path, mut now: i64) {
+        for _ in 0..3 {
+            now += 100;
+            let _ = p.step(true, now, true);
+            p.desk.exchange_all_parts(&p.desk_folder, now, dn);
+            let _ = p.step(true, now, false);
+            if p.sealed(true, now).fetched > 0 {
+                p.desk.exchange_all_parts(&p.desk_folder, now, dn);
+                let _ = p.step(true, now, false);
+            }
+        }
+        let _ = pn;
+        assert_eq!(std::fs::read_to_string(dn.join("x.md")).unwrap_or_default(), "# x, a note put back later\n", "put back on the phone: back on the desk");
+    }
+
+    /// H1 (review of 17 October 2026): a note put back on a device keeping
+    /// the folder itself, after its content left the server, reaches the
+    /// others. Its copy lets go of the others' sealed files the server no
+    /// longer lists (but those it still needs), so that the put back seals
+    /// the content again as its own and sends it.
+    #[test]
+    fn a_note_put_back_in_the_mirror_reaches_the_others_once_its_content_left() {
+        let p = Pair::new("mirror-put-back");
+        let (dn, pn) = (p.base.join("desk-notes"), p.base.join("phone-notes"));
+        let (x, now) = held_out_of_the_server(&p, &dn, &pn);
+        // An hour on, the phone's listing of `blobs/` (its ETag changed): x let go, a needed one kept.
+        let needed = "e".repeat(64);
+        put(&p.phone_folder, &format!("blobs/{needed}"), "a stale copy this device still needs\n");
+        {
+            let mut state = State::load(&p.phone.memory);
+            state.files.insert(format!("blobs/{needed}"), Fetched { etag: String::new(), size: 38 });
+            state.save(&p.phone.memory).unwrap();
+            let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&p.phone.memory).unwrap()).unwrap();
+            memory["needed_sealed"] = serde_json::json!([needed]);
+            std::fs::write(&p.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+        }
+        let later = now + BLOBS_AGAIN + 100;
+        let stepped = p.step(false, later, true);
+        assert!(stepped.problem.is_none() && stepped.let_go == 0, "never in a step: {stepped:?}");
+        let sealed = p.sealed(false, later);
+        assert!(sealed.problem.is_none() && sealed.let_go >= 1 && sealed.freed > 0 && sealed.listed_bytes > 0, "{sealed:?}");
+        assert!(!p.phone_folder.join("blobs").join(&x).exists(), "the server no longer has it: let go");
+        assert!(p.phone_folder.join("blobs").join(&needed).exists(), "still needed here: kept");
+        // The phone puts x back from its earlier versions: sealed again as its own, sent.
+        put(&pn, "x.md", "# x, a note put back later\n");
+        p.phone.exchange_all_parts(&p.phone_folder, later + 10, &pn);
+        let pushed = p.step(false, later + 10, false);
+        assert!(pushed.problem.is_none() && pushed.sent > 0, "{pushed:?}");
+        let server = p.fake.files.join("Documents").join("Sioul");
+        assert!(server.join("blobs").join(&x).exists(), "sent again");
+        the_desk_gets_x_back(&p, &dn, &pn, later + 20);
+    }
+
+    /// The same, put back before the phone's next listing, its stale copy
+    /// still there: the content its own change names is its own now, and its
+    /// push sends it where the server no longer has it.
+    #[test]
+    fn a_note_put_back_in_the_mirror_before_its_listing_reaches_the_others() {
+        let p = Pair::new("mirror-put-back-early");
+        let (dn, pn) = (p.base.join("desk-notes"), p.base.join("phone-notes"));
+        let (x, now) = held_out_of_the_server(&p, &dn, &pn);
+        put(&pn, "x.md", "# x, a note put back later\n");
+        p.phone.exchange_all_parts(&p.phone_folder, now + 10, &pn);
+        let pushed = p.step(false, now + 10, false);
+        assert!(pushed.problem.is_none(), "{pushed:?}");
+        let server = p.fake.files.join("Documents").join("Sioul");
+        assert!(server.join("blobs").join(&x).exists(), "its own now: sent where the server lacked it");
+        assert!(crate::share::own_sealed(&p.phone.memory, &p.phone.id).contains_key(&x));
+        the_desk_gets_x_back(&p, &dn, &pn, now + 20);
+    }
+
+    /// M4 (review of 17 October 2026): `blobs/` read a response at a time,
+    /// whatever its size (11,000 names, past the old 4 MiB cap); never in a
+    /// step; listed after one only once its ETag changed, an hour at most
+    /// after the last listing; its failure fails nothing, and waits its
+    /// backoff; what is waited for comes by name meanwhile, whole; the bytes
+    /// listed are counted. A listing that ends before its end is no listing.
+    #[test]
+    fn blobs_are_listed_seldom_whatever_their_number_and_come_by_name() {
+        let p = Pair::new("blobs-many");
+        let server = p.fake.files.join("Documents").join("Sioul");
+        {
+            let _turn = p.fake.turn.lock().unwrap();
+            for n in 0..11_000 {
+                put(&server, &format!("blobs/{n:064x}"), "s");
+            }
+        }
+        let lists = |seen: &[String]| seen.iter().filter(|l| l.starts_with("PROPFIND ") && l.split(' ').nth(1).is_some_and(|path| path.ends_with("/blobs"))).count();
+        // A whole step: never a listing of blobs/; the sealed step after it lists it in full, fetches nothing (nothing waits).
+        p.fake.forget_seen();
+        let stepped = p.step(false, DUE + 100_000, true);
+        assert!(stepped.problem.is_none() && lists(&p.fake.seen()) == 0, "never in a step: {stepped:?}");
+        let sealed = p.sealed(false, DUE + 100_000);
+        assert!(sealed.problem.is_none() && !sealed.listing_failed, "{sealed:?}");
+        assert!(sealed.listed >= 11_000 && sealed.listed_bytes > 4 << 20, "past the old cap: {sealed:?}");
+        assert_eq!(sealed.fetched, 0, "none waited for: none fetched");
+        assert_eq!(lists(&p.fake.seen()), 1);
+        // A new sealed file there: not listed again within the hour; fetched by its name once waited for.
+        let source = p.base.join("medium.bin");
+        std::fs::write(&source, "a medium\n".repeat(100)).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        let elsewhere = p.base.join("elsewhere");
+        crate::blobs::put(&elsewhere, &KEY, &source, &hash).unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        let sealed_bytes = std::fs::read(elsewhere.join("blobs").join(&name)).unwrap();
+        put_bytes(&server, &format!("blobs/{name}"), &sealed_bytes);
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            w.media.insert(name.clone(), crate::blobs::Want { hash: hash.clone(), size: sealed_bytes.len() as u64, since: DUE, ..Default::default() });
+        })
+        .unwrap();
+        p.fake.forget_seen();
+        let _ = p.step(false, DUE + 100_600, true);
+        let sealed = p.sealed(false, DUE + 100_600);
+        assert!(sealed.problem.is_none(), "{sealed:?}");
+        assert_eq!(lists(&p.fake.seen()), 0, "within the hour: not listed again");
+        assert!(p.phone_folder.join("blobs").join(&name).exists() && sealed.fetched == 1, "fetched by its name: {sealed:?}");
+        assert!(State::load(&p.phone.memory).files.contains_key(&format!("blobs/{name}")), "as fetched: never sent as its own");
+        // One that does not open whole is never kept.
+        let other = "f".repeat(64);
+        put(&server, &format!("blobs/{other}"), "not what it should be");
+        crate::blobs::Wanted::change(&p.phone.memory, |w| {
+            w.media.insert(other.clone(), crate::blobs::Want { hash: hash.clone(), size: 21, since: DUE, ..Default::default() });
+        })
+        .unwrap();
+        let sealed = p.sealed(false, DUE + 100_700);
+        assert!(sealed.held == 1 && !p.phone_folder.join("blobs").join(&other).exists(), "{sealed:?}");
+        // An hour on, its ETag changed: listed again; the listing fails: nothing else fails, tried again after its backoff.
+        p.fake.fault(move |r| (r.method == "PROPFIND" && r.path.ends_with("/blobs")).then_some(Fault::Status(500)));
+        let _ = p.step(false, DUE + 100_000 + BLOBS_AGAIN + 10, true);
+        let sealed = p.sealed(false, DUE + 100_000 + BLOBS_AGAIN + 10);
+        assert!(sealed.listing_failed && sealed.let_go == 0, "{sealed:?}");
+        p.fake.forget_seen();
+        let sealed = p.sealed(false, DUE + 100_000 + BLOBS_AGAIN + 70);
+        assert!(!sealed.listing_failed && lists(&p.fake.seen()) == 0, "its backoff: not asked again: {sealed:?}");
+        p.fake.clear_faults();
+        let _ = p.step(false, DUE + 100_000 + 3 * BLOBS_AGAIN, true);
+        let sealed = p.sealed(false, DUE + 100_000 + 3 * BLOBS_AGAIN);
+        assert!(sealed.problem.is_none() && !sealed.listing_failed && sealed.listed >= 11_002, "{sealed:?}");
+        assert!(p.phone_folder.join("blobs").join(&name).exists(), "still listed there: kept");
+    }
+
+    /// A note written here with the same bytes as another device's note,
+    /// whose sealed file this copy fetched: that content is this device's own
+    /// now, and goes up only where the server no longer has it: one look
+    /// (`Depth: 0`), never sent while it is there, nor looked at again
+    /// (review of 17 October 2026, H1).
+    #[test]
+    fn a_content_fetched_and_named_here_is_sent_only_where_the_server_lacks_it() {
+        let p = Pair::new("mirror-same-bytes");
+        let (dn, pn) = (p.base.join("desk-notes"), p.base.join("phone-notes"));
+        let turn = |desk: bool, now: i64| {
+            let (device, folder) = p.device(desk);
+            let notes = if desk { &dn } else { &pn };
+            assert!(p.step(desk, now, true).problem.is_none());
+            device.exchange_all_parts(folder, now, notes);
+            assert!(p.step(desk, now, false).problem.is_none());
+            if p.sealed(desk, now).fetched > 0 {
+                device.exchange_all_parts(folder, now, notes);
+                let _ = p.step(desk, now, false);
+            }
+        };
+        put(&dn, "y.md", "# the same bytes in two notes\n");
+        turn(true, DUE);
+        turn(false, DUE + 10);
+        turn(false, DUE + 20);
+        assert_eq!(std::fs::read_to_string(pn.join("y.md")).unwrap_or_default(), "# the same bytes in two notes\n");
+        put(&pn, "z.md", "# the same bytes in two notes\n");
+        p.phone.exchange_all_parts(&p.phone_folder, DUE + 30, &pn);
+        p.fake.forget_seen();
+        let pushed = p.step(false, DUE + 30, false);
+        assert!(pushed.problem.is_none(), "{pushed:?}");
+        let seen = p.fake.seen();
+        assert!(seen.iter().all(|l| !(l.starts_with("PUT ") && l.contains("/blobs/"))), "there already: never sent: {seen:?}");
+        assert!(seen.iter().any(|l| l.starts_with("PROPFIND ") && l.contains("/blobs/")), "looked at, once: {seen:?}");
+        p.fake.forget_seen();
+        let _ = p.step(false, DUE + 40, false);
+        assert!(p.fake.seen().iter().all(|l| !l.contains("/blobs/")), "{:?}", p.fake.seen());
+    }
+
+    /// This device's own sealed file lost on the server (taken out by hand,
+    /// a backup restored there): the next listing of `blobs/` finds it gone
+    /// there, and the push after it sends it again.
+    #[test]
+    fn an_own_sealed_file_lost_on_the_server_goes_up_again() {
+        let p = Pair::new("own-lost");
+        let source = p.base.join("note.md");
+        std::fs::write(&source, "a note\n".repeat(100)).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&p.desk_folder, &KEY, &source, &hash).unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        let there = p.fake.files.join("Documents/Sioul/blobs").join(&name);
+        p.turn(true, DUE + 10);
+        p.turn(true, DUE + 20);
+        assert!(there.exists(), "sent");
+        std::fs::remove_file(&there).unwrap();
+        // Within the hour: not listed again; nothing known lost.
+        p.turn(true, DUE + 30);
+        assert!(!there.exists());
+        // An hour on, its ETag changed: listed, found gone there; the next push sends it again.
+        p.turn(true, DUE + 30 + BLOBS_AGAIN);
+        p.turn(true, DUE + 40 + BLOBS_AGAIN);
+        assert!(there.exists(), "sent again");
+    }
+
+    /// A listing whose answer ends before its end is no listing: an error,
+    /// never a part taken for the whole.
+    #[test]
+    fn a_listing_cut_short_is_no_listing() {
+        let entry = |href: &str, kind: &str| format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{kind}<d:getetag>&quot;e&quot;</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>");
+        let whole = fake::multistatus(&format!("{}{}", entry("/dav/blobs/", "<d:resourcetype><d:collection/></d:resourcetype>"), entry("/dav/blobs/a", "<d:resourcetype/>")));
+        let (listing, bytes) = read_listing(&whole[..], "https://example.org/dav/blobs/").unwrap();
+        assert!(listing.items.contains_key("a") && bytes == whole.len() as u64);
+        let cut = &whole[..whole.len() - "</d:multistatus>".len()];
+        assert!(read_listing(cut, "https://example.org/dav/blobs/").is_err());
     }
 }

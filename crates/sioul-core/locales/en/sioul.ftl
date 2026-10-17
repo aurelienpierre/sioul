@@ -2851,18 +2851,21 @@ share-vanished = { $count ->
 } went from { $folder } here at once: nothing of them is taken out on your other devices until you say so (a disk not mounted, a folder moved, an access withdrawn would look the same).
 share-vanished-confirm = Take them out everywhere
 porch-withheld = { $count ->
-    [one] One file went from { $part } here { $when }, from { $folders }.
-   *[other] { $count } files went from { $part } here at once { $when }, most of them from { $folders }.
+    [one] One file went from { $part } here on { $day }, from { $folders }.
+   *[other] { $count } files went from { $part } here at once on { $day }, most of them from { $folders }.
+}
+porch-withheld-days = { $count ->
+    [one] One file went from { $part } here between { $first } and { $last }, from { $folders }.
+   *[other] { $count } files went from { $part } here between { $first } and { $last }, most of them from { $folders }.
 }
 porch-withheld-of-notes = your notes
 porch-withheld-of-papers = your papers
-porch-withheld-on = on { $day }
-porch-withheld-between = between { $first } and { $last }
 porch-withheld-leave = { $count ->
     [one] It leaves your other devices by itself { $days } days after it went, on { $day }, unless it comes back here first. Nothing has to be done.
    *[other] They leave your other devices by themselves { $days } days after they went, by { $day } at the latest, unless they come back here first. Nothing has to be done.
 }
 porch-withheld-put-back = Put them back
+porch-withheld-putting-back = Putting them back…
 porch-withheld-take-out = Take them out now
 porch-withheld-none-back = Nothing came back: their places are taken, or their contents are not on this device.
 share-devices-gone = Devices that no longer count
@@ -2885,9 +2888,11 @@ share-remove-sealed = { $count ->
 }
 share-remove-sealed-unknown = The sealed contents of its notes and papers stay: this device does not share every part they belong to, or does not know the texts’ media.
 share-remove-sealed-later = { $count ->
-    [one] One more, sealed lately, goes once it is two weeks old.
-   *[other] { $count } more, sealed lately, go once they are two weeks old.
+    [one] One more, sealed lately, goes once it is { $days } days old.
+   *[other] { $count } more, sealed lately, go once they are { $days } days old.
 }
+share-remove-entry-stays = What it last said of itself stays, a few hundred bytes: your other devices read there that it left, your doses first.
+share-remove-in-use = It last shared { $when }: it may still be in use. If it is, it shares again by itself, and sends everything it holds again; your doses keep counting it, and say the doubt, until it has been silent a day.
 share-remove-small-stay = What it last said of itself and how far it read stay, a few hundred bytes: your other devices may still count it, your doses first, and read there how it closed.
 share-remove-stays = What stays: everything your devices already read of it, on each of them; the texts’ media another phone’s log names. A device joining later gets none of its records, unless another device’s records carry them (texts restored on a new phone).
 share-remove-unread = { $count ->

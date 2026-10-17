@@ -1223,9 +1223,16 @@ pub mod qobject {
 
         /// "Put them back": the notes or papers held after going many at
         /// once from a folder of the records ("files/notes/") written back
-        /// where they were, then an exchange; returns what went wrong, else "".
+        /// where they were, off the window's thread (thousands take half a
+        /// minute), then an exchange: `share_withheld_back` says how it went.
         #[qinvokable]
-        fn share_put_back_withheld(self: Pin<&mut Sioul>, store: &QString) -> QString;
+        fn share_put_back_withheld(self: Pin<&mut Sioul>, store: &QString);
+
+        /// "Take them out now": the notes or papers held after going many at
+        /// once from a folder of the records taken out everywhere, those
+        /// alone, then an exchange; returns what went wrong, else "".
+        #[qinvokable]
+        fn share_take_out_withheld(self: Pin<&mut Sioul>, store: &QString) -> QString;
 
         /// What "Remove its files" would take out for another device, and
         /// what stays, in words, as JSON (`share::device_files`): `{ text, live }`.
@@ -1838,6 +1845,10 @@ pub mod qobject {
         /// A version put back (`share_put_back`): what went wrong, else "".
         #[qsignal]
         fn share_put_back_done(self: Pin<&mut Sioul>, problem: QString);
+
+        /// Notes or papers held put back (`share_put_back_withheld`): what went wrong, else "".
+        #[qsignal]
+        fn share_withheld_back(self: Pin<&mut Sioul>, problem: QString);
 
         /// What switching Notes or Papers on would send (`share_estimate`), as JSON {"part", "text"}.
         #[qsignal]
@@ -5983,10 +5994,22 @@ impl qobject::Sioul {
         QString::from(&json(&crate::share::withheld(false)))
     }
 
-    fn share_put_back_withheld(self: Pin<&mut Self>, store: &QString) -> QString {
-        let problem = crate::share::put_back_withheld(&store.to_string());
-        // Found back by the next exchange, as any file written here: nothing leaves.
-        crate::share::exchange(&self.qt_thread(), &self.shared());
+    fn share_put_back_withheld(self: Pin<&mut Self>, store: &QString) {
+        let (qt, shared, store) = (self.qt_thread(), self.shared(), store.to_string());
+        std::thread::spawn(move || {
+            let problem = crate::share::put_back_withheld(&store);
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().share_withheld_back(QString::from(&problem)));
+            // Found back by the next exchange, as any file written here: nothing leaves.
+            crate::work::show_work(&qt, &shared);
+            crate::share::exchange(&qt, &shared);
+        });
+    }
+
+    fn share_take_out_withheld(self: Pin<&mut Self>, store: &QString) -> QString {
+        let problem = crate::share::take_out_withheld(&store.to_string());
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
         QString::from(&problem)
     }
 

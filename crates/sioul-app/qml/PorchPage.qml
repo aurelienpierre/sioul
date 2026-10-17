@@ -43,6 +43,8 @@ Item {
     // (`share::withheld`): read when the Porch shows and at each minute.
     property var withheld: []
     property string withheldProblem: ""
+    // "Put them back" pressed, its answer not come yet (off the window's thread: thousands take a while), and for which card.
+    property string puttingBack: ""
 
     function readWithheld() {
         page.withheld = JSON.parse(page.sioul.shareWithheld() || "[]").filter(w => !page.sioul.viewFlag(w.key))
@@ -51,6 +53,16 @@ Item {
     function withheldSaid(key) {
         page.sioul.setViewFlag(key, true)
         page.readWithheld()
+    }
+    Connections {
+        target: page.sioul
+
+        function onShareWithheldBack(problem) {
+            page.withheldProblem = problem
+            if (problem === "" && page.puttingBack !== "")
+                page.withheldSaid(page.puttingBack)
+            page.puttingBack = ""
+        }
     }
     // Shown a few seconds while the Porch is in view: said once, put away when the Porch is left.
     property bool withheldRead: false
@@ -558,17 +570,19 @@ Item {
                                 spacing: 8
 
                                 Button {
-                                    text: page.sioul.text("porch-withheld-put-back")
+                                    enabled: page.puttingBack === ""
+                                    text: page.sioul.text(page.puttingBack === withheldCard.modelData.key ? "porch-withheld-putting-back" : "porch-withheld-put-back")
                                     onClicked: {
-                                        page.withheldProblem = page.sioul.sharePutBackWithheld(withheldCard.modelData.store)
-                                        if (page.withheldProblem === "")
-                                            page.withheldSaid(withheldCard.modelData.key)
+                                        page.withheldProblem = ""
+                                        page.puttingBack = withheldCard.modelData.key
+                                        page.sioul.sharePutBackWithheld(withheldCard.modelData.store)
                                     }
                                 }
                                 Button {
+                                    enabled: page.puttingBack === ""
                                     text: page.sioul.text("porch-withheld-take-out")
                                     onClicked: {
-                                        page.withheldProblem = page.sioul.shareConfirmGone(withheldCard.modelData.store)
+                                        page.withheldProblem = page.sioul.shareTakeOutWithheld(withheldCard.modelData.store)
                                         if (page.withheldProblem === "")
                                             page.withheldSaid(withheldCard.modelData.key)
                                     }
