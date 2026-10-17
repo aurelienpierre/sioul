@@ -80,6 +80,9 @@ extern "C" char *sioul_dnd_toggle();
 // and what is held worked out again; JSON, given back to sioul_string_free.
 extern "C" char *sioul_appnotes_decide(const char *json);
 extern "C" char *sioul_appnotes_review(const char *json);
+// Replies from your computers (crates/sioul-app/src/replies.rs): the
+// listener's questions, a verb and its JSON; JSON, given back to sioul_string_free.
+extern "C" char *sioul_replies_listener(const char *verb, const char *json);
 
 namespace {
 
@@ -999,6 +1002,14 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nati
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeReview(JNIEnv *env, jclass, jstring json)
 {
     return answered(env, sioul_appnotes_review(utf8(env, json).constData()));
+}
+
+// Replies from your computers, on the listener's thread: what is due, one
+// checked, taken, what became of it, a notification gone. The words pass
+// here in memory, from Rust to Java, and nowhere else.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeReply(JNIEnv *env, jclass, jstring verb, jstring json)
+{
+    return answered(env, sioul_replies_listener(utf8(env, verb).constData(), utf8(env, json).constData()));
 }
 
 int main(int, char *[])

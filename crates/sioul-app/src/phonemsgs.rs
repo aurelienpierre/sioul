@@ -8,8 +8,9 @@
 //! - **On the phone**, in the listener's process: after each notification
 //!   decided (`appnotes::decide`), the lines it makes are written to this
 //!   phone's own log while the part "Messages from your phone" is on here
-//!   (`note`); Java then asks the background service for a step soon, which
-//!   shares them. Rust writes the shared file; Java never does.
+//!   (`note`), and what it offers a reply from your computers to its live
+//!   lines (`replies::offered`); Java then asks the background service for a
+//!   step soon, which shares them. Rust writes the shared files; Java never does.
 //! - **On every device**, before each exchange: its own lines taken out
 //!   after their week, another's three days later (`before_exchange`).
 //! - **On a computer's Porch**, "From your phone" (`view`), while the part
@@ -78,8 +79,10 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
     if lines.is_empty() {
         return false;
     }
+    // What it offers a reply from your computers, said when that changed (a Reply, a Mark as read).
+    let offered = crate::replies::offered(&here.id, posted, &lines, &extra, now_ms);
     match rules::carry_into(&calls::own_file(&rules::folder(), rules::LOG, &here.id), &lines, now_ms) {
-        Ok(0) => false,
+        Ok(0) => offered,
         Ok(written) => {
             // Never what it says, nor who: how many, and the app.
             eprintln!("sioul: phone messages: {written} line(s) for your computers ({})", posted.package);
@@ -87,7 +90,7 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
         }
         Err(e) => {
             eprintln!("sioul: phone messages: {e}");
-            false
+            offered
         }
     }
 }

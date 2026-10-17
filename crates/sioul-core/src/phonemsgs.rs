@@ -36,6 +36,12 @@
 //!
 //! What the phone sends, per app, is its own choice (`Choices`,
 //! `phone-messages.toml` in its configuration), never shared.
+//!
+//! Each line names the notification it came in by the phone's own name for
+//! it (`Line::notice`, `replies::notice`), and the phone says beside, in its
+//! own `phone-messages/live/<device>.jsonl`, whether that notification offers
+//! a Reply and a Mark as read, or went (`replies::Live`): what a reply from
+//! a computer names and needs (`replies`).
 
 use crate::appnotes::{self, Decision, Kind, Person, Posted, Sender, Why};
 use crate::attention::{self, Attention, Column, Event, Level, Row, Source};
@@ -193,6 +199,17 @@ pub struct ExtraMessage {
     pub picture: bool,
 }
 
+/// What a notification offers a reply from your computers, as the phone's
+/// listener found its actions (Replies.java, `choose`): a Reply the phone can
+/// fill and send as the shade does, a Mark as read; neither below Android 12,
+/// whose actions do not say what is needed to refuse the others.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Offer {
+    pub reply: bool,
+    pub read: bool,
+}
+
 /// What Java says of a notification besides `appnotes::Posted`, in the same
 /// JSON (AppNotes.java, `describe`), which `Posted` passes over.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -208,6 +225,13 @@ pub struct Extra {
     pub picture: bool,
     /// Its messages', in `Posted::messages`' order.
     pub messages: Vec<ExtraMessage>,
+    /// Its Reply and Mark as read, as the listener found them.
+    pub offer: Offer,
+    /// What went through its Reply lately, newest first
+    /// (`Notification.EXTRA_REMOTE_INPUT_HISTORY`, the person's own words):
+    /// read in memory only, to tell a reply from a computer shown there
+    /// (`replies::shows`), never kept.
+    pub history: Vec<String>,
 }
 
 impl Extra {
@@ -235,6 +259,12 @@ pub struct Line {
     /// The conversation's key (`appnotes::talk_key`); "" none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub talk: String,
+    /// The notification it came in, by the phone's own name for it
+    /// (`replies::notice`: a hash of its app and Android's key, which never
+    /// leaves the phone): what a reply from a computer names. "" in a line
+    /// written before 18 October 2026, which no reply can name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notice: String,
     /// A group's title.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub title: String,
@@ -297,7 +327,7 @@ pub fn padded(line: &Line) -> String {
 }
 
 /// A name on one line, cut: an app's words never break Sioul's.
-fn one_line(text: &str, max: usize) -> String {
+pub(crate) fn one_line(text: &str, max: usize) -> String {
     let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
     cut(&joined, max)
 }
@@ -335,7 +365,7 @@ pub struct Notice<'a> {
 }
 
 /// Whether a message's sender is the person themselves, as the conversation names them.
-fn is_user(p: &Posted, sender: &Person) -> bool {
+pub(crate) fn is_user(p: &Posted, sender: &Person) -> bool {
     p.user.as_ref().is_some_and(|user| {
         let (key, name) = (user.key.trim(), one_line(&user.name, NAME_MAX));
         (!key.is_empty() && key == sender.key.trim()) || (!name.is_empty() && name == one_line(&sender.name, NAME_MAX))
@@ -349,6 +379,24 @@ fn number_key(person: Option<&Person>, fallback_name: &str, region: Option<&Regi
     let from_book = person.and_then(|p| p.numbers.iter().find(|n| !n.trim().is_empty()).cloned());
     let from_name = appnotes::number_in(person.map_or(fallback_name, |p| p.name.as_str()));
     from_uri.or(from_book).or(from_name).map(|n| phones::key(&n.replace("%2B", "+"), region)).unwrap_or_default()
+}
+
+/// Who wrote in a notification, others than the person: their numbers as
+/// Sioul keys them and their names as lines say them (`messages_of`), its
+/// people's and its title's too. What tells a conversation without a key of
+/// its own that it is still the one a line came from (`replies::check`).
+pub(crate) fn writers(p: &Posted, region: Option<&Region>) -> (Vec<String>, Vec<String>) {
+    let senders: Vec<&Person> = p.messages.iter().filter_map(|m| m.sender.as_ref()).filter(|s| !is_user(p, s)).chain(p.people.iter()).collect();
+    let numbers = senders.iter().map(|s| number_key(Some(s), "", region)).chain(std::iter::once(number_key(p.people.first(), &p.title, region))).filter(|k| !k.is_empty()).collect();
+    let names = senders.iter().map(|s| one_line(&s.name, NAME_MAX)).chain(std::iter::once(one_line(&p.title, NAME_MAX))).filter(|n| !n.is_empty()).collect();
+    (numbers, names)
+}
+
+/// When the newest message of others in a notification was sent (ms): its
+/// messages' own times, else the notification's (`when`, its post); 0 unknown.
+pub(crate) fn newest_from_others(p: &Posted, extra: &Extra) -> i64 {
+    let timed = p.messages.iter().enumerate().filter(|(_, m)| m.sender.as_ref().is_some_and(|s| !is_user(p, s))).filter_map(|(i, _)| extra.messages.get(i).map(|e| e.at)).max().unwrap_or(0);
+    if timed > 0 { timed } else { [extra.when, extra.posted].into_iter().find(|t| *t > 0).unwrap_or(0) }
 }
 
 /// Who a code came from, as safe to say: the last sender's name, else the
@@ -394,7 +442,8 @@ pub fn lines_of(n: &Notice) -> Vec<Line> {
     let shows = n.decision.until.map_or(n.now_ms, |until| until.saturating_mul(1000)).max(heard.min(n.now_ms));
     let sms = p.sms_app || matches!(n.kind, Kind::People(talk) if talk.sms);
     let label = one_line(&p.app, NAME_MAX);
-    let base = Line { app: p.package.clone(), label: label.clone(), shows, ..Line::default() };
+    let notice = if p.key.is_empty() { String::new() } else { crate::replies::notice(&p.package, &p.key) };
+    let base = Line { app: p.package.clone(), label: label.clone(), notice, shows, ..Line::default() };
     let mut lines = match n.kind {
         Kind::Untouched => return Vec::new(),
         Kind::Code => {
@@ -512,12 +561,16 @@ fn older_than(days: i64, now_ms: i64) -> impl Fn(&str) -> bool {
     move |line: &str| serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["at"].as_i64()).is_some_and(|at| now_ms - at > days * DAY_MS)
 }
 
-/// This device's own lines kept past `KEPT_DAYS` taken out of its log and of
-/// its seen log under `root`: the sharing then takes them out on every
-/// device. Returns how many went.
+/// This device's own lines kept past `KEPT_DAYS` taken out of its log, of
+/// its seen log and of its live lines (`replies::LIVE`) under `root`: the
+/// sharing then takes them out on every device. Returns how many went.
 pub fn trim_own(root: &Path, device: &str, now_ms: i64) -> Result<usize, String> {
     let old = older_than(KEPT_DAYS, now_ms);
-    Ok(calls::rewrite_lines(&calls::own_file(root, LOG, device), &old)? + calls::rewrite_lines(&calls::own_file(root, SEEN_LOG, device), &old)?)
+    let mut gone = 0;
+    for folder in [LOG, SEEN_LOG, crate::replies::LIVE] {
+        gone += calls::rewrite_lines(&calls::own_file(root, folder, device), &old)?;
+    }
+    Ok(gone)
 }
 
 /// Another device's lines kept `LATE_DAYS` past their week taken out here
@@ -526,7 +579,7 @@ pub fn trim_own(root: &Path, device: &str, now_ms: i64) -> Result<usize, String>
 pub fn trim_others(root: &Path, here: &str, now_ms: i64) -> Result<usize, String> {
     let old = older_than(KEPT_DAYS + LATE_DAYS, now_ms);
     let mut gone = 0;
-    for folder in [LOG, SEEN_LOG] {
+    for folder in [LOG, SEEN_LOG, crate::replies::LIVE] {
         for (device, path) in calls::device_files(&root.join(folder)) {
             if device != calls::file_safe(here) {
                 gone += calls::rewrite_lines(&path, &old)?;
@@ -841,7 +894,7 @@ mod tests {
             ..Posted::default()
         };
         let count = texts.len() as i64;
-        let extra = Extra { visibility: 0, when: NOW - 60_000, posted: NOW - 59_000, picture: false, messages: (0..count).map(|i| ExtraMessage { at: NOW - 600_000 + i * 60_000, picture: false }).collect() };
+        let extra = Extra { visibility: 0, when: NOW - 60_000, posted: NOW - 59_000, picture: false, messages: (0..count).map(|i| ExtraMessage { at: NOW - 600_000 + i * 60_000, picture: false }).collect(), ..Extra::default() };
         (posted, extra)
     }
 
@@ -865,6 +918,9 @@ mod tests {
         assert_eq!((last.kind.as_str(), last.name.as_str(), last.key.as_str(), last.who.as_str()), ("text", "Cabinet du Dr Martin", "+33199001234", "neutral"));
         assert_eq!(last.text, "Votre rendez-vous est déplacé à jeudi 10 h 30.");
         assert_eq!((last.at, last.shows), (NOW - 540_000, NOW));
+        // Its notification by the phone's own name for it, never Android's key.
+        assert_eq!(last.notice, crate::replies::notice("foundation.e.message", "0|foundation.e.message|1|null|10123"));
+        assert!(!serde_json::to_string(last).unwrap().contains("null|10123"), "Android's key stays on the phone");
         assert!(last.id.starts_with(&format!("{}-", NOW - 540_000)));
         // Posted again with a new message: the same lines again, and the new one.
         let (again, extra) = texted(&martin, &["Bonjour,", "Votre rendez-vous est déplacé à jeudi 10 h 30.", "Merci de confirmer."]);
@@ -1054,11 +1110,11 @@ mod tests {
     /// reads is untouched by the fields beside, which `Extra` reads.
     #[test]
     fn what_java_says_beside_reads_here() {
-        let json = r#"{"key":"0|foundation.e.message|7|null|10123","package":"foundation.e.message","app":"Message","category":"msg","title":"Cabinet du Dr Martin","text":"","messages":[{"text":"","sender":{"name":"Cabinet du Dr Martin","key":"","uri":"tel:+33199001234","bot":false},"at":1791446340000,"picture":true}],"people":[],"sms_app":true,"visibility":-1,"when":1791446340000,"posted":1791446341000,"picture":false}"#;
+        let json = r#"{"key":"0|foundation.e.message|7|null|10123","package":"foundation.e.message","app":"Message","category":"msg","title":"Cabinet du Dr Martin","text":"","messages":[{"text":"","sender":{"name":"Cabinet du Dr Martin","key":"","uri":"tel:+33199001234","bot":false},"at":1791446340000,"picture":true}],"people":[],"sms_app":true,"visibility":-1,"when":1791446340000,"posted":1791446341000,"picture":false,"offer":{"reply":true,"read":false},"history":["J'arrive."]}"#;
         let posted: Posted = serde_json::from_str(json).unwrap();
         assert_eq!((posted.package.as_str(), posted.messages.len(), posted.sms_app), ("foundation.e.message", 1, true));
         let extra = Extra::read(json);
-        assert_eq!(extra, Extra { visibility: SECRET, when: 1_791_446_340_000, posted: 1_791_446_341_000, picture: false, messages: vec![ExtraMessage { at: 1_791_446_340_000, picture: true }] });
+        assert_eq!(extra, Extra { visibility: SECRET, when: 1_791_446_340_000, posted: 1_791_446_341_000, picture: false, messages: vec![ExtraMessage { at: 1_791_446_340_000, picture: true }], offer: Offer { reply: true, read: false }, history: vec!["J'arrive.".into()] });
         // An older Java, which said none of it: nothing secret, no time, no picture.
         assert_eq!(Extra::read(r#"{"package":"foundation.e.message","messages":[{"text":"Bonjour"}]}"#), Extra { messages: vec![ExtraMessage::default()], ..Extra::default() });
     }

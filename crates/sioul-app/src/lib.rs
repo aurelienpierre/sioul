@@ -161,6 +161,7 @@ mod projects;
 // Settings ▸ What reaches you, in words, and a person's sheet (docs/attention.md).
 mod reaches;
 mod remind;
+mod replies;
 mod reviews;
 mod securitykey;
 mod senders;

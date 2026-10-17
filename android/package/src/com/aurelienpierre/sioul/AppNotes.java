@@ -4,9 +4,11 @@
 package com.aurelienpierre.sioul;
 
 import android.Manifest;
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Person;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
@@ -72,6 +74,12 @@ import java.util.Map;
  * What is held is worked out again (`review`) when something changes that
  * moves its time: a pause ends, the switch of do-not-disturb, the hours, the
  * choices. Sioul's files are watched for that.
+ *
+ * Replies from your computers (Replies.java; crates/sioul-app/src/replies.rs):
+ * what each relayed notification offers (a Reply, a Mark as read) is said to
+ * Rust with it, and its going when Android takes it away; what the
+ * background step hands over in Sioul's private replies folder is sent here,
+ * the listener alone holding the notifications, each once ({@link #answer}).
  */
 public final class AppNotes extends NotificationListenerService
 {
@@ -110,12 +118,31 @@ public final class AppNotes extends NotificationListenerService
     private long smsAppAt;
     /** What is held worked out again after Sioul's files changed: one runnable, so that a burst of changes runs it once. */
     private final Runnable review = () -> review("files");
+    /** What is due sent after the step wrote it: one runnable, so that a burst of changes runs it once. */
+    private final Runnable answer = this::answer;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why"}. */
     static native String nativeDecide(String json);
 
     /** What is held, worked out again: {"snooze": [{"key", "ms"}]}, for the keys Android holds now. */
     static native String nativeReview(String json);
+
+    /**
+     * Replies from your computers (crates/sioul-app/src/replies.rs): "due"
+     * (what is due now: {due: [{key, verb, notice}]}), "check" ({key, held,
+     * posted}: the live notification found for one, {go, crossed} or {go:
+     * false, state}), "taken" ({key}: written and flushed first, {go, words}),
+     * "result" ({key, state, crossed, held}), "removed" ({package, key}: a
+     * relayed notification gone, {shared}).
+     */
+    static native String nativeReply(String verb, String json);
+
+    /** Sioul's private folder for replies, in its state (Rust's `replies::private_folder`). */
+    private static final String REPLIES = "state/sioul/replies";
+    /** The file of what is due there, written whole by the background step. */
+    private static final String DUE = "due.jsonl";
+    /** Changes to what is due settle this long before it is read. */
+    private static final long DUE_SETTLE_MS = 300;
 
     // ---------------------------------------------------------------- Rust's questions
 
@@ -432,6 +459,8 @@ public final class AppNotes extends NotificationListenerService
         worker.post(() -> {
             watch();
             review("connected");
+            // What became due while Android had not bound the listener yet.
+            answer();
         });
     }
 
@@ -476,6 +505,35 @@ public final class AppNotes extends NotificationListenerService
         boolean ranked = rankings != null && rankings.getRanking(sbn.getKey(), ranking);
         Ranking given = ranked ? ranking : null;
         worker.post(() -> decide(sbn, given));
+    }
+
+    /**
+     * A notification gone, as Android says it: for one relayed to your
+     * computers, its going said there (Rust's `replies::went`), so that they
+     * no longer offer its Reply. Never for Sioul's own holding
+     * (REASON_SNOOZED), which is no going.
+     */
+    @Override
+    public void onNotificationRemoved(StatusBarNotification sbn, RankingMap rankings, int reason)
+    {
+        if (sbn == null || reason == REASON_SNOOZED || getPackageName().equals(sbn.getPackageName()))
+            return;
+        String pkg = sbn.getPackageName();
+        String key = sbn.getKey();
+        worker.post(() -> removed(pkg, key));
+    }
+
+    /** A notification's going said to Rust, and a step soon when your computers have it to read. On the worker thread. */
+    private void removed(String pkg, String key)
+    {
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeReply("removed", new JSONObject().put("package", pkg).put("key", key).toString());
+            if (answer != null && !answer.isEmpty() && !"null".equals(answer) && new JSONObject(answer).optBoolean("shared", false))
+                StepService.soon(getApplicationContext());
+        } catch (Throwable e) {
+            Log.w(TAG, "Replies: a notification's going was not said: " + e.getClass().getSimpleName());
+        }
     }
 
     /** Rust asked, the answer followed: held so long, or left as it came. On the worker thread. */
@@ -584,6 +642,32 @@ public final class AppNotes extends NotificationListenerService
             observer.startWatching();
             watches.add(observer);
         }
+        watchReplies();
+    }
+
+    /**
+     * The private folder of replies watched for what is due (made first, so
+     * that it can be watched before the step writes there): the background
+     * step writes it whole beside, then puts it in place.
+     */
+    private void watchReplies()
+    {
+        File folder = new File(getFilesDir(), REPLIES);
+        if (!folder.isDirectory() && !folder.mkdirs())
+            return;
+        @SuppressWarnings("deprecation")
+        FileObserver observer = new FileObserver(folder.getAbsolutePath(), FileObserver.CLOSE_WRITE | FileObserver.MOVED_TO) {
+            @Override
+            public void onEvent(int event, String name)
+            {
+                if (DUE.equals(name)) {
+                    worker.removeCallbacks(answer);
+                    worker.postDelayed(answer, DUE_SETTLE_MS);
+                }
+            }
+        };
+        observer.startWatching();
+        watches.add(observer);
     }
 
     /** The watches of Sioul's folders stopped. */
@@ -592,6 +676,123 @@ public final class AppNotes extends NotificationListenerService
         for (FileObserver observer : watches)
             observer.stopWatching();
         watches.clear();
+    }
+
+    // ---------------------------------------------------------------- replies from your computers
+
+    /**
+     * Each reply or Mark as read due now (handed over by the background
+     * step, which decided it once): sent through its notification's own
+     * action, or said why not ({@link #answerOne}); a step soon, so that what
+     * became of it reaches your computers. On the worker thread.
+     */
+    private void answer()
+    {
+        if (!connected || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeReply("due", "{}");
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            JSONArray due = new JSONObject(answer).optJSONArray("due");
+            boolean said = false;
+            for (int i = 0; due != null && i < due.length(); i++) {
+                JSONObject one = due.optJSONObject(i);
+                if (one != null)
+                    said |= answerOne(one);
+            }
+            if (said)
+                StepService.soon(getApplicationContext());
+        } catch (Throwable e) {
+            // Sioul's library that does not load, Rust that fails: nothing sent; the step says it in time.
+            Log.e(TAG, "Replies: what is due could not be read; nothing was sent.", e);
+        }
+    }
+
+    /**
+     * One due: its notification found again live by the name the line gave
+     * it, among what Android shows, then what Sioul holds, of this phone's
+     * own profile; Rust's check that it is still the conversation answered;
+     * its Reply (or Mark as read) chosen by what it means and refused when
+     * it may not go; "taken" written and flushed; then sent once, as the
+     * shade sends one. Whether anything was said to Rust.
+     */
+    private boolean answerOne(JSONObject due) throws JSONException
+    {
+        String key = due.optString("key", "");
+        String notice = due.optString("notice", "");
+        boolean fill = !"read".equals(due.optString("verb", ""));
+        if (key.isEmpty() || notice.isEmpty())
+            return false;
+        StatusBarNotification live = null;
+        boolean held = false;
+        StatusBarNotification[][] lists = { getActiveNotifications(), getSnoozedNotifications() };
+        for (int list = 0; list < lists.length && live == null; list++) {
+            StatusBarNotification[] sbns = lists[list] == null ? new StatusBarNotification[0] : lists[list];
+            String[] packages = new String[sbns.length];
+            String[] keys = new String[sbns.length];
+            boolean[] own = new boolean[sbns.length];
+            for (int i = 0; i < sbns.length; i++) {
+                packages[i] = sbns[i] == null ? null : sbns[i].getPackageName();
+                keys[i] = sbns[i] == null ? null : sbns[i].getKey();
+                own[i] = sbns[i] != null && Process.myUserHandle().equals(sbns[i].getUser());
+            }
+            int found = Replies.live(packages, keys, own, notice);
+            if (found >= 0) {
+                live = sbns[found];
+                held = list == 1;
+            }
+        }
+        if (live == null)
+            return result(key, "gone", false, false);
+        Ranking ranking = ranking(live.getKey());
+        JSONObject checked = new JSONObject(nativeReply("check", new JSONObject().put("key", key).put("held", held).put("posted", describe(live, ranking)).toString()));
+        if (!checked.optBoolean("go", false))
+            return result(key, checked.optString("state", "gone"), false, held);
+        boolean crossed = checked.optBoolean("crossed", false);
+        List<Replies.Found> found = Replies.found(live.getNotification());
+        boolean conversation = ranking != null && ranking.isConversation();
+        Replies.Choice choice = Replies.choose(Replies.acts(found), conversation, live.getPackageName().equals(smsApp()));
+        Replies.Act act = fill ? choice.reply : choice.read;
+        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+        String refused = Replies.refusal(act, fill, keyguard != null && keyguard.isDeviceLocked());
+        if (!refused.isEmpty())
+            return result(key, "none".equals(refused) ? (fill ? "no-reply" : "no-read") : refused, crossed, held);
+        // "taken" first, flushed: after a crash, the doubt, never a second sending.
+        JSONObject taken = new JSONObject(nativeReply("taken", new JSONObject().put("key", key).toString()));
+        if (!taken.optBoolean("go", false))
+            return taken.optBoolean("said", false);
+        try {
+            Replies.send(this, Replies.of(found, act), taken.optString("words", ""), fill);
+            return result(key, "handed", crossed, held);
+        } catch (PendingIntent.CanceledException e) {
+            return result(key, "gone", crossed, held);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Replies: Android refused the sending: " + e.getClass().getSimpleName());
+            return result(key, "failed", crossed, held);
+        }
+    }
+
+    /** What became of one, said to Rust, which writes it (never the words); always true. */
+    private boolean result(String key, String state, boolean crossed, boolean held) throws JSONException
+    {
+        nativeReply("result", new JSONObject().put("key", key).put("state", state).put("crossed", crossed).put("held", held).toString());
+        // States only, in the phone's log: never a word, a name, an app.
+        Log.i(TAG, "Replies: one " + state + (crossed ? ", crossing newer messages" : "") + (held ? ", among those held" : "") + ".");
+        return true;
+    }
+
+    /** The ranking Android gives a notification now; null when it gives none (a held one). */
+    private Ranking ranking(String key)
+    {
+        try {
+            RankingMap rankings = getCurrentRanking();
+            Ranking ranking = new Ranking();
+            return rankings != null && rankings.getRanking(key, ranking) ? ranking : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // ---------------------------------------------------------------- what Android says of a notification
@@ -662,6 +863,16 @@ public final class AppNotes extends NotificationListenerService
         // For your computers, when its app sends to them (crates/sioul-core/src/phonemsgs.rs, `Extra`):
         // whether its app keeps it secret, when it was sent and posted, whether it shows a picture (never the picture).
         PhoneMessages.notice(out, n.visibility, n.when, sbn.getPostTime(), extras.containsKey(Notification.EXTRA_PICTURE) || extras.containsKey("android.pictureIcon"));
+        // What it offers a reply from your computers (Replies.java), and what went through its Reply
+        // lately, the person's own words, read by Rust in memory only, to tell a reply shown.
+        out.put("offer", Replies.offer(n, conversation, sbn.getPackageName().equals(smsApp())));
+        JSONArray history = new JSONArray();
+        CharSequence[] sent = extras.getCharSequenceArray(Notification.EXTRA_REMOTE_INPUT_HISTORY);
+        if (sent != null)
+            for (CharSequence one : sent)
+                if (one != null)
+                    history.put(one.toString());
+        out.put("history", history);
         return out;
     }
 

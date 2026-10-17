@@ -437,6 +437,10 @@ pub const PHONE_MESSAGES_LOG: &str = "state/phone-messages/log/";
 /// The messages marked Seen, each device's own file: seen on one device,
 /// gone from the Porch of every device.
 pub const PHONE_MESSAGES_SEEN: &str = "state/phone-messages/seen/";
+/// What each relayed notification offers a reply from a computer, each
+/// phone's own file (`sioul_core::replies::Live`): a Reply, a Mark as read,
+/// or that it went; no words, no names. Taken out with the log.
+pub const PHONE_MESSAGES_LIVE: &str = "state/phone-messages/live/";
 /// Where the phones' messages keep their files in the records: as the
 /// calls', remembered beside the notes, never kept as an earlier version nor
 /// copied aside when sharing starts (`calls_store`).
@@ -630,6 +634,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // marked Seen: each device's own file, a line each, every device's read.
         folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_LOG, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::phonemsgs::LOG), Shape::Lines, &[]),
         folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_SEEN, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::phonemsgs::SEEN_LOG), Shape::Lines, &[]),
+        // What each relayed notification offers a reply from your computers, each phone's own file.
+        folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_LIVE, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::replies::LIVE), Shape::Lines, &[]),
         // texts: each phone's texts and outcomes, each computer's requests, sealed lines, in the data folder.
         folder(sioul_core::texts::PART, TEXTS_LOG, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_SEND, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::SEND), Shape::Lines, &[]),
@@ -10182,6 +10188,7 @@ mod tests {
             who: "neutral".into(),
             text: "Votre rendez-vous est déplacé à jeudi 10 h 30.".into(),
             shows: at,
+            notice: sioul_core::replies::notice("foundation.e.message", "0|foundation.e.message|7|null|10123"),
             ..sioul_core::phonemsgs::Line::default()
         }
     }
@@ -10216,12 +10223,21 @@ mod tests {
         let came = phone.exchange_with(&folder, &key, NOW + 4 * MINUTE, &notes, &on);
         assert!(came.written.contains(PHONE_MESSAGES_SEEN), "{came:?}");
         assert!(calls::read_seen(&messages_of(&phone)).seen.contains(&on_desk[0].id));
+        // What its notification offers a reply, from the phone's own live file: the desk reads it.
+        let live = sioul_core::replies::Live { notice: on_desk[0].notice.clone(), app: "foundation.e.message".into(), reply: true, read: true, at: NOW + 4 * MINUTE, ..Default::default() };
+        assert!(!live.notice.is_empty());
+        assert!(sioul_core::replies::offer(&sioul_core::replies::live_file(&messages_of(&phone), &phone.id), &live).unwrap());
+        phone.exchange_with(&folder, &key, NOW + 4 * MINUTE + 1_000, &notes, &on);
+        let came = desk.exchange_with(&folder, &key, NOW + 4 * MINUTE + 2_000, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_LIVE), "{came:?}");
+        let offered = sioul_core::replies::read_live(&messages_of(&desk), NOW + 5 * MINUTE);
+        assert_eq!(offered.get(&(phone.id.clone(), live.notice.clone())).map(|l| (l.reply, l.read)), Some((true, true)));
         // Sealed: nothing of it readable in the folder.
         let mut files = Vec::new();
         list_files(&folder, &folder, &[], &mut files);
         for (name, path) in &files {
             let bytes = std::fs::read(path).unwrap();
-            for plain in [&b"199001234"[..], b"Cabinet", b"rendez-vous", b"neutral"] {
+            for plain in [&b"199001234"[..], b"Cabinet", b"rendez-vous", b"neutral", b"foundation.e.message", on_desk[0].notice.as_bytes()] {
                 assert!(!bytes.windows(plain.len()).any(|w| w == plain), "{name}");
             }
         }
