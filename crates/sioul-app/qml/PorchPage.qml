@@ -39,6 +39,26 @@ Item {
     property var helpShown: ({})
     // What sites notified, kept for the Porch.
     property var siteNotices: JSON.parse(page.sioul.siteNotices() || "[]")
+    // Notes or papers gone many at once here and held, not said yet
+    // (`share::withheld`): read when the Porch shows and at each minute.
+    property var withheld: []
+    property string withheldProblem: ""
+
+    function readWithheld() {
+        page.withheld = JSON.parse(page.sioul.shareWithheld() || "[]").filter(w => !page.sioul.viewFlag(w.key))
+    }
+    // Said: not again on the Porch for that bulk of files (a later one is said anew).
+    function withheldSaid(key) {
+        page.sioul.setViewFlag(key, true)
+        page.readWithheld()
+    }
+    // Shown a few seconds while the Porch is in view: said once, put away when the Porch is left.
+    property bool withheldRead: false
+    Timer {
+        interval: 3000
+        running: page.visible && page.withheld.length > 0
+        onTriggered: page.withheldRead = true
+    }
     // The doses (docs/health.md, "On the Porch"), made off the window's thread
     // (`missedView`, `health::missed`): today's from their time on, not marked
     // yet, reminded or not; and those due while Sioul was closed, asked about.
@@ -56,21 +76,33 @@ Item {
     // half hour, or is marked on another computer (through the sharing).
     onVisibleChanged: {
         page.takeShown()
-        if (page.visible)
+        if (page.visible) {
             page.reloadDoses()
+            page.readWithheld()
+        } else if (page.withheldRead) {
+            for (const w of page.withheld)
+                page.sioul.setViewFlag(w.key, true)
+            page.withheldRead = false
+            page.withheld = []
+            page.withheldProblem = ""
+        }
     }
     onViewChanged: page.reloadDoses()
     Component.onCompleted: {
         page.takeShown()
         page.reloadDoses()
+        page.readWithheld()
     }
 
     Connections {
         target: page.window
 
         function onNowChanged() {
-            if (page.visible)
+            if (page.visible) {
                 page.reloadDoses()
+                if (!page.withheldRead)
+                    page.readWithheld()
+            }
         }
     }
 
@@ -471,6 +503,80 @@ Item {
                                 onClicked: {
                                     page.sioul.setViewFlag("porch-night-left", true)
                                     nightCard.leftAsIs = true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notes or papers gone many at once here, held until they leave
+                // your other devices by themselves (docs/database.md, "Removed
+                // notes"): said once, calmly. Nothing has to be pressed: once
+                // shown a few seconds, it is not said again when the Porch is
+                // left; Settings ▸ Your folder and sharing says it as long as it lasts.
+                Repeater {
+                    model: page.withheld
+
+                    delegate: Panel {
+                        id: withheldCard
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        theme: page.theme
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 6
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: withheldCard.modelData.text
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: page.theme.text
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: withheldCard.modelData.leaves
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: page.theme.muted
+                            }
+                            Label {
+                                visible: text !== ""
+                                Layout.fillWidth: true
+                                text: page.withheldProblem
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: page.theme.muted
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Button {
+                                    text: page.sioul.text("porch-withheld-put-back")
+                                    onClicked: {
+                                        page.withheldProblem = page.sioul.sharePutBackWithheld(withheldCard.modelData.store)
+                                        if (page.withheldProblem === "")
+                                            page.withheldSaid(withheldCard.modelData.key)
+                                    }
+                                }
+                                Button {
+                                    text: page.sioul.text("porch-withheld-take-out")
+                                    onClicked: {
+                                        page.withheldProblem = page.sioul.shareConfirmGone(withheldCard.modelData.store)
+                                        if (page.withheldProblem === "")
+                                            page.withheldSaid(withheldCard.modelData.key)
+                                    }
+                                }
+                                Button {
+                                    flat: true
+                                    text: page.sioul.text("porch-hours-leave")
+                                    onClicked: page.withheldSaid(withheldCard.modelData.key)
                                 }
                             }
                         }

@@ -30,6 +30,9 @@ static LAST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
 /// What an exchange did that you should know for longer than a minute, said
 /// for a day: files two devices changed, both versions kept (Unix seconds, the problem).
 static SAID: Mutex<Vec<(i64, String)>> = Mutex::new(Vec::new());
+/// The notes and papers gone many at once here and held, as the last
+/// exchange left them (`share::Outcome::withheld`); none before one did.
+static WITHHELD: Mutex<Option<Vec<share::Withheld>>> = Mutex::new(None);
 
 fn hex(key: &[u8; 32]) -> String {
     key.iter().map(|b| format!("{b:02x}")).collect()
@@ -404,6 +407,10 @@ struct Status {
     parts: Vec<Part>,
     /// Folders of notes or papers whose files went at once: held, said, to take out everywhere on a word.
     vanished: Vec<Vanished>,
+    /// Notes and papers gone many at once here, held until they leave by themselves (`withheld`).
+    withheld: Vec<WithheldShown>,
+    /// The devices that no longer count here and still have files in the folder: "Remove its files".
+    gone_devices: Vec<GoneRow>,
     /// Your other devices, as this one knows them: in use, closed, silent, off as you said.
     devices: Vec<crate::health::DeviceRow>,
     /// The other devices' files fetched from the server too: where it stands, the switch, the place given by hand.
@@ -470,6 +477,11 @@ pub(crate) fn status(folder: &str) -> String {
     let mut lines = Vec::new();
     let mut problems = Vec::new();
     let mut vanished = Vec::new();
+    // Notes gone many at once and held: said with when they leave (`withheld`),
+    // not as a folder held until you say so, which a folder emptied or not
+    // readable whole still is (`share-vanished`).
+    let withheld = if on { withheld(true) } else { Vec::new() };
+    let held_stores: Vec<String> = withheld_now(false).into_iter().map(|w| w.store).collect();
     let mirror = mirrored();
     // The format of what travels, as this device knows it (its devices listed below, every one holding it back among them).
     let formats = if on { key().map(|key| share::formats(&path, &key, &memory_path(), &here.id, now_ms())) } else { None };
@@ -500,7 +512,7 @@ pub(crate) fn status(folder: &str) -> String {
         if let Some((at, said)) = LAST.lock().ok().and_then(|l| l.clone()) {
             lines.push(say("share-last", &[("when", when(at))]));
             problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:")).map(|p| problem_text(p)));
-            vanished.extend(said.iter().filter_map(|p| vanished_of(p)));
+            vanished.extend(said.iter().filter(|p| !p.strip_prefix("share-vanished:").and_then(|rest| rest.rsplit_once(':')).is_some_and(|(folder, _)| held_stores.iter().any(|store| store == folder))).filter_map(|p| vanished_of(p)));
         }
         // The format of what travels (docs/database.md, "The format of what
         // travels"): a part your other devices share in a newer form than
@@ -579,7 +591,8 @@ pub(crate) fn status(folder: &str) -> String {
     };
     let replace = if on { crate::join::replacing() } else { None };
     let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+    let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, withheld, gone_devices, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -621,7 +634,7 @@ fn problem_text(code: &str) -> String {
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
         Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
-        None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut") => tr().text(code, None),
+        None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut" | "share-device-counts" | "share-device-unknown") => tr().text(code, None),
         _ => code.to_string(),
     }
 }
@@ -634,12 +647,191 @@ fn kept_a_day(code: &str) -> bool {
 /// `share-vanished:<folder>:<count>`, said with a button: the folder of notes or papers it is in, and the sentence.
 fn vanished_of(code: &str) -> Option<Vanished> {
     let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
-    let store = if folder.starts_with("files/papers/") { "files/papers/" } else { "files/notes/" };
+    // The folder of the records it is in ("files/notes/", "files/papers/", "files/spam/"): what "Take them out everywhere" confirms.
+    let store = folder.strip_prefix("files/").and_then(|rest| rest.split_once('/')).map_or_else(|| "files/notes/".to_string(), |(part, _)| format!("files/{part}/"));
+    let store = store.as_str();
     let shown = match share::shown(folder) {
         "" => load_config().notes_root_path().map(|notes| shorten(&notes)).unwrap_or_default(),
         inside => inside.trim_end_matches('/').to_string(),
     };
     Some(Vanished { store: store.to_string(), text: say("share-vanished", &[("folder", shown), ("count", count.to_string())]) })
+}
+
+/// Notes or papers gone many at once here and held (`share::withheld`), in
+/// words: what went, from where and when; when they leave your other devices
+/// by themselves; the view flag that says the Porch said it once.
+#[derive(Serialize)]
+pub(crate) struct WithheldShown {
+    store: String,
+    text: String,
+    leaves: String,
+    key: String,
+}
+
+/// A day in words: "Friday 17 October".
+fn day(ms: i64) -> String {
+    jiff::Timestamp::from_millisecond(ms).map(|at| tr().day(at.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default()
+}
+
+/// The notes and papers held here as the last exchange left them
+/// (`share::Outcome::withheld`); read from the sharing's memory the first
+/// time when `read` (Settings), never on the Porch's own thread.
+fn withheld_now(read: bool) -> Vec<share::Withheld> {
+    let mut kept = WITHHELD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if kept.is_none() && read {
+        *kept = Some(share::withheld(&memory_path(), &here().id));
+    }
+    kept.clone().unwrap_or_default()
+}
+
+/// What the Porch and Settings say of the notes and papers held here after
+/// going many at once (docs/database.md, "Removed notes"): once on the
+/// Porch, calmly, with "Put them back" and "Take them out now"; nothing has
+/// to be pressed. The folders each by its place here ("~/Notes/Archives").
+pub(crate) fn withheld(read: bool) -> Vec<WithheldShown> {
+    let here = here();
+    if here.folder_path().is_none() {
+        return Vec::new();
+    }
+    let held = withheld_now(read);
+    if held.is_empty() {
+        return Vec::new();
+    }
+    let stores = stores_here(&here);
+    held.into_iter()
+        // The spam filter's own files leave by themselves, unsaid: nothing of yours.
+        .filter(|w| w.store == "files/notes/" || w.store == "files/papers/")
+        .map(|w| {
+            let root = stores.iter().find(|s| s.name == w.store).map(|s| s.path.clone());
+            withheld_words(w, root.as_deref())
+        })
+        .collect()
+}
+
+/// A bulk of notes or papers held, in words (`withheld`): the folders by
+/// their place under `root` ("~/Notes/Archives"), the notes folder itself
+/// for those at its top.
+fn withheld_words(w: share::Withheld, root: Option<&Path>) -> WithheldShown {
+    let part = if w.store == "files/papers/" { tr().text("porch-withheld-of-papers", None) } else { tr().text("porch-withheld-of-notes", None) };
+    let place = |folder: &String| match root {
+        Some(root) if folder.is_empty() => shorten(root),
+        Some(root) => shorten(&root.join(folder)),
+        None => folder.clone(),
+    };
+    let when = if day(w.first) == day(w.last) { say("porch-withheld-on", &[("day", day(w.first))]) } else { say("porch-withheld-between", &[("first", day(w.first)), ("last", day(w.last))]) };
+    let folders = w.folders.iter().map(place).filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
+    let text = say("porch-withheld", &[("count", w.count.to_string()), ("part", part), ("when", when), ("folders", folders)]);
+    let leaves = say("porch-withheld-leave", &[("count", w.count.to_string()), ("day", day(w.leaves)), ("days", share::GONE_GRACE_DAYS.to_string())]);
+    WithheldShown { key: format!("porch-withheld-said:{}:{}", w.store, w.last), store: w.store, text, leaves }
+}
+
+/// "Put them back": the notes or papers held after going many at once from
+/// `store` ("files/notes/") written back where they were, from their sealed
+/// contents; "" when they came back, else why not.
+pub(crate) fn put_back_withheld(store: &str) -> String {
+    let here = here();
+    let Some((folder, key)) = sealed(attached(&here)) else { return tr().text("share-off", None) };
+    let stores = stores_here(&here);
+    quietly(|| match share::put_back_withheld(&folder, &key, &memory_path(), &here.id, &stores, store) {
+        Ok(0) => tr().text("porch-withheld-none-back", None),
+        Ok(_) => String::new(),
+        Err(e) => problem_text(&e),
+    })
+}
+
+/// A device that no longer counts here and still has files in the folder, as Settings lists it.
+#[derive(Serialize)]
+struct GoneRow {
+    id: String,
+    name: String,
+    state: String,
+}
+
+/// A device's name as its last entry said it: "The phone (Model 7)", a computer's name, else "A device".
+fn device_named(name: &str, kind: &str) -> String {
+    let capital = |text: String| -> String {
+        let mut chars = text.chars();
+        chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+    };
+    match (kind, name) {
+        (sioul_sync::devices::PHONE, name) if !name.is_empty() && name != sioul_sync::devices::PHONE => format!("{} ({name})", capital(tr().text("device-the-phone", None))),
+        (_, name) if !name.is_empty() => name.to_string(),
+        _ => tr().text("share-device-unnamed", None),
+    }
+}
+
+/// The devices that no longer count here (they left, you forgot them,
+/// another replaces them) and whose files are still in the folder.
+fn gone_rows(folder: &Path) -> Vec<GoneRow> {
+    let here = here();
+    let Some(key) = key() else { return Vec::new() };
+    share::departed_devices(folder, &key, &memory_path(), &here.id, now_ms())
+        .into_iter()
+        .map(|gone| {
+            let size = sioul_core::view::size(tr(), usize::try_from(gone.bytes).unwrap_or(usize::MAX));
+            let state = say(&format!("share-device-gone-{}", gone.why), &[("size", size)]);
+            GoneRow { name: device_named(&gone.name, &gone.kind), id: gone.id, state }
+        })
+        .collect()
+}
+
+/// What "Remove its files" would take out for a device, and what stays,
+/// in words, said before you press (`share::device_files`): `{ text, live }`.
+pub(crate) fn device_files(id: &str) -> String {
+    let none = || json(&serde_json::json!({ "text": "", "live": false }));
+    let here = here();
+    let Some((folder, key)) = sealed(attached(&here)) else { return none() };
+    let stores = stores_here(&here);
+    let Some(files) = share::device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) else { return none() };
+    json(&serde_json::json!({ "text": removal_words(&files), "live": files.counts }))
+}
+
+/// The sentences said before "Remove its files" (`share::DeviceFiles`):
+/// what goes, with its size; what stays; who has not read all of it.
+fn removal_words(files: &share::DeviceFiles) -> String {
+    let size = |bytes: u64| sioul_core::view::size(tr(), usize::try_from(bytes).unwrap_or(usize::MAX));
+    let mut said = Vec::new();
+    if files.counts {
+        said.push(tr().text("share-remove-live", None));
+    }
+    said.push(say("share-remove-rounds", &[("count", files.rounds.to_string()), ("size", size(files.round_bytes + files.small_bytes))]));
+    if files.sealed > 0 {
+        said.push(say("share-remove-sealed", &[("count", files.sealed.to_string()), ("size", size(files.sealed_bytes))]));
+    } else if !files.sealed_known {
+        said.push(tr().text("share-remove-sealed-unknown", None));
+    }
+    if files.sealed_later > 0 {
+        said.push(say("share-remove-sealed-later", &[("count", files.sealed_later.to_string())]));
+    }
+    if files.notes_stay || files.entry_stays {
+        said.push(tr().text("share-remove-small-stay", None));
+    }
+    said.push(tr().text("share-remove-stays", None));
+    if !files.unread_by.is_empty() {
+        let names = files.unread_by.iter().map(|(_, name, kind)| device_named(name, kind)).collect::<Vec<_>>().join(", ");
+        said.push(say("share-remove-unread", &[("devices", names), ("count", files.unread_by.len().to_string())]));
+    }
+    said.join(" ")
+}
+
+/// "Remove its files" pressed. The doses first: the device stops counting
+/// for them exactly as a forgotten one (its claims go with its files; a
+/// device that still counts here is forgotten by the sharing too, as
+/// "Forget it now" does). Then everything it wrote in the folder goes
+/// (`share::remove_device_files`). "" when it went, else why not.
+pub(crate) fn remove_device_files(id: &str) -> String {
+    let here = here();
+    let Some((folder, key)) = sealed(attached(&here)) else { return tr().text("share-off", None) };
+    let stores = stores_here(&here);
+    let Some(files) = share::device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) else { return problem_text("share-device-unknown") };
+    let marked = if files.counts { crate::health::device_forget(id) } else { crate::health::device_forget_doses(id) };
+    if !marked.is_empty() {
+        return marked;
+    }
+    quietly(|| match share::remove_device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) {
+        Ok(_) => String::new(),
+        Err(e) => problem_text(&e),
+    })
 }
 
 /// Starts sharing through a folder; "" when it did, else why not.
@@ -1538,6 +1730,12 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
                 crate::devices::exported(&outcome);
                 (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
                 no_blob = outcome.waits.contains_key("no-blob");
+                // The notes and papers held after going many at once, for the Porch and Settings (`withheld`).
+                if let Some(held) = &outcome.withheld
+                    && let Ok(mut kept) = WITHHELD.lock()
+                {
+                    *kept = Some(held.clone());
+                }
                 if !outcome.written.is_empty() {
                     // What the pages were read from (`work::loaded`: the notes, the
                     // recently changed, projects and tasks) came before these:
@@ -2689,6 +2887,54 @@ mod tests {
         assert!(account_item(event).is_some_and(|p| p.ends_with("calendars/work/personal/dentist.ics")));
         assert!(account_item("data/../config/config.toml").is_none() && account_item("data/drafts/reply.eml").is_none() && account_item("config/config.toml").is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Notes gone many at once, said in words: how many, from where (each
+    /// folder by its place here), when, and when they leave; never a key.
+    #[test]
+    fn notes_held_are_said_in_words() {
+        let day_ms = 86_400_000;
+        let went = 1_791_000_000_000;
+        let held = share::Withheld { store: "files/notes/".into(), count: 23, first: went, last: went + 60_000, leaves: went + 60_000 + 14 * day_ms, folders: vec!["archive/2026".into(), String::new()] };
+        let root = Path::new("/srv/notes");
+        let shown = withheld_words(held.clone(), Some(root));
+        assert!(shown.text.contains("23") && shown.text.contains("/srv/notes/archive/2026") && shown.text.contains(&day(went)), "{}", shown.text);
+        assert!(shown.leaves.contains(&day(went + 60_000 + 14 * day_ms)) && shown.leaves.contains("14"), "{}", shown.leaves);
+        assert_eq!(shown.key, format!("porch-withheld-said:files/notes/:{}", went + 60_000));
+        let spread = withheld_words(share::Withheld { first: went - 2 * day_ms, ..held.clone() }, None);
+        assert!(spread.text.contains(&day(went - 2 * day_ms)) && spread.text.contains(&day(went)), "between two days: {}", spread.text);
+        let one = withheld_words(share::Withheld { count: 1, folders: vec![String::new()], ..held }, Some(root));
+        for words in [&shown.text, &shown.leaves, &spread.text, &one.text, &one.leaves] {
+            assert!(!words.contains("porch-") && !words.contains('{'), "{words}");
+        }
+    }
+
+    /// "Take them out everywhere" confirms the folder of the records the
+    /// files went from: the notes', the papers', the spam filter's.
+    #[test]
+    fn a_folder_gone_is_confirmed_in_its_own_store() {
+        for (code, store) in [("share-vanished:files/notes/archive/:20", "files/notes/"), ("share-vanished:files/papers/:3", "files/papers/"), ("share-vanished:files/spam/corpus/:40", "files/spam/"), ("share-vanished:files/notes/:6", "files/notes/")] {
+            assert_eq!(vanished_of(code).map(|v| v.store), Some(store.to_string()), "{code}");
+        }
+    }
+
+    /// Before "Remove its files": what goes, with its size, and what stays,
+    /// in sentences, whatever the device's case; never a key.
+    #[test]
+    fn what_remove_its_files_takes_out_is_said_first() {
+        let left = share::DeviceFiles { id: "old".into(), rounds: 17, round_bytes: 16_100_000, small: 3, small_bytes: 900, sealed: 2, sealed_bytes: 40_000, sealed_known: true, entry_stays: true, last_round: 28, ..share::DeviceFiles::default() };
+        let said = removal_words(&left);
+        assert!(said.contains("17") && said.contains(&sioul_core::view::size(tr(), 16_100_900)), "{said}");
+        let live = share::DeviceFiles { counts: true, sealed: 0, sealed_known: false, sealed_later: 3, notes_stay: true, unread_by: vec![("phone".into(), "Model 7".into(), sioul_sync::devices::PHONE.into())], ..left.clone() };
+        let warned = removal_words(&live);
+        assert!(warned.starts_with(&tr().text("share-remove-live", None)) && warned.contains("Model 7") && warned.contains(&tr().text("share-remove-sealed-unknown", None)), "{warned}");
+        let bare = removal_words(&share::DeviceFiles { rounds: 0, round_bytes: 0, sealed: 0, ..share::DeviceFiles::default() });
+        for words in [&said, &warned, &bare] {
+            assert!(!words.contains("share-") && !words.contains('{'), "{words}");
+        }
+        assert_eq!(device_named("", ""), tr().text("share-device-unnamed", None));
+        assert_eq!(device_named("desk", sioul_sync::devices::COMPUTER), "desk");
+        assert!(device_named("Model 7", sioul_sync::devices::PHONE).ends_with("(Model 7)"));
     }
 
     /// On a phone, what you said of the notes folder wins over the guess,

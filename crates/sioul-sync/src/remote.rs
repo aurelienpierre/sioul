@@ -1363,7 +1363,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     state.tried = now;
     let begun = Instant::now();
     let host = state.host();
-    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new() }.run());
+    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new(), past: None }.run());
     match outcome {
         Ok(()) => {
             state.last = now;
@@ -1657,8 +1657,13 @@ struct Puller<'a> {
     /// out there too (`push`).
     departed: Departed,
     /// Those of their past rounds still there and gone here, with their ETag
-    /// as listed (`MIRROR`): taken out there by `push`.
+    /// as listed (`MIRROR`): taken out there by `push`; and every file there
+    /// of a device whose files you removed (`Departed::devices`).
     departed_there: Vec<(String, String)>,
+    /// Sioul keeping the folder itself: this device's rounds below this one
+    /// are past their time (`share::rounds_past`): taken out there whatever
+    /// it remembers sending (`take_out_own`), never brought back (`restore`).
+    past: Option<u32>,
 }
 
 impl Puller<'_> {
@@ -1702,11 +1707,8 @@ impl Puller<'_> {
                 // A round past its time of a device that no longer counts,
                 // taken out here (`Departed`): never fetched again. Sioul
                 // keeping the folder itself takes it out there (`push`).
-                Some((Kind::Round, id)) if id != self.own && self.departed.past_round(name) => {
-                    if self.mirror() && !item.etag.is_empty() && !self.folder.join(name).exists() {
-                        self.departed_there.push((name.clone(), item.etag.clone()));
-                    }
-                }
+                Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
+                Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
                 Some((Kind::Round, id)) if id != self.own => self.round(name, item)?,
                 Some((Kind::Seen, id)) if id != self.own => self.small(name, item)?,
                 Some(_) if self.mirror() => self.restore(name, item)?,
@@ -1726,6 +1728,7 @@ impl Puller<'_> {
             for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                 let relative = format!("devices/{name}");
                 match kind_of(&relative) {
+                    Some((_, id)) if id != self.own && self.departed.removed_as_known(&relative, item, &self.state.files) => self.away(&relative, item),
                     Some((_, id)) if id != self.own => self.small(&relative, item)?,
                     Some(_) if self.mirror() => self.restore(&relative, item)?,
                     _ => {}
@@ -1750,6 +1753,7 @@ impl Puller<'_> {
                 for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                     let relative = format!("{dir}{name}");
                     match kind_of(&relative) {
+                        Some((_, id)) if id != self.own && self.departed.removed_as_known(&relative, item, &self.state.files) => self.away(&relative, item),
                         Some((_, id)) if id != self.own => self.small(&relative, item)?,
                         Some(_) if self.mirror() => self.restore(&relative, item)?,
                         _ => {}
@@ -1774,7 +1778,11 @@ impl Puller<'_> {
                         if let Some((Kind::Texts, id)) = kind_of(&relative)
                             && id != self.own
                         {
-                            self.small(&relative, item)?;
+                            if self.departed.removed_as_known(&relative, item, &self.state.files) {
+                                self.away(&relative, item);
+                            } else {
+                                self.small(&relative, item)?;
+                            }
                         }
                     }
                     self.forget_gone("texts/send/", &listing);
@@ -1801,6 +1809,16 @@ impl Puller<'_> {
         self.forget_gone("", &root);
         self.looked("", &root.etag);
         Ok(())
+    }
+
+    /// A file there that this device took out here and never fetches again
+    /// (`Departed`): a device's round past its time, any file of a device
+    /// whose files you removed. Sioul keeping the folder itself, one gone
+    /// here is taken out there at the end of the step (`push`).
+    fn away(&mut self, relative: &str, item: &Item) {
+        if self.mirror() && !item.etag.is_empty() && !self.folder.join(relative).exists() {
+            self.departed_there.push((relative.to_string(), item.etag.clone()));
+        }
     }
 
     /// Sioul keeps the folder itself (`MIRROR`): what comes goes into it, no sync app beside.
@@ -1902,6 +1920,10 @@ impl Puller<'_> {
         if here.exists() || (self.state.sent.contains_key(relative) && !self.lost) || item.size > LARGEST {
             return Ok(());
         }
+        // A round of its own below the readers' floor is past its time: never brought back (`take_out_own`).
+        if matches!(kind_of(relative), Some((Kind::Round, _))) && round_of(relative).zip(self.past).is_some_and(|(round, past)| round < past) {
+            return Ok(());
+        }
         let Some(got) = self.server.tail(&self.url(relative), 0)? else { return Ok(()) };
         if let Some(e) = got.error {
             return Err(Stop::Failed(e));
@@ -1963,6 +1985,7 @@ impl Puller<'_> {
     /// its last round, and nothing while none of its records is here; the
     /// sealed files it swept.
     fn push(&mut self) -> Result<(), Stop> {
+        let mut stopped: Option<Stop> = None;
         for relative in own_files(self.folder, self.own, self.state) {
             let Ok(meta) = std::fs::metadata(self.folder.join(&relative)) else { continue };
             let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
@@ -1983,16 +2006,40 @@ impl Puller<'_> {
                 continue;
             }
             let seen = if covered { there } else { sent.map(|s| s.etag).filter(|e| !e.is_empty()) };
-            self.send(&relative, size, modified, seen)?;
+            // One that fails (a large sealed file on a slow line, the space
+            // there full) stops the uploads, never what is taken out after.
+            if let Err(stop) = self.send(&relative, size, modified, seen) {
+                stopped = Some(stop);
+                break;
+            }
         }
+        let taken = self.take_out_own();
+        self.take_out_departed();
+        match stopped {
+            Some(stop) => Err(stop),
+            None => taken,
+        }
+    }
+
+    /// What this device let go here, taken out there too: its records past
+    /// their time (`remove_old_rounds`: every device read past them) listed in
+    /// this step and gone here, never its last round, and nothing while none
+    /// of its records is here: those it remembers sending, and those below the
+    /// readers' floor (`past`, `share::rounds_past`) whatever it remembers (one
+    /// forgotten after a refused delete, "Send everything again", its state
+    /// lost); then the sealed files it swept. Until 17 October 2026 a past
+    /// round it no longer remembered stayed there, and `restore` brought it
+    /// back here at the next step, megabytes each.
+    fn take_out_own(&mut self) -> Result<(), Stop> {
         if let Some(latest) = own_latest(self.folder, self.own)
             && self.covered.contains("")
         {
+            let past = self.past;
             let gone: Vec<(String, String)> = self
                 .own_there
                 .iter()
-                .filter(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))) && self.state.sent.contains_key(*relative) && !self.folder.join(relative).exists())
-                .filter(|(relative, _)| relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok()).is_some_and(|round| round < latest))
+                .filter(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))) && !self.folder.join(relative).exists())
+                .filter(|(relative, _)| round_of(relative).is_some_and(|round| round < latest && (self.state.sent.contains_key(*relative) || past.is_some_and(|past| round < past))))
                 .map(|(relative, etag)| (relative.clone(), etag.clone()))
                 .collect();
             for (relative, etag) in gone {
@@ -2003,7 +2050,6 @@ impl Puller<'_> {
         for (relative, etag) in swept {
             self.take_out(&relative, Some(etag).filter(|e| !e.is_empty()))?;
         }
-        self.take_out_departed();
         Ok(())
     }
 
@@ -2408,7 +2454,7 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
             state.tried = now;
         }
         let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
-            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new() };
+            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None, departed: Departed::load(memory, own), departed_there: Vec::new(), past: crate::share::rounds_past(folder, memory, own, now * 1000) };
             if whole {
                 puller.run()?;
             }
@@ -2803,7 +2849,7 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         let past = if lane == Lane::Main && check { crate::share::rounds_past(folder, memory, own, now * 1000) } else { None };
         // And what it took out here of the devices that no longer count (`Sender::take_out_departed`).
         let departed = if lane == Lane::Main && check { Departed::load(memory, own) } else { Departed::default() };
-        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed }.run(&files, check, again));
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed, known: &state.files }.run(&files, check, again));
         match outcome {
             Ok(()) => {
                 sending.tries = 0;
@@ -2953,6 +2999,9 @@ struct Sender<'a> {
     /// With a listing: what this device took out here of the devices that
     /// no longer count (`Departed`), taken out there too.
     departed: Departed,
+    /// The others' files as the pull last saw them there (`State::files`): a
+    /// removed device's file is taken out only while still as seen.
+    known: &'a BTreeMap<String, Fetched>,
 }
 
 /// What a device took out of its folder of the devices that no longer count
@@ -2968,11 +3017,37 @@ struct Sender<'a> {
 pub(crate) struct Departed {
     rounds: BTreeMap<String, u32>,
     blobs: BTreeMap<String, i64>,
+    /// The devices whose files you removed here ("Remove its files",
+    /// `share::removed_devices`): their rounds before the last are below
+    /// `rounds`; their last round while no longer than it was, and each
+    /// small file of theirs that went (claims, texts to send, the entry and
+    /// the note of how far it read when they went too) still as it was last
+    /// seen there (`State::files`: never one it wrote since), are not fetched
+    /// again, and taken out when gone here (`removed_as_known`).
+    devices: BTreeMap<String, crate::share::RemovedDevice>,
 }
 
 impl Departed {
     fn load(memory: &Path, own: &str) -> Departed {
-        Departed { rounds: crate::share::departed_past(memory, own), blobs: crate::share::swept_theirs(memory, own) }
+        Departed { rounds: crate::share::departed_past(memory, own), blobs: crate::share::swept_theirs(memory, own), devices: crate::share::removed_devices(memory, own) }
+    }
+
+    /// Whether a file there is one that went with a removed device's files
+    /// as it had it when you removed them: its last round no longer than it
+    /// was then (`share::RemovedDevice::holds_round`; those before by the
+    /// floor, `past_round`), its claims, its texts to send, its entry and
+    /// its note when they went too, still as `known` last saw them there.
+    /// One it wrote since (a device still in use goes on writing) is not.
+    fn removed_as_known(&self, relative: &str, item: &Item, known: &BTreeMap<String, Fetched>) -> bool {
+        let Some((kind, id)) = kind_of(relative) else { return false };
+        let Some(removed) = self.devices.get(id) else { return false };
+        let went = match kind {
+            Kind::Round => return round_of(relative).is_some_and(|round| removed.holds_round(round, item.size)),
+            Kind::Device => removed.entry,
+            Kind::Seen => removed.notes,
+            Kind::Claim | Kind::Texts => true,
+        };
+        went && !item.etag.is_empty() && known.get(relative).is_some_and(|seen| seen.etag == item.etag)
     }
 
     /// Whether a file of the folder is a round past its time of a device that no longer counts.
@@ -3382,12 +3457,12 @@ impl Sender<'_> {
     /// changed (`412`): left, as any other answer or failure, for the next
     /// listing, the send going on.
     fn take_out_departed(&mut self, listed: &BTreeMap<String, Item>) {
-        if self.departed.rounds.is_empty() && self.departed.blobs.is_empty() {
+        if self.departed.rounds.is_empty() && self.departed.blobs.is_empty() && self.departed.devices.is_empty() {
             return;
         }
         let fetched = overlay(self.folder);
         let here = |relative: &str| self.folder.join(relative).exists() || fetched.as_ref().is_some_and(|f| f.join(relative).exists());
-        let rounds: Vec<(String, String)> = listed.iter().filter(|(relative, item)| !item.dir && !item.etag.is_empty() && self.departed.past_round(relative) && !here(relative)).map(|(relative, item)| (relative.clone(), item.etag.clone())).collect();
+        let rounds: Vec<(String, String)> = listed.iter().filter(|(relative, item)| !item.dir && !item.etag.is_empty() && (self.departed.past_round(relative) || self.departed.removed_as_known(relative, item, self.known)) && !here(relative)).map(|(relative, item)| (relative.clone(), item.etag.clone())).collect();
         let blobs: Vec<(String, i64)> = self.departed.blobs.iter().map(|(name, at)| (format!("blobs/{name}"), *at)).filter(|(relative, _)| !here(relative)).collect();
         for (relative, etag) in rounds {
             if matches!(self.server.delete(&self.url(&relative), Some(&etag)), Ok(200 | 204)) {
@@ -7279,5 +7354,150 @@ mod tests {
         p.turn(false, now + 900);
         assert!(past.iter().all(|r| !p.phone_folder.join(r).exists()));
         assert!(kept.iter().all(|r| p.phone_folder.join(format!("{}-{r}.jsonl", old.id)).exists() && p.desk_folder.join(format!("{}-{r}.jsonl", old.id)).exists()));
+    }
+
+    /// "Remove its files" on a device keeping the folder itself: a dead
+    /// phone's rounds, every one, and its claim go from the server at the
+    /// desk's next step, never fetched again; its entry and its note stay
+    /// (forgotten here only, it may still count on the phone); the phone
+    /// lets its rounds go from its copy. Back in use, what it writes since
+    /// comes as any device's: its last round written on, its claim renewed,
+    /// and it counts again.
+    #[test]
+    fn a_removed_device_s_files_go_from_the_server_in_the_mirror() {
+        let p = Pair::new("removed-mirror");
+        let login = p.fake.login();
+        let old = Device::new(&p.base, "old", PHONE);
+        let old_folder = mirror_of(&old.memory);
+        let joined = open_with(&login, "Documents/Sioul", TEST).unwrap();
+        put_bytes(&old_folder, "seal.toml", joined.seal.as_deref().unwrap());
+        begin(&old.memory, &old_folder, &login, &joined, DUE - 7_000).unwrap();
+        old.session(&old_folder, |e| e.start(DUE - 6_900));
+        let old_turn = |now: i64| {
+            let before = step_with(&old.memory, &old_folder, &old.id, &login, now, true, TEST);
+            assert!(before.problem.is_none(), "{before:?}");
+            old.exchange(&old_folder, now);
+            let after = step_with(&old.memory, &old_folder, &old.id, &login, now, false, TEST);
+            assert!(after.problem.is_none(), "{after:?}");
+        };
+        old_turn(DUE - 6_800);
+        p.turn(true, DUE - 6_700);
+        p.turn(false, DUE - 6_600);
+        // A few rounds of its own and a claim; everyone reads them; then it dies.
+        let mut now = DUE;
+        for step in 0..3 {
+            put(&old.roots.config, "known-senders.txt", &senders(step));
+            crate::lease::renew(&old_folder, &KEY, "health", &old.id, now, now, false, crate::lease::Rule::FollowsYou, None).unwrap();
+            now += 600;
+            old_turn(now);
+        }
+        // Its last change a small one, alone in its last round (the round before is past 32 KiB).
+        put(&old.roots.config, "safe-senders.txt", "one@example.org\n");
+        old_turn(now + 50);
+        p.turn(true, now + 100);
+        p.turn(false, now + 200);
+        p.turn(true, now + 300);
+        let server = p.fake.files.join("Documents").join("Sioul");
+        let all = rounds_there(&server, &old.id);
+        let claim = format!("leases/health/{}.lease", old.id);
+        let (entry, notes) = (format!("devices/{}.device", old.id), format!("{}.toml", old.id));
+        assert!(all.len() >= 2 && server.join(&claim).exists() && p.desk_folder.join(&claim).exists(), "{all:?}");
+        assert_eq!(rounds_there(&p.desk_folder, &old.id), all);
+        // Forgotten on the desk, its files removed.
+        crate::share::forget_device(&p.desk_folder, &KEY, &p.desk.memory, &p.desk.id, &old.id).unwrap();
+        let removed = crate::share::remove_device_files(&p.desk_folder, &KEY, &p.desk.memory, &p.desk.id, &p.desk.stores(), &old.id, (now + 400) * 1000).unwrap();
+        assert_eq!(removed.rounds, all.len(), "{removed:?}");
+        assert!(rounds_there(&p.desk_folder, &old.id).is_empty() && !p.desk_folder.join(&claim).exists());
+        assert!(p.desk_folder.join(&entry).exists() && p.desk_folder.join(&notes).exists(), "forgotten here only: its entry and its note stay");
+        // The desk's next step: taken out there, never fetched again.
+        p.fake.forget_seen();
+        let step = p.step(true, now + 500, true);
+        assert!(step.problem.is_none(), "{step:?}");
+        let seen = p.fake.seen();
+        assert!(seen.iter().all(|l| !(l.starts_with("GET ") && l.contains(&old.id))), "never fetched again: {seen:?}");
+        assert!(rounds_there(&server, &old.id).is_empty(), "every round, its last too: {:?}", rounds_there(&server, &old.id));
+        assert!(!server.join(&claim).exists());
+        assert!(server.join(&entry).exists() && server.join(&notes).exists());
+        // Steps and exchanges on: nothing of it comes back.
+        p.turn(true, now + 600);
+        p.turn(true, now + 610);
+        assert!(rounds_there(&p.desk_folder, &old.id).is_empty() && !p.desk_folder.join(&claim).exists());
+        // The phone, which still counts it, lets its rounds go from its copy.
+        p.turn(false, now + 700);
+        assert!(rounds_there(&p.phone_folder, &old.id).is_empty(), "{:?}", rounds_there(&p.phone_folder, &old.id));
+        // Back in use: its last round written on (longer than it was), its claim renewed, its entry said again: they come.
+        crate::lease::renew(&old_folder, &KEY, "health", &old.id, now + 800, now + 800, false, crate::lease::Rule::FollowsYou, None).unwrap();
+        put(&old.roots.config, "safe-senders.txt", "one@example.org\ntwo@example.org\n");
+        old.session(&old_folder, |e| e.start(now + 790));
+        old_turn(now + 800);
+        // (Its own copy keeps every round of its: those gone there go up again, and stay out until it counts again here.)
+        assert!(rounds_there(&server, &old.id).contains(all.iter().max().unwrap()), "its last round, longer, there again");
+        assert!(server.join(&claim).exists());
+        p.turn(true, now + 900);
+        assert!(std::fs::read_to_string(p.desk.roots.config.join("safe-senders.txt")).unwrap_or_default().contains("two@example.org"), "its last round written on, fetched at once");
+        put(&old.roots.config, "known-senders.txt", &senders(9));
+        old_turn(now + 905);
+        p.turn(true, now + 910);
+        assert!(!rounds_there(&p.desk_folder, &old.id).is_empty(), "what it wrote since comes");
+        assert!(p.desk_folder.join(&claim).exists(), "its claim renewed: fetched");
+        assert!(crate::share::removed_devices(&p.desk.memory, &p.desk.id).is_empty(), "it counts again: no longer removed");
+        let senders_here = std::fs::read_to_string(p.desk.roots.config.join("known-senders.txt")).unwrap_or_default();
+        assert!(senders_here.contains("old-sender-014999@example.org"), "its last change read");
+    }
+
+    /// Sioul keeping the folder itself: its own rounds past their time left
+    /// on the server (a delete refused, "Send everything again" forgetting
+    /// what it sent; the owner's new phone, 17 October 2026) go at its next
+    /// step, whatever it remembers sending, and are never brought back into
+    /// its copy (`restore`).
+    #[test]
+    fn own_past_rounds_left_on_the_server_go_in_the_mirror_too() {
+        let p = Pair::new("own-past-mirror");
+        let server = p.fake.files.join("Documents").join("Sioul");
+        let mut left_there: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+        let mut now = DUE;
+        let mut step = 0;
+        // The phone past a full round, the desk reading along.
+        while full_round_of(&p.phone) <= 1 {
+            put(&p.phone.roots.config, "known-senders.txt", &senders(step));
+            now += 600;
+            p.turn(false, now);
+            for (relative, bytes) in walk(&server).into_iter().filter(|(r, _)| r.starts_with(&p.phone.id) && r.ends_with(".jsonl")) {
+                left_there.insert(relative, bytes);
+            }
+            p.turn(true, now + 30);
+            step += 1;
+        }
+        p.turn(false, now + 60);
+        p.turn(false, now + 70);
+        let past = crate::share::rounds_past(&p.phone_folder, &p.phone.memory, &p.phone.id, (now + 80) * 1000).unwrap();
+        assert!(past > 1, "below {past}");
+        assert!(rounds_there(&server, &p.phone.id).iter().all(|r| *r >= past), "{:?}", rounds_there(&server, &p.phone.id));
+        // Back there as an older Sioul left them; what it sent forgotten.
+        {
+            let _turn = p.fake.turn.lock().unwrap();
+            for (relative, bytes) in &left_there {
+                if !server.join(relative).exists() {
+                    put_bytes(&server, relative, bytes);
+                    fake::bump(&server.join(relative));
+                }
+            }
+        }
+        let below: Vec<u32> = rounds_there(&server, &p.phone.id).into_iter().filter(|r| *r < past).collect();
+        assert!(!below.is_empty());
+        again_mirror_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &p.fake.login(), now + 90, TEST);
+        // Its next step takes them out there, never brings them back here.
+        p.fake.forget_seen();
+        let pulled = p.step(false, now + 100, true);
+        assert!(pulled.problem.is_none(), "{pulled:?}");
+        let seen = p.fake.seen();
+        assert!(seen.iter().all(|l| !(l.starts_with("GET ") && below.iter().any(|r| l.ends_with(&format!("{}-{r}.jsonl", p.phone.id))))), "never brought back: {seen:?}");
+        assert!(rounds_there(&p.phone_folder, &p.phone.id).iter().all(|r| *r >= past));
+        assert!(rounds_there(&server, &p.phone.id).iter().all(|r| *r >= past), "{:?}, below {past}", rounds_there(&server, &p.phone.id));
+        // Its records go on as before: the desk reads what it writes next.
+        put(&p.phone.roots.config, "known-senders.txt", &senders(step + 1));
+        p.turn(false, now + 200);
+        p.turn(true, now + 230);
+        assert!(std::fs::read_to_string(p.desk.roots.config.join("known-senders.txt")).unwrap_or_default().contains(&format!("old-sender-{:06}@example.org", (step + 2) * 1_500 - 1)));
     }
 }

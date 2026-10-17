@@ -2850,6 +2850,52 @@ share-vanished = { $count ->
    *[other] { $count } files
 } went from { $folder } here at once: nothing of them is taken out on your other devices until you say so (a disk not mounted, a folder moved, an access withdrawn would look the same).
 share-vanished-confirm = Take them out everywhere
+porch-withheld = { $count ->
+    [one] One file went from { $part } here { $when }, from { $folders }.
+   *[other] { $count } files went from { $part } here at once { $when }, most of them from { $folders }.
+}
+porch-withheld-of-notes = your notes
+porch-withheld-of-papers = your papers
+porch-withheld-on = on { $day }
+porch-withheld-between = between { $first } and { $last }
+porch-withheld-leave = { $count ->
+    [one] It leaves your other devices by itself { $days } days after it went, on { $day }, unless it comes back here first. Nothing has to be done.
+   *[other] They leave your other devices by themselves { $days } days after they went, by { $day } at the latest, unless they come back here first. Nothing has to be done.
+}
+porch-withheld-put-back = Put them back
+porch-withheld-take-out = Take them out now
+porch-withheld-none-back = Nothing came back: their places are taken, or their contents are not on this device.
+share-devices-gone = Devices that no longer count
+share-device-gone-left = It left the sharing. Its files are still in the folder: { $size }.
+share-device-gone-forgotten = Forgotten here. Its files are still in the folder: { $size }.
+share-device-gone-replaced = Another device replaces it. Its files are still in the folder: { $size }.
+share-device-unnamed = A device
+share-device-remove = Remove its files…
+share-device-remove-live = Forget it and remove its files…
+share-device-remove-confirm = Remove them
+share-remove-live = It still counts here: it is forgotten first, for your doses too, until it says anything newer. If it is still in use, it shares again by itself and sends everything it holds again.
+share-remove-rounds = { $count ->
+    [0] What goes: the small files it kept there, { $size }.
+    [one] What goes: its records (one file) and the small files it kept there, { $size }.
+   *[other] What goes: its records ({ $count } files) and the small files it kept there, { $size }.
+}
+share-remove-sealed = { $count ->
+    [one] Also the sealed content of its notes and papers that no other record names: one file, { $size }.
+   *[other] Also the sealed contents of its notes and papers that no other record names: { $count } files, { $size }.
+}
+share-remove-sealed-unknown = The sealed contents of its notes and papers stay: this device does not share every part they belong to, or does not know the texts’ media.
+share-remove-sealed-later = { $count ->
+    [one] One more, sealed lately, goes once it is two weeks old.
+   *[other] { $count } more, sealed lately, go once they are two weeks old.
+}
+share-remove-small-stay = What it last said of itself and how far it read stay, a few hundred bytes: your other devices may still count it, your doses first, and read there how it closed.
+share-remove-stays = What stays: everything your devices already read of it, on each of them; the texts’ media another phone’s log names. A device joining later gets none of its records, unless another device’s records carry them (texts restored on a new phone).
+share-remove-unread = { $count ->
+    [one] { $devices } has not read all of it yet: what it has not read never reaches it.
+   *[other] { $devices } have not read all of it yet: what they have not read never reaches them.
+}
+share-device-counts = It counts again here (it said something newer): nothing was removed.
+share-device-unknown = This device is not known here: nothing was removed.
 share-older-copy = An older copy was put back here by hand (its date before the version last seen): that version is back, the older copy kept beside it as “{ $copy }”. To send an older version, use Put back below.
 share-missing = { $file } changed on another device a day ago, but its content has not come: is the sync app still carrying the sharing folder?
 share-no-room = { $file } waits: this device lacks room for it (and for the copy kept before it is written).
