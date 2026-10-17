@@ -364,7 +364,7 @@ fn a_dead_device_s_unused_sealed_files_go_never_a_content_named() {
     let seal = crate::textseal::TextSeal::new(&key);
     let (desk, laptop, phone, old) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"), Computer::new(&base, "phone"), Computer::new(&base, "old"));
     let (dn, ln, pn, on) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("phone-notes"), base.join("old-notes"));
-    let (desk_on, notes_on, texts_on): (&[&str], &[&str], &[&str]) = (&["notes", texts::PART], &["notes"], &[texts::PART]);
+    let (desk_on, notes_on, texts_on): (&[&str], &[&str], &[&str]) = (&["notes", "papers", texts::PART], &["notes"], &[texts::PART]);
     let picture = b"a picture sent by text, the same bytes as a note of the old computer's\n".repeat(40);
     let (first, second, stays, medium) = (content_name(&base, &key, b"first version\n"), content_name(&base, &key, b"second version\n"), content_name(&base, &key, b"a note that stays\n"), content_name(&base, &key, &picture));
     // The old computer writes three notes, replaces one, and takes out the one that is also a picture.
@@ -454,7 +454,7 @@ fn among_computers_a_dead_one_s_replaced_contents_go_when_forgotten() {
     let key = quick_key(&folder, "four words make a passphrase").unwrap();
     let (desk, old) = (Computer::new(&base, "desk"), Computer::new(&base, "old"));
     let (dn, on) = (base.join("desk-notes"), base.join("old-notes"));
-    let notes = ["notes"];
+    let notes = ["notes", "papers"];
     for c in [&desk, &old] {
         entry(c, &folder, &key, crate::devices::COMPUTER, |_| {});
     }
@@ -473,5 +473,195 @@ fn among_computers_a_dead_one_s_replaced_contents_go_when_forgotten() {
     with_parts(&desk, &folder, &key, NOW + 91 * DAY_MS + MINUTE, &dn, &notes);
     assert!(!folder.join("blobs").join(&first).exists(), "forgotten: its replaced content swept");
     assert!(dn.join("a.md").exists() && std::fs::read_to_string(dn.join("a.md")).unwrap() == "second version\n");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device forgotten that comes back more than 90 days after it last read
+/// takes out what the others took out meanwhile: a full round restates what
+/// was taken out as long as a device may be away and still count
+/// (`TOMBSTONE_DAYS`, `SILENT_DAYS`). Until 17 October 2026 it restated 90
+/// days of it, and such a device kept a sender and a draft taken out
+/// elsewhere, for good (review of 17 October 2026, M1). Not forgotten, the
+/// same: its notes held every round back, and it read each deletion.
+#[test]
+fn a_device_back_after_ninety_days_takes_out_what_went_meanwhile() {
+    for forgotten in [true, false] {
+        let base = scratch(&format!("rounds-taken-out-{forgotten}"));
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"), Computer::new(&base, "laptop"));
+        desk.write("config/safe-senders.txt", "friend@example.org\nneighbour@example.org\n");
+        desk.write("data/drafts/2026-09-15.json", "{\"to\": \"friend@example.org\"}");
+        desk.exchange(&folder, &key, NOW);
+        phone.write("data/drafts/2026-09-29.json", "{\"steps\": 2}");
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        laptop.write("data/drafts/2026-09-30.json", "{\"steps\": 1}");
+        laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
+        assert!(laptop.read("config/safe-senders.txt").contains("neighbour@") && !laptop.read("data/drafts/2026-09-15.json").is_empty());
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        if forgotten {
+            for c in [&desk, &phone] {
+                forget_device(&folder, &key, &c.memory, &c.id, &laptop.id).unwrap();
+            }
+        }
+        // A day on, the desk takes a sender and the draft out.
+        desk.write("config/safe-senders.txt", "friend@example.org\n");
+        std::fs::remove_file(desk.path("data/drafts/2026-09-15.json")).unwrap();
+        desk.exchange(&folder, &key, NOW + DAY_MS);
+        phone.exchange(&folder, &key, NOW + DAY_MS + MINUTE);
+        // Ninety-two days on, the desk past a full round, the phone reading along.
+        let now = grow(&desk, &folder, &key, NOW + 92 * DAY_MS, &|now| {
+            phone.exchange(&folder, &key, now + 30_000);
+        });
+        desk.exchange(&folder, &key, now + MINUTE);
+        let held = kept(&folder, &desk.id);
+        assert_eq!(held[0] == 1, !forgotten, "forgotten {forgotten}: the laptop's notes hold them back only while it counts: {held:?}");
+        // The laptop comes back: what went meanwhile goes there too.
+        let outcome = laptop.exchange(&folder, &key, now + 2 * MINUTE);
+        assert!(!outcome.problems.iter().any(|p| p.starts_with("share-other")), "{:?}", outcome.problems);
+        let senders = laptop.read("config/safe-senders.txt");
+        assert!(senders.contains("friend@") && !senders.contains("neighbour@"), "forgotten {forgotten}: {senders:?}");
+        assert!(!laptop.path("data/drafts/2026-09-15.json").exists(), "forgotten {forgotten}: the draft taken out");
+        assert!(laptop.path("data/drafts/2026-10-01.json").exists() && !laptop.read("data/drafts/2026-09-29.json").is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+/// What a computer's last full round restates, line by line: each change's
+/// entry, whether it takes the entry out, and the line's size in the folder.
+fn restated(folder: &Path, key: &[u8; 32], c: &Computer) -> Vec<(String, bool, usize)> {
+    let round = full_round(c);
+    let text = std::fs::read_to_string(round_file(folder, &c.id, round)).unwrap();
+    text.lines()
+        .filter_map(|line| {
+            let record: Line = serde_json::from_str(line).ok()?;
+            let plain = open(key, &bound(&c.id, round, record.n, record.c), &record.s)?;
+            let (change, _) = serde_json::from_slice::<Opened>(&plain).ok()?.parts();
+            Some((change.k, change.v.is_none(), line.len() + 1))
+        })
+        .collect()
+}
+
+/// A full round restates what was taken out half a year (`TOMBSTONE_DAYS`):
+/// a sender, a draft. The lines of a log every device ages out by itself,
+/// the phone's messages' here, are restated 90 days only
+/// (`AGED_TOMBSTONE_DAYS`): a message's line is a padded few hundred bytes,
+/// its whole line its name, one for each message, and a device back after
+/// longer never shows one past its week, and takes it out itself. What each
+/// restated line weighs is printed (`-- --nocapture`).
+#[test]
+fn a_full_round_restates_what_was_taken_out_half_a_year_and_aged_logs_ninety_days() {
+    use sioul_core::phonemsgs;
+    let base = scratch("rounds-restated");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let notes = base.join("desk-notes");
+    let on = [phonemsgs::PART];
+    let messages = sioul_core::calls::own_file(&desk.roots.state.join(phonemsgs::FOLDER), phonemsgs::LOG, &desk.id);
+    let message = |n: usize| phonemsgs::padded(&phonemsgs::Line { at: NOW + n as i64, id: format!("m{n}"), app: "org.example.chat".into(), label: "Chat".into(), kind: "msg".into(), talk: "Jane".into(), title: "Jane".into(), name: "Jane".into(), key: format!("0|org.example.chat|{n}|null|10123"), who: "+33199001234".into(), text: "I am on my way, ten minutes.".into(), ..phonemsgs::Line::default() });
+    let senders: String = (0..40).map(|n| format!("sender{n}@example.org\n")).collect();
+    desk.write("config/safe-senders.txt", &senders);
+    for n in 0..40 {
+        desk.write(&format!("data/drafts/2026-09-{:02}-{n}.json", 1 + n % 28), &format!("{{\"to\": \"sender{n}@example.org\"}}"));
+    }
+    std::fs::create_dir_all(messages.parent().unwrap()).unwrap();
+    std::fs::write(&messages, (0..40).map(|n| message(n) + "\n").collect::<String>()).unwrap();
+    with_parts(&desk, &folder, &key, NOW, &notes, &on);
+    // All taken out a day on.
+    desk.write("config/safe-senders.txt", "friend@example.org\n");
+    for n in 0..40 {
+        std::fs::remove_file(desk.path(&format!("data/drafts/2026-09-{:02}-{n}.json", 1 + n % 28))).unwrap();
+    }
+    std::fs::write(&messages, message(1000) + "\n").unwrap();
+    with_parts(&desk, &folder, &key, NOW + DAY_MS, &notes, &on);
+    let sizes = |days: i64| {
+        let at = NOW + days * DAY_MS;
+        let mut now = at;
+        let before = full_round(&desk).max(1);
+        while full_round(&desk) <= before {
+            now += MINUTE;
+            desk.write("data/drafts/2026-10-01.json", &format!("{{\"steps\": {now}, \"pad\": \"{}\"}}", "x".repeat(100_000)));
+            with_parts(&desk, &folder, &key, now, &notes, &on);
+        }
+        let lines = restated(&folder, &key, &desk);
+        let of = |prefix: &str| lines.iter().filter(|(k, gone, _)| *gone && k.starts_with(prefix)).map(|(_, _, size)| *size).collect::<Vec<usize>>();
+        (of("config/safe-senders.txt"), of("data/drafts/2026-09"), of(PHONE_MESSAGES_LOG))
+    };
+    // Sixty days on: all restated; what each weighs.
+    let (senders_gone, drafts_gone, messages_gone) = sizes(60);
+    assert_eq!((senders_gone.len(), drafts_gone.len(), messages_gone.len()), (40, 40, 40), "all restated within 90 days");
+    let mean = |sizes: &[usize]| sizes.iter().sum::<usize>() / sizes.len().max(1);
+    println!("restated, a line taken out: a sender {} bytes, a draft {} bytes, a phone's message {} bytes", mean(&senders_gone), mean(&drafts_gone), mean(&messages_gone));
+    // A hundred days on: the sender and the draft still said, the phone's messages no longer.
+    let (senders_gone, drafts_gone, messages_gone) = sizes(100);
+    assert_eq!((senders_gone.len(), drafts_gone.len(), messages_gone.len()), (40, 40, 0), "half a year, and the aged log's 90 days");
+    // Past half a year: none.
+    let (senders_gone, drafts_gone, _) = sizes(SILENT_DAYS + 2);
+    assert_eq!((senders_gone.len(), drafts_gone.len()), (0, 0), "forgotten past half a year");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device that does not share a part whose files are sealed apart (the
+/// papers here) sweeps nothing of another device's: a current paper with the
+/// same bytes as a departed computer's replaced note is the same sealed file,
+/// and a device that passes the papers' records over cannot know it (review
+/// of 17 October 2026, L1). One that shares every such part (`FILE_PARTS`)
+/// keeps that file, a current record naming it, and sweeps the departed
+/// one's other replaced note.
+#[test]
+fn a_device_without_the_papers_sweeps_nothing_of_another_device_s() {
+    let base = scratch("rounds-papers");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop, x, y) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"), Computer::new(&base, "x"), Computer::new(&base, "y"));
+    let notes_of = |name: &str| base.join(format!("{name}-notes"));
+    let (both, notes_only): (&[&str], &[&str]) = (&["notes", "papers"], &["notes"]);
+    for c in [&desk, &laptop, &x, &y] {
+        entry(c, &folder, &key, crate::devices::COMPUTER, |e| e.keeping = crate::blobs::KEEPING);
+    }
+    let scan = b"%PDF-1.4 a scan kept both as a paper and as a note\n".repeat(60);
+    put(&notes_of("y"), "papers/scan.pdf", &scan);
+    with_parts(&y, &folder, &key, NOW, &notes_of("y"), both);
+    put(&notes_of("x"), "scan.pdf", &scan);
+    put(&notes_of("x"), "other.md", b"a note, first version\n");
+    with_parts(&x, &folder, &key, NOW + MINUTE, &notes_of("x"), notes_only);
+    with_parts(&desk, &folder, &key, NOW + 2 * MINUTE, &notes_of("desk"), notes_only);
+    with_parts(&laptop, &folder, &key, NOW + 3 * MINUTE, &notes_of("laptop"), both);
+    put(&notes_of("x"), "scan.pdf", b"the note rewritten\n");
+    put(&notes_of("x"), "other.md", b"a note, second version\n");
+    with_parts(&x, &folder, &key, NOW + 4 * MINUTE, &notes_of("x"), notes_only);
+    with_parts(&desk, &folder, &key, NOW + 5 * MINUTE, &notes_of("desk"), notes_only);
+    with_parts(&laptop, &folder, &key, NOW + 6 * MINUTE, &notes_of("laptop"), both);
+    assert!(notes_of("laptop").join("papers/scan.pdf").exists() && !notes_of("desk").join("papers/scan.pdf").exists());
+    let (paper, first) = (content_name(&base, &key, &scan), content_name(&base, &key, b"a note, first version\n"));
+    for c in [&desk, &laptop] {
+        for gone in [&x, &y] {
+            forget_device(&folder, &key, &c.memory, &c.id, &gone.id).unwrap();
+        }
+    }
+    for name in [&paper, &first] {
+        sealed_long_ago(&folder, name);
+    }
+    // Twenty days on (every device keeps sealed files two weeks).
+    with_parts(&desk, &folder, &key, NOW + 20 * DAY_MS, &notes_of("desk"), notes_only);
+    assert!(folder.join("blobs").join(&paper).exists() && folder.join("blobs").join(&first).exists(), "without the papers: nothing swept");
+    assert!(Memory::load(&desk.memory, &desk.id).taken.is_empty());
+    with_parts(&laptop, &folder, &key, NOW + 20 * DAY_MS + MINUTE, &notes_of("laptop"), both);
+    assert!(folder.join("blobs").join(&paper).exists(), "a current paper names it: kept");
+    assert!(!folder.join("blobs").join(&first).exists(), "the departed computer's other replaced note: swept");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The parts whose files are sealed apart are those `FILE_PARTS` names: a
+/// part added with files sealed apart is gated as the others are.
+#[test]
+fn every_part_whose_files_are_sealed_apart_is_named() {
+    let base = scratch("rounds-file-parts");
+    let config = Config { notes_root: Some(base.join("notes").display().to_string()), ..Config::default() };
+    let roots = Roots { config: base.join("config"), data: base.join("data"), state: base.join("state") };
+    let parts: BTreeSet<&str> = stores_of(&config, &roots, &|_| true).iter().filter(|s| matches!(s.shape, Shape::Files)).map(|s| s.part).collect();
+    assert_eq!(parts, FILE_PARTS.into_iter().collect());
     let _ = std::fs::remove_dir_all(&base);
 }
