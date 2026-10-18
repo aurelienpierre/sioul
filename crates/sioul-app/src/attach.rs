@@ -16,9 +16,14 @@
 //!   under 480 pixels (`fit`). Only a picture's own reader decodes it: never
 //!   a document Qt's plugins could also render (PDF, SVG, PostScript, a
 //!   camera's raw file).
-//! - **An animated GIF, a video, a sound, a contact card, a calendar entry**
-//!   go as they are when the message holds them, else are refused in words.
-//! - **Other files** are refused: a phone may never open them. Send them by mail.
+//! - **An animated GIF** goes with its frames as they are, written again
+//!   without its comments and other programs' blocks (XMP, a profile), when
+//!   the message holds it (`gif_pictures_alone`), else is refused in words.
+//! - **A video, a sound, a contact card, a calendar entry**, told by their
+//!   first bytes too (`sniff_medium`), go as they are, with what their files
+//!   hold, when the message holds them, else are refused in words.
+//! - **Other files** are refused, whatever their names say: a phone may
+//!   never open them. Send them by mail.
 //! - **Up to five media** a message (`texts::MEDIA_MAX`), the pictures
 //!   sharing equally what the others leave (`share`), 16 KB each at least;
 //!   what a picture going at its best leaves goes to those made smaller.
@@ -154,46 +159,159 @@ pub(crate) fn format_words(format: &str) -> &'static str {
 pub(crate) enum Kind {
     /// A still picture: written again as a JPEG, made small.
     Picture,
-    /// An animated GIF: as it is, when it fits.
+    /// An animated GIF: its frames as they are, when it fits.
     Animated,
     /// A video, a sound, a contact card or a calendar entry, as it is, when it fits: its content type.
     AsIs(&'static str),
     /// Refused, said why: "kind" (a picture this computer's Qt cannot read:
-    /// HEIC on most), "unreadable" (a picture's name, no picture in it),
-    /// "file" (another file).
+    /// HEIC on most), "file" (another file, whatever its name says).
     Refused(&'static str),
 }
 
-/// What a file is (decisions 7 to 9): by its first bytes, a picture
-/// (`sniffed`, as `sniff` tells it), an animated GIF when it holds several
-/// frames, refused where Qt here reads no such picture (`reads`); else by
-/// its name's extension, a video, a sound, a contact card, a calendar entry;
-/// refused, a picture's name with no picture in it, or another file.
-pub(crate) fn kind_of(name: &str, sniffed: Option<&str>, reads: bool, frames: u32) -> Kind {
-    match sniffed {
-        Some(_) if !reads => return Kind::Refused("kind"),
-        Some("gif") if frames > 1 => return Kind::Animated,
-        Some(_) => return Kind::Picture,
-        None => {}
+/// A video's, a sound's, a contact card's or a calendar entry's content
+/// type by the file's first bytes (`head`), never by its name: MP4, MOV and
+/// 3GP (ISO's boxes, their brands), WebM, AMR, AAC, MP3, Ogg, WAV, vCard,
+/// vCalendar and iCalendar. The name only tells an MP4 of sound from one of
+/// video, which share their brands. None for anything else (a PDF named
+/// `.mp4` included).
+pub(crate) fn sniff_medium(head: &[u8], name: &str) -> Option<&'static str> {
+    let at = |from: usize, bytes: &[u8]| head.get(from..from + bytes.len()) == Some(bytes);
+    if at(4, b"ftyp") {
+        let brand = head.get(8..12)?;
+        let sound = name.rsplit_once('.').is_some_and(|(_, e)| e.eq_ignore_ascii_case("m4a"));
+        return match brand {
+            b"qt  " => Some("video/quicktime"),
+            b"M4A " | b"M4B " | b"M4P " => Some("audio/mp4"),
+            b if [b"3gp".as_slice(), b"3ge", b"3gg", b"3gs", b"3gr", b"3g2"].iter().any(|start| b.starts_with(start)) => Some("video/3gpp"),
+            b"isom" | b"iso2" | b"iso3" | b"iso4" | b"iso5" | b"iso6" | b"mp41" | b"mp42" | b"avc1" | b"M4V " | b"M4VH" | b"M4VP" | b"MSNV" | b"dash" | b"mmp4" => Some(if sound { "audio/mp4" } else { "video/mp4" }),
+            _ => None,
+        };
     }
-    let extension = name.rsplit_once('.').map_or(String::new(), |(_, e)| e.to_ascii_lowercase());
-    match extension.as_str() {
-        "mp4" | "m4v" => Kind::AsIs("video/mp4"),
-        "3gp" | "3gpp" => Kind::AsIs("video/3gpp"),
-        "webm" => Kind::AsIs("video/webm"),
-        "mov" => Kind::AsIs("video/quicktime"),
-        "amr" => Kind::AsIs("audio/amr"),
-        "m4a" => Kind::AsIs("audio/mp4"),
-        "aac" => Kind::AsIs("audio/aac"),
-        "mp3" => Kind::AsIs("audio/mpeg"),
-        "ogg" | "oga" => Kind::AsIs("audio/ogg"),
-        "opus" => Kind::AsIs("audio/opus"),
-        "wav" => Kind::AsIs("audio/wav"),
-        "vcf" => Kind::AsIs("text/x-vCard"),
-        "vcs" => Kind::AsIs("text/x-vCalendar"),
-        "ics" => Kind::AsIs("text/calendar"),
-        "jpg" | "jpeg" | "png" | "gif" | "webp" | "tif" | "tiff" | "bmp" | "heic" | "heif" | "avif" | "jxl" => Kind::Refused("unreadable"),
-        _ => Kind::Refused("file"),
+    if at(0, &[0x1A, 0x45, 0xDF, 0xA3]) {
+        return head.windows(4).any(|w| w == b"webm").then_some("video/webm");
+    }
+    if at(0, b"#!AMR") {
+        return Some("audio/amr");
+    }
+    if at(0, b"OggS") {
+        return Some("audio/ogg");
+    }
+    if at(0, b"RIFF") && at(8, b"WAVE") {
+        return Some("audio/wav");
+    }
+    if at(0, b"ID3") {
+        return Some("audio/mpeg");
+    }
+    // A frame's sync: AAC's (ADTS, its layer 0), MPEG audio's (a layer of its own).
+    if let [0xFF, second, ..] = head {
+        if second & 0xF6 == 0xF0 {
+            return Some("audio/aac");
+        }
+        if second & 0xE0 == 0xE0 && second & 0x06 != 0 {
+            return Some("audio/mpeg");
+        }
+    }
+    // Cards and calendar entries: text, perhaps after a byte-order mark and blank lines.
+    let text = String::from_utf8_lossy(head.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(head)).trim_start().to_ascii_uppercase();
+    if text.starts_with("BEGIN:VCARD") {
+        return Some("text/x-vCard");
+    }
+    if text.starts_with("BEGIN:VCALENDAR") {
+        return Some(if text.contains("VERSION:1.0") { "text/x-vCalendar" } else { "text/calendar" });
+    }
+    None
+}
+
+/// What a file is (decisions 7 to 9), by its first bytes alone: a picture
+/// (`picture`, as `sniff` tells it), an animated GIF when it holds several
+/// frames, refused where Qt here reads no such picture (`reads`); else a
+/// video, a sound, a contact card or a calendar entry (`medium`, as
+/// `sniff_medium` tells it); else another file, refused.
+pub(crate) fn kind_of(picture: Option<&str>, reads: bool, frames: u32, medium: Option<&'static str>) -> Kind {
+    match (picture, medium) {
+        (Some(_), _) if !reads => Kind::Refused("kind"),
+        (Some("gif"), _) if frames > 1 => Kind::Animated,
+        (Some(_), _) => Kind::Picture,
+        (None, Some(ct)) => Kind::AsIs(ct),
+        (None, None) => Kind::Refused("file"),
+    }
+}
+
+/// An animated GIF written again with its pictures alone (the review of 18
+/// October 2026, L-1): its header, its screen and colour tables, each
+/// frame's timing (its graphic control) and image, and its loop
+/// (NETSCAPE2.0's or ANIMEXTS1.0's block) kept byte for byte; its comments,
+/// plain-text blocks, other programs' blocks (XMP, a colour profile, an
+/// editor's notes) and whatever follows its end left out. No frame is
+/// decoded: each block says its own length. None for what is not a whole GIF.
+pub(crate) fn gif_pictures_alone(bytes: &[u8]) -> Option<Vec<u8>> {
+    // Where a run of sub-blocks (a length, its bytes, until a length of 0) ends.
+    let blocks_end = |mut at: usize| -> Option<usize> {
+        loop {
+            let length = usize::from(*bytes.get(at)?);
+            at += 1;
+            if length == 0 {
+                return Some(at);
+            }
+            at += length;
+            if at > bytes.len() {
+                return None;
+            }
+        }
+    };
+    let table = |packed: u8| if packed & 0x80 != 0 { 3 * (1usize << ((packed & 0x07) + 1)) } else { 0 };
+    let screen = bytes.get(..13)?;
+    if !(screen.starts_with(b"GIF87a") || screen.starts_with(b"GIF89a")) {
+        return None;
+    }
+    let mut at = 13 + table(screen[10]);
+    let mut out = bytes.get(..at)?.to_vec();
+    loop {
+        match *bytes.get(at)? {
+            0x3B => {
+                out.push(0x3B);
+                return Some(out);
+            }
+            0x2C => {
+                let descriptor = bytes.get(at..at + 10)?;
+                // Its colour table, the LZW code size, then its data's sub-blocks.
+                let end = blocks_end(at + 10 + table(descriptor[9]) + 1)?;
+                out.extend_from_slice(&bytes[at..end]);
+                at = end;
+            }
+            0x21 => {
+                let label = *bytes.get(at + 1)?;
+                let end = blocks_end(at + 2)?;
+                let looping = label == 0xFF && bytes.get(at + 2) == Some(&11) && matches!(bytes.get(at + 3..at + 14), Some(b"NETSCAPE2.0" | b"ANIMEXTS1.0"));
+                if label == 0xF9 || looping {
+                    out.extend_from_slice(&bytes[at..end]);
+                }
+                at = end;
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// A medium's file's extension in Sioul's cache, by its content type (never the file chosen's).
+fn extension_of(ct: &str) -> &'static str {
+    match ct {
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "video/mp4" => "mp4",
+        "video/quicktime" => "mov",
+        "video/3gpp" => "3gp",
+        "video/webm" => "webm",
+        "audio/mp4" => "m4a",
+        "audio/amr" => "amr",
+        "audio/aac" => "aac",
+        "audio/mpeg" => "mp3",
+        "audio/ogg" => "ogg",
+        "audio/wav" => "wav",
+        "text/x-vCard" => "vcf",
+        "text/x-vCalendar" => "vcs",
+        "text/calendar" => "ics",
+        _ => "dat",
     }
 }
 
@@ -264,10 +382,10 @@ impl Drop for Picture {
     }
 }
 
-/// A file's first bytes, enough for `sniff`; none when it cannot be read.
+/// A file's first bytes, enough for `sniff` and `sniff_medium`; none when it cannot be read.
 pub(crate) fn head_of(path: &Path) -> Option<Vec<u8>> {
-    let mut head = Vec::with_capacity(64);
-    std::fs::File::open(path).ok()?.take(64).read_to_end(&mut head).ok()?;
+    let mut head = Vec::with_capacity(512);
+    std::fs::File::open(path).ok()?.take(512).read_to_end(&mut head).ok()?;
     Some(head)
 }
 
@@ -390,7 +508,8 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
             left.push(refused(source, "unreadable", size, ""));
             continue;
         }
-        match kind_of(&name, sniffed, reads, picture.as_ref().map_or(0, |p| p.frames)) {
+        let medium = if sniffed.is_none() { sniff_medium(&head, &name) } else { None };
+        match kind_of(sniffed, reads, picture.as_ref().map_or(0, |p| p.frames), medium) {
             Kind::Refused(why) => left.push(refused(source, why, size, sniffed.map_or("", format_words))),
             Kind::Picture => chosen.push((source.clone(), Kind::Picture, size, picture)),
             kind => chosen.push((source.clone(), kind, size, None)),
@@ -419,7 +538,10 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
         left.push(refused(&chosen[last].0, "too-many-pictures", chosen[last].2, ""));
     }
     let each = share(room(&keep), fixed, pictures(&keep)).unwrap_or(0);
+    // Yours alone, as Sioul's cache around it.
     let _ = std::fs::create_dir_all(folder);
+    #[cfg(unix)]
+    let _ = std::fs::set_permissions(folder, std::os::unix::fs::PermissionsExt::from_mode(0o700));
     let stamp = jiff::Timestamp::now().as_millisecond();
     let out_of = |i: usize, extension: &str| folder.join(format!("{stamp}-{i}.{extension}"));
     // The pictures made for their equal shares (decision 10); then what those
@@ -464,20 +586,16 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
             },
             Kind::Animated | Kind::AsIs(_) => {
                 let ct = ct_of(kind);
-                let extension = source.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).filter(|e| !e.is_empty() && e.len() <= 8 && e.bytes().all(|b| b.is_ascii_alphanumeric())).unwrap_or_else(|| "dat".into());
-                let out = out_of(i, &extension);
+                let out = out_of(i, extension_of(ct));
                 // As much as was weighed, no more: a file grown since is refused, not cut.
-                let copied = std::fs::File::open(source).and_then(|from| {
-                    let mut to = std::fs::File::create(&out)?;
-                    std::io::copy(&mut from.take(size + 1), &mut to)
-                });
-                match copied {
-                    Ok(written) if written == *size => made.push(Attached { source: shown, kind: if *kind == Kind::Animated { "picture".into() } else { kind_word(ct).into() }, ct: ct.into(), path: out.display().to_string(), size: written }),
-                    Ok(_) => {
-                        let _ = std::fs::remove_file(&out);
-                        left.push(refused(source, "too-large", *size, ""));
-                    }
-                    Err(_) => {
+                let mut bytes = Vec::new();
+                let read = std::fs::File::open(source).and_then(|from| from.take(size + 1).read_to_end(&mut bytes));
+                // An animated GIF's frames alone: its comments and other programs' blocks left out.
+                let bytes = if *kind == Kind::Animated { gif_pictures_alone(&bytes) } else { Some(bytes) };
+                match (read, bytes) {
+                    (Ok(length), _) if length as u64 != *size => left.push(refused(source, "too-large", *size, "")),
+                    (Ok(_), Some(bytes)) if std::fs::write(&out, &bytes).is_ok() => made.push(Attached { source: shown, kind: if *kind == Kind::Animated { "picture".into() } else { kind_word(ct).into() }, ct: ct.into(), path: out.display().to_string(), size: bytes.len() as u64 }),
+                    _ => {
                         let _ = std::fs::remove_file(&out);
                         left.push(refused(source, "unreadable", *size, ""));
                     }
@@ -566,28 +684,69 @@ mod tests {
         assert_eq!(sniff(b""), None);
     }
 
-    /// What a file is: a picture by its bytes, else by its name (decisions 7 to 9).
+    /// What a file is: by its bytes alone, never its name (decisions 7 to 9;
+    /// the review of 18 October 2026, I-3).
     #[test]
     fn a_file_is_known_by_what_it_is() {
-        assert_eq!(kind_of("IMG_2026.JPG", Some("jpeg"), true, 1), Kind::Picture);
-        assert_eq!(kind_of("scan.tiff", Some("tiff"), true, 1), Kind::Picture);
-        assert_eq!(kind_of("still.gif", Some("gif"), true, 1), Kind::Picture, "a still GIF, a picture");
-        assert_eq!(kind_of("dance.gif", Some("gif"), true, 12), Kind::Animated);
-        assert_eq!(kind_of("named.pdf", Some("png"), true, 1), Kind::Picture, "its bytes, not its name");
-        assert_eq!(kind_of("photo.heic", Some("heif"), false, 0), Kind::Refused("kind"), "a HEIC Qt cannot read here");
-        assert_eq!(kind_of("photo.heic", Some("heif"), true, 1), Kind::Picture, "one Qt reads (KDE's plugins, Apple's)");
-        assert_eq!(kind_of("Clip.MP4", None, false, 0), Kind::AsIs("video/mp4"));
-        assert_eq!(kind_of("voice.amr", None, false, 0), Kind::AsIs("audio/amr"));
-        assert_eq!(kind_of("alice.vcf", None, false, 0), Kind::AsIs("text/x-vCard"));
-        assert_eq!(kind_of("dinner.ics", None, false, 0), Kind::AsIs("text/calendar"));
-        assert_eq!(kind_of("broken.jpg", None, false, 0), Kind::Refused("unreadable"), "a picture's name, no picture in it");
-        assert_eq!(kind_of("lease.pdf", None, false, 0), Kind::Refused("file"));
-        assert_eq!(kind_of("drawing.svg", None, false, 0), Kind::Refused("file"), "a document Qt could render: never opened");
-        assert_eq!(kind_of("noextension", None, false, 0), Kind::Refused("file"));
-        for ct in ["image/jpeg", "image/gif", "video/mp4", "video/quicktime", "audio/amr", "audio/wav", "text/x-vCard", "text/x-vCalendar", "text/calendar"] {
+        assert_eq!(kind_of(Some("jpeg"), true, 1, None), Kind::Picture);
+        assert_eq!(kind_of(Some("gif"), true, 1, None), Kind::Picture, "a still GIF, a picture");
+        assert_eq!(kind_of(Some("gif"), true, 12, None), Kind::Animated);
+        assert_eq!(kind_of(Some("heif"), false, 0, None), Kind::Refused("kind"), "a HEIC Qt cannot read here");
+        assert_eq!(kind_of(Some("heif"), true, 1, None), Kind::Picture, "one Qt reads (KDE's plugins, Apple's)");
+        assert_eq!(kind_of(None, false, 0, Some("video/mp4")), Kind::AsIs("video/mp4"));
+        assert_eq!(kind_of(None, false, 0, None), Kind::Refused("file"));
+        let medium = |head: &[u8], name: &str| sniff_medium(head, name);
+        assert_eq!(medium(b"\0\0\0\x18ftypisom\0\0\x02\0isomiso2", "Clip.MP4"), Some("video/mp4"));
+        assert_eq!(medium(b"\0\0\0\x18ftypisom\0\0\x02\0isomiso2", "voice.m4a"), Some("audio/mp4"), "a sound in an MP4");
+        assert_eq!(medium(b"\0\0\0\x18ftypM4A \0\0\x02\0M4A mp42", "voice"), Some("audio/mp4"));
+        assert_eq!(medium(b"\0\0\0\x14ftypqt  \0\0\x02\0qt  ", "IMG_0001.MOV"), Some("video/quicktime"));
+        assert_eq!(medium(b"\0\0\0\x14ftyp3gp4\0\0\x02\03gp4", "v.3gp"), Some("video/3gpp"));
+        assert_eq!(medium(b"\0\0\0\x18ftypheic\0\0\0\0mif1heic", "x.mp4"), None, "a picture's box is no video");
+        assert_eq!(medium(b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x84webm", "clip.webm"), Some("video/webm"));
+        assert_eq!(medium(b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x88matroska", "film.mkv"), None, "Matroska, not WebM");
+        assert_eq!(medium(b"#!AMR\n\x3c", "voice.amr"), Some("audio/amr"));
+        assert_eq!(medium(b"OggS\0\x02", "song.opus"), Some("audio/ogg"));
+        assert_eq!(medium(b"RIFF\x24\0\0\0WAVEfmt ", "a.wav"), Some("audio/wav"));
+        assert_eq!(medium(b"ID3\x04\0\0\0\0\0\0", "a.mp3"), Some("audio/mpeg"));
+        assert_eq!(medium(&[0xFF, 0xFB, 0x90, 0x64], "a.mp3"), Some("audio/mpeg"));
+        assert_eq!(medium(&[0xFF, 0xF1, 0x50, 0x80], "a.aac"), Some("audio/aac"));
+        assert_eq!(medium(b"\xEF\xBB\xBF\r\nbegin:vcard\r\nVERSION:2.1\r\n", "alice.vcf"), Some("text/x-vCard"));
+        assert_eq!(medium(b"BEGIN:VCALENDAR\r\nVERSION:1.0\r\n", "dinner.vcs"), Some("text/x-vCalendar"));
+        assert_eq!(medium(b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n", "dinner.ics"), Some("text/calendar"));
+        assert_eq!(medium(b"%PDF-1.7\n%\xe2\xe3", "lease.mp4"), None, "a PDF named .mp4: another file");
+        assert_eq!(medium(b"<svg xmlns=", "drawing.mp3"), None);
+        assert_eq!(medium(b"", "empty.mp4"), None);
+        for ct in ["image/jpeg", "image/gif", "video/mp4", "video/quicktime", "video/3gpp", "video/webm", "audio/mp4", "audio/amr", "audio/aac", "audio/mpeg", "audio/ogg", "audio/wav", "text/x-vCard", "text/x-vCalendar", "text/calendar"] {
             assert!(rules::sendable(ct), "{ct}: the phone sends it");
+            assert_ne!(extension_of(ct), "dat", "{ct}");
         }
         assert_eq!(format_words("heif"), "HEIC");
+    }
+
+    /// An animated GIF keeps its frames, their timing and its loop, and
+    /// loses its comments, its plain text, other programs' blocks (XMP) and
+    /// what follows its end (the review of 18 October 2026, L-1).
+    #[test]
+    fn an_animated_gif_goes_with_its_frames_alone() {
+        let frame = |colour: u8| [&[0x21, 0xF9, 4, 0, 10, 0, 0, 0][..], &[0x2C, 0, 0, 0, 0, 2, 0, 1, 0, 0], &[2, 2, 0x4C | colour, 0x01, 0]].concat();
+        let netscape = b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\0\0\0".to_vec();
+        let comment = [&[0x21, 0xFE, 16][..], b"SIOUL-SECRET-GIF", &[0]].concat();
+        let mut xmp = b"\x21\xFF\x0BXMP DataXMP".to_vec();
+        xmp.extend_from_slice(b"<x:xmpmeta>SIOUL-SECRET-XMP</x:xmpmeta>");
+        // XMP's magic trailer: 0x01, then 0xFF down to 0x00, then the end of the blocks.
+        xmp.push(0x01);
+        xmp.extend((0..=255u8).rev());
+        xmp.push(0);
+        let text = [&[0x21, 0x01, 12][..], &[0; 12], &[5][..], b"SECRE", &[0]].concat();
+        let screen = [b"GIF89a".as_slice(), &[2, 0, 1, 0, 0x80, 0, 0], &[255, 0, 0, 0, 0, 255]].concat();
+        let gif = [screen.clone(), netscape.clone(), comment, xmp, frame(0), text, frame(1), vec![0x3B], b"SIOUL-SECRET-AFTER".to_vec()].concat();
+        let alone = gif_pictures_alone(&gif).unwrap();
+        assert_eq!(alone, [screen, netscape, frame(0), frame(1), vec![0x3B]].concat());
+        assert!(!alone.windows(5).any(|w| w == b"SIOUL" || w == b"SECRE"), "no comment, XMP, text or tail");
+        assert_eq!(gif_pictures_alone(&alone).unwrap(), alone, "written again, the same");
+        assert_eq!(gif_pictures_alone(&gif[..gif.len() - 30]), None, "cut short: not a whole GIF");
+        assert_eq!(gif_pictures_alone(b"GIF89a"), None);
+        assert_eq!(gif_pictures_alone(b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR"), None);
     }
 
     /// The room is measured to the longest number with the words' most:
