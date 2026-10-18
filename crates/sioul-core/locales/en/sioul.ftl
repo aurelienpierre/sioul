@@ -2869,6 +2869,10 @@ porch-withheld-put-back = Put them back
 porch-withheld-putting-back = Putting them back…
 porch-withheld-take-out = Take them out now
 porch-withheld-none-back = Nothing came back: their places are taken, or their contents are not on this device.
+porch-withheld-some-back = { $back } of { $count } came back. { $rest ->
+    [one] One did not: its place is taken, or its content is not on this device. Put them back tries again.
+   *[other] { $rest } did not: their places are taken, or their contents are not on this device. Put them back tries again.
+}
 share-devices-gone = Devices that no longer count
 share-device-gone-left = It left the sharing. Its files are still in the folder: { $size }.
 share-device-gone-forgotten = Forgotten here. Its files are still in the folder: { $size }.

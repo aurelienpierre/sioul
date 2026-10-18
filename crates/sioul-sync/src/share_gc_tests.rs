@@ -193,7 +193,7 @@ fn notes_held_come_back_when_put_back() {
     // One place taken meanwhile.
     put(&dn, "trip/0.md", b"# written anew\n");
     let stores = stores_with(&desk, &dn, false);
-    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(11));
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(PutBack { back: 11, held: 12 }), "eleven of twelve: said so");
     assert_eq!(std::fs::read(dn.join("trip/0.md")).unwrap(), b"# written anew\n", "its place taken: left as it is");
     for n in 1..12 {
         assert_eq!(std::fs::read(dn.join(format!("trip/{n}.md"))).unwrap(), format!("# day {n}\n").as_bytes());
@@ -231,7 +231,7 @@ fn notes_held_are_never_put_back_through_a_link() {
     std::fs::create_dir_all(&elsewhere).unwrap();
     std::os::unix::fs::symlink(&elsewhere, dn.join("trip")).unwrap();
     let stores = stores_with(&desk, &dn, false);
-    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(0));
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(PutBack { back: 0, held: 12 }));
     assert!(names_in(&elsewhere).is_empty(), "nothing written through the link");
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -778,7 +778,7 @@ fn remove_its_files_leaves_what_put_them_back_needs() {
     with_notes(&o.desk, &o.folder, &o.key, o.now + 3 * MINUTE, &o.dn);
     let removed = remove_device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + 4 * MINUTE).unwrap();
     assert_eq!(removed.sealed, 2, "its two older last words, never the held notes': {removed:?}");
-    assert_eq!(put_back_withheld(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, "files/notes/"), Ok(12));
+    assert_eq!(put_back_withheld(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, "files/notes/"), Ok(PutBack { back: 12, held: 12 }));
     assert_eq!(names_in(&o.dn).iter().filter(|f| f.starts_with("trip/")).count(), 12);
     let _ = std::fs::remove_dir_all(&o.base);
 }
@@ -818,7 +818,7 @@ fn put_back_keeps_its_care_and_dates_an_older_bulk_by_its_records() {
     assert!(!dn.join("trip").join("0.md").exists());
     // A place taken: never written over.
     put(&dn, "trip/3.md", b"# written meanwhile\n");
-    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(11));
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(PutBack { back: 11, held: 12 }));
     assert_eq!(std::fs::read(dn.join("trip/3.md")).unwrap(), b"# written meanwhile\n");
     // Dated as its last record was made (its first exchange, here), not now.
     let dated = std::fs::metadata(dn.join("trip/5.md")).unwrap().modified().unwrap();
@@ -1037,7 +1037,7 @@ fn put_back_never_keeps_a_dose_waiting() {
         drop(held);
         std::thread::sleep(std::time::Duration::from_millis(40));
     }
-    assert_eq!(putting.join().unwrap(), Ok(1_500));
+    assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 1_500, held: 1_500 }));
     println!("put back of 1,500 notes: a dose's exchange waited {longest:?} at most, {taken} times");
     assert!(taken > 5 && longest < std::time::Duration::from_secs(1), "a dose's exchange waited {longest:?} at most, {taken} times");
     let _ = std::fs::remove_dir_all(&base);
@@ -1084,11 +1084,58 @@ fn a_large_note_put_back_never_holds_the_lock_for_its_time() {
         drop(held);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert_eq!(putting.join().unwrap(), Ok(12));
+    assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 12, held: 12 }));
     let took = started.elapsed();
     assert_eq!(std::fs::read(dn.join("bulk/big.md")).unwrap(), big.as_bytes(), "the large note back whole");
     println!("put back with a 24 MB note: {took:?}, a dose's exchange waited {longest:?} at most");
     assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// M-1 (review of 18 October 2026): "Put them back" beside the window's
+/// exchanges, which list the notes and sweep the leftovers there (a hidden
+/// file dated more than an hour ago), brings back every note of a bulk last
+/// changed days ago, and says so: each is dated as it was only under the
+/// exchanges' lock, just before it is placed (until then, 18 to 26 of 600
+/// came back, and the put back said done).
+#[test]
+fn a_put_back_beside_the_exchanges_brings_every_note_back() {
+    let base = scratch("gc-put-back-beside");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    // Last changed two days before: so dated, a put back's file beside its place is an hour old and more.
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 2 * DAY_MS) as u64);
+    let count = 600;
+    for n in 0..count {
+        let name = format!("bulk/{n:04}.md");
+        put(&dn, &name, format!("# note {n} of a bulk, with a few words in it\n").as_bytes());
+        std::fs::File::options().write(true).open(dn.join(&name)).unwrap().set_modified(when).unwrap();
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + MINUTE, &dn).withheld.map(|w| w[0].count), Some(count));
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let putting = {
+        let folder = folder.clone();
+        std::thread::spawn(move || put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/"))
+    };
+    // The window's exchanges with the notes, one after the other, while the bulk comes back.
+    let mut exchanges: i64 = 0;
+    while !putting.is_finished() {
+        exchanges += 1;
+        with_notes(&desk, &folder, &key, NOW + 2 * MINUTE + exchanges * 1_000, &dn);
+    }
+    let said = putting.join().unwrap();
+    let back = (0..count).filter(|n| std::fs::metadata(dn.join(format!("bulk/{n:04}.md"))).is_ok_and(|m| m.modified().ok() == Some(when))).count();
+    println!("put back beside {exchanges} exchanges: said {said:?}, {back} of {count} back, dated as they were");
+    assert_eq!(back, count, "every note back, dated as it was, beside {exchanges} exchanges");
+    assert_eq!(said, Ok(PutBack { back: count, held: count }), "said whole");
+    let outcome = with_notes(&desk, &folder, &key, NOW + 10 * MINUTE, &dn);
+    assert_eq!(outcome.withheld, Some(Vec::new()), "nothing held after");
+    assert!(std::fs::read_dir(dn.join("bulk")).unwrap().filter_map(Result::ok).all(|e| !e.file_name().to_string_lossy().starts_with('.')), "no file left beside");
     let _ = std::fs::remove_dir_all(&base);
 }
 

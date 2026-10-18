@@ -8401,7 +8401,7 @@ mod tests {
         let sealed = p.sealed(false, now);
         assert!(sealed.listed > 0 && sealed.let_go == 0, "every content a record names kept: {sealed:?}");
         let back = crate::share::put_back_withheld(&p.phone_folder, &KEY, &p.phone.memory, &p.phone.id, &p.phone.all_parts(&pn), "files/notes/");
-        assert_eq!(back, Ok(12));
+        assert_eq!(back, Ok(crate::share::PutBack { back: 12, held: 12 }));
         std::fs::remove_dir_all(&server_blobs).unwrap();
         std::fs::rename(&aside, &server_blobs).unwrap();
     }

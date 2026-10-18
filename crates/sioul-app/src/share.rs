@@ -733,14 +733,16 @@ fn withheld_words(w: share::Withheld, root: Option<&Path>) -> WithheldShown {
 /// "Put them back": the notes or papers held after going many at once from
 /// `store` ("files/notes/") written back where they were, from their sealed
 /// contents, a few hundred at a time (`share::put_back_withheld`: the
-/// exchanges go between); "" when they came back, else why not. Off the
-/// window's thread (the bridge's `share_put_back_withheld`).
+/// exchanges go between); "" when every one came back, else how many did,
+/// or why none: fewer is never said as done (review of 18 October 2026,
+/// M-1). Off the window's thread (the bridge's `share_put_back_withheld`).
 pub(crate) fn put_back_withheld(store: &str) -> String {
     let here = here();
     let Some((folder, key)) = sealed(attached(&here)) else { return tr().text("share-off", None) };
     let stores = stores_here(&here);
     match share::put_back_withheld(&folder, &key, &memory_path(), &here.id, &stores, store) {
-        Ok(0) => tr().text("porch-withheld-none-back", None),
+        Ok(put) if put.back == 0 => tr().text("porch-withheld-none-back", None),
+        Ok(put) if put.back < put.held => say("porch-withheld-some-back", &[("back", put.back.to_string()), ("count", put.held.to_string()), ("rest", (put.held - put.back).to_string())]),
         Ok(_) => String::new(),
         Err(e) => problem_text(&e),
     }
