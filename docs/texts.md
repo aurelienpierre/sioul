@@ -61,6 +61,8 @@ A text sent twice can harm, as a dose taken twice can; a text sent hours late ca
 
 **Refused from a computer**, said at once and again by the phone: short numbers, which can cost money (Android would ask on the phone); several recipients, which make a multimedia message; texts with no words; texts over 1,600 characters. Pictures cannot be written there.
 
+**From the Porch**: **Reply** on a text from a whole number, on a computer that reads texts, writes one of these requests, by the same rules ([porch.md](porch.md#from-your-phone), [android.md](android.md#replies-from-your-computers): decision 12); its states show under the Porch's line. Once Android has it, the phone lets that number's next texts through at once for 20 minutes, but in a pause, as after a reply (`replies::texted`, a hash of the number). The same holds for a text written on this page.
+
 **On the phone**, Java hands the text to Android (`SmsManager.createForSubscriptionId`, `divideMessage`, `sendMultipartTextMessage`), from the SIM asked, else the conversation's last, else the phone's default. Android files it in the sent box with Sioul as its creator, so the SMS app shows it in the conversation. Each part's sent and delivered results come to `TextSend.Result`, which writes them in Java's own file (`texts/results.jsonl`), flushed. Rust copies them into the phone's outcomes: sent when every part was; not sent, and why, when one was not; delivered only when the carrier reported every part received. The page never says or implies that a text was not delivered when no report came.
 
 ## The page, on a computer
@@ -73,7 +75,7 @@ A text sent twice can harm, as a dose taken twice can; a text sent hours late ca
 - **Writing**, under the thread: an AI agent's drafts first (**Use it** puts their words in the box, and sending stays yours; docs/mcp.md), then the box, with how many texts it takes ("2 texts (180 characters)"; fewer characters per text with accents or signs outside GSM's alphabet), and **Send**.
 - **The keyboard**: Up and Down move in the list, Enter opens; in the thread, Up, Down, Page Up, Page Down, Home and End read back and forth; Escape closes the conversation. Tab goes from the search to the list, the thread, the drafts and the box.
 - **A narrow window** (under 720 pixels), as Mail: the list, then the conversation, and the window's Back.
-- **Where**: the places on the left; the Porch's "From your phone" lines (**Text back** opens the conversation, when texts are read on this computer) and a person's sheet (**Texts with them…**), through `window.openTexts`. A phone has no Texts page: its own SMS app is where a conversation opens there.
+- **Where**: the places on the left; the Porch's "From your phone" lines (**Reply** on a text from a whole number sends one of these texts, [porch.md](porch.md#from-your-phone); **Open on the Texts page**, in its menu, opens the conversation; **Text back** where no Reply is offered) and a person's sheet (**Texts with them…**), through `window.openTexts`. A phone has no Texts page: its own SMS app is where a conversation opens there.
 - **One phone sends**: the phone chosen in `texts.toml` (configuration, this computer's own), else the only phone, else the one that shared last.
 
 ## Each text once, across phones

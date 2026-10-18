@@ -793,6 +793,9 @@ pub enum Why {
     Never,
     /// Held again and again within minutes on its return: let through.
     Again,
+    /// A conversation you answered from a computer in the last twenty
+    /// minutes (`replies::answered_lately`): let through, but in a pause.
+    Answered,
 }
 
 impl Why {
@@ -809,6 +812,7 @@ impl Why {
             Why::Gathered => "gathered",
             Why::Never => "never",
             Why::Again => "again",
+            Why::Answered => "answered",
         }
     }
 }
@@ -828,6 +832,14 @@ impl Decision {
 
     pub fn held(until: i64, why: Why) -> Decision {
         Decision { until: Some(until), why }
+    }
+
+    /// Of a conversation you answered from a computer within twenty minutes
+    /// (`replies::ANSWERED_MS`), outside a pause, which the caller says: what
+    /// would wait comes at once, their answer to your answer; held for good
+    /// (the blocked, a conversation set to never) stays held.
+    pub fn answered(self) -> Decision {
+        if self.until.is_some() && self.why != Why::Never { Decision::through(Why::Answered) } else { self }
     }
 }
 

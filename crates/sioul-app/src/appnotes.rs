@@ -174,11 +174,24 @@ fn decide(json: &str) -> String {
     let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
     let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
     let hash = appnotes::key_hash(&posted.key);
+    // A conversation you answered from a computer in the last twenty minutes, or a number
+    // texted from one, by the SMS app: at once, but in a pause (`replies`).
+    let answered = !live.clock.mode(&now).paused()
+        && match &kind {
+            Kind::People(talk) => {
+                talk.conversation.as_ref().is_some_and(|c| crate::replies::answered_lately(&c.key))
+                    || ((talk.sms || posted.sms_app) && matches!(&talk.sender, Sender::Known { numbers, .. } if crate::replies::texted_lately(&numbers.iter().map(|n| sioul_core::phones::key(n, sioul_core::reach::region(&config))).collect::<Vec<_>>())))
+            }
+            _ => false,
+        };
     let path = Ledger::default_path();
     let (decision, released) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let returning = ledger.returning(&hash, stamp);
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
+        if answered {
+            decision = decision.answered();
+        }
         // Back at its time and held again within minutes: not again and again.
         if returning
             && let Some(until) = decision.until
@@ -241,6 +254,8 @@ fn review(json: &str) -> String {
     let also = slots.edges();
     let attention = sioul_core::attention::Attention::of(&config);
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
+    // A conversation answered from a computer in the last twenty minutes: what Sioul holds of it comes now, but in a pause (`replies`).
+    let paused = live.clock.mode(&now).paused();
     let path = Ledger::default_path();
     let (again, counted) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
@@ -253,7 +268,10 @@ fn review(json: &str) -> String {
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
-            let decided = appnotes::again(&held, &choices, &ask);
+            let mut decided = appnotes::again(&held, &choices, &ask);
+            if !paused && crate::replies::answered_lately(&held.conversation) {
+                decided = decided.answered();
+            }
             let until = decided.until.unwrap_or(stamp);
             counted.push(Counted { why: decided.why, ..Counted::held(&held, until) });
             if (until - held.until).abs() > 60 {
@@ -338,6 +356,8 @@ fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> 
     };
     let why = if released.iter().any(|c| c.why == Why::Always) {
         "Always through".to_string()
+    } else if released.iter().any(|c| c.why == Why::Answered) {
+        "answered from a computer".to_string()
     } else if columns.is_empty() {
         "unknown".to_string()
     } else {

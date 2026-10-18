@@ -65,9 +65,11 @@ import java.util.Map;
  * included, handed to Rust in memory on a thread of its own; Rust answers how
  * long it waits, and Android holds it that long (snoozeNotification): it
  * comes back whole, with its own tap and actions, alerting as its channel
- * says. Nothing is ever cancelled, answered, marked as read, kept or logged;
- * of a conversation, only where its page is in Android (its app, shortcut
- * and channel, a week), for the Other apps tab to open it.
+ * says. Nothing is ever cancelled, kept or logged; of a conversation, only
+ * where its page is in Android (its app, shortcut and channel, a week), for
+ * the Other apps tab to open it. Nothing is answered or marked as read but
+ * what you ask from a computer, once, through the notification's own Reply
+ * or Mark as read ({@link #answer}).
  * Never asked about: Sioul's own, ongoing ones (a call, music, a download),
  * those that cannot be cleared.
  *
@@ -141,6 +143,8 @@ public final class AppNotes extends NotificationListenerService
     private static final String REPLIES = "state/sioul/replies";
     /** The file of what is due there, written whole by the background step. */
     private static final String DUE = "due.jsonl";
+    /** The conversations answered from a computer lately, there (Rust's `replies::ANSWERED`): what is held of them comes now. */
+    private static final String ANSWERED = "answered.json";
     /** Changes to what is due settle this long before it is read. */
     private static final long DUE_SETTLE_MS = 300;
 
@@ -648,7 +652,9 @@ public final class AppNotes extends NotificationListenerService
     /**
      * The private folder of replies watched for what is due (made first, so
      * that it can be watched before the step writes there): the background
-     * step writes it whole beside, then puts it in place.
+     * step writes it whole beside, then puts it in place. And for the
+     * conversations answered lately: what Sioul holds of one is worked out
+     * again, to come now.
      */
     private void watchReplies()
     {
@@ -663,6 +669,9 @@ public final class AppNotes extends NotificationListenerService
                 if (DUE.equals(name)) {
                     worker.removeCallbacks(answer);
                     worker.postDelayed(answer, DUE_SETTLE_MS);
+                } else if (ANSWERED.equals(name)) {
+                    worker.removeCallbacks(review);
+                    worker.postDelayed(review, SETTLE_MS);
                 }
             }
         };

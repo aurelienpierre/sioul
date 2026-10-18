@@ -226,7 +226,7 @@ On a phone, Sioul can hold other apps' notifications until their time, as it hol
 - **Messages between people** (texts, chats, mail apps, a missed call) come when the person who wrote may reach you now: their **Messages** row; **Mail**'s for a mail app, **Calls**' for a missed call.
 - **Notifications from automatons** (shops, news, social networks, your browser's sites, a text from a short number) come back at the gathered times.
 - **Always come**: calls and alarms; what runs (music, a call in progress, navigation, a download); the reminders and events you set in other apps; codes, and sign-ins or payments to approve; Sioul's own.
-- **A held notification comes back whole**, with its own tap and actions. Sioul never answers, never marks anything as read, never touches read receipts or typing, and deletes none.
+- **A held notification comes back whole**, with its own tap and actions. Sioul deletes none and never touches typing; it answers, or marks as read, only what you ask from a computer, through the notification's own Reply or Mark as read ([below](#messages-on-your-computers)).
 - **On the Porch**, one line says what waits: "Notifications held until 13:00: Discord, Le Monde and two other apps."
 
 In Exceptions, as each app, conversation and site shows up:
@@ -256,7 +256,11 @@ Your phone can show your computers the messages its notifications bring, texts f
 
 - **Which apps**: the phone's SMS app sends its words unless you say otherwise; every other app (Signal, WhatsApp, Discord…) sends nothing until you choose it. For each: **Not on your computers**, **Who and when**, or **Who, when and the words**.
 - **When they show**: once the phone let the notification through, and while the person who wrote may reach you, as on the phone; a text from a service (a short number, "AMELI") at the automatons' times. Never as a notification on the computer, never counted.
-- **What you can do**: **Text back** and **Call back** for a text, through your computer's app for such links (KDE Connect hands them to your phone), else **Copy the number**; **Seen** takes the line away on every device, with ten seconds to undo. It never touches the phone's notification, and never marks anything as read.
+- **Reply**, first on a line whose notification on the phone offers one: write in the box under it, "Reply to Alice on Signal…", then **Send** (Ctrl+Enter). Your phone sends it through that notification's own Reply, as if you had typed it under the notification, and your reply shows under their messages with what became of it, from "Waiting for your phone." to "Signal shows it in the conversation."; while it waits, **Take back** stops it. Once the notification has gone from the phone, the line says "Reply on your phone." Replying marks the conversation read in Signal, Telegram and the SMS app, as replying from the phone's notification does: your first reply in each says so.
+- **A text from a number**, when this computer reads your texts: **Reply** sends one of Sioul's own texts ([Texts](texts.md)), "Sent at 14:03.", even once the notification has gone; never to a short number or a sender named in letters, which may cost money.
+- **What else you can do**: **Call back** for a text, through your computer's app for such links (KDE Connect hands them to your phone), else **Copy the number**; **Text back** where no Reply is offered; **Seen** takes the line away on every device, with ten seconds to undo. It never touches the phone's notification, and never marks anything as read. In the line's menu (**⋮**), **Mark as read in Signal**, where the notification offers it, asks first: "Signal may tell them that you read it."
+- **Their answer to your answer** comes at once for 20 minutes, on the phone and on the computer you answered from, unless you are in a pause.
+- **On the phone**, under each app in Settings ▸ This phone ▸ On your computers, **Answer from your computers** is on unless you switch it off.
 - **Never sent**: codes and approvals ("A code came from your bank at 09:12. It stays on your phone."), pictures ("a picture"), a blocked sender's messages, a conversation set to **Never**, notifications an app keeps secret, ongoing ones, Sioul's own.
 - **Kept** a week. The words travel encrypted with your passphrase and sit in Sioul's files on each computer that shows them: choose the apps with that in mind.
 
