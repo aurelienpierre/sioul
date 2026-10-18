@@ -59,6 +59,13 @@ pub fn readers() -> &'static dyn Readers {
     }
 }
 
+/// Whether this device can use a security key: a computer, through its smart
+/// card service; a phone not yet (it knows your key's certificate all the
+/// same, from your computer: it encrypts to you and says what waits for the key).
+pub const fn usable_here() -> bool {
+    cfg!(not(target_os = "android"))
+}
+
 /// Caps what any crate may log at "info", whatever level it asks, as a
 /// program starts (`sioul-app`, `sioul`). `openpgp-card` writes whole APDUs
 /// at "trace", a VERIFY's PIN included, and a card's answers, session keys

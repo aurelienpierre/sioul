@@ -29,7 +29,12 @@ pub(crate) fn open(raw: &[u8]) -> Option<(Option<Vec<u8>>, PgpView)> {
     if !looks_protected(raw) {
         return None;
     }
-    pgp::open(raw, &Keys::load(), &pgp::Unlock::new(&|fingerprint| secret::pgp_passphrase(&fingerprint.to_hex()), pgp::SessionKeys::global()))
+    let mut opened = pgp::open(raw, &Keys::load(), &pgp::Unlock::new(&|fingerprint| secret::pgp_passphrase(&fingerprint.to_hex()), pgp::SessionKeys::global()));
+    // A phone, until it can use the key: what waits for it is said, with no button.
+    if let Some((_, view)) = opened.as_mut() {
+        view.key_elsewhere = !sioul_sync::securitykey::usable_here();
+    }
+    opened
 }
 
 /// The message as it reads: decrypted when it was encrypted to you.
@@ -62,16 +67,33 @@ pub(crate) struct DraftProtection {
     /// The security key that signs for the address has an expired
     /// certificate: when it expired, and how to renew it; else "".
     pub expired: String,
+    /// This device cannot use the security key that signs for the address
+    /// (a phone, until it can): why "Sign" is off; else "".
+    pub sign_not_here: String,
+    /// Encrypted, your own certificate cannot take it (expired): you would
+    /// not read your sent copy; said before sending; else "".
+    pub self_copy: String,
 }
 
 pub(crate) fn draft_protection(draft: &Draft) -> DraftProtection {
     let config = load_config();
     let Some(address) = config.account(&draft.account).and_then(|a| a.address.clone()) else { return DraftProtection::default() };
-    let keys = Keys::load();
+    protection_with(&Keys::load(), &address, draft, sioul_sync::securitykey::usable_here())
+}
+
+/// [`draft_protection`] with `keys`, for `address`; `card_here`: whether this
+/// device can use a security key (a phone cannot yet).
+fn protection_with(keys: &Keys, address: &str, draft: &Draft, card_here: bool) -> DraftProtection {
+    let address = address.to_string();
     let missing: Vec<String> = draft.recipients().into_iter().filter(|r| keys.for_address(r).is_none()).collect();
     let can_sign = keys.own_for(&address).is_some();
-    let expired = if can_sign { String::new() } else { crate::securitykey::expired_line(&keys, &address).unwrap_or_default() };
-    DraftProtection { can_sign, can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing, expired }
+    let expired = if can_sign { String::new() } else { crate::securitykey::expired_line(keys, &address).unwrap_or_default() };
+    // Your security key signs for the address, and this device cannot use it yet.
+    let card_here = !keys.own_for(&address).is_some_and(|own| matches!(own.place, pgp::Place::Card { .. })) || card_here;
+    let sign_not_here = if card_here { String::new() } else { tr().text("seckey-sign-not-here", None) };
+    // Your own key for the address, there, and it cannot take encryption now: the sent copy would not open.
+    let self_copy = if keys.is_own_address(&address) && keys.self_cert_for(&address).is_none() { tr().text("pgp-self-copy-expired", None) } else { String::new() };
+    DraftProtection { can_sign: can_sign && card_here, can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing, expired, sign_not_here, self_copy }
 }
 
 /// Answering an encrypted message: the copy kept with the draft is the
@@ -164,4 +186,44 @@ pub(crate) fn lookup(draft: &Draft) -> String {
     }
     let still = missing.len() - found;
     if still == 0 { tr().text("pgp-lookup-all", None) } else { say("pgp-lookup-some", &[("missing", draft_protection(draft).missing.join(", "))]) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_core::securitykey::{KnownCard, SoftCard};
+
+    /// Your security key's certificate, as a phone or a computer knows it.
+    fn yours(dated: Option<(std::time::SystemTime, std::time::Duration)>) -> Keys {
+        let (card, public) = SoftCard::generate_dated("0006:12345678", &["Card Holder <me@example.org>"], "123456", dated).unwrap();
+        let mine = pgp::certificates_in(&public);
+        let known = KnownCard {
+            ident: "0006:12345678".into(),
+            sign: card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: mine[0].fingerprint().to_hex(),
+            addresses: vec!["me@example.org".into()],
+            ..KnownCard::default()
+        };
+        Keys { own: mine, cards: vec![known], ..Keys::default() }
+    }
+
+    /// Batch A (18 October 2026): a phone knows your key and cannot sign with
+    /// it yet: "Sign" is off, said; a computer signs. An expired certificate
+    /// of yours: encrypting is said to leave you no copy to read, before Send.
+    #[test]
+    fn the_writing_window_says_what_your_key_can_do_here() {
+        let mut draft = Draft::new("me");
+        draft.to = vec!["me@example.org".into()];
+        let keys = yours(None);
+        let phone = protection_with(&keys, "me@example.org", &draft, false);
+        assert!(!phone.can_sign && phone.sign_not_here == tr().text("seckey-sign-not-here", None) && phone.self_copy.is_empty() && phone.can_encrypt);
+        let computer = protection_with(&keys, "me@example.org", &draft, true);
+        assert!(computer.can_sign && computer.sign_not_here.is_empty() && computer.self_copy.is_empty());
+        let year = std::time::Duration::from_secs(365 * 24 * 3600);
+        let expired = yours(Some((std::time::SystemTime::now() - 2 * year, year)));
+        let late = protection_with(&expired, "me@example.org", &draft, true);
+        assert_eq!(late.self_copy, tr().text("pgp-self-copy-expired", None));
+        assert!(!late.can_sign && !late.can_encrypt, "to yourself, with no key that takes it: {:?}", late.missing);
+    }
 }

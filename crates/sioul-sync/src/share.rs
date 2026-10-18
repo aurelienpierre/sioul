@@ -608,6 +608,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder("drafts", "data/drafts/", d.join("drafts"), Shape::Whole, &[]),
         folder("drafts", "data/invoices/", d.join("invoices"), Shape::Whole, &[]),
         folder("senders", "data/pgp/others/", d.join("pgp").join("others"), Shape::Whole, &[]),
+        // Your security keys as a computer of yours read them, their certificates with them (public
+        // parts only: `securitykey::shared_cards`), so that every device encrypts to you, hands your
+        // key by Autocrypt and says what waits for the key. A store an older Sioul leaves alone.
+        folder("settings", "data/pgp/cards/", d.join("pgp").join(sioul_core::securitykey::SHARED_CARDS), Shape::Whole, &[]),
         folder("lists", "data/calendars/local/", d.join("calendars").join(local), Shape::Whole, &[]),
         folder("lists", "data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
         file("settings", "state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
@@ -10256,6 +10260,39 @@ mod tests {
         let came = desk.exchange(&folder, &key, NOW + 5 * MINUTE);
         assert!(came.written.contains(CALLS_LOG) && came.pending == 0, "{came:?}");
         assert_eq!(calls::read_logs(&calls_of(&desk), NOW + 5 * MINUTE).len(), 1);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Batch A (18 October 2026): your security keys as a computer read them
+    /// (`data/pgp/cards/`) come to every device that knows the store; an
+    /// older Sioul keeps them waiting, writes them nowhere, takes nothing
+    /// out; updated, it reads them.
+    #[test]
+    fn an_older_sioul_keeps_your_security_keys_waiting() {
+        let base = scratch("cards-older");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let store = "data/pgp/cards/";
+        let card_file = desk.roots.data.join("pgp").join(sioul_core::securitykey::SHARED_CARDS).join("0006-12345678.toml");
+        std::fs::create_dir_all(card_file.parent().unwrap()).unwrap();
+        std::fs::write(&card_file, "[card]\nident = \"0006:12345678\"\ncert = \"AB\"\n").unwrap();
+        desk.exchange(&folder, &key, NOW);
+        // The phone's older Sioul: no such store, none known.
+        let older_stores = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != store).collect::<Vec<_>>();
+        OLDER.with(|older| *older.borrow_mut() = vec![store.to_string()]);
+        for n in 1..=2 {
+            let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: true, hurry: None }, &older_stores, NOW + n * MINUTE).unwrap();
+            assert_eq!(outcome.pending, 1, "kept waiting: {outcome:?}");
+        }
+        assert!(!phone.roots.data.join("pgp").join("cards").exists(), "nothing written");
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert!(card_file.exists(), "nothing taken out");
+        // Updated: it knows the store, and the key's file comes in.
+        OLDER.with(|older| older.borrow_mut().clear());
+        let came = phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        assert!(came.written.contains(store) && came.pending == 0, "{came:?}");
+        assert_eq!(std::fs::read(phone.roots.data.join("pgp").join("cards").join("0006-12345678.toml")).unwrap(), std::fs::read(&card_file).unwrap());
         let _ = std::fs::remove_dir_all(&base);
     }
 

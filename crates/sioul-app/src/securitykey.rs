@@ -132,6 +132,8 @@ pub(crate) fn for_draft(id: &str) -> String {
     let Some(address) = load_config().account(&draft.account).and_then(|a| a.address.clone()) else { return String::new() };
     let keys = Keys::load();
     match keys.own_for(&address) {
+        // A phone, until it can use the key: said, nothing sent.
+        Some(pgp::Own { place: Place::Card { .. }, .. }) if !sioul_sync::securitykey::usable_here() => json(&serde_json::json!({ "cannot": tr().text("seckey-sign-not-here", None) })),
         Some(pgp::Own { place: Place::Card { ident }, .. }) => {
             let label = keys.cards.iter().find(|c| c.ident == ident).map(|c| c.label(tr())).unwrap_or_default();
             json(&serde_json::json!({ "ident": ident, "label": label }))
@@ -829,7 +831,9 @@ pub(crate) fn stop_using(qt: &QtThread, shared: &Shared, ident: &str) {
     }
     let line = match securitykey::forget(ident) {
         Ok(()) => tr().text("seckey-stopped", None),
-        Err(e) => e,
+        // Read on another device of yours: stopped there.
+        Err(None) => tr().text("seckey-forget-elsewhere", None),
+        Err(Some(e)) => e,
     };
     tell(qt, shared, line);
     let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
@@ -869,7 +873,10 @@ pub(crate) fn known_view() -> String {
         .map(|card| {
             let name = holder_name(&card.holder);
             let title = if name.is_empty() { card.label(tr()) } else { format!("{}, {name}", card.label(tr())) };
+            let read_here = securitykey::known_cards().iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
             let source = match card.source.as_str() {
+                // Learnt from another device of yours (a phone): said so.
+                _ if !read_here => tr().text("seckey-source-shared", None),
                 "file" => say("seckey-source-file", &[("date", securitykey::full_date(tr(), card.checked))]),
                 "gnupg" => say("seckey-source-gnupg", &[("date", securitykey::full_date(tr(), card.checked))]),
                 url => say("seckey-source", &[("source", host_of(url)), ("date", securitykey::full_date(tr(), card.checked))]),

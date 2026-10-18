@@ -103,11 +103,13 @@ Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and
 - **Save the revocation certificate**, for a key made here: a copy into your downloads, to keep somewhere safe, apart from this device. It is what declares the key no longer to be used, should it ever be lost or stolen; anyone who has it can do so. Sioul keeps it beside the key, readable by you alone ([Mail, OpenPGP](mail.md)), and cannot revoke a key yet.
 - **Keys of others**: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window.
 
-Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there.
+Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there. A security key's public part is the exception: it travels (below).
 
 ### Security key
 
 Your OpenPGP keys can stay on a security key, such as a YubiKey or a Nitrokey: it signs and opens your mail itself, after its PIN, and its private keys never leave it. Sioul keeps only their public part. This works on a computer; on a phone, not yet.
+
+Your other devices learn that public part from the computer that read the key, sealed with the rest of what they share, never a private key nor the PIN. A phone then encrypts what you send to you as well, so that you can read your sent mail on every device, and hands your key to those you write to. It cannot use the key itself yet: a message waiting for the key says "Encrypted to your security key: open it on a computer for now", and **Sign** stays off there, with why.
 
 1. Plug the key in, then choose **Use a security key**. Sioul reads it without its PIN: its name and serial number, and what it signs and decrypts with.
 2. Sioul needs the public part of these keys, which the key does not hold. **Look for it** asks the address written on the key, your domain's key directory, then keys.openpgp.org; this tells those servers that someone looks for your key. **Import from GnuPG** takes it from GnuPG on this computer, when it has it. Or **Import a file…**; under **By hand**, the GnuPG command that writes it into a file, ready to copy.

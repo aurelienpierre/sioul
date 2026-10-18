@@ -103,11 +103,13 @@ Vos clés OpenPGP, pour signer et chiffrer vos courriels ([Les courriels](mail.m
 - **Enregistrer le certificat de révocation**, pour une clé créée ici : une copie dans vos téléchargements, à garder en lieu sûr, ailleurs que sur cet appareil. C’est lui qui déclare la clé hors d’usage, si elle est un jour perdue ou volée ; qui le détient peut le faire. Sioul le garde à côté de la clé, lisible par vous seulement ([Les courriels, OpenPGP](mail.md)), et ne sait pas encore révoquer une clé.
 - **Clés des autres** : celles venues avec leurs courriels, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
 
-Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas.
+Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas. La partie publique d’une clé de sécurité fait exception : elle voyage (ci-dessous).
 
 ### Clé de sécurité {#security-key}
 
 Vos clés OpenPGP peuvent rester sur une clé de sécurité, comme une YubiKey ou une Nitrokey : elle signe et ouvre vos courriels elle-même, après son code PIN, et ses clés privées ne la quittent jamais. Sioul n’en garde que la partie publique. Cela marche sur un ordinateur ; sur un téléphone, pas encore.
+
+Vos autres appareils apprennent cette partie publique de l’ordinateur qui a lu la clé, scellée avec le reste de ce qu’ils partagent, jamais une clé privée ni le code PIN. Un téléphone chiffre alors aussi pour vous ce que vous envoyez, pour que vous puissiez relire vos courriels envoyés sur chaque appareil, et donne votre clé à ceux à qui vous écrivez. Il ne peut pas encore utiliser la clé lui-même : un courriel qui attend la clé dit « Chiffré pour votre clé de sécurité : ouvrez-le sur un ordinateur pour l’instant », et **Signer** y reste désactivé, avec la raison.
 
 1. Branchez la clé, puis choisissez **Utiliser une clé de sécurité**. Sioul la lit sans son code PIN : son nom et son numéro de série, et ce avec quoi elle signe et déchiffre.
 2. Sioul a besoin de la partie publique de ces clés, que la clé ne contient pas. **La chercher** interroge l’adresse écrite sur la clé, l’annuaire de clés de votre domaine, puis keys.openpgp.org ; cela dit à ces serveurs que quelqu’un cherche votre clé. **Importer depuis GnuPG** la prend à GnuPG sur cet ordinateur, s’il l’a. Ou **Importer un fichier…** ; sous **À la main**, la commande GnuPG qui l’écrit dans un fichier, prête à copier.
