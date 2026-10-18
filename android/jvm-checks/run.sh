@@ -62,6 +62,15 @@
 #   unlocked phone; swapped titles, another order, the car extender's and the
 #   watch's; the notification by its name (Rust's `replies::notice`), gone, or
 #   another profile's.
+# - MmsCheck, compiled and run apart: the multimedia messages Rust writes
+#   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
+#   encoder writes now) read by Android's own parser, as Android's MMS service
+#   reads the message an app hands it: AOSP's PduParser and the classes it
+#   needs (aosp/, copied unchanged from platform/frameworks/base at commit
+#   99b01a65cc4c104933788b3143285ab6bae65827, android16-release,
+#   telephony/common/com/google/android/mms/; Apache-2.0, its NOTICE beside
+#   them), with stand-ins for the four Android classes they name (stand-ins/:
+#   android.jar's would throw). Never part of Sioul's program.
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #
@@ -176,6 +185,24 @@ if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$android_jar" -
 fi
 sed "s|^|  |" "$work/javac.log"
 
+# AOSP's MMS parser apart from Sioul's Java and android.jar, with its stand-ins; MmsCheck against it.
+echo "jvm-checks: compiling AOSP's MMS parser apart, with its stand-ins"
+aosp_sources=()
+while IFS= read -r -d '' file; do
+    aosp_sources+=("$file")
+done < <(find "$here/aosp" "$here/stand-ins" -name '*.java' -print0 | sort -z)
+if ! javac --release 17 -nowarn -Xlint:none -encoding UTF-8 -d "$work/aosp" "${aosp_sources[@]}" > "$work/javac-aosp.log" 2>&1; then
+    sed "s|^|  |" "$work/javac-aosp.log"
+    echo "jvm-checks: javac failed on AOSP's parser (above)." >&2
+    exit 1
+fi
+if ! javac --release 17 -Xlint:all,-options -encoding UTF-8 -cp "$json_jar:$work/aosp" -d "$work/mms" "$here/MmsCheck.java" > "$work/javac-mms.log" 2>&1; then
+    sed "s|^|  |" "$work/javac-mms.log"
+    echo "jvm-checks: javac failed on MmsCheck (above)." >&2
+    exit 1
+fi
+sed "s|^|  |" "$work/javac-mms.log"
+
 failed=()
 for check in "${checks[@]}"; do
     if ! java -Dsioul.root="$root" -cp "$json_jar:$work/out:$android_jar" "com.aurelienpierre.sioul.$check" > "$work/$check.log" 2>&1; then
@@ -183,6 +210,10 @@ for check in "${checks[@]}"; do
     fi
     sed -e "s|^$check: ||" -e "s|^|  $check: |" "$work/$check.log"
 done
+if ! java -Dsioul.root="$root" -cp "$json_jar:$work/aosp:$work/mms" com.aurelienpierre.sioul.MmsCheck > "$work/MmsCheck.log" 2>&1; then
+    failed+=(MmsCheck)
+fi
+sed -e "s|^MmsCheck: ||" -e "s|^|  MmsCheck: |" "$work/MmsCheck.log"
 
 if [[ "$javadoc" == yes ]]; then
     if ! javadoc -private -encoding UTF-8 -docencoding UTF-8 -charset UTF-8 -notimestamp -quiet \
@@ -198,4 +229,4 @@ if [[ ${#failed[@]} -gt 0 ]]; then
     echo "jvm-checks: failed: ${failed[*]}"
     exit 1
 fi
-echo "jvm-checks: all ${#checks[@]} checks passed$([[ "$javadoc" == yes ]] && echo ", and javadoc")"
+echo "jvm-checks: all $((${#checks[@]} + 1)) checks passed$([[ "$javadoc" == yes ]] && echo ", and javadoc")"

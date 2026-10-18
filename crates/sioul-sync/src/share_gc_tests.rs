@@ -1139,6 +1139,253 @@ fn a_put_back_beside_the_exchanges_brings_every_note_back() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// A note written and dated as it was last changed, `when`.
+fn put_dated(dir: &Path, relative: &str, bytes: &[u8], when: std::time::SystemTime) {
+    put(dir, relative, bytes);
+    std::fs::File::options().write(true).open(dir.join(relative)).unwrap().set_modified(when).unwrap();
+}
+
+/// The held files of an exchange's outcome, all folders together.
+fn held(outcome: &Outcome) -> Option<usize> {
+    outcome.withheld.as_ref().map(|w| w.iter().map(|w| w.count).sum())
+}
+
+/// Every file Sioul is writing below `dir` (`TEMPORARY`), at any depth.
+fn being_written(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            found.extend(being_written(&path));
+        } else if entry.file_name().to_string_lossy().ends_with(TEMPORARY) {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// Whether a folder below `dir` holds no file of its own: one made for a put
+/// back's files, holding them alone, which an exchange would take for emptied.
+fn a_folder_without_its_files(dir: &Path) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            if names_in(&path).is_empty() {
+                return Some(path);
+            }
+            if let Some(found) = a_folder_without_its_files(&path) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// L-1 (review of 18 October 2026): "Put them back" makes no folder an
+/// exchange could meet before its note is in it. An exchange landing while a
+/// batch opens finds the bulk held, no folder emptied; a note whose content
+/// is not on this device stays held after, with its own date, never a
+/// deletion of yours (until then, a folder made for the batch held its files
+/// alone, listed empty, was taken for emptied, and such a note left the
+/// other devices ten minutes later).
+#[test]
+fn a_put_back_makes_no_folder_an_exchange_takes_for_emptied() {
+    let base = scratch("gc-put-back-folders");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 2 * DAY_MS) as u64);
+    // 600 notes in sixty folders of ten; the contents of bulk/f20/0200 and 0201 sealed apart first, to be known.
+    let name = |n: usize| format!("bulk/f{:02}/{n:04}.md", n / 10);
+    let body = |n: usize| format!("# note {n} of a bulk in sixty folders, with a few words in it\n").into_bytes();
+    put_dated(&dn, "today.md", b"# Today\n", when);
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    let sealed_names = || std::fs::read_dir(folder.join("blobs")).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect::<BTreeSet<String>>();
+    let before = sealed_names();
+    for n in [200, 201] {
+        put_dated(&dn, &name(n), &body(n), when);
+    }
+    with_notes(&desk, &folder, &key, NOW + MINUTE, &dn);
+    let theirs: Vec<String> = sealed_names().difference(&before).cloned().collect();
+    assert_eq!(theirs.len(), 2, "{theirs:?}");
+    for n in (0..600).filter(|n| !matches!(n, 200 | 201)) {
+        put_dated(&dn, &name(n), &body(n), when);
+    }
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(held(&with_notes(&desk, &folder, &key, NOW + 3 * MINUTE, &dn)), Some(600));
+    for sealed in &theirs {
+        std::fs::remove_file(folder.join("blobs").join(sealed)).unwrap();
+    }
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let putting = {
+        let folder = folder.clone();
+        std::thread::spawn(move || put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/"))
+    };
+    // The minute's tick landing while a batch opens, before f20's notes are placed.
+    let mut met = None;
+    while met.is_none() && !putting.is_finished() {
+        if !being_written(&dn).is_empty() && !dn.join(name(202)).exists() {
+            let lone = a_folder_without_its_files(&dn);
+            met = Some((with_notes(&desk, &folder, &key, NOW + 4 * MINUTE, &dn), lone));
+        }
+    }
+    let said = putting.join().unwrap();
+    let (met, lone) = met.expect("an exchange while a batch opened");
+    assert_eq!(lone, None, "a folder made before its notes were in it");
+    assert!(!met.problems.iter().any(|p| p.starts_with("share-vanished:files/notes/bulk")), "a folder taken for emptied: {:?}", met.problems);
+    assert_eq!(said, Ok(PutBack { back: 598, held: 600 }));
+    // The two whose contents are not here: held, with their own date, as the bulk they went in.
+    let after = with_notes(&desk, &folder, &key, NOW + 5 * MINUTE, &dn);
+    let card = withheld(&desk.memory, &desk.id);
+    assert_eq!((held(&after), card.iter().map(|w| (w.count, w.first)).collect::<Vec<_>>()), (Some(2), vec![(2, NOW + 3 * MINUTE)]), "{:?}", after.problems);
+    let later = with_notes(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    assert_eq!((held(&later), later.sent), (Some(2), 0), "still held twelve minutes on, never sent as deletions");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The put back of `a_put_back_cut_short_leaves_its_notes_held`, in a process
+/// of its own, which that test stops: never run by itself.
+#[test]
+#[ignore = "run by a_put_back_cut_short_leaves_its_notes_held, in a process of its own"]
+fn a_put_back_to_cut_short() {
+    let (Ok(base), Ok(id)) = (std::env::var("SIOUL_TEST_PUT_BACK_BASE"), std::env::var("SIOUL_TEST_PUT_BACK_ID")) else { return };
+    let base = PathBuf::from(base);
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let root = base.join("desk");
+    let roots = Roots { config: root.join("config"), data: root.join("data"), state: root.join("state") };
+    let desk = Computer { memory: roots.state.join("share").join("memory.json"), roots, id };
+    let stores = stores_with(&desk, &base.join("desk-notes"), false);
+    let _ = put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/");
+}
+
+/// L-1 (review of 18 October 2026): a put back cut short while a batch opens
+/// (Sioul quit or stopped meanwhile) leaves its notes held, on the Porch:
+/// no folder of theirs made before its note is in it, the files it was
+/// writing fresh, swept an hour on, and Put them back again brings every
+/// one, dated as it was (until then, the folder made for the batch held its
+/// files alone, listed empty, and the bulk left the card for good).
+#[test]
+fn a_put_back_cut_short_leaves_its_notes_held() {
+    let base = scratch("gc-put-back-cut");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 2 * DAY_MS) as u64);
+    put_dated(&dn, "today.md", b"# Today\n", when);
+    let count = 600;
+    let name = |n: usize| format!("bulk/{n:04}.md");
+    for n in 0..count {
+        put_dated(&dn, &name(n), format!("# note {n} of a bulk, with a few words in it\n").repeat(40).as_bytes(), when);
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(held(&with_notes(&desk, &folder, &key, NOW + MINUTE, &dn)), Some(count));
+    // The put back in a process of its own, stopped while a batch it opened waits for the lock.
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["share::gc_tests::a_put_back_to_cut_short", "--exact", "--ignored", "--test-threads=1"])
+        .env("SIOUL_TEST_PUT_BACK_BASE", &base)
+        .env("SIOUL_TEST_PUT_BACK_ID", &desk.id)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let started = std::time::Instant::now();
+    while being_written(&dn).is_empty() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(60), "no file opened within a minute");
+        std::thread::sleep(std::time::Duration::from_micros(200));
+    }
+    let running = exchange_lock(&desk.memory, true).unwrap();
+    let (mut seen, mut steady) = (0, std::time::Instant::now());
+    while steady.elapsed() < std::time::Duration::from_millis(700) {
+        let now = being_written(&dn).len();
+        if now != seen {
+            (seen, steady) = (now, std::time::Instant::now());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    child.kill().unwrap();
+    let _ = child.wait();
+    drop(running);
+    let placed = (0..count).filter(|n| dn.join(name(*n)).exists()).count();
+    let left = being_written(&dn);
+    assert!(!left.is_empty(), "stopped while a batch was opened");
+    assert_eq!(a_folder_without_its_files(&dn), None, "a folder made before its notes were in it");
+    assert!(left.iter().all(|p| std::fs::metadata(p).unwrap().modified().unwrap().elapsed().is_ok_and(|age| age < std::time::Duration::from_secs(600))), "the files it was writing are fresh: swept an hour on");
+    // The next exchange: the rest still held, on the Porch, no folder taken for emptied.
+    let next = with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert!(!next.problems.iter().any(|p| p.starts_with("share-vanished:files/notes/bulk")), "{:?}", next.problems);
+    assert_eq!(held(&next), Some(count - placed), "{placed} placed before the stop");
+    assert_eq!(withheld(&desk.memory, &desk.id).iter().map(|w| w.count).sum::<usize>(), count - placed);
+    // Put them back again: every one, dated as it was.
+    let stores = stores_with(&desk, &dn, false);
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(PutBack { back: count - placed, held: count - placed }));
+    assert!((0..count).all(|n| std::fs::metadata(dn.join(name(n))).is_ok_and(|m| m.modified().ok() == Some(when))), "every note back, dated as it was");
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 3 * MINUTE, &dn).withheld, Some(Vec::new()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// I-1 (review of 18 October 2026): "Put them back" brings back the bulk
+/// held, as the Porch counts it, never a note you deleted on purpose beside
+/// a bulk's remainder (one of yours, gone a minute ago, going as you meant).
+#[test]
+fn a_put_back_leaves_a_deletion_of_yours_beside_a_remainder() {
+    let base = scratch("gc-put-back-yours");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 2 * DAY_MS) as u64);
+    put_dated(&dn, "today.md", b"# Today\n", when);
+    for n in 0..12 {
+        put_dated(&dn, &format!("trip/{n}.md"), format!("# day {n}\n").as_bytes(), when);
+    }
+    for n in 0..100 {
+        put_dated(&dn, &format!("keep/{n:03}.md"), format!("# keep {n}\n").as_bytes(), when);
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("trip")).unwrap();
+    assert_eq!(held(&with_notes(&desk, &folder, &key, NOW + MINUTE, &dn)), Some(12));
+    // Three put back by hand: nine left, no longer many, held as the bulk they went in.
+    for n in 0..3 {
+        put_dated(&dn, &format!("trip/{n}.md"), format!("# day {n}\n").as_bytes(), when);
+    }
+    assert_eq!(held(&with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn)), Some(9));
+    // One of yours deleted beside them: not held, and never brought back.
+    std::fs::remove_file(dn.join("keep/050.md")).unwrap();
+    assert_eq!(held(&with_notes(&desk, &folder, &key, NOW + 3 * MINUTE, &dn)), Some(9));
+    let stores = stores_with(&desk, &dn, false);
+    assert_eq!(put_back_withheld(&folder, &key, &desk.memory, &desk.id, &stores, "files/notes/"), Ok(PutBack { back: 9, held: 9 }), "the nine the Porch counts");
+    assert!(!dn.join("keep/050.md").exists(), "a deletion of yours stays one");
+    assert!((3..12).all(|n| dn.join(format!("trip/{n}.md")).is_file()));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// I-2 (review of 18 October 2026): what Notes or Papers would send, asked
+/// before switching them on (`estimate`), removes nothing it passes over: a
+/// file Sioul left half written stays for an exchange to sweep, under its
+/// lock (in use, it may be a put back's, about to take its place).
+#[test]
+fn an_estimate_removes_nothing() {
+    let base = scratch("gc-estimate-looks");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    let left = dn.join(format!(".today.md.1-1{TEMPORARY}"));
+    std::fs::write(&left, b"half").unwrap();
+    std::fs::File::options().write(true).open(&left).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 3600)).unwrap();
+    assert!(estimate(&stores_with(&desk, &dn, false)).0 >= 1, "the notes listed");
+    assert!(left.exists(), "an estimate looks, and removes nothing");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    assert!(!left.exists(), "an exchange sweeps it, an hour old");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// L-9 (review of 18 October 2026): a note replaced by a link is said as
 /// that note, never left on the others; "Take them out everywhere" on its
 /// line takes it out alone, never a note whose name begins as its.

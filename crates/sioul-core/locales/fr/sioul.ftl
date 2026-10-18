@@ -2886,10 +2886,10 @@ porch-withheld-leave = { $count ->
 porch-withheld-put-back = Les remettre
 porch-withheld-putting-back = Remise en place…
 porch-withheld-take-out = Les retirer maintenant
-porch-withheld-none-back = Rien n’est revenu : leurs places sont prises, ou leurs contenus ne sont pas sur cet appareil.
+porch-withheld-none-back = Rien n’est revenu : d’autres fichiers ou des liens sont à leurs places, ou leurs contenus ne sont pas sur cet appareil.
 porch-withheld-some-back = Revenus : { $back } sur { $count }. { $rest ->
-    [one] Un n’est pas revenu : sa place est prise, ou son contenu n’est pas sur cet appareil. Les remettre essaie de nouveau.
-   *[other] { $rest } ne sont pas revenus : leurs places sont prises, ou leurs contenus ne sont pas sur cet appareil. Les remettre essaie de nouveau.
+    [one] Un n’est pas revenu : un autre fichier ou un lien est à sa place, ou son contenu n’est pas sur cet appareil.
+   *[other] { $rest } ne sont pas revenus : d’autres fichiers ou des liens sont à leurs places, ou leurs contenus ne sont pas sur cet appareil.
 }
 share-devices-gone = Appareils qui ne comptent plus
 share-device-gone-left = Il a quitté le partage. Ses fichiers sont encore dans le dossier : { $size }.

@@ -150,6 +150,8 @@
 //!
 //! - [`calls`]: calls screened on a phone.
 //! - [`appnotes`]: other apps' notifications on a phone: shown now, or held until their time.
+//! - [`texts`]: the phone's texts, read on your computers, and texts written there that the phone sends.
+//! - [`mms`]: multimedia messages sent from a computer: written as Android sends them, measured, and the carrier's answer.
 //!
 //! ## Settings, words and files
 //!
@@ -205,6 +207,8 @@ pub mod mailsearch;
 pub mod maildir;
 pub mod mailnote;
 pub mod mailto;
+// mms: multimedia messages sent from a computer through the phone (docs/texts.md).
+pub mod mms;
 pub mod money;
 pub mod needs;
 pub mod overlaps;
