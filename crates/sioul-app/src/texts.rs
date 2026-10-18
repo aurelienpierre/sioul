@@ -908,6 +908,8 @@ fn decide(here: &str, seal: &Seal, region: Option<&'static phones::Region>, now:
         let answer = crate::steps::java("texts-send", &json!({ "key": r.key, "to": phones::key(&r.to, region), "body": r.body, "sub": sub }).to_string());
         if answer["handed"] == true {
             let _ = rules::record(&private(), &Claim { key: r.key.clone(), at: now_ms(), state: "handed".into(), ..Claim::default() });
+            // Their next texts come through at once for twenty minutes, as after a reply (`replies`).
+            crate::replies::texted(&phones::key(&r.to, region));
             said.push(Outcome { key: r.key.clone(), state: "handed".into(), at: now_ms(), ..Outcome::default() });
             eprintln!("sioul: texts: one handed to Android ({} part(s))", answer["parts"].as_i64().unwrap_or(1));
         } else if answer.is_null() {
@@ -1292,7 +1294,7 @@ pub(crate) fn ahead_of(phone: &str) -> i64 {
 // ---------------------------------------------------------------- a computer: the phone that sends
 
 /// The phones in the sharing, the one chosen to send first, else the one that shared last.
-fn phones() -> Vec<sioul_sync::devices::Entry> {
+pub(crate) fn phones() -> Vec<sioul_sync::devices::Entry> {
     let Some((_, Some((folder, key)))) = crate::share::vault() else { return Vec::new() };
     let mut all: Vec<sioul_sync::devices::Entry> = sioul_sync::devices::all(&folder, &key).0.into_iter().filter(|d| d.kind == sioul_sync::devices::PHONE).collect();
     let chosen = choice();
@@ -1731,6 +1733,36 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
         _ => (json!({}), false),
     };
     (answer.to_string(), shared)
+}
+
+/// The texts this computer wrote to a number (`dial`) since a moment (ms),
+/// oldest first, for the Porch's reply under a line (`replies::Mine`): the
+/// words and their state in the texts' own words ("Sent at 14:03.").
+pub(crate) fn sent_to(dial: &str, since_ms: i64) -> Vec<sioul_core::replies::Mine> {
+    let Some((here, seal, _)) = sealed() else { return Vec::new() };
+    let (_, requests, outcomes) = records(&here, &seal);
+    let region = sioul_core::reach::region(&load_config());
+    let to = phones::key(dial, region);
+    let shared = sending_phone().filter(|p| p.exported > 0).map(|p| p.exported * 1000);
+    let now = Zoned::now();
+    let mut sent: Vec<&Request> = requests.iter().filter(|r| r.device == here && r.written >= since_ms && phones::key(&r.to, region) == to).collect();
+    sent.sort_by_key(|r| r.written);
+    sent.into_iter()
+        .map(|r| {
+            let said = rules::said(rules::state_of(&r.key, &outcomes), shared, tr(), &now);
+            sioul_core::replies::Mine { key: r.key.clone(), time: rules::time_of_day(r.written, &now), text: r.body.clone(), said: said.text, waiting: said.state == "waiting", again: said.again, texts: true }
+        })
+        .collect()
+}
+
+/// The numbers this computer texted (`phones::key`) whose phone took the text
+/// since a moment (ms, the phone's clock): handed, sent or delivered then.
+pub(crate) fn texted_since(since_ms: i64) -> Vec<String> {
+    let Some((here, seal, _)) = sealed() else { return Vec::new() };
+    let (_, requests, outcomes) = records(&here, &seal);
+    let region = sioul_core::reach::region(&load_config());
+    let took = |key: &str| outcomes.iter().any(|o| o.key == key && matches!(o.state.as_str(), "handed" | "sent" | "delivered") && o.at >= since_ms);
+    requests.iter().filter(|r| r.device == here && took(&r.key)).map(|r| phones::key(&r.to, region)).collect()
 }
 
 /// Whether the Texts page has something to show here: the part on, and a phone that sends.

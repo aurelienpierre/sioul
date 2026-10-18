@@ -79,8 +79,9 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
     if lines.is_empty() {
         return false;
     }
-    // What it offers a reply from your computers, said when that changed (a Reply, a Mark as read).
-    let offered = crate::replies::offered(&here.id, posted, &lines, &extra, now_ms);
+    // What it offers a reply from your computers, said when that changed (a Reply, a Mark as read),
+    // as the phone's switch for its app says.
+    let offered = crate::replies::offered(&here.id, posted, &lines, &extra, choices.answers(&posted.package), now_ms);
     match rules::carry_into(&calls::own_file(&rules::folder(), rules::LOG, &here.id), &lines, now_ms) {
         Ok(0) => offered,
         Ok(written) => {
@@ -192,9 +193,13 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
     let people = People::load(&People::default_path());
     let clock = Clock::load(config, now);
     let region = senders.region();
+    // A conversation this computer answered in the last twenty minutes shows at once, as its phone
+    // lets it through, but in a pause (`replies`).
+    let answered = if moment.times.contains(&sioul_core::attention::Column::Pause) { sioul_core::replies::Answered::default() } else { crate::replies::answered_here(all, now) };
     let shows = |line: &Line| {
         let always = line.always || (!line.key.is_empty() && people.admits_number(&line.key, region));
-        rules::reaches_now(&attention, line, who_now(&senders, &line.key), always, &moment)
+        let who = who_now(&senders, &line.key);
+        rules::reaches_now(&attention, line, who, always, &moment) || (who != Some(Who::Blocked) && answered.holds(line))
     };
     let name_of = |key: &str| {
         let judged = senders.judge_number(key);
@@ -204,7 +209,10 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
     let phone = |device: &str| calls::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
     let column = |at: i64| column_at(&clock, at, now);
     let lister = rules::Lister { now, tr: tr(), region, name_of: &name_of, shows: &shows, phone: &phone, column: &column };
-    rules::lines(all, &calls::read_seen(&rules::folder()), &lister)
+    let mut lines = rules::lines(all, &calls::read_seen(&rules::folder()), &lister);
+    // What each line offers a reply from this computer (`replies`).
+    crate::replies::fill(&mut lines, all, now);
+    lines
 }
 
 /// A person's messages of the week (`numbers`: theirs, as written), for
@@ -257,11 +265,17 @@ fn setup() -> Value {
     apps.retain(|(package, _)| package != sioul_core::appnotes::OWN);
     apps.sort_by_cached_key(|(package, label)| (*package != choices.sms_app, sioul_core::text::fold(label).into_iter().collect::<String>()));
     let offered: Vec<Value> = [Send::Off, Send::Who, Send::Words].iter().map(|s| json!({ "value": s.id(), "label": text(&format!("phonemsgs-send-{}", s.id())) })).collect();
+    // Each app's choice, and under each that sends, "Answer from your computers" (on unless switched off).
     let apps: Vec<Value> = apps
         .into_iter()
-        .map(|(package, label)| {
+        .flat_map(|(package, label)| {
             let help = if package == choices.sms_app { text("phonemsgs-setup-sms") } else { String::new() };
-            json!({ "key": format!("app.{package}"), "kind": "choice", "label": if label.is_empty() { package.clone() } else { label }, "help": help, "value": choices.send(&package, false).id(), "choices": offered })
+            let send = choices.send(&package, false);
+            let mut rows = vec![json!({ "key": format!("app.{package}"), "kind": "choice", "label": if label.is_empty() { package.clone() } else { label }, "help": help, "value": send.id(), "choices": offered })];
+            if send != Send::Off {
+                rows.push(json!({ "key": format!("answers.{package}"), "kind": "bool", "label": text("phonemsgs-setup-answers"), "help": text("phonemsgs-setup-answers-help"), "value": choices.answers(&package), "choices": [] }));
+            }
+            rows
         })
         .collect();
     json!({
@@ -287,9 +301,19 @@ fn set(package: &str, value: &str) -> Result<(), String> {
     })
 }
 
+/// "Answer from your computers" switched for an app, under the choices' lock.
+fn set_answers(package: &str, on: bool) -> Result<(), String> {
+    let path = Choices::default_path();
+    sioul_core::filelock::with_lock(&path, || {
+        let mut choices = Choices::load(&path);
+        choices.set_answers(package, on);
+        choices.save(&path)
+    })
+}
+
 /// What the window asks (`Sioul::phone_messages`): "view" (the Porch's
 /// section), "seen" {ids}, "unseen" {at} (within its ten seconds), "block"
-/// {number}, "setup" (the phone's tab), "set" {key: `app.<package>`, value}, "part" {on};
+/// {number}, "setup" (the phone's tab), "set" {key: `app.<package>` or `answers.<package>`, value}, "part" {on};
 /// "reply" {phone, verb ("reply", "read"), notice, app, line, words, again}
 /// (a reply from this computer, `replies::ask`: {key, said}), "take-back" {key}.
 /// Answers its JSON, and whether what travels changed (to share now).
@@ -334,8 +358,12 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             Err(e) => answer(e, false, 0),
         },
         "set" => {
-            let package = text("key");
-            if let Err(e) = set(package.strip_prefix("app.").unwrap_or(&package), &text("value")) {
+            let key = text("key");
+            let done = match key.strip_prefix("answers.") {
+                Some(package) => set_answers(package, asked["value"] == true),
+                None => set(key.strip_prefix("app.").unwrap_or(&key), &text("value")),
+            };
+            if let Err(e) = done {
                 eprintln!("sioul: phone messages: {e}");
             }
             (setup().to_string(), false)

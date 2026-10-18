@@ -43,7 +43,7 @@ Your computers keep every text and everything a later restore onto a new phone w
 ## Where to find it {#where-to-find-it}
 
 - **In the places on the left**, under Mail.
-- **On the Porch**, a text's **Text back** opens its conversation here.
+- **On the Porch**, a text's **Reply** sends one of these texts, and **Open on the Texts page**, in its menu, opens its conversation here (**Text back**, where no Reply is offered).
 - **On a person's sheet**, **Texts with them…**.
 
 ## Not there yet {#not-there-yet}

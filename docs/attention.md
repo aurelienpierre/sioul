@@ -109,6 +109,8 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 | 9. **Holds** | the Porch resting after a pause (mail shown, not told); a meeting (no meal's notice, no "Work hours are over"); the chat limit (chat sites wait) | later, or not at all |
 | 10. **Output** | `Output { level, shown, told, pierce, step }`; `pierce` when it is told through the system's do-not-disturb (codes, doses, alarms, Always through) | |
 
+**A conversation answered from a computer** comes through at once for 20 minutes after your reply was handed, but in a pause, and never from the blocked nor a conversation set to never: the callers' too, on the phone (`appnotes::Decision::answered`) and on the Porch of the computer that answered (`replies::Answered`); [android.md](android.md#replies-from-your-computers).
+
 **Which device tells, once**, stays the caller's: the device you use tells mail, sites and the end of work ("notices" lease); doses and Health's notices follow the "health" lease; each device tells its own events.
 
 ### Examples

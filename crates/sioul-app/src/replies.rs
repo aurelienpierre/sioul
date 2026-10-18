@@ -58,8 +58,10 @@ fn seal() -> Option<ReplySeal> {
 const STATES: &[&str] = &["handed", "gone", "no-reply", "no-read", "closed", "locked", "activity", "failed"];
 
 /// Taken and not said yet, in the listener's process: the key, its
-/// notification's name and its words' hash (`replies::words_hash`), never the words.
-static TAKEN: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
+/// notification's name, its words' hash (`replies::words_hash`), never the
+/// words, and its conversation's key when it is a reply (to let their
+/// answer through: `replies::note_answered`).
+static TAKEN: Mutex<Vec<(String, String, String, String)>> = Mutex::new(Vec::new());
 /// Handed lately: the key, its notification's name, its words' hash, when;
 /// looked for in its app's next notification (`heard`) for `SHOWN_WITHIN_MS`.
 static HANDED: Mutex<Vec<(String, String, String, i64)>> = Mutex::new(Vec::new());
@@ -107,8 +109,9 @@ fn taken(key: &str) -> Value {
     match rules::take(&rules::private_folder(), key, &seal, now_ms()) {
         Ok(Taken::Go(due)) => {
             if let Ok(mut taken) = TAKEN.lock() {
-                taken.retain(|(k, _, _)| k != key);
-                taken.push((key.to_string(), due.notice.clone(), rules::words_hash(&due.words)));
+                taken.retain(|(k, _, _, _)| k != key);
+                let talk = if due.verb == "reply" { due.talk.clone() } else { String::new() };
+                taken.push((key.to_string(), due.notice.clone(), rules::words_hash(&due.words), talk));
             }
             json!({ "go": true, "words": due.words })
         }
@@ -135,15 +138,20 @@ fn result(key: &str, asked: &Value) -> Value {
         eprintln!("sioul: replies: {e}");
     }
     let taken = TAKEN.lock().ok().and_then(|mut taken| {
-        let at = taken.iter().position(|(k, _, _)| k == key)?;
+        let at = taken.iter().position(|(k, _, _, _)| k == key)?;
         Some(taken.remove(at))
     });
     if state == "handed"
-        && let Some((key, notice, hash)) = taken
-        && let Ok(mut handed) = HANDED.lock()
+        && let Some((key, notice, hash, talk)) = taken
     {
-        handed.retain(|h| now - h.3 <= rules::SHOWN_WITHIN_MS);
-        handed.push((key, notice, hash, now));
+        // Their answer to your answer comes through at once for twenty minutes (decision 18).
+        if let Err(e) = rules::note_answered(&rules::private_folder(), &talk, now) {
+            eprintln!("sioul: replies: {e}");
+        }
+        if let Ok(mut handed) = HANDED.lock() {
+            handed.retain(|h| now - h.3 <= rules::SHOWN_WITHIN_MS);
+            handed.push((key, notice, hash, now));
+        }
     }
     json!({ "said": true })
 }
@@ -181,9 +189,9 @@ fn own_live() -> Option<std::path::PathBuf> {
 /// What a relayed notification offers a reply from your computers, said
 /// in this phone's live lines when it changed (`replies::offer`): written
 /// with its lines (`phonemsgs::note`). Whether a line was written.
-pub(crate) fn offered(device: &str, posted: &Posted, lines: &[Line], extra: &Extra, now_ms: i64) -> bool {
+pub(crate) fn offered(device: &str, posted: &Posted, lines: &[Line], extra: &Extra, answers: bool, now_ms: i64) -> bool {
     let Some(first) = lines.first().filter(|l| !l.notice.is_empty()) else { return false };
-    let live = Live { notice: first.notice.clone(), app: posted.package.clone(), talk: first.talk.clone(), reply: extra.offer.reply, read: extra.offer.read, at: now_ms, ..Live::default() };
+    let live = Live { notice: first.notice.clone(), app: posted.package.clone(), talk: first.talk.clone(), reply: answers && extra.offer.reply, read: answers && extra.offer.read, at: now_ms, ..Live::default() };
     match rules::offer(&rules::live_file(&phonemsgs::folder(), device), &live) {
         Ok(written) => written,
         Err(e) => {
@@ -299,8 +307,10 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
     let ledger_path = private.join(sioul_core::texts::LEDGER);
     let decided = sioul_core::filelock::with_lock(&ledger_path, || -> Result<(Vec<rules::Due>, Vec<Outcome>), String> {
         let ledger = Ledger::open(private, now)?;
-        // The phone's switch per app, "Answer from your computers", comes with the Porch's box.
-        let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &|_: &str| true };
+        // The phone's switch per app, "Answer from your computers" (Settings ▸ This phone ▸ On your computers).
+        let choices = phonemsgs::Choices::load(&phonemsgs::Choices::default_path());
+        let answers = |app: &str| choices.answers(app);
+        let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers };
         let (mut due, mut said) = (Vec::new(), Vec::new());
         for ask in asks {
             let (state, reason) = match rules::verdict(ask, &judge) {
@@ -416,6 +426,80 @@ pub(crate) fn take_back(key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a conversation was answered from a computer within twenty
+/// minutes (`replies::answered_lately`): `appnotes::decide` lets its
+/// messages through at once then, but in a pause.
+pub(crate) fn answered_lately(talk: &str) -> bool {
+    rules::answered_lately(&rules::private_folder(), talk, now_ms())
+}
+
+/// A text a computer asked for, handed to Android (`texts`): an answer as
+/// a reply is, by a hash of the number (`replies::answered_number`), so
+/// that their next texts come through at once for twenty minutes too.
+pub(crate) fn texted(number: &str) {
+    if let Err(e) = rules::note_answered(&rules::private_folder(), &rules::answered_number(number), now_ms()) {
+        eprintln!("sioul: replies: {e}");
+    }
+}
+
+/// Whether one of these numbers (`phones::key`) was texted from a computer within twenty minutes.
+pub(crate) fn texted_lately(numbers: &[String]) -> bool {
+    let (folder, now) = (rules::private_folder(), now_ms());
+    numbers.iter().any(|n| rules::answered_lately(&folder, &rules::answered_number(n), now))
+}
+
+/// What this computer answered lately, for its Porch (`replies::Answered`):
+/// its replies handed or shown within twenty minutes, the numbers it texted then.
+pub(crate) fn answered_here(all: &[Line], now: &jiff::Zoned) -> rules::Answered {
+    let Some((here, _, key)) = sharing() else { return rules::Answered::default() };
+    let root = phonemsgs::folder();
+    let now_ms = now.timestamp().as_millisecond();
+    let own: Vec<Ask> = rules::read_asks(std::slice::from_ref(&root), &ReplySeal::new(&key)).0.into_iter().filter(|a| a.device == here).collect();
+    let mut answered = rules::Answered::of(&own, &rules::read_outcomes(&root), all, now_ms);
+    // The texts this computer sent, read only where a phone's line is a text.
+    if all.iter().any(|l| l.kind == "text") {
+        for number in crate::texts::texted_since(now_ms - rules::ANSWERED_MS) {
+            answered.texted(number);
+        }
+    }
+    answered
+}
+
+/// The Porch's lines' answers on a computer with the part on
+/// (`replies::answer_of`): what each phone says of its notifications, this
+/// computer's own requests and every phone's outcomes, the texts this
+/// computer wrote; a line whose Mark as read was handed is seen, here and on
+/// every device, and leaves the Porch (decision 13).
+pub(crate) fn fill(lines: &mut Vec<sioul_core::phonemsgs::PorchLine>, all: &[Line], now: &jiff::Zoned) {
+    let Some((here, _, key)) = sharing() else { return };
+    let root = phonemsgs::folder();
+    let now_ms = now.timestamp().as_millisecond();
+    let live = rules::read_live(&root, now_ms);
+    let seal = ReplySeal::new(&key);
+    let own: Vec<Ask> = rules::read_asks(std::slice::from_ref(&root), &seal).0.into_iter().filter(|a| a.device == here).collect();
+    let outcomes = rules::read_outcomes(&root);
+    let phones = crate::texts::phones();
+    let shared = |device: &str| phones.iter().find(|p| p.id == device).filter(|p| p.exported > 0).map(|p| p.exported * 1000);
+    let time_of = |ms: i64| sioul_core::texts::time_of_day(ms, now);
+    let sent = |dial: &str, since: i64| crate::texts::sent_to(dial, since);
+    let offer = rules::Offer { live: &live, asks: &own, outcomes: &outcomes, tr: crate::backend::tr(), texts: crate::texts::readable(), shared: &shared, time_of: &time_of, sent_texts: &sent };
+    let by_id: std::collections::BTreeMap<&str, &Line> = all.iter().map(|l| (l.id.as_str(), l)).collect();
+    let mut seen: Vec<String> = Vec::new();
+    for line in lines.iter_mut() {
+        let group: Vec<&Line> = line.ids.iter().filter_map(|id| by_id.get(id.as_str()).copied()).collect();
+        line.answer = rules::answer_of(line, &group, &offer);
+        if line.answer.as_ref().is_some_and(|a| rules::read_handed(&own, &outcomes, &a.phone, &a.notice)) {
+            seen.extend(line.ids.iter().cloned());
+        }
+    }
+    if !seen.is_empty() {
+        if let Err(e) = calls::mark_seen(&root, &here, &seen, now_ms) {
+            eprintln!("sioul: replies: {e}");
+        }
+        lines.retain(|l| !l.ids.iter().any(|id| seen.contains(id)));
+    }
+}
+
 /// `listener`, for Java (android/main.cpp, AppNotes.nativeReply); a panic
 /// answers "null", and nothing is sent. Given back to `sioul_string_free`.
 ///
@@ -444,13 +528,16 @@ mod tests {
         let line = Line { at: 1, id: "1-a".into(), notice: rules::notice(&posted.package, &posted.key), talk: "fedcba9876543210".into(), ..Line::default() };
         let extra = Extra { offer: phonemsgs::Offer { reply: true, read: false }, ..Extra::default() };
         let now = now_ms();
-        assert!(offered(&device, &posted, std::slice::from_ref(&line), &extra, now));
-        assert!(!offered(&device, &posted, std::slice::from_ref(&line), &extra, now + 1_000), "the same offer");
-        assert!(!offered(&device, &posted, &[Line { notice: String::new(), ..line.clone() }], &extra, now + 2_000), "an older line, no name");
-        assert!(!offered(&device, &posted, &[], &extra, now + 3_000));
+        assert!(offered(&device, &posted, std::slice::from_ref(&line), &extra, true, now));
+        assert!(!offered(&device, &posted, std::slice::from_ref(&line), &extra, true, now + 1_000), "the same offer");
+        assert!(!offered(&device, &posted, &[Line { notice: String::new(), ..line.clone() }], &extra, true, now + 2_000), "an older line, no name");
+        assert!(!offered(&device, &posted, &[], &extra, true, now + 3_000));
         let live = rules::read_live(&phonemsgs::folder(), now + 4_000);
         let said = live.get(&(device.clone(), line.notice.clone())).unwrap();
         assert_eq!((said.reply, said.read, said.talk.as_str(), said.app.as_str()), (true, false, "fedcba9876543210", "org.thoughtcrime.securesms"));
+        // "Answer from your computers" switched off for the app: offered no more.
+        assert!(offered(&device, &posted, std::slice::from_ref(&line), &extra, false, now + 5_000));
+        assert!(!rules::read_live(&phonemsgs::folder(), now + 6_000).get(&(device.clone(), line.notice.clone())).unwrap().reply);
         let _ = std::fs::remove_file(rules::live_file(&phonemsgs::folder(), &device));
     }
 

@@ -147,6 +147,10 @@ pub struct Choices {
     /// By the app's package; an app not here sends as usual.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub app: BTreeMap<String, AppChoice>,
+    /// The apps whose notifications your computers may not answer ("Answer
+    /// from your computers" switched off; on for every other app).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub no_answers: BTreeSet<String>,
 }
 
 impl Choices {
@@ -176,6 +180,20 @@ impl Choices {
     pub fn send(&self, package: &str, sms_app: bool) -> Send {
         let chosen = self.app.get(package).map_or(Send::Usual, |c| c.send);
         chosen.resolved(sms_app || (!self.sms_app.is_empty() && package == self.sms_app))
+    }
+
+    /// Whether your computers may answer an app's notifications (`replies`): on unless switched off.
+    pub fn answers(&self, package: &str) -> bool {
+        !self.no_answers.contains(package)
+    }
+
+    /// "Answer from your computers" switched for an app.
+    pub fn set_answers(&mut self, package: &str, on: bool) {
+        if on {
+            self.no_answers.remove(package);
+        } else {
+            self.no_answers.insert(package.to_string());
+        }
     }
 
     /// An app's choice written; "as usual" takes it out.
@@ -509,12 +527,28 @@ fn messages_of(n: &Notice, line: Line, heard: i64) -> Vec<Line> {
 
 // ---------------------------------------------------------------- the logs
 
-/// The lines of one file, oldest first; a line that does not read (half written) is passed over.
+/// The lines of one file, oldest first, each message once by its id, at the
+/// earliest time it shows (written again when its phone let it through
+/// earlier: `carry_into`); a line that does not read (half written) is passed over.
 pub fn read_file(path: &Path) -> Vec<Line> {
-    let mut lines: Vec<Line> = calls::read_lines::<Line>(path).into_iter().filter(|l| l.at > 0 && !l.id.is_empty()).collect();
+    let mut lines: Vec<Line> = Vec::new();
+    let mut place: BTreeMap<String, usize> = BTreeMap::new();
+    for line in calls::read_lines::<Line>(path).into_iter().filter(|l| l.at > 0 && !l.id.is_empty()) {
+        match place.get(&line.id) {
+            Some(&i) => lines[i].shows = lines[i].shows.min(line.shows),
+            None => {
+                place.insert(line.id.clone(), lines.len());
+                lines.push(line);
+            }
+        }
+    }
     lines.sort_by_key(|l| l.at);
     lines
 }
+
+/// A message its phone lets through this much earlier than it first said
+/// is written again with that time (`carry_into`).
+pub const EARLIER_MS: i64 = 60_000;
 
 /// Every phone's log under `root` (this folder), each line with its phone
 /// (`device`), oldest first: never a blocked sender's, never one kept past
@@ -531,19 +565,24 @@ pub fn read_logs(root: &Path, now_ms: i64) -> Vec<Line> {
 }
 
 /// A phone's new lines added to its own log (`own`), under its lock, read
-/// again there: those not in it yet (by id), none past `KEPT_DAYS` (taken
-/// out already, it would come back), each padded. Two processes adding at
-/// once never write a line twice. Returns how many were written.
+/// again there: those not in it yet (by id), and those its phone now lets
+/// through more than `EARLIER_MS` earlier than it first said (a hold that
+/// ended early: a pause ended, the hours changed, a conversation answered
+/// from a computer), written again so that computers show them then; none
+/// past `KEPT_DAYS` (taken out already, it would come back), each padded.
+/// Two processes adding at once never write a line twice. Returns how many
+/// were written.
 pub fn carry_into(own: &Path, lines: &[Line], now_ms: i64) -> Result<usize, String> {
     let fresh: Vec<&Line> = lines.iter().filter(|l| l.at > 0 && !l.id.is_empty() && now_ms - l.at <= KEPT_DAYS * DAY_MS).collect();
     if fresh.is_empty() {
         return Ok(0);
     }
     crate::filelock::with_lock(own, || {
-        let mut known: BTreeSet<String> = read_file(own).into_iter().map(|l| l.id).collect();
+        let mut known: BTreeMap<String, i64> = read_file(own).into_iter().map(|l| (l.id, l.shows)).collect();
         let mut text = String::new();
         for line in fresh {
-            if known.insert(line.id.clone()) {
+            if known.get(&line.id).is_none_or(|shows| line.shows + EARLIER_MS < *shows) {
+                known.insert(line.id.clone(), line.shows);
                 text.push_str(&padded(line));
                 text.push('\n');
             }
@@ -659,6 +698,13 @@ pub struct PorchLine {
     /// A text from a whole number, between two: Text back and Call back offered.
     pub texted: bool,
     pub code: bool,
+    /// Who wrote, in words (your address books' name, the app's, or a
+    /// group's title), for a reply's box: "Reply to Alice on Signal…".
+    pub who: String,
+    /// What it offers a reply from this computer (`replies::answer_of`,
+    /// filled where the computer knows its phone's word); none: as before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<crate::replies::Answer>,
 }
 
 /// What the Porch's lines need besides the logs.
@@ -770,7 +816,7 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
             args.set("day", calls::day_words(tr, date, today));
             tr.text("phonemsgs-code-day", Some(&args))
         };
-        return PorchLine { ids, head: calls::capitalized(&head), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known, texted: false, code: true };
+        return PorchLine { ids, head: calls::capitalized(&head), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known, texted: false, code: true, who: String::new(), answer: None };
     }
     let mut context_said = context(tr, column);
     if date != today {
@@ -781,6 +827,7 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
     }
     // An SMS app needs no naming; a chat's or a mail app's does.
     let app = if first.kind == "text" { String::new() } else { first.label.clone() };
+    let named = if first.group && !first.title.is_empty() { first.title.clone() } else { who.clone() };
     let mut args = crate::i18n::args();
     args.set("context", context_said);
     args.set("who", who);
@@ -817,6 +864,8 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
         known: known || (!keyed.is_empty() && (l.name_of)(&keyed).is_some()),
         texted,
         code: false,
+        who: named,
+        answer: None,
     }
 }
 
@@ -931,6 +980,28 @@ mod tests {
         assert_eq!(carry_into(&own, &lines, NOW).unwrap(), 2);
         assert_eq!(carry_into(&own, &more, NOW).unwrap(), 1, "only the new message");
         assert_eq!(read_file(&own).len(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Held until 13:00, then let through at 11:00 (the pause ended, the
+    /// conversation answered from a computer): the line is written again with
+    /// 11:00, read once, at 11:00, by computers; never again for a time later
+    /// than the earliest, nor for a minute's difference.
+    #[test]
+    fn a_message_let_through_earlier_shows_earlier_on_computers() {
+        let dir = std::env::temp_dir().join(format!("sioul-phonemsgs-earlier-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let own = calls::own_file(&dir, LOG, "phone");
+        let hour = 3_600_000;
+        let line = |shows: i64| Line { at: NOW, id: format!("{NOW}-a"), app: "foundation.e.message".into(), kind: "text".into(), who: "neutral".into(), text: "Bonjour".into(), shows, ..Line::default() };
+        assert_eq!(carry_into(&own, &[line(NOW + 3 * hour)], NOW).unwrap(), 1);
+        assert_eq!(carry_into(&own, &[line(NOW + 3 * hour)], NOW).unwrap(), 0, "the same");
+        assert_eq!(carry_into(&own, &[line(NOW + 3 * hour - 30_000)], NOW).unwrap(), 0, "half a minute earlier: the same");
+        assert_eq!(carry_into(&own, &[line(NOW + hour)], NOW + hour).unwrap(), 1, "let through two hours earlier");
+        assert_eq!(carry_into(&own, &[line(NOW + 2 * hour)], NOW + 2 * hour).unwrap(), 0, "later than the earliest");
+        let read = read_file(&own);
+        assert_eq!((read.len(), read[0].shows), (1, NOW + hour));
+        assert_eq!(read_logs(&dir, NOW + hour).len(), 1, "once on a computer");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

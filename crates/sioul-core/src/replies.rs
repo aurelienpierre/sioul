@@ -34,6 +34,12 @@
 //!   crash), with two guards of its own; and says what became of each in its
 //!   own `phone-messages/outcome/<phone>.jsonl` (`Outcome`), never the words,
 //!   which a computer says in words (`state_of`), never a plain "Sent".
+//! - **On a computer's Porch** (`answer_of`): a line offers Reply while its
+//!   phone says the notification's Reply works, a text goes as one of
+//!   Sioul's own where this computer reads them, the replies written there
+//!   show under their messages with their states. A conversation answered
+//!   comes through at once on the phone for twenty minutes after
+//!   (`note_answered`, `answered_lately`), never during a pause.
 
 use crate::appnotes::{self, Kind, Posted};
 use crate::calls;
@@ -813,6 +819,228 @@ pub fn state_of(ask: &Ask, outcomes: &[&Outcome], app: &str, tr: &crate::i18n::T
     State { said: tr.text(id, Some(&args)), again, on_phone, state: last.state.clone(), ..State::default() }
 }
 
+// ---------------------------------------------------------------- a conversation answered
+
+/// The conversations answered from a computer lately, in the phone's
+/// private replies folder: each conversation's key (a hash) and until when
+/// its messages come through at once (decision 18).
+pub const ANSWERED: &str = "answered.json";
+/// A conversation answered from a computer comes through at once this long
+/// after the reply was handed, as a second call within a quarter of an hour
+/// rings: their answer to your answer is not held. Never during a pause.
+pub const ANSWERED_MS: i64 = 20 * 60_000;
+
+/// The conversations answered lately, as kept (those past their time left out).
+fn answered(folder: &Path, now_ms: i64) -> BTreeMap<String, i64> {
+    std::fs::read_to_string(folder.join(ANSWERED)).ok().and_then(|t| serde_json::from_str::<BTreeMap<String, i64>>(&t).ok()).unwrap_or_default().into_iter().filter(|(_, until)| *until > now_ms).collect()
+}
+
+/// A conversation answered (its key, `appnotes::talk_key`): its messages
+/// come through at once until `ANSWERED_MS` from now. Under the folder's lock.
+pub fn note_answered(folder: &Path, talk: &str, now_ms: i64) -> Result<(), String> {
+    if talk.is_empty() {
+        return Ok(());
+    }
+    private_dir(folder)?;
+    crate::filelock::with_lock(&folder.join(ANSWERED), || {
+        let mut kept = answered(folder, now_ms);
+        kept.insert(talk.to_string(), now_ms + ANSWERED_MS);
+        let text = serde_json::to_string(&kept).map_err(|e| e.to_string())?;
+        let fresh = folder.join(format!(".{ANSWERED}.{}.new", std::process::id()));
+        let _ = std::fs::remove_file(&fresh);
+        calls::append_private(&fresh, &text)?;
+        std::fs::rename(&fresh, folder.join(ANSWERED)).map_err(|e| format!("{}: {e}", folder.display()))
+    })
+}
+
+/// Whether a conversation was answered from a computer within `ANSWERED_MS`.
+pub fn answered_lately(folder: &Path, talk: &str, now_ms: i64) -> bool {
+    !talk.is_empty() && answered(folder, now_ms).contains_key(talk)
+}
+
+/// A number a computer texted (`phones::key`), as the conversations
+/// answered keep it (`note_answered`): a hash, never the number. "" for none.
+pub fn answered_number(number: &str) -> String {
+    if number.is_empty() { String::new() } else { format!("tel:{}", appnotes::talk_key("tel", number)) }
+}
+
+/// What this computer answered lately, for its Porch (decision 18): the
+/// conversations its replies went to, handed or shown within `ANSWERED_MS`
+/// (the phone, the conversation's key), and the numbers it texted then.
+/// Their lines show at once, as their phone lets them through, but in a pause.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Answered {
+    talks: BTreeSet<(String, String)>,
+    numbers: BTreeSet<String>,
+}
+
+impl Answered {
+    /// From this computer's own requests (`own`), every phone's outcomes and
+    /// the phones' lines: a reply whose phone said, within `ANSWERED_MS`, that
+    /// it handed it, or that its app shows it (the phone's clock may run up
+    /// to `texts::AHEAD_MS` ahead of this one's).
+    pub fn of(own: &[Ask], outcomes: &[Outcome], all: &[phonemsgs::Line], now_ms: i64) -> Answered {
+        let lately: BTreeSet<(&str, &str)> = outcomes.iter().filter(|o| matches!(o.state.as_str(), "handed" | "shown") && (-crate::texts::AHEAD_MS..=ANSWERED_MS).contains(&(now_ms - o.at))).map(|o| (o.device.as_str(), o.key.as_str())).collect();
+        let talks = own
+            .iter()
+            .filter(|a| a.verb == "reply" && lately.contains(&(a.phone.as_str(), a.key.as_str())))
+            .filter_map(|a| all.iter().find(|l| l.device == a.phone && l.id == a.line))
+            .filter(|l| !l.talk.is_empty())
+            .map(|l| (l.device.clone(), l.talk.clone()))
+            .collect();
+        Answered { talks, numbers: BTreeSet::new() }
+    }
+
+    /// A number this computer texted lately (`phones::key`), its phone having taken it.
+    pub fn texted(&mut self, number: String) {
+        if !number.is_empty() {
+            self.numbers.insert(number);
+        }
+    }
+
+    /// Whether a line is of a conversation answered lately: its conversation
+    /// on its phone, or a text from a number texted.
+    pub fn holds(&self, line: &phonemsgs::Line) -> bool {
+        (!line.talk.is_empty() && self.talks.contains(&(line.device.clone(), line.talk.clone()))) || (line.kind == "text" && !line.key.is_empty() && self.numbers.contains(&line.key))
+    }
+}
+
+// ---------------------------------------------------------------- what a Porch's line offers
+
+/// The apps whose Reply marks the conversation read, as their sources say
+/// (Signal, Telegram, /e/OS's Message and the QKSMS it comes from): the
+/// first reply in each says so.
+pub const MARKS_READ: &[&str] = &["org.thoughtcrime.securesms", "org.telegram.messenger", "foundation.e.message", "com.moez.QKSMS", "dev.octoshrimpy.quik"];
+
+/// What a Porch's line offers a reply from this computer (decision 14).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Answer {
+    /// The phone the line came from, the notification answered (`notice`;
+    /// the conversation's current one, when its app posted it anew), its
+    /// app, its name as the phone shows it, and the newest line answered.
+    pub phone: String,
+    pub notice: String,
+    pub app: String,
+    pub label: String,
+    pub line: String,
+    /// The phone says its Reply works now (`Live`): else "Reply on your phone".
+    pub offered: bool,
+    /// Its Mark as read too.
+    pub read: bool,
+    /// A text from a whole number, between two, where this computer reads
+    /// the texts: the reply goes as a text of Sioul's own (decision 12),
+    /// with its own states.
+    pub texts: bool,
+    /// "Reply to Alice on Signal…", "Reply in École on WhatsApp…".
+    pub placeholder: String,
+    /// The first reply in an app that marks the conversation read says so; "" otherwise.
+    pub note: String,
+    /// "Mark as read in Signal", and its warning: "Signal may tell them that you read it."
+    pub read_item: String,
+    pub read_warning: String,
+    /// "Reply on your phone."
+    pub on_phone: String,
+    /// The most a reply may hold, in characters (a text's own limit for texts).
+    pub limit: usize,
+    /// This computer's replies to it, oldest first.
+    pub mine: Vec<Mine>,
+}
+
+/// A reply written on this computer, under the messages it answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Mine {
+    pub key: String,
+    /// "14:03": when it was written.
+    pub time: String,
+    pub text: String,
+    /// Its state, in words (`state_of`; a text's own words for texts).
+    pub said: String,
+    pub waiting: bool,
+    pub again: bool,
+    /// Went as a text of Sioul's own: Take back is not offered, Send again is the texts'.
+    pub texts: bool,
+}
+
+/// What a computer knows for a Porch's line's answer.
+pub struct Offer<'a> {
+    /// What each phone said last of each notification (`read_live`), by phone and notice.
+    pub live: &'a BTreeMap<(String, String), Live>,
+    /// This computer's own requests (`read_asks` of its file).
+    pub asks: &'a [Ask],
+    /// Every phone's outcomes.
+    pub outcomes: &'a [Outcome],
+    pub tr: &'a crate::i18n::Translator,
+    /// The texts are read on this computer: a text goes as one of Sioul's own.
+    pub texts: bool,
+    /// When a phone last shared (ms), by its name.
+    pub shared: &'a dyn Fn(&str) -> Option<i64>,
+    /// A moment (ms) as this computer says the time.
+    pub time_of: &'a dyn Fn(i64) -> String,
+    /// The texts this computer wrote to a number since a moment (ms), as `Mine`.
+    pub sent_texts: &'a dyn Fn(&str, i64) -> Vec<Mine>,
+}
+
+/// A Porch's line's answer (`line`, of the messages `group`, oldest first):
+/// none for a code's line, nor for lines from a phone that names no
+/// notification (an older Sioul's: Text back as before).
+pub fn answer_of(line: &phonemsgs::PorchLine, group: &[&phonemsgs::Line], o: &Offer) -> Option<Answer> {
+    let newest = group.last()?;
+    if line.code || newest.code || newest.notice.is_empty() {
+        return None;
+    }
+    let tr = o.tr;
+    let label = if newest.label.is_empty() { newest.app.clone() } else { newest.label.clone() };
+    let mut args = crate::i18n::args();
+    args.set("app", label.clone());
+    args.set("who", line.who.clone());
+    let placeholder = tr.text(if newest.group { "replies-placeholder-group" } else { "replies-placeholder" }, Some(&args));
+    let base = Answer {
+        phone: newest.device.clone(),
+        app: newest.app.clone(),
+        label: label.clone(),
+        line: newest.id.clone(),
+        placeholder,
+        read_item: tr.text("replies-read-item", Some(&args)),
+        read_warning: tr.text("replies-read-warning", Some(&args)),
+        on_phone: tr.text("replies-on-phone", None),
+        ..Answer::default()
+    };
+    if line.texted && o.texts {
+        let since = group.first().map_or(newest.at, |l| l.at);
+        return Some(Answer { notice: newest.notice.clone(), texts: true, offered: true, limit: crate::texts::WRITE_MAX, mine: (o.sent_texts)(&line.dial, since), ..base });
+    }
+    // The notification as the phone said it last; posted anew under another
+    // name (its app's update), the conversation's newest that offers a Reply.
+    let said = o.live.get(&(newest.device.clone(), newest.notice.clone()));
+    let current = said.filter(|l| l.gone == 0).cloned().or_else(|| {
+        (!newest.talk.is_empty()).then(|| o.live.values().filter(|l| l.device == newest.device && l.talk == newest.talk && l.gone == 0 && l.reply).max_by_key(|l| l.at).cloned()).flatten()
+    });
+    let (notice, offered, read) = current.map_or((newest.notice.clone(), false, false), |l| (l.notice.clone(), l.reply, l.read));
+    // A service's text (a short number, a sender named in letters): never from here, as the phone
+    // refuses it (`verdict`: it may cost money); "Reply on your phone" in its place.
+    let service = newest.kind == "text" && !newest.group && (newest.who == "automaton" || !crate::phones::is_whole(&newest.key));
+    let (offered, read) = if service { (false, false) } else { (offered, read) };
+    let note = if MARKS_READ.contains(&newest.app.as_str()) { tr.text("replies-note-marks-read", Some(&args)) } else { String::new() };
+    let ids: BTreeSet<&str> = group.iter().map(|l| l.id.as_str()).collect();
+    let mut mine: Vec<&Ask> = o.asks.iter().filter(|a| a.verb == "reply" && a.phone == newest.device && (ids.contains(a.line.as_str()) || a.notice == notice)).collect();
+    mine.sort_by_key(|a| a.written);
+    let mine = mine
+        .into_iter()
+        .map(|a| {
+            let theirs: Vec<&Outcome> = o.outcomes.iter().filter(|x| x.key == a.key && x.device == a.phone).collect();
+            let state = state_of(a, &theirs, &label, tr, (o.shared)(&a.phone), o.time_of);
+            Mine { key: a.key.clone(), time: (o.time_of)(a.written), text: a.words.clone(), said: state.said, waiting: state.waiting, again: state.again, texts: false }
+        })
+        .collect();
+    Some(Answer { notice, offered, read, note, limit: WORDS_MAX, mine, ..base })
+}
+
+/// Whether a Mark as read this computer asked for a notification was
+/// handed to its app: the line is then Seen too (decision 13).
+pub fn read_handed(asks: &[Ask], outcomes: &[Outcome], phone: &str, notice: &str) -> bool {
+    asks.iter().filter(|a| a.verb == "read" && a.phone == phone && a.notice == notice).any(|a| outcomes.iter().any(|o| o.key == a.key && o.device == phone && o.state == "handed"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1181,5 +1409,136 @@ mod tests {
             let read = Ask { verb: "read".into(), words: String::new(), ..a.clone() };
             assert_ne!(state_of(&read, &[&handed], "Signal", &tr, None, &time).said, state_of(&a, &[&handed], "Signal", &tr, None, &time).said, "a Mark as read's own words");
         }
+    }
+
+    /// A conversation answered comes through at once for twenty minutes, then no more.
+    #[test]
+    fn a_conversation_answered_is_let_through_for_twenty_minutes() {
+        let dir = scratch("answered");
+        assert!(!answered_lately(&dir, "fedcba9876543210", NOW));
+        note_answered(&dir, "fedcba9876543210", NOW).unwrap();
+        note_answered(&dir, "", NOW).unwrap();
+        assert!(answered_lately(&dir, "fedcba9876543210", NOW + 19 * MINUTE));
+        assert!(!answered_lately(&dir, "fedcba9876543210", NOW + 21 * MINUTE));
+        assert!(!answered_lately(&dir, "0000000000000000", NOW), "another conversation");
+        assert!(!answered_lately(&dir, "", NOW));
+        // A number texted from a computer: by a hash, never the number.
+        note_answered(&dir, &answered_number("+33199001234"), NOW).unwrap();
+        assert!(answered_lately(&dir, &answered_number("+33199001234"), NOW + MINUTE));
+        assert!(!answered_lately(&dir, &answered_number("+33261910000"), NOW + MINUTE));
+        assert!(!std::fs::read_to_string(dir.join(ANSWERED)).unwrap().contains("199001234"));
+        assert_eq!(answered_number(""), "");
+        // What would wait comes at once; what is held for good stays held; what comes stays as it is.
+        let held = appnotes::Decision::held(NOW / 1000 + 3600, appnotes::Why::Waiting);
+        assert_eq!(held.answered(), appnotes::Decision::through(appnotes::Why::Answered));
+        assert_eq!(appnotes::Decision::held(NOW / 1000 + 3600, appnotes::Why::Gathered).answered().why, appnotes::Why::Answered);
+        let never = appnotes::Decision::held(NOW / 1000 + 3600, appnotes::Why::Never);
+        assert_eq!(never.answered(), never, "the blocked, a conversation set to never");
+        let through = appnotes::Decision::through(appnotes::Why::Allowed);
+        assert_eq!(through.answered(), through);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On a computer's Porch: a conversation this computer answered, its
+    /// phone having handed or shown the reply within twenty minutes, and a
+    /// number it texted then; never another computer's reply, one refused or
+    /// still waiting, nor another phone's line of the same conversation.
+    #[test]
+    fn what_this_computer_answered_lately_shows_at_once() {
+        let line = phonemsgs::Line { device: "phone".into(), ..alice_line() };
+        let mine = ask("k1", "J'arrive.", NOW);
+        let outcome = |key: &str, state: &str, at: i64| Outcome { key: key.into(), state: state.into(), at, device: "phone".into(), ..Outcome::default() };
+        let all = [line.clone()];
+        let answered = Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "handed", NOW)], &all, NOW + 5 * MINUTE);
+        assert!(answered.holds(&line));
+        assert!(answered.holds(&phonemsgs::Line { id: "2-bb".into(), text: "Tu es où ?".into(), ..line.clone() }), "their answer, in the same conversation");
+        assert!(!answered.holds(&phonemsgs::Line { device: "other".into(), ..line.clone() }), "another phone's");
+        assert!(!answered.holds(&phonemsgs::Line { talk: "0000000000000000".into(), ..line.clone() }), "another conversation");
+        assert!(Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "shown", NOW)], &all, NOW + 19 * MINUTE).holds(&line));
+        assert!(Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "handed", NOW + MINUTE)], &all, NOW).holds(&line), "the phone's clock a minute ahead");
+        assert!(!Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "handed", NOW + 3 * MINUTE)], &all, NOW).holds(&line), "three minutes ahead: not that reply");
+        assert!(!Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "handed", NOW)], &all, NOW + 21 * MINUTE).holds(&line), "past twenty minutes");
+        assert!(!Answered::of(std::slice::from_ref(&mine), &[outcome("k1", "refused", NOW)], &all, NOW).holds(&line));
+        assert!(!Answered::of(std::slice::from_ref(&mine), &[], &all, NOW).holds(&line), "still waiting");
+        assert!(!Answered::of(&[], &[outcome("k1", "handed", NOW)], &all, NOW).holds(&line), "not this computer's");
+        let forged = Outcome { device: "other".into(), ..outcome("k1", "handed", NOW) };
+        assert!(!Answered::of(std::slice::from_ref(&mine), &[forged], &all, NOW).holds(&line), "said by another phone");
+        let read = Ask { verb: "read".into(), words: String::new(), ..mine.clone() };
+        assert!(!Answered::of(&[read], &[outcome("k1", "handed", NOW)], &all, NOW).holds(&line), "a Mark as read is no answer");
+        // A number texted: its texts, not a chat app's line from the same number.
+        let mut texted = Answered::default();
+        texted.texted("+33199001234".into());
+        texted.texted(String::new());
+        let text = phonemsgs::Line { kind: "text".into(), talk: String::new(), app: "foundation.e.message".into(), ..line.clone() };
+        assert!(texted.holds(&text));
+        assert!(!texted.holds(&line), "Signal's line from the same number");
+        assert!(!texted.holds(&phonemsgs::Line { key: "+33261910000".into(), ..text.clone() }));
+    }
+
+    /// A Porch's line's answer: through the notification's Reply while the
+    /// phone says it works (its conversation's newest notification, posted
+    /// anew under another name, too), "Reply on your phone" once it went;
+    /// a text the texts' way where this computer reads them; this computer's
+    /// replies under it with their states; none for an older phone's lines
+    /// or a code's; a Mark as read handed makes the line seen.
+    #[test]
+    fn a_porch_line_offers_a_reply_while_the_phone_can_send_it() {
+        let tr = crate::i18n::Translator::new("en");
+        let line = phonemsgs::Line { device: "phone".into(), ..alice_line() };
+        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: "Alice wrote on Signal:".into(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None };
+        let live = |notice: &str, reply: bool, gone: i64, at: i64| (("phone".to_string(), notice.to_string()), Live { notice: notice.into(), app: line.app.clone(), talk: line.talk.clone(), reply, read: reply, gone, at, device: "phone".into() });
+        let shared = |_: &str| Some(NOW);
+        let time = |_: i64| "14:03".to_string();
+        let none = |_: &str, _: i64| Vec::new();
+        let offer = |live: &BTreeMap<(String, String), Live>, asks: &[Ask], outcomes: &[Outcome], texts: bool| {
+            let o = Offer { live, asks, outcomes, tr: &tr, texts, shared: &shared, time_of: &time, sent_texts: &none };
+            answer_of(&porch, &[&line], &o)
+        };
+        let open: BTreeMap<_, _> = [live(&line.notice, true, 0, NOW)].into();
+        let answer = offer(&open, &[], &[], false).unwrap();
+        assert!(answer.offered && answer.read && !answer.texts);
+        assert_eq!((answer.placeholder.as_str(), answer.label.as_str(), answer.phone.as_str()), ("Reply to Alice on Signal…", "Signal", "phone"));
+        assert!(!answer.note.is_empty(), "Signal marks the conversation read when it replies");
+        assert_eq!(answer.limit, WORDS_MAX);
+        // Gone from the phone: "Reply on your phone".
+        let gone: BTreeMap<_, _> = [live(&line.notice, false, NOW, NOW)].into();
+        assert!(!offer(&gone, &[], &[], false).unwrap().offered);
+        // Posted anew under another name: that notification's Reply.
+        let anew: BTreeMap<_, _> = [live(&line.notice, false, NOW, NOW), live("1111222233334444", true, 0, NOW + MINUTE)].into();
+        let answer = offer(&anew, &[], &[], false).unwrap();
+        assert_eq!((answer.offered, answer.notice.as_str()), (true, "1111222233334444"));
+        // Nothing said yet of it (an older phone's live lines): not offered.
+        assert!(!offer(&BTreeMap::new(), &[], &[], false).unwrap().offered);
+        // A service's text (a sender named in letters, a short number): never from here.
+        let service = phonemsgs::Line { kind: "text".into(), app: "foundation.e.message".into(), who: "automaton".into(), key: String::new(), name: "AMELI".into(), ..line.clone() };
+        let o = Offer { live: &open, asks: &[], outcomes: &[], tr: &tr, texts: false, shared: &shared, time_of: &time, sent_texts: &none };
+        let said = answer_of(&porch, &[&service], &o).unwrap();
+        assert!(!said.offered && !said.read, "the phone would refuse it");
+        let short = phonemsgs::Line { who: "neutral".into(), key: "36179".into(), ..service.clone() };
+        assert!(!answer_of(&porch, &[&short], &o).unwrap().offered);
+        // This computer's reply under it, with its state.
+        let mine = Ask { phone: "phone".into(), ..ask("k1", "J'arrive.", NOW) };
+        let handed = Outcome { key: "k1".into(), state: "handed".into(), at: NOW, device: "phone".into(), ..Outcome::default() };
+        let answer = offer(&open, std::slice::from_ref(&mine), std::slice::from_ref(&handed), false).unwrap();
+        assert_eq!(answer.mine.iter().map(|m| (m.text.as_str(), m.said.as_str(), m.waiting)).collect::<Vec<_>>(), [("J'arrive.", "Handed to Signal at 14:03.", false)]);
+        let waiting = offer(&open, std::slice::from_ref(&mine), &[], false).unwrap();
+        assert!(waiting.mine[0].waiting, "Take back while it waits");
+        // A text from a whole number, where this computer reads texts: the texts' way.
+        let texted = phonemsgs::PorchLine { texted: true, dial: "+33199001234".into(), ..porch.clone() };
+        let sent = |to: &str, _: i64| vec![Mine { key: "t1".into(), time: "14:00".into(), text: "Oui.".into(), said: format!("Sent to {to}."), texts: true, ..Mine::default() }];
+        let o = Offer { live: &BTreeMap::new(), asks: &[], outcomes: &[], tr: &tr, texts: true, shared: &shared, time_of: &time, sent_texts: &sent };
+        let answer = answer_of(&texted, &[&line], &o).unwrap();
+        assert!(answer.texts && answer.offered && answer.limit == crate::texts::WRITE_MAX);
+        assert_eq!(answer.mine[0].said, "Sent to +33199001234.");
+        // None for a code's line, nor for an older phone's lines (no notification named).
+        assert!(offer(&open, &[], &[], false).is_some());
+        let older = phonemsgs::Line { notice: String::new(), ..line.clone() };
+        let o = Offer { live: &open, asks: &[], outcomes: &[], tr: &tr, texts: false, shared: &shared, time_of: &time, sent_texts: &none };
+        assert!(answer_of(&porch, &[&older], &o).is_none());
+        assert!(answer_of(&phonemsgs::PorchLine { code: true, ..porch.clone() }, &[&line], &o).is_none());
+        // A Mark as read handed: the line seen too.
+        let read = Ask { verb: "read".into(), words: String::new(), ..mine.clone() };
+        assert!(read_handed(std::slice::from_ref(&read), std::slice::from_ref(&handed), "phone", &line.notice));
+        assert!(!read_handed(std::slice::from_ref(&mine), std::slice::from_ref(&handed), "phone", &line.notice), "a reply is no Mark as read");
     }
 }

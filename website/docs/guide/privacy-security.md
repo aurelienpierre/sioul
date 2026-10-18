@@ -22,7 +22,7 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 |---|---|
 | Settings, the senders you let in, safe, neutral, restricted or blocked | `~/.config/sioul/` |
 | Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your phone's texts and their media (all of them, sealed) and those written for it to send | `~/.local/share/sioul/` |
-| Where each fetch stopped, where the Porch was closed, the doses you marked and each dose's record, the sites' news, the log of an AI agent's calls, what the AI said of a protected address's mail, the calls your phones screened (a month of them), the messages your phone's notifications brought for the apps you send to your computers (a week of them) | `~/.local/state/sioul/` |
+| Where each fetch stopped, where the Porch was closed, the doses you marked and each dose's record, the sites' news, the log of an AI agent's calls, what the AI said of a protected address's mail, the calls your phones screened (a month of them), the messages your phone's notifications brought for the apps you send to your computers (a week of them) and the replies you wrote to them from a computer (a week) | `~/.local/state/sioul/` |
 | Your own spam filter: what its training read of your mail, the language model it learned, its table; what you said is spam or not | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projects, budgets, papers, scanned letters | your notes folder, wherever you chose it |
 

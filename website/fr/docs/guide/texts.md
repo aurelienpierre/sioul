@@ -43,7 +43,7 @@ Vos ordinateurs gardent chaque SMS et tout ce dont aurait besoin une restauratio
 ## Où la trouver {#where-to-find-it}
 
 - **Parmi les lieux à gauche**, sous Courriels.
-- **Sur le Porche**, **Répondre par SMS** sur un SMS ouvre sa conversation ici.
+- **Sur le Porche**, **Répondre** sur un SMS envoie l’un de ces SMS, et **Ouvrir dans la page des SMS**, dans son menu, ouvre sa conversation ici (**Répondre par SMS**, là où aucune réponse n’est proposée).
 - **Sur la fiche d’une personne**, **SMS avec cette personne…**.
 
 ## Pas encore là {#not-there-yet}
