@@ -632,10 +632,11 @@ fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault,
         arrived.extend(fresh);
     }
     // What came first, oldest first; then the history, newest first by date:
-    // on the battery only what is newer than the newest text read before and
-    // than a day before the history was found (a text dated ahead of the
-    // phone's clock never lifts that past now).
-    let floor = reader.newest_at.min(now).max(reader.since.max(reader.started) - DAY_MS);
+    // on the battery only what is dated within a day before the history was
+    // found (its last day: a few texts of a restore, and every row that came
+    // with it, a picture dated in seconds under a text read in that second
+    // included: review of 16 October 2026, LOW 2).
+    let floor = reader.since.max(reader.started) - DAY_MS;
     let mut came: Vec<rules::Row> = arrived.iter().copied().collect();
     came.sort_by_key(|r| (r.at(), r.id));
     let mut history: Vec<rules::Row> = backlog.iter().copied().filter(|r| all || r.at() >= floor).collect();
@@ -656,10 +657,19 @@ fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault,
     }
     let mut budget = rules::MEDIA_BATCH;
     let read = read_rows(android, files, &wanted, vault, region, &mut budget).unwrap_or_default();
+    // Rows logged before and no longer listed: deleted, or re-dated by their provider.
+    let gone: BTreeSet<(bool, i64)> = logged.difference(&listed).map(|r| (r.mms, r.id)).collect();
     let written = match write_log(&files.log, seal, &read.texts) {
         Ok(written) => {
             // In the log now (a row it held already, read again after a stop, too).
             let rows: Vec<rules::Row> = read.texts.iter().filter_map(Text::row).collect();
+            // A row read under a new date where its old line is logged: that line marked moved now, never "deleted" later.
+            if rows.iter().any(|r| gone.contains(&(r.mms, r.id))) {
+                let marks = rules::moved_marks(&rules::read_file::<Text>(&files.log, seal), &listed, now);
+                if let Err(e) = write_log(&files.log, seal, &marks) {
+                    eprintln!("sioul: texts: {e}");
+                }
+            }
             for row in &rows {
                 backlog.remove(row);
                 arrived.remove(row);
@@ -705,7 +715,19 @@ fn look_again(android: &dyn Android, files: &Files, seal: &Seal, now: i64) -> bo
         return false;
     }
     let answer = android.ask("texts-ids", &json!({ "measure": true }));
-    let Some(listed) = (answer["allowed"] == true).then(|| listed(&answer)).flatten() else { return false };
+    if answer["allowed"] != true {
+        return false;
+    }
+    let Some(listed) = listed(&answer) else {
+        // A table Android could not list whole: the look waits an hour, never
+        // listing (and measuring) again at every step meanwhile (review of
+        // 16 October 2026, LOW 4); nothing is said deleted.
+        reader.looked = now - DAY_MS + LOOK_AGAIN_MS;
+        if let Err(e) = reader.save_at(&files.reader) {
+            eprintln!("sioul: texts: {e}");
+        }
+        return false;
+    };
     reader.looked = now;
     reader.measure(&answer, now);
     let log: Vec<Text> = rules::read_file(&files.log, seal);
@@ -713,12 +735,16 @@ fn look_again(android: &dyn Android, files: &Files, seal: &Seal, now: i64) -> bo
     if let Err(e) = reader.save_at(&files.reader) {
         eprintln!("sioul: texts: {e}");
     }
+    // A row whose date its provider rewrote: its old line marked moved, under its new name (review of
+    // 16 October 2026, LOW 1: it showed twice, once "deleted on your phone"); the rest gone, marked deleted.
+    let mut marks = rules::moved_marks(&log, &listed, now);
+    let moved: BTreeSet<String> = marks.iter().map(|t| t.id.clone()).collect();
     let marked: BTreeSet<&str> = log.iter().filter(|t| t.deleted > 0).map(|t| t.id.as_str()).collect();
-    let marks: Vec<Text> = log
-        .iter()
-        .filter(|t| t.deleted == 0 && !marked.contains(t.id.as_str()) && t.row().is_some_and(|r| !listed.contains(&r)))
-        .map(|t| Text { id: t.id.clone(), at: t.at, direction: t.direction.clone(), with: t.with.clone(), deleted: now, ..Text::default() })
-        .collect();
+    marks.extend(
+        log.iter()
+            .filter(|t| t.deleted == 0 && !marked.contains(t.id.as_str()) && !moved.contains(&t.id) && t.row().is_some_and(|r| !listed.contains(&r)))
+            .map(|t| Text { id: t.id.clone(), at: t.at, direction: t.direction.clone(), with: t.with.clone(), deleted: now, ..Text::default() }),
+    );
     let written = write_log(&files.log, seal, &marks).unwrap_or_else(|e| {
         eprintln!("sioul: texts: {e}");
         0
@@ -730,6 +756,9 @@ fn look_again(android: &dyn Android, files: &Files, seal: &Seal, now: i64) -> bo
 }
 
 // ---------------------------------------------------------------- the phone: sending
+
+/// A day's look that could not list every row is tried again this long after.
+const LOOK_AGAIN_MS: i64 = 3_600_000;
 
 /// One part's result, as Java wrote it (TextSend.line).
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1397,15 +1426,8 @@ fn records(here: &str, seal: &Seal) -> (std::sync::Arc<Vec<Text>>, std::sync::Ar
     };
     let first = k.stamp.is_empty() && k.texts.is_empty() && k.requests.is_empty();
     if k.logs.refresh(&root, seal) || k.region != region.map(|r| r.code) {
-        let mut texts = k.logs.one_each(region);
-        // The page, its search and the part's line never read a row's raw
-        // columns (the fingerprints are made from the logs' own lines, which
-        // keep them): not held twice.
-        for t in &mut texts {
-            t.fields.clear();
-            t.addrs.clear();
-        }
-        k.texts = std::sync::Arc::new(texts);
+        // Without their raw columns, which only the fingerprints read (`Logs`).
+        k.texts = std::sync::Arc::new(k.logs.one_each(region));
         k.region = region.map(|r| r.code);
     }
     if first || k.stamp != stamp {
@@ -1637,7 +1659,7 @@ fn setup() -> Value {
         "sharing": here.folder.is_some(),
         "progress": progress,
         "importing": reader.measured > 0 && reader.done_texts < reader.total_texts,
-        // Asked and not given: on Android 13 and later the steps that hold whether
+        // Asked and not given: on Android 15 and later the steps that hold whether
         // Android keeps restricted settings from Sioul or not ("guarded": no app can
         // read which); before, a question refused for good ("at-once").
         "guard": guard(&state),
@@ -1646,15 +1668,16 @@ fn setup() -> Value {
 }
 
 /// What the tab says beside its question once the texts' permissions were
-/// asked and are still not all given (`Texts.state`): "guarded" on Android 13
+/// asked and are still not all given (`Texts.state`): "guarded" on Android 15
 /// and later, where restricted settings may keep them from an app installed
-/// from a file (on 15 and later); "at-once" when Android answered without
-/// showing a question ("Don't allow" chosen twice); else "".
+/// from a file (13 and 14 keep notification access only); "at-once" when
+/// Android answered without showing a question ("Don't allow" chosen twice);
+/// else "".
 fn guard(state: &Value) -> &'static str {
     let given = state["read"] == true && state["receive"] == true && state["send"] == true;
     if given || state["asked"] != true {
         ""
-    } else if state["api"].as_i64().unwrap_or(0) >= 33 {
+    } else if state["api"].as_i64().unwrap_or(0) >= 35 {
         "guarded"
     } else if state["at_once"] == true {
         "at-once"
@@ -1754,7 +1777,8 @@ pub(crate) fn sent_to(phone_id: &str, dial: &str, since_ms: i64) -> Vec<sioul_co
     let (_, requests, outcomes) = records(&here, &seal);
     let region = sioul_core::reach::region(&load_config());
     let to = phones::key(dial, region);
-    let shared = sending_phone().filter(|p| p.exported > 0).map(|p| p.exported * 1000);
+    // When the phone the text goes from last shared, never another's.
+    let shared = if demo() && !phone() { sending_phone() } else { phones().into_iter().find(|p| p.id == phone_id) }.filter(|p| p.exported > 0).map(|p| p.exported * 1000);
     let now = Zoned::now();
     let mut sent: Vec<&Request> = requests.iter().filter(|r| r.device == here && r.phone == phone_id && r.written >= since_ms && phones::key(&r.to, region) == to).collect();
     sent.sort_by_key(|r| r.written);
@@ -2344,6 +2368,86 @@ mod tests {
         assert!(bench.step(&phone, NOW + 3 * 86_400_000, false));
         assert!(!bench.look(&phone, NOW + 4 * 86_400_000), "nothing gone");
         bench.each_once(&phone);
+    }
+
+    /// A row that comes in the step that finds a history (a block of old
+    /// texts put at once), dated under the newest text read (a picture's date
+    /// is in seconds): read on the battery all the same, with the history's
+    /// last day (review of 16 October 2026, LOW 2).
+    #[test]
+    fn a_row_that_comes_with_a_block_is_read_on_the_battery() {
+        let bench = Bench::new("with-block");
+        let phone = Provider::default();
+        phone.text(1, NOW + 60_700, "Une photo arrive.");
+        assert!(bench.step(&phone, NOW + 60_800, true));
+        assert!(!bench.reader().behind);
+        // The block (600 old texts) and, in the same step, a picture downloaded at 10:01:00.900 (dated 10:01:00).
+        for id in 2..=601 {
+            phone.text(id, NOW - 400 * DAY_MS + id * 60_000, "Restauré.");
+        }
+        phone.picture(1, NOW + 60_900);
+        assert!(bench.step(&phone, NOW + 61_000, false));
+        assert!(bench.rows().iter().any(|r| r.mms && r.id == 1), "the picture, on the battery");
+        assert!(bench.reader().behind, "the history waits for the charger");
+    }
+
+    /// A row whose date its provider rewrote (an MMS downloaded or sent
+    /// writes its date after its row; a text resent) is read again under its
+    /// new date, and its old line marked moved, at once: computers show the
+    /// message once, never once more "deleted on your phone"; a text that
+    /// took a deleted text's id, its words other, leaves that one deleted
+    /// (review of 16 October 2026, LOW 1).
+    #[test]
+    fn a_row_its_provider_dated_again_is_one_text() {
+        let bench = Bench::new("redated");
+        let phone = Provider::default();
+        phone.text(1, NOW - 600_000, "Bonjour.");
+        phone.text(2, NOW - 500_000, "À demain.");
+        phone.picture(3, NOW - 400_000);
+        assert!(bench.step(&phone, NOW - 300_000, true));
+        // The picture's row dated again a second later, the text's a millisecond: both read again.
+        let picture = phone.mms.borrow_mut().remove(&3).unwrap();
+        let mut moved = picture.clone();
+        moved["fields"]["date"] = json!((NOW - 399_000) / 1000);
+        phone.mms.borrow_mut().insert(3, moved);
+        phone.text(1, NOW - 599_999, "Bonjour.");
+        // Text 2 deleted, and its id taken by another text.
+        phone.text(2, NOW - 100_000, "Autre chose.");
+        assert!(bench.step(&phone, NOW, false));
+        let log = bench.log();
+        let mut marks: Vec<(String, bool)> = log.iter().filter(|t| t.deleted > 0).map(|t| (t.id.split('@').next().unwrap_or_default().to_string(), !t.moved.is_empty())).collect();
+        marks.sort();
+        assert_eq!(marks, [("mms-3".to_string(), true), ("sms-1".to_string(), true)], "the re-dated rows' old lines marked moved, at once; text 2 not (other words)");
+        assert!(bench.look(&phone, NOW + DAY_MS));
+        let shown = rules::fold_logs(bench.log().into_iter().map(|t| Text { device: "phone".into(), ..t }).collect());
+        assert_eq!(shown.iter().filter(|t| t.body == "Bonjour.").count(), 1, "the text once, under its new date");
+        assert_eq!(shown.iter().filter(|t| t.id.starts_with("mms-3@")).count(), 1, "the picture once");
+        assert!(shown.iter().all(|t| t.deleted == 0 || t.body == "À demain."), "only the text truly deleted said so");
+        assert!(shown.iter().any(|t| t.body == "À demain." && t.deleted > 0));
+        assert!(shown.iter().any(|t| t.body == "Autre chose." && t.deleted == 0));
+    }
+
+    /// A day's look whose listing is not whole waits an hour: never listing
+    /// and measuring every medium again at every step meanwhile (review of
+    /// 16 October 2026, LOW 4); listed whole, done for the day.
+    #[test]
+    fn a_look_that_cannot_list_waits_an_hour() {
+        let bench = Bench::new("look-wait");
+        let phone = Provider::default();
+        phone.text(1, NOW - 3_600_000, "Avant.");
+        assert!(bench.step(&phone, NOW - 3_000_000, true));
+        phone.unlisted.set(Some("mms"));
+        phone.questions();
+        let day = NOW + DAY_MS;
+        assert!(!bench.look(&phone, day));
+        assert_eq!(phone.questions().iter().filter(|(verb, _)| verb == "texts-ids").count(), 1);
+        assert_eq!(bench.reader().looked, day - DAY_MS + LOOK_AGAIN_MS, "tried again in an hour");
+        assert!(!import_now(&bench.reader(), false, false, day + 60_000), "the day's look no longer due at every step");
+        assert!(!bench.look(&phone, day + 30 * 60_000));
+        assert!(phone.questions().is_empty(), "nothing asked within the hour");
+        phone.unlisted.set(None);
+        assert!(!bench.look(&phone, day + LOOK_AGAIN_MS + 1), "nothing gone");
+        assert_eq!(bench.reader().looked, day + LOOK_AGAIN_MS + 1, "listed whole: done for the day");
     }
 
     /// A log that cannot be written (a full disk): its rows are not taken as

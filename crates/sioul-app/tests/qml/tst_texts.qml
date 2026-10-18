@@ -188,6 +188,48 @@ Item {
             verify(view.indexAt(1, view.contentY + 1) > 0, "never the first message")
         }
 
+        // Read back (the review of 16 October 2026, LOW 10): the top message's
+        // copy now another phone's, timed to another millisecond within its
+        // second, keeps the place; the top message replaced by another (a
+        // request's bubble by its text), the next one keeps its place; two
+        // messages alike (the same second and words), the second at the top,
+        // the second stays there, never the first.
+        function test_reading_back_keeps_its_place_through_a_copy_a_replacement_and_twins() {
+            const view = threadView()
+            const top = () => view.indexAt(1, view.contentY + 1)
+            const timed = list => list.map(m => Object.assign({}, m, { at: m.at * 60000 }))
+            const show = list => {
+                mock.thread = list
+                mock.sharedIn("data/texts/log/")
+                wait(150)
+            }
+            const readBack = () => {
+                page.atEnd = false
+                view.positionViewAtIndex(20, ListView.Beginning)
+                wait(50)
+                return top()
+            }
+            show(timed(mock.grow(1, 40)))
+            let i = readBack()
+            const body = page.messages[i].body
+            show(timed(mock.grow(1, 41)).map((m, k) => k === i ? Object.assign({}, m, { id: "other/sms-" + k, at: m.at + 300 }) : m))
+            verify(!page.atEnd, "still read back")
+            compare(page.messages[top()].body, body, "the same message at the top, timed otherwise within its second")
+            i = readBack()
+            const next = page.messages[i + 1].body
+            const nextOffset = view.itemAtIndex(i + 1).y - view.contentY
+            show(timed(mock.grow(1, 42)).map((m, k) => k === i ? Object.assign({}, m, { id: "phone/sms-900", at: m.at + 7000, body: "Message envoyé." }) : m))
+            const k = page.messages.findIndex(m => m.body === next)
+            verify(k > 0)
+            verify(Math.abs((view.itemAtIndex(k).y - view.contentY) - nextOffset) < 2, "the next message keeps its place under the top")
+            const twins = timed(mock.grow(1, 42))
+            twins[20] = Object.assign({}, twins[19], { id: "phone/sms-twin" })
+            show(twins)
+            compare(readBack(), 20)
+            show(twins.concat([Object.assign({}, mock.message(43), { at: 43 * 60000 })]))
+            compare(top(), 20, "the second of the twins, never the first")
+        }
+
         // At its top, the list stays at its top: the conversation that just
         // got a text shows first; scrolled down, its top row stays.
         function test_the_list_at_its_top_shows_the_conversation_that_got_a_text() {

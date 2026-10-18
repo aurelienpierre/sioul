@@ -228,6 +228,24 @@ fn append_flushed(path: &Path, done: &Done) -> Result<(), String> {
     file.sync_all().map_err(fail)
 }
 
+/// Lines of what the listener did appended together and flushed once; nothing for none.
+fn append_all_flushed(path: &Path, done: &[Done]) -> Result<(), String> {
+    use std::io::Write;
+    if done.is_empty() {
+        return Ok(());
+    }
+    let mut text = String::new();
+    for d in done {
+        text.push_str(&serde_json::to_string(d).map_err(|e| e.to_string())?);
+        text.push('\n');
+    }
+    let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    calls::append_private(path, "")?;
+    let mut file = std::fs::OpenOptions::new().append(true).open(path).map_err(fail)?;
+    file.write_all(text.as_bytes()).map_err(fail)?;
+    file.sync_all().map_err(fail)
+}
+
 /// What the listener did with one, said: appended, flushed, under the folder's lock.
 pub fn say(folder: &Path, done: &Done) -> Result<(), String> {
     private_dir(folder)?;
@@ -312,6 +330,10 @@ pub fn check(due: &Due, posted: &Posted, extra: &Extra, choices: &appnotes::Choi
     };
     let (group, title) = conversation.as_ref().map_or((false, String::new()), |c| (c.group, phonemsgs::title_of(c)));
     if group != due.group || (due.group && title != due.title) {
+        return Checked::Other;
+    }
+    // A group whose key came from its last writer names a person, not a group: two such groups where she wrote last look alike.
+    if due.group && conversation.as_ref().is_some_and(|c| c.by_writer) {
         return Checked::Other;
     }
     let same = if !due.talk.is_empty() {
@@ -566,6 +588,7 @@ pub fn write_ask(root: &Path, device: &str, ask: &Ask, seal: &dyn Sealer) -> Res
 /// passed over, a cancel too.
 pub fn read_asks(roots: &[PathBuf], seal: &dyn Sealer) -> (Vec<Ask>, BTreeSet<(String, String)>) {
     let mut asks: Vec<Ask> = Vec::new();
+    let mut known: BTreeSet<String> = BTreeSet::new();
     let mut cancelled = BTreeSet::new();
     for root in roots {
         for (device, path) in calls::device_files(&root.join(ASK)) {
@@ -576,13 +599,140 @@ pub fn read_asks(roots: &[PathBuf], seal: &dyn Sealer) -> (Vec<Ask>, BTreeSet<(S
                 let ask = Ask { device: ask.writer.clone(), ..ask };
                 if ask.verb == "cancel" {
                     cancelled.insert((ask.device.clone(), ask.key.clone()));
-                } else if !asks.iter().any(|known| known.key == ask.key) {
+                } else if known.insert(ask.key.clone()) {
                     asks.push(ask);
                 }
             }
         }
     }
     (asks, cancelled)
+}
+
+// ---------------------------------------------------------------- how far the phone is done with each file
+
+/// How far the phone is done with each file of requests, in its private
+/// folder (`ReadMark`): past every line decided, another phone's, or that
+/// does not open (`moved_marks`). A step reads each file from there
+/// (`read_asks_after`): a computer's thousands decided already are never
+/// opened again.
+pub const READ_MARKS: &str = "asks-read.json";
+
+/// A file of requests done with up to `offset` bytes, its last line done
+/// with by its hash (`line`): read from there while the file still holds
+/// that line there, else whole again (rewritten, trimmed).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadMark {
+    pub offset: u64,
+    pub line: String,
+}
+
+/// A file's lines read at a step (`read_asks_after`), from `start`: each
+/// with where it ends, its hash, the request's key and phone ("" for a line
+/// that does not open, or another writer's).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileRead {
+    pub path: String,
+    pub start: u64,
+    pub lines: Vec<(u64, String, String, String)>,
+}
+
+/// The marks as kept; none when the file does not read.
+pub fn read_marks(folder: &Path) -> BTreeMap<String, ReadMark> {
+    std::fs::read_to_string(folder.join(READ_MARKS)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// The marks written whole, beside then put in place.
+pub fn save_read_marks(folder: &Path, marks: &BTreeMap<String, ReadMark>) -> Result<(), String> {
+    private_dir(folder)?;
+    let text = serde_json::to_string(marks).map_err(|e| e.to_string())?;
+    let fresh = folder.join(format!(".{READ_MARKS}.{}.new", std::process::id()));
+    let _ = std::fs::remove_file(&fresh);
+    calls::append_private(&fresh, &text)?;
+    std::fs::rename(&fresh, folder.join(READ_MARKS)).map_err(|e| format!("{}: {e}", folder.display()))
+}
+
+/// A sealed line's name for the marks: a hash of it as written.
+fn line_hash(line: &str) -> String {
+    appnotes::talk_key("asks", line)
+}
+
+/// Whether a file still holds, just before a mark's offset, the line the mark names.
+fn holds(bytes: &[u8], mark: &ReadMark) -> bool {
+    let end = usize::try_from(mark.offset).unwrap_or(usize::MAX);
+    if end == 0 || end > bytes.len() || bytes[end - 1] != b'\n' {
+        return false;
+    }
+    let before = &bytes[..end - 1];
+    let start = before.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    line_hash(String::from_utf8_lossy(&before[start..]).trim()) == mark.line
+}
+
+/// `read_asks` for a phone's step, each file from its mark (`marks`, by its
+/// path) when it still holds the line the mark names, else whole: the
+/// requests past the marks, the cancels, and each file's lines read, to move
+/// the marks once the step decided (`moved_marks`). A line not ended yet
+/// (being written) waits for the next step.
+pub fn read_asks_after(roots: &[PathBuf], seal: &dyn Sealer, marks: &BTreeMap<String, ReadMark>) -> ((Vec<Ask>, BTreeSet<(String, String)>), Vec<FileRead>) {
+    let mut asks: Vec<Ask> = Vec::new();
+    let mut known: BTreeSet<String> = BTreeSet::new();
+    let mut cancelled = BTreeSet::new();
+    let mut reads = Vec::new();
+    for root in roots {
+        for (device, path) in calls::device_files(&root.join(ASK)) {
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let name = path.display().to_string();
+            let start = marks.get(&name).filter(|m| holds(&bytes, m)).map_or(0, |m| usize::try_from(m.offset).unwrap_or(0));
+            let mut read = FileRead { path: name, start: start as u64, lines: Vec::new() };
+            let mut at = start;
+            for piece in bytes[start..].split_inclusive(|b| *b == b'\n') {
+                if !piece.ends_with(b"\n") {
+                    break;
+                }
+                at += piece.len();
+                let text = String::from_utf8_lossy(piece);
+                let line = text.trim();
+                let opened = if line.is_empty() { None } else { seal.open(line).and_then(|plain| serde_json::from_str::<Ask>(&plain).ok()) };
+                let (key, phone) = match opened {
+                    Some(ask) if !ask.key.is_empty() && !ask.writer.is_empty() && calls::file_safe(&ask.writer) == device => {
+                        let ask = Ask { device: ask.writer.clone(), ..ask };
+                        let named = (ask.key.clone(), ask.phone.clone());
+                        if ask.verb == "cancel" {
+                            cancelled.insert((ask.device.clone(), ask.key.clone()));
+                        } else if known.insert(ask.key.clone()) {
+                            asks.push(ask);
+                        }
+                        named
+                    }
+                    _ => (String::new(), String::new()),
+                };
+                read.lines.push((at as u64, line_hash(line), key, phone));
+            }
+            reads.push(read);
+        }
+    }
+    ((asks, cancelled), reads)
+}
+
+/// The marks moved past every line done with, in each file's order: a line
+/// that does not open or is another writer's, or whose request is done
+/// with (`done`, by its key and phone: decided, or another phone's); the
+/// first line not done with stops its file's mark. Only the files read
+/// now keep one.
+pub fn moved_marks(reads: &[FileRead], done: &dyn Fn(&str, &str) -> bool, marks: &BTreeMap<String, ReadMark>) -> BTreeMap<String, ReadMark> {
+    let mut out = BTreeMap::new();
+    for read in reads {
+        let mut mark = marks.get(&read.path).filter(|m| m.offset == read.start && read.start > 0).cloned().unwrap_or_default();
+        for (end, hash, key, phone) in &read.lines {
+            if !key.is_empty() && !done(key, phone) {
+                break;
+            }
+            mark = ReadMark { offset: *end, line: hash.clone() };
+        }
+        if mark.offset > 0 {
+            out.insert(read.path.clone(), mark);
+        }
+    }
+    out
 }
 
 /// A phone's word on a request (decision 10): never the words.
@@ -654,7 +804,8 @@ pub enum Verdict {
     Clocks,
     /// Refused, and why: "not-counted", "verb", "no-words", "too-long",
     /// "line", "code", "switched-off", "short-number", "before-mark",
-    /// "same-words", "too-many".
+    /// "same-words" (the same words went), "same-words-pending" (they are on
+    /// their way), "too-many", "too-many-read" (Mark as read, sixty an hour too).
     Refused(&'static str),
 }
 
@@ -676,6 +827,13 @@ pub struct Judge<'a> {
     pub answers: &'a dyn Fn(&str) -> bool,
     /// The requests its listener said were not sent (`unsent`).
     pub unsent: &'a BTreeSet<String>,
+    /// The requests its listener said went (handed or shown: `went_keys`).
+    pub went: &'a BTreeSet<String>,
+}
+
+/// The requests the listener said went: handed to their app, or shown.
+pub fn went_keys(folder: &Path) -> BTreeSet<String> {
+    read_done(folder).into_iter().filter(|d| matches!(d.state.as_str(), "handed" | "shown")).map(|d| d.key).collect()
 }
 
 /// The requests the listener said were not sent (`NOT_SENT`), from its words
@@ -742,16 +900,22 @@ pub fn verdict(ask: &Ask, j: &Judge) -> Verdict {
     if j.now_ms - written > crate::texts::EXPIRY_MS {
         return Verdict::Expired;
     }
+    // The claims of the last hour: replies by their words' hash, Marks as read without one.
+    let lately = j.ledger.claims.iter().filter(|c| c.state == "claimed" && j.now_ms - c.at <= HOUR_MS);
     if reply {
         let hash = words_hash(&ask.words);
-        let replies: Vec<&crate::texts::Claim> = j.ledger.claims.iter().filter(|c| c.state == "claimed" && !c.hash.is_empty() && j.now_ms - c.at <= HOUR_MS).collect();
+        let replies: Vec<&crate::texts::Claim> = lately.filter(|c| !c.hash.is_empty()).collect();
         // A reply that went, or may still go (claimed, taken, handed, shown, in doubt); never one its phone said did not go.
-        if replies.iter().any(|c| !j.unsent.contains(&c.key) && c.to == ask.notice && c.hash == hash && j.now_ms - c.at <= SAME_WORDS_MS && c.key != ask.again) {
-            return Verdict::Refused("same-words");
+        let twin = replies.iter().find(|c| !j.unsent.contains(&c.key) && c.to == ask.notice && c.hash == hash && j.now_ms - c.at <= SAME_WORDS_MS && c.key != ask.again);
+        if let Some(twin) = twin {
+            // Said as it is known: went (its phone said so), or on its way.
+            return Verdict::Refused(if j.went.contains(&twin.key) { "same-words" } else { "same-words-pending" });
         }
         if replies.len() >= PER_HOUR {
             return Verdict::Refused("too-many");
         }
+    } else if lately.filter(|c| c.hash.is_empty()).count() >= PER_HOUR {
+        return Verdict::Refused("too-many-read");
     }
     Verdict::Send
 }
@@ -813,14 +977,21 @@ pub fn settle(folder: &Path, claimed: &[(String, i64)], now_ms: i64) -> Result<V
     private_dir(folder)?;
     crate::filelock::with_lock(&folder.join(DUE), || {
         let done = read_done(folder);
+        let mut words: BTreeMap<&str, Vec<&Done>> = BTreeMap::new();
+        for d in &done {
+            words.entry(d.key.as_str()).or_default().push(d);
+        }
+        let mut ends = Vec::new();
         for (key, at) in claimed {
-            let words: Vec<&Done> = done.iter().filter(|d| d.key == *key).collect();
-            if words.is_empty() && now_ms - at > TAKE_WITHIN_MS {
-                append_flushed(&folder.join(DONE), &Done::of(key, "late", now_ms))?;
-            } else if words.len() == 1 && words[0].state == "taken" && now_ms - words[0].at > crate::texts::LOOK_AFTER_MS {
-                append_flushed(&folder.join(DONE), &Done::of(key, "doubt", now_ms))?;
+            let said = words.get(key.as_str()).map_or(&[][..], Vec::as_slice);
+            if said.is_empty() && now_ms - at > TAKE_WITHIN_MS {
+                ends.push(Done::of(key, "late", now_ms));
+            } else if said.len() == 1 && said[0].state == "taken" && now_ms - said[0].at > crate::texts::LOOK_AFTER_MS {
+                ends.push(Done::of(key, "doubt", now_ms));
             }
         }
+        // The step's words together, one flush (a runaway computer's claims never cost one each).
+        append_all_flushed(&folder.join(DONE), &ends)?;
         Ok(read_done(folder))
     })
 }
@@ -944,7 +1115,10 @@ pub fn state_of(ask: &Ask, outcomes: &[&Outcome], app: &str, tr: &crate::i18n::T
         ("taken-back", _) => ("replies-taken-back", false, false),
         ("refused", _) => match last.reason.as_str() {
             "same-words" => ("replies-refused-same-words", false, false),
+            // The first may yet fail: Send again goes only if it did.
+            "same-words-pending" => ("replies-refused-same-words-pending", true, false),
             "too-many" => ("replies-refused-too-many", false, false),
+            "too-many-read" => ("replies-refused-too-many-read", false, false),
             "too-long" => ("replies-refused-too-long", false, false),
             "no-words" => ("replies-refused-no-words", false, false),
             "line" => ("replies-refused-line", false, true),
@@ -1174,7 +1348,9 @@ pub fn answer_of(line: &phonemsgs::PorchLine, group: &[&phonemsgs::Line], o: &Of
     let mut answered = newest.id.clone();
     let (notice, offered, read) = match current {
         Some(l) if l.notice == newest.notice => (l.notice.clone(), l.reply, l.read),
-        Some(l) => match o.lines.iter().filter(|x| x.device == newest.device && x.notice == l.notice).max_by_key(|x| x.at) {
+        // Its newest line of this very conversation, never a code's: an app that reuses one notification for
+        // another conversation never makes a reply to her go to him, even when the phone's live line was not written.
+        Some(l) => match o.lines.iter().filter(|x| x.device == newest.device && x.notice == l.notice && x.talk == newest.talk && !x.code).max_by_key(|x| x.at) {
             Some(theirs) => {
                 answered = theirs.id.clone();
                 (l.notice.clone(), l.reply, l.read)
@@ -1388,11 +1564,19 @@ mod tests {
         let due = Due { key: "k1".into(), verb: "reply".into(), notice: notice(&base.package, &base.key), app: base.package.clone(), talk: mine.key.clone(), name: "Alice".into(), words: "J'arrive.".into(), at: NOW, ..Due::default() };
         assert_eq!(check(&due, &one, &Extra::default(), &choices, &words, fr()), Checked::Go { crossed: false });
         assert_eq!(check(&due, &group, &Extra::default(), &choices, &words, fr()), Checked::Other, "her conversation, never the group");
+        // An untitled group's key came from its last writer: it names her, and another untitled group where she
+        // wrote last has it too: its reply never goes, through the notification.
+        assert!(theirs.by_writer && mine.by_writer);
         let to_group = Due { talk: theirs.key.clone(), group: true, title: phonemsgs::title_of(&theirs), ..due.clone() };
-        assert_eq!(check(&to_group, &group, &Extra::default(), &choices, &words, fr()), Checked::Go { crossed: false });
+        assert_eq!(check(&to_group, &group, &Extra::default(), &choices, &words, fr()), Checked::Other, "a group keyed by its last writer");
         assert_eq!(check(&to_group, &one, &Extra::default(), &choices, &words, fr()), Checked::Other, "the group's reply never goes to her alone");
+        // A titled group: its key from its title; its reply goes, to it only.
         let titled = Posted { conversation: "École".into(), ..group.clone() };
-        assert_eq!(check(&Due { title: "Club".into(), ..to_group.clone() }, &titled, &Extra::default(), &choices, &words, fr()), Checked::Other, "another group's title");
+        let school = talk(&titled);
+        assert!(!school.by_writer);
+        let to_school = Due { talk: school.key.clone(), group: true, title: phonemsgs::title_of(&school), ..due.clone() };
+        assert_eq!(check(&to_school, &titled, &Extra::default(), &choices, &words, fr()), Checked::Go { crossed: false });
+        assert_eq!(check(&Due { title: "Club".into(), ..to_school.clone() }, &titled, &Extra::default(), &choices, &words, fr()), Checked::Other, "another group's title");
         // From the line, as the phone wrote it.
         let line = phonemsgs::Line { group: true, title: "École".into(), talk: "aaaa".into(), ..alice_line() };
         let a = ask("k1", "J'arrive.", NOW);
@@ -1509,6 +1693,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Through a conversation's newer notification, the Porch names that
+    /// notification's newest line of this very conversation, never a code's:
+    /// an app that reuses one notification for another conversation, its new
+    /// live line not written (or older than the log), never makes Alice's
+    /// reply go to Bob.
+    #[test]
+    fn alice_s_reply_never_goes_to_bob() {
+        let tr = crate::i18n::Translator::new("en");
+        let line = phonemsgs::Line { device: "phone".into(), ..alice_line() };
+        // The newer notification: its live line still says Alice's conversation; its newest line here is Bob's.
+        let bob = phonemsgs::Line { at: NOW - MINUTE, id: format!("{}-bb33", NOW - MINUTE), notice: "1111222233334444".into(), talk: "0000111122223333".into(), name: "Bob".into(), key: "+33261910000".into(), text: "Salut !".into(), ..line.clone() };
+        let code = phonemsgs::Line { at: NOW - MINUTE / 2, id: format!("{}-cc44", NOW - MINUTE / 2), notice: "1111222233334444".into(), code: true, text: String::new(), ..line.clone() };
+        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: String::new(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None };
+        let live = |notice: &str, reply: bool, gone: i64| (("phone".to_string(), notice.to_string()), Live { notice: notice.into(), app: line.app.clone(), talk: line.talk.clone(), reply, read: reply, gone, at: NOW, device: "phone".into() });
+        let lives: BTreeMap<_, _> = [live(&line.notice, false, NOW), live("1111222233334444", true, 0)].into();
+        let (shared, time, none, no_one, nobody) = (|_: &str| Some(NOW), |_: i64| "14:03".to_string(), |_: &str, _: &str, _: i64| Vec::new(), |_: &str| false, BTreeSet::new());
+        for lines in [vec![line.clone(), bob.clone()], vec![line.clone(), code.clone()], vec![line.clone(), bob.clone(), code.clone()]] {
+            let o = Offer { live: &lives, asks: &[], outcomes: &[], tr: &tr, taken_back: &nobody, lines: &lines, texts_from: &no_one, shared: &shared, time_of: &time, sent_texts: &none };
+            let answer = answer_of(&porch, &[&line], &o).unwrap();
+            assert!(!answer.offered, "no line of Alice's conversation in that notification: Reply on your phone");
+            assert!(answer.line != bob.id && answer.line != code.id, "never Bob's line, never a code's: {}", answer.line);
+        }
+        // Alice's own newer line in it: that one.
+        let hers = phonemsgs::Line { at: NOW - MINUTE / 4, id: format!("{}-dd55", NOW - MINUTE / 4), notice: "1111222233334444".into(), text: "Tu es où ?".into(), ..line.clone() };
+        let lines = vec![line.clone(), bob.clone(), hers.clone(), code];
+        let o = Offer { live: &lives, asks: &[], outcomes: &[], tr: &tr, taken_back: &nobody, lines: &lines, texts_from: &no_one, shared: &shared, time_of: &time, sent_texts: &none };
+        let answer = answer_of(&porch, &[&line], &o).unwrap();
+        assert_eq!((answer.offered, answer.line.as_str()), (true, hers.id.as_str()));
+    }
+
+    /// A file of requests is read once: past every line done with (decided,
+    /// another phone's, one that does not open) a step reads it from where it
+    /// was, never opening those again; a request not decided yet, or its
+    /// cancel, stops the mark; a file rewritten (trimmed) is read whole again.
+    #[test]
+    fn a_file_of_requests_is_read_from_where_the_phone_was_done_with_it() {
+        let root = scratch("read-marks");
+        let mine = |key: &str| ask(key, "Oui.", NOW);
+        write_ask(&root, "desk", &mine("k1"), &Stand).unwrap();
+        write_ask(&root, "desk", &Ask { phone: "other-phone".into(), ..mine("k2") }, &Stand).unwrap();
+        write_ask(&root, "desk", &mine("k3"), &Stand).unwrap();
+        let roots = vec![root.clone()];
+        let keys = |asked: &(Vec<Ask>, BTreeSet<(String, String)>)| asked.0.iter().map(|a| a.key.clone()).collect::<Vec<_>>();
+        let (asked, reads) = read_asks_after(&roots, &Stand, &BTreeMap::new());
+        assert_eq!(keys(&asked), ["k1", "k2", "k3"]);
+        // k1 decided, k2 another phone's, k3 not decided yet: the mark stops before k3.
+        let decided = |set: &'static [&'static str]| move |key: &str, phone: &str| phone != "phone" || set.contains(&key);
+        let marks = moved_marks(&reads, &decided(&["k1"]), &BTreeMap::new());
+        let (asked, reads) = read_asks_after(&roots, &Stand, &marks);
+        assert_eq!(keys(&asked), ["k3"], "k1 and k2 never opened again");
+        // A cancel for k3 written since: it stops the mark too, until k3 is decided.
+        write_ask(&root, "desk", &Ask { verb: "cancel".into(), words: String::new(), ..mine("k3") }, &Stand).unwrap();
+        let (asked, reads) = read_asks_after(&roots, &Stand, &moved_marks(&reads, &decided(&["k1"]), &marks));
+        assert_eq!((keys(&asked), asked.1.len()), (vec!["k3".to_string()], 1));
+        let marks = moved_marks(&reads, &decided(&["k1", "k3"]), &marks);
+        let (asked, reads) = read_asks_after(&roots, &Stand, &marks);
+        assert!(asked.0.is_empty() && asked.1.is_empty() && reads[0].lines.is_empty(), "done with the whole file");
+        // A line that does not open (another key) is passed, as before.
+        let own = calls::own_file(&root, ASK, "desk");
+        std::fs::write(&own, format!("{}not a sealed line\n", std::fs::read_to_string(&own).unwrap())).unwrap();
+        let marks = moved_marks(&reads, &decided(&["k1", "k3"]), &marks);
+        let (_, reads) = read_asks_after(&roots, &Stand, &marks);
+        let marks = moved_marks(&reads, &decided(&["k1", "k3"]), &marks);
+        assert_eq!(marks.values().next().unwrap().offset, std::fs::metadata(&own).unwrap().len());
+        // Rewritten (its first line trimmed): read whole again.
+        let text = std::fs::read_to_string(&own).unwrap();
+        std::fs::write(&own, text.split_inclusive('\n').skip(1).collect::<String>()).unwrap();
+        let (asked, _) = read_asks_after(&roots, &Stand, &marks);
+        assert_eq!(keys(&asked), ["k2", "k3"], "the mark's line is no longer there: the whole file");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Each computer's requests in turn: a runaway computer's many never keep another's from its turn.
     #[test]
     fn each_computer_s_requests_come_in_turn() {
@@ -1533,7 +1789,7 @@ mod tests {
         let nothing = BTreeSet::new();
         let yes = |_: &str| true;
         let judge = |ledger: &crate::texts::Ledger, cancelled: &BTreeSet<(String, String)>, counted: &dyn Fn(&str) -> bool, answers: &dyn Fn(&str) -> bool, lines: &[phonemsgs::Line], a: &Ask| {
-            verdict(a, &Judge { here: "phone", now_ms: NOW, ledger, lines, counted, cancelled, answers, unsent: &nothing })
+            verdict(a, &Judge { here: "phone", now_ms: NOW, ledger, lines, counted, cancelled, answers, unsent: &nothing, went: &nothing })
         };
         let v = |a: &Ask| judge(&ledger, &none, &yes, &yes, &lines, a);
         let good = ask("k1", "J'arrive.", NOW - MINUTE);
@@ -1567,7 +1823,7 @@ mod tests {
         assert_eq!(v(&good), Verdict::Decided);
         assert!(!std::fs::read_to_string(dir.join(crate::texts::LEDGER)).unwrap().contains("arrive"), "the ledger keeps a hash, never the words");
         // The same words to the same notification within ten minutes: refused, unless sent again on purpose.
-        assert_eq!(v(&ask("k2", "J'arrive. ", NOW)), Verdict::Refused("same-words"));
+        assert_eq!(v(&ask("k2", "J'arrive. ", NOW)), Verdict::Refused("same-words-pending"), "on its way: no word of the phone yet");
         assert_eq!(v(&Ask { again: "k1".into(), ..ask("k2", "J'arrive.", NOW) }), Verdict::Send);
         assert_eq!(v(&ask("k2", "Dans cinq minutes.", NOW)), Verdict::Send);
         // Sixty replies in the last hour, from all computers.
@@ -1577,6 +1833,12 @@ mod tests {
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
         assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &ask("k3", "Encore une.", NOW)), Verdict::Refused("too-many"));
         assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &Ask { verb: "read".into(), words: String::new(), ..ask("k4", "", NOW) }), Verdict::Send, "a Mark as read counts for none");
+        // Sixty Marks as read in the last hour: the next one refused too, in its own words.
+        let read = |key: &str| Ask { verb: "read".into(), words: String::new(), ..ask(key, "", NOW) };
+        let claims: Vec<crate::texts::Claim> = (0..PER_HOUR).map(|i| claim_of(&read(&format!("r{i}")), NOW - 20 * MINUTE)).collect();
+        crate::texts::record_all(&dir, &claims).unwrap();
+        let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
+        assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &read("r99")), Verdict::Refused("too-many-read"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1598,15 +1860,16 @@ mod tests {
             for (key, state) in listener {
                 say(&folder, &Done::of(key, state, NOW - 2 * MINUTE)).unwrap();
             }
-            let unsent = unsent(&folder);
+            let (unsent, went) = (unsent(&folder), went_keys(&folder));
             let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-            let said = verdict(&again, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &unsent });
+            let said = verdict(&again, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &unsent, went: &went });
             let _ = std::fs::remove_dir_all(&folder);
             said
         };
-        assert_eq!(v(&[]), Verdict::Refused("same-words"), "claimed, not said yet: it may go");
-        for went in ["taken", "handed", "shown", "doubt"] {
-            assert_eq!(v(&[("k1", "taken"), ("k1", went)]), Verdict::Refused("same-words"), "{went}");
+        // Said as it is known: on its way while the phone has not said it went, went once it did.
+        assert_eq!(v(&[]), Verdict::Refused("same-words-pending"), "claimed, not said yet: it may go");
+        for (word, said) in [("taken", "same-words-pending"), ("doubt", "same-words-pending"), ("handed", "same-words"), ("shown", "same-words")] {
+            assert_eq!(v(&[("k1", "taken"), ("k1", word)]), Verdict::Refused(said), "{word}");
         }
         for not in NOT_SENT {
             assert_eq!(v(&[("k1", "taken"), ("k1", not)]), Verdict::Send, "{not}: it never went");
@@ -1632,7 +1895,7 @@ mod tests {
         }
         let lines = vec![alice_line()];
         let (none, nothing, yes) = (BTreeSet::new(), BTreeSet::new(), |_: &str| true);
-        let v = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &nothing });
+        let v = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &nothing, went: &nothing });
         assert_eq!(v(&ask("k1", "J'arrive.", NOW - 90_000)), Verdict::Send, "written after the mark");
         assert_eq!(v(&ask("k2", "J'arrive.", NOW - 11 * MINUTE)), Verdict::Refused("before-mark"));
         let _ = std::fs::remove_dir_all(dir.parent().unwrap());
@@ -1701,7 +1964,7 @@ mod tests {
                 assert!(!said.waiting && !said.said.starts_with("replies-") && !said.said.is_empty(), "{language} {state}: {said:?}");
                 assert!(!said.said.to_lowercase().contains("sent at") && !said.said.contains("Envoyé"), "never a plain Sent: {language} {state}");
             }
-            for reason in ["same-words", "too-many", "too-long", "no-words", "line", "code", "switched-off", "short-number", "not-counted", "before-mark"] {
+            for reason in ["same-words", "same-words-pending", "too-many", "too-many-read", "too-long", "no-words", "line", "code", "switched-off", "short-number", "not-counted", "before-mark"] {
                 let o = at("refused", reason);
                 let said = state_of(&a, &[&o], "Signal", &tr, Some(NOW), false, &time);
                 assert!(!said.said.starts_with("replies-"), "{language} {reason}");
@@ -1914,7 +2177,7 @@ mod tests {
             assert!(answer.offered);
             assert_eq!(answer.line, expect);
             let request = Ask { key: "k1".into(), phone: answer.phone.clone(), verb: "reply".into(), notice: answer.notice.clone(), app: answer.app.clone(), line: answer.line.clone(), words: "J'arrive.".into(), written: NOW - MINUTE, device: "desk".into(), ..Ask::default() };
-            let judge = Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &cancelled, answers: &yes, unsent: &unsent };
+            let judge = Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &cancelled, answers: &yes, unsent: &unsent, went: &unsent };
             assert_eq!(verdict(&request, &judge), Verdict::Send, "{}", answer.notice);
         }
         let _ = std::fs::remove_dir_all(&dir);

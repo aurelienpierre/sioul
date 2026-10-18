@@ -250,6 +250,12 @@ public final class StepService extends Service
         restart(context, "alarm");
     }
 
+    /** Whether the service runs in this very process (its own, ":steps"). */
+    static boolean inThisProcess()
+    {
+        return running != null;
+    }
+
     /** Whether the service runs, asked from either process. */
     static boolean runningHere(Context context)
     {
