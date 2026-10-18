@@ -462,10 +462,12 @@ struct LogRead {
 /// What tells a file unchanged since it was read: its size and time, and on
 /// Unix its inode and change time, which no tool sets back (a file of the
 /// same size whose time was put back, by rsync -t or a restore, is read
-/// again: the review of 16 October 2026, LOW 6). Windows gives neither: such
-/// a file is read again there only once its size or time changes (NTFS's
-/// tunnelling also keeps a recreated file's creation time, so `created()`
-/// tells nothing either).
+/// again: the review of 16 October 2026, LOW 6). On Windows, Rust's
+/// standard library gives neither (NTFS keeps a file ID and a change time,
+/// which only its unstable parts read): such a file is read again there
+/// once its size or time changes. NTFS's tunnelling gives a file made again
+/// within seconds under the same name the old one's creation time, so
+/// `created()` cannot be relied on either.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Stamp {
     len: u64,

@@ -6895,23 +6895,27 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
 /// through a link, nor into the sharing folder or Sioul's state, nor over a
 /// file there, one written there meanwhile included; never without room for
 /// it and some left (as every write of the sharing, `disk::fits`). A quarter
-/// of a second's worth at a time, each file opened beside its place (a
-/// hidden name no exchange reads) outside the exchanges' lock, which is
-/// taken only to place that batch, after a last look, then left free a
-/// moment: a dose's exchange never waits for more than placing them, even
-/// behind a note or paper of tens of megabytes (thousands take half a
-/// minute: reviews of 17 and 18 October 2026, L1, L-3 and L-a). How many
-/// came back; a disk too full stops it, said.
-pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], store: &str) -> Result<usize, String> {
-    // What there is to put back, and its date: read once.
-    let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = {
+/// of a second's worth at a time, each file opened beside its place under a
+/// hidden name, outside the exchanges' lock, which is taken only to date and
+/// place that batch, after a last look, then left free a moment: a dose's
+/// exchange never waits for more than placing them, even behind a note or
+/// paper of tens of megabytes (thousands take half a minute: reviews of 17
+/// and 18 October 2026, L1, L-3 and L-a). Each is dated as it was only then,
+/// under the lock, just before it is placed: an exchange's sweep of
+/// leftovers takes a hidden file dated more than an hour ago, and none runs
+/// while the lock is held (dated as it was from its opening, a bulk of notes
+/// last changed days ago lost 574 of 600 to the window's exchanges, and was
+/// said done: review of 18 October 2026, M-1). How many came back, of how
+/// many were held (`PutBack`); a disk too full stops it, said.
+pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], store: &str) -> Result<PutBack, String> {
+    // What there is to put back, and its date: read once; how many are held from that folder.
+    let (held, count) = {
         let _running = exchange_lock(memory, true)?;
         let state = Memory::load_all(memory, computer);
-        state
-            .sealed
-            .gone
-            .keys()
-            .filter(|file| file.starts_with(store))
+        let gone: Vec<&String> = state.sealed.gone.keys().filter(|file| file.starts_with(store)).collect();
+        let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = gone
+            .iter()
+            .copied()
             .filter_map(|file| {
                 let known = state.entries.get(&format!("{file}#")).filter(|known| !known.h.is_empty())?;
                 let when = match state.files.get(file) {
@@ -6920,7 +6924,8 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
                 };
                 Some((file.clone(), known.h.clone(), when, state.files.get(file).map(|stat| stat.size)))
             })
-            .collect()
+            .collect();
+        (held, gone.len())
     };
     let mut back = 0;
     let mut rest = held.as_slice();
@@ -6928,7 +6933,7 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
         // A batch opened beside its places, outside the lock: a quarter of a
         // second's worth, never a whole bulk (review of 18 October 2026, L-3).
         let (started, mut done) = (std::time::Instant::now(), 0);
-        let mut ready: Vec<(std::path::PathBuf, std::path::PathBuf, &Store)> = Vec::new();
+        let mut ready: Vec<(std::path::PathBuf, std::path::PathBuf, &Store, std::time::SystemTime)> = Vec::new();
         let mut stop = None;
         for (file, h, when, size) in rest {
             if done >= PUT_BACK_BATCH || started.elapsed() >= PUT_BACK_HOLD {
@@ -6950,15 +6955,13 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
                 stop = Some(format!("share-no-room:{file}"));
                 break;
             }
+            // Dated now while it waits: the exchanges' sweep leaves a leftover alone its first hour.
             let temporary = temporary(&path);
             if crate::blobs::get(folder, key, h, &temporary).is_err() {
                 let _ = std::fs::remove_file(&temporary);
                 continue;
             }
-            if let Ok(placed) = std::fs::File::options().write(true).open(&temporary) {
-                let _ = placed.set_modified(*when);
-            }
-            ready.push((temporary, path, store));
+            ready.push((temporary, path, store, *when));
         }
         rest = &rest[done..];
         // The lock taken only to place them, each after a last look: never over
@@ -6967,16 +6970,20 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             let _running = match exchange_lock(memory, true) {
                 Ok(running) => running,
                 Err(e) => {
-                    for (temporary, _, _) in &ready {
+                    for (temporary, _, _, _) in &ready {
                         let _ = std::fs::remove_file(temporary);
                     }
                     return Err(e);
                 }
             };
-            for (temporary, path, store) in &ready {
+            for (temporary, path, store, when) in &ready {
                 if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
                     let _ = std::fs::remove_file(temporary);
                     continue;
+                }
+                // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1).
+                if let Ok(placed) = std::fs::File::options().write(true).open(temporary) {
+                    let _ = placed.set_modified(*when);
                 }
                 if place_new(temporary, path) {
                     back += 1;
@@ -6990,7 +6997,19 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             std::thread::sleep(PUT_BACK_FREE);
         }
     }
-    Ok(back)
+    Ok(PutBack { back, held: count })
+}
+
+/// What "Put them back" did (`put_back_withheld`): how many came back, of
+/// how many were held from that folder. Fewer is said as such, never as
+/// done: their places are taken, or their contents are not on this device,
+/// and Put them back tries them again (review of 18 October 2026, M-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PutBack {
+    /// Written back where they were.
+    pub back: usize,
+    /// Held from that folder when it began.
+    pub held: usize,
 }
 
 /// How many held files are put back under one hold of the exchanges' lock,
