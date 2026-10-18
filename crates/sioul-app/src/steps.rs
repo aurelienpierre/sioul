@@ -397,9 +397,10 @@ fn step(reason: &str) -> serde_json::Value {
     if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
         eprintln!("sioul: steps: {e}");
     }
-    // texts: the requests this exchange brought, decided and sent now, their outcomes shared at
-    // once; a batch of the import too, the full rounds waiting while it goes on.
-    if crate::texts::phone_step() {
+    // texts and replies: the requests this exchange brought, decided and handed over now, their
+    // outcomes shared at once; a batch of the import too, the full rounds waiting while it goes on.
+    let replied = crate::replies::phone_step();
+    if crate::texts::phone_step() || replied {
         rounds_wait();
         if let Some(Err(e)) = crate::share::exchange_here(false) {
             eprintln!("sioul: steps: {e}");

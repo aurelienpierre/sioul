@@ -289,7 +289,9 @@ fn set(package: &str, value: &str) -> Result<(), String> {
 
 /// What the window asks (`Sioul::phone_messages`): "view" (the Porch's
 /// section), "seen" {ids}, "unseen" {at} (within its ten seconds), "block"
-/// {number}, "setup" (the phone's tab), "set" {key: `app.<package>`, value}, "part" {on}.
+/// {number}, "setup" (the phone's tab), "set" {key: `app.<package>`, value}, "part" {on};
+/// "reply" {phone, verb ("reply", "read"), notice, app, line, words, again}
+/// (a reply from this computer, `replies::ask`: {key, said}), "take-back" {key}.
 /// Answers its JSON, and whether what travels changed (to share now).
 pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     let asked: Value = serde_json::from_str(json).unwrap_or_default();
@@ -321,6 +323,16 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             }
         }
         "setup" => (setup().to_string(), false),
+        // A reply from this computer to a phone's notification, or a Mark as read: a request the phone decides once.
+        "reply" => match crate::replies::ask(&text("phone"), &text("verb"), &text("notice"), &text("app"), &text("line"), asked["words"].as_str().unwrap_or_default(), &text("again")) {
+            Ok(key) => (json!({ "key": key, "said": "", "shared": true }).to_string(), true),
+            Err(said) => answer(said, false, 0),
+        },
+        // Taken back while it waits for the phone.
+        "take-back" => match crate::replies::take_back(&text("key")) {
+            Ok(()) => answer(String::new(), true, 0),
+            Err(e) => answer(e, false, 0),
+        },
         "set" => {
             let package = text("key");
             if let Err(e) = set(package.strip_prefix("app.").unwrap_or(&package), &text("value")) {
