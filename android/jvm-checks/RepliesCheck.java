@@ -132,6 +132,17 @@ public final class RepliesCheck
         Replies.Act watchReply = act(Replies.WATCH, REPLY, 1, "Reply");
         expect("a Reply on the watch only", Replies.choose(list(act(visible, READ, 0, "Read"), watchReply), true, false).reply == watchReply);
 
+        // Two that both say Reply, in the same place ("Reply to the group", "Reply privately"): a guess, none, in either order;
+        // two Mark as read: none; the same Reply for the car as well: the notification's own.
+        Replies.Act toGroup = act(visible, REPLY, 1, "Reply to the group");
+        Replies.Act privately = act(visible, REPLY, 1, "Reply privately");
+        expect("two Replies in one place: none", Replies.choose(list(toGroup, privately), true, false).reply == null);
+        expect("…in the other order too", Replies.choose(list(privately, toGroup), true, false).reply == null);
+        expect("…and never the car's instead", Replies.choose(list(toGroup, privately, act(Replies.CAR, REPLY, 1, "Reply")), true, false).reply == null);
+        expect("two Mark as read in one place: none", Replies.choose(list(act(visible, READ, 0, "Mark as read"), act(visible, READ, 0, "Delete")), true, false).read == null);
+        Replies.Act visibleReply = act(visible, REPLY, 1, "Reply");
+        expect("one Reply here, another for the car: the notification's own", Replies.choose(list(act(Replies.CAR, REPLY, 1, "Reply"), visibleReply), true, false).reply == visibleReply);
+
         // The live notification by its name: Rust's `replies::notice` of the same app and key; this profile's only; gone.
         String notice = AppNotes.talkKey("org.thoughtcrime.securesms", "0|org.thoughtcrime.securesms|42|null|10123");
         expect("the name Rust makes", "a2b7df14a4081c04".equals(notice));

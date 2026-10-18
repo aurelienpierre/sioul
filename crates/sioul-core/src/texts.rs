@@ -830,8 +830,21 @@ impl Ledger {
 /// A line added to the ledger and flushed to the disk before this returns:
 /// the claim exists before Android is asked to send.
 pub fn record(dir: &Path, claim: &Claim) -> Result<(), String> {
-    let line = serde_json::to_string(claim).map_err(|e| e.to_string())? + "\n";
-    write_flushed(&dir.join(LEDGER), &line, true)
+    record_all(dir, std::slice::from_ref(claim))
+}
+
+/// Lines added to the ledger together and flushed once before this returns
+/// (a step's decisions: one flush, not one each); nothing for none.
+pub fn record_all(dir: &Path, claims: &[Claim]) -> Result<(), String> {
+    if claims.is_empty() {
+        return Ok(());
+    }
+    let mut text = String::new();
+    for claim in claims {
+        text.push_str(&serde_json::to_string(claim).map_err(|e| e.to_string())?);
+        text.push('\n');
+    }
+    write_flushed(&dir.join(LEDGER), &text, true)
 }
 
 /// Written (or appended) and flushed to the disk, yours alone.

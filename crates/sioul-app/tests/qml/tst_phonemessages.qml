@@ -93,8 +93,12 @@ Item {
             }
             if (verb === "reply")
                 return JSON.stringify(args.words === "refused" ? { said: "Not sent: it has no words." } : { key: "k1", said: "", shared: true })
-            if (verb === "take-back")
+            if (verb === "take-back") {
+                // As Rust says it at once (replies.rs, `state_of`): taking it back, no Take back again.
+                mock.lines = mock.lines.map(l => !l.answer ? l : Object.assign({}, l, { answer: Object.assign({}, l.answer, {
+                    mine: l.answer.mine.map(m => m.key !== args.key ? m : Object.assign({}, m, { said: "Taking it back: your phone will not send it, unless it has taken it already.", waiting: false })) }) }))
                 return JSON.stringify({ said: "", shared: true, at: 0 })
+            }
             if (verb === "set" && args.key === "answers.foundation.e.message")
                 mock.answers = args.value === true
             if (verb === "part")
@@ -258,7 +262,7 @@ Item {
             mouseClick(buttons(section, "replies-send")[0])
             wait(50)
             const sent = last("texts:send")
-            compare([sent.to, sent.body], ["+33465714770", "Je vous rappelle à midi."])
+            compare([sent.to, sent.body, sent.phone], ["+33465714770", "Je vous rappelle à midi.", "1b4e28ba-2fa1-11d2-883f-0016d3cca427"], "from the phone it came to")
             compare(last("reply"), null, "not through the notification")
         }
 
@@ -270,6 +274,9 @@ Item {
             compare(labels(section, "Waiting for your phone.").length, 1)
             mouseClick(buttons(section, "replies-take-back")[0])
             compare(last("take-back").key, "k0")
+            wait(50)
+            compare(labels(section, "Taking it back: your phone will not send it, unless it has taken it already.").length, 1, "said at once")
+            compare(buttons(section, "replies-take-back").length, 0, "no Take back again")
             compare(labels(section, "Reply on your phone.").length, 1, "Bob's notification gone")
         }
 
