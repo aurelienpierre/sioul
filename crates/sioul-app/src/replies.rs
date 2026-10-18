@@ -380,7 +380,9 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
             let (state, reason) = match rules::verdict(ask, &judge) {
                 Verdict::NotMine | Verdict::Decided => continue,
                 Verdict::Send => {
-                    let claim = rules::claim_of(ask, now);
+                    // With the conversation of the line it answers: the same words held back through its newer notification too.
+                    let talk = lines.iter().find(|l| l.id == ask.line).map_or("", |l| l.talk.as_str());
+                    let claim = rules::claim_of(ask, talk, now);
                     // Seen by this step's next requests (the guards), as the ledger will hold it.
                     ledger.add(claim.clone());
                     lines_out.push(claim);

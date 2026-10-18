@@ -906,7 +906,10 @@ pub fn verdict(ask: &Ask, j: &Judge) -> Verdict {
         let hash = words_hash(&ask.words);
         let replies: Vec<&crate::texts::Claim> = lately.filter(|c| !c.hash.is_empty()).collect();
         // A reply that went, or may still go (claimed, taken, handed, shown, in doubt); never one its phone said did not go.
-        let twin = replies.iter().find(|c| !j.unsent.contains(&c.key) && c.to == ask.notice && c.hash == hash && j.now_ms - c.at <= SAME_WORDS_MS && c.key != ask.again);
+        // The same notification, or another of the same conversation (its newer one, which Send again names as the
+        // Porch does now): the same words never go twice (review of 18 October 2026, L-2).
+        let same = |c: &crate::texts::Claim| c.to == ask.notice || (!c.talk.is_empty() && c.talk == line.talk);
+        let twin = replies.iter().find(|c| !j.unsent.contains(&c.key) && same(c) && c.hash == hash && j.now_ms - c.at <= SAME_WORDS_MS && c.key != ask.again);
         if let Some(twin) = twin {
             // Said as it is known: went (its phone said so), or on its way.
             return Verdict::Refused(if j.went.contains(&twin.key) { "same-words" } else { "same-words-pending" });
@@ -920,10 +923,11 @@ pub fn verdict(ask: &Ask, j: &Judge) -> Verdict {
     Verdict::Send
 }
 
-/// A request claimed, as the ledger keeps it: the notification's name and
-/// the words' hash, for the guards; never the words.
-pub fn claim_of(ask: &Ask, now_ms: i64) -> crate::texts::Claim {
-    crate::texts::Claim { key: ask.key.clone(), at: now_ms, state: "claimed".into(), to: ask.notice.clone(), hash: if ask.verb == "reply" { words_hash(&ask.words) } else { String::new() } }
+/// A request claimed, as the ledger keeps it: the notification's name, the
+/// words' hash and the conversation of the line it answers (`talk`), for the
+/// guards; never the words.
+pub fn claim_of(ask: &Ask, talk: &str, now_ms: i64) -> crate::texts::Claim {
+    crate::texts::Claim { key: ask.key.clone(), at: now_ms, state: "claimed".into(), to: ask.notice.clone(), hash: if ask.verb == "reply" { words_hash(&ask.words) } else { String::new() }, talk: talk.to_string() }
 }
 
 /// A request decided and ended at the step (taken back, expired, clocks,
@@ -1350,7 +1354,9 @@ pub fn answer_of(line: &phonemsgs::PorchLine, group: &[&phonemsgs::Line], o: &Of
         Some(l) if l.notice == newest.notice => (l.notice.clone(), l.reply, l.read),
         // Its newest line of this very conversation, never a code's: an app that reuses one notification for
         // another conversation never makes a reply to her go to him, even when the phone's live line was not written.
-        Some(l) => match o.lines.iter().filter(|x| x.device == newest.device && x.notice == l.notice && x.talk == newest.talk && !x.code).max_by_key(|x| x.at) {
+        // The same shape too (a group or not, its title): an untitled group keyed by its last writer is never answered
+        // through her one-to-one's notification (review of 18 October 2026, L-1).
+        Some(l) => match o.lines.iter().filter(|x| x.device == newest.device && x.notice == l.notice && x.talk == newest.talk && x.group == newest.group && x.title == newest.title && !x.code).max_by_key(|x| x.at) {
             Some(theirs) => {
                 answered = theirs.id.clone();
                 (l.notice.clone(), l.reply, l.read)
@@ -1721,6 +1727,15 @@ mod tests {
         let o = Offer { live: &lives, asks: &[], outcomes: &[], tr: &tr, taken_back: &nobody, lines: &lines, texts_from: &no_one, shared: &shared, time_of: &time, sent_texts: &none };
         let answer = answer_of(&porch, &[&line], &o).unwrap();
         assert_eq!((answer.offered, answer.line.as_str()), (true, hers.id.as_str()));
+        // An untitled group keyed by its last writer (her key), its notification gone, and her one-to-one's live
+        // with Reply: the group's words never go into her one-to-one (L-1).
+        let group = phonemsgs::Line { group: true, title: "Alice".into(), ..line.clone() };
+        let one = phonemsgs::Line { at: NOW - MINUTE / 4, id: format!("{}-ee66", NOW - MINUTE / 4), notice: "1111222233334444".into(), text: "Seule.".into(), ..line.clone() };
+        let lines = vec![group.clone(), one];
+        let gp = phonemsgs::PorchLine { who: "Alice".into(), ..porch.clone() };
+        let o = Offer { live: &lives, asks: &[], outcomes: &[], tr: &tr, taken_back: &nobody, lines: &lines, texts_from: &no_one, shared: &shared, time_of: &time, sent_texts: &none };
+        let answer = answer_of(&gp, &[&group], &o).unwrap();
+        assert!(!answer.offered, "a group's reply never redirected to her one-to-one");
     }
 
     /// A file of requests is read once: past every line done with (decided,
@@ -1817,7 +1832,7 @@ mod tests {
         assert_eq!(v(&Ask { written: NOW + 5 * MINUTE, ahead: 4 * MINUTE, ..good.clone() }), Verdict::Send, "the writer's clock ahead, corrected");
         assert_eq!(v(&Ask { written: NOW - 16 * MINUTE, ..good.clone() }), Verdict::Expired);
         // Claimed: decided for good, whatever is read again.
-        crate::texts::record(&dir, &claim_of(&good, NOW - MINUTE)).unwrap();
+        crate::texts::record(&dir, &claim_of(&good, "", NOW - MINUTE)).unwrap();
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
         let v = |a: &Ask| judge(&ledger, &none, &yes, &yes, &lines, a);
         assert_eq!(v(&good), Verdict::Decided);
@@ -1828,14 +1843,14 @@ mod tests {
         assert_eq!(v(&ask("k2", "Dans cinq minutes.", NOW)), Verdict::Send);
         // Sixty replies in the last hour, from all computers.
         for i in 0..PER_HOUR {
-            crate::texts::record(&dir, &claim_of(&ask(&format!("n{i}"), &format!("Réponse {i}"), NOW), NOW - 30 * MINUTE)).unwrap();
+            crate::texts::record(&dir, &claim_of(&ask(&format!("n{i}"), &format!("Réponse {i}"), NOW), "", NOW - 30 * MINUTE)).unwrap();
         }
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
         assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &ask("k3", "Encore une.", NOW)), Verdict::Refused("too-many"));
         assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &Ask { verb: "read".into(), words: String::new(), ..ask("k4", "", NOW) }), Verdict::Send, "a Mark as read counts for none");
         // Sixty Marks as read in the last hour: the next one refused too, in its own words.
         let read = |key: &str| Ask { verb: "read".into(), words: String::new(), ..ask(key, "", NOW) };
-        let claims: Vec<crate::texts::Claim> = (0..PER_HOUR).map(|i| claim_of(&read(&format!("r{i}")), NOW - 20 * MINUTE)).collect();
+        let claims: Vec<crate::texts::Claim> = (0..PER_HOUR).map(|i| claim_of(&read(&format!("r{i}")), "", NOW - 20 * MINUTE)).collect();
         crate::texts::record_all(&dir, &claims).unwrap();
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
         assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &read("r99")), Verdict::Refused("too-many-read"));
@@ -1853,7 +1868,7 @@ mod tests {
         let lines = vec![alice_line()];
         let (none, yes) = (BTreeSet::new(), |_: &str| true);
         let first = ask("k1", "J'arrive.", NOW - 3 * MINUTE);
-        crate::texts::record(&dir, &claim_of(&first, NOW - 3 * MINUTE)).unwrap();
+        crate::texts::record(&dir, &claim_of(&first, &alice_line().talk, NOW - 3 * MINUTE)).unwrap();
         let again = ask("k2", "J'arrive.", NOW);
         let v = |listener: &[(&str, &str)]| {
             let folder = scratch("same-words-done");
@@ -1874,7 +1889,26 @@ mod tests {
         for not in NOT_SENT {
             assert_eq!(v(&[("k1", "taken"), ("k1", not)]), Verdict::Send, "{not}: it never went");
         }
+        // Through the conversation's newer notification (its app posted it anew): the same words found there
+        // too, a fresh reply or Send again of the refused one, while the first may still go (L-2).
+        let newer = phonemsgs::Line { id: format!("{}-bb22", NOW - MINUTE), at: NOW - MINUTE, notice: "1111222233334444".into(), ..alice_line() };
+        let lines = vec![alice_line(), newer.clone()];
+        let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
+        let through_newer = |a: &Ask, unsent: &BTreeSet<String>| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent, went: &none_keys() });
+        let fresh = Ask { notice: newer.notice.clone(), line: newer.id.clone(), ..ask("k3", "J'arrive.", NOW) };
+        assert_eq!(through_newer(&fresh, &BTreeSet::new()), Verdict::Refused("same-words-pending"), "a fresh reply through the newer notification");
+        let again = Ask { again: "k2".into(), ..fresh.clone() };
+        assert_eq!(through_newer(&again, &BTreeSet::new()), Verdict::Refused("same-words-pending"), "Send again of the refused one through the newer notification");
+        let first_went: BTreeSet<String> = ["k1".to_string()].into();
+        let through_newer_after = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &BTreeSet::new(), went: &first_went });
+        assert_eq!(through_newer_after(&again), Verdict::Refused("same-words"), "the first went: never twice");
+        let gone: BTreeSet<String> = ["k1".to_string()].into();
+        assert_eq!(through_newer(&again, &gone), Verdict::Send, "the first never went: it goes, once");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn none_keys() -> BTreeSet<String> {
+        BTreeSet::new()
     }
 
     /// The ledger's mark is made once, at the first step or the first line

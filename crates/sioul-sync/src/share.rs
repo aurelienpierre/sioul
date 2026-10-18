@@ -6895,10 +6895,13 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
 /// through a link, nor into the sharing folder or Sioul's state, nor over a
 /// file there, one written there meanwhile included; never without room for
 /// it and some left (as every write of the sharing, `disk::fits`). A quarter
-/// of a second's worth at a time, the exchanges' lock then left free a
-/// moment, so that a dose's exchange never waits for more than that
-/// (thousands take half a minute: reviews of 17 and 18 October 2026, L1 and
-/// L-3). How many came back; a disk too full stops it, said.
+/// of a second's worth at a time, each file opened beside its place (a
+/// hidden name no exchange reads) outside the exchanges' lock, which is
+/// taken only to place that batch, after a last look, then left free a
+/// moment: a dose's exchange never waits for more than placing them, even
+/// behind a note or paper of tens of megabytes (thousands take half a
+/// minute: reviews of 17 and 18 October 2026, L1, L-3 and L-a). How many
+/// came back; a disk too full stops it, said.
 pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], store: &str) -> Result<usize, String> {
     // What there is to put back, and its date: read once.
     let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = {
@@ -6922,13 +6925,13 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
     let mut back = 0;
     let mut rest = held.as_slice();
     while !rest.is_empty() {
-        let running = exchange_lock(memory, true)?;
-        let (held_since, mut done) = (std::time::Instant::now(), 0);
+        // A batch opened beside its places, outside the lock: a quarter of a
+        // second's worth, never a whole bulk (review of 18 October 2026, L-3).
+        let (started, mut done) = (std::time::Instant::now(), 0);
+        let mut ready: Vec<(std::path::PathBuf, std::path::PathBuf, &Store)> = Vec::new();
+        let mut stop = None;
         for (file, h, when, size) in rest {
-            // The lock held a moment at most, then left free a while: a dose's
-            // exchange waiting for it takes it then, never after a whole bulk
-            // nor a whole batch (review of 18 October 2026, L-3).
-            if done >= PUT_BACK_BATCH || held_since.elapsed() >= PUT_BACK_HOLD {
+            if done >= PUT_BACK_BATCH || started.elapsed() >= PUT_BACK_HOLD {
                 break;
             }
             done += 1;
@@ -6937,11 +6940,15 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
                 continue;
             }
             let Some(parent) = path.parent() else { continue };
-            private_dirs(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            if let Err(e) = private_dirs(parent) {
+                stop = Some(format!("{}: {e}", parent.display()));
+                break;
+            }
             // Its size as last seen here; else four times its sealed size (compressed).
             let size = size.unwrap_or_else(|| std::fs::metadata(crate::blobs::path(folder, key, h)).map_or(0, |m| m.len()).saturating_mul(4));
             if !crate::disk::fits(parent, size) {
-                return Err(format!("share-no-room:{file}"));
+                stop = Some(format!("share-no-room:{file}"));
+                break;
             }
             let temporary = temporary(&path);
             if crate::blobs::get(folder, key, h, &temporary).is_err() {
@@ -6951,13 +6958,34 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             if let Ok(placed) = std::fs::File::options().write(true).open(&temporary) {
                 let _ = placed.set_modified(*when);
             }
-            if !place_new(&temporary, &path) {
-                continue;
-            }
-            back += 1;
+            ready.push((temporary, path, store));
         }
         rest = &rest[done..];
-        drop(running);
+        // The lock taken only to place them, each after a last look: never over
+        // a file written meanwhile, never through a link (review of 18 October 2026, L-a).
+        {
+            let _running = match exchange_lock(memory, true) {
+                Ok(running) => running,
+                Err(e) => {
+                    for (temporary, _, _) in &ready {
+                        let _ = std::fs::remove_file(temporary);
+                    }
+                    return Err(e);
+                }
+            };
+            for (temporary, path, store) in &ready {
+                if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
+                    let _ = std::fs::remove_file(temporary);
+                    continue;
+                }
+                if place_new(temporary, path) {
+                    back += 1;
+                }
+            }
+        }
+        if let Some(said) = stop {
+            return Err(said);
+        }
         if !rest.is_empty() {
             std::thread::sleep(PUT_BACK_FREE);
         }
@@ -10316,7 +10344,7 @@ mod tests {
             asks.iter().map(|a| replies::verdict(a, &judge)).collect::<Vec<_>>()
         };
         assert_eq!(decide(NOW + 2 * MINUTE), [replies::Verdict::Send]);
-        sioul_core::texts::record(&private, &replies::claim_of(&ask, NOW + 2 * MINUTE)).unwrap();
+        sioul_core::texts::record(&private, &replies::claim_of(&ask, &line.talk, NOW + 2 * MINUTE)).unwrap();
         // The listener handed it: the phone's word, back to the desk.
         let own = calls::own_file(&messages_of(&phone), replies::OUTCOME, &phone.id);
         replies::say_outcomes(&own, &[replies::Outcome { key: ask.key.clone(), state: "handed".into(), at: NOW + 2 * MINUTE, ..replies::Outcome::default() }]).unwrap();

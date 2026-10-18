@@ -99,7 +99,7 @@ Item {
                     { page: 0, name: "ui-porch", iconName: "mail-folder-inbox" },
                     { page: 1, name: "ui-tasks", iconName: "view-calendar-tasks" },
                     { page: 2, name: "ui-mail", iconName: "mail-message" },
-                    { page: 14, name: "texts-page-title", iconName: "im-user" },
+                    { page: 14, name: "texts-page-title", iconName: "sioul-texts" },
                     { page: 3, name: "ui-sites", iconName: "sioul-web" },
                     { page: 4, name: "ui-agenda", iconName: "view-calendar" },
                     { page: 5, name: "ui-contacts", iconName: "user-properties" },

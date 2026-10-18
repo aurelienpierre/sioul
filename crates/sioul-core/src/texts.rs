@@ -399,21 +399,47 @@ pub fn read_logs(root: &Path, sealer: &dyn Sealer) -> Vec<Text> {
     fold_logs(read_store(root, LOG, sealer, |t: &mut Text, d| t.device = d.to_string()))
 }
 
+/// A line's place in its phone's log: its row (`Row::of`), so that a line
+/// named by its id alone (before 16 October 2026) and its row's name now
+/// are one text; its name for a line of no row.
+fn place_of(name: &str, at: i64) -> String {
+    Row::of(name, at).map_or_else(|| name.to_string(), |r| r.name())
+}
+
 /// The phones' log lines (each with its `device`) as `read_logs` gives
-/// them: oldest first, each text once (by phone and row), a deletion's
-/// line folded into its text.
+/// them: oldest first, each text once by phone and row (a line named by
+/// its id alone and the same row named with its date are one: a phone put
+/// back on an older Sioul, which writes again under the old names what a
+/// newer one read, never doubles a text on the computers; the review of 16
+/// October 2026, MEDIUM 1), a deletion's line folded into its text, a
+/// line moved under its new name (its row's date rewritten) shown under
+/// that name alone, its old name kept beside it (`also`), so that a request
+/// sent from a computer still finds its text (review of 18 October 2026, L-4).
 pub fn fold_logs(lines: Vec<Text>) -> Vec<Text> {
-    let deletions: BTreeMap<(String, String), i64> = lines.iter().filter(|t| t.deleted > 0).map(|t| ((t.device.clone(), t.id.clone()), t.deleted)).collect();
-    // A line moved under its new name (its row's date rewritten): shown under that name alone, when its phone's log holds it.
-    let names: BTreeSet<(&str, &str)> = lines.iter().filter(|t| t.deleted == 0).map(|t| (t.device.as_str(), t.id.as_str())).collect();
-    let moved: BTreeSet<(String, String)> = lines.iter().filter(|t| t.deleted > 0 && !t.moved.is_empty() && names.contains(&(t.device.as_str(), t.moved.as_str()))).map(|t| (t.device.clone(), t.id.clone())).collect();
+    let deletions: BTreeMap<(String, String), i64> = lines.iter().filter(|t| t.deleted > 0).map(|t| ((t.device.clone(), place_of(&t.id, t.at)), t.deleted)).collect();
+    let places: BTreeSet<(String, String)> = lines.iter().filter(|t| t.deleted == 0).map(|t| (t.device.clone(), place_of(&t.id, t.at))).collect();
+    let mut moved: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut old_names: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for t in lines.iter().filter(|t| t.deleted > 0 && !t.moved.is_empty()) {
+        let to = (t.device.clone(), place_of(&t.moved, 0));
+        if places.contains(&to) {
+            moved.insert((t.device.clone(), place_of(&t.id, t.at)));
+            old_names.entry(to).or_default().push(format!("{}/{}", t.device, t.id));
+        }
+    }
     let mut seen = BTreeSet::new();
     let mut texts: Vec<Text> = lines
         .into_iter()
-        .filter(|t| t.deleted == 0 && t.at > 0 && !moved.contains(&(t.device.clone(), t.id.clone())) && seen.insert((t.device.clone(), t.id.clone())))
-        .map(|t| {
-            let deleted = deletions.get(&(t.device.clone(), t.id.clone())).copied().unwrap_or(0);
-            Text { deleted, ..t }
+        .filter(|t| t.deleted == 0 && t.at > 0)
+        .filter_map(|t| {
+            let place = (t.device.clone(), place_of(&t.id, t.at));
+            if moved.contains(&place) || !seen.insert(place.clone()) {
+                return None;
+            }
+            let deleted = deletions.get(&place).copied().unwrap_or(0);
+            let mut also = t.also.clone();
+            also.extend(old_names.get(&place).into_iter().flatten().cloned());
+            Some(Text { deleted, also, ..t })
         })
         .collect();
     texts.sort_by(|a, b| (a.at, &a.device, &a.id).cmp(&(b.at, &b.device, &b.id)));
@@ -436,7 +462,10 @@ struct LogRead {
 /// What tells a file unchanged since it was read: its size and time, and on
 /// Unix its inode and change time, which no tool sets back (a file of the
 /// same size whose time was put back, by rsync -t or a restore, is read
-/// again: the review of 16 October 2026, LOW 6).
+/// again: the review of 16 October 2026, LOW 6). Windows gives neither: such
+/// a file is read again there only once its size or time changes (NTFS's
+/// tunnelling also keeps a recreated file's creation time, so `created()`
+/// tells nothing either).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Stamp {
     len: u64,
@@ -754,12 +783,20 @@ impl Print {
     }
 }
 
+/// How far apart a received text's two dates may be for a re-date (a
+/// provider re-dates its own sending, an MMS downloaded or sent, a resend;
+/// never a text received hours later under a deleted text's id).
+pub const MOVED_WITHIN_MS: i64 = 10 * 60_000;
+
 /// Whether `new` is the message of `old` under a date its provider
 /// rewrote: the same table and row id, another date, the same way and
-/// people; a text's words the same (the plain texts' table gives a deleted
-/// text's id to the next one, whose words differ); a multimedia message's
-/// words and media as complete or more (one read before its parts were
-/// attached comes whole).
+/// people; a text's words the same, and either sent from the phone or
+/// dated within `MOVED_WITHIN_MS` of the other (the plain texts' table
+/// gives a deleted newest text's id to the next one: Alice's "Oui." deleted,
+/// her next "Oui." is another text, said deleted as before: review of 18
+/// October 2026, L-3); a multimedia message's media the same by their
+/// hashes wherever the older has them, its words and media as complete or
+/// more (one read before its parts were attached comes whole).
 pub fn moved(old: &Text, new: &Text) -> bool {
     let (Some(a), Some(b)) = (old.row(), new.row()) else { return false };
     if a.mms != b.mms || a.id != b.id || a.date == b.date || old.direction != new.direction {
@@ -775,7 +812,12 @@ pub fn moved(old: &Text, new: &Text) -> bool {
     if people(&was) != people(&is) {
         return false;
     }
-    if a.mms { was.words.iter().all(|w| is.words.contains(w)) && was.media.iter().all(|m| is.media.contains(m)) } else { old.body == new.body }
+    if a.mms {
+        let hashes = |t: &Text| t.parts.iter().filter(|p| !p.hash.is_empty()).map(|p| p.hash.clone()).collect::<BTreeSet<String>>();
+        hashes(old).is_subset(&hashes(new)) && was.words.iter().all(|w| is.words.contains(w)) && was.media.iter().all(|m| is.media.contains(m))
+    } else {
+        old.body == new.body && (old.direction == "out" || (b.date - a.date).abs() <= MOVED_WITHIN_MS)
+    }
 }
 
 /// The marks of the lines whose row its provider re-dated (`moved`): each
@@ -885,6 +927,10 @@ pub struct Claim {
     pub to: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub hash: String,
+    /// A reply's conversation (`replies::claim_of`, its key): the same words
+    /// to it are held back whichever of its notifications they go through.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub talk: String,
 }
 
 /// The ledger's mark: requests written before it are never sent (a ledger lost cannot make them new).
@@ -1362,16 +1408,18 @@ pub fn conversations(texts: &[Text], requests: &[Request], v: &Viewer) -> Vec<Co
 /// outcome that names no phone matches the row on any (as before phones were
 /// two). A row is its name with its date (`Row::name`); an outcome written
 /// before 16 October 2026 names it by its id alone, and matches that id's
-/// text only from when its request could be sent (`from`): never an older
-/// text whose id the text sent took again.
-fn row_key(t: &Text, key_of_row: &BTreeMap<String, Vec<(&str, &str, i64)>>) -> String {
+/// text only from when its request could be sent (`from`) to a little after
+/// the outcome itself (Android files the row before its result comes:
+/// `AHEAD_MS`), never an older text whose id the text sent took again, nor
+/// a text received days later under that id (review of 16 October 2026, LOW 5).
+fn row_key(t: &Text, key_of_row: &BTreeMap<String, Vec<(&str, &str, i64, i64)>>) -> String {
     let own = (t.device.as_str(), t.id.as_str());
     std::iter::once(own)
         .chain(t.also.iter().filter_map(|copy| copy.split_once('/')))
         .find_map(|(phone, id)| {
             let row = Row::of(id, t.at)?;
             let bare = format!("{}-{}", if row.mms { "mms" } else { "sms" }, row.id);
-            [row.name(), bare].iter().find_map(|name| key_of_row.get(name)?.iter().find(|(device, _, from)| (device.is_empty() || *device == phone) && t.at >= *from).map(|(_, key, _)| key.to_string()))
+            [row.name(), bare].iter().find_map(|name| key_of_row.get(name)?.iter().find(|(device, _, from, until)| (device.is_empty() || *device == phone) && t.at >= *from && t.at <= *until).map(|(_, key, _, _)| key.to_string()))
         })
         .unwrap_or_default()
 }
@@ -1384,12 +1432,12 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
     // A text Android filed for a request is dated no earlier than the
     // request's time on the phone's clock, less what `verdict` lets pass.
     let from: BTreeMap<&str, i64> = requests.iter().map(|r| (r.key.as_str(), r.written - r.ahead - AHEAD_MS)).collect();
-    let mut key_of_row: BTreeMap<String, Vec<(&str, &str, i64)>> = BTreeMap::new();
+    let mut key_of_row: BTreeMap<String, Vec<(&str, &str, i64, i64)>> = BTreeMap::new();
     for o in outcomes.iter().filter(|o| !o.row.is_empty()) {
         let named = o.row.contains('@');
-        let since = if named { i64::MIN } else { from.get(o.key.as_str()).copied().unwrap_or(i64::MIN) };
+        let (since, until) = if named { (i64::MIN, i64::MAX) } else { (from.get(o.key.as_str()).copied().unwrap_or(i64::MIN), o.at.saturating_add(AHEAD_MS)) };
         let name = if named { Row::of(&o.row, 0).map_or_else(|| o.row.clone(), |r| r.name()) } else { o.row.clone() };
-        key_of_row.entry(name).or_default().push((o.device.as_str(), o.key.as_str(), since));
+        key_of_row.entry(name).or_default().push((o.device.as_str(), o.key.as_str(), since, until));
     }
     let mut out: Vec<Message> = Vec::new();
     let mut shown_keys = BTreeSet::new();
@@ -1538,7 +1586,7 @@ mod tests {
         let mut sent = Vec::new();
         for r in requests {
             if verdict(&Request { ahead, ..r.clone() }, here, now, &ledger, fr()) == Verdict::Send {
-                record(dir, &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, fr()), hash: words_hash(&r.body) }).unwrap();
+                record(dir, &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, fr()), hash: words_hash(&r.body), ..Claim::default() }).unwrap();
                 sent.push(r.key.clone());
             }
         }
@@ -1615,7 +1663,7 @@ mod tests {
 
     #[test]
     fn a_crash_between_the_claim_and_the_result_is_said_never_sent_again() {
-        let claim = Claim { key: "f1".into(), at: NOW, state: "claimed".into(), to: "+33199001234".into(), hash: words_hash("Bonjour") };
+        let claim = Claim { key: "f1".into(), at: NOW, state: "claimed".into(), to: "+33199001234".into(), hash: words_hash("Bonjour"), ..Claim::default() };
         assert!(doubt_after(&claim, None, NOW + MINUTE).is_none(), "Android's word may still come");
         let found = doubt_after(&claim, Some("sms-412".into()), NOW + 3 * MINUTE).unwrap();
         assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "sms-412"));
@@ -2047,21 +2095,82 @@ mod tests {
         append(&a, &[text(20, "Court.")], &seal, None).unwrap();
         assert!(logs.refresh(&dir, &seal));
         same(&mut logs);
-        // The same size, other words, its time put back (rsync -t, a restore): read again all the same.
-        let modified = std::fs::metadata(&a).unwrap().modified().unwrap();
-        let body = std::fs::read(&a).unwrap();
-        std::fs::remove_file(&a).unwrap();
-        append(&a, &[text(20, "Kourt.")], &seal, None).unwrap();
-        assert_eq!(std::fs::read(&a).unwrap().len(), body.len(), "the same size");
-        std::fs::File::options().write(true).open(&a).unwrap().set_modified(modified).unwrap();
-        assert!(logs.refresh(&dir, &seal), "another file, though its size and time are the old one's");
-        same(&mut logs);
-        assert!(logs.texts().iter().any(|t| t.body == "Kourt."));
+        // The same size, other words, its time put back (rsync -t, a restore): read again all the same, by
+        // its inode and change time, which Unix alone gives (on Windows, once its size or time changes).
+        #[cfg(unix)]
+        {
+            let modified = std::fs::metadata(&a).unwrap().modified().unwrap();
+            let body = std::fs::read(&a).unwrap();
+            std::fs::remove_file(&a).unwrap();
+            append(&a, &[text(20, "Kourt.")], &seal, None).unwrap();
+            assert_eq!(std::fs::read(&a).unwrap().len(), body.len(), "the same size");
+            std::fs::File::options().write(true).open(&a).unwrap().set_modified(modified).unwrap();
+            assert!(logs.refresh(&dir, &seal), "another file, though its size and time are the old one's");
+            same(&mut logs);
+            assert!(logs.texts().iter().any(|t| t.body == "Kourt."));
+        }
         // A phone's file gone: its texts too.
         std::fs::remove_file(&b).unwrap();
         assert!(logs.refresh(&dir, &seal));
         same(&mut logs);
         assert!(logs.texts().iter().all(|t| t.device == "a"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Each row once on a computer: a line named by its id alone and the
+    /// same row named with its date are one text (a phone put back on an
+    /// older Sioul writes again under the old names: MEDIUM 1); a row its
+    /// provider re-dated is one text, its old name beside it, so that the
+    /// request it was still finds it (L-4); a reused id with the same words,
+    /// received hours later, is another text, the older one said deleted
+    /// (L-3); an outcome named by its id alone binds no text received after
+    /// it (LOW 5).
+    #[test]
+    fn each_row_is_one_text_on_a_computer() {
+        const HOUR: i64 = 60 * MINUTE;
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| true;
+        let v = viewer(&now, &tr, &names, &here);
+        let line = |id: &str, at: i64, body: &str| Text { id: id.into(), at, direction: "in".into(), with: vec!["+33199001234".into()], body: body.into(), device: "phone".into(), ..Text::default() };
+        // MEDIUM 1: the same row under its old name and its name now, a deletion under the old name.
+        let t5 = NOW - 9 * HOUR;
+        let t7 = NOW - 8 * HOUR;
+        let lines = vec![line("sms-5", t5, "Bonjour."), line(&format!("sms-5@{t5}"), t5, "Bonjour."), line(&format!("sms-7@{t7}"), t7, "Au revoir."), Text { deleted: NOW - HOUR, ..line("sms-7", t7, "") }];
+        let folded = fold_logs(lines);
+        assert_eq!(folded.iter().map(|t| (t.body.as_str(), t.deleted > 0)).collect::<Vec<_>>(), [("Bonjour.", false), ("Au revoir.", true)]);
+        // L-4: a text sent from a computer (r1, its outcome naming its first row), then re-dated: one text, bound to r1.
+        let t9 = NOW - 2 * HOUR;
+        let first = Text { direction: "out".into(), ..line(&format!("sms-9@{t9}"), t9, "J'arrive.") };
+        let then = Text { id: format!("sms-9@{}", t9 + 1), at: t9 + 1, ..first.clone() };
+        let mark = Text { id: first.id.clone(), at: first.at, deleted: NOW - HOUR, moved: then.id.clone(), direction: "out".into(), with: first.with.clone(), device: "phone".into(), ..Text::default() };
+        let folded = fold_logs(vec![first.clone(), then.clone(), mark]);
+        assert_eq!(folded.len(), 1);
+        assert_eq!((folded[0].id.as_str(), folded[0].also.clone()), (then.id.as_str(), vec![format!("phone/{}", first.id)]));
+        let request = Request { key: "r1".into(), phone: "phone".into(), to: "+33199001234".into(), body: "J'arrive.".into(), written: t9 - 1_000, ..Request::default() };
+        let sent = Outcome { key: "r1".into(), state: "sent".into(), at: t9 + 5_000, row: first.id.clone(), device: "phone".into(), ..Outcome::default() };
+        let shown = messages(&conversation_id(&first.with), &folded, std::slice::from_ref(&request), std::slice::from_ref(&sent), &v);
+        assert_eq!(shown.iter().map(|m| (m.id.clone(), m.key.clone())).collect::<Vec<_>>(), [(format!("phone/{}", then.id), "r1".to_string())], "one text, the request found by its old name");
+        // L-3: Alice's "Oui." deleted, her next "Oui." hours later under its id: another text; a millisecond later, or sent from the phone: the same.
+        let oui = line(&format!("sms-11@{}", NOW - 6 * HOUR), NOW - 6 * HOUR, "Oui.");
+        let later = line(&format!("sms-11@{}", NOW - 3 * HOUR), NOW - 3 * HOUR, "Oui.");
+        assert!(!moved(&oui, &later), "a reused id, hours later: another text");
+        assert!(moved(&oui, &line(&format!("sms-11@{}", NOW - 6 * HOUR + 1), NOW - 6 * HOUR + 1, "Oui.")), "re-dated by a millisecond");
+        let out = |t: &Text| Text { direction: "out".into(), ..t.clone() };
+        assert!(moved(&out(&oui), &out(&later)), "sent from the phone: its provider re-dates its own sending");
+        let picture = |hash: &str| Text { id: format!("mms-3@{}", (NOW - 7 * HOUR) / 1000), at: NOW - 7 * HOUR, direction: "in".into(), with: vec!["+33199001234".into()], parts: vec![Part { ct: "image/jpeg".into(), hash: hash.into(), state: "here".into(), ..Part::default() }], device: "phone".into(), ..Text::default() };
+        let again = |hash: &str| Text { id: format!("mms-3@{}", (NOW - 7 * HOUR) / 1000 + 1), at: NOW - 7 * HOUR + 1_000, ..picture(hash) };
+        assert!(moved(&picture("aa11"), &again("aa11")), "the same picture re-dated");
+        assert!(!moved(&picture("aa11"), &again("bb22")), "another picture under a reused id");
+        assert!(moved(&picture(""), &again("bb22")), "read before its parts were attached: comes whole");
+        // LOW 5: an outcome of before 16 October naming its row by its id alone binds no text received days after it.
+        let bare = Outcome { key: "r2".into(), state: "sent".into(), at: NOW - 5 * HOUR, row: "sms-12".into(), device: "phone".into(), ..Outcome::default() };
+        let asked = Request { key: "r2".into(), phone: "phone".into(), to: "+33199001234".into(), body: "Merci.".into(), written: NOW - 5 * HOUR - 30_000, ..Request::default() };
+        let filed = Text { direction: "out".into(), ..line("sms-12", NOW - 5 * HOUR - 10_000, "Merci.") };
+        let reused = line("sms-12", NOW + 3 * DAY_MS, "Autre.");
+        let bound = |t: &Text| messages(&conversation_id(&t.with), std::slice::from_ref(t), std::slice::from_ref(&asked), std::slice::from_ref(&bare), &v).into_iter().find(|m| m.id.starts_with("phone/")).map(|m| m.key).unwrap_or_default();
+        assert_eq!(bound(&filed), "r2", "the text it sent, filed before its result");
+        assert_eq!(bound(&reused), "", "a text received days later under its id");
     }
 }

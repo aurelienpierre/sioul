@@ -1043,6 +1043,55 @@ fn put_back_never_keeps_a_dose_waiting() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// L-a (review of 18 October 2026): a large note put back is opened beside
+/// its place outside the exchanges' lock, taken only to place it: a dose's
+/// exchange never waits for its time (until then, a 40 MB note held it
+/// 0.62 s on this computer, seconds on a phone).
+#[test]
+fn a_large_note_put_back_never_holds_the_lock_for_its_time() {
+    let base = scratch("gc-put-back-large");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    // 24 MB of words that do not compress, and eleven small notes beside it.
+    let mut seed: u64 = 0x5eed;
+    let big: String = (0..24 * 1024 * 1024)
+        .map(|_| {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            char::from(b'a' + ((seed >> 33) % 26) as u8)
+        })
+        .collect();
+    put(&dn, "bulk/big.md", big.as_bytes());
+    for n in 0..11 {
+        put(&dn, &format!("bulk/{n:02}.md"), format!("# note {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + MINUTE, &dn).withheld.map(|w| w[0].count), Some(12));
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let started = std::time::Instant::now();
+    let putting = {
+        let (folder, memory, id) = (folder.clone(), memory.clone(), id.clone());
+        std::thread::spawn(move || put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/"))
+    };
+    let mut longest = std::time::Duration::ZERO;
+    while !putting.is_finished() {
+        let asked = std::time::Instant::now();
+        let held = exchange_lock(&memory, true).unwrap();
+        longest = longest.max(asked.elapsed());
+        drop(held);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(putting.join().unwrap(), Ok(12));
+    let took = started.elapsed();
+    assert_eq!(std::fs::read(dn.join("bulk/big.md")).unwrap(), big.as_bytes(), "the large note back whole");
+    println!("put back with a 24 MB note: {took:?}, a dose's exchange waited {longest:?} at most");
+    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// L-9 (review of 18 October 2026): a note replaced by a link is said as
 /// that note, never left on the others; "Take them out everywhere" on its
 /// line takes it out alone, never a note whose name begins as its.
