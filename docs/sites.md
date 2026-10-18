@@ -2,6 +2,8 @@
 
 Some mail never leaves its website: a bank's secure mailbox, the hospital's, the tax office's. Chats live in the browser too (Element, WhatsApp, Discord), and so does a dating site. Sites (Ctrl+4) keeps them pinned, logged in once, and turns their notifications into something that waits for you.
 
+Sites are a stopgap: Sioul's encrypted mail exists so that such letters can come back to mail ([design.md](design.md#portals)).
+
 ## What a site is
 Not an account: it holds no sign-in of Sioul's (the site keeps its own, in its profile). `[[site]]` in the configuration; files older than 4 October 2026 kept sites as `[[account]]` of kind "portal", read as sites and moved to `[[site]]` the first time Sioul starts (`config::migrate_sites_at_start`, a copy of the file kept as `config-before-sites.toml`, made once: a move that fails at each start never writes over it):
 

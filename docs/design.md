@@ -57,6 +57,8 @@ From the card, one key does each of:
 - **Newsletters**: one-click unsubscribe (RFC 8058).
 
 ## Portals
+Portals are carried as a stopgap, not as the design. Organisations built them because mail is not private end to end (RFC 3207; RFC 8461) and the GDPR asks for security appropriate to the risk, encryption among its first measures (art. 32). The result moved the work onto the person (Défenseur des droits 2022 and 2026) and gathered everyone's data in stores that were breached again and again from 2021 to 2026, often through compromised or usurped logins, or through providers ([research/secure-mailboxes.md](research/secure-mailboxes.md)). Sioul's answer sits on the person's side: OpenPGP with Autocrypt and the Web Key Directory, keys on an OpenPGP card (on computers, not yet on a phone), a password manager read by Sioul's own client, FIDO2 keys in sites. The person gets one window; no organisation needs one store of everyone's messages. Sites holds the portals meanwhile, each logged in once, its news held for the person's hours. A portal unpinned because its office now writes encrypted mail is the measure of success.
+
 - **An embedded Chromium** (QtWebEngine), one persistent profile for every site, with the sessions kept ([sites.md](sites.md)).
 - **The notification emails** ("you have a new message in your space") become "a letter waits at <portal>" in the right project.
 - **"File this page"** saves a portal letter as a dated PDF into its project.

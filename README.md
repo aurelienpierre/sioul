@@ -32,6 +32,12 @@ Most software lets each app decide when it may interrupt you. Sioul turns that a
 
 **A filter that learns what can wait.** Most spam filters keep an inbox tidy; Sioul's protects your attention. It learns from your own mail, on your computer, when you ask, and only the small table it learns travels to your phone, sealed. It judges strangers' mail only, and what looks like spam, or might be, waits in a folded queue on the Porch, without a count or a notification. Until you choose what it does with each verdict, it moves nothing.
 
+## Letters back in your mail, sealed
+
+The "secure mailboxes" of banks, health insurers, tax offices and job centres are a bad answer to a real problem. The problem: ordinary mail is not private; servers encrypt it between them only when both agree, and it waits, readable, in every mailbox it reaches. The answer: each office built its own mailbox, behind its own login and its own code, and your own mailbox gets, at most, a note that something is waiting. Every office becomes one more place to remember, one more password and one more code: the kind of work that weighs most when memory, planning or energy run short, as they can with ADHD, depression, burnout or PTSD. And the stores behind these portals were not safe either: since 2020, breaches at France Travail, at two third-party payers of health insurance and at France Titres exposed the data of tens of millions of people.
+
+Sioul does not support encryption for its own sake. OpenPGP, a key that never leaves your security key, a password manager and second factors are there so that letters can come back to mail, sealed for you alone: no office then needs one store of everyone's messages, and on your side everything stays in one window. Until offices write that way, Sioul gathers their portals in one place too. [Why, with the sources](https://aurelienpierre.github.io/sioul/guide/privacy-security.html#why-sioul-encrypts-mail).
+
 ## The other way round
 
 | Most software | Sioul |
@@ -76,7 +82,7 @@ Sioul is the working counterpart of a book by the same author, *Design and Engin
 
 ## Where it stands
 
-Version 0.0.5: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
+Version 0.0.6: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet. What differs on a phone: [docs/android.md](docs/android.md).
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
@@ -121,7 +127,7 @@ Then the first steps with your own accounts: [First steps](https://aurelienpierr
 - **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows.
 - **HTML mail made safe**: nothing remote loads, nothing runs.
 - **Security keys and Bitwarden**: WebAuthn and FIDO2 keys (a YubiKey) in the sites you keep; logins filled from Bitwarden, read by Sioul itself and never written.
-- **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
+- **OpenPGP**, so that letters can come by mail again rather than through portals: signing and encrypting as you send, with Autocrypt and the Web Key Directory; on a computer, your key can stay on a security key.
 - **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id); notes and papers file by file; earlier versions kept on each device. No server of ours. [How it works, and what it protects](https://aurelienpierre.github.io/sioul/guide/sharing.html); the design: [docs/database.md](docs/database.md).
 - **AI agents**, only if you connect one: `sioul mcp` serves an agent such as Claude Code what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays.
 - **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, compatible with Obsidian vaults and Nextcloud Notes. Gmail, Outlook.com, Hotmail and Microsoft 365 sign in on Google's and Microsoft's own pages (OAuth 2.0 with PKCE, no password kept; Microsoft's not yet tried against Microsoft itself). What works with what, feature by feature, and how far each was tested: [Works with](https://aurelienpierre.github.io/sioul/guide/compatibility.html).

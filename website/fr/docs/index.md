@@ -48,6 +48,12 @@ La plupart des filtres à indésirables gardent une boîte de réception en ordr
 
 Il ne juge que les courriels des inconnus, jamais ceux de quelqu’un que vous connaissez, un code que vous avez demandé ou les courriels d’un projet. Il ne prétend pas non plus être sûr : ce qui ressemble à un indésirable, ou pourrait en être un, attend dans une file repliée sous le Porche, sans compte ni notification, que vous ayez le temps d’y regarder. Vous choisissez ce qu’il fait de chaque avis ; tant que vous n’avez pas choisi, il ne déplace rien. [Les indésirables, et votre propre filtre](guide/porch.md#spam-and-your-own-filter)
 
+### Vos courriers de retour dans vos courriels, scellés {#your-letters-back-in-your-mail}
+
+Le courriel ordinaire n’est pas confidentiel ; alors les banques, les assurances et les administrations ont chacune bâti une « messagerie sécurisée », derrière son identifiant et son code. Votre propre boîte reçoit tout au plus un avis : quelque chose vous attend. Chaque organisme devient un endroit de plus à retenir, un mot de passe de plus, un code de plus : un travail qui pèse le plus quand la mémoire, l’organisation ou l’énergie manquent, comme cela peut arriver avec un TDAH, une dépression, un épuisement professionnel ou un TSPT. Et les réserves de données derrière ces portails n’étaient pas sûres non plus : depuis 2020, des violations de données chez France Travail, chez deux opérateurs de tiers payant des complémentaires santé et chez France Titres ont exposé les données de dizaines de millions de personnes.
+
+Sioul ne chiffre pas les courriels pour le principe. OpenPGP, une clé qui reste sur votre clé de sécurité, un gestionnaire de mots de passe et la deuxième étape de connexion sont là pour que les courriers puissent revenir au courriel, scellés pour vous seul : aucun organisme n’a plus besoin d’une réserve unique des messages de tout le monde, et de votre côté tout tient dans une fenêtre. En attendant que les organismes écrivent ainsi, Sioul réunit aussi leurs portails en un seul endroit. [Pourquoi, avec les sources](guide/privacy-security.md#why-sioul-encrypts-mail)
+
 ## À l’envers {#the-other-way-round}
 
 | La plupart des logiciels | Sioul |
@@ -207,7 +213,7 @@ Le même raisonnement décide de la façon dont Sioul est construit. Vos donnée
 
 ## Où il en est {#where-it-stands}
 
-Sioul est jeune (version 0.0.5) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
+Sioul est jeune (version 0.0.6) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
 
 Il est fait par une seule personne, au grand jour : aucune assistance n’est promise. Les questions et les signalements sont les bienvenus dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 
@@ -226,7 +232,7 @@ Il est fait par une seule personne, au grand jour : aucune assistance n’est 
 - **Un filtre à indésirables à vous** : un classifieur fastText entraîné sur votre ordinateur à partir de vos propres courriels (les en-têtes et le début de chaque texte, jamais les pièces jointes), d’abord quand vous le demandez, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif ; seule sa table compacte voyage vers votre téléphone, scellée. Il ne juge que les courriels des inconnus, et ne déplace rien sauf si vous le choisissez ([Votre filtre à indésirables](guide/settings.md#your-own-spam-filter)).
 - **Les pièces jointes analysées avant de s’ouvrir**, par l’antivirus de votre système : ClamAV sur Linux et macOS, Microsoft Defender (par AMSI) sur Windows. Un programme ne s’ouvre jamais depuis un courriel, et sous Windows et macOS les fichiers que vous ouvrez ou enregistrez portent la marque du système qui dit qu’ils viennent d’Internet.
 - **Les courriels HTML rendus sûrs** : rien de distant ne se charge, jamais, et rien ne s’exécute ; un lien montre son adresse avant de s’ouvrir.
-- **Une authentification forte**, sur les ordinateurs :
+- **Une authentification forte**, sur les ordinateurs, pour que les courriers reviennent au courriel, scellés, et que les identifiants cessent de vivre dans votre mémoire :
     - votre clé OpenPGP sur une clé de sécurité (toute carte OpenPGP : une YubiKey, une Nitrokey…) : la carte elle-même signe et déchiffre, et votre clé privée n’entre jamais dans l’ordinateur ; son code PIN gardé en mémoire seulement et jamais journalisé ;
     - les clés de sécurité FIDO2 et WebAuthn, et les clés d’accès qu’elles gardent, dans les sites que vous gardez, le code PIN demandé dans la boîte de dialogue de Sioul ;
     - Bitwarden, lu par le client propre à Sioul et jamais écrit, ouvert avec une clé de sécurité comme deuxième étape, ou seule comme clé d’accès.

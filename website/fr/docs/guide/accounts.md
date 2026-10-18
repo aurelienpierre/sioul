@@ -93,6 +93,8 @@ Qui peut vous joindre, et quand, par courriel, par téléphone et par les messag
 
 ## Chiffrement {#encryption}
 
+Avec une clé à vous, n’importe qui, un organisme compris, peut vous écrire de façon que vous seul puissiez le lire, dans votre propre boîte plutôt que sur son portail ([pourquoi](privacy-security.md#why-sioul-encrypts-mail)).
+
 Vos clés OpenPGP, pour signer et chiffrer vos courriels ([Les courriels](mail.md#signing-and-encrypting)) :
 
 - **Créer une clé pour** une adresse : une nouvelle clé, valable trois ans ; sa phrase secrète est faite au hasard et gardée dans votre trousseau, si bien que rien n’est demandé à chaque courriel.
@@ -132,7 +134,7 @@ Sioul ne fait qu’utiliser la clé : il ne demande jamais son code PIN d’ad
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courriel ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour les courriels de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’a pas encore été essayée avec une vraie clé, et n’existe pas encore sur les téléphones.
+**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courriel ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour les courriels de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’existe pas encore sur les téléphones, et n’a pas encore été essayée avec une vraie clé sous Windows ni macOS.
 
 En octobre 2026, d’après la documentation de chaque application.
 
