@@ -804,7 +804,8 @@ public final class Texts
     {
         JSONArray found = new JSONArray();
         if (!key.isEmpty()) {
-            String[] columns = { Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.CREATOR };
+            // RESPONSE_STATUS: the carrier's status Android read in its answer (none when it read none).
+            String[] columns = { Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.CREATOR, Telephony.Mms.RESPONSE_STATUS };
             try (Cursor cursor = resolver.query(Telephony.Mms.CONTENT_URI, columns, Telephony.Mms.TRANSACTION_ID + " = ?", new String[] { key }, null)) {
                 // No cursor: the provider did not answer, which is no "none there".
                 if (cursor == null)
@@ -812,7 +813,8 @@ public final class Texts
                 while (cursor.moveToNext()) {
                     Row row = of(cursor);
                     if (own.equals(row.text(Telephony.Mms.CREATOR)))
-                        found.put(new JSONObject().put("id", row.number(Telephony.Mms._ID)).put("date", row.number(Telephony.Mms.DATE)).put("box", row.number(Telephony.Mms.MESSAGE_BOX)));
+                        found.put(new JSONObject().put("id", row.number(Telephony.Mms._ID)).put("date", row.number(Telephony.Mms.DATE)).put("box", row.number(Telephony.Mms.MESSAGE_BOX))
+                            .put("status", row.number(Telephony.Mms.RESPONSE_STATUS)));
                 }
             } catch (RuntimeException e) {
                 // A look that failed says so: Rust looks again, never reads it as "not there".

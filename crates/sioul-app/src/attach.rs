@@ -188,7 +188,7 @@ pub(crate) fn sniff_medium(head: &[u8], name: &str) -> Option<&'static str> {
         };
     }
     if at(0, &[0x1A, 0x45, 0xDF, 0xA3]) {
-        return head.windows(4).any(|w| w == b"webm").then_some("video/webm");
+        return webm(head).then_some("video/webm");
     }
     if at(0, b"#!AMR") {
         return Some("audio/amr");
@@ -199,17 +199,18 @@ pub(crate) fn sniff_medium(head: &[u8], name: &str) -> Option<&'static str> {
     if at(0, b"RIFF") && at(8, b"WAVE") {
         return Some("audio/wav");
     }
-    if at(0, b"ID3") {
+    // An ID3 tag: its version (2 to 4) and its size in four bytes of seven bits each.
+    if at(0, b"ID3") && head.get(3).is_some_and(|v| (2..=4).contains(v)) && head.get(6..10).is_some_and(|size| size.iter().all(|b| *b < 0x80)) {
         return Some("audio/mpeg");
     }
-    // A frame's sync: AAC's (ADTS, its layer 0), MPEG audio's (a layer of its own).
-    if let [0xFF, second, ..] = head {
-        if second & 0xF6 == 0xF0 {
-            return Some("audio/aac");
-        }
-        if second & 0xE0 == 0xE0 && second & 0x06 != 0 {
-            return Some("audio/mpeg");
-        }
+    // A frame, whole and valid, then the next frame's at the length its header gives: AAC's (ADTS),
+    // MPEG audio's; never two bytes alone, which a text in UTF-16 begins with (FF FE: the review's L-d).
+    let followed = |length: Option<usize>, next: &dyn Fn(&[u8]) -> Option<usize>| length.is_some_and(|length| head.get(length..).is_some_and(|rest| next(rest).is_some()));
+    if followed(adts_frame(head), &adts_frame) {
+        return Some("audio/aac");
+    }
+    if followed(mpeg_frame(head), &|rest: &[u8]| mpeg_frame(rest).filter(|_| rest.get(1).map(|b| b & 0xFE) == head.get(1).map(|b| b & 0xFE))) {
+        return Some("audio/mpeg");
     }
     // Cards and calendar entries: text, perhaps after a byte-order mark and blank lines.
     let text = String::from_utf8_lossy(head.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(head)).trim_start().to_ascii_uppercase();
@@ -220,6 +221,86 @@ pub(crate) fn sniff_medium(head: &[u8], name: &str) -> Option<&'static str> {
         return Some(if text.contains("VERSION:1.0") { "text/x-vCalendar" } else { "text/calendar" });
     }
     None
+}
+
+/// An MPEG audio frame's length by its header (four bytes): its version,
+/// layer, bitrate, sampling rate and padding; none for what is no valid
+/// header (a reserved version or layer, a free or bad bitrate, a reserved rate).
+fn mpeg_frame(header: &[u8]) -> Option<usize> {
+    let [first, second, third, _] = *header.get(..4)? else { return None };
+    if first != 0xFF || second & 0xE0 != 0xE0 {
+        return None;
+    }
+    // Version: 0 MPEG-2.5, 1 reserved, 2 MPEG-2, 3 MPEG-1. Layer: 0 reserved, 1 III, 2 II, 3 I.
+    let (version, layer) = ((second >> 3) & 3, (second >> 1) & 3);
+    let (bitrate, rate) = (usize::from(third >> 4), usize::from((third >> 2) & 3));
+    if version == 1 || layer == 0 || bitrate == 0 || bitrate == 15 || rate == 3 {
+        return None;
+    }
+    const MPEG1: [[u32; 15]; 3] = [
+        [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448],
+        [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384],
+        [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+    ];
+    const MPEG2: [[u32; 15]; 2] = [[0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256], [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]];
+    let kbps = match (version, layer) {
+        (3, 3) => MPEG1[0][bitrate],
+        (3, 2) => MPEG1[1][bitrate],
+        (3, _) => MPEG1[2][bitrate],
+        (_, 3) => MPEG2[0][bitrate],
+        _ => MPEG2[1][bitrate],
+    };
+    let hertz = [[11_025u32, 12_000, 8_000], [0, 0, 0], [22_050, 24_000, 16_000], [44_100, 48_000, 32_000]][usize::from(version)][rate];
+    let (bits, padding) = (kbps * 1000, u32::from((third >> 1) & 1));
+    let length = match layer {
+        3 => (12 * bits / hertz + padding) * 4,
+        1 if version != 3 => 72 * bits / hertz + padding,
+        _ => 144 * bits / hertz + padding,
+    };
+    Some(length as usize)
+}
+
+/// An AAC frame's length by its ADTS header (seven bytes): its sync, layer
+/// 0, a sampling rate that exists; none else.
+fn adts_frame(header: &[u8]) -> Option<usize> {
+    let header = header.get(..7)?;
+    if header[0] != 0xFF || header[1] & 0xF6 != 0xF0 || (header[2] >> 2) & 0x0F >= 13 {
+        return None;
+    }
+    let length = (usize::from(header[3] & 0x03) << 11) | (usize::from(header[4]) << 3) | usize::from(header[5] >> 5);
+    (length >= 7).then_some(length)
+}
+
+/// Whether a Matroska file is a WebM one, by its EBML header's DocType
+/// element ("webm"), never by "webm" anywhere in its first bytes.
+fn webm(head: &[u8]) -> bool {
+    // A size: its length told by its first byte's leading zeros, that byte's marker left out.
+    let size = |at: usize| -> Option<(usize, usize)> {
+        let first = *head.get(at)?;
+        let length = first.leading_zeros() as usize + 1;
+        if length > 8 {
+            return None;
+        }
+        let mut value = u64::from(first) & (0xFF >> length);
+        for i in 1..length {
+            value = (value << 8) | u64::from(*head.get(at + i)?);
+        }
+        Some((usize::try_from(value).ok()?, length))
+    };
+    let Some((header, n)) = size(4) else { return false };
+    let end = (4 + n).saturating_add(header).min(head.len());
+    let mut at = 4 + n;
+    while at < end {
+        // An element: its ID (one to four bytes, by its first byte's leading zeros), its size, its body.
+        let id_length = head[at].leading_zeros() as usize + 1;
+        let (Some(id), Some((length, n))) = (head.get(at..at + id_length).filter(|_| id_length <= 4), size(at + id_length)) else { return false };
+        let body = at + id_length + n;
+        if id == [0x42, 0x82] {
+            return head.get(body..body.saturating_add(length)) == Some(b"webm");
+        }
+        at = body.saturating_add(length);
+    }
+    false
 }
 
 /// What a file is (decisions 7 to 9), by its first bytes alone: a picture
@@ -238,12 +319,15 @@ pub(crate) fn kind_of(picture: Option<&str>, reads: bool, frames: u32, medium: O
 }
 
 /// An animated GIF written again with its pictures alone (the review of 18
-/// October 2026, L-1): its header, its screen and colour tables, each
-/// frame's timing (its graphic control) and image, and its loop
-/// (NETSCAPE2.0's or ANIMEXTS1.0's block) kept byte for byte; its comments,
-/// plain-text blocks, other programs' blocks (XMP, a colour profile, an
-/// editor's notes) and whatever follows its end left out. No frame is
-/// decoded: each block says its own length. None for what is not a whole GIF.
+/// October 2026, L-1, and of its re-check, L-c): its header, its screen and
+/// colour tables and each frame's image kept byte for byte; each frame's
+/// timing (its graphic control) written as its own four bytes alone, its
+/// loop (NETSCAPE2.0's or ANIMEXTS1.0's block) as its first sub-block alone
+/// (`01` and the count), whatever else a crafted GIF puts in them; its
+/// comments, plain-text blocks, other programs' blocks (XMP, a colour
+/// profile, an editor's notes) and whatever follows its end left out; its
+/// end written when it lacks one (Qt reads such a GIF). No frame is decoded:
+/// each block says its own length. None for a GIF cut inside a block.
 pub(crate) fn gif_pictures_alone(bytes: &[u8]) -> Option<Vec<u8>> {
     // Where a run of sub-blocks (a length, its bytes, until a length of 0) ends.
     let blocks_end = |mut at: usize| -> Option<usize> {
@@ -267,7 +351,12 @@ pub(crate) fn gif_pictures_alone(bytes: &[u8]) -> Option<Vec<u8>> {
     let mut at = 13 + table(screen[10]);
     let mut out = bytes.get(..at)?.to_vec();
     loop {
-        match *bytes.get(at)? {
+        // Its end, or none after its last whole block.
+        let Some(&block) = bytes.get(at) else {
+            out.push(0x3B);
+            return Some(out);
+        };
+        match block {
             0x3B => {
                 out.push(0x3B);
                 return Some(out);
@@ -282,9 +371,17 @@ pub(crate) fn gif_pictures_alone(bytes: &[u8]) -> Option<Vec<u8>> {
             0x21 => {
                 let label = *bytes.get(at + 1)?;
                 let end = blocks_end(at + 2)?;
+                // A frame's timing: its four bytes (disposal and transparency, delay, transparent colour) alone.
+                if label == 0xF9 && bytes.get(at + 2) == Some(&4) {
+                    out.extend_from_slice(&[0x21, 0xF9, 4]);
+                    out.extend_from_slice(bytes.get(at + 3..at + 7)?);
+                    out.push(0);
+                }
+                // The loop: its name and the count of its first sub-block (`03 01 lo hi`) alone.
                 let looping = label == 0xFF && bytes.get(at + 2) == Some(&11) && matches!(bytes.get(at + 3..at + 14), Some(b"NETSCAPE2.0" | b"ANIMEXTS1.0"));
-                if label == 0xF9 || looping {
-                    out.extend_from_slice(&bytes[at..end]);
+                if looping && bytes.get(at + 14..at + 16) == Some(&[3u8, 1][..]) {
+                    out.extend_from_slice(bytes.get(at..at + 18)?);
+                    out.push(0);
                 }
                 at = end;
             }
@@ -384,10 +481,14 @@ impl Drop for Picture {
 
 /// A file's first bytes, enough for `sniff` and `sniff_medium`; none when it cannot be read.
 pub(crate) fn head_of(path: &Path) -> Option<Vec<u8>> {
-    let mut head = Vec::with_capacity(512);
-    std::fs::File::open(path).ok()?.take(512).read_to_end(&mut head).ok()?;
+    let mut head = Vec::with_capacity(HEAD);
+    std::fs::File::open(path).ok()?.take(HEAD as u64).read_to_end(&mut head).ok()?;
     Some(head)
 }
+
+/// How much of a file is read to tell what it is: an audio frame's next
+/// frame with it (an AAC frame may be 8 KB).
+const HEAD: usize = 16 * 1024;
 
 /// A picture made fit for its share: written to `out` as `fit` says, from
 /// `source`; its long side, its quality and its size. None: it cannot be
@@ -704,12 +805,26 @@ mod tests {
         assert_eq!(medium(b"\0\0\0\x18ftypheic\0\0\0\0mif1heic", "x.mp4"), None, "a picture's box is no video");
         assert_eq!(medium(b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x84webm", "clip.webm"), Some("video/webm"));
         assert_eq!(medium(b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\x82\x88matroska", "film.mkv"), None, "Matroska, not WebM");
+        assert_eq!(medium(b"\x1a\x45\xdf\xa3\x8b\x42\x82\x88matroska\x15\x49\xa9\x66\x84webm", "film.webm"), None, "webm in a later element: its DocType says Matroska");
         assert_eq!(medium(b"#!AMR\n\x3c", "voice.amr"), Some("audio/amr"));
         assert_eq!(medium(b"OggS\0\x02", "song.opus"), Some("audio/ogg"));
         assert_eq!(medium(b"RIFF\x24\0\0\0WAVEfmt ", "a.wav"), Some("audio/wav"));
         assert_eq!(medium(b"ID3\x04\0\0\0\0\0\0", "a.mp3"), Some("audio/mpeg"));
-        assert_eq!(medium(&[0xFF, 0xFB, 0x90, 0x64], "a.mp3"), Some("audio/mpeg"));
-        assert_eq!(medium(&[0xFF, 0xF1, 0x50, 0x80], "a.aac"), Some("audio/aac"));
+        // A sound by whole frames, the next one's header where the first says (the review's re-check, L-d).
+        let mp3 = [&[0xFF, 0xFB, 0x90, 0x64][..], &[0; 413], &[0xFF, 0xFB, 0x90, 0x64], &[0; 64]].concat();
+        assert_eq!(mpeg_frame(&mp3), Some(417), "MPEG-1 Layer III, 128 kb/s, 44.1 kHz");
+        assert_eq!(medium(&mp3, "a.mp3"), Some("audio/mpeg"));
+        assert_eq!(medium(&mp3[..417], "a.mp3"), None, "one frame, its next not there");
+        assert_eq!(medium(&[0xFF, 0xFB, 0x90, 0x64], "a.mp3"), None, "two bytes of sync are no sound");
+        let adts = [&[0xFF, 0xF1, 0x50, 0x80, 0x0C, 0x9F, 0xFC][..], &[0; 93], &[0xFF, 0xF1, 0x50, 0x80, 0x0C, 0x9F, 0xFC], &[0; 93]].concat();
+        assert_eq!(adts_frame(&adts), Some(100));
+        assert_eq!(medium(&adts, "a.aac"), Some("audio/aac"));
+        assert_eq!(medium(b"ID3\x04\0\0\x80\0\0\0", "a.mp3"), None, "an ID3 tag's size is seven bits a byte");
+        // Text in UTF-16, as Windows writes it: its byte-order mark FF FE is no sound, nor a card.
+        let utf16 = |text: &str| [&[0xFF, 0xFE][..], &text.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<u8>>()].concat();
+        assert_eq!(medium(&utf16("Notes for Tuesday: the boiler, the rent, the dentist.\r\n".repeat(40).as_str()), "notes.txt"), None);
+        assert_eq!(medium(&utf16(&format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Alice Example\r\nTEL:01 99 00 12 34\r\nEND:VCARD\r\n{}", " ".repeat(800))), "alice.vcf"), None);
+        assert_eq!(medium(&utf16("Bonjour, à demain.".repeat(60).as_str()), "mot.txt"), None, "its first letter a valid frame's, no next frame");
         assert_eq!(medium(b"\xEF\xBB\xBF\r\nbegin:vcard\r\nVERSION:2.1\r\n", "alice.vcf"), Some("text/x-vCard"));
         assert_eq!(medium(b"BEGIN:VCALENDAR\r\nVERSION:1.0\r\n", "dinner.vcs"), Some("text/x-vCalendar"));
         assert_eq!(medium(b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n", "dinner.ics"), Some("text/calendar"));
@@ -745,6 +860,22 @@ mod tests {
         assert!(!alone.windows(5).any(|w| w == b"SIOUL" || w == b"SECRE"), "no comment, XMP, text or tail");
         assert_eq!(gif_pictures_alone(&alone).unwrap(), alone, "written again, the same");
         assert_eq!(gif_pictures_alone(&gif[..gif.len() - 30]), None, "cut short: not a whole GIF");
+        // No end after its last whole block, which Qt reads: its end written (the re-check, I-h).
+        let screen_again = [b"GIF89a".as_slice(), &[2, 0, 1, 0, 0x80, 0, 0], &[255, 0, 0, 0, 0, 255]].concat();
+        let open = [screen_again.clone(), b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\0\0\0".to_vec(), frame(0), frame(1)].concat();
+        assert_eq!(gif_pictures_alone(&open).unwrap(), [open.clone(), vec![0x3B]].concat());
+        // A crafted GIF hides words inside a frame's timing and the loop block: their values alone go (L-c).
+        let timing_with_more = [&[0x21, 0xF9, 4, 0, 10, 0, 0, 5][..], b"SECRE", &[0]].concat();
+        let timing_too_long = [&[0x21, 0xF9, 20][..], b"SECRET-OF-TWENTY-B..", &[0]].concat();
+        let loop_with_more = [b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\0\0".as_slice(), &[5], b"SECRE", &[0]].concat();
+        let animexts_with_more = [b"\x21\xFF\x0BANIMEXTS1.0\x03\x01\x02\0".as_slice(), &[5], b"SECRE", &[0]].concat();
+        let frame_of = |timing: &[u8], colour: u8| [timing, &[0x2C, 0, 0, 0, 0, 2, 0, 1, 0, 0], &[2, 2, 0x4C | colour, 0x01, 0]].concat();
+        let crafted = [screen_again.clone(), loop_with_more, animexts_with_more, frame_of(&timing_with_more, 0), frame_of(&timing_too_long, 1), vec![0x3B]].concat();
+        let alone = gif_pictures_alone(&crafted).unwrap();
+        assert!(!alone.windows(5).any(|w| w == b"SECRE"), "{:?}", String::from_utf8_lossy(&alone));
+        let image = |colour: u8| [&[0x2C, 0, 0, 0, 0, 2, 0, 1, 0, 0][..], &[2, 2, 0x4C | colour, 0x01, 0]].concat();
+        let expected = [screen_again, b"\x21\xFF\x0BNETSCAPE2.0\x03\x01\0\0\0".to_vec(), b"\x21\xFF\x0BANIMEXTS1.0\x03\x01\x02\0\0".to_vec(), vec![0x21, 0xF9, 4, 0, 10, 0, 0, 0], image(0), image(1), vec![0x3B]].concat();
+        assert_eq!(alone, expected, "the timing's four bytes and the loop's count alone; a timing block of 20 bytes dropped");
         assert_eq!(gif_pictures_alone(b"GIF89a"), None);
         assert_eq!(gif_pictures_alone(b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR"), None);
     }

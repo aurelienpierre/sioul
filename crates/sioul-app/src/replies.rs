@@ -328,8 +328,8 @@ fn step(here: &str, folder: &Path, key: &[u8; 32], now: i64) -> bool {
     let marks = rules::read_marks(&private);
     let (asked, reads) = rules::read_asks_after(&roots, &seal, &marks);
     let decided = asked.0.iter().any(|a| a.phone == here) && {
-        let counted = sioul_sync::share::counting(folder, key, &crate::share::memory_path(), here, now);
-        decide(here, &asked, &root, &private, &seal, &|device: &str| counted.contains(device), &own, now)
+        let standing = crate::texts::standing_of(folder, key, here, now);
+        decide(here, &asked, &root, &private, &seal, &standing, &own, now)
     };
     remember_reads(here, &private, &reads, &marks, now);
     let settled = settle(&private, &own, now);
@@ -357,7 +357,7 @@ fn remember_reads(here: &str, private: &Path, reads: &[rules::FileRead], marks: 
 /// (its word could not be written) is said at the next step (`settle`).
 /// Whether an outcome was written.
 #[allow(clippy::too_many_arguments)]
-fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, String)>), root: &Path, private: &Path, seal: &ReplySeal, counted: &dyn Fn(&str) -> bool, own: &Path, now: i64) -> bool {
+fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, String)>), root: &Path, private: &Path, seal: &ReplySeal, standing: &dyn Fn(&str) -> sioul_core::texts::Standing, own: &Path, now: i64) -> bool {
     let (asks, cancelled) = asked;
     if asks.iter().all(|a| a.phone != here) {
         return false;
@@ -376,9 +376,10 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
             if lines_out.len() >= rules::STEP_MAX {
                 break;
             }
-            let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers, unsent: &unsent, went: &went };
+            let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, standing, cancelled, answers: &answers, unsent: &unsent, went: &went };
             let (state, reason) = match rules::verdict(ask, &judge) {
-                Verdict::NotMine | Verdict::Decided => continue,
+                // Its device not known yet: judged again at the next step (its line's mark stays before it).
+                Verdict::NotMine | Verdict::Decided | Verdict::Wait => continue,
                 Verdict::Send => {
                     // With the conversation of the line it answers: the same words held back through its newer notification too.
                     let talk = lines.iter().find(|l| l.id == ask.line).map_or("", |l| l.talk.as_str());
@@ -647,7 +648,7 @@ mod tests {
         }
         rules::write_ask(&root, "desk", &Ask { verb: "cancel".into(), words: String::new(), ..ask("k2", "desk").1 }, &seal).unwrap();
         let own = calls::own_file(&root, rules::OUTCOME, "phone");
-        let counted = |device: &str| device == "desk";
+        let counted = |device: &str| if device == "desk" { sioul_core::texts::Standing::Counted } else { sioul_core::texts::Standing::Gone };
         let roots = vec![root.clone()];
         let asked = || rules::read_asks(&roots, &seal);
         assert!(decide("phone", &asked(), &root, &private, &seal, &counted, &own, now), "taken back and not counted, said");
@@ -706,7 +707,7 @@ mod tests {
         let ask = |key: &str, at: i64| Ask { key: key.into(), phone: "phone".into(), verb: "reply".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), words: "J'arrive.".into(), written: at, ..Ask::default() };
         rules::write_ask(&root, "desk", &ask("k1", t0 + 90_000), &seal).unwrap();
         let own = calls::own_file(&root, rules::OUTCOME, "phone");
-        let counted = |device: &str| device == "desk";
+        let counted = |device: &str| if device == "desk" { sioul_core::texts::Standing::Counted } else { sioul_core::texts::Standing::Gone };
         let roots = vec![root.clone()];
         // A phone's step, as `step` runs it on the phone's own folders.
         let step = |at: i64| {
@@ -776,7 +777,7 @@ mod tests {
         // And 150 claims the listener never took, three minutes ago.
         ends.extend((0..150).map(|i| Claim { key: format!("c{i:031x}"), at: now - 3 * 60_000, state: "claimed".into(), to: line.notice.clone(), ..Claim::default() }));
         sioul_core::texts::record_all(&private, &ends).unwrap();
-        let counted = |device: &str| device == "runaway";
+        let counted = |device: &str| if device == "runaway" { sioul_core::texts::Standing::Counted } else { sioul_core::texts::Standing::Gone };
         let mut times = Vec::new();
         for run in 0..7 {
             let at = base.join(format!("run-{run}"));

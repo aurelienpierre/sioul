@@ -1201,6 +1201,22 @@ pub enum Verdict {
     /// Not a text Sioul sends from a computer, or not asked by one of your
     /// devices ("not-counted", "old-computer"): said why.
     Refused(&'static str),
+    /// Asked by a device the sharing does not know yet (a new computer's
+    /// first text may come before any record of it): nothing done, nothing
+    /// said, judged again at the next step while it may still go.
+    Wait,
+}
+
+/// Where a device that asks stands in the sharing (`verdict`, and the
+/// replies' `Judge`): counted now; gone by a sealed fact (it left, you forgot
+/// it, another device replaces it), refused; or not known yet (its records
+/// have not come, a file alone, a device silent for weeks), its request
+/// waiting while it is fresh (the review of 18 October 2026, I-a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Standing {
+    Counted,
+    Gone,
+    Unknown,
 }
 
 /// Why a number or words are refused from a computer, if they are: several
@@ -1262,15 +1278,17 @@ pub fn sendable(ct: &str) -> bool {
 /// The never-twice decision, step for step: another phone's; decided already
 /// (the ledger holds the key, whatever the sharing read again); written by
 /// a computer of an older Sioul after this phone began to check writers
-/// ("old-computer"); asked by a device the sharing does not count now
-/// (`counted`: left, forgotten, replaced, silent, or a stray file:
-/// "not-counted"); refused (`refusal`, a multimedia message's
+/// ("old-computer"); asked by a device gone from the sharing (`standing`:
+/// it left, you forgot it, another device replaces it: "not-counted"), or
+/// one it does not know yet, which waits while its request is fresh
+/// (`Verdict::Wait`; then dated ahead or expired, as below); refused
+/// (`refusal`, a multimedia message's
 /// `refusal_mms`); written before the ledger's mark; dated ahead of the
 /// phone's clock; older than `EXPIRY_MS`; else sent. The time written is
 /// corrected by how far the writer's clock may run ahead (`Request::ahead`,
 /// measured by the writer as an upper bound: a request looks older, never
-/// younger). `counted` is asked only of a request not decided yet.
-pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, region: Option<&Region>, counted: &dyn Fn(&str) -> bool) -> Verdict {
+/// younger). `standing` is asked only of a request not decided yet.
+pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, region: Option<&Region>, standing: &dyn Fn(&str) -> Standing) -> Verdict {
     if request.phone != here || request.key.is_empty() {
         return Verdict::NotMine;
     }
@@ -1280,8 +1298,19 @@ pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, regi
     if request.writer.is_empty() && ledger.mark.writers > 0 && request.written - request.ahead >= ledger.mark.writers {
         return Verdict::Refused("old-computer");
     }
-    if !counted(&request.device) {
-        return Verdict::Refused("not-counted");
+    match standing(&request.device) {
+        Standing::Counted => {}
+        Standing::Gone => return Verdict::Refused("not-counted"),
+        Standing::Unknown => {
+            let written = request.written - request.ahead;
+            return if written > now_ms + AHEAD_MS {
+                Verdict::Clocks
+            } else if now_ms - written > EXPIRY_MS {
+                Verdict::Expired
+            } else {
+                Verdict::Wait
+            };
+        }
     }
     let refused = if request.multimedia() { refusal_mms(&request.to, &request.words, &request.media, &request.also, region) } else { refusal(&request.to, &request.body, region) };
     if let Some(why) = refused {
@@ -1323,14 +1352,16 @@ pub fn doubt_after(claim: &Claim, found: Option<String>, now_ms: i64) -> Option<
 /// Android took it to the carrier and the carrier answered Ok; not sent, and
 /// why; or, Android's Ok with no answer of the carrier's, to be looked for
 /// in the provider's sent box (a message Android moved to its failed box is
-/// out of Sioul's sight: none there, not sent); or in doubt, when each of
-/// Android's tries ended on the network with no answer of the carrier's.
+/// out of Sioul's sight: none there, not sent); or in doubt, and why
+/// ("network": each of Android's tries ended on the network; "cancelled":
+/// Android stopped it; "unexpected": an unexpected failure, or a code Sioul
+/// does not know).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Took {
     Sent,
     Failed(&'static str),
     Look,
-    Doubt,
+    Doubt(&'static str),
 }
 
 /// A multimedia message's result: Android's code (-1, `Activity.RESULT_OK`;
@@ -1340,12 +1371,18 @@ pub enum Took {
 /// under 400, says that every try ended on the network (an I/O failure,
 /// even a read timeout after the message was posted: `MmsHttpClient`,
 /// `MmsRequest`, android16-release): the carrier may have taken it, once
-/// or more; with a status of 400 or more, the carrier refused it.
+/// or more; with a status of 400 or more, the carrier refused it. Its code
+/// 0 (`Activity.RESULT_CANCELED`: Android stopped it) and 1 (an unexpected
+/// failure, which may come after the message went), and any code Sioul does
+/// not know, are said in doubt too.
 pub fn took(code: i64, conf: Option<&crate::mms::Conf>, http: i64) -> Took {
     match (code, conf) {
         (-1, Some(conf)) if conf.ok() => Took::Sent,
         (-1, None) => Took::Look,
-        (4, None) if http < 400 => Took::Doubt,
+        (4, None) if http < 400 => Took::Doubt("network"),
+        (0, _) => Took::Doubt("cancelled"),
+        (1, _) => Took::Doubt("unexpected"),
+        (code, _) if !(-1..=13).contains(&code) => Took::Doubt("unexpected"),
         (code, conf) => Took::Failed(mms_failure(code, conf.map(|c| c.status))),
     }
 }
@@ -1353,7 +1390,8 @@ pub fn took(code: i64, conf: Option<&crate::mms::Conf>, http: i64) -> Took {
 /// Why a multimedia message was not sent, as the words say it: Android's
 /// code (SmsManager's MMS_ERROR_…: 8 and 11 mobile data off, 3 no mobile
 /// network within 30 minutes, 2, 7 and 12 no multimedia settings for the
-/// carrier, 5 not read, 9 and 10 an inactive SIM), else the carrier's
+/// carrier, 5 not read, 6 the carrier's messaging app asking to try later,
+/// 9 and 10 an inactive SIM, 13 too large for a satellite link), else the carrier's
 /// status (ENC 7.3.48: 0xC0 to 0xDF for a moment, 0xE1 service denied, 0xE5
 /// content not accepted, 0xEB no credit, the rest refused; MMS 1.0's 0x82,
 /// 0x87 and 0x88 alike).
@@ -1371,7 +1409,9 @@ pub fn mms_failure(code: i64, status: Option<u8>) -> &'static str {
         3 => "mms-no-network",
         2 | 7 | 12 => "mms-settings",
         5 => "mms-unreadable",
+        6 => "mms-retry",
         9 | 10 => "no-sim",
+        13 => "mms-satellite",
         _ => "other",
     }
 }
@@ -1468,7 +1508,12 @@ pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translato
             None => ("waiting", tr.text("texts-waiting", None), false),
         },
         Some(o) => match o.state.as_str() {
-            // A multimedia message Android still holds past its first look: it may still go, until its last word.
+            // A multimedia message Android still holds past its first look: it may still go, until its last word;
+            // past it with no word yet, the phone's next step will say (the review of 18 October 2026, I-b).
+            "taken" | "handed" if media && now.timestamp().as_millisecond() - o.at >= MMS_LAST_WORD_MS => match phone_shared {
+                Some(at) => ("waiting", with("texts-waiting-since", "time", time(at)), false),
+                None => ("waiting", tr.text("texts-waiting", None), false),
+            },
             "taken" | "handed" if media && now.timestamp().as_millisecond() - o.at >= LOOK_AFTER_MMS_MS => ("sending", with("texts-sending-still", "time", time(o.at + MMS_LAST_WORD_MS)), false),
             "taken" | "handed" => ("sending", tr.text("texts-sending", None), false),
             "sent" => ("sent", with("texts-sent-at", "time", time(o.at)), false),
@@ -1481,8 +1526,10 @@ pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translato
                 ("refused", tr.text(&format!("texts-refused-{why}"), None), matches!(why, "before-mark" | "old-phone" | "old-computer"))
             }
             "clocks" => ("clocks", tr.text("texts-clocks", None), true),
-            // Each of Android's tries ended on the network: the carrier may have it. No Send again here.
-            "doubt" if o.reason == "network" => ("doubt", tr.text("texts-doubt-network", None), false),
+            // The carrier may have it (each of Android's tries ended on the network, or it answered in a way
+            // nobody could read): no Send again here. Android stopped it, or failed unexpectedly: as a crash's doubt.
+            "doubt" if matches!(o.reason.as_str(), "network" | "answer") => ("doubt", tr.text(&format!("texts-doubt-{}", o.reason), None), false),
+            "doubt" if matches!(o.reason.as_str(), "cancelled" | "unexpected") => ("doubt", tr.text(&format!("texts-doubt-{}", o.reason), None), true),
             _ => ("doubt", tr.text("texts-doubt", None), true),
         },
     };
@@ -1500,6 +1547,8 @@ fn known_reason(reason: &str) -> &'static str {
         "mms-no-network" => "mms-no-network",
         "mms-settings" => "mms-settings",
         "mms-unreadable" => "mms-unreadable",
+        "mms-retry" => "mms-retry",
+        "mms-satellite" => "mms-satellite",
         "carrier-refused" => "carrier-refused",
         "carrier-content" => "carrier-content",
         "carrier-denied" => "carrier-denied",
@@ -1875,7 +1924,7 @@ mod tests {
         let ledger = Ledger::open(dir, now).unwrap();
         let mut sent = Vec::new();
         for r in requests {
-            if verdict(&Request { ahead, ..r.clone() }, here, now, &ledger, fr(), &|_| true) == Verdict::Send {
+            if verdict(&Request { ahead, ..r.clone() }, here, now, &ledger, fr(), &|_| Standing::Counted) == Verdict::Send {
                 record(dir, &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, fr()), hash: words_hash(&r.body), ..Claim::default() }).unwrap();
                 sent.push(r.key.clone());
             }
@@ -1923,7 +1972,7 @@ mod tests {
         let ledger = Ledger::open(&private, NOW).unwrap();
         assert_eq!(ledger.mark, Mark { since: 1000, writers: NOW });
         assert_eq!(Ledger::open(&private, NOW + DAY_MS).unwrap().mark, Mark { since: 1000, writers: NOW }, "once");
-        let counted = |device: &str| device == "desk";
+        let counted = |device: &str| if device == "desk" { Standing::Counted } else { Standing::Gone };
         assert_eq!(verdict(&read[0], "phone", NOW, &ledger, fr(), &counted), Verdict::Send);
         let forgotten = Request { writer: "old-laptop".into(), device: "old-laptop".into(), ..request("w2", "phone", NOW) };
         assert_eq!(verdict(&forgotten, "phone", NOW, &ledger, fr(), &counted), Verdict::Refused("not-counted"));
@@ -1932,6 +1981,11 @@ mod tests {
         assert_eq!(verdict(&Request { device: "old-laptop".into(), ..older.clone() }, "phone", NOW, &ledger, fr(), &counted), Verdict::Refused("not-counted"));
         let after = Request { writer: String::new(), ..request("w4", "phone", NOW + MINUTE) };
         assert_eq!(verdict(&after, "phone", NOW + MINUTE, &ledger, fr(), &counted), Verdict::Refused("old-computer"));
+        // A device the sharing does not know yet (its records not come): waits while fresh, then expires (I-a).
+        let unknown = |_: &str| Standing::Unknown;
+        assert_eq!(verdict(&read[0], "phone", NOW, &ledger, fr(), &unknown), Verdict::Wait);
+        assert_eq!(verdict(&read[0], "phone", NOW + 16 * MINUTE, &ledger, fr(), &unknown), Verdict::Expired);
+        assert_eq!(verdict(&Request { written: NOW + 30 * MINUTE, ..read[0].clone() }, "phone", NOW, &ledger, fr(), &unknown), Verdict::Clocks);
         let decided = Ledger::with(Mark { since: 0, writers: NOW }, vec![Claim { key: "w4".into(), at: NOW, state: "done".into(), ..Claim::default() }]);
         assert_eq!(verdict(&after, "phone", NOW + MINUTE, &decided, fr(), &|_| panic!("asked only of a request not decided yet")), Verdict::Decided);
         // As an older phone reads a request: its writer passed over, its words there.
@@ -1953,7 +2007,7 @@ mod tests {
         assert_eq!(step(&dir, std::slice::from_ref(&r), "phone", NOW - 2 * MINUTE, 0), ["b1"]);
         std::fs::remove_dir_all(&dir).unwrap();
         let ledger = Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(verdict(&r, "phone", NOW, &ledger, fr(), &|_| true), Verdict::BeforeMark, "within its 15 minutes, still never again");
+        assert_eq!(verdict(&r, "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::BeforeMark, "within its 15 minutes, still never again");
         assert!(step(&dir, &[r], "phone", NOW, 0).is_empty());
         assert_eq!(step(&dir, &[request("b2", "phone", NOW + MINUTE)], "phone", NOW + MINUTE, 0), ["b2"]);
         let _ = std::fs::remove_dir_all(&dir);
@@ -1978,21 +2032,21 @@ mod tests {
         let dir = scratch("expired");
         Ledger::open(&dir, NOW - DAY_MS).unwrap();
         let ledger = Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(verdict(&request("d1", "phone", NOW - 16 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Expired);
-        assert_eq!(verdict(&request("d2", "phone", NOW - 14 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Send);
+        assert_eq!(verdict(&request("d1", "phone", NOW - 16 * MINUTE), "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::Expired);
+        assert_eq!(verdict(&request("d2", "phone", NOW - 14 * MINUTE), "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::Send);
         // The computer's clock an hour ahead, as it measured: written "15:00" is 14:00 here.
         let ahead = 60 * MINUTE;
-        assert_eq!(verdict(&Request { ahead, ..request("d3", "phone", NOW + ahead - 20 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| true), Verdict::Expired);
-        assert_eq!(verdict(&Request { ahead, ..request("d4", "phone", NOW + ahead - 5 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| true), Verdict::Send);
+        assert_eq!(verdict(&Request { ahead, ..request("d3", "phone", NOW + ahead - 20 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::Expired);
+        assert_eq!(verdict(&Request { ahead, ..request("d4", "phone", NOW + ahead - 5 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::Send);
         // Not measured, and dated well ahead: the clocks disagree, never sent late.
-        assert_eq!(verdict(&request("d5", "phone", NOW + 30 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Clocks);
+        assert_eq!(verdict(&request("d5", "phone", NOW + 30 * MINUTE), "phone", NOW, &ledger, fr(), &|_| Standing::Counted), Verdict::Clocks);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn short_numbers_groups_and_empty_words_are_refused() {
         let ledger = Ledger::with(Mark { since: 0, writers: 0 }, Vec::new());
-        let with = |to: &str, body: &str| verdict(&Request { to: to.into(), body: body.into(), ..request("e", "phone", NOW) }, "phone", NOW, &ledger, fr(), &|_| true);
+        let with = |to: &str, body: &str| verdict(&Request { to: to.into(), body: body.into(), ..request("e", "phone", NOW) }, "phone", NOW, &ledger, fr(), &|_| Standing::Counted);
         assert_eq!(with("36179", "STOP"), Verdict::Refused("short-number"));
         assert_eq!(with("01 99 00 12 34, 04 65 71 00 42", "Bonjour"), Verdict::Refused("several"));
         assert_eq!(with("01 99 00 12 34", "   "), Verdict::Refused("empty"));
@@ -2008,7 +2062,7 @@ mod tests {
         assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "sms-412"));
         assert_eq!(doubt_after(&claim, None, NOW + 3 * MINUTE).unwrap().state, "doubt");
         let ledger = Ledger::with(Mark { since: 0, writers: 0 }, vec![claim]);
-        assert_eq!(verdict(&request("f1", "phone", NOW + 3 * MINUTE), "phone", NOW + 3 * MINUTE, &ledger, fr(), &|_| true), Verdict::Decided);
+        assert_eq!(verdict(&request("f1", "phone", NOW + 3 * MINUTE), "phone", NOW + 3 * MINUTE, &ledger, fr(), &|_| Standing::Counted), Verdict::Decided);
     }
 
     #[test]
@@ -2525,7 +2579,7 @@ mod tests {
     fn a_multimedia_request_is_refused_in_its_own_words() {
         let ledger = Ledger::with(Mark { since: 0, writers: 0 }, Vec::new());
         let mms = |media: Vec<Medium>, words: &str, also: Vec<String>, to: &str| Request { body: String::new(), words: words.into(), media, also, to: to.into(), ..request("m", "phone", NOW) };
-        let v = |r: &Request| verdict(r, "phone", NOW, &ledger, fr(), &|_| true);
+        let v = |r: &Request| verdict(r, "phone", NOW, &ledger, fr(), &|_| Standing::Counted);
         let picture = || vec![medium(1, "image/jpeg")];
         assert_eq!(v(&mms(picture(), "Voilà l’entrée.", vec![], "01 99 00 12 34")), Verdict::Send);
         assert_eq!(v(&mms(picture(), "", vec![], "01 99 00 12 34")), Verdict::Send, "a picture alone");
@@ -2577,6 +2631,9 @@ mod tests {
         let still = said(Some(&handed), None, &tr, &paris(NOW + 41 * MINUTE), true);
         assert!(still.state == "sending" && !still.again && still.text.contains("11:40"), "until about 100 minutes after 10:00: {}", still.text);
         assert_eq!(said(Some(&handed), None, &tr, &paris(NOW + 41 * MINUTE), false).text, "Your phone is sending it.", "a text: as before");
+        // Past Android's last word with no word from the phone: waiting for it, never a time already past (I-b).
+        let past = said(Some(&handed), Some(NOW + 20 * MINUTE), &tr, &paris(NOW + 110 * MINUTE), true);
+        assert!(past.state == "waiting" && past.text.contains("10:20") && !past.text.contains("11:40"), "{}", past.text);
         let text = Claim { mms: false, ..claim.clone() };
         assert!(doubt_after(&text, None, NOW + 3 * MINUTE).is_some(), "a text's, two minutes on as before");
         let line = serde_json::to_string(&Claim { mms: false, ..claim }).unwrap();
@@ -2592,8 +2649,14 @@ mod tests {
         assert_eq!(took(-1, Some(&conf(crate::mms::OK)), 0), Took::Sent);
         assert_eq!(took(-1, None, 0), Took::Look, "Android's Ok, the carrier's answer missing");
         // Android's code 4: every try ended on the network, no answer of the carrier's (the review of 18 October 2026, M-2).
-        assert_eq!(took(4, None, 0), Took::Doubt, "no HTTP status: an I/O failure, perhaps after the message was posted");
-        assert_eq!(took(4, None, 302), Took::Doubt, "an answer under 400: not a refusal");
+        assert_eq!(took(4, None, 0), Took::Doubt("network"), "no HTTP status: an I/O failure, perhaps after the message was posted");
+        assert_eq!(took(4, None, 302), Took::Doubt("network"), "an answer under 400: not a refusal");
+        // Codes 0, 1, 6 and 13 said exactly, and one Sioul does not know (the review of 18 October 2026, I-h).
+        assert_eq!(took(0, None, 0), Took::Doubt("cancelled"));
+        assert_eq!(took(1, None, 0), Took::Doubt("unexpected"));
+        assert_eq!(took(6, None, 0), Took::Failed("mms-retry"));
+        assert_eq!(took(13, None, 0), Took::Failed("mms-satellite"));
+        assert_eq!(took(99, None, 0), Took::Doubt("unexpected"));
         assert_eq!(took(4, None, 404), Took::Failed("carrier-refused"));
         assert_eq!(took(4, None, 503), Took::Failed("carrier-refused"));
         let cases: [(i64, Option<u8>, &str); 14] = [
@@ -2615,7 +2678,6 @@ mod tests {
         for (code, status, why) in cases {
             assert_eq!(took(code, status.map(conf).as_ref(), 0), Took::Failed(why), "{code} {status:?}");
         }
-        assert_eq!(took(1, None, 0), Took::Failed("other"));
         // Each in its own words, never "Android refused it".
         let tr = Translator::new("en");
         let now = paris(NOW);
@@ -2626,10 +2688,16 @@ mod tests {
         }
         let late = said(Some(&Outcome { state: "expired".into(), reason: "media".into(), ..Outcome::default() }), None, &tr, &now, true);
         assert!(late.text.contains("did not reach your phone") && late.again, "{}", late.text);
-        // The network's doubt: said, and no Send again; a crash's doubt keeps it.
-        let network = said(Some(&Outcome { state: "doubt".into(), reason: "network".into(), ..Outcome::default() }), None, &tr, &now, true);
-        assert!(network.state == "doubt" && !network.again && network.text != tr.text("texts-doubt", None), "{}", network.text);
+        // The doubts: the carrier may have it (no Send again), or Android stopped (Send again, as after a crash).
+        for (why, again) in [("network", false), ("answer", false), ("cancelled", true), ("unexpected", true)] {
+            let words = said(Some(&Outcome { state: "doubt".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
+            assert!(words.state == "doubt" && words.again == again && words.text != tr.text("texts-doubt", None), "{why}: {}", words.text);
+        }
         assert!(said(Some(&Outcome { state: "doubt".into(), ..Outcome::default() }), None, &tr, &now, true).again);
+        for why in ["mms-retry", "mms-satellite"] {
+            let words = said(Some(&Outcome { state: "failed".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
+            assert!(words.text != other && words.again, "{why}: {}", words.text);
+        }
         for why in ["too-large", "too-many-media", "media-kind", "no-mms"] {
             let words = said(Some(&Outcome { state: "refused".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
             assert!(words.text != tr.text("texts-refused-other", None) && !words.again, "{why}: {}", words.text);
