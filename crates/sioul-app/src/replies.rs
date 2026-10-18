@@ -324,13 +324,28 @@ fn step(here: &str, folder: &Path, key: &[u8; 32], now: i64) -> bool {
     if let Err(e) = rules::mark_ledger(&private, now) {
         eprintln!("sioul: replies: {e}");
     }
-    let asked = rules::read_asks(&roots, &seal);
+    // Each file from where this phone was done with it: what it decided is never opened again.
+    let marks = rules::read_marks(&private);
+    let (asked, reads) = rules::read_asks_after(&roots, &seal, &marks);
     let decided = asked.0.iter().any(|a| a.phone == here) && {
         let counted = sioul_sync::share::counting(folder, key, &crate::share::memory_path(), here, now);
         decide(here, &asked, &root, &private, &seal, &|device: &str| counted.contains(device), &own, now)
     };
+    remember_reads(here, &private, &reads, &marks, now);
     let settled = settle(&private, &own, now);
     decided || settled
+}
+
+/// The marks moved past what this step is done with (`replies::moved_marks`):
+/// each line decided now, by the ledger, or another phone's.
+fn remember_reads(here: &str, private: &Path, reads: &[rules::FileRead], marks: &std::collections::BTreeMap<String, rules::ReadMark>, now: i64) {
+    let Ok(ledger) = rules::open_ledger(private, now) else { return };
+    let moved = rules::moved_marks(reads, &|key: &str, phone: &str| phone != here || ledger.has(key), marks);
+    if moved != *marks
+        && let Err(e) = rules::save_read_marks(private, &moved)
+    {
+        eprintln!("sioul: replies: {e}");
+    }
 }
 
 /// Each request for this phone decided once (`replies::verdict`), at most
@@ -348,8 +363,8 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
         return false;
     }
     let lines = phonemsgs::read_file(&calls::own_file(root, phonemsgs::LOG, here));
-    // The replies its listener said were not sent: they never hold the same words back.
-    let unsent = rules::unsent(private);
+    // The replies its listener said were not sent: they never hold the same words back; those it said went.
+    let (unsent, went) = (rules::unsent(private), rules::went_keys(private));
     let ledger_path = private.join(sioul_core::texts::LEDGER);
     let decided = sioul_core::filelock::with_lock(&ledger_path, || -> Result<(Vec<rules::Due>, Vec<Outcome>), String> {
         let mut ledger = rules::open_ledger(private, now)?;
@@ -361,13 +376,13 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
             if lines_out.len() >= rules::STEP_MAX {
                 break;
             }
-            let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers, unsent: &unsent };
+            let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers, unsent: &unsent, went: &went };
             let (state, reason) = match rules::verdict(ask, &judge) {
                 Verdict::NotMine | Verdict::Decided => continue,
                 Verdict::Send => {
                     let claim = rules::claim_of(ask, now);
                     // Seen by this step's next requests (the guards), as the ledger will hold it.
-                    ledger.claims.push(claim.clone());
+                    ledger.add(claim.clone());
                     lines_out.push(claim);
                     if let Some(line) = lines.iter().find(|l| l.id == ask.line) {
                         due.push(rules::due_of(ask, line, now));
@@ -380,7 +395,7 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
                 Verdict::Refused(why) => ("refused", why),
             };
             let end = rules::end_of(&ask.key, state, reason, now);
-            ledger.claims.push(end.clone());
+            ledger.add(end.clone());
             lines_out.push(end);
             said.push(Outcome { key: ask.key.clone(), state: state.into(), at: now, reason: reason.into(), ..Outcome::default() });
         }
@@ -443,10 +458,11 @@ fn settle(private: &Path, own: &Path, now: i64) -> bool {
         eprintln!("sioul: replies: {e}");
         0
     });
-    for (key, _) in &claimed {
-        if done.iter().any(|d| d.key == *key && d.state != "taken") {
-            let _ = sioul_core::texts::record(private, &Claim { key: key.clone(), at: now, state: "done".into(), ..Claim::default() });
-        }
+    // Each claim ended so, written together: one flush a step.
+    let ended: std::collections::BTreeSet<&str> = done.iter().filter(|d| d.state != "taken").map(|d| d.key.as_str()).collect();
+    let ends: Vec<Claim> = claimed.iter().filter(|(key, _)| ended.contains(key.as_str())).map(|(key, _)| Claim { key: key.clone(), at: now, state: "done".into(), ..Claim::default() }).collect();
+    if let Err(e) = sioul_core::texts::record_all(private, &ends) {
+        eprintln!("sioul: replies: {e}");
     }
     written > 0
 }
@@ -708,6 +724,85 @@ mod tests {
         let said = rules::read_outcomes(&root);
         assert!(!said.iter().any(|o| o.key == "k2"), "{said:?}");
         assert!(rules::read_due(&private, &seal).iter().any(|d| d.key == "k2"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn copy_all(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                copy_all(&path, &to.join(entry.file_name()));
+            } else {
+                std::fs::copy(&path, to.join(entry.file_name())).unwrap();
+            }
+        }
+    }
+
+    /// A dose's step (`step`'s work, which a dose's alarm runs before its
+    /// pull) with a runaway computer's 10,000 requests decided already and
+    /// 150 claims the listener never took, settled "late" now: a measure,
+    /// printed; run with `cargo test --release -p sioul-app -- --ignored
+    /// a_dose_step --nocapture`, empty folders of its own.
+    #[test]
+    #[ignore]
+    fn a_dose_step_with_a_runaway_backlog_stays_within_tens_of_milliseconds() {
+        let base = std::env::temp_dir().join(format!("sioul-app-replies-dose-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let template = base.join("template");
+        let (root, private) = (template.join("phone-messages"), template.join("private"));
+        let seal = ReplySeal::new(&[9u8; 32]);
+        let now = now_ms();
+        rules::mark_ledger(&private, now - 86_400_000).unwrap();
+        let line = Line { at: now - 600_000, id: format!("{}-aa", now - 600_000), app: "org.thoughtcrime.securesms".into(), kind: "chat".into(), talk: "fedcba9876543210".into(), notice: "0123456789abcdef".into(), name: "Alice".into(), key: "+33199001234".into(), who: "neutral".into(), text: "Tu passes ?".into(), shows: now - 600_000, ..Line::default() };
+        phonemsgs::carry_into(&calls::own_file(&root, phonemsgs::LOG, "phone"), std::slice::from_ref(&line), now).unwrap();
+        // The runaway computer's 10,000 Marks as read, sealed as `write_ask` writes them, all decided already.
+        let mut file = String::new();
+        let mut ends = Vec::new();
+        for i in 0..10_000 {
+            let key = format!("{i:032x}");
+            let ask = Ask { key: key.clone(), phone: "phone".into(), verb: "read".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), written: now - 20 * 60_000, writer: "runaway".into(), ..Ask::default() };
+            file.push_str(&sioul_core::texts::Sealer::seal(&seal, &rules::padded_ask(&ask)));
+            file.push('\n');
+            ends.push(rules::end_of(&key, "expired", "", now - 10 * 60_000));
+        }
+        std::fs::create_dir_all(root.join(rules::ASK)).unwrap();
+        std::fs::write(calls::own_file(&root, rules::ASK, "runaway"), file).unwrap();
+        // Their words said already, as their step said them.
+        let said: Vec<Outcome> = ends.iter().map(|c| Outcome { key: c.key.clone(), state: "expired".into(), at: c.at, ..Outcome::default() }).collect();
+        rules::say_outcomes(&calls::own_file(&root, rules::OUTCOME, "phone"), &said).unwrap();
+        // And 150 claims the listener never took, three minutes ago.
+        ends.extend((0..150).map(|i| Claim { key: format!("c{i:031x}"), at: now - 3 * 60_000, state: "claimed".into(), to: line.notice.clone(), ..Claim::default() }));
+        sioul_core::texts::record_all(&private, &ends).unwrap();
+        let counted = |device: &str| device == "runaway";
+        let mut times = Vec::new();
+        for run in 0..7 {
+            let at = base.join(format!("run-{run}"));
+            copy_all(&template, &at);
+            let (root, private) = (at.join("phone-messages"), at.join("private"));
+            let own = calls::own_file(&root, rules::OUTCOME, "phone");
+            // The step that decided them moved the marks past them (by their paths, this copy's).
+            let (_, reads) = rules::read_asks_after(std::slice::from_ref(&root), &seal, &std::collections::BTreeMap::new());
+            remember_reads("phone", &private, &reads, &std::collections::BTreeMap::new(), now);
+            let started = std::time::Instant::now();
+            rules::mark_ledger(&private, now).unwrap();
+            let marks = rules::read_marks(&private);
+            let (asked, reads) = rules::read_asks_after(std::slice::from_ref(&root), &seal, &marks);
+            let read = started.elapsed();
+            let decided = asked.0.iter().any(|a| a.phone == "phone") && decide("phone", &asked, &root, &private, &seal, &counted, &own, now);
+            remember_reads("phone", &private, &reads, &marks, now);
+            let settled = settle(&private, &own, now);
+            let took = started.elapsed();
+            assert!(!decided && settled, "nothing new decided; the 150 said late");
+            assert!(asked.0.is_empty(), "the 10,000 decided never opened again");
+            times.push((took.as_secs_f64() * 1000.0, read.as_secs_f64() * 1000.0));
+            let late = rules::read_outcomes(&root).iter().filter(|o| o.state == "late").count();
+            assert_eq!(late, 150);
+        }
+        times.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (median, max) = (times[times.len() / 2], times[times.len() - 1]);
+        println!("a dose's step, 10,000 requests decided and 150 claims never taken: {:.1} ms median (reading the requests {:.1} ms), {:.1} ms at most", median.0, median.1, max.0);
+        assert!(median.0 < 1_000.0, "{times:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

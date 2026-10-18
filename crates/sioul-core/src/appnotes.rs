@@ -196,6 +196,11 @@ pub struct Conversation {
     /// As the app titles it: a group's name, `<server> #<channel>`, a person's name.
     pub title: String,
     pub group: bool,
+    /// Its key came from the one who wrote last (no shortcut, no conversation
+    /// title): it names a person, not a conversation; two groups where the
+    /// same person wrote last share it (`replies::check` refuses a group's
+    /// reply so keyed).
+    pub by_writer: bool,
 }
 
 /// Between people.
@@ -411,7 +416,8 @@ fn conversation_of(p: &Posted, sender: Option<&Person>, sms: bool) -> Option<Con
     let from = sender.map_or("", |s| if s.key.trim().is_empty() { s.name.trim() } else { s.key.trim() });
     let plain = if sms { p.title.trim() } else { "" };
     let id = [p.shortcut.trim(), p.conversation.trim(), from, plain].into_iter().find(|i| !i.is_empty())?;
-    Some(Conversation { key: talk_key(&p.package, id), title, group })
+    let by_writer = p.shortcut.trim().is_empty() && p.conversation.trim().is_empty() && !from.is_empty();
+    Some(Conversation { key: talk_key(&p.package, id), title, group, by_writer })
 }
 
 /// Whether a message's sender is the person themselves, as the conversation

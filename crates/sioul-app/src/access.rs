@@ -21,8 +21,10 @@ use crate::backend::tr;
 use serde_json::{Value, json};
 use sioul_core::i18n::Translator;
 
-/// Android's version from which an app installed from a file is kept from restricted settings (13).
+/// Android's version from which an app installed from a file is kept from restricted settings (13): notification access.
 const GUARDED: i64 = 33;
+/// The same for the texts' permissions, kept so from Android 15 only: on 13 and 14 a refusal is a plain one.
+const GUARDED_TEXTS: i64 = 35;
 
 /// What Android says on this phone, as the lines read it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -54,7 +56,7 @@ pub(crate) fn lines(s: &Said, tr: &Translator, join: bool) -> Vec<Value> {
         out.push(json!({ "what": "texts-part", "said": tr.text("access-texts-off", None), "info": false, "switch": true }));
     }
     if s.texts_on && !s.texts_given {
-        let (words, info) = if s.asked && s.api >= GUARDED {
+        let (words, info) = if s.asked && s.api >= GUARDED_TEXTS {
             ("access-texts-guarded", true)
         } else if s.at_once {
             ("access-texts-at-once", true)
@@ -131,10 +133,11 @@ mod tests {
 
     /// What each state says, in the steps' order: nothing withheld, nothing
     /// said; the texts' line only while the part is on, the part's own line
-    /// only in the join's result; once asked on Android 13 and later, the
+    /// only in the join's result; once asked on Android 15 and later, the
     /// steps that hold whether restricted settings keep them or not, with
-    /// Sioul's app info; on Android 12 a question refused for good, app info
-    /// too; notification access and the contacts only where they are needed.
+    /// Sioul's app info (notification access from Android 13); on Android 12
+    /// to 14 a question refused for good, app info too; notification access
+    /// and the contacts only where they are needed.
     #[test]
     fn what_android_withholds_is_said_with_what_it_wants() {
         let tr = Translator::new("en");
@@ -155,6 +158,10 @@ mod tests {
         assert_eq!(whats(&Said { api: 31, texts_given: false, at_once: true, ..all.clone() }, false), [("texts".to_string(), true)]);
         assert_eq!(whats(&Said { api: 31, texts_given: false, ..all.clone() }, false), [("texts".to_string(), false)]);
         assert_eq!(whats(&Said { api: 31, notifications_given: false, ..all.clone() }, false), [("notifications".to_string(), false)]);
+        // Android 13 and 14: notification access guarded, the texts' permissions not (from 15 only): a plain refusal.
+        assert_eq!(whats(&Said { api: 34, texts_given: false, notifications_given: false, ..all.clone() }, false), [("texts".to_string(), false), ("notifications".into(), true)]);
+        assert_eq!(whats(&Said { api: 33, texts_given: false, at_once: true, ..all.clone() }, false), [("texts".to_string(), true)]);
+        assert!(!lines(&Said { api: 34, texts_given: false, ..all.clone() }, &tr, false)[0]["said"].as_str().unwrap().contains("restricted settings"), "on 14, never the restricted settings' steps for the texts");
         // The part off: no permission line; in the join's result, the part's own line with its switch.
         let off = Said { texts_on: false, texts_given: false, ..all.clone() };
         assert!(whats(&off, false).is_empty());

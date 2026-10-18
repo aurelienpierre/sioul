@@ -10311,8 +10311,8 @@ mod tests {
             let ledger = replies::open_ledger(&private, now).unwrap();
             let lines = phonemsgs::read_file(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id));
             let (asks, cancelled) = replies::read_asks(&[messages_of(&phone)], &seal);
-            let unsent = replies::unsent(&private);
-            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true, unsent: &unsent };
+            let (unsent, went) = (replies::unsent(&private), replies::went_keys(&private));
+            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true, unsent: &unsent, went: &went };
             asks.iter().map(|a| replies::verdict(a, &judge)).collect::<Vec<_>>()
         };
         assert_eq!(decide(NOW + 2 * MINUTE), [replies::Verdict::Send]);

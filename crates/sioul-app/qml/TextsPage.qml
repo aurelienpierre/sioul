@@ -101,17 +101,28 @@ Item {
         if (talk === page.talkText)
             return
         page.atEnd = page.atEnd || page.talkText === "" || thread.atYEnd
-        // Read back: the message at the top of the view, found a few pixels
-        // down past the rows' spacing, kept by its time and words (the copy
-        // shown may come from another phone now) with its offset from the
-        // top; nothing found again, the view stays where it was.
-        let anchor = null
-        for (let dy = 1; !page.atEnd && anchor === null && dy <= 48; dy += 4) {
+        // Read back: the messages at the top of the view (the top one, found a
+        // few pixels down past the rows' spacing, and the next two), each kept
+        // by its words and its time within its second (the copy shown may come
+        // from another phone now, timed to another millisecond), its rank among
+        // messages so alike, and its offset from the top; found again by the
+        // first that is still there (a request's bubble replaced by its text:
+        // the next one), else the top one's place with its offset: never the
+        // view's old coordinates, which a model laid out again moves (the
+        // review of 16 October 2026, LOW 10).
+        let top = -1
+        for (let dy = 1; !page.atEnd && top < 0 && dy <= 48; dy += 4) {
             const i = thread.indexAt(1, thread.contentY + dy)
-            if (i >= 0 && i < page.messages.length) {
-                const item = thread.itemAtIndex(i)
-                anchor = { at: page.messages[i].at, body: page.messages[i].body, offset: item ? item.y - thread.contentY : 0 }
-            }
+            if (i >= 0 && i < page.messages.length)
+                top = i
+        }
+        const second = m => Math.floor(m.at / 1000)
+        const anchors = []
+        for (let i = top; top >= 0 && i < Math.min(page.messages.length, top + 3); i++) {
+            const m = page.messages[i]
+            const item = thread.itemAtIndex(i)
+            const rank = page.messages.slice(0, i).filter(o => o.body === m.body && second(o) === second(m)).length
+            anchors.push({ second: second(m), body: m.body, rank: rank, index: i, offset: item ? item.y - thread.contentY : 0 })
         }
         const keptY = thread.contentY
         page.talkText = talk
@@ -119,13 +130,25 @@ Item {
             Qt.callLater(() => thread.positionViewAtEnd())
         else
             Qt.callLater(() => {
-                const i = anchor === null ? -1 : page.messages.findIndex(m => m.at === anchor.at && m.body === anchor.body)
-                if (i >= 0) {
+                const place = (i, offset) => {
                     thread.positionViewAtIndex(i, ListView.Beginning)
-                    thread.contentY = thread.contentY - anchor.offset
-                } else {
-                    thread.contentY = keptY
+                    thread.contentY = thread.contentY - offset
                 }
+                for (const a of anchors) {
+                    const alike = []
+                    page.messages.forEach((m, i) => {
+                        if (m.body === a.body && second(m) === a.second)
+                            alike.push(i)
+                    })
+                    if (alike.length > 0) {
+                        place(alike[Math.min(a.rank, alike.length - 1)], a.offset)
+                        return
+                    }
+                }
+                if (anchors.length > 0 && page.messages.length > 0)
+                    place(Math.min(anchors[0].index, page.messages.length - 1), anchors[0].offset)
+                else
+                    thread.contentY = keptY
             })
     }
 

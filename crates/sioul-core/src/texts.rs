@@ -198,6 +198,12 @@ pub struct Text {
     /// When the phone found it deleted (ms): a line of its own, beside the text's; the archive keeps the text.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub deleted: i64,
+    /// On a deletion's line: the name of the line that holds the same
+    /// message under the date its provider rewrote (an MMS downloaded or sent
+    /// writes its date after its row; a resend): computers show it once,
+    /// under that name (`fold_logs`). "" for a message deleted on the phone.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub moved: String,
     /// The phone that wrote it (its file's name). Never written.
     #[serde(skip)]
     pub device: String,
@@ -398,10 +404,13 @@ pub fn read_logs(root: &Path, sealer: &dyn Sealer) -> Vec<Text> {
 /// line folded into its text.
 pub fn fold_logs(lines: Vec<Text>) -> Vec<Text> {
     let deletions: BTreeMap<(String, String), i64> = lines.iter().filter(|t| t.deleted > 0).map(|t| ((t.device.clone(), t.id.clone()), t.deleted)).collect();
+    // A line moved under its new name (its row's date rewritten): shown under that name alone, when its phone's log holds it.
+    let names: BTreeSet<(&str, &str)> = lines.iter().filter(|t| t.deleted == 0).map(|t| (t.device.as_str(), t.id.as_str())).collect();
+    let moved: BTreeSet<(String, String)> = lines.iter().filter(|t| t.deleted > 0 && !t.moved.is_empty() && names.contains(&(t.device.as_str(), t.moved.as_str()))).map(|t| (t.device.clone(), t.id.clone())).collect();
     let mut seen = BTreeSet::new();
     let mut texts: Vec<Text> = lines
         .into_iter()
-        .filter(|t| t.deleted == 0 && t.at > 0 && seen.insert((t.device.clone(), t.id.clone())))
+        .filter(|t| t.deleted == 0 && t.at > 0 && !moved.contains(&(t.device.clone(), t.id.clone())) && seen.insert((t.device.clone(), t.id.clone())))
         .map(|t| {
             let deleted = deletions.get(&(t.device.clone(), t.id.clone())).copied().unwrap_or(0);
             Text { deleted, ..t }
@@ -413,13 +422,46 @@ pub fn fold_logs(lines: Vec<Text>) -> Vec<Text> {
 
 /// A phone's log as `Logs` read it: its lines, how far, the bytes just
 /// before that place (to tell the same file grown from another one), and
-/// the file's size and time then.
+/// the file's stamp then (`Stamp`).
 #[derive(Debug, Default)]
 struct LogRead {
+    /// Its lines without their raw columns, and what each text's fingerprint is made of (`Print`), by its name.
     lines: Vec<Text>,
+    plain: BTreeMap<String, Print>,
     upto: u64,
     before: Vec<u8>,
-    seen: (u64, Option<std::time::SystemTime>),
+    seen: Stamp,
+}
+
+/// What tells a file unchanged since it was read: its size and time, and on
+/// Unix its inode and change time, which no tool sets back (a file of the
+/// same size whose time was put back, by rsync -t or a restore, is read
+/// again: the review of 16 October 2026, LOW 6).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    inode: u64,
+    changed: i128,
+}
+
+impl Stamp {
+    fn of(meta: &std::fs::Metadata) -> Stamp {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            Stamp { len: meta.len(), modified: meta.modified().ok(), inode: meta.ino(), changed: i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()) }
+        }
+        #[cfg(not(unix))]
+        {
+            Stamp { len: meta.len(), modified: meta.modified().ok(), inode: 0, changed: 0 }
+        }
+    }
+
+    /// Read up to `len` with a line still being written after it: never taken for unchanged.
+    fn partial(len: u64) -> Stamp {
+        Stamp { len, ..Stamp::default() }
+    }
 }
 
 /// How many bytes before the place a log was read to tell the same file grown.
@@ -456,7 +498,10 @@ impl Logs {
     }
 
     /// Every phone's texts, oldest first, each once by phone and row, a
-    /// deletion folded into its text (`fold_logs`).
+    /// deletion folded into its text (`fold_logs`), without their raw columns
+    /// (`fields`, `addrs`): only the fingerprints read those, and each is made
+    /// as its line is read (review of 16 October 2026, LOW 7: cloning them at
+    /// each refresh cost the window's thread 0.14 s at 20,000 lines).
     pub fn texts(&self) -> Vec<Text> {
         fold_logs(self.files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect())
     }
@@ -469,9 +514,14 @@ impl Logs {
             self.prints.clear();
             self.region = code;
         }
-        let prints = &mut self.prints;
-        let texts = fold_logs(self.files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect());
-        one_each_by(texts, &mut |t: &Text| prints.entry((t.device.clone(), t.id.clone())).or_insert_with(|| Print::of(t).key(region)).clone())
+        let (files, prints) = (&self.files, &mut self.prints);
+        let texts = fold_logs(files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect());
+        one_each_by(texts, &mut |t: &Text| {
+            prints
+                .entry((t.device.clone(), t.id.clone()))
+                .or_insert_with(|| files.get(&t.device).and_then(|(_, read)| read.plain.get(&t.id)).map_or_else(|| Print::of(t), Clone::clone).key(region))
+                .clone()
+        })
     }
 }
 
@@ -484,7 +534,7 @@ fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> b
         *read = LogRead::default();
         return had;
     };
-    let seen = (meta.len(), meta.modified().ok());
+    let seen = Stamp::of(&meta);
     if seen == read.seen {
         return false;
     }
@@ -492,7 +542,7 @@ fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> b
     // The bytes before the place it was read to, as they were: the same file, grown.
     let from = read.upto - read.before.len() as u64;
     let mut before = vec![0u8; read.before.len()];
-    let same = seen.0 > read.upto && file.seek(SeekFrom::Start(from)).is_ok() && file.read_exact(&mut before).is_ok() && before == read.before;
+    let same = seen.len > read.upto && file.seek(SeekFrom::Start(from)).is_ok() && file.read_exact(&mut before).is_ok() && before == read.before;
     let mut changed = false;
     if !same {
         changed = !read.lines.is_empty();
@@ -502,24 +552,29 @@ fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> b
         }
     }
     let mut bytes = Vec::new();
-    if file.take(seen.0.saturating_sub(read.upto)).read_to_end(&mut bytes).is_err() {
+    if file.take(seen.len.saturating_sub(read.upto)).read_to_end(&mut bytes).is_err() {
         return changed;
     }
     // Whole lines only: one being written is read at the next look.
     let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else {
-        read.seen = (read.upto, None);
+        read.seen = Stamp::partial(read.upto);
         return changed;
     };
     let whole = &bytes[..=end];
     let lines: Vec<Text> = read_lines(&String::from_utf8_lossy(whole), sealer);
     changed |= !lines.is_empty();
-    read.lines.extend(lines.into_iter().map(|t| Text { device: device.to_string(), ..t }));
+    for t in lines {
+        if t.deleted == 0 {
+            read.plain.entry(t.id.clone()).or_insert_with(|| Print::of(&t));
+        }
+        read.lines.push(Text { device: device.to_string(), fields: BTreeMap::new(), addrs: Vec::new(), ..t });
+    }
     let mut tail = std::mem::take(&mut read.before);
     tail.extend_from_slice(whole);
     read.before = tail[tail.len().saturating_sub(LOG_CHECK as usize)..].to_vec();
     read.upto += whole.len() as u64;
     // A line still being written: the next look reads on.
-    read.seen = if read.upto == seen.0 { seen } else { (read.upto, None) };
+    read.seen = if read.upto == seen.len { seen } else { Stamp::partial(read.upto) };
     changed
 }
 
@@ -699,6 +754,53 @@ impl Print {
     }
 }
 
+/// Whether `new` is the message of `old` under a date its provider
+/// rewrote: the same table and row id, another date, the same way and
+/// people; a text's words the same (the plain texts' table gives a deleted
+/// text's id to the next one, whose words differ); a multimedia message's
+/// words and media as complete or more (one read before its parts were
+/// attached comes whole).
+pub fn moved(old: &Text, new: &Text) -> bool {
+    let (Some(a), Some(b)) = (old.row(), new.row()) else { return false };
+    if a.mms != b.mms || a.id != b.id || a.date == b.date || old.direction != new.direction {
+        return false;
+    }
+    let (was, is) = (Print::of(old), Print::of(new));
+    let people = |p: &Print| {
+        let mut people: Vec<String> = p.people.iter().map(|w| w.trim().to_string()).collect();
+        people.sort_unstable();
+        people.dedup();
+        people
+    };
+    if people(&was) != people(&is) {
+        return false;
+    }
+    if a.mms { was.words.iter().all(|w| is.words.contains(w)) && was.media.iter().all(|m| is.media.contains(m)) } else { old.body == new.body }
+}
+
+/// The marks of the lines whose row its provider re-dated (`moved`): each
+/// line of a phone's log not marked yet whose row is no longer listed, while
+/// its row id is listed under another date with a line of the log holding
+/// the same message (the newest such): a deletion's line naming it
+/// (`Text::moved`), never "deleted on your phone".
+pub fn moved_marks(log: &[Text], listed: &BTreeSet<Row>, now: i64) -> Vec<Text> {
+    let marked: BTreeSet<&str> = log.iter().filter(|t| t.deleted > 0).map(|t| t.id.as_str()).collect();
+    let mut by_id: BTreeMap<(bool, i64), Vec<(&Text, Row)>> = BTreeMap::new();
+    for t in log.iter().filter(|t| t.deleted == 0) {
+        if let Some(row) = t.row().filter(|r| listed.contains(r)) {
+            by_id.entry((row.mms, row.id)).or_default().push((t, row));
+        }
+    }
+    log.iter()
+        .filter(|t| t.deleted == 0 && !marked.contains(t.id.as_str()))
+        .filter_map(|old| {
+            let row = old.row().filter(|r| !listed.contains(r))?;
+            let new = by_id.get(&(row.mms, row.id))?.iter().filter(|(t, _)| moved(old, t)).max_by_key(|(_, r)| r.date).map(|(t, _)| *t)?;
+            Some(Text { id: old.id.clone(), at: old.at, direction: old.direction.clone(), with: old.with.clone(), deleted: now, moved: new.id.clone(), ..Text::default() })
+        })
+        .collect()
+}
+
 /// A column's number, written as a number or as words.
 pub fn number(value: Option<&Value>) -> i64 {
     value.and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))).unwrap_or(0)
@@ -796,6 +898,9 @@ pub struct Mark {
 pub struct Ledger {
     pub mark: Mark,
     pub claims: Vec<Claim>,
+    /// Every key the claims hold (`has`), once: a step judges thousands of
+    /// requests already decided without a search each.
+    keys: std::collections::BTreeSet<String>,
 }
 
 impl Ledger {
@@ -812,13 +917,26 @@ impl Ledger {
                 mark
             }
         };
-        let claims = std::fs::read_to_string(dir.join(LEDGER)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
-        Ok(Ledger { mark, claims })
+        let claims: Vec<Claim> = std::fs::read_to_string(dir.join(LEDGER)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        let keys = claims.iter().map(|c| c.key.clone()).collect();
+        Ok(Ledger { mark, claims, keys })
     }
 
     /// Whether a key was decided already, whatever was decided.
     pub fn has(&self, key: &str) -> bool {
-        self.claims.iter().any(|c| c.key == key)
+        self.keys.contains(key)
+    }
+
+    /// A ledger of these lines and this mark, held in memory (tests, stand-ins).
+    pub fn with(mark: Mark, claims: Vec<Claim>) -> Ledger {
+        let keys = claims.iter().map(|c| c.key.clone()).collect();
+        Ledger { mark, claims, keys }
+    }
+
+    /// A line added in memory, as the ledger will hold it once written (`record_all`).
+    pub fn add(&mut self, claim: Claim) {
+        self.keys.insert(claim.key.clone());
+        self.claims.push(claim);
     }
 
     /// A key's last state.
@@ -1486,7 +1604,7 @@ mod tests {
 
     #[test]
     fn short_numbers_groups_and_empty_words_are_refused() {
-        let ledger = Ledger { mark: Mark { since: 0 }, claims: Vec::new() };
+        let ledger = Ledger::with(Mark { since: 0 }, Vec::new());
         let with = |to: &str, body: &str| verdict(&Request { to: to.into(), body: body.into(), ..request("e", "phone", NOW) }, "phone", NOW, &ledger, fr());
         assert_eq!(with("36179", "STOP"), Verdict::Refused("short-number"));
         assert_eq!(with("01 99 00 12 34, 04 65 71 00 42", "Bonjour"), Verdict::Refused("several"));
@@ -1502,7 +1620,7 @@ mod tests {
         let found = doubt_after(&claim, Some("sms-412".into()), NOW + 3 * MINUTE).unwrap();
         assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "sms-412"));
         assert_eq!(doubt_after(&claim, None, NOW + 3 * MINUTE).unwrap().state, "doubt");
-        let ledger = Ledger { mark: Mark { since: 0 }, claims: vec![claim] };
+        let ledger = Ledger::with(Mark { since: 0 }, vec![claim]);
         assert_eq!(verdict(&request("f1", "phone", NOW + 3 * MINUTE), "phone", NOW + 3 * MINUTE, &ledger, fr()), Verdict::Decided);
     }
 
@@ -1886,17 +2004,23 @@ mod tests {
         let text = |id: i64, body: &str| Text { id: Row { mms: false, id, date: NOW + id }.name(), at: NOW + id, direction: "in".into(), with: vec!["+33199001234".into()], body: body.into(), ..Text::default() };
         let (a, b) = (own_file(&dir, LOG, "a"), own_file(&dir, LOG, "b"));
         append(&a, &[text(1, "Un."), text(2, "Deux.")], &seal, None).unwrap();
-        append(&b, &[text(7, "Un.")], &seal, None).unwrap();
+        // A text as Java reads it, with its raw columns: the fingerprint made of them, the columns not kept.
+        let mut raw = text(8, "Deux.");
+        raw.fields.insert("address".into(), Value::from("04 65 71 00 42"));
+        append(&b, &[text(7, "Un."), raw], &seal, None).unwrap();
         opened();
         let mut logs = Logs::default();
+        let bare = |texts: Vec<Text>| texts.into_iter().map(|t| Text { fields: BTreeMap::new(), addrs: Vec::new(), ..t }).collect::<Vec<_>>();
         let same = |logs: &mut Logs| {
             let n = seal.0.load(Ordering::Relaxed);
-            assert_eq!(logs.texts(), read_logs(&dir, &seal));
-            assert_eq!(logs.one_each(fr()), one_each(read_logs(&dir, &seal), fr()));
+            assert_eq!(logs.texts(), bare(read_logs(&dir, &seal)));
+            assert_eq!(logs.one_each(fr()), bare(one_each(read_logs(&dir, &seal), fr())));
             seal.0.store(n, Ordering::Relaxed);
         };
         assert!(logs.refresh(&dir, &seal));
-        assert_eq!(opened(), 3);
+        assert_eq!(opened(), 4);
+        assert!(logs.texts().iter().all(|t| t.fields.is_empty() && t.addrs.is_empty()), "no raw columns kept");
+        // The same texts and fingerprints as a whole read, the raw columns aside.
         same(&mut logs);
         assert!(!logs.refresh(&dir, &seal), "nothing changed");
         assert_eq!(opened(), 0);
@@ -1923,6 +2047,16 @@ mod tests {
         append(&a, &[text(20, "Court.")], &seal, None).unwrap();
         assert!(logs.refresh(&dir, &seal));
         same(&mut logs);
+        // The same size, other words, its time put back (rsync -t, a restore): read again all the same.
+        let modified = std::fs::metadata(&a).unwrap().modified().unwrap();
+        let body = std::fs::read(&a).unwrap();
+        std::fs::remove_file(&a).unwrap();
+        append(&a, &[text(20, "Kourt.")], &seal, None).unwrap();
+        assert_eq!(std::fs::read(&a).unwrap().len(), body.len(), "the same size");
+        std::fs::File::options().write(true).open(&a).unwrap().set_modified(modified).unwrap();
+        assert!(logs.refresh(&dir, &seal), "another file, though its size and time are the old one's");
+        same(&mut logs);
+        assert!(logs.texts().iter().any(|t| t.body == "Kourt."));
         // A phone's file gone: its texts too.
         std::fs::remove_file(&b).unwrap();
         assert!(logs.refresh(&dir, &seal));

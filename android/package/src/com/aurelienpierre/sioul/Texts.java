@@ -66,7 +66,7 @@ public final class Texts
 
     /** The phone's texts changed since Rust last asked with "clear" (`changes`): set at first, so that the first step looks. */
     private static final AtomicBoolean changed = new AtomicBoolean(true);
-    /** Android's provider of texts watched in this process (the background service's); null: not watched here. */
+    /** Android's provider of texts watched in this process (the background service's, or the window's); null: not watched here. */
     private static ContentObserver watching;
     /** The newest message received, by the provider's id, of each table (SMS, MMS), as the watch last saw it; -1: not read yet. */
     private static long newestSms = -1;
@@ -93,21 +93,36 @@ public final class Texts
      */
     static synchronized void watch(Context context)
     {
+        watch(context, true);
+    }
+
+    /**
+     * The same, `steps` saying whether a message received brings a step (the
+     * background service's process); in the window's, which exchanges each
+     * minute by itself, the watch only marks the texts changed, so that its
+     * exchanges ask Android for every row only after a change (the review of
+     * 16 October 2026, LOW 3: unwatched, it listed every row once a minute
+     * while on screen).
+     */
+    static synchronized void watch(Context context, boolean steps)
+    {
         if (watching != null || !allowed(context, Manifest.permission.READ_SMS))
             return;
         final Context app = context.getApplicationContext();
-        final Handler later = new Handler(Looper.getMainLooper());
-        final Runnable once = () -> {
+        final Handler later = steps ? new Handler(Looper.getMainLooper()) : null;
+        final Runnable once = steps ? () -> {
             if (arrived(app))
                 StepService.soon(app);
-        };
+        } : null;
         ContentObserver observer = new ContentObserver(null) {
             @Override
             public void onChange(boolean self)
             {
                 changed.set(true);
-                later.removeCallbacks(once);
-                later.postDelayed(once, LOOK_MS);
+                if (later != null) {
+                    later.removeCallbacks(once);
+                    later.postDelayed(once, LOOK_MS);
+                }
             }
         };
         try {
@@ -119,7 +134,8 @@ public final class Texts
             look = once;
             changed.set(true);
             // The messages there now: none of them brings a step.
-            arrived(app);
+            if (steps)
+                arrived(app);
         } catch (RuntimeException e) {
             context.getContentResolver().unregisterContentObserver(observer);
             Log.w(TAG, "Texts: the texts cannot be watched: " + e.getClass().getSimpleName());
@@ -219,7 +235,7 @@ public final class Texts
 
     /**
      * Whether the texts changed since the last look: always when not watched
-     * here (the window's process; READ_SMS not given yet); else as marked,
+     * here (READ_SMS not given yet); else as marked,
      * the mark cleared when `clear`. Pure: android/jvm-checks/StepsCheck.java.
      */
     static boolean changedSince(boolean watched, AtomicBoolean mark, boolean clear)
@@ -312,6 +328,8 @@ public final class Texts
         case "texts-send":
             return TextSend.send(context, asked.optString("key", ""), asked.optString("to", ""), asked.optString("body", ""), asked.optInt("sub", -1)).toString();
         case "texts-changes":
+            // Watched in this process too (the window's, without steps of its own): a step asks Android only after a change.
+            watch(context, StepService.inThisProcess());
             return changes(context, asked.optBoolean("clear", true)).toString();
         case "texts-info":
             return info(context) ? "true" : "false";
@@ -634,7 +652,8 @@ public final class Texts
         listed(resolver, Telephony.Sms.CONTENT_URI, "sms", out);
         listed(resolver, Telephony.Mms.CONTENT_URI, "mms", out);
         long media = 0;
-        if (measure) {
+        // Measured only on a whole listing: a look that cannot list waits, and measures nothing meanwhile.
+        if (measure && out.has("sms") && out.has("mms")) {
             try (Cursor cursor = resolver.query(Uri.parse("content://mms/part"), new String[] { "_id", "ct" }, null, null, null)) {
                 while (cursor != null && cursor.moveToNext())
                     if (media(cursor.getString(1)))
