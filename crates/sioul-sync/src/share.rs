@@ -685,11 +685,11 @@ pub fn shaped(stores: &[Store], format: u32) -> Vec<Store> {
 
 /// What notes or papers would send from here, before their part is switched
 /// on: how many files, how many bytes, and how many stay (too big). Listed as
-/// an exchange lists them, nothing read through.
+/// an exchange lists them, nothing read through, nothing removed.
 pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
     let (mut found, mut files, known, confirmed) = (Found::default(), Vec::new(), BTreeMap::new(), BTreeSet::new());
     for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
-        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found }.list(&store.path);
+        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false }.list(&store.path);
     }
     files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
 }
@@ -908,7 +908,7 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
             }
             let mut files = Vec::new();
             if matches!(store.shape, Shape::Files) {
-                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found };
+                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true };
                 listing.list(&store.path);
             } else {
                 list_files(&store.path, &store.path, store.skip, &mut files);
@@ -962,6 +962,10 @@ struct Listing<'a> {
     confirmed: &'a BTreeSet<String>,
     files: &'a mut Vec<(String, PathBuf)>,
     found: &'a mut Found,
+    /// Whether what a crash left half written goes once an hour old: in an
+    /// exchange, under its lock; never in a look from outside it
+    /// (`estimate`), which removes nothing (review of 18 October 2026, I-2).
+    sweep: bool,
 }
 
 impl Listing<'_> {
@@ -998,7 +1002,9 @@ impl Listing<'_> {
                     };
                     let path = entry.path();
                     if is_leftover(name) {
-                        remove_if_old(&path);
+                        if self.sweep {
+                            remove_if_old(&path);
+                        }
                         continue;
                     }
                     if kind.is_symlink() {
@@ -6886,33 +6892,38 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
 }
 
 /// The notes or papers gone many at once from a folder of the records
-/// ("files/notes/") and held, put back where they were, each from its
-/// content sealed in the folder (or fetched beside it), dated as it was last
-/// seen here, or, held before this was kept (Sioul up to 17 October 2026),
-/// as its last record was made (within a minute of the change, on a
-/// computer in use; at its first exchange, for a file older than the
-/// sharing): the next exchange finds them back, and nothing leaves. Never
-/// through a link, nor into the sharing folder or Sioul's state, nor over a
-/// file there, one written there meanwhile included; never without room for
-/// it and some left (as every write of the sharing, `disk::fits`). A quarter
-/// of a second's worth at a time, each file opened beside its place under a
-/// hidden name, outside the exchanges' lock, which is taken only to date and
-/// place that batch, after a last look, then left free a moment: a dose's
-/// exchange never waits for more than placing them, even behind a note or
-/// paper of tens of megabytes (thousands take half a minute: reviews of 17
-/// and 18 October 2026, L1, L-3 and L-a). Each is dated as it was only then,
-/// under the lock, just before it is placed: an exchange's sweep of
-/// leftovers takes a hidden file dated more than an hour ago, and none runs
-/// while the lock is held (dated as it was from its opening, a bulk of notes
-/// last changed days ago lost 574 of 600 to the window's exchanges, and was
-/// said done: review of 18 October 2026, M-1). How many came back, of how
-/// many were held (`PutBack`); a disk too full stops it, said.
+/// ("files/notes/") and held (`Sealed::bulk`, as the Porch counts them:
+/// never a note you deleted on purpose beside a bulk's remainder, as Take
+/// them out now takes those alone: review of 18 October 2026, I-1), put
+/// back where they were, each from its content sealed in the folder (or
+/// fetched beside it), dated as it was last seen here, or, held before this
+/// was kept (Sioul up to 17 October 2026), as its last record was made
+/// (within a minute of the change, on a computer in use; at its first
+/// exchange, for a file older than the sharing): the next exchange finds
+/// them back, and nothing leaves. Never through a link, nor into the
+/// sharing folder or Sioul's state, nor over a file there, one written
+/// there meanwhile included; never without room for it and some left (as
+/// every write of the sharing, `disk::fits`). A quarter of a second's worth
+/// at a time, each file opened under a hidden name in the deepest of its
+/// folders that is there, outside the exchanges' lock, which is taken only
+/// to make its own folders, date it and place it, after a last look, then
+/// left free a moment: a dose's exchange never waits for more than placing
+/// them, even behind a note or paper of tens of megabytes (thousands take
+/// half a minute: reviews of 17 and 18 October 2026, L1, L-3 and L-a). No
+/// exchange meets a folder made for them before its note is in it: holding
+/// hidden files alone, it would list empty, taken for a folder emptied, and
+/// its notes would leave the hold, for good after a stop meanwhile (L-1); a
+/// stop leaves them held, and Put them back again brings them. Each is
+/// dated as it was only under the lock, just before it is placed: an
+/// exchange's sweep of leftovers takes a hidden file dated more than an
+/// hour ago, and none runs while the lock is held (M-1). How many came
+/// back, of how many were held (`PutBack`); a disk too full stops it, said.
 pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], store: &str) -> Result<PutBack, String> {
     // What there is to put back, and its date: read once; how many are held from that folder.
     let (held, count) = {
         let _running = exchange_lock(memory, true)?;
         let state = Memory::load_all(memory, computer);
-        let gone: Vec<&String> = state.sealed.gone.keys().filter(|file| file.starts_with(store)).collect();
+        let gone: Vec<&String> = state.sealed.gone.keys().filter(|file| file.starts_with(store) && state.sealed.bulk.contains(*file)).collect();
         let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = gone
             .iter()
             .copied()
@@ -6930,10 +6941,10 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
     let mut back = 0;
     let mut rest = held.as_slice();
     while !rest.is_empty() {
-        // A batch opened beside its places, outside the lock: a quarter of a
-        // second's worth, never a whole bulk (review of 18 October 2026, L-3).
+        // A batch opened outside the lock: a quarter of a second's worth,
+        // never a whole bulk (review of 18 October 2026, L-3).
         let (started, mut done) = (std::time::Instant::now(), 0);
-        let mut ready: Vec<(std::path::PathBuf, std::path::PathBuf, &Store, std::time::SystemTime)> = Vec::new();
+        let mut ready: Vec<(std::path::PathBuf, std::path::PathBuf, &Store, std::time::SystemTime, &String)> = Vec::new();
         let mut stop = None;
         for (file, h, when, size) in rest {
             if done >= PUT_BACK_BATCH || started.elapsed() >= PUT_BACK_HOLD {
@@ -6944,24 +6955,22 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             if std::fs::symlink_metadata(&path).is_ok() || !writable_in(store, &path, Some(folder), memory) {
                 continue;
             }
-            let Some(parent) = path.parent() else { continue };
-            if let Err(e) = private_dirs(parent) {
-                stop = Some(format!("{}: {e}", parent.display()));
-                break;
-            }
+            // Opened in the deepest of its folders that is there, never in one made now (L-1).
+            let Some(name) = path.file_name() else { continue };
+            let Some(there) = path.ancestors().skip(1).find(|dir| dir.is_dir()).filter(|dir| dir.starts_with(&store.path)) else { continue };
             // Its size as last seen here; else four times its sealed size (compressed).
             let size = size.unwrap_or_else(|| std::fs::metadata(crate::blobs::path(folder, key, h)).map_or(0, |m| m.len()).saturating_mul(4));
-            if !crate::disk::fits(parent, size) {
+            if !crate::disk::fits(there, size) {
                 stop = Some(format!("share-no-room:{file}"));
                 break;
             }
             // Dated now while it waits: the exchanges' sweep leaves a leftover alone its first hour.
-            let temporary = temporary(&path);
-            if crate::blobs::get(folder, key, h, &temporary).is_err() {
-                let _ = std::fs::remove_file(&temporary);
+            let opened = temporary(&there.join(name));
+            if crate::blobs::get(folder, key, h, &opened).is_err() {
+                let _ = std::fs::remove_file(&opened);
                 continue;
             }
-            ready.push((temporary, path, store, *when));
+            ready.push((opened, path, store, *when, h));
         }
         rest = &rest[done..];
         // The lock taken only to place them, each after a last look: never over
@@ -6970,22 +6979,47 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             let _running = match exchange_lock(memory, true) {
                 Ok(running) => running,
                 Err(e) => {
-                    for (temporary, _, _, _) in &ready {
-                        let _ = std::fs::remove_file(temporary);
+                    for (opened, ..) in &ready {
+                        let _ = std::fs::remove_file(opened);
                     }
                     return Err(e);
                 }
             };
-            for (temporary, path, store, when) in &ready {
+            for (opened, path, store, when, h) in &ready {
                 if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
-                    let _ = std::fs::remove_file(temporary);
+                    let _ = std::fs::remove_file(opened);
                     continue;
                 }
+                // Its own folders made only now, its note placed in them before any exchange lists them (L-1).
+                let Some(parent) = path.parent() else {
+                    let _ = std::fs::remove_file(opened);
+                    continue;
+                };
+                if let Err(e) = private_dirs(parent) {
+                    let _ = std::fs::remove_file(opened);
+                    stop.get_or_insert_with(|| format!("{}: {e}", parent.display()));
+                    continue;
+                }
+                // Into its own folder: a rename on one disk; across disks (one
+                // mounted below), opened there again, as before 18 October 2026.
+                let beside = if opened.parent() == Some(parent) {
+                    opened.clone()
+                } else {
+                    let beside = temporary(path);
+                    if std::fs::rename(opened, &beside).is_err() {
+                        let _ = std::fs::remove_file(opened);
+                        if crate::blobs::get(folder, key, h, &beside).is_err() {
+                            let _ = std::fs::remove_file(&beside);
+                            continue;
+                        }
+                    }
+                    beside
+                };
                 // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1).
-                if let Ok(placed) = std::fs::File::options().write(true).open(temporary) {
+                if let Ok(placed) = std::fs::File::options().write(true).open(&beside) {
                     let _ = placed.set_modified(*when);
                 }
-                if place_new(temporary, path) {
+                if place_new(&beside, path) {
                     back += 1;
                 }
             }
@@ -7001,9 +7035,9 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
 }
 
 /// What "Put them back" did (`put_back_withheld`): how many came back, of
-/// how many were held from that folder. Fewer is said as such, never as
-/// done: their places are taken, or their contents are not on this device,
-/// and Put them back tries them again (review of 18 October 2026, M-1).
+/// how many were held from that folder (as the Porch counts them). Fewer is
+/// said as such, never as done: other files or links are at their places,
+/// or their contents are not on this device (review of 18 October 2026, M-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PutBack {
     /// Written back where they were.

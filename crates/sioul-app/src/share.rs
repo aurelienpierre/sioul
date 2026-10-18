@@ -733,18 +733,29 @@ fn withheld_words(w: share::Withheld, root: Option<&Path>) -> WithheldShown {
 /// "Put them back": the notes or papers held after going many at once from
 /// `store` ("files/notes/") written back where they were, from their sealed
 /// contents, a few hundred at a time (`share::put_back_withheld`: the
-/// exchanges go between); "" when every one came back, else how many did,
-/// or why none: fewer is never said as done (review of 18 October 2026,
-/// M-1). Off the window's thread (the bridge's `share_put_back_withheld`).
+/// exchanges go between); what it says (`put_back_words`). Off the
+/// window's thread (the bridge's `share_put_back_withheld`).
 pub(crate) fn put_back_withheld(store: &str) -> String {
     let here = here();
     let Some((folder, key)) = sealed(attached(&here)) else { return tr().text("share-off", None) };
     let stores = stores_here(&here);
     match share::put_back_withheld(&folder, &key, &memory_path(), &here.id, &stores, store) {
-        Ok(put) if put.back == 0 => tr().text("porch-withheld-none-back", None),
-        Ok(put) if put.back < put.held => say("porch-withheld-some-back", &[("back", put.back.to_string()), ("count", put.held.to_string()), ("rest", (put.held - put.back).to_string())]),
-        Ok(_) => String::new(),
+        Ok(put) => put_back_words(put),
         Err(e) => problem_text(&e),
+    }
+}
+
+/// What "Put them back" says: nothing when every one came back, or when
+/// nothing was held any more (pressed again after they came, or after they
+/// left: review of 18 October 2026, I-3); how many came back when some did
+/// not, never said as done (M-1); why, when none did.
+fn put_back_words(put: share::PutBack) -> String {
+    if put.back >= put.held {
+        String::new()
+    } else if put.back == 0 {
+        tr().text("porch-withheld-none-back", None)
+    } else {
+        say("porch-withheld-some-back", &[("back", put.back.to_string()), ("count", put.held.to_string()), ("rest", (put.held - put.back).to_string())])
     }
 }
 
@@ -2883,6 +2894,19 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// "Put them back" said as it went (review of 18 October 2026, M-1 and
+    /// I-3): nothing when every one came back, or nothing was held any more;
+    /// how many came back when some did not; why, when none did.
+    #[test]
+    fn a_put_back_is_said_as_it_went() {
+        use sioul_sync::share::PutBack;
+        assert_eq!(put_back_words(PutBack { back: 12, held: 12 }), "");
+        assert_eq!(put_back_words(PutBack { back: 0, held: 0 }), "", "nothing held any more: nothing to say");
+        let some = put_back_words(PutBack { back: 11, held: 12 });
+        assert!(some.contains("11") && some.contains("12"), "{some}");
+        assert!(!put_back_words(PutBack { back: 0, held: 12 }).is_empty());
+    }
 
     /// A phone's log says why notes and papers wait, counted, never named:
     /// a sealed file not here yet apart from a backoff (`Outcome::waits`).
