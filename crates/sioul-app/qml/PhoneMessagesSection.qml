@@ -96,6 +96,8 @@ ColumnLayout {
         if (mine.texts)
             section.sioul.texts("again", JSON.stringify({ key: mine.key }))
         else
+            // The conversation's notification now, never the refused reply's own, which its app may have replaced:
+            // the phone finds its first, on its way, through any notification of the conversation (L-2).
             section.answered(section.act("reply", { phone: answer.phone, verb: "reply", notice: answer.notice, app: answer.app, line: answer.line, words: mine.text, again: mine.key }))
         section.reload()
     }

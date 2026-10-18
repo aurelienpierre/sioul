@@ -53,7 +53,8 @@ Item {
         }
         readonly property var answered: [
             { ids: ["4-d"], head: "Alice wrote on Signal:", said: [{ time: "14:01", from: "", text: "Tu passes ?" }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Alice",
-              answer: mock.answer("4-d", true, false, [{ key: "k0", time: "14:02", text: "J'arrive.", said: "Waiting for your phone.", waiting: true, again: false, texts: false }]) },
+              answer: mock.answer("4-d", true, false, [{ key: "k0", time: "14:02", text: "J'arrive.", said: "Waiting for your phone.", waiting: true, again: false, texts: false },
+                                                         { key: "k9", time: "14:03", text: "Oui, j'arrive.", said: "Not sent: the same words are already on their way to this conversation.", waiting: false, again: true, texts: false }]) },
             { ids: ["5-e"], head: "Bob wrote on Signal:", said: [{ time: "14:03", from: "", text: "Merci." }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Bob", answer: mock.answer("5-e", false, false, []) },
             { ids: ["6-f"], head: "Dr Elena Varga wrote:", said: [{ time: "14:04", from: "", text: "Rappelez-moi." }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false, who: "Dr Elena Varga", answer: mock.answer("6-f", true, true, []) }
         ]
@@ -278,6 +279,19 @@ Item {
             compare(labels(section, "Taking it back: your phone will not send it, unless it has taken it already.").length, 1, "said at once")
             compare(buttons(section, "replies-take-back").length, 0, "no Take back again")
             compare(labels(section, "Reply on your phone.").length, 1, "Bob's notification gone")
+        }
+
+        // Send again goes through the conversation's notification now, the answer's, never the refused reply's
+        // own, which its app may have replaced; the phone finds the first, on its way, through any notification
+        // of the conversation (review of 18 October 2026, L-2).
+        function test_send_again_goes_through_the_notification_now() {
+            replying(mock.answered)
+            const again = buttons(section, "replies-send-again")
+            compare(again.length, 1)
+            mouseClick(again[0])
+            const sent = last("reply")
+            const answer = mock.answered[0].answer
+            compare([sent.notice, sent.line, sent.again, sent.words], [answer.notice, answer.line, "k9", "Oui, j'arrive."])
         }
 
         // Mark as read in the line's menu, its warning first.

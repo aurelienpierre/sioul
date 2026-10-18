@@ -43,7 +43,7 @@ SOURCES = (
 THEMES = {"sioul": Path("/usr/share/icons/breeze"), "sioul-dark": Path("/usr/share/icons/breeze-dark")}
 SIZES = ["16", "22", "32"]
 # Sioul's own icons, not Breeze's: kept as they are, in each theme and size they are in.
-OWN = {"sioul-web.svg"}
+OWN = {"sioul-web.svg", "sioul-texts.svg"}
 
 names = set()
 for source in SOURCES:

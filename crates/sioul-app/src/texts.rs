@@ -911,7 +911,7 @@ fn decide(here: &str, seal: &Seal, region: Option<&'static phones::Region>, now:
             let (state, reason) = match verdict {
                 Verdict::NotMine | Verdict::Decided => continue,
                 Verdict::Send => {
-                    rules::record(&private(), &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, region), hash: rules::words_hash(&r.body) })?;
+                    rules::record(&private(), &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, region), hash: rules::words_hash(&r.body), ..Claim::default() })?;
                     to_send.push(r.clone());
                     continue;
                 }
@@ -2396,7 +2396,8 @@ mod tests {
     /// new date, and its old line marked moved, at once: computers show the
     /// message once, never once more "deleted on your phone"; a text that
     /// took a deleted text's id, its words other, leaves that one deleted
-    /// (review of 16 October 2026, LOW 1).
+    /// (review of 16 October 2026, LOW 1), and so does one with the same
+    /// words from the same person, hours later (review of 18 October 2026, L-3).
     #[test]
     fn a_row_its_provider_dated_again_is_one_text() {
         let bench = Bench::new("redated");
@@ -2404,6 +2405,7 @@ mod tests {
         phone.text(1, NOW - 600_000, "Bonjour.");
         phone.text(2, NOW - 500_000, "À demain.");
         phone.picture(3, NOW - 400_000);
+        phone.text(4, NOW - 3 * 3_600_000, "Oui.");
         assert!(bench.step(&phone, NOW - 300_000, true));
         // The picture's row dated again a second later, the text's a millisecond: both read again.
         let picture = phone.mms.borrow_mut().remove(&3).unwrap();
@@ -2413,18 +2415,23 @@ mod tests {
         phone.text(1, NOW - 599_999, "Bonjour.");
         // Text 2 deleted, and its id taken by another text.
         phone.text(2, NOW - 100_000, "Autre chose.");
+        // Her "Oui." deleted, and its id taken by her next "Oui.", hours later: another text.
+        phone.text(4, NOW - 50_000, "Oui.");
         assert!(bench.step(&phone, NOW, false));
         let log = bench.log();
         let mut marks: Vec<(String, bool)> = log.iter().filter(|t| t.deleted > 0).map(|t| (t.id.split('@').next().unwrap_or_default().to_string(), !t.moved.is_empty())).collect();
         marks.sort();
-        assert_eq!(marks, [("mms-3".to_string(), true), ("sms-1".to_string(), true)], "the re-dated rows' old lines marked moved, at once; text 2 not (other words)");
+        assert_eq!(marks, [("mms-3".to_string(), true), ("sms-1".to_string(), true)], "the re-dated rows' old lines marked moved, at once; text 2 not (other words), nor text 4 (the same words, hours later)");
         assert!(bench.look(&phone, NOW + DAY_MS));
         let shown = rules::fold_logs(bench.log().into_iter().map(|t| Text { device: "phone".into(), ..t }).collect());
         assert_eq!(shown.iter().filter(|t| t.body == "Bonjour.").count(), 1, "the text once, under its new date");
         assert_eq!(shown.iter().filter(|t| t.id.starts_with("mms-3@")).count(), 1, "the picture once");
-        assert!(shown.iter().all(|t| t.deleted == 0 || t.body == "À demain."), "only the text truly deleted said so");
+        assert!(shown.iter().all(|t| t.deleted == 0 || t.body == "À demain." || t.body == "Oui."), "only the texts truly deleted said so");
         assert!(shown.iter().any(|t| t.body == "À demain." && t.deleted > 0));
         assert!(shown.iter().any(|t| t.body == "Autre chose." && t.deleted == 0));
+        let mut oui: Vec<(i64, bool)> = shown.iter().filter(|t| t.body == "Oui.").map(|t| (t.at, t.deleted > 0)).collect();
+        oui.sort_unstable();
+        assert_eq!(oui, [(NOW - 3 * 3_600_000, true), (NOW - 50_000, false)], "her first \"Oui.\" deleted on the phone, kept here; her next one there");
     }
 
     /// A day's look whose listing is not whole waits an hour: never listing
