@@ -9,7 +9,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Texts.sms, Texts.mms, Texts.media, Texts.rows and TextSend.line on the JVM, on a
+ * Texts.sms, Texts.mms, Texts.media, Texts.rows, TextSend.line, a multimedia
+ * message's word (TextSend.mmsLine), its file's address (Attachments.contentUri)
+ * and its SIM's carrier values (Texts.limitsLine) on the JVM, on a
  * stand-in provider (rows of `sms`, `mms`, its `addr` and `part` tables, as
  * Texts.copy makes them), as Rust reads them (crates/sioul-app/src/texts.rs,
  * `Raw`, `Result`): every column kept for a later restore, a part's file's
@@ -73,6 +75,25 @@ public final class TextsCheck
         expect("result part", line.getInt("part") == 1 && line.getInt("parts") == 2);
         expect("result code", line.getInt("code") == -1 && "content://sms/414".equals(line.getString("uri")));
         expect("result no uri", "".equals(TextSend.line("k", "delivered", 0, 1, -1, null, 0, at).getString("uri")));
+
+        // A multimedia message's word, as Rust reads it (`mms_outcomes`): Android's code, the row, the HTTP status, the carrier's answer in hex.
+        JSONObject mmsLine = TextSend.mmsLine("0123456789abcdef0123456789abcdef", -1, "content://mms/sent/31", 200, new byte[] { (byte) 0x8C, (byte) 0x81, 0x00, 0x7F }, at);
+        expect("mms result kind", "mms".equals(mmsLine.getString("kind")) && mmsLine.getInt("code") == -1 && mmsLine.getInt("http") == 200);
+        expect("mms result row", "content://mms/sent/31".equals(mmsLine.getString("uri")));
+        expect("mms result answer in hex", "8c81007f".equals(mmsLine.getString("conf")));
+        expect("mms result, no answer", "".equals(TextSend.mmsLine("k", 5, null, 0, null, at).getString("conf")) && "".equals(TextSend.mmsLine(null, 5, null, 0, null, at).getString("key")));
+        // A multimedia message's file lent to Android by Sioul's provider (root "files_path", the private files).
+        String files = "/data/user/0/com.aurelienpierre.sioul/files";
+        expect("mms file's address", "content://com.aurelienpierre.sioul.qtprovider/files_path/state/sioul/texts/outgoing/0123456789abcdef0123456789abcdef.pdu"
+                                         .equals(Attachments.contentUri("com.aurelienpierre.sioul", files, files + "/state/sioul/texts/outgoing/0123456789abcdef0123456789abcdef.pdu", TextSend.FILES_ROOT)));
+        expect("mms file outside the private files: none", Attachments.contentUri("com.aurelienpierre.sioul", files, "/data/user/0/other/files/x.pdu", TextSend.FILES_ROOT) == null);
+        expect("mms file through ..: none", Attachments.contentUri("com.aurelienpierre.sioul", files, files + "/state/../../x.pdu", TextSend.FILES_ROOT) == null);
+        expect("the attachments' addresses as before", Attachments.contentUri("com.aurelienpierre.sioul", "/c", "/c/a.pdf").endsWith("/attachments/a.pdf"));
+        // What a SIM's carrier lets Sioul send, as Rust reads it (`texts::Limits`): never below zero.
+        JSONObject limits = Texts.limitsLine(3, 614400, 2592, 1944, -1, true, true);
+        expect("limits", limits.getInt("sub") == 3 && limits.getLong("max") == 614400 && limits.getInt("width") == 2592 && limits.getInt("height") == 1944 && limits.getBoolean("group") && limits.getBoolean("mms"));
+        expect("limits: a carrier's no limit as the largest count", limits.getLong("recipients") == Integer.MAX_VALUE);
+        expect("limits: none below zero", Texts.limitsLine(-1, -5, -1, -1, 20, false, false).getLong("max") == 0 && Texts.limitsLine(-1, -5, -1, -1, 20, false, false).getInt("recipients") == 20);
 
         // Android's answer to the texts' three, asked alone: at once and none given, no question was shown
         // (restricted settings after the first time, or "Don't allow" chosen twice before).

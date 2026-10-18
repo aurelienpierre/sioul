@@ -157,20 +157,32 @@ public final class Attachments
      */
     static String contentUri(String packageName, String folder, String file)
     {
-        if (packageName == null || packageName.isEmpty() || folder == null || folder.isEmpty() || file == null)
+        return contentUri(packageName, folder, file, ROOT);
+    }
+
+    /**
+     * The address FileProvider gives {@code file} in its root {@code root}
+     * (res/xml/qtprovider_paths.xml), whose folder is {@code folder}, as
+     * {@link #contentUri(String, String, String)} says it for the
+     * attachments: a multimedia message's file, for Android to read it
+     * (TextSend.sendMms, root "files_path").
+     */
+    static String contentUri(String packageName, String folder, String file, String root)
+    {
+        if (packageName == null || packageName.isEmpty() || folder == null || folder.isEmpty() || file == null || root == null || root.isEmpty())
             return null;
-        String root = folder.endsWith("/") ? folder : folder + "/";
-        if (!file.startsWith(root) || file.length() == root.length())
+        String within = folder.endsWith("/") ? folder : folder + "/";
+        if (!file.startsWith(within) || file.length() == within.length())
             return null;
         StringBuilder path = new StringBuilder();
-        for (String part : file.substring(root.length()).split("/", -1)) {
+        for (String part : file.substring(within.length()).split("/", -1)) {
             if (part.isEmpty() || part.equals(".") || part.equals(".."))
                 return null;
             if (path.length() > 0)
                 path.append('/');
             path.append(encode(part));
         }
-        return "content://" + packageName + AUTHORITY + "/" + encode(ROOT) + "/" + path;
+        return "content://" + packageName + AUTHORITY + "/" + encode(root) + "/" + path;
     }
 
     /**

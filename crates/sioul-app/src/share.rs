@@ -2152,7 +2152,9 @@ fn send_texts(here: &share::Here) {
         return;
     }
     let Some(login) = server_login(&state, &load_config()) else { return };
-    let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second());
+    // A multimedia message's media first, before the request that names them (docs/texts.md).
+    let media = if texts { crate::texts::media_to_send() } else { std::collections::BTreeMap::new() };
+    let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second(), &media);
     if sent.sent > 0 || sent.failure.is_some() {
         let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
         log_send(match &sent.failure {

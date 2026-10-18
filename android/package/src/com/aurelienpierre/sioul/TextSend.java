@@ -37,6 +37,9 @@ final class TextSend
 {
     static final String SENT = "com.aurelienpierre.sioul.action.TEXT_SENT";
     static final String DELIVERED = "com.aurelienpierre.sioul.action.TEXT_DELIVERED";
+    static final String MMS_SENT = "com.aurelienpierre.sioul.action.MMS_SENT";
+    /** The provider's root for Sioul's private files (res/xml/qtprovider_paths.xml): the whole of getFilesDir(). */
+    static final String FILES_ROOT = "files_path";
     /** Java's results, in Sioul's texts folder. */
     static final String RESULTS = "results.jsonl";
 
@@ -72,9 +75,82 @@ final class TextSend
         }
     }
 
+    /**
+     * A multimedia message written on a computer, which Rust built on this
+     * phone (crates/sioul-core/src/mms.rs), measured against the SIM's
+     * carrier, and claimed in its ledger before it asks here: handed to
+     * Android by its address in Sioul's file provider, through which Android
+     * reads it ({@code sendMultimediaMessage}: SEND_SMS alone, no SMS role),
+     * from the SIM named, never with values of Sioul's over the carrier's.
+     * Android files it in the sent box with Sioul as its creator and its key
+     * as {@code tr_id}; its word, with the carrier's answer, comes to
+     * {@code Result} by an explicit, mutable intent (Android adds its extras
+     * to it). {handed} or {handed: false, reason}.
+     */
+    static JSONObject sendMms(Context context, String key, int sub, String path) throws JSONException
+    {
+        if (key.isEmpty() || path.isEmpty())
+            return new JSONObject().put("handed", false).put("reason", "empty");
+        if (!Texts.allowed(context, Manifest.permission.SEND_SMS))
+            return new JSONObject().put("handed", false).put("reason", "permission");
+        String uri;
+        try {
+            File file = new File(path);
+            uri = file.isFile() ? Attachments.contentUri(context.getPackageName(), context.getFilesDir().getCanonicalPath(), file.getCanonicalPath(), FILES_ROOT) : null;
+        } catch (IOException e) {
+            uri = null;
+        }
+        if (uri == null)
+            return new JSONObject().put("handed", false).put("reason", "mms-unreadable");
+        try {
+            manager(context, sub).sendMultimediaMessage(context, Uri.parse(uri), null, null, pendingMms(context, key));
+            return new JSONObject().put("handed", true);
+        } catch (RuntimeException e) {
+            Log.w(Texts.TAG, "Texts: Android did not take a multimedia message: " + e.getClass().getSimpleName());
+            return new JSONObject().put("handed", false).put("reason", "refused");
+        }
+    }
+
+    /**
+     * A multimedia message's word, to {@code Result}: an explicit intent of
+     * its own (its address names the key), mutable, so that Android may add
+     * the carrier's answer ({@code SmsManager.EXTRA_MMS_DATA}), the HTTP
+     * status and the row it filed ("uri"); from Android 14 a mutable intent
+     * must be explicit.
+     */
+    private static PendingIntent pendingMms(Context context, String key)
+    {
+        Intent intent = new Intent(context, Result.class).setAction(MMS_SENT).setData(Uri.parse("sioul-mms://" + key)).putExtra("key", key);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0);
+        return PendingIntent.getBroadcast(context, 0, intent, flags);
+    }
+
+    /**
+     * A multimedia message's word as Rust reads it (crates/sioul-app/src/texts.rs,
+     * {@code mms_outcomes}): its key, "mms", Android's code (-1: done), the row
+     * it filed, the HTTP status, the carrier's answer (M-Send.conf) in hex,
+     * when (ms). Pure: android/jvm-checks/TextsCheck.java.
+     */
+    static JSONObject mmsLine(String key, int code, String uri, int http, byte[] conf, long at) throws JSONException
+    {
+        return new JSONObject().put("key", key == null ? "" : key).put("kind", "mms").put("code", code).put("uri", uri == null ? "" : uri)
+            .put("http", http).put("conf", hex(conf)).put("at", at);
+    }
+
+    /** Bytes in hex, two digits each; "" for none. */
+    static String hex(byte[] bytes)
+    {
+        if (bytes == null)
+            return "";
+        StringBuilder out = new StringBuilder();
+        for (byte b : bytes)
+            out.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
+        return out.toString();
+    }
+
     /** The SIM's own manager (`sub` ≥ 0), else the phone's default one. */
     @SuppressWarnings("deprecation")
-    private static SmsManager manager(Context context, int sub)
+    static SmsManager manager(Context context, int sub)
     {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             SmsManager manager = context.getSystemService(SmsManager.class);
@@ -121,7 +197,7 @@ final class TextSend
         }
     }
 
-    /** Android's word on a part, sent or delivered (in the background service's process): written, then a step soon. */
+    /** Android's word on a part, sent or delivered, or on a multimedia message (in the background service's process): written, then a step soon. */
     public static final class Result extends BroadcastReceiver
     {
         @Override
@@ -129,6 +205,17 @@ final class TextSend
         {
             if (intent == null || intent.getAction() == null)
                 return;
+            if (MMS_SENT.equals(intent.getAction())) {
+                try {
+                    String line = mmsLine(intent.getStringExtra("key"), getResultCode(), intent.getStringExtra("uri"), intent.getIntExtra(SmsManager.EXTRA_MMS_HTTP_STATUS, 0),
+                                          intent.getByteArrayExtra(SmsManager.EXTRA_MMS_DATA), System.currentTimeMillis()).toString();
+                    append(new File(context.getFilesDir(), Texts.FOLDER), line);
+                } catch (JSONException e) {
+                    Log.w(Texts.TAG, "Texts: a result not read: " + e);
+                }
+                StepService.soon(context.getApplicationContext());
+                return;
+            }
             boolean sent = SENT.equals(intent.getAction());
             int status = -1;
             if (!sent) {

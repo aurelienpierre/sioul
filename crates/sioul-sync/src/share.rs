@@ -10540,7 +10540,7 @@ mod tests {
 
     /// A text a computer asks the phone to send (fiction numbers only).
     fn to_send(key: &str, phone: &str, written: i64) -> sioul_core::texts::Request {
-        sioul_core::texts::Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, ahead: 0, again: String::new(), device: String::new() }
+        sioul_core::texts::Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, ..sioul_core::texts::Request::default() }
     }
 
     /// The phone's step as the app takes it: every request read, decided,
