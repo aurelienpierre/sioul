@@ -7713,6 +7713,30 @@ pub fn counting(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, no
     present(folder, key, computer, &state, now_ms).into_iter().map(|(id, _, _)| id).collect()
 }
 
+/// Who may ask this device to act for them (texts' and replies' requests),
+/// in two sets: the devices the sharing counts now (as `counting`), and
+/// those gone by a sealed fact (they left, you forgot them, another device
+/// replaces them: `Counted::departed`). Any other device is not known yet:
+/// its records have not come (a new computer's first request may come before
+/// them), a file alone, or a device silent for weeks that wakes; its request
+/// waits while it is fresh, never refused for good.
+pub fn asking(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> (BTreeSet<String>, BTreeSet<String>) {
+    let state = Memory::load(memory, computer);
+    let (mut counts, mut gone) = (BTreeSet::new(), BTreeSet::new());
+    for (id, standing) in counted(folder, key, computer, &state, now_ms) {
+        match standing {
+            Counted::Yes(..) => {
+                counts.insert(id);
+            }
+            standing if standing.departed() => {
+                gone.insert(id);
+            }
+            _ => {}
+        }
+    }
+    (counts, gone)
+}
+
 /// Another computer sharing through the folder, and when it last exchanged (Unix seconds).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Other {
@@ -10393,7 +10417,7 @@ mod tests {
             let lines = phonemsgs::read_file(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id));
             let (asks, cancelled) = replies::read_asks(&[messages_of(&phone)], &seal);
             let (unsent, went) = (replies::unsent(&private), replies::went_keys(&private));
-            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true, unsent: &unsent, went: &went };
+            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, standing: &|d: &str| if counted.contains(d) { sioul_core::texts::Standing::Counted } else { sioul_core::texts::Standing::Gone }, cancelled: &cancelled, answers: &|_: &str| true, unsent: &unsent, went: &went };
             asks.iter().map(|a| replies::verdict(a, &judge)).collect::<Vec<_>>()
         };
         assert_eq!(decide(NOW + 2 * MINUTE), [replies::Verdict::Send]);
@@ -10450,6 +10474,31 @@ mod tests {
         desk.exchange(&folder, &key, NOW + 4 * MINUTE);
         phone.exchange(&folder, &key, NOW + 5 * MINUTE);
         assert!(counting(&folder, &key, &phone.memory, &phone.id, NOW + 5 * MINUTE).contains(&desk.id), "a sealed record newer than the forgetting");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Who may ask, in three (`asking`): counted; gone by a sealed fact (you
+    /// forgot it); not known yet (no record of it here: a new computer whose
+    /// first request comes before its records), which neither set holds.
+    #[test]
+    fn a_device_not_known_yet_is_neither_counted_nor_gone() {
+        let base = scratch("asking");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        phone.exchange(&folder, &key, NOW);
+        let (counted, gone) = asking(&folder, &key, &phone.memory, &phone.id, NOW);
+        assert!(!counted.contains(&desk.id) && !gone.contains(&desk.id), "no record of the desk yet");
+        desk.write("data/drafts/2026-10-01.json", "{\"steps\": 1}");
+        desk.exchange(&folder, &key, NOW + MINUTE);
+        phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+        let (counted, gone) = asking(&folder, &key, &phone.memory, &phone.id, NOW + 2 * MINUTE);
+        assert!(counted.contains(&desk.id) && !gone.contains(&desk.id));
+        forget_device(&folder, &key, &phone.memory, &phone.id, &desk.id).unwrap();
+        let (counted, gone) = asking(&folder, &key, &phone.memory, &phone.id, NOW + 3 * MINUTE);
+        assert!(!counted.contains(&desk.id) && gone.contains(&desk.id), "forgotten: gone");
+        let (counted, gone) = asking(&folder, &key, &phone.memory, &phone.id, NOW + 3 * MINUTE);
+        assert!(!counted.contains("laptop-never-seen") && !gone.contains("laptop-never-seen"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -10550,7 +10599,7 @@ mod tests {
         let book = texts::Ledger::open(ledger, now).unwrap();
         let mut sent = Vec::new();
         for r in texts::read_requests(&texts_of(phone), seal) {
-            if texts::verdict(&r, &phone.id, now, &book, None, &|_| true) == texts::Verdict::Send {
+            if texts::verdict(&r, &phone.id, now, &book, None, &|_| texts::Standing::Counted) == texts::Verdict::Send {
                 texts::record(ledger, &texts::Claim { key: r.key.clone(), at: now, state: "claimed".into(), ..texts::Claim::default() }).unwrap();
                 let outcome = texts::Outcome { key: r.key.clone(), state: "sent".into(), at: now, row: "sms-412".into(), ..texts::Outcome::default() };
                 texts::append(&texts::own_file(&texts_of(phone), texts::OUTCOME, &phone.id), &[outcome], seal, None).unwrap();

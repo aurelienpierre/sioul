@@ -807,6 +807,10 @@ pub enum Verdict {
     /// "same-words" (the same words went), "same-words-pending" (they are on
     /// their way), "too-many", "too-many-read" (Mark as read, sixty an hour too).
     Refused(&'static str),
+    /// Asked by a device the sharing does not know yet (its records have not
+    /// come): nothing done, nothing said, judged again at the next step
+    /// while it is fresh (as a text's request: `texts::Verdict::Wait`).
+    Wait,
 }
 
 /// What the phone judges a request by.
@@ -818,9 +822,11 @@ pub struct Judge<'a> {
     pub ledger: &'a crate::texts::Ledger,
     /// Its own log's lines: a request answers one of them.
     pub lines: &'a [phonemsgs::Line],
-    /// Whether the sharing counts this device now (not left, forgotten,
-    /// replaced, silent, or a stray file): only your own devices ask.
-    pub counted: &'a dyn Fn(&str) -> bool,
+    /// Where the device that asks stands in the sharing now
+    /// (`texts::Standing`): counted; gone (it left, you forgot it, another
+    /// device replaces it): refused; not known yet: its request waits while
+    /// it is fresh. Only your own devices ask.
+    pub standing: &'a dyn Fn(&str) -> crate::texts::Standing,
     /// The keys each computer took back (`read_asks`).
     pub cancelled: &'a BTreeSet<(String, String)>,
     /// Whether an app's notifications may be answered from your computers (the phone's switch).
@@ -864,8 +870,19 @@ pub fn verdict(ask: &Ask, j: &Judge) -> Verdict {
     if j.cancelled.contains(&(ask.device.clone(), ask.key.clone())) {
         return Verdict::TakenBack;
     }
-    if !(j.counted)(&ask.device) {
-        return Verdict::Refused("not-counted");
+    match (j.standing)(&ask.device) {
+        crate::texts::Standing::Counted => {}
+        crate::texts::Standing::Gone => return Verdict::Refused("not-counted"),
+        crate::texts::Standing::Unknown => {
+            let written = ask.written - ask.ahead;
+            return if written > j.now_ms + crate::texts::AHEAD_MS {
+                Verdict::Clocks
+            } else if j.now_ms - written > crate::texts::EXPIRY_MS {
+                Verdict::Expired
+            } else {
+                Verdict::Wait
+            };
+        }
     }
     let reply = ask.verb == "reply";
     if !reply && ask.verb != "read" {
@@ -1803,18 +1820,24 @@ mod tests {
         let none = BTreeSet::new();
         let nothing = BTreeSet::new();
         let yes = |_: &str| true;
-        let judge = |ledger: &crate::texts::Ledger, cancelled: &BTreeSet<(String, String)>, counted: &dyn Fn(&str) -> bool, answers: &dyn Fn(&str) -> bool, lines: &[phonemsgs::Line], a: &Ask| {
-            verdict(a, &Judge { here: "phone", now_ms: NOW, ledger, lines, counted, cancelled, answers, unsent: &nothing, went: &nothing })
+        let counted = |_: &str| crate::texts::Standing::Counted;
+        let judge = |ledger: &crate::texts::Ledger, cancelled: &BTreeSet<(String, String)>, standing: &dyn Fn(&str) -> crate::texts::Standing, answers: &dyn Fn(&str) -> bool, lines: &[phonemsgs::Line], a: &Ask| {
+            verdict(a, &Judge { here: "phone", now_ms: NOW, ledger, lines, standing, cancelled, answers, unsent: &nothing, went: &nothing })
         };
-        let v = |a: &Ask| judge(&ledger, &none, &yes, &yes, &lines, a);
+        let v = |a: &Ask| judge(&ledger, &none, &counted, &yes, &lines, a);
         let good = ask("k1", "J'arrive.", NOW - MINUTE);
         assert_eq!(v(&good), Verdict::Send);
         assert_eq!(v(&Ask { phone: "other-phone".into(), ..good.clone() }), Verdict::NotMine);
         assert_eq!(v(&Ask { verb: "cancel".into(), ..good.clone() }), Verdict::NotMine, "read with what it takes back");
         let cancelled: BTreeSet<(String, String)> = [("desk".to_string(), "k1".to_string())].into();
-        assert_eq!(judge(&ledger, &cancelled, &yes, &yes, &lines, &good), Verdict::TakenBack);
-        assert_eq!(judge(&ledger, &cancelled, &yes, &yes, &lines, &Ask { device: "laptop".into(), ..good.clone() }), Verdict::Send, "another computer cannot take it back");
-        assert_eq!(judge(&ledger, &none, &|d: &str| d != "desk", &yes, &lines, &good), Verdict::Refused("not-counted"));
+        assert_eq!(judge(&ledger, &cancelled, &counted, &yes, &lines, &good), Verdict::TakenBack);
+        assert_eq!(judge(&ledger, &cancelled, &counted, &yes, &lines, &Ask { device: "laptop".into(), ..good.clone() }), Verdict::Send, "another computer cannot take it back");
+        let gone = |_: &str| crate::texts::Standing::Gone;
+        assert_eq!(judge(&ledger, &none, &gone, &yes, &lines, &good), Verdict::Refused("not-counted"));
+        // A device not known yet (its records not come): waits while fresh, then expires (the review of 18 October 2026, I-a).
+        let unknown = |_: &str| crate::texts::Standing::Unknown;
+        assert_eq!(judge(&ledger, &none, &unknown, &yes, &lines, &good), Verdict::Wait);
+        assert_eq!(judge(&ledger, &none, &unknown, &yes, &lines, &ask("k9", "J'arrive.", NOW - 16 * MINUTE)), Verdict::Expired);
         assert_eq!(v(&Ask { verb: "delete".into(), ..good.clone() }), Verdict::Refused("verb"));
         assert_eq!(v(&Ask { words: "  ".into(), ..good.clone() }), Verdict::Refused("no-words"));
         assert_eq!(v(&Ask { words: "é".repeat(WORDS_MAX + 1), ..good.clone() }), Verdict::Refused("too-long"));
@@ -1822,11 +1845,11 @@ mod tests {
         assert_eq!(v(&Ask { line: "nowhere".into(), ..good.clone() }), Verdict::Refused("line"));
         assert_eq!(v(&Ask { notice: "ffffffffffffffff".into(), ..good.clone() }), Verdict::Refused("line"), "another notification than the line's");
         assert_eq!(v(&Ask { line: "code".into(), ..good.clone() }), Verdict::Refused("code"));
-        assert_eq!(judge(&ledger, &none, &yes, &|app: &str| app != "org.thoughtcrime.securesms", &lines, &good), Verdict::Refused("switched-off"));
+        assert_eq!(judge(&ledger, &none, &counted, &|app: &str| app != "org.thoughtcrime.securesms", &lines, &good), Verdict::Refused("switched-off"));
         let service = vec![phonemsgs::Line { kind: "text".into(), app: "foundation.e.message".into(), who: "automaton".into(), key: String::new(), name: "AMELI".into(), ..alice_line() }];
-        assert_eq!(judge(&ledger, &none, &yes, &yes, &service, &Ask { app: "foundation.e.message".into(), ..good.clone() }), Verdict::Refused("short-number"));
+        assert_eq!(judge(&ledger, &none, &counted, &yes, &service, &Ask { app: "foundation.e.message".into(), ..good.clone() }), Verdict::Refused("short-number"));
         let short = vec![phonemsgs::Line { kind: "text".into(), app: "foundation.e.message".into(), key: "36179".into(), ..alice_line() }];
-        assert_eq!(judge(&ledger, &none, &yes, &yes, &short, &Ask { app: "foundation.e.message".into(), ..good.clone() }), Verdict::Refused("short-number"));
+        assert_eq!(judge(&ledger, &none, &counted, &yes, &short, &Ask { app: "foundation.e.message".into(), ..good.clone() }), Verdict::Refused("short-number"));
         assert_eq!(v(&Ask { written: NOW - 2 * 60 * MINUTE, ..good.clone() }), Verdict::Refused("before-mark"));
         assert_eq!(v(&Ask { written: NOW + 5 * MINUTE, ..good.clone() }), Verdict::Clocks);
         assert_eq!(v(&Ask { written: NOW + 5 * MINUTE, ahead: 4 * MINUTE, ..good.clone() }), Verdict::Send, "the writer's clock ahead, corrected");
@@ -1834,7 +1857,7 @@ mod tests {
         // Claimed: decided for good, whatever is read again.
         crate::texts::record(&dir, &claim_of(&good, "", NOW - MINUTE)).unwrap();
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-        let v = |a: &Ask| judge(&ledger, &none, &yes, &yes, &lines, a);
+        let v = |a: &Ask| judge(&ledger, &none, &counted, &yes, &lines, a);
         assert_eq!(v(&good), Verdict::Decided);
         assert!(!std::fs::read_to_string(dir.join(crate::texts::LEDGER)).unwrap().contains("arrive"), "the ledger keeps a hash, never the words");
         // The same words to the same notification within ten minutes: refused, unless sent again on purpose.
@@ -1846,14 +1869,14 @@ mod tests {
             crate::texts::record(&dir, &claim_of(&ask(&format!("n{i}"), &format!("Réponse {i}"), NOW), "", NOW - 30 * MINUTE)).unwrap();
         }
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &ask("k3", "Encore une.", NOW)), Verdict::Refused("too-many"));
-        assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &Ask { verb: "read".into(), words: String::new(), ..ask("k4", "", NOW) }), Verdict::Send, "a Mark as read counts for none");
+        assert_eq!(judge(&ledger, &none, &counted, &yes, &lines, &ask("k3", "Encore une.", NOW)), Verdict::Refused("too-many"));
+        assert_eq!(judge(&ledger, &none, &counted, &yes, &lines, &Ask { verb: "read".into(), words: String::new(), ..ask("k4", "", NOW) }), Verdict::Send, "a Mark as read counts for none");
         // Sixty Marks as read in the last hour: the next one refused too, in its own words.
         let read = |key: &str| Ask { verb: "read".into(), words: String::new(), ..ask(key, "", NOW) };
         let claims: Vec<crate::texts::Claim> = (0..PER_HOUR).map(|i| claim_of(&read(&format!("r{i}")), "", NOW - 20 * MINUTE)).collect();
         crate::texts::record_all(&dir, &claims).unwrap();
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(judge(&ledger, &none, &yes, &yes, &lines, &read("r99")), Verdict::Refused("too-many-read"));
+        assert_eq!(judge(&ledger, &none, &counted, &yes, &lines, &read("r99")), Verdict::Refused("too-many-read"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1877,7 +1900,7 @@ mod tests {
             }
             let (unsent, went) = (unsent(&folder), went_keys(&folder));
             let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-            let said = verdict(&again, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &unsent, went: &went });
+            let said = verdict(&again, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, standing: &|_| crate::texts::Standing::Counted, cancelled: &none, answers: &yes, unsent: &unsent, went: &went });
             let _ = std::fs::remove_dir_all(&folder);
             said
         };
@@ -1894,13 +1917,13 @@ mod tests {
         let newer = phonemsgs::Line { id: format!("{}-bb22", NOW - MINUTE), at: NOW - MINUTE, notice: "1111222233334444".into(), ..alice_line() };
         let lines = vec![alice_line(), newer.clone()];
         let ledger = crate::texts::Ledger::open(&dir, NOW).unwrap();
-        let through_newer = |a: &Ask, unsent: &BTreeSet<String>| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent, went: &none_keys() });
+        let through_newer = |a: &Ask, unsent: &BTreeSet<String>| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, standing: &|_| crate::texts::Standing::Counted, cancelled: &none, answers: &yes, unsent, went: &none_keys() });
         let fresh = Ask { notice: newer.notice.clone(), line: newer.id.clone(), ..ask("k3", "J'arrive.", NOW) };
         assert_eq!(through_newer(&fresh, &BTreeSet::new()), Verdict::Refused("same-words-pending"), "a fresh reply through the newer notification");
         let again = Ask { again: "k2".into(), ..fresh.clone() };
         assert_eq!(through_newer(&again, &BTreeSet::new()), Verdict::Refused("same-words-pending"), "Send again of the refused one through the newer notification");
         let first_went: BTreeSet<String> = ["k1".to_string()].into();
-        let through_newer_after = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &BTreeSet::new(), went: &first_went });
+        let through_newer_after = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, standing: &|_| crate::texts::Standing::Counted, cancelled: &none, answers: &yes, unsent: &BTreeSet::new(), went: &first_went });
         assert_eq!(through_newer_after(&again), Verdict::Refused("same-words"), "the first went: never twice");
         let gone: BTreeSet<String> = ["k1".to_string()].into();
         assert_eq!(through_newer(&again, &gone), Verdict::Send, "the first never went: it goes, once");
@@ -1929,7 +1952,7 @@ mod tests {
         }
         let lines = vec![alice_line()];
         let (none, nothing, yes) = (BTreeSet::new(), BTreeSet::new(), |_: &str| true);
-        let v = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &none, answers: &yes, unsent: &nothing, went: &nothing });
+        let v = |a: &Ask| verdict(a, &Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, standing: &|_| crate::texts::Standing::Counted, cancelled: &none, answers: &yes, unsent: &nothing, went: &nothing });
         assert_eq!(v(&ask("k1", "J'arrive.", NOW - 90_000)), Verdict::Send, "written after the mark");
         assert_eq!(v(&ask("k2", "J'arrive.", NOW - 11 * MINUTE)), Verdict::Refused("before-mark"));
         let _ = std::fs::remove_dir_all(dir.parent().unwrap());
@@ -2211,7 +2234,7 @@ mod tests {
             assert!(answer.offered);
             assert_eq!(answer.line, expect);
             let request = Ask { key: "k1".into(), phone: answer.phone.clone(), verb: "reply".into(), notice: answer.notice.clone(), app: answer.app.clone(), line: answer.line.clone(), words: "J'arrive.".into(), written: NOW - MINUTE, device: "desk".into(), ..Ask::default() };
-            let judge = Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, counted: &yes, cancelled: &cancelled, answers: &yes, unsent: &unsent, went: &unsent };
+            let judge = Judge { here: "phone", now_ms: NOW, ledger: &ledger, lines: &lines, standing: &|_| crate::texts::Standing::Counted, cancelled: &cancelled, answers: &yes, unsent: &unsent, went: &unsent };
             assert_eq!(verdict(&request, &judge), Verdict::Send, "{}", answer.notice);
         }
         let _ = std::fs::remove_dir_all(&dir);

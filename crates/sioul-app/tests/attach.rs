@@ -262,8 +262,12 @@ fn animated_gif(here: &Path) -> Result<String, String> {
     let mut xmp = [&[0x21, 0xFF, 0x0B][..], b"XMP DataXMP", xmp().as_bytes(), &[0x01]].concat();
     xmp.extend((0..=255u8).rev());
     xmp.push(0);
-    let screen_and_loop = 6 + 7 + 12 + 19;
-    let edited = [&bytes[..screen_and_loop], &comment, &xmp, &bytes[screen_and_loop..], b"SIOUL-SECRET-AFTER"].concat();
+    // And, as a crafted GIF could, words in a second sub-block of its loop block and of its first frame's timing
+    // (the re-check's L-c): their values alone go.
+    let (screen, looping, timing) = (6 + 7 + 12, 6 + 7 + 12 + 19, 6 + 7 + 12 + 19 + 8);
+    let crafted_loop = [&bytes[screen..looping - 1], &[12], b"SIOUL-SECRET", &[0]].concat();
+    let crafted_timing = [&bytes[looping..timing - 1], &[12], b"SIOUL-SECRET", &[0]].concat();
+    let edited = [&bytes[..screen], &crafted_loop, &comment, &xmp, &crafted_timing, &bytes[timing..], b"SIOUL-SECRET-AFTER"].concat();
     std::fs::write(&source, &edited).map_err(|e| e.to_string())?;
     let (_, _, read) = sioul_app::picture_read(&source);
     if read.map(|(w, h, frames)| (w, h, frames)) != Some((120, 120, 3)) {
