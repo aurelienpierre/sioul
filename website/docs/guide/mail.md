@@ -140,6 +140,8 @@ The message leaves as HTML for those who read HTML, and as plain text, the Markd
 
 ### Signing and encrypting {#signing-and-encrypting}
 
+Encryption is not there for its own sake: it is what lets the letters that offices now keep behind their portals come back to your mail, readable by you alone ([why](privacy-security.md#why-sioul-encrypts-mail)).
+
 When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](accounts.md#encryption)), the writing window has two small switches, **Sign** and **Encrypt**.
 
 - **Sign** lets the people you write to check that the message is yours and was not changed on the way.
@@ -379,7 +381,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     21. Thunderbird: and keys.openpgp.org.
     22. FairEmail: left to OpenKeychain.
     23. Proton Mail: its servers look the keys up.
-    24. Sioul: an OpenPGP card (YubiKey, Nitrokey) through the system's smart card service, on a computer only; so far tried with a software card, not yet with a real key.
+    24. Sioul: an OpenPGP card (YubiKey, Nitrokey) through the system's smart card service, on a computer only; tried with a real key, a YubiKey 5, on Linux (8 October 2026).
     25. Thunderbird: through GnuPG, installed and set up separately; signing and decrypting only.
     26. Proton Mail: its security keys sign you in to the account.
     27. Sioul: planned.
@@ -537,7 +539,7 @@ Sioul uses Sequoia (OpenPGP, RFC 9580) with its pure-Rust cryptography and stand
 
 ### Security keys {#security-keys}
 
-An OpenPGP card (specification 3.4: a YubiKey, a Nitrokey), reached through the system's smart card service (PC/SC: pcscd on Linux, the Smart Card service on Windows, CryptoTokenKit on macOS). The card signs a digest or opens a session key itself; its private keys never leave it, and each signature it makes is checked against your certificate before use. The PIN is typed in Sioul, held encrypted in memory, forgotten fifteen minutes after its last use, when the key is pulled out or Sioul closes, and never written or logged: Sioul installs no logger, and caps logging as it starts, since the card library's traces would include the PIN. The card is reset after each operation, so that no other program finds it unlocked. Sioul never asks for the Admin PIN and never makes or loads keys on the card. Tested so far against a software card; a test with a real YubiKey is the next step. Not on phones.
+An OpenPGP card (specification 3.4: a YubiKey, a Nitrokey), reached through the system's smart card service (PC/SC: pcscd on Linux, the Smart Card service on Windows, CryptoTokenKit on macOS). The card signs a digest or opens a session key itself; its private keys never leave it, and each signature it makes is checked against your certificate before use. The PIN is typed in Sioul, held encrypted in memory, forgotten fifteen minutes after its last use, when the key is pulled out or Sioul closes, and never written or logged: Sioul installs no logger, and caps logging as it starts, since the card library's traces would include the PIN. The card is reset after each operation, so that no other program finds it unlocked. Sioul never asks for the Admin PIN and never makes or loads keys on the card. Tested against a software card, and with a real YubiKey 5 on Linux on 8 October 2026: set up, renewed through GnuPG, signing and encrypting at Send, opening encrypted mail; not yet with a real key on Windows or macOS. Not on phones.
 
 ### The spam filter {#the-spam-filter}
 

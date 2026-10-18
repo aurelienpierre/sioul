@@ -93,6 +93,8 @@ Who may reach you, and when, by mail, by phone and through other apps' messages,
 
 ## Encryption
 
+With a key of your own, anyone, an office included, can write to you so that only you can read it, in your own mailbox rather than on their portal ([why](privacy-security.md#why-sioul-encrypts-mail)).
+
 Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and-encrypting)):
 
 - **Make a key for** an address: a new key, valid three years; its passphrase is made at random and kept in your keyring, so nothing is asked at each message.
@@ -132,7 +134,7 @@ Sioul only uses the key: it never asks for its Admin PIN, never changes or unblo
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul has no S/MIME, needs a Google app of your own, or an app password, for Gmail's mail, and has not yet tried its Microsoft sign-in with a real Microsoft account; its OpenPGP security key is not yet tried with a real key, nor available on phones.
+**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul has no S/MIME, needs a Google app of your own, or an app password, for Gmail's mail, and has not yet tried its Microsoft sign-in with a real Microsoft account; its OpenPGP security key is not yet available on phones, nor tried with a real key on Windows or macOS.
 
 As of October 2026, from each app's own documentation.
 

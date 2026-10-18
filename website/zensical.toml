@@ -99,6 +99,7 @@ nav = [
       # colour: the sites' colours.
       { "Colours on the screen" = "dev/research/colour.md" },
       { "Devices of calls in sites" = "dev/research/calls.md" },
+      { "Secure mailboxes and their record" = "dev/research/secure-mailboxes.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },

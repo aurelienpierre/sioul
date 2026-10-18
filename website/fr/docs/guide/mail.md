@@ -140,6 +140,8 @@ Le courriel part en HTML pour qui lit le HTML, et en texte brut, le Markdown lui
 
 ### Signer et chiffrer {#signing-and-encrypting}
 
+Le chiffrement n’est pas là pour le principe : c’est ce qui permet aux courriers que les organismes gardent aujourd’hui derrière leurs portails de revenir dans vos courriels, lisibles par vous seul ([pourquoi](privacy-security.md#why-sioul-encrypts-mail)).
+
 Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffrement](accounts.md#encryption)), la fenêtre d’écriture a deux petits interrupteurs, **Signer** et **Chiffrer**.
 
 - **Signer** permet aux personnes à qui vous écrivez de vérifier que le courriel est de vous et qu’il n’a pas été changé en chemin.
@@ -379,7 +381,7 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     21. Thunderbird : et keys.openpgp.org.
     22. FairEmail : laissé à OpenKeychain.
     23. Proton Mail : ses serveurs cherchent les clés.
-    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey) par le service de cartes à puce du système, sur un ordinateur seulement ; essayée jusqu’ici avec une carte logicielle, pas encore avec une vraie clé.
+    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey) par le service de cartes à puce du système, sur un ordinateur seulement ; essayée avec une vraie clé, une YubiKey 5, sous Linux (8 octobre 2026).
     25. Thunderbird : par GnuPG, installé et réglé à part ; signer et déchiffrer seulement.
     26. Proton Mail : ses clés de sécurité servent à se connecter au compte.
     27. Sioul : prévu.
@@ -537,7 +539,7 @@ Sioul utilise Sequoia (OpenPGP, RFC 9580) avec sa cryptographie en pur Rust et s
 
 ### Les clés de sécurité {#security-keys}
 
-Une carte OpenPGP (spécification 3.4 : une YubiKey, une Nitrokey), jointe par le service de cartes à puce du système (PC/SC : pcscd sous Linux, le service Carte à puce sous Windows, CryptoTokenKit sous macOS). La carte signe une empreinte ou ouvre une clé de session elle-même ; ses clés privées ne la quittent jamais, et chaque signature qu’elle fait est vérifiée avec votre certificat avant usage. Le code PIN est tapé dans Sioul, gardé chiffré en mémoire, oublié quinze minutes après son dernier usage, quand la clé est retirée ou que Sioul se ferme, et jamais écrit ni journalisé : Sioul n’installe aucun journal, et plafonne la journalisation dès son démarrage, puisque les traces de la bibliothèque de la carte contiendraient le code PIN. La carte est remise à zéro après chaque opération, pour qu’aucun autre programme ne la trouve déverrouillée. Sioul ne demande jamais le code PIN d’administration et ne crée ni ne charge jamais de clés sur la carte. Essayé jusqu’ici avec une carte logicielle ; un essai avec une vraie YubiKey est la prochaine étape. Pas sur les téléphones.
+Une carte OpenPGP (spécification 3.4 : une YubiKey, une Nitrokey), jointe par le service de cartes à puce du système (PC/SC : pcscd sous Linux, le service Carte à puce sous Windows, CryptoTokenKit sous macOS). La carte signe une empreinte ou ouvre une clé de session elle-même ; ses clés privées ne la quittent jamais, et chaque signature qu’elle fait est vérifiée avec votre certificat avant usage. Le code PIN est tapé dans Sioul, gardé chiffré en mémoire, oublié quinze minutes après son dernier usage, quand la clé est retirée ou que Sioul se ferme, et jamais écrit ni journalisé : Sioul n’installe aucun journal, et plafonne la journalisation dès son démarrage, puisque les traces de la bibliothèque de la carte contiendraient le code PIN. La carte est remise à zéro après chaque opération, pour qu’aucun autre programme ne la trouve déverrouillée. Sioul ne demande jamais le code PIN d’administration et ne crée ni ne charge jamais de clés sur la carte. Essayé avec une carte logicielle, et avec une vraie YubiKey 5 sous Linux le 8 octobre 2026 : mise en place, renouvelée par GnuPG, signature et chiffrement à l’envoi, ouverture de courriels chiffrés ; pas encore avec une vraie clé sous Windows ni macOS. Pas sur les téléphones.
 
 ### Le filtre à indésirables {#the-spam-filter}
 

@@ -48,6 +48,12 @@ Most spam filters keep an inbox tidy. Sioul's protects your attention: it decide
 
 It judges strangers' mail only, never that of someone you know, a code you asked for or a project's mail. It does not pretend to be sure either: what looks like spam, or might be, waits in a folded queue on the Porch, without a count or a notification, until you have time to look. You choose what it does with each verdict; until you do, it moves nothing. [Spam, and your own filter](guide/porch.md#spam-and-your-own-filter)
 
+### Your letters back in your mail, sealed {#your-letters-back-in-your-mail}
+
+Ordinary mail is not private, so banks, insurers and public offices each built a "secure mailbox" behind its own login and code. Your own mailbox gets, at most, a note that something is waiting, and each office is one more place to remember, one more password, one more code: work that weighs most when memory, planning or energy are short, as they can be with ADHD, depression, burnout or PTSD. Nor did these portals keep the stores behind them safe: since 2020, breaches at France Travail, at two third-party payers of health insurance and at France Titres exposed the data of tens of millions of people.
+
+Sioul does not encrypt mail for its own sake. OpenPGP, a key that stays on your security key, a password manager and second factors are there so that letters can come back to mail, sealed for you alone: no office then needs one store of everyone's messages, and on your side everything is in one window. Until offices write that way, Sioul gathers their portals in one place too. [Why, with the sources](guide/privacy-security.md#why-sioul-encrypts-mail)
+
 ## The other way round
 
 | Most software | Sioul |
@@ -207,7 +213,7 @@ The same reasoning decides how Sioul is built. Your data stays on your devices, 
 
 ## Where it stands
 
-Sioul is young (version 0.0.5) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
+Sioul is young (version 0.0.6) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
@@ -226,7 +232,7 @@ It is made by one person, in the open: no support is promised. Questions and rep
 - **A spam filter of your own**: a fastText classifier trained on your computer from your own mail (the headers and the start of each text, never attachments), first when you ask, then again by itself once a week while that computer is plugged in and idle; only its compact table travels to your phone, sealed. It judges only strangers' mail, and moves nothing unless you choose to ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
 - **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows. Programs never open from a mail, and on Windows and macOS the files you open or save carry the system's mark that they came from the Internet.
 - **HTML mail made safe**: nothing remote loads, ever, and nothing runs; links show their address before they open.
-- **Hard authentication**, on computers:
+- **Hard authentication**, on computers, so that letters can come back to mail, sealed, and logins stop living in your memory:
     - your OpenPGP key on a security key (any OpenPGP card: a YubiKey, a Nitrokey…): the card itself signs and decrypts, so your private key never enters the computer; its PIN held in memory only and never logged;
     - FIDO2 and WebAuthn security keys, and the passkeys kept on them, in the sites you keep, with the PIN asked in Sioul's own dialog;
     - Bitwarden, read by Sioul's own client and never written, unlocked with a security key as the second step, or alone as a passkey.
