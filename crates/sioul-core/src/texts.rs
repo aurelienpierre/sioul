@@ -89,6 +89,12 @@ pub const AHEAD_MS: i64 = 2 * 60_000;
 pub const LEDGER_KEPT_MS: i64 = 30 * DAY_MS;
 /// A claim with no word from Android this long after is looked for in the provider.
 pub const LOOK_AFTER_MS: i64 = 2 * 60_000;
+/// …a multimedia message's, handed or not, this long after: Android may
+/// wait 30 minutes for a mobile network, then try three times, and loses
+/// its queue if the phone restarts meanwhile (docs/texts.md).
+pub const LOOK_AFTER_MMS_MS: i64 = 40 * 60_000;
+/// A multimedia message from a computer: at most this many media.
+pub const MEDIA_MAX: usize = 5;
 /// A text written on a computer: at most this many characters.
 pub const WRITE_MAX: usize = 1600;
 /// Each line's plain length is a multiple of this before it is sealed.
@@ -310,9 +316,70 @@ pub struct Request {
     /// The key of the request it sends again, when it does.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub again: String,
+    /// A multimedia message's media, in their order (docs/texts.md,
+    /// "Multimedia messages sent from a computer"): each a sealed blob of the
+    /// sharing, which travels ahead of the request. Its words are then in
+    /// `words` and `body` stays empty, so that a phone whose Sioul predates
+    /// them refuses it ("empty") rather than sending its words alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<Medium>,
+    /// A multimedia message's words.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub words: String,
+    /// A group's other numbers, beside `to` (a later step: refused, "several", until then).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also: Vec<String>,
     /// The device that wrote it (its file's name). Never written.
     #[serde(skip)]
     pub device: String,
+}
+
+impl Request {
+    /// Whether it is a multimedia message: media of its own.
+    pub fn multimedia(&self) -> bool {
+        !self.media.is_empty()
+    }
+
+    /// Its words, a text's or a multimedia message's.
+    pub fn said_words(&self) -> &str {
+        if self.multimedia() { &self.words } else { &self.body }
+    }
+}
+
+/// A medium of a multimedia message written on a computer: its content's
+/// hash (SHA-256, hex: its sealed blob in the sharing, and its sealed file
+/// on the computers), its content type, its size. Never its file's name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Medium {
+    pub hash: String,
+    pub ct: String,
+    #[serde(default)]
+    pub size: u64,
+}
+
+/// What a SIM's carrier lets a phone send (Android's carrier configuration,
+/// `SmsManager.getCarrierConfigValues`, which asks no permission), as the
+/// phone says it in its outcomes (a "limits" line): numbers only, never the
+/// carrier's name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Limits {
+    /// The SIM (`sub_id`); -1 the phone's only or default one.
+    pub sub: i32,
+    /// The largest multimedia message, whole (`maxMessageSize`, bytes).
+    pub max: u64,
+    /// The largest picture it advises (`maxImageWidth`, `maxImageHeight`, pixels).
+    #[serde(default)]
+    pub width: u32,
+    #[serde(default)]
+    pub height: u32,
+    /// How many people one message may go to (`recipientLimit`).
+    #[serde(default)]
+    pub recipients: u32,
+    /// Group messages allowed (`enableGroupMms`), multimedia messages at all (`enabledMMS`).
+    #[serde(default)]
+    pub group: bool,
+    #[serde(default)]
+    pub mms: bool,
 }
 
 /// What became of a request, as its phone says it.
@@ -333,6 +400,11 @@ pub struct Outcome {
     /// 2026), when known: never a bare id an older text may hold.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub row: String,
+    /// A "limits" line's (its key empty): what each SIM's carrier lets the
+    /// phone send, once a day and when it changes (`limits_of`). A computer
+    /// of an older Sioul passes it over: no request has its key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limits: Vec<Limits>,
     /// The phone that wrote it. Never written.
     #[serde(skip)]
     pub device: String,
@@ -933,6 +1005,10 @@ pub struct Claim {
     /// to it are held back whichever of its notifications they go through.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub talk: String,
+    /// A multimedia message's claim: looked for by its key (the provider's
+    /// `tr_id`) `LOOK_AFTER_MMS_MS` on, handed or not.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mms: bool,
 }
 
 /// The ledger's mark: requests written before it are never sent (a ledger lost cannot make them new).
@@ -1086,12 +1162,49 @@ pub fn refusal(to: &str, body: &str, region: Option<&Region>) -> Option<&'static
     None
 }
 
+/// Why a multimedia message is refused from a computer, if it is: its
+/// words over `WRITE_MAX`; no medium, or more than `MEDIA_MAX`; a medium of
+/// a kind the phone does not send (pictures, videos, sounds, contact cards
+/// and calendar entries only: another file goes by mail) or not named by a
+/// content's hash; other people beside its number (a group: a later step);
+/// a number as `refusal` refuses one. None: it may go.
+pub fn refusal_mms(to: &str, words: &str, media: &[Medium], also: &[String], region: Option<&Region>) -> Option<&'static str> {
+    if words.chars().count() > WRITE_MAX {
+        return Some("too-long");
+    }
+    if media.is_empty() {
+        return Some("empty");
+    }
+    if media.len() > MEDIA_MAX {
+        return Some("too-many-media");
+    }
+    let hashed = |hash: &str| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit());
+    if media.iter().any(|m| !hashed(&m.hash) || m.size == 0 || !sendable(&m.ct)) {
+        return Some("media-kind");
+    }
+    if !also.is_empty() {
+        return Some("several");
+    }
+    // A number as a text's: the words checked above, a stand-in for them here.
+    refusal(to, "-", region)
+}
+
+/// Whether a phone sends a medium of this content type in a multimedia
+/// message (decisions 7 to 9): a picture, a video, a sound, a contact card
+/// or a calendar entry.
+pub fn sendable(ct: &str) -> bool {
+    let ct = ct.trim().to_ascii_lowercase();
+    let (top, sub) = ct.split_once('/').unwrap_or(("", ""));
+    !sub.is_empty() && (matches!(top, "image" | "video" | "audio") || matches!(ct.as_str(), "text/x-vcard" | "text/vcard" | "text/x-vcalendar" | "text/calendar"))
+}
+
 /// The never-twice decision, step for step: another phone's; decided already
 /// (the ledger holds the key, whatever the sharing read again); refused
-/// (`refusal`); written before the ledger's mark; dated ahead of the phone's
-/// clock; older than `EXPIRY_MS`; else sent. The time written is corrected by
-/// how far the writer's clock may run ahead (`Request::ahead`, measured by
-/// the writer as an upper bound: a request looks older, never younger).
+/// (`refusal`, a multimedia message's `refusal_mms`); written before the
+/// ledger's mark; dated ahead of the phone's clock; older than
+/// `EXPIRY_MS`; else sent. The time written is corrected by how far the
+/// writer's clock may run ahead (`Request::ahead`, measured by the writer as
+/// an upper bound: a request looks older, never younger).
 pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, region: Option<&Region>) -> Verdict {
     if request.phone != here || request.key.is_empty() {
         return Verdict::NotMine;
@@ -1099,7 +1212,8 @@ pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, regi
     if ledger.has(&request.key) {
         return Verdict::Decided;
     }
-    if let Some(why) = refusal(&request.to, &request.body, region) {
+    let refused = if request.multimedia() { refusal_mms(&request.to, &request.words, &request.media, &request.also, region) } else { refusal(&request.to, &request.body, region) };
+    if let Some(why) = refused {
         return Verdict::Refused(why);
     }
     let written = request.written - request.ahead;
@@ -1119,14 +1233,70 @@ pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, regi
 /// claim `LOOK_AFTER_MS` old with no result, given whether the provider holds
 /// a sent row Sioul filed for it (`found`: its row). Found: sent. Not found:
 /// "doubt", never sent again.
+/// A multimedia message's claim, `LOOK_AFTER_MMS_MS` on: looked for by its key.
 pub fn doubt_after(claim: &Claim, found: Option<String>, now_ms: i64) -> Option<Outcome> {
-    if now_ms - claim.at < LOOK_AFTER_MS {
+    if now_ms - claim.at < if claim.mms { LOOK_AFTER_MMS_MS } else { LOOK_AFTER_MS } {
         return None;
     }
     Some(match found {
-        Some(row) => Outcome { key: claim.key.clone(), state: "sent".into(), at: now_ms, reason: String::new(), row, device: String::new() },
-        None => Outcome { key: claim.key.clone(), state: "doubt".into(), at: now_ms, reason: String::new(), row: String::new(), device: String::new() },
+        Some(row) => Outcome { key: claim.key.clone(), state: "sent".into(), at: now_ms, row, ..Outcome::default() },
+        None => Outcome { key: claim.key.clone(), state: "doubt".into(), at: now_ms, ..Outcome::default() },
     })
+}
+
+/// What a multimedia message's result says (`TextSend.Result`): sent, when
+/// Android took it to the carrier and the carrier answered Ok; not sent, and
+/// why; or, Android's Ok with no answer of the carrier's, to be looked for
+/// in the provider's sent box (a message Android moved to its failed box is
+/// out of Sioul's sight: none there, not sent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Took {
+    Sent,
+    Failed(&'static str),
+    Look,
+}
+
+/// A multimedia message's result: Android's code (-1, `Activity.RESULT_OK`;
+/// else `SmsManager.MMS_ERROR_…`) and the carrier's answer (M-Send.conf),
+/// when it came. Android's Ok alone is not the carrier's.
+pub fn took(code: i64, conf: Option<&crate::mms::Conf>) -> Took {
+    match (code, conf) {
+        (-1, Some(conf)) if conf.ok() => Took::Sent,
+        (-1, None) => Took::Look,
+        (code, conf) => Took::Failed(mms_failure(code, conf.map(|c| c.status))),
+    }
+}
+
+/// Why a multimedia message was not sent, as the words say it: Android's
+/// code (SmsManager's MMS_ERROR_…: 8 and 11 mobile data off, 3 no mobile
+/// network within 30 minutes, 2, 7 and 12 no multimedia settings for the
+/// carrier, 5 not read, 9 and 10 an inactive SIM), else the carrier's
+/// status (ENC 7.3.48: 0xC0 to 0xDF for a moment, 0xE1 service denied, 0xE5
+/// content not accepted, 0xEB no credit, the rest refused; MMS 1.0's 0x82,
+/// 0x87 and 0x88 alike).
+pub fn mms_failure(code: i64, status: Option<u8>) -> &'static str {
+    let carrier = |status: Option<u8>| match status {
+        Some(0xC0..=0xDF) => "carrier-busy",
+        Some(0xE1 | 0x82) => "carrier-denied",
+        Some(0xE5 | 0x87 | 0x88) => "carrier-content",
+        Some(0xEB) => "carrier-credit",
+        _ => "carrier-refused",
+    };
+    match code {
+        -1 | 4 => carrier(status),
+        8 | 11 => "mms-data-off",
+        3 => "mms-no-network",
+        2 | 7 | 12 => "mms-settings",
+        5 => "mms-unreadable",
+        9 | 10 => "no-sim",
+        _ => "other",
+    }
+}
+
+/// What a phone last said its carriers let it send (its newest "limits"
+/// line), and when (ms); none before it said.
+pub fn limits_of<'a>(outcomes: &'a [Outcome], phone: &str) -> Option<(i64, &'a [Limits])> {
+    outcomes.iter().filter(|o| o.key.is_empty() && o.state == "limits" && o.device == calls::file_safe(phone)).max_by_key(|o| o.at).map(|o| (o.at, o.limits.as_slice()))
 }
 
 /// A random key, 32 hex digits, from the system's randomness (`/dev/urandom`); the clock's when none.
@@ -1186,13 +1356,16 @@ pub fn state_of<'a>(key: &str, outcomes: &'a [Outcome]) -> Option<&'a Outcome> {
         "failed" | "expired" | "refused" | "clocks" => 6,
         _ => 0,
     };
-    outcomes.iter().filter(|o| o.key == key).max_by_key(|o| (rank(&o.state), o.at))
+    // Never a line of no request's (a phone's "limits").
+    outcomes.iter().filter(|o| o.key == key && !o.key.is_empty()).max_by_key(|o| (rank(&o.state), o.at))
 }
 
 /// A request's state in words, never red, never "late": waiting for the phone
 /// (and when it last shared), sending, sent at, delivered at (only when the
-/// carrier said so), not sent and why, expired, may not have been sent.
-pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translator, now: &Zoned) -> Said {
+/// carrier said so), not sent and why, expired, may not have been sent. A
+/// multimedia message (`media`) refused "empty" was read by a phone whose
+/// Sioul cannot send one yet: said so; its media not there in time, said.
+pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translator, now: &Zoned, media: bool) -> Said {
     let time = |ms: i64| calls::local(ms, now).strftime("%H:%M").to_string();
     let with = |id: &str, key: &str, value: String| {
         let mut args = crate::i18n::args();
@@ -1209,8 +1382,12 @@ pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translato
             "sent" => ("sent", with("texts-sent-at", "time", time(o.at)), false),
             "delivered" => ("delivered", with("texts-delivered-at", "time", time(o.at)), false),
             "failed" => ("failed", with("texts-failed", "why", tr.text(&format!("texts-why-{}", known_reason(&o.reason)), None)), true),
+            "expired" if o.reason == "media" => ("expired", tr.text("texts-expired-media", None), true),
             "expired" => ("expired", tr.text("texts-expired", None), true),
-            "refused" => ("refused", tr.text(&format!("texts-refused-{}", known_refusal(&o.reason)), None), o.reason == "before-mark"),
+            "refused" => {
+                let why = if media && o.reason == "empty" { "old-phone" } else { known_refusal(&o.reason) };
+                ("refused", tr.text(&format!("texts-refused-{why}"), None), matches!(why, "before-mark" | "old-phone"))
+            }
             "clocks" => ("clocks", tr.text("texts-clocks", None), true),
             _ => ("doubt", tr.text("texts-doubt", None), true),
         },
@@ -1225,6 +1402,15 @@ fn known_reason(reason: &str) -> &'static str {
         "no-service" => "no-service",
         "limit" => "limit",
         "no-sim" => "no-sim",
+        "mms-data-off" => "mms-data-off",
+        "mms-no-network" => "mms-no-network",
+        "mms-settings" => "mms-settings",
+        "mms-unreadable" => "mms-unreadable",
+        "carrier-refused" => "carrier-refused",
+        "carrier-content" => "carrier-content",
+        "carrier-denied" => "carrier-denied",
+        "carrier-credit" => "carrier-credit",
+        "carrier-busy" => "carrier-busy",
         _ => "other",
     }
 }
@@ -1237,6 +1423,10 @@ fn known_refusal(reason: &str) -> &'static str {
         "empty" => "empty",
         "too-long" => "too-long",
         "before-mark" => "before-mark",
+        "too-large" => "too-large",
+        "too-many-media" => "too-many-media",
+        "media-kind" => "media-kind",
+        "no-mms" => "no-mms",
         _ => "other",
     }
 }
@@ -1397,7 +1587,8 @@ pub fn conversations(texts: &[Text], requests: &[Request], v: &Viewer) -> Vec<Co
         add(t.with.clone(), t.at, first);
     }
     for r in requests {
-        add(vec![phones::key(&r.to, v.region)], r.written, r.body.chars().take(80).collect());
+        let first: String = if r.said_words().is_empty() && r.multimedia() { v.tr.text("phonemsgs-picture", None) } else { r.said_words().chars().take(80).collect() };
+        add(vec![phones::key(&r.to, v.region)], r.written, first);
     }
     let mut list: Vec<Conversation> = by.into_values().collect();
     list.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.id.cmp(&b.id)));
@@ -1445,7 +1636,7 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
     let mut shown_keys = BTreeSet::new();
     for t in texts.iter().filter(|t| conversation_id(&t.with) == id) {
         let key = if t.key.is_empty() { row_key(t, &key_of_row) } else { t.key.clone() };
-        let said = (!key.is_empty() && requests.iter().any(|r| r.key == key)).then(|| self::said(state_of(&key, outcomes), v.phone_shared, v.tr, v.now));
+        let said = requests.iter().find(|r| !key.is_empty() && r.key == key).map(|r| self::said(state_of(&key, outcomes), v.phone_shared, v.tr, v.now, r.multimedia()));
         if !key.is_empty() {
             shown_keys.insert(key.clone());
         }
@@ -1478,12 +1669,13 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
             time,
             direction: "out".into(),
             from: String::new(),
-            body: r.body.clone(),
-            picture: false,
-            parts: Vec::new(),
+            body: r.said_words().to_string(),
+            picture: r.media.iter().any(|m| kind_of(&m.ct) == "picture"),
+            // Its media as the message shows them from the first moment: sealed here when written here, else brought.
+            parts: r.media.iter().filter_map(|m| shown(&Part { ct: m.ct.clone(), size: m.size, hash: m.hash.clone(), state: "here".into(), ..Part::default() }, v)).collect(),
             deleted: false,
             key: r.key.clone(),
-            said: Some(said(outcome, v.phone_shared, v.tr, v.now)),
+            said: Some(said(outcome, v.phone_shared, v.tr, v.now, r.multimedia())),
             to: r.to.clone(),
         });
     }
@@ -1578,7 +1770,7 @@ mod tests {
     }
 
     fn request(key: &str, phone: &str, written: i64) -> Request {
-        Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, ahead: 0, again: String::new(), device: "desk".into() }
+        Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, device: "desk".into(), ..Request::default() }
     }
 
     /// The phone's steps, as `texts.rs` in the app takes them: read every
@@ -1841,9 +2033,9 @@ mod tests {
         let tr = Translator::new("en");
         let now = paris(NOW);
         let sent = [Outcome { key: "h1".into(), state: "sent".into(), at: NOW + MINUTE, ..Outcome::default() }];
-        assert_eq!(said(state_of("h1", &sent), None, &tr, &now).state, "sent", "no report: sent, never 'not delivered'");
+        assert_eq!(said(state_of("h1", &sent), None, &tr, &now, false).state, "sent", "no report: sent, never 'not delivered'");
         let delivered = [sent[0].clone(), Outcome { key: "h1".into(), state: "delivered".into(), at: NOW + 2 * MINUTE, ..Outcome::default() }];
-        assert_eq!(said(state_of("h1", &delivered), None, &tr, &now).text, "Delivered at 10:02.");
+        assert_eq!(said(state_of("h1", &delivered), None, &tr, &now, false).text, "Delivered at 10:02.");
     }
 
     /// A text of a phone's log with its provider columns, as Java reads them.
@@ -2174,5 +2366,149 @@ mod tests {
         let bound = |t: &Text| messages(&conversation_id(&t.with), std::slice::from_ref(t), std::slice::from_ref(&asked), std::slice::from_ref(&bare), &v).into_iter().find(|m| m.id.starts_with("phone/")).map(|m| m.key).unwrap_or_default();
         assert_eq!(bound(&filed), "r2", "the text it sent, filed before its result");
         assert_eq!(bound(&reused), "", "a text received days later under its id");
+    }
+
+    /// A picture's medium as a request names it.
+    fn medium(n: u8, ct: &str) -> Medium {
+        Medium { hash: format!("{n:02x}").repeat(32), ct: ct.into(), size: 4_096 }
+    }
+
+    /// A multimedia message from a computer: refused in its own words, and
+    /// sent when it may go; an older phone, which reads its words empty,
+    /// refuses it rather than sending its words alone (decision 11).
+    #[test]
+    fn a_multimedia_request_is_refused_in_its_own_words() {
+        let ledger = Ledger::with(Mark { since: 0 }, Vec::new());
+        let mms = |media: Vec<Medium>, words: &str, also: Vec<String>, to: &str| Request { body: String::new(), words: words.into(), media, also, to: to.into(), ..request("m", "phone", NOW) };
+        let v = |r: &Request| verdict(r, "phone", NOW, &ledger, fr());
+        let picture = || vec![medium(1, "image/jpeg")];
+        assert_eq!(v(&mms(picture(), "Voilà l’entrée.", vec![], "01 99 00 12 34")), Verdict::Send);
+        assert_eq!(v(&mms(picture(), "", vec![], "01 99 00 12 34")), Verdict::Send, "a picture alone");
+        assert_eq!(v(&mms((1..=6).map(|n| medium(n, "image/png")).collect(), "", vec![], "01 99 00 12 34")), Verdict::Refused("too-many-media"));
+        assert_eq!(v(&mms(vec![medium(2, "application/pdf")], "", vec![], "01 99 00 12 34")), Verdict::Refused("media-kind"), "another file goes by mail");
+        assert_eq!(v(&mms(vec![Medium { hash: "abc".into(), ..medium(3, "image/jpeg") }], "", vec![], "01 99 00 12 34")), Verdict::Refused("media-kind"), "no content's hash");
+        assert_eq!(v(&mms(vec![Medium { size: 0, ..medium(3, "image/jpeg") }], "", vec![], "01 99 00 12 34")), Verdict::Refused("media-kind"), "an empty one");
+        for ct in ["video/mp4", "audio/amr", "text/x-vCard", "text/calendar"] {
+            assert_eq!(v(&mms(vec![medium(4, ct)], "", vec![], "01 99 00 12 34")), Verdict::Send, "{ct}");
+        }
+        assert_eq!(v(&mms(picture(), "", vec!["04 65 71 00 42".into()], "01 99 00 12 34")), Verdict::Refused("several"), "a group: a later step");
+        assert_eq!(v(&mms(picture(), "", vec![], "36179")), Verdict::Refused("short-number"));
+        assert_eq!(v(&mms(picture(), &"x".repeat(WRITE_MAX + 1), vec![], "01 99 00 12 34")), Verdict::Refused("too-long"));
+        // An older phone's own rule (a text's), on the same request: refused, never its words alone.
+        let asked = mms(picture(), "Voilà l’entrée.", vec![], "01 99 00 12 34");
+        assert_eq!(refusal(&asked.to, &asked.body, fr()), Some("empty"));
+        // Written so: an older Sioul's reader of the line keeps its words out of `body`.
+        let line = serde_json::to_value(&asked).unwrap();
+        assert_eq!((line["body"].as_str(), line["words"].as_str(), line["media"].as_array().map(Vec::len)), (Some(""), Some("Voilà l’entrée."), Some(1)));
+        let plain = serde_json::to_value(request("p", "phone", NOW)).unwrap();
+        assert!(plain.get("media").is_none() && plain.get("words").is_none() && plain.get("also").is_none(), "a text's line as before: {plain}");
+        // The computer says the older phone's refusal as such, Send again offered.
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let refused = Outcome { key: "m".into(), state: "refused".into(), at: NOW, reason: "empty".into(), ..Outcome::default() };
+        let said_of = |media: bool| said(Some(&refused), None, &tr, &now, media);
+        assert_eq!(said_of(false).text, "Not sent: it has no words.");
+        assert!(said_of(true).text.contains("cannot send pictures yet") && said_of(true).again, "{}", said_of(true).text);
+    }
+
+    /// A multimedia message's claim with no word: looked for by its key 40
+    /// minutes on, handed or not (Android waits up to 30 for a network).
+    #[test]
+    fn a_multimedia_claim_is_looked_for_forty_minutes_on() {
+        let claim = Claim { key: "n1".into(), at: NOW, state: "handed".into(), mms: true, ..Claim::default() };
+        assert!(doubt_after(&claim, None, NOW + 39 * MINUTE).is_none(), "Android may still be waiting for a network");
+        let found = doubt_after(&claim, Some("mms-31@1791446400".into()), NOW + 41 * MINUTE).unwrap();
+        assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "mms-31@1791446400"));
+        assert_eq!(doubt_after(&claim, None, NOW + 41 * MINUTE).unwrap().state, "doubt");
+        let text = Claim { mms: false, ..claim.clone() };
+        assert!(doubt_after(&text, None, NOW + 3 * MINUTE).is_some(), "a text's, two minutes on as before");
+        let line = serde_json::to_string(&Claim { mms: false, ..claim }).unwrap();
+        assert!(!line.contains("mms"), "a text's claim as before: {line}");
+    }
+
+    /// A multimedia message's result: sent only on Android's Ok and the
+    /// carrier's; Android's Ok alone looked for in the sent box; each
+    /// failure in its own words.
+    #[test]
+    fn a_multimedia_result_says_the_carrier_s_answer() {
+        let conf = |status: u8| crate::mms::Conf { status, ..crate::mms::Conf::default() };
+        assert_eq!(took(-1, Some(&conf(crate::mms::OK))), Took::Sent);
+        assert_eq!(took(-1, None), Took::Look, "Android's Ok, the carrier's answer missing");
+        let cases: [(i64, Option<u8>, &str); 14] = [
+            (-1, Some(0xE5), "carrier-content"),
+            (-1, Some(0xE1), "carrier-denied"),
+            (-1, Some(0xEB), "carrier-credit"),
+            (-1, Some(0xC3), "carrier-busy"),
+            (-1, Some(0xE0), "carrier-refused"),
+            (-1, Some(0x87), "carrier-content"),
+            (4, None, "carrier-refused"),
+            (4, Some(0xC0), "carrier-busy"),
+            (11, None, "mms-data-off"),
+            (8, None, "mms-data-off"),
+            (3, None, "mms-no-network"),
+            (12, None, "mms-settings"),
+            (5, None, "mms-unreadable"),
+            (10, None, "no-sim"),
+        ];
+        for (code, status, why) in cases {
+            assert_eq!(took(code, status.map(conf).as_ref()), Took::Failed(why), "{code} {status:?}");
+        }
+        assert_eq!(took(1, None), Took::Failed("other"));
+        // Each in its own words, never "Android refused it".
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let other = said(Some(&Outcome { state: "failed".into(), reason: "other".into(), ..Outcome::default() }), None, &tr, &now, true).text;
+        for (_, _, why) in cases {
+            let words = said(Some(&Outcome { state: "failed".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
+            assert!(words.text != other && words.again, "{why}: {}", words.text);
+        }
+        let late = said(Some(&Outcome { state: "expired".into(), reason: "media".into(), ..Outcome::default() }), None, &tr, &now, true);
+        assert!(late.text.contains("did not reach your phone") && late.again, "{}", late.text);
+        for why in ["too-large", "too-many-media", "media-kind", "no-mms"] {
+            let words = said(Some(&Outcome { state: "refused".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
+            assert!(words.text != tr.text("texts-refused-other", None) && !words.again, "{why}: {}", words.text);
+        }
+    }
+
+    /// What a phone's carriers let it send: its newest "limits" line, by
+    /// phone; a computer of an older Sioul reads it as an outcome of no
+    /// request, and passes it over.
+    #[test]
+    fn a_phone_says_what_its_carriers_let_it_send() {
+        let line = |at: i64, max: u64, device: &str| Outcome { key: String::new(), state: "limits".into(), at, limits: vec![Limits { sub: 3, max, width: 2592, height: 1944, recipients: 20, group: true, mms: true }], device: device.into(), ..Outcome::default() };
+        let outcomes = vec![line(NOW - DAY_MS, 307_200, "phone"), line(NOW, 614_400, "phone"), line(NOW + MINUTE, 102_400, "other-phone"), Outcome { key: "k1".into(), state: "sent".into(), at: NOW, device: "phone".into(), ..Outcome::default() }];
+        let (at, limits) = limits_of(&outcomes, "phone").unwrap();
+        assert_eq!((at, limits[0].max), (NOW, 614_400));
+        assert_eq!(limits_of(&outcomes, "third-phone"), None);
+        assert_eq!(state_of("k1", &outcomes).map(|o| o.state.as_str()), Some("sent"), "a request's state never a limits line");
+        assert_eq!(state_of("", &outcomes).map(|o| o.state.as_str()), None, "a limits line is no request's state");
+        // As an older Sioul writes and reads its outcomes.
+        let written = serde_json::to_string(&outcomes[1]).unwrap();
+        assert!(written.contains("\"limits\":[{"), "{written}");
+        let old: Outcome = serde_json::from_str(r#"{"key":"k1","state":"sent","at":1}"#).unwrap();
+        assert!(old.limits.is_empty());
+    }
+
+    /// A multimedia message written here shows its words and its media from
+    /// the first moment, the picture once it is here; its conversation's line says it.
+    #[test]
+    fn a_multimedia_request_shows_its_words_and_media() {
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let picture = medium(7, "image/jpeg");
+        let here_hash = picture.hash.clone();
+        let here = move |hash: &str| hash == here_hash;
+        let v = viewer(&now, &tr, &names, &here);
+        let mms = Request { body: String::new(), words: "Voilà l’entrée.".into(), media: vec![picture.clone(), medium(8, "video/mp4")], ..request("q1", "phone", NOW - MINUTE) };
+        let quiet = Request { words: String::new(), media: vec![picture], ..request("q2", "phone", NOW) };
+        let id = conversation_id(&[phones::key(&mms.to, fr())]);
+        let shown = messages(&id, &[], &[mms.clone(), quiet.clone()], &[], &v);
+        assert_eq!(shown.len(), 2);
+        assert_eq!((shown[0].body.as_str(), shown[0].picture, shown[0].parts.len()), ("Voilà l’entrée.", true, 2));
+        assert_eq!((shown[0].parts[0].kind.as_str(), shown[0].parts[0].hash.is_empty()), ("picture", false), "the picture here");
+        assert_eq!((shown[0].parts[1].kind.as_str(), shown[0].parts[1].hash.is_empty()), ("video", true), "the video not here yet: on its way");
+        let list = conversations(&[], &[quiet], &v);
+        assert_eq!(list[0].last, "a picture");
     }
 }

@@ -1727,10 +1727,14 @@ pub fn wanted_due(memory: &Path, folder: &Path, now: i64) -> bool {
 }
 
 /// The sealed files waited for that are neither in the folder nor fetched
-/// (`into`), and not asked lately in vain.
+/// (`into`), and not asked lately in vain: those the records wait for, and
+/// the texts' media asked by name (`blobs::Wanted::media`: a computer's
+/// lacking, a multimedia message's that its phone waits for), each asked
+/// `WANTED_KEPT_DAYS` at most.
 fn wanted_now<'a>(wanted: &'a crate::blobs::Wanted, folder: &Path, into: &Path, now: i64) -> Vec<(&'a String, &'a crate::blobs::Want)> {
     let here = |dir: &Path, name: &str| std::fs::metadata(dir.join(name)).is_ok_and(|m| m.len() > 0);
-    wanted.blobs.iter().filter(|(name, want)| want.again <= now && !here(&folder.join("blobs"), name) && !here(into, name)).collect()
+    let fresh = |want: &&crate::blobs::Want| now - want.since < WANTED_KEPT_DAYS as i64 * 86_400;
+    wanted.blobs.iter().chain(wanted.media.iter().filter(|(_, want)| fresh(want))).filter(|(name, want)| want.again <= now && !here(&folder.join("blobs"), name) && !here(into, name)).collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1803,7 +1807,7 @@ pub(crate) fn fetch_wanted_with(memory: &Path, folder: &Path, login: &Login, key
         }
         let _ = crate::blobs::Wanted::change(memory, |wanted| {
             for (name, (tries, again)) in tried {
-                if let Some(want) = wanted.blobs.get_mut(&name) {
+                for want in [wanted.blobs.get_mut(&name), wanted.media.get_mut(&name)].into_iter().flatten() {
                     (want.tries, want.again) = (tries, again);
                 }
             }
@@ -3225,13 +3229,22 @@ pub fn send(memory: &Path, folder: &Path, own: &str, login: &Login, sealed: &BTr
 /// `place_texts`; `phone-messages/ask/<id>.jsonl`, `place_asks`), on a lane of
 /// their own: small files, sent first and alone, never waiting behind a large
 /// one going up on a slow line; Sioul keeping the folder itself too (`MIRROR`).
-pub fn send_urgent(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64) -> Pulled {
-    send_lane(Lane::Urgent, memory, folder, own, login, &BTreeMap::new(), now, false, false, SEND_LIMITS)
+/// A multimedia message's media go first on it (`media`: their sealed files'
+/// names in `blobs/`, and the size each was sealed at), so that the phone
+/// finds them there by the time it reads the request; each asked of the
+/// server by its own name, never the whole of `blobs/` listed.
+pub fn send_urgent(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, media: &BTreeMap<String, u64>) -> Pulled {
+    send_lane(Lane::Urgent, memory, folder, own, login, media, now, false, false, SEND_LIMITS)
 }
 
 #[cfg(test)]
 pub(crate) fn send_urgent_with(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, limits: Limits) -> Pulled {
     send_lane(Lane::Urgent, memory, folder, own, login, &BTreeMap::new(), now, false, false, limits)
+}
+
+#[cfg(test)]
+pub(crate) fn send_urgent_media(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, media: &BTreeMap<String, u64>, limits: Limits) -> Pulled {
+    send_lane(Lane::Urgent, memory, folder, own, login, media, now, false, false, limits)
 }
 
 #[cfg(test)]
@@ -3288,7 +3301,14 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         let check = again || sending.checked == 0 || now - sending.checked >= CHECK_AGAIN;
         let frugal = frugal || sending.slow();
         let files: Vec<String> = match lane {
-            Lane::Urgent => own_urgent(folder, own),
+            // A multimedia message's media before the request that names them.
+            Lane::Urgent => {
+                let mut names: Vec<&String> = sealed.keys().collect();
+                names.sort();
+                let mut files: Vec<String> = names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).is_file()).collect();
+                files.extend(own_urgent(folder, own));
+                files
+            }
             Lane::Main => {
                 let mut files = own_plain(folder, own);
                 let mut names: Vec<&String> = sealed.keys().collect();
@@ -3336,6 +3356,10 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         }
         if again {
             sending.again = Again { at: now, sent: pulled.sent, same: pulled.same, said: sending.said.clone() };
+        }
+        // The urgent lane remembers only the media it carries now, never every message's for good.
+        if lane == Lane::Urgent {
+            sending.sent.retain(|relative, _| relative.strip_prefix("blobs/").is_none_or(|name| sealed.contains_key(name)));
         }
         let _ = sending.save(memory, lane);
         pulled.problem = (!sending.said.is_empty()).then(|| sending.said.clone());
@@ -3611,8 +3635,12 @@ impl Sender<'_> {
         let mut dirs: Vec<String> = Vec::new();
         for (name, item) in &root.items {
             if item.dir {
-                if name == "devices" || (name == "blobs" && !self.sealed.is_empty()) {
+                if name == "devices" || (name == "blobs" && !self.sealed.is_empty() && self.lane == Lane::Main) {
                     dirs.push(format!("{name}/"));
+                }
+                // The urgent lane's media, each asked by its own name: never thousands listed there.
+                if name == "blobs" && !self.sealed.is_empty() && self.lane == Lane::Urgent {
+                    self.unlisted.insert("blobs/".into());
                 }
                 if let Some((top, sub)) = URGENT.iter().find(|(top, _)| name == top) {
                     dirs.push(format!("{top}/{sub}/"));
@@ -6732,6 +6760,50 @@ mod tests {
         assert_eq!(file_kind(&format!("phone-messages/ask/{}.jsonl", w.desk.id)), "replies");
         std::fs::remove_file(&asks).unwrap();
         assert!(place_asks(&desk_folder, &w.desk.id, &asks).unwrap() && !asks_file(&desk_folder, &w.desk.id).exists());
+    }
+
+    /// A multimedia message's media go up on the urgent lane before the
+    /// request that names them, each asked by its own name (never the whole
+    /// of `blobs/` listed); the lane keeps only the media it carries now. The
+    /// phone, its sync app late, waits for them by name (`blobs::Wanted::media`):
+    /// its own fetch brings them from the server.
+    #[test]
+    fn a_request_s_media_go_up_before_it_on_the_urgent_lane() {
+        let w = World::new("texts-media-lane");
+        let desk_folder = desk_beside(&w);
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        // A picture sealed into the desk's folder, as a computer writing a multimedia message seals it.
+        let picture = w.base.join("picture.jpg");
+        std::fs::write(&picture, b"\xFF\xD8\xFF a picture").unwrap();
+        let (hash, _) = crate::blobs::hash_file(&picture).unwrap();
+        let sealed = crate::blobs::put(&desk_folder, &KEY, &picture, &hash).unwrap().unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        let source = w.base.join("desk-texts-send.jsonl");
+        std::fs::write(&source, "a sealed request line naming it\n").unwrap();
+        assert!(place_texts(&desk_folder, &w.desk.id, &source).unwrap());
+        w.fake.forget_seen();
+        let media = BTreeMap::from([(name.clone(), sealed)]);
+        let urgent = send_urgent_media(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), DUE + 11, &media, TEST);
+        assert!(urgent.problem.is_none() && urgent.sent == 2, "{urgent:?}");
+        let puts: Vec<String> = w.fake.seen().into_iter().filter(|line| line.starts_with("PUT ")).collect();
+        let at = |what: &str| puts.iter().position(|line| line.contains(what));
+        assert!(at(&format!("blobs/{name}")).is_some() && at(&format!("blobs/{name}")) < at("texts/send/"), "the medium first: {puts:?}");
+        assert!(!w.fake.seen().iter().any(|line| line.starts_with("PROPFIND") && line.contains("/blobs")), "{:?}", w.fake.seen());
+        // Sent again: nothing goes twice; given no more, forgotten by the lane.
+        assert_eq!(send_urgent_media(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), DUE + 12, &media, TEST).sent, 0);
+        assert!(send_urgent_media(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), DUE + 13, &BTreeMap::new(), TEST).problem.is_none());
+        assert!(!Sending::load_lane(&w.desk.memory, Lane::Urgent).sent.keys().any(|relative| relative.starts_with("blobs/")));
+        // The phone waits for it by name, its sync app late: its own fetch brings it.
+        crate::blobs::Wanted::change(&w.phone.memory, |wanted| {
+            wanted.media.insert(name.clone(), crate::blobs::Want { hash: hash.clone(), size: sealed, since: DUE, ..Default::default() });
+        })
+        .unwrap();
+        assert!(wanted_due(&w.phone.memory, &w.phone_folder, DUE + 20));
+        let fetched = fetch_wanted_with(&w.phone.memory, &w.phone_folder, &w.fake.login(), &KEY, DUE + 20, false, TEST);
+        assert_eq!((fetched.fetched, fetched.problem.as_deref()), (1, None), "{fetched:?}");
+        // Beside the synced folder, checked against its content, as `blobs::get` opens it.
+        let copy = w.cache().join("blobs").join(&name);
+        assert!(crate::blobs::check(&copy, &KEY, &hash).is_ok() && !w.phone_folder.join("blobs").join(&name).exists());
     }
 
     /// What a computer writing each minute costs, sent beside its sync app:

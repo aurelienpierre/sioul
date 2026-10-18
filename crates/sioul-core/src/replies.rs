@@ -927,7 +927,7 @@ pub fn verdict(ask: &Ask, j: &Judge) -> Verdict {
 /// words' hash and the conversation of the line it answers (`talk`), for the
 /// guards; never the words.
 pub fn claim_of(ask: &Ask, talk: &str, now_ms: i64) -> crate::texts::Claim {
-    crate::texts::Claim { key: ask.key.clone(), at: now_ms, state: "claimed".into(), to: ask.notice.clone(), hash: if ask.verb == "reply" { words_hash(&ask.words) } else { String::new() }, talk: talk.to_string() }
+    crate::texts::Claim { key: ask.key.clone(), at: now_ms, state: "claimed".into(), to: ask.notice.clone(), hash: if ask.verb == "reply" { words_hash(&ask.words) } else { String::new() }, talk: talk.to_string(), ..crate::texts::Claim::default() }
 }
 
 /// A request decided and ended at the step (taken back, expired, clocks,

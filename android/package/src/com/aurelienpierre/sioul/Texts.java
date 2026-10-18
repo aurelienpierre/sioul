@@ -327,6 +327,14 @@ public final class Texts
             return find(resolver, context.getPackageName(), asked.optLong("since", 0)).put("allowed", true).toString();
         case "texts-send":
             return TextSend.send(context, asked.optString("key", ""), asked.optString("to", ""), asked.optString("body", ""), asked.optInt("sub", -1)).toString();
+        case "texts-send-mms":
+            return TextSend.sendMms(context, asked.optString("key", ""), asked.optInt("sub", -1), asked.optString("path", "")).toString();
+        case "texts-limits":
+            return limits(context, asked.has("sub") ? asked.optInt("sub", -1) : null).toString();
+        case "texts-find-mms":
+            if (!allowed(context, Manifest.permission.READ_SMS))
+                return new JSONObject().put("allowed", false).toString();
+            return findMms(resolver, context.getPackageName(), asked.optString("key", "")).put("allowed", true).toString();
         case "texts-changes":
             // Watched in this process too (the window's, without steps of its own): a step asks Android only after a change.
             watch(context, StepService.inThisProcess());
@@ -730,6 +738,84 @@ public final class Texts
             Log.w(TAG, "Texts: the texts sent could not be read: " + e);
         }
         return new JSONObject().put("texts", texts);
+    }
+
+    // ---------------------------------------------------------------- multimedia messages
+
+    /**
+     * What each SIM's carrier lets Sioul send (Android's carrier
+     * configuration, {@code SmsManager.getCarrierConfigValues}, which asks no
+     * permission): that SIM's alone ({@code only}; -1 the phone's default),
+     * else each active SIM's (READ_PHONE_STATE lists them), else the
+     * default's. Numbers only, never the carrier's name.
+     */
+    static JSONObject limits(Context context, Integer only) throws JSONException
+    {
+        List<Integer> subs = new ArrayList<>();
+        if (only != null) {
+            subs.add(only);
+        } else {
+            if (allowed(context, Manifest.permission.READ_PHONE_STATE)) {
+                try {
+                    SubscriptionManager subscriptions = context.getSystemService(SubscriptionManager.class);
+                    List<SubscriptionInfo> active = subscriptions == null ? null : subscriptions.getActiveSubscriptionInfoList();
+                    if (active != null)
+                        for (SubscriptionInfo info : active)
+                            subs.add(info.getSubscriptionId());
+                } catch (SecurityException e) {
+                    // Taken back meanwhile.
+                }
+            }
+            if (subs.isEmpty())
+                subs.add(-1);
+        }
+        JSONArray out = new JSONArray();
+        for (int sub : subs) {
+            try {
+                android.os.Bundle values = TextSend.manager(context, sub).getCarrierConfigValues();
+                if (values != null)
+                    out.put(limitsLine(sub, values.getInt(android.telephony.SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE, 0), values.getInt(android.telephony.SmsManager.MMS_CONFIG_MAX_IMAGE_WIDTH, 0),
+                                       values.getInt(android.telephony.SmsManager.MMS_CONFIG_MAX_IMAGE_HEIGHT, 0), values.getInt(android.telephony.SmsManager.MMS_CONFIG_RECIPIENT_LIMIT, Integer.MAX_VALUE),
+                                       values.getBoolean(android.telephony.SmsManager.MMS_CONFIG_GROUP_MMS_ENABLED, true), values.getBoolean(android.telephony.SmsManager.MMS_CONFIG_MMS_ENABLED, true)));
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Texts: a SIM's carrier values could not be read: " + e.getClass().getSimpleName());
+            }
+        }
+        return new JSONObject().put("limits", out);
+    }
+
+    /**
+     * One SIM's carrier values as Rust reads them ({@code texts::Limits}):
+     * none below zero (a carrier's "no limit" said as the largest count).
+     * Pure: android/jvm-checks/TextsCheck.java.
+     */
+    static JSONObject limitsLine(int sub, int max, int width, int height, int recipients, boolean group, boolean mms) throws JSONException
+    {
+        return new JSONObject().put("sub", sub).put("max", Math.max(max, 0)).put("width", Math.max(width, 0)).put("height", Math.max(height, 0))
+            .put("recipients", recipients < 0 ? Integer.MAX_VALUE : recipients).put("group", group).put("mms", mms);
+    }
+
+    /**
+     * Sioul's multimedia message by its key: the rows Android filed with that
+     * transaction id (the message Rust built carries it) and Sioul as their
+     * creator, each its id, its date (seconds) and its box (2: sent).
+     */
+    static JSONObject findMms(ContentResolver resolver, String own, String key) throws JSONException
+    {
+        JSONArray found = new JSONArray();
+        if (!key.isEmpty()) {
+            String[] columns = { Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.CREATOR };
+            try (Cursor cursor = resolver.query(Telephony.Mms.CONTENT_URI, columns, Telephony.Mms.TRANSACTION_ID + " = ?", new String[] { key }, null)) {
+                while (cursor != null && cursor.moveToNext()) {
+                    Row row = of(cursor);
+                    if (own.equals(row.text(Telephony.Mms.CREATOR)))
+                        found.put(new JSONObject().put("id", row.number(Telephony.Mms._ID)).put("date", row.number(Telephony.Mms.DATE)).put("box", row.number(Telephony.Mms.MESSAGE_BOX)));
+                }
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Texts: the multimedia messages sent could not be read: " + e);
+            }
+        }
+        return new JSONObject().put("found", found);
     }
 
     // ---------------------------------------------------------------- heard
