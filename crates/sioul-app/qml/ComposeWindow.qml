@@ -36,6 +36,10 @@ SioulWindow {
     property var protection: compose.draft ? compose.draft.protection : ({ can_sign: false, can_encrypt: false, missing: [] })
     // The security key that signs for this address has an expired certificate.
     readonly property bool expired: compose.protection.expired !== undefined && compose.protection.expired !== ""
+    // This device cannot use the security key that signs for this address yet (a phone): why "Sign" is off.
+    readonly property string signNotHere: compose.protection.sign_not_here || ""
+    // Encrypted while your own certificate cannot take it: you would not read your sent copy.
+    readonly property string selfCopy: compose.protection.self_copy || ""
     // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
     property string attaching: compose.draft && compose.draft.attaching ? compose.draft.attaching : ""
     // Under the text: files still coming, until they are there, unless something stops
@@ -125,8 +129,9 @@ SioulWindow {
         compose.save()
         // Signed with your security key: the key is asked here, before the ten seconds of "Undo".
         const key = JSON.parse(compose.sioul.securityKeyForDraft(compose.draftId) || "null")
-        if (key && key.expired) {
-            keyBand.say(key.expired)
+        // Its certificate expired, or this device cannot use the key yet (a phone): said, nothing sent.
+        if (key && (key.expired || key.cannot)) {
+            keyBand.say(key.expired || key.cannot)
             return
         }
         if (key) {
@@ -484,16 +489,17 @@ SioulWindow {
 
             // Signing and encrypting: there once you or they have a key, never in the way before.
             RowLayout {
-                visible: compose.protection.can_sign || compose.protection.can_encrypt || encrypt.checked || compose.expired
+                visible: compose.protection.can_sign || compose.protection.can_encrypt || encrypt.checked || compose.expired || compose.signNotHere !== ""
                 Layout.fillWidth: true
                 spacing: 8
 
                 // A security key whose certificate expired still offers "Sign": ticked, it says why it cannot.
+                // Ticked on another device where this one cannot sign (a phone): it can be unticked here.
                 CheckBox {
                     id: sign
 
                     text: compose.sioul.text("ui-sign")
-                    enabled: compose.protection.can_sign || compose.expired
+                    enabled: compose.protection.can_sign || compose.expired || sign.checked
                     checked: compose.draft !== null && compose.draft.sign
                     onToggled: autosave.restart()
                 }
@@ -534,6 +540,26 @@ SioulWindow {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: encrypt.checked ? compose.theme.warm : compose.theme.muted
+                font.pixelSize: 13
+            }
+            // This device cannot sign with your security key yet (a phone): said under the boxes.
+            Label {
+                visible: compose.signNotHere !== ""
+                Layout.fillWidth: true
+                text: compose.signNotHere
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: sign.checked ? compose.theme.warm : compose.theme.muted
+                font.pixelSize: 13
+            }
+            // Encrypted while your own key's certificate has expired: your sent copy would not open, said before Send.
+            Label {
+                visible: encrypt.checked && compose.selfCopy !== ""
+                Layout.fillWidth: true
+                text: compose.selfCopy
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: compose.theme.warm
                 font.pixelSize: 13
             }
             // The security key that signs for this address has expired: when, and how to renew it,

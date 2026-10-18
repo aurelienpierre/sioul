@@ -37,7 +37,9 @@ use openpgp::Cert;
 use openpgp::cert::prelude::*;
 use openpgp::crypto::{self, SessionKey, mpi};
 use openpgp::packet::{Key, key};
+use openpgp::parse::Parse;
 use openpgp::policy::StandardPolicy;
+use openpgp::serialize::SerializeInto;
 use openpgp::types::Curve;
 use sequoia_openpgp as openpgp;
 use serde::{Deserialize, Serialize};
@@ -865,21 +867,153 @@ pub fn cards_path() -> PathBuf {
     data_dir().join("pgp").join("cards.toml")
 }
 
-/// The security keys Sioul knows.
+/// The security keys Sioul knows, read on this device (`cards.toml`).
 pub fn known_cards() -> Vec<KnownCard> {
     read_known(&cards_path())
+}
+
+/// [`known_cards`] from the file `path`.
+pub fn known_cards_in(path: &Path) -> Vec<KnownCard> {
+    read_known(path)
 }
 
 fn read_known(path: &Path) -> Vec<KnownCard> {
     std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<CardsFile>(&text).ok()).map(|f| f.cards).unwrap_or_default()
 }
 
-/// Changes the list of known security keys: read, changed, written, one writer at a time.
+/// Changes the list of known security keys: read, changed, written, one
+/// writer at a time; then what your other devices know of them follows
+/// (`share_cards`).
 pub fn change_known<T>(change: impl FnOnce(&mut Vec<KnownCard>) -> T) -> Result<T, String> {
-    change_known_at(&cards_path(), change)
+    let out = change_known_at(&cards_path(), change)?;
+    share_cards()?;
+    Ok(out)
 }
 
-fn change_known_at<T>(path: &Path, change: impl FnOnce(&mut Vec<KnownCard>) -> T) -> Result<T, String> {
+// ---------------------------------------------------------------- your security keys on every device
+
+/// Where your security keys travel to your other devices, sealed with the
+/// sharing (`data/pgp/cards/`): one file per key, what `cards.toml` says of
+/// it and its certificate, public parts only. Never `pgp/own/`, which holds
+/// the secret parts of keys kept on a device; a security key's private keys
+/// never leave it.
+pub fn shared_cards_dir() -> PathBuf {
+    data_dir().join("pgp").join(SHARED_CARDS)
+}
+
+/// The folder of [`shared_cards_dir`] in `pgp/`.
+pub const SHARED_CARDS: &str = "cards";
+
+/// One of your security keys as it travels: what a computer that read it
+/// knows of it, and its certificate (armored, public parts only).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SharedCard {
+    pub card: KnownCard,
+    #[serde(default)]
+    pub certificate: String,
+}
+
+/// A shared key's file name: its identifier, `-` for `:` ("0006-12345678.toml").
+fn shared_name(ident: &str) -> String {
+    let name: String = ident.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    format!("{name}.toml")
+}
+
+/// The certificate of a shared security key, when it is the key's: its
+/// primary key's fingerprint is the one the key's record names, and it holds
+/// the keys the security key holds (signing, decryption). Anything else (a
+/// certificate replaced, another key's, one missing a key the security key
+/// holds) is never taken for yours.
+pub fn vouched(card: &KnownCard, certificate: &str) -> Option<Cert> {
+    let cert = Cert::from_bytes(certificate.as_bytes()).ok()?.strip_secret_key_material();
+    let has = |fingerprint: &str| fingerprint.is_empty() || cert.keys().any(|k| k.key().fingerprint().to_hex().eq_ignore_ascii_case(fingerprint));
+    (!card.cert.is_empty() && cert.fingerprint().to_hex().eq_ignore_ascii_case(&card.cert) && has(&card.sign) && has(&card.decrypt) && !(card.sign.is_empty() && card.decrypt.is_empty())).then_some(cert)
+}
+
+/// Your security keys as your other devices made them known here
+/// (`data/pgp/cards/`), each with its certificate when that is the key's
+/// ([`vouched`]); a file that does not read, or whose certificate is not the
+/// key's, is passed over.
+pub fn shared_cards() -> Vec<(KnownCard, Cert)> {
+    shared_cards_in(&shared_cards_dir())
+}
+
+/// [`shared_cards`] from the folder `dir`.
+pub fn shared_cards_in(dir: &Path) -> Vec<(KnownCard, Cert)> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut found: Vec<(KnownCard, Cert)> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "toml"))
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .filter_map(|text| toml::from_str::<SharedCard>(&text).ok())
+        .filter_map(|shared| Some((vouched(&shared.card, &shared.certificate)?, shared.card)))
+        .map(|(cert, card)| (card, cert))
+        .collect();
+    found.sort_by(|a, b| a.0.ident.cmp(&b.0.ident));
+    found
+}
+
+/// What your other devices learn of your security keys, written from this
+/// device's own (`cards.toml`, and their certificates kept with your keys):
+/// only the keys this device read itself, never one it learnt from another
+/// device. Each certificate merged with the one shared already, so that a
+/// renewal made on another computer is never undone. A file is written only
+/// when what it says changed. Keys this device does not know are left as
+/// they are (another computer's).
+pub fn share_cards() -> Result<(), String> {
+    share_cards_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), false)
+}
+
+/// The same for the keys whose file is not there yet: an existing setup's
+/// first sharing, before each exchange (it writes nothing once they are).
+pub fn share_cards_if_missing() -> Result<(), String> {
+    share_cards_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), true)
+}
+
+/// [`share_cards`] with its three places: `cards.toml`, your keys' folder
+/// (`pgp/own/`), the shared folder; `missing`: only the files not there.
+pub fn share_cards_in(cards: &Path, own: &Path, shared: &Path, missing: bool) -> Result<(), String> {
+    let known = read_known(cards);
+    if known.is_empty() {
+        return Ok(());
+    }
+    let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
+    for card in known {
+        let path = shared.join(shared_name(&card.ident));
+        if missing && path.exists() {
+            continue;
+        }
+        let Some(mine) = std::fs::read(own.join(format!("{}.asc", card.cert))).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) else { continue };
+        let mine = mine.strip_secret_key_material();
+        let there = std::fs::read_to_string(&path).ok().and_then(|text| toml::from_str::<SharedCard>(&text).ok());
+        let cert = match there.as_ref().and_then(|t| vouched(&t.card, &t.certificate)).filter(|t| t.fingerprint() == mine.fingerprint()) {
+            Some(shared) => mine.clone().merge_public(shared).unwrap_or(mine),
+            None => mine,
+        };
+        let certificate = String::from_utf8(cert.armored().to_vec().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        let text = format!(
+            "# Sioul: one of your security keys, as a computer of yours read it, and its certificate: public parts only (docs/database.md).\n{}",
+            toml::to_string(&SharedCard { card, certificate }).map_err(|e| e.to_string())?
+        );
+        if std::fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
+            continue;
+        }
+        std::fs::create_dir_all(shared).map_err(|e| fail(shared, e))?;
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, &text).map_err(|e| fail(&temporary, e))?;
+        std::fs::rename(&temporary, &path).map_err(|e| fail(&path, e))?;
+    }
+    Ok(())
+}
+
+/// The shared file of the security key `ident` taken away: this device
+/// stopped using it ([`forget`]).
+fn unshare_card(shared: &Path, ident: &str) {
+    let _ = std::fs::remove_file(shared.join(shared_name(ident)));
+}
+
+pub(crate) fn change_known_at<T>(path: &Path, change: impl FnOnce(&mut Vec<KnownCard>) -> T) -> Result<T, String> {
     crate::filelock::with_lock(path, || {
         let mut cards = read_known(path);
         let result = change(&mut cards);
@@ -1041,15 +1175,23 @@ pub fn adopt(card: &CardInfo, cert: &Cert, source: &str, addresses: Vec<String>,
 }
 
 /// Stops using the security key `ident`: it leaves `cards.toml`, and its
-/// certificate leaves your keys for `pgp/removed` (never deleted).
-pub fn forget(ident: &str) -> Result<(), String> {
-    let cert = change_known(|cards| {
+/// certificate leaves your keys for `pgp/removed` (never deleted); your
+/// other devices stop counting it too (its shared file goes). A key this
+/// device only learnt from another (a phone's) is stopped there, where it
+/// was read: `Err(None)`.
+pub fn forget(ident: &str) -> Result<(), Option<String>> {
+    if !known_cards().iter().any(|c| c.ident.eq_ignore_ascii_case(ident)) {
+        return Err(None);
+    }
+    let cert = change_known_at(&cards_path(), |cards| {
         let cert = cards.iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|c| c.cert.clone());
         cards.retain(|c| !c.ident.eq_ignore_ascii_case(ident));
         cert
-    })?;
+    })
+    .map_err(Some)?;
+    unshare_card(&shared_cards_dir(), ident);
     match cert {
-        Some(cert) => crate::pgp::remove(&cert),
+        Some(cert) => crate::pgp::remove(&cert).map_err(Some),
         None => Ok(()),
     }
 }
@@ -1321,10 +1463,18 @@ impl SoftCard {
     /// and its certificate, armored, public parts only. For the crates that
     /// do not use Sequoia themselves.
     pub fn generate(ident: &str, userids: &[&str], pin: &str) -> Result<(SoftCard, Vec<u8>), String> {
-        use openpgp::serialize::SerializeInto;
+        SoftCard::generate_dated(ident, userids, pin, None)
+    }
+
+    /// The same, made at a time and valid so long from then (`dated`): a key
+    /// expired, for tests.
+    pub fn generate_dated(ident: &str, userids: &[&str], pin: &str, dated: Option<(SystemTime, Duration)>) -> Result<(SoftCard, Vec<u8>), String> {
         let mut builder = CertBuilder::new().set_cipher_suite(CipherSuite::Cv25519).set_primary_key_flags(openpgp::types::KeyFlags::empty().set_certification().set_signing()).add_transport_encryption_subkey();
         for userid in userids {
             builder = builder.add_userid(*userid);
+        }
+        if let Some((made, valid)) = dated {
+            builder = builder.set_creation_time(made).set_validity_period(valid);
         }
         let (cert, _) = builder.generate().map_err(|e| e.to_string())?;
         let public = cert.clone().strip_secret_key_material().armored().to_vec().map_err(|e| e.to_string())?;
@@ -1653,7 +1803,6 @@ pub(crate) mod x25519 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openpgp::cert::prelude::*;
     use openpgp::crypto::Signer as _;
     use openpgp::types::KeyFlags;
 

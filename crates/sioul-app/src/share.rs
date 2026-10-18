@@ -1668,6 +1668,8 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     HURRY.store(true, std::sync::atomic::Ordering::Relaxed);
     let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
+    // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards`).
+    let _ = sioul_core::securitykey::share_cards_if_missing();
     let stores = stores_here(&here);
     let memory = memory_path();
     // A bulk import of texts going on: no full round meanwhile (`share::set_importing`).
@@ -1780,6 +1782,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // texts: the phone's step (read, decide, send), the clock, the trims;
         // what its thread reads or brings then said to the window.
         crate::texts::before_exchange(Some(&qt));
+        // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards`).
+        let _ = sioul_core::securitykey::share_cards_if_missing();
         let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();

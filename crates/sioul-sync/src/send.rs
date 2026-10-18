@@ -83,10 +83,12 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
     let name = account.name.clone().unwrap_or_default();
     let address = account.address.clone().unwrap_or_default();
     let date = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
-    // Your key, when you have one for this address: it signs, it reads what is
-    // encrypted to you, and Autocrypt hands it to whom you write.
+    // Your key, when you have one for this address: it signs; your own
+    // certificate (your security key's on every device, as your computer read
+    // it) reads what is encrypted to you, and Autocrypt hands it to whom you write.
     let own = keys.own_for(&address);
-    let autocrypt = own.as_ref().and_then(|o| pgp::autocrypt_header(o.cert, &address));
+    let yours = keys.self_cert_for(&address);
+    let autocrypt = yours.and_then(|cert| pgp::autocrypt_header(cert, &address));
     let say = |id: &str, pairs: &[(&str, String)]| {
         let mut args = sioul_core::i18n::args();
         for (name, value) in pairs {
@@ -134,8 +136,12 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
             for recipient in draft.recipients() {
                 encrypt_to.push(keys.for_address(&recipient).ok_or_else(|| say("pgp-missing-key", &[("address", recipient.clone())]))?);
             }
-            // Yours too, to read it again in Sent.
-            encrypt_to.extend(own.as_ref().map(|o| o.cert));
+            // Yours too, to read it again in Sent (an expired certificate of yours: the window said so first).
+            if let Some(cert) = yours
+                && !encrypt_to.iter().any(|c| c.fingerprint() == cert.fingerprint())
+            {
+                encrypt_to.push(cert);
+            }
         }
         Some(compose::Protection { sign: signer, encrypt_to })
     } else {
@@ -387,5 +393,63 @@ mod tests {
         assert_eq!(readers.card("0006:12345678", |c| c.operations), Some(1));
         // The CLI and the end of the ten seconds say where to send it from.
         assert!(BuildError::CardNeeded("x".into()).into_sync(&tr).detail().contains("window"));
+    }
+
+    /// Batch A (18 October 2026): a phone that knows your security key only
+    /// by what your computer shared (its certificate, public parts) encrypts
+    /// to the recipients and to you, every recipient once, none dropped nor
+    /// added, and hands your key by Autocrypt; your security key opens the
+    /// sent copy. A recipient whose key is unknown stops it, said.
+    #[test]
+    fn the_phone_encrypts_to_its_recipients_and_to_you() {
+        let (card, public) = SoftCard::generate("0006:12345678", &["Card Holder <me@example.org>"], "123456").unwrap();
+        let mine = pgp::certificates_in(&public);
+        let known = KnownCard {
+            ident: "0006:12345678".into(),
+            sign: card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: mine[0].fingerprint().to_hex(),
+            addresses: vec!["me@example.org".into()],
+            ..KnownCard::default()
+        };
+        // Jane's key, on a stand-in card of hers.
+        let (jane_card, jane_public) = SoftCard::generate("0006:00000002", &["Jane <jane@example.org>"], "654321").unwrap();
+        let jane_cert = pgp::certificates_in(&jane_public);
+        let jane_known = KnownCard {
+            ident: "0006:00000002".into(),
+            sign: jane_card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: jane_card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: jane_cert[0].fingerprint().to_hex(),
+            addresses: vec!["jane@example.org".into()],
+            ..KnownCard::default()
+        };
+        let keys = Keys { own: mine.clone(), others: jane_cert.clone(), cards: vec![known] };
+        let account: Account = toml::from_str("id = \"me\"\naddress = \"me@example.org\"\nname = \"Card Holder\"\n").unwrap();
+        let mut draft = Draft::new("me");
+        draft.to = vec!["Jane <jane@example.org>".into()];
+        draft.subject = "Encrypted from the phone".into();
+        draft.body = "Hello Jane.".into();
+        draft.encrypt = true;
+        let tr = Translator::new("en");
+        let outgoing = build_draft_with(&keys, &account, &draft, &tr, None).unwrap();
+        let text = String::from_utf8_lossy(&outgoing.raw).to_string();
+        assert!(text.contains("multipart/encrypted") && text.contains("Autocrypt: addr=me@example.org"), "{text}");
+        // Encrypted to Jane's key and to yours, no other (`sioul_core::pgp`'s own
+        // tests open such a copy with the key itself).
+        let recipients = pgp::recipients_of(&outgoing.raw);
+        let decrypts = [jane_known.decrypt.clone(), keys.cards[0].decrypt.clone()];
+        assert_eq!(recipients.len(), 2, "{recipients:?}");
+        for recipient in &recipients {
+            assert!(decrypts.iter().any(|d| !recipient.is_empty() && d.to_ascii_uppercase().ends_with(&recipient.to_ascii_uppercase())), "{recipient} among {decrypts:?}");
+        }
+        assert!(decrypts.iter().all(|d| recipients.iter().any(|r| d.to_ascii_uppercase().ends_with(&r.to_ascii_uppercase()))), "Jane and you");
+        let _ = (jane_card, card);
+        // The phone opens it: nothing of the key there, said (`PgpView::security_key`).
+        let sessions = SessionKeys::new();
+        let (opened, view) = pgp::open(&outgoing.raw, &keys, &Unlock::new(&|_| None, &sessions)).unwrap();
+        assert!(opened.is_none() && view.security_key.as_deref() == Some("0006:12345678"), "{view:?}");
+        // A recipient without a key: stopped and said, never sent to fewer.
+        draft.to.push("Bob <bob@example.org>".into());
+        assert!(build_draft_with(&keys, &account, &draft, &tr, None).is_err());
     }
 }

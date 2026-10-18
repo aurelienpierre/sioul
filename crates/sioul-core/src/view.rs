@@ -1088,6 +1088,9 @@ fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
         parts.push(tr.text(
             if p.opened {
                 "pgp-encrypted"
+            } else if waits && p.key_elsewhere {
+                // A phone, until it can use the key: said plainly, no button.
+                "pgp-for-security-key-elsewhere"
             } else if waits {
                 "pgp-for-security-key"
             } else {
@@ -1110,7 +1113,7 @@ fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
             parts.push(tr.text("pgp-signature-bad", None));
         }
     }
-    ProtectionView { encrypted: p.encrypted, line: parts.join(" · "), fine, security_key: waits }
+    ProtectionView { encrypted: p.encrypted, line: parts.join(" · "), fine, security_key: waits && !p.key_elsewhere }
 }
 
 /// An account in the mail page's left column.
