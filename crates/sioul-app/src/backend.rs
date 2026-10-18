@@ -1642,9 +1642,16 @@ pub mod qobject {
         fn phone_messages(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
         /// texts: read and sent through your phone (`texts::call`): "view",
-        /// "conversation", "send", "again", "parts", "media", "save-media", "close", "setup", "ask", "part", "cap"; their JSON.
+        /// "conversation", "send", "send-mms", "again", "parts", "media", "save-media", "close",
+        /// "unattach", "setup", "ask", "part", "cap", "sending", "limit"; their JSON.
         #[qinvokable]
         fn texts(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
+        /// texts: the files chosen on the Texts page made fit for one
+        /// multimedia message (`texts::attach`: {round, id, phone, sources}),
+        /// off the window's thread: `texts_attached` brings them.
+        #[qinvokable]
+        fn texts_attach(self: Pin<&mut Sioul>, json: &QString);
 
         /// Settings ▸ What reaches you, as JSON (`reaches::view`): the moment
         /// now in sentences, the presets, a card per time, the matrix's grid.
@@ -1853,6 +1860,11 @@ pub mod qobject {
         /// What switching Notes or Papers on would send (`share_estimate`), as JSON {"part", "text"}.
         #[qsignal]
         fn share_estimated(self: Pin<&mut Sioul>, estimate: QString);
+
+        /// The files chosen on the Texts page made fit (`texts_attach`), as
+        /// JSON {round, media, said, limit, max}.
+        #[qsignal]
+        fn texts_attached(self: Pin<&mut Sioul>, attached: QString);
 
         /// The spam filter's training moved on, or ended: its state, as `spam_status` gives it.
         #[qsignal]
@@ -6023,6 +6035,14 @@ impl qobject::Sioul {
         crate::health::show_health(&self.qt_thread(), &self.shared());
         crate::share::exchange(&self.qt_thread(), &self.shared());
         QString::from(&problem)
+    }
+
+    fn texts_attach(self: Pin<&mut Self>, json: &QString) {
+        let (qt, json) = (self.qt_thread(), json.to_string());
+        std::thread::spawn(move || {
+            let attached = crate::texts::attach(&json);
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().texts_attached(QString::from(&attached)));
+        });
     }
 
     fn share_estimate(self: Pin<&mut Self>, part: &QString) {

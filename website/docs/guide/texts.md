@@ -1,5 +1,5 @@
 ---
-description: Texts on your computer with Sioul - all your phone's texts and their pictures read on your computer, kept sealed through your own sharing, and texts written there that your phone sends, each once, with what became of it said plainly.
+description: Texts on your computer with Sioul - all your phone's texts and their pictures read on your computer, kept sealed through your own sharing, and texts and pictures written there that your phone sends, each once, with what became of it said plainly.
 ---
 
 # Texts: read and sent from your computer {#texts-read-and-sent-from-your-computer}
@@ -20,7 +20,7 @@ Your phone's texts can be read on your computer, and a text written there can be
 - **On the right, the conversation you open**, as a thread: the whole history in time order, each day said once, your texts on the right and theirs on the left. A text that comes shows at once, without leaving the page; what you were typing, and where you were reading, stay.
 - **Multimedia messages**: a picture shows in its message; a sound, a video, a contact card or another file says its kind and size, with **Open** and **Save…**. A file over the size chosen on the phone (10 MB unless you choose another) stays there, and the page says so; carriers keep multimedia messages small, so nearly all come.
 - **A text deleted on your phone** stays here, said so quietly.
-- **Writing**, under the thread: an AI agent's drafts first, if one left some (**Use it** puts their words in the box; sending stays yours), then the box. The page says how many texts yours will take. Accents and signs outside the texts' own alphabet leave fewer characters per text.
+- **Writing**, under the thread: an AI agent's drafts first, if one left some (**Use it** puts their words in the box; sending stays yours), then the box. The page says how many texts yours will take. Accents and signs outside the texts' own alphabet leave fewer characters per text. **Attach**, under **Send**, adds pictures and files ([below](#pictures-and-files)).
 - **The keyboard**: Up and Down move in the list and Enter opens a conversation; Escape closes it.
 - **In a narrow window**, as in Mail: the list, then the conversation, and Back.
 - **What became of a text you sent**, in words: waiting for your phone (and when it last shared), sending, sent at, delivered at (only when your carrier says so), not sent and why, expired, or "Your phone may not have sent it", when Sioul cannot know. **Send again** makes a new text; nothing is ever sent again by itself.
@@ -30,11 +30,20 @@ Your phone's texts can be read on your computer, and a text written there can be
 
 A text written on a computer waits in your sharing until your phone takes it. The phone writes it down in a private ledger before it hands it to Android, so it is never sent twice, whatever happens to the sharing. A text that waited more than 15 minutes for the phone is not sent: the page says so, and you choose whether to send it again. Android retries by itself when the network fails; Sioul does not.
 
-**Not sent from a computer**: short numbers, which can cost money; a text to several people at once, which is a multimedia message; pictures. Send those from your phone.
+**Not sent from a computer**: short numbers, which can cost money; a text to several people at once, which is a multimedia message. Send those from your phone.
+
+## Pictures and files {#pictures-and-files}
+
+- **Attach**, under **Send**, or files dropped on the page: pictures, videos, sounds and contact cards go with your words as one multimedia message, which your phone sends. **Attach** shows once your phone has said what its carrier takes: its Sioul up to date, after its next share.
+- **Made fit on your computer, before anything leaves it.** A picture is always written again as a JPEG, at most 1,600 pixels on its long side, its quality lowered, then its size, until it fits; it keeps no detail of where, with what or when it was taken ([Private](#private)). PNG, WebP, TIFF, BMP and still GIF pictures become JPEGs too; a HEIC where your computer can read it (Linux with KDE's image formats, macOS), else it is refused: send it from your phone. An animated GIF, a video, a sound or a card goes as it is when it fits, else it is refused in words: nothing is converted. Other files, a PDF say: send them by mail.
+- **Five at most** a message, sharing its size: the pictures share what the others leave.
+- **What you see**: each one as it will go, a picture as it was made, with its size; why any did not go; and under **Send**, "One multimedia message (412 kB of 600 kB)".
+- **How large**: Settings ▸ Texts, on each computer: up to your carrier's limit (600 kB with French carriers), or 300 kB, for older phones and some networks abroad. Your phone shows its carrier's values in Settings ▸ This phone ▸ Texts.
+- **Sent** only when Android and your carrier both said so. Your phone needs mobile data for it: when it is off, the page says so. Never "Delivered" for a multimedia message: Sioul asks your carrier for no report. Your plan decides what a multimedia message costs, abroad especially.
 
 ## Private {#private}
 
-Your texts and their media travel through your own sharing folder, sealed with your passphrase, and are sealed again on each computer that keeps them, with a key only your devices hold. The folder's server sees which device wrote and when, never what, nor how long each text is. To show a picture or open a file, the page writes a copy for you alone, and deletes it when the page closes. Turn the part off on a computer, and nothing more comes to it.
+Your texts and their media travel through your own sharing folder, sealed with your passphrase, and are sealed again on each computer that keeps them, with a key only your devices hold. The folder's server sees which device wrote and when, never what, nor how long each text is. To show a picture or open a file, the page writes a copy for you alone, and deletes it when the page closes. A picture you attach is written again on your computer before anything leaves it, from its pixels alone: no place, no camera, no time, no comment goes with it, and its file's name never does ([what a sent picture keeps and loses](privacy-security.md#pictures-sent-by-text)). Turn the part off on a computer, and nothing more comes to it.
 
 ## An archive {#an-archive}
 

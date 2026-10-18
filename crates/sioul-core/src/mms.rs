@@ -79,6 +79,21 @@ pub fn size(message: &Message) -> Result<usize, Refused> {
     Ok(count.0)
 }
 
+/// How many bytes the message is once its media hold `lengths` bytes each,
+/// given with their content types alone (`media`' bytes left empty): what a
+/// computer's page counts as words are typed, never reading the media again.
+/// The same number `size` gives the message whole: a part's headers do not
+/// depend on its bytes, only its data's length does (a uintvar).
+pub fn size_with_lengths(message: &Message, lengths: &[usize]) -> Result<usize, Refused> {
+    let empty = size(message)?;
+    let grown = lengths.iter().map(|&length| {
+        let mut count = Count(0);
+        uintvar(&mut count, length);
+        length + count.0 - 1
+    });
+    Ok(empty + grown.sum::<usize>())
+}
+
 /// The bytes left under `limit` (the carrier's, else the one chosen) for the
 /// media's own bytes, all of them together, for a message whose media are
 /// given empty (their content types alone): its size so, taken from the
@@ -107,6 +122,11 @@ pub fn address(number: &str) -> Option<String> {
     }
     (out.chars().filter(char::is_ascii_digit).count() >= 3).then_some(out)
 }
+
+/// The longest number a message goes to (E.164's 15 digits after its `+`),
+/// for a measure that holds whatever number the phone then writes: a
+/// computer measures a message with it, never shorter than the phone's own.
+pub const LONGEST_NUMBER: &str = "+000000000000000";
 
 /// The carrier's answer to a message sent (M-Send.conf, ENC 6.1.2), as
 /// Android hands it back with its result (`SmsManager.EXTRA_MMS_DATA`).
@@ -847,6 +867,18 @@ mod tests {
         for media in [vec![Medium { ct: "image/jpeg", bytes: &large }], vec![Medium { ct: "image/png", bytes: &small }; 5], vec![]] {
             let message = Message { key: KEY, to: &["0536494242"], date: WRITTEN, words: &words, media: &media };
             assert_eq!(size(&message), Ok(encode(&message).unwrap().len()));
+        }
+    }
+
+    /// The size counted from the media's lengths alone is the message's own.
+    #[test]
+    fn the_size_from_lengths_is_the_message_s_own() {
+        for lengths in [vec![0usize], vec![127, 128], vec![16_383, 16_384, 1], vec![600_000], vec![3, 30_000, 2_097_152]] {
+            let blobs: Vec<Vec<u8>> = lengths.iter().map(|&n| stand_in(n, n as u8)).collect();
+            let full: Vec<Medium> = blobs.iter().map(|bytes| Medium { ct: "image/jpeg", bytes }).collect();
+            let empty: Vec<Medium> = lengths.iter().map(|_| Medium { ct: "image/jpeg", bytes: &[] }).collect();
+            let message = Message { key: KEY, to: &["0199001234"], date: WRITTEN, words: "Le dîner.", media: &full };
+            assert_eq!(size_with_lengths(&Message { media: &empty, ..message }, &lengths), size(&message), "{lengths:?}");
         }
     }
 

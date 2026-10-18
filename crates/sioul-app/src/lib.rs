@@ -116,6 +116,9 @@ mod access;
 mod alarms;
 mod appnotes;
 // Mail attachments on a phone: opened in the app you choose, saved where you choose (docs/client.md, "Antivirus").
+// texts: what a computer attaches, made fit for a multimedia message (pictures with Qt: cpp/pictures.cpp).
+#[cfg(not(target_os = "android"))]
+mod attach;
 mod attachments;
 mod backend;
 mod bank;
@@ -435,6 +438,39 @@ pub fn icons_lacking(names: &[String], dark: bool) -> Vec<String> {
 #[doc(hidden)]
 pub fn icon_theme() -> String {
     desktop::theme_in_use()
+}
+
+/// For the test of attaching (tests/attach.rs): what a picture is here: its
+/// format by its first bytes (`attach::sniff`), whether this computer's Qt
+/// reads it, and decoded (its long side at most 1,600 pixels), its width,
+/// height and frames. The application must be made first.
+#[doc(hidden)]
+#[cfg(not(target_os = "android"))]
+pub fn picture_read(path: &std::path::Path) -> (String, bool, Option<(u32, u32, u32)>) {
+    let Some(format) = attach::head_of(path).as_deref().and_then(attach::sniff) else { return (String::new(), false, None) };
+    let reads = attach::Picture::reads(format);
+    let decoded = attach::Picture::open(path, format, attach::FIRST_SIDE).map(|p| (p.width, p.height, p.frames));
+    (format.to_string(), reads, decoded)
+}
+
+/// For the test of attaching: a picture made fit for a share of a message's
+/// bytes (`attach::reduce`): its long side, quality and size; none when it
+/// cannot be made small enough.
+#[doc(hidden)]
+#[cfg(not(target_os = "android"))]
+pub fn picture_reduced(source: &std::path::Path, share: u64, advised: u32, out: &std::path::Path) -> Option<(u32, u8, u64)> {
+    attach::reduce(source, share, advised, out)
+}
+
+/// For the test of attaching: the files chosen made fit for one message
+/// under `limit` bytes (`attach::make`), into `folder`: those that go (kind,
+/// content type, file, size) and those that do not (the file chosen, why).
+#[doc(hidden)]
+#[cfg(not(target_os = "android"))]
+#[allow(clippy::type_complexity)]
+pub fn attach_made(sources: &[std::path::PathBuf], limit: u64, advised: u32, folder: &std::path::Path) -> (Vec<(String, String, String, u64)>, Vec<(String, String)>) {
+    let (made, left) = attach::make(sources, limit, advised, folder);
+    (made.into_iter().map(|m| (m.kind, m.ct, m.path, m.size)).collect(), left.into_iter().map(|l| (l.source, l.why.to_string())).collect())
 }
 
 /// A widgets application (QApplication), as the QGuiApplication CXX-Qt works

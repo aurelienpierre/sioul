@@ -141,6 +141,11 @@ struct Choice {
     phone: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     media_cap_mb: Option<u64>,
+    /// On a computer, the most a multimedia message from here may weigh,
+    /// below the carrier's (kB: 300, for older phones and some networks
+    /// abroad); none, the carrier's own (Settings ▸ Texts).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mms_kb: Option<u64>,
 }
 
 fn choice_path() -> PathBuf {
@@ -1875,7 +1880,9 @@ fn with_drafts(conversations: Vec<rules::Conversation>, drafts: &[sioul_core::te
     Value::Array(out)
 }
 
-/// One conversation (TextsPage.qml): {id, title, messages, can_write, group}.
+/// One conversation (TextsPage.qml): {id, title, messages, can_write, group,
+/// attach (Attach offered: the phone said what its carrier takes), attach_said
+/// (else why not)}.
 fn conversation(id: &str) -> Value {
     let Some((here, seal, _)) = sealed() else { return json!({ "messages": [] }) };
     let (config, senders) = looks();
@@ -1891,6 +1898,7 @@ fn conversation(id: &str) -> Value {
     let title = with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
     // What an AI agent drafted for it: waiting for you, never sent by itself.
     let drafts: Vec<Value> = sioul_core::textdraft::all(&seal).into_iter().filter(|d| d.conversation == id).map(|d| json!({ "id": d.id, "body": d.body, "when": rules::time_of_day(d.written, &now) })).collect();
+    let attach = attach_limit(phone.as_ref(), id);
     json!({
         "id": id,
         "title": title,
@@ -1898,6 +1906,8 @@ fn conversation(id: &str) -> Value {
         "drafts": drafts,
         "can_write": with.len() == 1,
         "group": with.len() > 1,
+        "attach": attach.is_ok(),
+        "attach_said": attach.err().map_or(String::new(), |key| tr().text(key, None)),
     })
 }
 
@@ -1985,6 +1995,249 @@ pub(crate) fn send_mms(to: &str, words: &str, media: &[(String, Vec<u8>)], from:
         }
     }
     request_mms(to, words, named, "", from)
+}
+
+/// What one multimedia message from here may weigh (decision 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Weigh {
+    /// The phone has not said what its carrier takes (its Sioul older, or not
+    /// stepped since its update): no media offered yet.
+    Unknown,
+    /// Its carrier takes no multimedia messages from it.
+    None,
+    /// At most these bytes, whole; the carrier's largest picture's long side (0 none).
+    Up { max: u64, side: u32 },
+}
+
+/// The smaller choice of Settings ▸ Texts (kB).
+const LOW_KB: u64 = 300;
+
+/// What one multimedia message from here to a conversation (`id`, its
+/// number's key) may weigh, from a phone (decision 5): as the phone last
+/// said its carriers take (`texts::limits_of`), for the SIM the conversation
+/// last used (`weighed`).
+fn weigh(phone: &str, id: &str) -> Weigh {
+    let Some((here, seal, _)) = sealed() else { return Weigh::Unknown };
+    let (texts, _, outcomes) = records(&here, &seal);
+    weighed(rules::limits_of(&outcomes, phone).map(|(_, limits)| limits), rules::last_sim(id, phone, &texts), choice().mms_kb)
+}
+
+/// What a message may weigh by what the phone said (`limits`, none before
+/// it said): its carrier's for `sim` (the conversation's last; when it is
+/// unknown, -1, or the phone did not name it, the smallest of those that
+/// take multimedia messages), and no more than chosen here (`chosen_kb`,
+/// Settings ▸ Texts: 300 kB); with the carrier's largest picture's long side.
+fn weighed(limits: Option<&[rules::Limits]>, sim: i32, chosen_kb: Option<u64>) -> Weigh {
+    let Some(limits) = limits else { return Weigh::Unknown };
+    let carrier = limits.iter().find(|l| sim >= 0 && l.sub == sim).or_else(|| limits.iter().filter(|l| l.mms).min_by_key(|l| l.max)).or_else(|| limits.first());
+    match carrier {
+        None => Weigh::Unknown,
+        Some(l) if !l.mms => Weigh::None,
+        // A line with no size is none the phone wrote (`limits_from` keeps sizes only).
+        Some(l) if l.max == 0 => Weigh::Unknown,
+        Some(l) => Weigh::Up { max: chosen_kb.map_or(l.max, |kb| (kb * 1024).min(l.max)), side: l.width.max(l.height) },
+    }
+}
+
+/// Where the files attached on the page wait, made fit (Sioul's cache, yours alone).
+fn attached_folder() -> PathBuf {
+    sioul_core::config::cache_dir().join("texts-attached")
+}
+
+/// Whether `path` is a file in `folder` (the files attached, made fit),
+/// its links and `..` resolved: none elsewhere is sent as a medium.
+fn made_in(folder: &Path, path: &Path) -> bool {
+    match (std::fs::canonicalize(folder), std::fs::canonicalize(path)) {
+        (Ok(folder), Ok(path)) => path.starts_with(&folder) && path != folder && path.is_file(),
+        _ => false,
+    }
+}
+
+/// One attaching at a time: a second one waits, then makes its own anew.
+static ATTACHING: Mutex<()> = Mutex::new(());
+/// Each attaching's turn, and each letting go's: an attaching whose turn
+/// passed (a newer one asked, or the files let go meanwhile) makes nothing,
+/// or deletes what it made. The window never waits on `ATTACHING`.
+static ATTACH_TURN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The files attached let go, and any attaching under way told so: the window's thread never waits.
+fn let_attached_go() {
+    ATTACH_TURN.fetch_add(1, Ordering::SeqCst);
+    let _ = std::fs::remove_dir_all(attached_folder());
+}
+
+/// The files chosen on the page (`sources`, files or their addresses) made
+/// fit for one multimedia message to a conversation (`attach::make`; what an
+/// earlier attaching made goes first), off the window's thread:
+/// {round (as asked: the page keeps its latest), media: [{source, kind, ct,
+/// path, url, size, said}], said: [why each other did not go], limit (its
+/// words), max (bytes)}. Nothing travels until Send.
+pub(crate) fn attach(json: &str) -> String {
+    let asked: Value = serde_json::from_str(json).unwrap_or_default();
+    let tr = tr();
+    let round = asked["round"].as_i64().unwrap_or(0);
+    let id = asked["id"].as_str().unwrap_or_default().to_string();
+    let from = asked["phone"].as_str().unwrap_or_default();
+    let phone = if from.is_empty() || (demo() && !phone()) { sending_phone() } else { phones().into_iter().find(|p| p.id == from) };
+    let sources: Vec<PathBuf> = asked["sources"].as_array().map(|all| all.iter().filter_map(|s| s.as_str()).map(crate::backend::local_path).filter(|p| !p.as_os_str().is_empty()).collect()).unwrap_or_default();
+    let turn = ATTACH_TURN.fetch_add(1, Ordering::SeqCst) + 1;
+    let (max, side) = match attach_limit(phone.as_ref(), &id) {
+        Ok(limit) => limit,
+        Err(key) => return json!({ "round": round, "media": [], "said": [tr.text(key, None)], "limit": "", "max": 0 }).to_string(),
+    };
+    let _one = ATTACHING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let passed = || ATTACH_TURN.load(Ordering::SeqCst) != turn;
+    if passed() {
+        return json!({ "round": round, "media": [], "said": [], "limit": "", "max": 0 }).to_string();
+    }
+    let made = attach_made(&sources, max, side, round);
+    // Let go while it was made: nothing of it stays.
+    if passed() {
+        let _ = std::fs::remove_dir_all(attached_folder());
+    }
+    made
+}
+
+/// What a multimedia message from here to a conversation may weigh (bytes)
+/// and its pictures' long side at most (0 none), from the phone that sends
+/// (`weigh`); else why nothing can be attached, its words' key: no phone, a
+/// group (a later step), the phone not having said what its carrier takes
+/// (Attach is offered only once it has, decision 11), its carrier taking none.
+fn attach_limit(phone: Option<&sioul_sync::devices::Entry>, id: &str) -> Result<(u64, u32), &'static str> {
+    let Some(phone) = phone else { return Err("texts-page-no-phone") };
+    if id.contains(',') {
+        return Err("texts-group-read-only");
+    }
+    match weigh(&phone.id, id) {
+        Weigh::Unknown => Err("texts-attach-gate"),
+        Weigh::None => Err("texts-sending-no-mms"),
+        Weigh::Up { max, side } => Ok((max, side)),
+    }
+}
+
+/// The files chosen made fit (`attach::make`), on a computer.
+#[cfg(not(target_os = "android"))]
+fn attach_made(sources: &[PathBuf], max: u64, side: u32, round: i64) -> String {
+    let tr = tr();
+    let folder = attached_folder();
+    let _ = std::fs::remove_dir_all(&folder);
+    let (made, left) = crate::attach::make(sources, max, side, &folder);
+    let media: Vec<Value> = made
+        .iter()
+        .map(|m| {
+            let mut args = sioul_core::i18n::args();
+            args.set("size", size_words(m.size));
+            // The file chosen, for the page to make them again (one removed); never sent.
+            json!({ "source": m.source, "kind": m.kind, "ct": m.ct, "path": m.path, "url": crate::backend::file_url(Path::new(&m.path)), "size": m.size, "said": tr.text(&format!("texts-attached-{}", m.kind), Some(&args)) })
+        })
+        .collect();
+    let said: Vec<String> = left
+        .iter()
+        .map(|l| {
+            let mut args = sioul_core::i18n::args();
+            args.set("name", Path::new(&l.source).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+            args.set("size", size_words(l.size));
+            args.set("limit", size_words(max));
+            args.set("kind", l.format);
+            tr.text(&format!("texts-attach-left-{}", l.why), Some(&args))
+        })
+        .collect();
+    json!({ "round": round, "media": media, "said": said, "limit": size_words(max), "max": max }).to_string()
+}
+
+/// A phone attaches nothing: it is the one that sends.
+#[cfg(target_os = "android")]
+fn attach_made(_: &[PathBuf], _: u64, _: u32, round: i64) -> String {
+    json!({ "round": round, "media": [], "said": [tr().text("texts-refused-other", None)], "limit": "", "max": 0 }).to_string()
+}
+
+/// How much a multimedia message takes, as its words are typed: {parts,
+/// said ("One multimedia message (412 kB of 600 kB)"), over, max (bytes)},
+/// its media counted by their lengths alone (`mms::size_with_lengths`).
+fn parts_mms(body: &str, media: &[Value], id: &str, from: &str) -> Value {
+    let phone = if from.is_empty() || (demo() && !phone()) { sending_phone() } else { phones().into_iter().find(|p| p.id == from) };
+    let max = match phone.map(|p| weigh(&p.id, id)) {
+        Some(Weigh::Up { max, .. }) => max,
+        _ => 0,
+    };
+    let cts: Vec<String> = media.iter().map(|m| m["ct"].as_str().unwrap_or("application/octet-stream").to_string()).collect();
+    let lengths: Vec<usize> = media.iter().map(|m| m["size"].as_u64().unwrap_or(0) as usize).collect();
+    let empty: Vec<sioul_core::mms::Medium> = cts.iter().map(|ct| sioul_core::mms::Medium { ct, bytes: &[] }).collect();
+    let key = "0".repeat(32);
+    // To the longest number, as the media were made (`attach::room_for`): never less than the phone's own.
+    let message = sioul_core::mms::Message { key: &key, to: &[sioul_core::mms::LONGEST_NUMBER], date: jiff::Timestamp::now().as_second(), words: body, media: &empty };
+    let size = sioul_core::mms::size_with_lengths(&message, &lengths).unwrap_or(0) as u64;
+    let mut args = sioul_core::i18n::args();
+    args.set("size", size_words(size));
+    args.set("limit", size_words(max));
+    json!({ "parts": 1, "said": tr().text("texts-parts-mms", Some(&args)), "over": max > 0 && size > max, "max": max })
+}
+
+/// Settings ▸ Texts, on a computer: how much a multimedia message from here
+/// may weigh, the carrier's or less (300 kB), and what the phone said its
+/// carrier takes, read only. {limit: a setting's row, phone: its lines}.
+fn sending() -> Value {
+    let tr = tr();
+    let phone = sending_phone();
+    let limits = sealed().map(|(here, seal, _)| records(&here, &seal).2).and_then(|outcomes| phone.as_ref().and_then(|p| rules::limits_of(&outcomes, &p.id).map(|(_, l)| l.to_vec()))).unwrap_or_default();
+    let carrier = limits.iter().filter(|l| l.mms).map(|l| l.max).min().unwrap_or(614_400);
+    let size = |bytes: u64| {
+        let mut args = sioul_core::i18n::args();
+        args.set("size", size_words(bytes));
+        args
+    };
+    let lines = limit_lines(&limits);
+    let choices = vec![json!({ "value": "carrier", "label": tr.text("texts-sending-limit-carrier", Some(&size(carrier))) }), json!({ "value": "300", "label": tr.text("texts-sending-limit-low", Some(&size(LOW_KB * 1024))) })];
+    json!({
+        "limit": { "key": "limit", "kind": "choice", "label": tr.text("texts-sending-limit", None), "help": tr.text("texts-sending-limit-help", None), "value": if choice().mms_kb.is_some() { "300" } else { "carrier" }, "choices": choices },
+        "phone": lines,
+    })
+}
+
+/// What a phone's carriers take, in words, read only: one line, or one a SIM
+/// in its order ("SIM 2: multimedia messages up to 600 kB. Pictures up to
+/// 2592 × 1944 pixels."); none said yet.
+fn limit_lines(limits: &[rules::Limits]) -> Vec<String> {
+    let tr = tr();
+    let size = |bytes: u64| {
+        let mut args = sioul_core::i18n::args();
+        args.set("size", size_words(bytes));
+        args
+    };
+    // The picture size the carrier advises, which the pictures attached on a computer keep to.
+    let pictures = |l: &rules::Limits| {
+        if l.width == 0 || l.height == 0 {
+            return String::new();
+        }
+        let mut args = sioul_core::i18n::args();
+        args.set("width", i64::from(l.width));
+        args.set("height", i64::from(l.height));
+        format!(" {}", tr.text("texts-sending-pictures", Some(&args)))
+    };
+    match limits {
+        [] => vec![tr.text("texts-sending-phone-none", None)],
+        [one] if one.mms => vec![tr.text("texts-sending-phone", Some(&size(one.max))) + &pictures(one)],
+        [_] => vec![tr.text("texts-sending-no-mms", None)],
+        several => several
+            .iter()
+            .enumerate()
+            .map(|(n, l)| {
+                let mut args = size(l.max);
+                args.set("sim", i64::try_from(n + 1).unwrap_or(0));
+                if l.mms { tr.text("texts-sending-phone-sim", Some(&args)) + &pictures(l) } else { tr.text("texts-sending-no-mms-sim", Some(&args)) }
+            })
+            .collect(),
+    }
+}
+
+/// The most a multimedia message from here may weigh: the carrier's ("carrier") or 300 kB ("300").
+fn set_limit(value: &str) -> Result<(), String> {
+    let path = choice_path();
+    sioul_core::filelock::with_lock(&path, || {
+        let mut chosen = choice();
+        chosen.mms_kb = (value.trim() == "300").then_some(LOW_KB);
+        write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
+    })
 }
 
 /// A multimedia message's request, its media sealed in the sharing already.
@@ -2115,6 +2368,8 @@ fn setup() -> Value {
         // read which); before, a question refused for good ("at-once").
         "guard": guard(&state),
         "cap": { "key": "cap", "kind": "choice", "label": tr.text("texts-setup-cap", None), "help": tr.text("texts-setup-cap-help", None), "value": cap_mb().to_string(), "choices": choices },
+        // What its carriers take for a multimedia message, as Android says it now: read only (decision 5).
+        "limits": if android { limit_lines(&limits_from(&crate::steps::java("texts-limits", "{}"))) } else { Vec::new() },
     })
 }
 
@@ -2150,9 +2405,13 @@ fn set_cap(value: &str) -> Result<(), String> {
 
 /// What the window asks (`Sioul::texts`): "view" {query}, "conversation" {id},
 /// "send" {to, body}, "send-mms" {to, words, media: [{ct, path}], phone} (a
-/// multimedia message, its media reduced already), "again" {key}, "parts" {body}, "media" {hash, ct} (its
+/// multimedia message, its media made fit already by `attach`: a file
+/// elsewhere is refused), "again" {key}, "parts"
+/// {body, media: [{ct, size}], id, phone} (with media, how much the message
+/// takes), "sending" and "limit" {value} (Settings ▸ Texts on a computer), "media" {hash, ct} (its
 /// address, to show or open it), "save-media" {hash, ct, path}, "close" (the
-/// page closed: the media opened for it deleted), "setup", "ask" (Android's
+/// page closed: the media opened for it and the files attached deleted),
+/// "unattach" (the files attached let go), "setup", "ask" (Android's
 /// question for the permissions), "info" (Sioul's app info), "part" {on},
 /// "cap" {value}; and "access…", what Android withholds here (`access::call`).
 /// Its JSON, and whether what travels changed (to share now).
@@ -2166,15 +2425,39 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
         // A multimedia message: its media reduced already, each {ct, path} (a file of this device's).
         "send-mms" => {
             let asked_media = asked["media"].as_array().cloned().unwrap_or_default();
-            let media: Vec<(String, Vec<u8>)> = asked_media.iter().filter_map(|m| Some((m["ct"].as_str()?.to_string(), std::fs::read(crate::backend::local_path(m["path"].as_str()?)).ok()?))).collect();
+            // Only files the page made fit (`attach`, its own folder): never one as it was chosen, with its own details.
+            let folder = attached_folder();
+            let media: Vec<(String, Vec<u8>)> = asked_media
+                .iter()
+                .filter_map(|m| {
+                    let path = crate::backend::local_path(m["path"].as_str()?);
+                    made_in(&folder, &path).then_some(())?;
+                    Some((m["ct"].as_str()?.to_string(), std::fs::read(&path).ok()?))
+                })
+                .collect();
             if media.len() == asked_media.len() {
-                send_mms(&text("to"), &text("words"), &media, &text("phone"))
+                let sent = send_mms(&text("to"), &text("words"), &media, &text("phone"));
+                // Sealed into the sharing and here: the files made fit for it go.
+                if sent.1 {
+                    let_attached_go();
+                }
+                sent
             } else {
                 (json!({ "said": tr().text("texts-refused-other", None), "shared": false }), false)
             }
         }
         "again" => again(&text("key")),
-        "parts" => (parts(&text("body")), false),
+        "parts" => match asked["media"].as_array().filter(|media| !media.is_empty()) {
+            Some(media) => (parts_mms(&text("body"), media, &text("id"), &text("phone")), false),
+            None => (parts(&text("body")), false),
+        },
+        "sending" => (sending(), false),
+        "limit" => {
+            let problem = set_limit(&text("value")).err().unwrap_or_default();
+            let mut tab = sending();
+            tab["said"] = json!(problem);
+            (tab, false)
+        }
         // An AI agent's draft: its words for the box, or gone; nothing is sent.
         "draft-use" | "draft-discard" => (draft_taken(&text("id")), false),
         "media" => {
@@ -2191,6 +2474,12 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
         }
         "close" => {
             let _ = std::fs::remove_dir_all(opened_folder());
+            let_attached_go();
+            (json!({}), false)
+        }
+        // The files attached let go (removed from the box, another conversation).
+        "unattach" => {
+            let_attached_go();
             (json!({}), false)
         }
         "setup" => (setup(), false),
@@ -3234,6 +3523,61 @@ mod tests {
         assert!(!step.pdu_path(KEY_A).exists() && !step.pdu_path(KEY_B).exists());
         assert!(!step.decide(NOW + 42 * MINUTE) && carrier.handed.borrow().len() == 2, "never sent again");
         assert!(!step.look_for_lost(NOW + 60 * MINUTE), "said once");
+    }
+
+    /// Only the files the page made fit are sent: none elsewhere, through a
+    /// link or `..` either.
+    #[test]
+    fn only_files_made_fit_are_sent() {
+        let root = std::env::temp_dir().join(format!("sioul-made-in-{}", std::process::id()));
+        let folder = root.join("texts-attached");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("1-0.jpg"), b"made").unwrap();
+        std::fs::write(root.join("IMG_0001.JPG"), b"chosen").unwrap();
+        assert!(made_in(&folder, &folder.join("1-0.jpg")));
+        assert!(!made_in(&folder, &root.join("IMG_0001.JPG")), "the file chosen itself");
+        assert!(!made_in(&folder, &folder.join("..").join("IMG_0001.JPG")), "out by ..");
+        assert!(!made_in(&folder, &folder), "the folder");
+        assert!(!made_in(&folder, &folder.join("gone.jpg")), "none there");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("IMG_0001.JPG"), folder.join("2-0.jpg")).unwrap();
+            assert!(!made_in(&folder, &folder.join("2-0.jpg")), "a link out");
+        }
+        assert!(!made_in(&root.join("none"), &folder.join("1-0.jpg")), "no folder made");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// What the phone said its carriers take, read only: a line, or one a
+    /// SIM, with the picture size its carrier advises when it said one.
+    #[test]
+    fn what_the_phone_said_is_shown_read_only() {
+        let sim = |sub: i32, mms: bool, width: u32| rules::Limits { sub, max: 614_400, width, height: if width > 0 { 1944 } else { 0 }, recipients: 20, group: true, mms };
+        assert_eq!(limit_lines(&[]).len(), 1, "none said yet");
+        let one = limit_lines(&[sim(1, true, 2592)]);
+        assert!(one.len() == 1 && one[0].contains("2592") && one[0].contains("1944"), "{one:?}");
+        assert!(!limit_lines(&[sim(1, true, 0)])[0].contains('×'), "no picture size: none said");
+        let two = limit_lines(&[sim(1, true, 2592), sim(2, false, 2592)]);
+        assert!(two.len() == 2 && two[0].contains("2592") && !two[1].contains("2592"), "{two:?}");
+    }
+
+    /// What a multimedia message from a computer may weigh (decision 5):
+    /// nothing before the phone said; the conversation's SIM, else the
+    /// smallest that takes them; 300 kB when chosen, never over the carrier's.
+    #[test]
+    fn what_a_message_from_here_may_weigh() {
+        let sim = |sub: i32, mms: bool, max: u64| rules::Limits { sub, max, width: 2592, height: 1944, recipients: 20, group: true, mms };
+        assert_eq!(weighed(None, 1, None), Weigh::Unknown, "before the phone said: no Attach");
+        let two = [sim(1, true, 614_400), sim(2, false, 307_200)];
+        assert_eq!(weighed(Some(&two), 1, None), Weigh::Up { max: 614_400, side: 2592 }, "the conversation's SIM");
+        assert_eq!(weighed(Some(&two), 2, None), Weigh::None, "its SIM takes no multimedia message");
+        assert_eq!(weighed(Some(&two), -1, None), Weigh::Up { max: 614_400, side: 2592 }, "no SIM known: those that take them");
+        assert_eq!(weighed(Some(&two), 7, None), Weigh::Up { max: 614_400, side: 2592 }, "a SIM the phone did not name");
+        assert_eq!(weighed(Some(&two), 1, Some(300)), Weigh::Up { max: 307_200, side: 2592 }, "300 kB chosen here");
+        assert_eq!(weighed(Some(&[sim(1, true, 102_400)]), 1, Some(300)), Weigh::Up { max: 102_400, side: 2592 }, "never more than the carrier's");
+        assert_eq!(weighed(Some(&[sim(1, true, 614_400), sim(3, true, 307_200)]), -1, None), Weigh::Up { max: 307_200, side: 2592 }, "the smallest of two");
+        assert_eq!(weighed(Some(&[sim(1, true, 0)]), 1, None), Weigh::Unknown, "a line with no size");
+        assert_eq!(weighed(Some(&[]), 1, None), Weigh::Unknown);
     }
 
     /// What its carriers let the phone send, said once a day, and at once

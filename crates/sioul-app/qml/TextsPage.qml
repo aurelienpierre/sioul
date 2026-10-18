@@ -15,8 +15,15 @@
 // sent, in words, never in red: waiting for your phone, sent at, delivered at
 // (only when your carrier says so), not sent and why, expired, may not have
 // been sent; and "Send again", which makes a new text. Under it, an AI
-// agent's drafts, then writing, with how many texts it takes. Never sent from
-// here: short numbers, several people at once, pictures. In a narrow window,
+// agent's drafts, then writing, with how many texts it takes; and what you
+// attach (Attach, or files dropped on the page), offered once your phone has
+// said what its carrier takes: made fit for one multimedia message off the
+// window's thread (texts.rs `attach`), each shown as it will go, a picture
+// as it was written again (small, with no place, camera or time in it) with
+// its size, the others as they are when they fit, five at most; why any did
+// not go, in words; and how much the message takes of its limit ("One
+// multimedia message (412 kB of 600 kB)"). Never sent from here: short
+// numbers, several people at once. In a narrow window,
 // one at a time, as Mail: the list, then the conversation, and Back. Read
 // again at once whenever the sharing brings texts, while the page is open:
 // the conversation open, the draft, the row chosen and the place read back
@@ -53,6 +60,16 @@ Item {
     property string query: ""
     property string said: ""
     property var counted: ({ parts: 0, said: "" })
+    // What you attach (texts.rs `attach`, off the window's thread): the files
+    // chosen, the round last asked (an older one's answer is let go), what
+    // came of it: each medium made fit {source, kind, ct, path, url, size,
+    // said}, why the others did not go, and the limit they were made for.
+    property var attachSources: []
+    property int attachRound: 0
+    property bool attaching: false
+    property var attached: []
+    property var attachSaid: []
+    property real attachMax: 0
     // The thread held at its end while its rows take their heights, until you scroll back.
     property bool atEnd: true
     // The list moved through with the keyboard: its ring shows; a click hides it.
@@ -160,6 +177,7 @@ Item {
             page.talkText = ""
             page.atEnd = true
             draft.text = ""
+            page.clearAttached(true)
         }
         page.openId = id
         page.reload()
@@ -171,7 +189,89 @@ Item {
         page.openId = ""
         page.talkText = ""
         page.said = ""
+        page.clearAttached(true)
         list.forceActiveFocus()
+    }
+
+    // Files chosen (Attach, or dropped on the page): made fit again with those
+    // attached already, as they share one message. Before your phone said what
+    // its carrier takes, why not, in words.
+    function attachFiles(urls) {
+        if (page.talk === null || !page.talk.can_write)
+            return
+        if (page.talk.attach !== true) {
+            page.said = page.talk.attach_said || ""
+            return
+        }
+        const all = page.attachSources.slice()
+        for (const url of urls) {
+            const text = url.toString()
+            if (text !== "" && all.indexOf(text) < 0)
+                all.push(text)
+        }
+        page.makeAttached(all)
+    }
+
+    // The files chosen made fit for one message (their answer: onTextsAttached); none, let go.
+    function makeAttached(sources) {
+        page.attachSources = sources
+        page.attachRound += 1
+        if (sources.length === 0) {
+            page.clearAttached(true)
+            page.count()
+            return
+        }
+        page.attaching = true
+        page.sioul.textsAttach(JSON.stringify({ round: page.attachRound, id: page.openId, sources: sources }))
+    }
+
+    // One let go: the others made again, sharing the message anew.
+    function unattach(index) {
+        page.makeAttached(page.attached.filter((m, i) => i !== index).map(m => m.source))
+    }
+
+    // Every file attached let go (another conversation, the list, sent, the
+    // page out of sight); `remove`: their files deleted too.
+    function clearAttached(remove) {
+        page.attachRound += 1
+        page.attaching = false
+        const had = page.attached.length > 0 || page.attachSources.length > 0
+        page.attachSources = []
+        page.attached = []
+        page.attachSaid = []
+        page.attachMax = 0
+        if (remove && had)
+            page.act("unattach", {})
+    }
+
+    // How many texts the words take; with media attached, how much the
+    // multimedia message takes of its limit. A limit changed since they were
+    // made (Settings ▸ Texts): made again for it, once.
+    function count() {
+        if (page.attached.length === 0) {
+            page.counted = page.act("parts", { body: draft.text })
+            return
+        }
+        page.counted = page.act("parts", { body: draft.text, media: page.attached.map(m => ({ ct: m.ct, size: m.size })), id: page.openId })
+        if (page.counted.over && !page.attaching && (page.counted.max || 0) > 0 && page.counted.max !== page.attachMax)
+            page.makeAttached(page.attachSources)
+    }
+
+    // The words, and what is attached, to your phone: a text, or one multimedia message.
+    function send() {
+        const multimedia = page.attached.length > 0
+        const answer = multimedia
+            ? page.act("send-mms", { to: page.talk.id, words: draft.text, media: page.attached.map(m => ({ ct: m.ct, path: m.path })) })
+            : page.act("send", { to: page.talk.id, body: draft.text })
+        page.said = answer.said || ""
+        if (answer.shared) {
+            draft.text = ""
+            // Their files went with it, sealed (texts.rs deleted the ones made here).
+            page.clearAttached(false)
+            page.count()
+        }
+        page.reload()
+        Qt.callLater(() => thread.positionViewAtEnd())
     }
 
     // The search through the texts' words (also the window's pictures).
@@ -208,12 +308,15 @@ Item {
         thread.contentY = Math.max(thread.originY, thread.contentY - thread.height * 0.9)
     }
 
-    // Out of sight: the plain copies of the media opened for the page deleted (each stays sealed here).
+    // Out of sight: the plain copies of the media opened for the page deleted
+    // (each stays sealed here), and the files attached let go.
     onVisibleChanged: {
-        if (page.visible)
+        if (page.visible) {
             page.reload()
-        else
+        } else {
+            page.clearAttached(false)
             page.act("close", {})
+        }
     }
     Component.onCompleted: page.reload()
 
@@ -232,6 +335,18 @@ Item {
             if (page.visible && stores.indexOf("data/texts/") >= 0)
                 page.reload()
         }
+        // What you attached, made fit (`attachFiles`): the round last asked only.
+        function onTextsAttached(attached) {
+            const made = JSON.parse(attached || "null")
+            if (!made || made.round !== page.attachRound)
+                return
+            page.attaching = false
+            page.attached = made.media || []
+            page.attachSaid = made.said || []
+            page.attachMax = made.max || 0
+            page.attachSources = page.attached.map(m => m.source)
+            page.count()
+        }
     }
 
     // Searching waits for a pause in typing.
@@ -246,6 +361,15 @@ Item {
         sequence: "Escape"
         enabled: page.visible && page.openId !== ""
         onActivated: page.close()
+    }
+
+    // Attach: the files to send, chosen.
+    FileDialog {
+        id: choosing
+
+        title: page.sioul.text("texts-attach-choose")
+        fileMode: FileDialog.OpenFiles
+        onAccepted: page.attachFiles(choosing.selectedFiles)
     }
 
     FileDialog {
@@ -821,6 +945,101 @@ Item {
                 }
             }
 
+            // What you attach, each as it will go: a picture as it was written
+            // again, with its size; the others by their kind and size. While they
+            // are made, said so.
+            Flow {
+                objectName: "textsAttached"
+                visible: page.talk !== null && page.talk.can_write && (page.attached.length > 0 || page.attaching)
+                Layout.fillWidth: true
+                spacing: 8
+
+                Repeater {
+                    model: page.attached
+
+                    delegate: Rectangle {
+                        id: chip
+
+                        required property var modelData
+                        required property int index
+                        readonly property bool picture: chip.modelData.kind === "picture"
+
+                        width: Math.min(chipColumn.implicitWidth + 16, threadColumn.width)
+                        height: chipColumn.implicitHeight + 12
+                        radius: page.theme.radius
+                        color: page.theme.surface
+                        border.color: page.theme.line
+
+                        ColumnLayout {
+                            id: chipColumn
+
+                            x: 8
+                            y: 6
+                            width: chip.width - 16
+                            spacing: 2
+
+                            // Read at the size it is drawn at; its box set before it loads.
+                            Image {
+                                visible: chip.picture
+                                Layout.preferredWidth: 120
+                                Layout.preferredHeight: chip.picture ? 90 : 0
+                                horizontalAlignment: Image.AlignLeft
+                                sourceSize.width: Math.ceil(120 * Screen.devicePixelRatio)
+                                source: chip.picture ? chip.modelData.url : ""
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: false
+                                Accessible.name: chip.modelData.said
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: chip.modelData.said
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    font.pixelSize: 12
+                                    color: page.theme.muted
+                                }
+                                ToolButton {
+                                    text: "×"
+                                    font.pixelSize: 14
+                                    enabled: !page.attaching
+                                    Accessible.name: page.sioul.text("ui-remove")
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: page.sioul.text("ui-remove")
+                                    onClicked: page.unattach(chip.index)
+                                }
+                            }
+                        }
+                    }
+                }
+                Label {
+                    visible: page.attaching
+                    text: page.sioul.text("texts-attach-making")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+            }
+            // Why the others did not go, in words.
+            Repeater {
+                model: page.talk !== null && page.talk.can_write ? page.attachSaid : []
+
+                delegate: Label {
+                    required property string modelData
+
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+            }
+
             // Writing: the phone sends it, filed by Android in its own messages.
             RowLayout {
                 visible: page.talk !== null && page.talk.can_write
@@ -840,7 +1059,7 @@ Item {
                         placeholderText: page.sioul.text("texts-write")
                         wrapMode: TextEdit.Wrap
                         Accessible.name: page.sioul.text("texts-write")
-                        onTextChanged: page.counted = page.act("parts", { body: draft.text })
+                        onTextChanged: page.count()
 
                         background: Rectangle {
                             color: page.theme.surface
@@ -853,18 +1072,23 @@ Item {
                     spacing: 2
 
                     Button {
-                        enabled: draft.text.trim() !== ""
+                        objectName: "textsSend"
+                        enabled: !page.attaching && (draft.text.trim() !== "" || page.attached.length > 0) && page.counted.over !== true
                         text: page.sioul.text("texts-send")
                         icon.name: "document-send"
                         icon.color: page.theme.text
-                        onClicked: {
-                            const answer = page.act("send", { to: page.talk.id, body: draft.text })
-                            page.said = answer.said || ""
-                            if (answer.shared)
-                                draft.text = ""
-                            page.reload()
-                            Qt.callLater(() => thread.positionViewAtEnd())
-                        }
+                        onClicked: page.send()
+                    }
+                    // Offered once your phone said what its carrier takes (decision 11).
+                    Button {
+                        objectName: "textsAttach"
+                        visible: page.talk !== null && page.talk.attach === true
+                        enabled: !page.attaching
+                        flat: true
+                        text: page.sioul.text("ui-attach")
+                        icon.name: "mail-attachment"
+                        icon.color: page.theme.text
+                        onClicked: choosing.open()
                     }
                     Label {
                         Layout.maximumWidth: 160
@@ -875,6 +1099,42 @@ Item {
                         color: page.theme.muted
                     }
                 }
+            }
+        }
+    }
+
+    // Files dropped anywhere on the page are attached to the conversation open;
+    // while they are held over it, what letting them go does.
+    DropArea {
+        id: dropping
+
+        anchors.fill: parent
+        enabled: page.talk !== null && page.talk.can_write
+        onEntered: drag => drag.accepted = drag.hasUrls
+        onDropped: drop => {
+            if (drop.hasUrls) {
+                drop.accept()
+                page.attachFiles(drop.urls)
+            }
+        }
+
+        Rectangle {
+            visible: dropping.containsDrag
+            anchors.fill: parent
+            anchors.margins: page.theme.gap
+            radius: page.theme.radius
+            color: page.theme.surface
+            opacity: 0.92
+            border.color: page.theme.line
+
+            Label {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                horizontalAlignment: Text.AlignHCenter
+                text: page.talk !== null && page.talk.attach === true ? page.sioul.text("texts-attach-drop") : (page.talk !== null ? page.talk.attach_said || "" : "")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.text
             }
         }
     }

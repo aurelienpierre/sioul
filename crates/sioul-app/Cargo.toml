@@ -27,6 +27,14 @@ name = "icons"
 path = "tests/icons.rs"
 harness = false
 
+# What a computer attaches to a text, made fit for a multimedia message with
+# Qt: no metadata left in a picture, GPS included; each format; the whole
+# message's making. Its own `main` too, for the same reason.
+[[test]]
+name = "attach"
+path = "tests/attach.rs"
+harness = false
+
 [dependencies]
 sioul-core = { path = "../sioul-core" }
 sioul-sync = { path = "../sioul-sync" }

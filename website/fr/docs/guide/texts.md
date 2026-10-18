@@ -1,5 +1,5 @@
 ---
-description: Les SMS sur votre ordinateur avec Sioul - tous les SMS de votre téléphone et leurs images lus sur votre ordinateur, gardés scellés par votre propre partage, et les SMS écrits là-bas que votre téléphone envoie, chacun une fois, avec ce qu’il en est advenu dit simplement.
+description: Les SMS sur votre ordinateur avec Sioul - tous les SMS de votre téléphone et leurs images lus sur votre ordinateur, gardés scellés par votre propre partage, et les SMS et les images écrits là-bas que votre téléphone envoie, chacun une fois, avec ce qu’il en est advenu dit simplement.
 ---
 
 # Les SMS : lus et envoyés depuis votre ordinateur {#texts-read-and-sent-from-your-computer}
@@ -20,7 +20,7 @@ Les SMS de votre téléphone peuvent se lire sur votre ordinateur, et un SMS éc
 - **À droite, la conversation que vous ouvrez**, en fil : tout l’historique dans l’ordre du temps, chaque jour dit une fois, vos SMS à droite et les leurs à gauche. Un SMS qui arrive s’affiche aussitôt, sans quitter la page ; ce que vous écriviez, et l’endroit où vous lisiez, restent.
 - **Les messages multimédias** : une image s’affiche dans son message ; un son, une vidéo, une fiche de contact ou un autre fichier dit sa nature et sa taille, avec **Ouvrir** et **Enregistrer…**. Un fichier plus gros que la taille choisie sur le téléphone (10 Mo sauf si vous en choisissez une autre) y reste, et la page le dit ; les opérateurs gardent les messages multimédias petits, si bien que presque tous viennent.
 - **Un SMS effacé sur votre téléphone** reste ici, dit discrètement.
-- **En écrivant**, sous le fil : d’abord les brouillons d’un agent d’IA, s’il en a laissé (**L’utiliser** met leurs mots dans la zone ; l’envoi reste le vôtre), puis la zone. La page dit combien de SMS le vôtre prendra. Les accents et les signes hors de l’alphabet propre aux SMS laissent moins de caractères par SMS.
+- **En écrivant**, sous le fil : d’abord les brouillons d’un agent d’IA, s’il en a laissé (**L’utiliser** met leurs mots dans la zone ; l’envoi reste le vôtre), puis la zone. La page dit combien de SMS le vôtre prendra. Les accents et les signes hors de l’alphabet propre aux SMS laissent moins de caractères par SMS. **Joindre**, sous **Envoyer**, ajoute des images et des fichiers ([plus bas](#pictures-and-files)).
 - **Au clavier** : Haut et Bas parcourent la liste et Entrée ouvre une conversation ; Échap la ferme.
 - **Dans une fenêtre étroite**, comme dans Courriels : la liste, puis la conversation, et Retour.
 - **Ce qu’il est advenu d’un SMS que vous avez envoyé**, en mots : en attente de votre téléphone (et quand il a partagé pour la dernière fois), en cours d’envoi, envoyé à, remis à (seulement quand votre opérateur le dit), pas envoyé et pourquoi, expiré, ou « Votre téléphone ne l’a peut-être pas envoyé », quand Sioul ne peut pas le savoir. **Renvoyer** fait un nouveau SMS ; rien n’est jamais renvoyé de lui-même.
@@ -30,11 +30,20 @@ Les SMS de votre téléphone peuvent se lire sur votre ordinateur, et un SMS éc
 
 Un SMS écrit sur un ordinateur attend dans votre partage que votre téléphone le prenne. Le téléphone l’inscrit dans un registre privé avant de le confier à Android : il n’est jamais envoyé deux fois, quoi qu’il arrive au partage. Un SMS qui a attendu le téléphone plus de 15 minutes n’est pas envoyé : la page le dit, et vous choisissez de le renvoyer ou non. Android réessaie de lui-même quand le réseau fait défaut ; Sioul, jamais.
 
-**Pas envoyés depuis un ordinateur** : les numéros courts, qui peuvent coûter de l’argent ; un SMS à plusieurs personnes à la fois, qui est un message multimédia ; les images. Envoyez-les depuis votre téléphone.
+**Pas envoyés depuis un ordinateur** : les numéros courts, qui peuvent coûter de l’argent ; un SMS à plusieurs personnes à la fois, qui est un message multimédia. Envoyez-les depuis votre téléphone.
+
+## Images et fichiers {#pictures-and-files}
+
+- **Joindre**, sous **Envoyer**, ou des fichiers déposés sur la page : images, vidéos, sons et fiches de contact partent avec vos mots en un seul message multimédia, que votre téléphone envoie. **Joindre** apparaît une fois que votre téléphone a dit ce que prend son opérateur : son Sioul à jour, après son prochain partage.
+- **Mis à la bonne taille sur votre ordinateur, avant que rien n’en parte.** Une image est toujours réécrite en JPEG, de 1 600 pixels au plus sur son grand côté, sa qualité abaissée, puis sa taille, jusqu’à ce qu’elle tienne ; elle ne garde aucun détail du lieu, de l’appareil ou de l’heure de la prise de vue ([Privé](#private)). Les images PNG, WebP, TIFF, BMP et GIF fixes deviennent aussi des JPEG ; une image HEIC là où votre ordinateur sait la lire (Linux avec les formats d’image de KDE, macOS), sinon elle est refusée : envoyez-la depuis votre téléphone. Un GIF animé, une vidéo, un son ou une fiche part tel quel quand il tient, sinon il est refusé en mots : rien n’est converti. Les autres fichiers, un PDF par exemple : envoyez-les par courriel.
+- **Cinq au plus** par message, qui se partagent sa taille : les images se partagent ce que les autres laissent.
+- **Ce que vous voyez** : chacun tel qu’il partira, une image telle qu’elle a été faite, avec sa taille ; pourquoi un autre n’est pas parti ; et sous **Envoyer**, « Un message multimédia (412 Ko sur 600 Ko) ».
+- **Quelle taille** : Paramètres ▸ SMS, sur chaque ordinateur : jusqu’à la limite de votre opérateur (600 Ko chez les opérateurs français), ou 300 Ko, pour les téléphones plus anciens et certains réseaux à l’étranger. Votre téléphone montre les valeurs de son opérateur dans Paramètres ▸ Ce téléphone ▸ SMS.
+- **Envoyé** seulement quand Android et votre opérateur l’ont dit tous deux. Votre téléphone a besoin des données mobiles pour cela : quand elles sont coupées, la page le dit. Jamais « Remis » pour un message multimédia : Sioul ne demande aucun accusé à votre opérateur. Votre forfait décide de ce que coûte un message multimédia, à l’étranger surtout.
 
 ## Privé {#private}
 
-Vos SMS et leurs médias passent par votre propre dossier de partage, scellés avec votre phrase de passe, et sont scellés à nouveau sur chaque ordinateur qui les garde, avec une clé que seuls vos appareils détiennent. Le serveur du dossier voit quel appareil a écrit et quand, jamais quoi, ni la longueur de chaque SMS. Pour afficher une image ou ouvrir un fichier, la page en écrit une copie pour vous seul, et l’efface quand elle se ferme. Désactivez la partie sur un ordinateur, et plus rien ne lui arrive.
+Vos SMS et leurs médias passent par votre propre dossier de partage, scellés avec votre phrase de passe, et sont scellés à nouveau sur chaque ordinateur qui les garde, avec une clé que seuls vos appareils détiennent. Le serveur du dossier voit quel appareil a écrit et quand, jamais quoi, ni la longueur de chaque SMS. Pour afficher une image ou ouvrir un fichier, la page en écrit une copie pour vous seul, et l’efface quand elle se ferme. Une image que vous joignez est réécrite sur votre ordinateur avant que rien n’en parte, depuis ses seuls pixels : ni lieu, ni appareil, ni heure, ni commentaire ne partent avec elle, et le nom de son fichier jamais ([ce qu’une image envoyée garde et perd](privacy-security.md#pictures-sent-by-text)). Désactivez la partie sur un ordinateur, et plus rien ne lui arrive.
 
 ## Une archive {#an-archive}
 
