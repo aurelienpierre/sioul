@@ -1284,7 +1284,7 @@ fn measure_clock() {
 }
 
 /// How far this clock may run ahead of a phone's (ms): the least gap of the last day, 0 unknown.
-fn ahead_of(phone: &str) -> i64 {
+pub(crate) fn ahead_of(phone: &str) -> i64 {
     let clock: Clock = std::fs::read_to_string(Clock::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     clock.phones.get(phone).filter(|g| now_ms() - g.at <= 86_400_000).map_or(0, |g| g.least.max(0))
 }

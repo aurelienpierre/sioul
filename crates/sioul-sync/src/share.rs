@@ -441,6 +441,14 @@ pub const PHONE_MESSAGES_SEEN: &str = "state/phone-messages/seen/";
 /// phone's own file (`sioul_core::replies::Live`): a Reply, a Mark as read,
 /// or that it went; no words, no names. Taken out with the log.
 pub const PHONE_MESSAGES_LIVE: &str = "state/phone-messages/live/";
+/// Each computer's replies to send to the phones' notifications, its own
+/// file, each line padded and sealed at rest by its writer
+/// (`sioul_core::replies::Ask`); also sent on the lane of the texts to send
+/// (`remote::place_asks`). A week, then gone.
+pub const PHONE_MESSAGES_ASK: &str = "state/phone-messages/ask/";
+/// Each phone's word on each reply it was asked to send
+/// (`sioul_core::replies::Outcome`): never the words. A week, then gone.
+pub const PHONE_MESSAGES_OUTCOME: &str = "state/phone-messages/outcome/";
 /// Where the phones' messages keep their files in the records: as the
 /// calls', remembered beside the notes, never kept as an earlier version nor
 /// copied aside when sharing starts (`calls_store`).
@@ -636,6 +644,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_SEEN, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::phonemsgs::SEEN_LOG), Shape::Lines, &[]),
         // What each relayed notification offers a reply from your computers, each phone's own file.
         folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_LIVE, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::replies::LIVE), Shape::Lines, &[]),
+        // Each computer's replies to send, sealed lines, and each phone's word on them.
+        folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_ASK, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::replies::ASK), Shape::Lines, &[]),
+        folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_OUTCOME, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::replies::OUTCOME), Shape::Lines, &[]),
         // texts: each phone's texts and outcomes, each computer's requests, sealed lines, in the data folder.
         folder(sioul_core::texts::PART, TEXTS_LOG, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_SEND, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::SEND), Shape::Lines, &[]),
@@ -7328,7 +7339,7 @@ fn content_hash(path: &Path) -> Option<String> {
 fn device_small_places(folder: &Path, id: &str, entry: bool, notes: bool) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
     for dir in std::iter::once(folder.to_path_buf()).chain(crate::remote::overlay(folder)) {
-        let mut names = vec![format!("texts/send/{id}.jsonl")];
+        let mut names = vec![format!("texts/send/{id}.jsonl"), format!("phone-messages/ask/{id}.jsonl")];
         if entry {
             names.push(format!("devices/{id}.device"));
         }
@@ -7610,6 +7621,15 @@ pub fn departed_devices(folder: &Path, key: &[u8; 32], memory: &Path, computer: 
             (bytes > 0 || !small.is_empty()).then(|| GoneDevice { why, bytes, name: entry.map(|e| e.name.clone()).unwrap_or_default(), kind: entry.map(|e| e.kind.clone()).unwrap_or_default(), id })
         })
         .collect()
+}
+
+/// The other devices that count here now, by sealed facts (`counted`): not
+/// left, forgotten, replaced, silent for `SILENT_DAYS`, nor a stray file.
+/// Only these may ask this phone for what your own devices alone may ask
+/// (a reply from a computer, `sioul_core::replies::verdict`).
+pub fn counting(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> BTreeSet<String> {
+    let state = Memory::load(memory, computer);
+    present(folder, key, computer, &state, now_ms).into_iter().map(|(id, _, _)| id).collect()
 }
 
 /// Another computer sharing through the folder, and when it last exchanged (Unix seconds).
@@ -10256,6 +10276,73 @@ mod tests {
         let again = desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &notes, &on);
         assert_eq!(again.sent, 0, "{again:?}");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A reply written on the desk to the phone's notification reaches the
+    /// phone sealed, at rest and in the folder; the phone counts the desk,
+    /// decides the request once (its ledger, whatever is read again), and its
+    /// outcome comes back to the desk without the words.
+    #[test]
+    fn a_reply_written_on_the_desk_is_decided_once_and_its_outcome_comes_back() {
+        use sioul_core::{calls, phonemsgs, replies, texts::Sealer};
+        let base = scratch("replies");
+        let (folder, notes, private) = (base.join("folder"), base.join("notes"), base.join("phone-private"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::ReplySeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [phonemsgs::PART];
+        // The phone's line the reply answers, in its own log.
+        let line = texted(NOW - 3 * MINUTE);
+        phonemsgs::carry_into(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id), std::slice::from_ref(&line), NOW).unwrap();
+        texts_ledger(&private, NOW - MINUTE);
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        desk.exchange_with(&folder, &key, NOW + 1_000, &notes, &on);
+        let ask = replies::Ask { key: "0123456789abcdef0123456789abcdef".into(), phone: phone.id.clone(), verb: "reply".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), words: "J'arrive dans dix minutes.".into(), written: NOW + MINUTE, ..replies::Ask::default() };
+        assert!(replies::write_ask(&messages_of(&desk), &desk.id, &ask, &seal).unwrap());
+        desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        let came = phone.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_ASK), "{came:?}");
+        let (asks, _) = replies::read_asks(&[messages_of(&phone)], &seal);
+        assert_eq!(asks.iter().map(|a| (a.key.as_str(), a.device.as_str(), a.words.as_str())).collect::<Vec<_>>(), [(ask.key.as_str(), desk.id.as_str(), "J'arrive dans dix minutes.")]);
+        let counted = counting(&folder, &key, &phone.memory, &phone.id, NOW + 2 * MINUTE);
+        assert!(counted.contains(&desk.id), "{counted:?}");
+        let decide = |now: i64| {
+            let ledger = sioul_core::texts::Ledger::open(&private, now).unwrap();
+            let lines = phonemsgs::read_file(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id));
+            let (asks, cancelled) = replies::read_asks(&[messages_of(&phone)], &seal);
+            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true };
+            asks.iter().map(|a| replies::verdict(a, &judge)).collect::<Vec<_>>()
+        };
+        assert_eq!(decide(NOW + 2 * MINUTE), [replies::Verdict::Send]);
+        sioul_core::texts::record(&private, &replies::claim_of(&ask, NOW + 2 * MINUTE)).unwrap();
+        // The listener handed it: the phone's word, back to the desk.
+        let own = calls::own_file(&messages_of(&phone), replies::OUTCOME, &phone.id);
+        replies::say_outcomes(&own, &[replies::Outcome { key: ask.key.clone(), state: "handed".into(), at: NOW + 2 * MINUTE, ..replies::Outcome::default() }]).unwrap();
+        phone.exchange_with(&folder, &key, NOW + 3 * MINUTE, &notes, &on);
+        let came = desk.exchange_with(&folder, &key, NOW + 4 * MINUTE, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_OUTCOME), "{came:?}");
+        let outcomes = replies::read_outcomes(&messages_of(&desk));
+        assert_eq!(outcomes.iter().map(|o| (o.key.as_str(), o.state.as_str(), o.device.as_str())).collect::<Vec<_>>(), [(ask.key.as_str(), "handed", phone.id.as_str())]);
+        // Sealed in the folder, and at rest on both devices.
+        for root in [&folder, &desk.roots.state, &phone.roots.state] {
+            let mut files = Vec::new();
+            list_files(root, root, &[], &mut files);
+            for (name, path) in &files {
+                let bytes = std::fs::read(path).unwrap();
+                assert!(!bytes.windows(b"dix minutes".len()).any(|w| w == b"dix minutes"), "{name}");
+            }
+        }
+        assert!(seal.open(std::fs::read_to_string(calls::own_file(&messages_of(&phone), replies::ASK, &desk.id)).unwrap().lines().next().unwrap()).is_some());
+        // The phone's files.json lost: the request read again, decided once.
+        std::fs::remove_file(sealed_path(&phone.memory)).unwrap();
+        phone.exchange_with(&folder, &key, NOW + 5 * MINUTE, &notes, &on);
+        assert_eq!(decide(NOW + 5 * MINUTE), [replies::Verdict::Decided]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A phone's private ledger opened, its mark made at `at`.
+    fn texts_ledger(dir: &Path, at: i64) {
+        sioul_core::texts::Ledger::open(dir, at).unwrap();
     }
 
     /// The part is off until turned on, on every device: a desk that never

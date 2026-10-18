@@ -1576,6 +1576,8 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     // A phone's calls copied into its own log first (the background step's, a dose's alarm's).
     crate::calls::before_exchange();
     crate::phonemsgs::before_exchange();
+    // replies: the phone's step (decide, claim, hand to the listener, its words said), the trims.
+    crate::replies::before_exchange();
     // texts: the phone's step (read, decide, send), the clock, the trims.
     crate::texts::before_exchange(None);
     let mirror = mirrored().is_some();
@@ -1760,6 +1762,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // A phone's calls copied into its own log first, so that they go now (`calls`).
         crate::calls::before_exchange();
         crate::phonemsgs::before_exchange();
+        // replies: the phone's step (decide, claim, hand to the listener, its words said), the trims.
+        crate::replies::before_exchange();
         // texts: the phone's step (read, decide, send), the clock, the trims;
         // what its thread reads or brings then said to the window.
         crate::texts::before_exchange(Some(&qt));
@@ -2104,19 +2108,30 @@ fn frugal_now() -> bool {
     metered() || sioul_sync::remote::Sending::load(&memory_path()).slow()
 }
 
-/// This device's texts to send copied into the sharing folder as a small
-/// file of their own, when the part "texts" is shared here, then sent to
-/// the server on their own lane (Sioul keeping the folder itself, or beside
-/// the sync app): a request reaches the phone within its quarter of an hour
-/// whatever the records' size (docs/database.md, "Sent to the server too").
+/// This device's texts to send and replies to send copied into the sharing
+/// folder as small files of their own, when their parts are shared here
+/// ("texts"; "Messages from your phone"), then sent to the server on their
+/// own lane (Sioul keeping the folder itself, or beside the sync app): a
+/// request reaches the phone within its quarter of an hour whatever the
+/// records' size (docs/database.md, "Sent to the server too").
 fn send_texts(here: &share::Here) {
     let Some(folder) = here.folder_path() else { return };
-    if here.id.is_empty() || !here.shares(sioul_core::texts::PART, &load_config()) {
+    let config = load_config();
+    let (texts, replies) = (here.shares(sioul_core::texts::PART, &config), here.shares(sioul_core::phonemsgs::PART, &config));
+    if here.id.is_empty() || !(texts || replies) {
         return;
     }
-    let source = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::SEND, &here.id);
-    if let Err(e) = sioul_sync::remote::place_texts(&folder, &here.id, &source) {
-        eprintln!("sioul: texts: {e}");
+    if texts {
+        let source = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::SEND, &here.id);
+        if let Err(e) = sioul_sync::remote::place_texts(&folder, &here.id, &source) {
+            eprintln!("sioul: texts: {e}");
+        }
+    }
+    if replies {
+        let source = sioul_core::calls::own_file(&sioul_core::phonemsgs::folder(), sioul_core::replies::ASK, &here.id);
+        if let Err(e) = sioul_sync::remote::place_asks(&folder, &here.id, &source) {
+            eprintln!("sioul: replies: {e}");
+        }
     }
     let memory = memory_path();
     let state = sioul_sync::remote::State::load(&memory);
@@ -2128,8 +2143,8 @@ fn send_texts(here: &share::Here) {
     if sent.sent > 0 || sent.failure.is_some() {
         let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
         log_send(match &sent.failure {
-            None => format!("{at} texts to send sent to {}", state.host()),
-            Some(f) => format!("{at} texts to send not sent to {}: {}", state.host(), failure_words(f)),
+            None => format!("{at} texts or replies to send sent to {}", state.host()),
+            Some(f) => format!("{at} texts or replies to send not sent to {}: {}", state.host(), failure_words(f)),
         });
     }
 }
@@ -2138,6 +2153,24 @@ fn send_texts(here: &share::Here) {
 /// now, off the caller's thread, not at the next exchange.
 pub(crate) fn texts_now() {
     std::thread::spawn(|| send_texts(&here()));
+}
+
+/// A reply was just written to send (`replies`): its small file placed and
+/// sent now, beside the texts', off the caller's thread.
+pub(crate) fn replies_now() {
+    texts_now();
+}
+
+/// Where the other devices' replies to send are found beside the records'
+/// copy: the sharing folder's small files (`phone-messages/ask/<id>.jsonl`),
+/// and those fetched from its server (`remote::overlay`). Each a root
+/// holding `ask/`, as `phonemsgs::folder` is.
+pub(crate) fn replies_copies() -> Vec<PathBuf> {
+    let here = share::Here::load(&state_dir());
+    let Some(folder) = attached(&here) else { return Vec::new() };
+    let mut out = vec![folder.join(sioul_core::phonemsgs::FOLDER)];
+    out.extend(sioul_sync::remote::overlay(&folder).map(|cache| cache.join(sioul_core::phonemsgs::FOLDER)));
+    out
 }
 
 /// Where the other devices' texts to send are found beside the records'

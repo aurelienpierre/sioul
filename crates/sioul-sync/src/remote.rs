@@ -94,8 +94,12 @@ const BLOBS_AGAIN: i64 = 3600;
 const MIRROR_WANTED_BYTES: u64 = 64 << 20;
 /// A records' file is never fetched past this.
 const LARGEST: u64 = 64 << 20;
-/// A device's texts to send (`texts/send/<id>.jsonl`) are never fetched past this.
+/// A device's urgent small files (its texts to send, `texts/send/<id>.jsonl`;
+/// its replies to send, `phone-messages/ask/<id>.jsonl`) are never fetched past this.
 const TEXTS_LARGEST: u64 = 4 << 20;
+/// The folders of the urgent small files, each device's own file there
+/// (`<top>/<sub>/<id>.jsonl`): its texts to send, its replies to send.
+const URGENT: [(&str, &str); 2] = [("texts", "send"), ("phone-messages", "ask")];
 /// A listing is never read past this: some 130,000 names, read a response
 /// at a time (`read_listing`), never held whole. Until 17 October 2026 a
 /// listing was read whole up to 4 MiB, and `blobs/` past some 8,700 sealed
@@ -1641,8 +1645,10 @@ pub(crate) enum Kind {
     Seen,
     Device,
     Claim,
-    /// Its texts to send (`texts/send/<id>.jsonl`): a small file of their own (`place_texts`).
-    Texts,
+    /// What must reach the others within minutes: its texts to send
+    /// (`texts/send/<id>.jsonl`, `place_texts`), its replies to send
+    /// (`phone-messages/ask/<id>.jsonl`, `place_asks`); a small file of their own.
+    Urgent,
 }
 
 pub(crate) fn is_id(id: &str) -> bool {
@@ -1660,7 +1666,7 @@ pub(crate) fn kind_of(relative: &str) -> Option<(Kind, &str)> {
         }
         ["devices", name] => name.strip_suffix(".device").filter(|id| is_id(id)).map(|id| (Kind::Device, id)),
         ["leases", _, name] => name.strip_suffix(".lease").filter(|id| !id.is_empty() && !id.starts_with('.')).map(|id| (Kind::Claim, id)),
-        ["texts", "send", name] => name.strip_suffix(".jsonl").filter(|id| is_id(id)).map(|id| (Kind::Texts, id)),
+        ["texts", "send", name] | ["phone-messages", "ask", name] => name.strip_suffix(".jsonl").filter(|id| is_id(id)).map(|id| (Kind::Urgent, id)),
         _ => None,
     }
 }
@@ -1674,7 +1680,9 @@ fn cached_files(cache: &Path) -> Vec<String> {
         let part = part.file_name().to_string_lossy().to_string();
         out.extend(names(&cache.join("leases").join(&part)).into_iter().map(|n| format!("leases/{part}/{n}")));
     }
-    out.extend(names(&cache.join("texts").join("send")).into_iter().map(|n| format!("texts/send/{n}")));
+    for (top, sub) in URGENT {
+        out.extend(names(&cache.join(top).join(sub)).into_iter().map(|n| format!("{top}/{sub}/{n}")));
+    }
     out
 }
 
@@ -1937,18 +1945,21 @@ impl Puller<'_> {
             }
             self.looked("leases/", &parts.etag);
         }
-        // Each device's texts to send, a small file of its own: a phone has
-        // them within its quarter of an hour, whatever the records' size.
-        if let Some(texts) = root.items.get("texts").filter(|item| item.dir)
-            && !self.unchanged("texts/", &texts.etag)
-        {
-            match self.server.list(&self.url("texts/send/")) {
+        // Each device's texts and replies to send, a small file of its own: a
+        // phone has them within their quarter of an hour, whatever the records' size.
+        for (top, sub) in URGENT {
+            let (dir, files) = (format!("{top}/"), format!("{top}/{sub}/"));
+            let Some(urgent) = root.items.get(top).filter(|item| item.dir) else { continue };
+            if self.unchanged(&dir, &urgent.etag) {
+                continue;
+            }
+            match self.server.list(&self.url(&files)) {
                 Ok(listing) => {
                     self.pulled.listed += listing.items.len();
-                    self.own_listed("texts/send/", &listing);
+                    self.own_listed(&files, &listing);
                     for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
-                        let relative = format!("texts/send/{name}");
-                        if let Some((Kind::Texts, id)) = kind_of(&relative)
+                        let relative = format!("{files}{name}");
+                        if let Some((Kind::Urgent, id)) = kind_of(&relative)
                             && id != self.own
                         {
                             if self.departed.removed_as_known(&relative, item, &self.state.files) {
@@ -1958,10 +1969,10 @@ impl Puller<'_> {
                             }
                         }
                     }
-                    self.forget_gone("texts/send/", &listing);
-                    self.looked("texts/", &texts.etag);
+                    self.forget_gone(&files, &listing);
+                    self.looked(&dir, &urgent.etag);
                 }
-                Err(SyncError::NotFound(_)) => self.looked("texts/", &texts.etag),
+                Err(SyncError::NotFound(_)) => self.looked(&dir, &urgent.etag),
                 Err(e) => return Err(Stop::Failed(e)),
             }
         }
@@ -2056,7 +2067,7 @@ impl Puller<'_> {
         if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) && (!self.mirror() || self.folder.join(relative).exists()) {
             return Ok(());
         }
-        let cap = if matches!(kind_of(relative), Some((Kind::Texts, _))) { TEXTS_LARGEST } else { crate::share::SMALL_FILE };
+        let cap = if matches!(kind_of(relative), Some((Kind::Urgent, _))) { TEXTS_LARGEST } else { crate::share::SMALL_FILE };
         if item.size > cap {
             return Ok(());
         }
@@ -3017,7 +3028,8 @@ enum Lane {
     /// Its records, notes, claims, entry and sealed files.
     Main,
     /// What must reach the others within minutes, in a small file of its own:
-    /// its texts to send (`texts/send/<id>.jsonl`, `place_texts`).
+    /// its texts to send (`texts/send/<id>.jsonl`, `place_texts`), its
+    /// replies to send (`phone-messages/ask/<id>.jsonl`, `place_asks`).
     Urgent,
 }
 
@@ -3102,7 +3114,7 @@ pub struct Failure {
     /// a minute), "unreachable", "tls", "login", "server", "quota", "network".
     #[serde(default)]
     pub kind: String,
-    /// The file, by kind: "records", "notes", "claim", "entry", "texts", "sealed".
+    /// The file, by kind: "records", "notes", "claim", "entry", "texts", "replies", "sealed".
     #[serde(default)]
     pub file: String,
     #[serde(default)]
@@ -3209,10 +3221,10 @@ pub fn send(memory: &Path, folder: &Path, own: &str, login: &Login, sealed: &BTr
     send_lane(Lane::Main, memory, folder, own, login, sealed, now, again, frugal, SEND_LIMITS)
 }
 
-/// This device's texts to send (`texts/send/<id>.jsonl`, `place_texts`), on a
-/// lane of their own: a small file, sent first and alone, never waiting
-/// behind a large one going up on a slow line; Sioul keeping the folder
-/// itself too (`MIRROR`).
+/// This device's texts and replies to send (`texts/send/<id>.jsonl`,
+/// `place_texts`; `phone-messages/ask/<id>.jsonl`, `place_asks`), on a lane of
+/// their own: small files, sent first and alone, never waiting behind a large
+/// one going up on a slow line; Sioul keeping the folder itself too (`MIRROR`).
 pub fn send_urgent(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64) -> Pulled {
     send_lane(Lane::Urgent, memory, folder, own, login, &BTreeMap::new(), now, false, false, SEND_LIMITS)
 }
@@ -3377,7 +3389,20 @@ pub(crate) fn again_mirror_with(memory: &Path, folder: &Path, own: &str, login: 
 /// copy, so that a request reaches the phone within its quarter of an hour
 /// whatever the records' size. None here, none there. Whether it changed.
 pub fn place_texts(folder: &Path, own: &str, source: &Path) -> Result<bool, String> {
-    let target = texts_file(folder, own);
+    place_urgent(&texts_file(folder, own), source)
+}
+
+/// This device's replies to send copied into the sharing folder as a small
+/// file of its own, `phone-messages/ask/<id>.jsonl` (`source`: its own file of
+/// the phone's messages' requests, every line sealed already), as its texts
+/// to send are (`place_texts`). Whether it changed.
+pub fn place_asks(folder: &Path, own: &str, source: &Path) -> Result<bool, String> {
+    place_urgent(&asks_file(folder, own), source)
+}
+
+/// An urgent small file put in the sharing folder (`target`) as its source holds it: none there when none here.
+fn place_urgent(target: &Path, source: &Path) -> Result<bool, String> {
+    let target = target.to_path_buf();
     let Ok(bytes) = std::fs::read(source) else {
         return Ok(std::fs::remove_file(&target).is_ok());
     };
@@ -3395,10 +3420,14 @@ pub fn texts_file(folder: &Path, device: &str) -> PathBuf {
     folder.join("texts").join("send").join(format!("{device}.jsonl"))
 }
 
-/// This device's urgent files in the folder: its texts to send.
+/// Where a device's replies to send are, in the sharing folder (or a copy fetched from its server).
+pub fn asks_file(folder: &Path, device: &str) -> PathBuf {
+    folder.join("phone-messages").join("ask").join(format!("{device}.jsonl"))
+}
+
+/// This device's urgent files in the folder: its texts and its replies to send.
 fn own_urgent(folder: &Path, own: &str) -> Vec<String> {
-    let relative = format!("texts/send/{own}.jsonl");
-    if folder.join(&relative).is_file() { vec![relative] } else { Vec::new() }
+    URGENT.iter().map(|(top, sub)| format!("{top}/{sub}/{own}.jsonl")).filter(|relative| folder.join(relative).is_file()).collect()
 }
 
 /// A file of the folder, by its kind, for what is said: never its name.
@@ -3408,7 +3437,8 @@ fn file_kind(relative: &str) -> &'static str {
         Some((Kind::Seen, _)) => "notes",
         Some((Kind::Device, _)) => "entry",
         Some((Kind::Claim, _)) => "claim",
-        Some((Kind::Texts, _)) => "texts",
+        Some((Kind::Urgent, _)) if relative.starts_with("phone-messages/") => "replies",
+        Some((Kind::Urgent, _)) => "texts",
         None => "sealed",
     }
 }
@@ -3491,7 +3521,7 @@ impl Departed {
             Kind::Round => return round_of(relative).is_some_and(|round| removed.holds_round(round, item.size)),
             Kind::Device => removed.entry,
             Kind::Seen => removed.notes,
-            Kind::Claim | Kind::Texts => true,
+            Kind::Claim | Kind::Urgent => true,
         };
         went && !item.etag.is_empty() && known.get(relative).is_some_and(|seen| seen.etag == item.etag)
     }
@@ -3570,7 +3600,7 @@ impl Sender<'_> {
 
     /// The server's copies of this device's files, by their path in the
     /// folder: the folder itself, `devices/`, each part's claims, `blobs/`
-    /// (when this device sealed any), `texts/send/`. A folder not there holds none.
+    /// (when this device sealed any), `texts/send/`, `phone-messages/ask/`. A folder not there holds none.
     fn list_own(&mut self) -> Result<BTreeMap<String, Item>, Stop> {
         let mut out = BTreeMap::new();
         let root = self.server.list(self.url).map_err(|e| match e {
@@ -3584,8 +3614,8 @@ impl Sender<'_> {
                 if name == "devices" || (name == "blobs" && !self.sealed.is_empty()) {
                     dirs.push(format!("{name}/"));
                 }
-                if name == "texts" {
-                    dirs.push("texts/send/".into());
+                if let Some((top, sub)) = URGENT.iter().find(|(top, _)| name == top) {
+                    dirs.push(format!("{top}/{sub}/"));
                 }
                 if name == "leases" {
                     match self.server.list(&self.url("leases/")) {
@@ -6677,6 +6707,31 @@ mod tests {
         assert!(!place_texts(&desk_folder, &w.desk.id, &source).unwrap(), "unchanged: nothing to place");
         std::fs::remove_file(&source).unwrap();
         assert!(place_texts(&desk_folder, &w.desk.id, &source).unwrap() && !texts_file(&desk_folder, &w.desk.id).exists());
+    }
+
+    /// A reply written on the desk goes on the lane of the texts to send, in a
+    /// small file of its own beside them, and the phone's next pull brings
+    /// it; never by the main lane; none here, none there.
+    #[test]
+    fn a_reply_to_send_goes_on_the_texts_lane() {
+        let w = World::new("replies-lane");
+        let desk_folder = desk_beside(&w);
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let (texts, asks) = (w.base.join("desk-texts-send.jsonl"), w.base.join("desk-replies-ask.jsonl"));
+        std::fs::write(&texts, "a sealed request line\n").unwrap();
+        std::fs::write(&asks, "r1:a sealed reply line\n").unwrap();
+        assert!(place_texts(&desk_folder, &w.desk.id, &texts).unwrap());
+        assert!(place_asks(&desk_folder, &w.desk.id, &asks).unwrap());
+        assert_eq!(own_urgent(&desk_folder, &w.desk.id).len(), 2);
+        let urgent = send_urgent_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), DUE + 11, TEST);
+        assert!(urgent.problem.is_none() && urgent.sent == 2, "{urgent:?}");
+        let pulled = pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 20, TEST);
+        assert!(pulled.problem.is_none(), "{pulled:?}");
+        assert_eq!(std::fs::read(asks_file(&cache_of(&w.phone.memory), &w.desk.id)).unwrap(), b"r1:a sealed reply line\n");
+        assert!(!own_plain(&desk_folder, &w.desk.id).iter().any(|r| r.starts_with("phone-messages/")), "never by the main lane");
+        assert_eq!(file_kind(&format!("phone-messages/ask/{}.jsonl", w.desk.id)), "replies");
+        std::fs::remove_file(&asks).unwrap();
+        assert!(place_asks(&desk_folder, &w.desk.id, &asks).unwrap() && !asks_file(&desk_folder, &w.desk.id).exists());
     }
 
     /// What a computer writing each minute costs, sent beside its sync app:
