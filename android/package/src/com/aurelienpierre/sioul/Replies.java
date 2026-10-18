@@ -104,27 +104,47 @@ final class Replies
      * mean, looked for in its own actions, then the car extender's, then the
      * watch's: Reply, an action that says it is one (SEMANTIC_ACTION_REPLY)
      * with an input that takes free text; Mark as read, one that says it is
-     * one (SEMANTIC_ACTION_MARK_AS_READ). When no action says it is a Reply,
-     * the one action whose input takes free text, said nothing of, in a
-     * notification Android takes as a conversation or the phone's SMS app's;
-     * two such would be a guess: none. Never one the system added
-     * (contextual), never one found by its title or its place. Pure:
-     * android/jvm-checks/RepliesCheck.java.
+     * one (SEMANTIC_ACTION_MARK_AS_READ). The first place that has one
+     * decides; two in that place ("Reply" and "Reply privately" in a group,
+     * two Mark as read) would be a guess: none, never the first by order.
+     * When no action says it is a Reply, the one action whose input takes
+     * free text, said nothing of, in a notification Android takes as a
+     * conversation or the phone's SMS app's; two such would be a guess: none.
+     * Never one the system added (contextual), never one found by its title
+     * or its place. Pure: android/jvm-checks/RepliesCheck.java.
      */
     static Choice choose(List<Act> acts, boolean conversation, boolean smsApp)
     {
         Act reply = null;
         Act read = null;
         boolean saysReply = false;
+        boolean replyFound = false;
+        boolean readFound = false;
         for (int place : PLACES) {
+            Act placeReply = null;
+            Act placeRead = null;
+            int replies = 0;
+            int reads = 0;
             for (Act act : acts) {
                 if (act.place != place || act.contextual)
                     continue;
                 saysReply |= act.semantic == Notification.Action.SEMANTIC_ACTION_REPLY;
-                if (reply == null && act.semantic == Notification.Action.SEMANTIC_ACTION_REPLY && act.freeText > 0)
-                    reply = act;
-                if (read == null && act.semantic == Notification.Action.SEMANTIC_ACTION_MARK_AS_READ)
-                    read = act;
+                if (act.semantic == Notification.Action.SEMANTIC_ACTION_REPLY && act.freeText > 0) {
+                    placeReply = act;
+                    replies++;
+                }
+                if (act.semantic == Notification.Action.SEMANTIC_ACTION_MARK_AS_READ) {
+                    placeRead = act;
+                    reads++;
+                }
+            }
+            if (!replyFound && replies > 0) {
+                reply = replies == 1 ? placeReply : null;
+                replyFound = true;
+            }
+            if (!readFound && reads > 0) {
+                read = reads == 1 ? placeRead : null;
+                readFound = true;
             }
         }
         if (reply == null && !saysReply && (conversation || smsApp)) {
@@ -322,6 +342,15 @@ final class Replies
         return new JSONObject()
             .put("reply", refusal(choice.reply, true, false).isEmpty())
             .put("read", refusal(choice.read, false, false).isEmpty());
+    }
+
+    /**
+     * What another profile's notification (a work profile's) offers your
+     * computers: nothing, since the listener never answers one ({@link #live}).
+     */
+    static JSONObject nothing() throws JSONException
+    {
+        return new JSONObject().put("reply", false).put("read", false);
     }
 
     /**

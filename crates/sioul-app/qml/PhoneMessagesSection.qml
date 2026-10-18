@@ -71,7 +71,8 @@ ColumnLayout {
         const typed = words.trim()
         if (!answer || typed === "")
             return ""
-        const sent = answer.texts ? JSON.parse(section.sioul.texts("send", JSON.stringify({ to: line.modelData.dial, body: typed })) || "null") || ({})
+        // A text from the phone it came to, never another's SIM.
+        const sent = answer.texts ? JSON.parse(section.sioul.texts("send", JSON.stringify({ to: line.modelData.dial, body: typed, phone: answer.phone })) || "null") || ({})
                                   : section.act("reply", { phone: answer.phone, verb: "reply", notice: answer.notice, app: answer.app, line: answer.line, words: typed }) || ({})
         if (sent.said)
             return sent.said
@@ -84,7 +85,9 @@ ColumnLayout {
         return ""
     }
 
-    // Taken back while it waits for the phone; sent again (a new key) where that fits.
+    // Taken back while it waits for the phone, said at once ("Taking it back…", no
+    // Take back again; too late, said, when the phone had taken it already); sent
+    // again (a new key) where that fits.
     function takeBack(key) {
         section.answered(section.act("take-back", { key: key }))
         section.reload()

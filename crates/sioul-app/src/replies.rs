@@ -37,7 +37,7 @@ use sioul_core::calls;
 use sioul_core::config::state_dir;
 use sioul_core::phonemsgs::{self, Extra, Line};
 use sioul_core::replies::{self as rules, Ask, Checked, Done, Judge, Live, Outcome, Taken, Verdict};
-use sioul_core::texts::{Claim, Ledger};
+use sioul_core::texts::Claim;
 use sioul_sync::textseal::ReplySeal;
 use std::ffi::c_char;
 use std::path::{Path, PathBuf};
@@ -55,16 +55,30 @@ fn seal() -> Option<ReplySeal> {
 }
 
 /// The states the listener may say (`replies::Done::state`); anything else is "failed".
-const STATES: &[&str] = &["handed", "gone", "no-reply", "no-read", "closed", "locked", "activity", "failed"];
+const STATES: &[&str] = &["handed", "gone", "other", "no-reply", "no-read", "closed", "locked", "activity", "failed"];
 
-/// Taken and not said yet, in the listener's process: the key, its
-/// notification's name, its words' hash (`replies::words_hash`), never the
-/// words, and its conversation's key when it is a reply (to let their
-/// answer through: `replies::note_answered`).
-static TAKEN: Mutex<Vec<(String, String, String, String)>> = Mutex::new(Vec::new());
-/// Handed lately: the key, its notification's name, its words' hash, when;
-/// looked for in its app's next notification (`heard`) for `SHOWN_WITHIN_MS`.
-static HANDED: Mutex<Vec<(String, String, String, i64)>> = Mutex::new(Vec::new());
+/// A reply on its way, in the listener's process, never its words: its key,
+/// its notification's name, its words' hash (`replies::words_hash`), its
+/// conversation's key (to let their answer through: `replies::note_answered`),
+/// when it was taken, and whether its words were in the notification
+/// already before it went (`replies::shown_already`: then only a message of
+/// yours timed after it says it shown).
+#[derive(Debug, Clone)]
+struct Sent {
+    key: String,
+    notice: String,
+    hash: String,
+    talk: String,
+    taken: i64,
+    before: bool,
+}
+
+/// Checked and not taken yet: the key and whether its words were shown already (`check`).
+static CHECKED: Mutex<Vec<(String, bool)>> = Mutex::new(Vec::new());
+/// Taken and not said yet.
+static TAKEN: Mutex<Vec<Sent>> = Mutex::new(Vec::new());
+/// Handed lately, looked for in its app's next notification (`heard`) for `SHOWN_WITHIN_MS`.
+static HANDED: Mutex<Vec<(Sent, i64)>> = Mutex::new(Vec::new());
 
 /// The listener's question (AppNotes.nativeReply): its verb and its JSON, a JSON answer.
 fn listener(verb: &str, json: &str) -> Value {
@@ -97,8 +111,17 @@ fn check(key: &str, posted: &Value) -> Value {
     let choices = sioul_core::appnotes::Choices::load(&sioul_core::appnotes::Choices::default_path());
     let words = sioul_core::words::Words::of(&config);
     match rules::check(&due, &read, &extra, &choices, &words, sioul_core::reach::region(&config)) {
-        Checked::Go { crossed } => json!({ "go": true, "crossed": crossed }),
+        Checked::Go { crossed } => {
+            // Its words there already, before it goes (an earlier reply of yours): said "shown" only by a newer message of yours.
+            let before = due.verb == "reply" && rules::shown_already(&read, &extra, &rules::words_hash(&due.words));
+            if let Ok(mut checked) = CHECKED.lock() {
+                checked.retain(|(k, _)| k != key);
+                checked.push((key.to_string(), before));
+            }
+            json!({ "go": true, "crossed": crossed })
+        }
         Checked::Gone => gone,
+        Checked::Other => json!({ "go": false, "state": "other" }),
     }
 }
 
@@ -106,12 +129,17 @@ fn check(key: &str, posted: &Value) -> Value {
 /// words given to Java then, in memory. Late, said so, never sent.
 fn taken(key: &str) -> Value {
     let Some(seal) = seal() else { return json!({ "go": false }) };
-    match rules::take(&rules::private_folder(), key, &seal, now_ms()) {
+    let now = now_ms();
+    match rules::take(&rules::private_folder(), key, &seal, now) {
         Ok(Taken::Go(due)) => {
+            let before = CHECKED.lock().ok().and_then(|mut checked| {
+                let at = checked.iter().position(|(k, _)| k == key)?;
+                Some(checked.remove(at).1)
+            });
             if let Ok(mut taken) = TAKEN.lock() {
-                taken.retain(|(k, _, _, _)| k != key);
+                taken.retain(|s| s.key != key);
                 let talk = if due.verb == "reply" { due.talk.clone() } else { String::new() };
-                taken.push((key.to_string(), due.notice.clone(), rules::words_hash(&due.words), talk));
+                taken.push(Sent { key: key.to_string(), notice: due.notice.clone(), hash: rules::words_hash(&due.words), talk, taken: now, before: before.unwrap_or(true) });
             }
             json!({ "go": true, "words": due.words })
         }
@@ -138,19 +166,19 @@ fn result(key: &str, asked: &Value) -> Value {
         eprintln!("sioul: replies: {e}");
     }
     let taken = TAKEN.lock().ok().and_then(|mut taken| {
-        let at = taken.iter().position(|(k, _, _, _)| k == key)?;
+        let at = taken.iter().position(|s| s.key == key)?;
         Some(taken.remove(at))
     });
     if state == "handed"
-        && let Some((key, notice, hash, talk)) = taken
+        && let Some(sent) = taken
     {
         // Their answer to your answer comes through at once for twenty minutes (decision 18).
-        if let Err(e) = rules::note_answered(&rules::private_folder(), &talk, now) {
+        if let Err(e) = rules::note_answered(&rules::private_folder(), &sent.talk, now) {
             eprintln!("sioul: replies: {e}");
         }
         if let Ok(mut handed) = HANDED.lock() {
-            handed.retain(|h| now - h.3 <= rules::SHOWN_WITHIN_MS);
-            handed.push((key, notice, hash, now));
+            handed.retain(|h| now - h.1 <= rules::SHOWN_WITHIN_MS);
+            handed.push((sent, now));
         }
     }
     json!({ "said": true })
@@ -165,11 +193,11 @@ pub(crate) fn heard(json: &str, posted: &Posted) -> bool {
         return false;
     }
     let now = now_ms();
-    handed.retain(|h| now - h.3 <= rules::SHOWN_WITHIN_MS);
+    handed.retain(|h| now - h.1 <= rules::SHOWN_WITHIN_MS);
     let notice = rules::notice(&posted.package, &posted.key);
     let extra = Extra::read(json);
-    let shown: Vec<String> = handed.iter().filter(|h| h.1 == notice && rules::shows(posted, &extra, &h.2)).map(|h| h.0.clone()).collect();
-    handed.retain(|h| !shown.contains(&h.0));
+    let shown: Vec<String> = handed.iter().filter(|(s, _)| s.notice == notice && rules::shows(posted, &extra, &s.hash, s.taken, s.before)).map(|(s, _)| s.key.clone()).collect();
+    handed.retain(|(s, _)| !shown.contains(&s.key));
     drop(handed);
     for key in &shown {
         if let Err(e) = rules::say(&rules::private_folder(), &Done::of(key, "shown", now)) {
@@ -198,6 +226,15 @@ pub(crate) fn offered(device: &str, posted: &Posted, lines: &[Line], extra: &Ext
             eprintln!("sioul: replies: {e}");
             false
         }
+    }
+}
+
+/// A line relayed for your computers (`phonemsgs::note`): the replies'
+/// ledger's mark made now when there is none (`replies::mark_ledger`), so
+/// that a reply to it is never written before the mark.
+pub(crate) fn relayed(now_ms: i64) {
+    if let Err(e) = rules::mark_ledger(&rules::private_folder(), now_ms) {
+        eprintln!("sioul: replies: {e}");
     }
 }
 
@@ -283,6 +320,10 @@ fn step(here: &str, folder: &Path, key: &[u8; 32], now: i64) -> bool {
     let roots: Vec<PathBuf> = std::iter::once(root.clone()).chain(crate::share::replies_copies()).collect();
     let own = calls::own_file(&root, rules::OUTCOME, here);
     let private = rules::private_folder();
+    // The ledger's mark, at every step, before any request is read (as texts do): the first reply is written after it.
+    if let Err(e) = rules::mark_ledger(&private, now) {
+        eprintln!("sioul: replies: {e}");
+    }
     let asked = rules::read_asks(&roots, &seal);
     let decided = asked.0.iter().any(|a| a.phone == here) && {
         let counted = sioul_sync::share::counting(folder, key, &crate::share::memory_path(), here, now);
@@ -292,11 +333,14 @@ fn step(here: &str, folder: &Path, key: &[u8; 32], now: i64) -> bool {
     decided || settled
 }
 
-/// Each request for this phone decided once (`replies::verdict`), under the
-/// ledger's lock both its processes take: claimed and flushed before the
-/// listener can see it, then handed over in the private file it watches
-/// (`replies::add_due`); the others said, and written in the ledger, so
-/// that each is decided once. Whether an outcome was written.
+/// Each request for this phone decided once (`replies::verdict`), at most
+/// `replies::STEP_MAX` a step, under the ledger's lock both its processes
+/// take: every decision of the step written in the ledger together and
+/// flushed once, the claims among them before the listener can see one,
+/// then handed over in the private file it watches (`replies::add_due`);
+/// the others said. Each request is decided once; one decided and not said
+/// (its word could not be written) is said at the next step (`settle`).
+/// Whether an outcome was written.
 #[allow(clippy::too_many_arguments)]
 fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, String)>), root: &Path, private: &Path, seal: &ReplySeal, counted: &dyn Fn(&str) -> bool, own: &Path, now: i64) -> bool {
     let (asks, cancelled) = asked;
@@ -304,19 +348,27 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
         return false;
     }
     let lines = phonemsgs::read_file(&calls::own_file(root, phonemsgs::LOG, here));
+    // The replies its listener said were not sent: they never hold the same words back.
+    let unsent = rules::unsent(private);
     let ledger_path = private.join(sioul_core::texts::LEDGER);
     let decided = sioul_core::filelock::with_lock(&ledger_path, || -> Result<(Vec<rules::Due>, Vec<Outcome>), String> {
-        let ledger = Ledger::open(private, now)?;
+        let mut ledger = rules::open_ledger(private, now)?;
         // The phone's switch per app, "Answer from your computers" (Settings ▸ This phone ▸ On your computers).
         let choices = phonemsgs::Choices::load(&phonemsgs::Choices::default_path());
         let answers = |app: &str| choices.answers(app);
-        let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers };
-        let (mut due, mut said) = (Vec::new(), Vec::new());
-        for ask in asks {
+        let (mut lines_out, mut due, mut said) = (Vec::new(), Vec::new(), Vec::new());
+        for ask in rules::in_turn(asks, here) {
+            if lines_out.len() >= rules::STEP_MAX {
+                break;
+            }
+            let judge = Judge { here, now_ms: now, ledger: &ledger, lines: &lines, counted, cancelled, answers: &answers, unsent: &unsent };
             let (state, reason) = match rules::verdict(ask, &judge) {
                 Verdict::NotMine | Verdict::Decided => continue,
                 Verdict::Send => {
-                    sioul_core::texts::record(private, &rules::claim_of(ask, now))?;
+                    let claim = rules::claim_of(ask, now);
+                    // Seen by this step's next requests (the guards), as the ledger will hold it.
+                    ledger.claims.push(claim.clone());
+                    lines_out.push(claim);
                     if let Some(line) = lines.iter().find(|l| l.id == ask.line) {
                         due.push(rules::due_of(ask, line, now));
                     }
@@ -327,9 +379,13 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
                 Verdict::Clocks => ("clocks", ""),
                 Verdict::Refused(why) => ("refused", why),
             };
-            sioul_core::texts::record(private, &Claim { key: ask.key.clone(), at: now, state: state.into(), ..Claim::default() })?;
+            let end = rules::end_of(&ask.key, state, reason, now);
+            ledger.claims.push(end.clone());
+            lines_out.push(end);
             said.push(Outcome { key: ask.key.clone(), state: state.into(), at: now, reason: reason.into(), ..Outcome::default() });
         }
+        // Every decision flushed, the claims among them, before anything is handed over or said.
+        sioul_core::texts::record_all(private, &lines_out)?;
         Ok((due, said))
     });
     match decided {
@@ -344,13 +400,14 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
             match rules::say_outcomes(own, &said) {
                 Ok(written) => written > 0,
                 Err(e) => {
+                    // Decided and in the ledger: said at the next step (`settle`).
                     eprintln!("sioul: replies: {e}");
                     false
                 }
             }
         }
         Err(e) => {
-            // A claim not flushed: nothing is handed over.
+            // Nothing flushed: nothing handed over, nothing said; decided again at the next step.
             eprintln!("sioul: replies: {e}");
             false
         }
@@ -360,12 +417,14 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
 /// What the listener did said in this phone's outcomes, each state once;
 /// a claim it never took within two minutes said "late", one it took with
 /// no word after "doubt" (`replies::settle`); each claim ended so written
-/// in the ledger. Whether an outcome was written.
+/// in the ledger; and a decision the ledger holds without its word (one
+/// that could not be written at its step), said now (`replies::ends_of`).
+/// Whether an outcome was written.
 fn settle(private: &Path, own: &Path, now: i64) -> bool {
     if !private.join(sioul_core::texts::LEDGER).is_file() {
         return false;
     }
-    let Ok(ledger) = Ledger::open(private, now) else { return false };
+    let Ok(ledger) = rules::open_ledger(private, now) else { return false };
     let mut last: std::collections::BTreeMap<&str, &Claim> = std::collections::BTreeMap::new();
     for claim in &ledger.claims {
         last.insert(claim.key.as_str(), claim);
@@ -378,7 +437,9 @@ fn settle(private: &Path, own: &Path, now: i64) -> bool {
             return false;
         }
     };
-    let written = rules::say_outcomes(own, &rules::outcomes_of(&done)).unwrap_or_else(|e| {
+    let mut outcomes = rules::outcomes_of(&done);
+    outcomes.extend(rules::ends_of(&ledger, now));
+    let written = rules::say_outcomes(own, &outcomes).unwrap_or_else(|e| {
         eprintln!("sioul: replies: {e}");
         0
     });
@@ -476,13 +537,17 @@ pub(crate) fn fill(lines: &mut Vec<sioul_core::phonemsgs::PorchLine>, all: &[Lin
     let now_ms = now.timestamp().as_millisecond();
     let live = rules::read_live(&root, now_ms);
     let seal = ReplySeal::new(&key);
-    let own: Vec<Ask> = rules::read_asks(std::slice::from_ref(&root), &seal).0.into_iter().filter(|a| a.device == here).collect();
+    let (asks, cancels) = rules::read_asks(std::slice::from_ref(&root), &seal);
+    let own: Vec<Ask> = asks.into_iter().filter(|a| a.device == here).collect();
+    // What this computer took back (Take back): said at once.
+    let taken_back: std::collections::BTreeSet<String> = cancels.into_iter().filter(|(device, _)| *device == here).map(|(_, key)| key).collect();
     let outcomes = rules::read_outcomes(&root);
     let phones = crate::texts::phones();
     let shared = |device: &str| phones.iter().find(|p| p.id == device).filter(|p| p.exported > 0).map(|p| p.exported * 1000);
     let time_of = |ms: i64| sioul_core::texts::time_of_day(ms, now);
-    let sent = |dial: &str, since: i64| crate::texts::sent_to(dial, since);
-    let offer = rules::Offer { live: &live, asks: &own, outcomes: &outcomes, tr: crate::backend::tr(), texts: crate::texts::readable(), shared: &shared, time_of: &time_of, sent_texts: &sent };
+    let sent = |phone: &str, dial: &str, since: i64| crate::texts::sent_to(phone, dial, since);
+    let texts_from = |phone: &str| crate::texts::sends_texts(phone);
+    let offer = rules::Offer { live: &live, asks: &own, outcomes: &outcomes, tr: crate::backend::tr(), taken_back: &taken_back, lines: all, texts_from: &texts_from, shared: &shared, time_of: &time_of, sent_texts: &sent };
     let by_id: std::collections::BTreeMap<&str, &Line> = all.iter().map(|l| (l.id.as_str(), l)).collect();
     let mut seen: Vec<String> = Vec::new();
     for line in lines.iter_mut() {
@@ -556,7 +621,8 @@ mod tests {
         let now = now_ms();
         let line = Line { at: now - 300_000, id: format!("{}-aa", now - 300_000), app: "org.thoughtcrime.securesms".into(), kind: "chat".into(), talk: "fedcba9876543210".into(), notice: "0123456789abcdef".into(), name: "Alice".into(), key: "+33199001234".into(), who: "neutral".into(), text: "Tu passes ?".into(), shows: now - 300_000, ..Line::default() };
         phonemsgs::carry_into(&calls::own_file(&root, phonemsgs::LOG, "phone"), std::slice::from_ref(&line), now).unwrap();
-        Ledger::open(&private, now - 60_000).unwrap();
+        // The listener relayed the line a minute before: the ledger's mark made then.
+        rules::mark_ledger(&private, now - 60_000).unwrap();
         let ask = |key: &str, device: &str| (device.to_string(), Ask { key: key.into(), phone: "phone".into(), verb: "reply".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), words: format!("Réponse {key}."), written: now, ..Ask::default() });
         for (device, a) in [ask("k1", "desk"), ask("k2", "desk"), ask("k3", "laptop"), ask("k4", "desk")] {
             rules::write_ask(&root, &device, &a, &seal).unwrap();
@@ -569,7 +635,12 @@ mod tests {
         assert!(decide("phone", &asked(), &root, &private, &seal, &counted, &own, now), "taken back and not counted, said");
         let due = rules::read_due(&private, &seal);
         assert_eq!(due.iter().map(|d| (d.key.as_str(), d.words.as_str(), d.talk.as_str())).collect::<Vec<_>>(), [("k1", "Réponse k1.", "fedcba9876543210"), ("k4", "Réponse k4.", "fedcba9876543210")]);
-        let states = |o: &[Outcome]| o.iter().map(|o| (o.key.clone(), o.state.clone(), o.reason.clone())).collect::<Vec<_>>();
+        // Each computer's requests in turn (`replies::in_turn`): by key here.
+        let states = |o: &[Outcome]| {
+            let mut said = o.iter().map(|o| (o.key.clone(), o.state.clone(), o.reason.clone())).collect::<Vec<_>>();
+            said.sort();
+            said
+        };
         let said = rules::read_outcomes(&root);
         assert_eq!(states(&said), [("k2".to_string(), "taken-back".to_string(), String::new()), ("k3".into(), "refused".into(), "not-counted".into())]);
         // Read again: decided once.
@@ -584,10 +655,59 @@ mod tests {
         let all = rules::read_outcomes(&root);
         assert!(all.iter().any(|o| o.key == "k4" && o.state == "late"), "{all:?}");
         assert!(!settle(&private, &own, now + 4 * 60_000), "each once; the claims ended");
-        let ledger = Ledger::open(&private, now).unwrap();
-        assert_eq!((ledger.state("k1"), ledger.state("k4")), (Some("done"), Some("done")));
+        let ledger = rules::open_ledger(&private, now).unwrap();
+        assert_eq!((ledger.state("k1"), ledger.state("k4"), ledger.state("k3")), (Some("done"), Some("done"), Some("refused:not-counted")));
         let text = std::fs::read_to_string(&own).unwrap();
         assert!(!text.contains("Réponse") && !text.contains("Alice"), "no words, no names");
+        // A decision whose word was lost (its file gone): said again at the next step, once.
+        std::fs::remove_file(&own).unwrap();
+        assert!(settle(&private, &own, now + 5 * 60_000));
+        let again = rules::read_outcomes(&root);
+        assert!(again.iter().any(|o| o.key == "k3" && o.state == "refused" && o.reason == "not-counted"), "{again:?}");
+        assert!(!settle(&private, &own, now + 6 * 60_000), "once");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The first reply after the install, from an empty private folder: the
+    /// listener relays the line (the ledger's mark made then, the only
+    /// thing in the folder), the reply is written a minute and a half later,
+    /// the phone's first step after it sends it: never "before-mark". Its
+    /// notification gone when the listener came, the same words written again
+    /// go too: the first never went.
+    #[test]
+    fn the_first_reply_after_install_goes_and_one_gone_can_go_again() {
+        let base = std::env::temp_dir().join(format!("sioul-app-replies-first-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, private) = (base.join("phone-messages"), base.join("private"));
+        let seal = ReplySeal::new(&[9u8; 32]);
+        let t0 = now_ms() - 10 * 60_000;
+        let line = Line { at: t0 - 60_000, id: format!("{}-aa", t0 - 60_000), app: "org.thoughtcrime.securesms".into(), kind: "chat".into(), talk: "fedcba9876543210".into(), notice: "0123456789abcdef".into(), name: "Alice".into(), key: "+33199001234".into(), who: "neutral".into(), text: "Tu passes ?".into(), shows: t0, ..Line::default() };
+        assert!(!private.exists(), "an empty private folder");
+        rules::mark_ledger(&private, t0).unwrap();
+        phonemsgs::carry_into(&calls::own_file(&root, phonemsgs::LOG, "phone"), std::slice::from_ref(&line), t0).unwrap();
+        let ask = |key: &str, at: i64| Ask { key: key.into(), phone: "phone".into(), verb: "reply".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), words: "J'arrive.".into(), written: at, ..Ask::default() };
+        rules::write_ask(&root, "desk", &ask("k1", t0 + 90_000), &seal).unwrap();
+        let own = calls::own_file(&root, rules::OUTCOME, "phone");
+        let counted = |device: &str| device == "desk";
+        let roots = vec![root.clone()];
+        // A phone's step, as `step` runs it on the phone's own folders.
+        let step = |at: i64| {
+            rules::mark_ledger(&private, at).unwrap();
+            let decided = decide("phone", &rules::read_asks(&roots, &seal), &root, &private, &seal, &counted, &own, at);
+            settle(&private, &own, at) || decided
+        };
+        step(t0 + 180_000);
+        assert_eq!(rules::read_due(&private, &seal).iter().map(|d| d.key.as_str()).collect::<Vec<_>>(), ["k1"], "sent: {:?}", rules::read_outcomes(&root));
+        assert!(matches!(rules::take(&private, "k1", &seal, t0 + 200_000).unwrap(), rules::Taken::Go(_)));
+        rules::say(&private, &Done::of("k1", "gone", t0 + 201_000)).unwrap();
+        step(t0 + 240_000);
+        assert!(rules::read_outcomes(&root).iter().any(|o| o.key == "k1" && o.state == "gone"));
+        // Her next message brings the notification back; the same words again: they go.
+        rules::write_ask(&root, "desk", &ask("k2", t0 + 300_000), &seal).unwrap();
+        step(t0 + 360_000);
+        let said = rules::read_outcomes(&root);
+        assert!(!said.iter().any(|o| o.key == "k2"), "{said:?}");
+        assert!(rules::read_due(&private, &seal).iter().any(|d| d.key == "k2"));
         let _ = std::fs::remove_dir_all(&base);
     }
 }

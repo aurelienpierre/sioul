@@ -10294,7 +10294,8 @@ mod tests {
         // The phone's line the reply answers, in its own log.
         let line = texted(NOW - 3 * MINUTE);
         phonemsgs::carry_into(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id), std::slice::from_ref(&line), NOW).unwrap();
-        texts_ledger(&private, NOW - MINUTE);
+        // The listener relayed it: the replies' ledger's mark made then, before any request (`replies::mark_ledger`).
+        replies::mark_ledger(&private, NOW).unwrap();
         phone.exchange_with(&folder, &key, NOW, &notes, &on);
         desk.exchange_with(&folder, &key, NOW + 1_000, &notes, &on);
         let ask = replies::Ask { key: "0123456789abcdef0123456789abcdef".into(), phone: phone.id.clone(), verb: "reply".into(), notice: line.notice.clone(), app: line.app.clone(), line: line.id.clone(), words: "J'arrive dans dix minutes.".into(), written: NOW + MINUTE, ..replies::Ask::default() };
@@ -10307,10 +10308,11 @@ mod tests {
         let counted = counting(&folder, &key, &phone.memory, &phone.id, NOW + 2 * MINUTE);
         assert!(counted.contains(&desk.id), "{counted:?}");
         let decide = |now: i64| {
-            let ledger = sioul_core::texts::Ledger::open(&private, now).unwrap();
+            let ledger = replies::open_ledger(&private, now).unwrap();
             let lines = phonemsgs::read_file(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id));
             let (asks, cancelled) = replies::read_asks(&[messages_of(&phone)], &seal);
-            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true };
+            let unsent = replies::unsent(&private);
+            let judge = replies::Judge { here: &phone.id, now_ms: now, ledger: &ledger, lines: &lines, counted: &|d: &str| counted.contains(d), cancelled: &cancelled, answers: &|_: &str| true, unsent: &unsent };
             asks.iter().map(|a| replies::verdict(a, &judge)).collect::<Vec<_>>()
         };
         assert_eq!(decide(NOW + 2 * MINUTE), [replies::Verdict::Send]);
@@ -10340,9 +10342,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// A phone's private ledger opened, its mark made at `at`.
-    fn texts_ledger(dir: &Path, at: i64) {
-        sioul_core::texts::Ledger::open(dir, at).unwrap();
+    /// Who may ask the phone (`counting`): a computer you forgot counts again
+    /// only by a sealed fact newer than the forgetting, as `present` says (a
+    /// record of its read here since, or an entry it wrote since); its plain
+    /// notes written fresh in the folder, which anyone could write, change
+    /// nothing. A forgotten computer still running Sioul counts again as soon
+    /// as it shares anything: only a new passphrase cuts a device off.
+    #[test]
+    fn a_forgotten_computer_counts_again_only_by_a_sealed_fact() {
+        let base = scratch("counting-forgotten");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        desk.write("data/drafts/2026-10-01.json", "{\"steps\": 1}");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        assert!(counting(&folder, &key, &phone.memory, &phone.id, NOW + MINUTE).contains(&desk.id));
+        forget_device(&folder, &key, &phone.memory, &phone.id, &desk.id).unwrap();
+        assert!(!counting(&folder, &key, &phone.memory, &phone.id, NOW + 2 * MINUTE).contains(&desk.id), "forgotten");
+        // Plain notes in its name, said fresh: no sealed fact.
+        std::fs::write(seen_path(&folder, &desk.id), format!("at = {}\nround = 9\n", (NOW + 3 * MINUTE) / 1000)).unwrap();
+        phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert!(!counting(&folder, &key, &phone.memory, &phone.id, NOW + 3 * MINUTE).contains(&desk.id), "plain notes are no sealed fact");
+        // A record of its, sealed, read here since: it counts again.
+        desk.write("data/drafts/2026-10-02.json", "{\"steps\": 2}");
+        desk.exchange(&folder, &key, NOW + 4 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 5 * MINUTE);
+        assert!(counting(&folder, &key, &phone.memory, &phone.id, NOW + 5 * MINUTE).contains(&desk.id), "a sealed record newer than the forgetting");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// The part is off until turned on, on every device: a desk that never

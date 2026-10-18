@@ -79,6 +79,8 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
     if lines.is_empty() {
         return false;
     }
+    // The replies' ledger's mark, before any reply can answer these lines (`replies`).
+    crate::replies::relayed(now_ms);
     // What it offers a reply from your computers, said when that changed (a Reply, a Mark as read),
     // as the phone's switch for its app says.
     let offered = crate::replies::offered(&here.id, posted, &lines, &extra, choices.answers(&posted.package), now_ms);

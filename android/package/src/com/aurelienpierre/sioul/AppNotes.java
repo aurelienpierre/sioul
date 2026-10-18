@@ -872,9 +872,11 @@ public final class AppNotes extends NotificationListenerService
         // For your computers, when its app sends to them (crates/sioul-core/src/phonemsgs.rs, `Extra`):
         // whether its app keeps it secret, when it was sent and posted, whether it shows a picture (never the picture).
         PhoneMessages.notice(out, n.visibility, n.when, sbn.getPostTime(), extras.containsKey(Notification.EXTRA_PICTURE) || extras.containsKey("android.pictureIcon"));
-        // What it offers a reply from your computers (Replies.java), and what went through its Reply
-        // lately, the person's own words, read by Rust in memory only, to tell a reply shown.
-        out.put("offer", Replies.offer(n, conversation, sbn.getPackageName().equals(smsApp())));
+        // What it offers a reply from your computers (Replies.java): nothing for another profile's,
+        // which the listener never answers; and what went through its Reply lately, the person's own
+        // words, read by Rust in memory only, to tell a reply shown.
+        boolean own = Process.myUserHandle().equals(sbn.getUser());
+        out.put("offer", own ? Replies.offer(n, conversation, sbn.getPackageName().equals(smsApp())) : Replies.nothing());
         JSONArray history = new JSONArray();
         CharSequence[] sent = extras.getCharSequenceArray(Notification.EXTRA_REMOTE_INPUT_HISTORY);
         if (sent != null)

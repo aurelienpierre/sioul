@@ -410,11 +410,17 @@ pub(crate) fn writers(p: &Posted, region: Option<&Region>) -> (Vec<String>, Vec<
     (numbers, names)
 }
 
-/// When the newest message of others in a notification was sent (ms): its
-/// messages' own times, else the notification's (`when`, its post); 0 unknown.
-pub(crate) fn newest_from_others(p: &Posted, extra: &Extra) -> i64 {
-    let timed = p.messages.iter().enumerate().filter(|(_, m)| m.sender.as_ref().is_some_and(|s| !is_user(p, s))).filter_map(|(i, _)| extra.messages.get(i).map(|e| e.at)).max().unwrap_or(0);
-    if timed > 0 { timed } else { [extra.when, extra.posted].into_iter().find(|t| *t > 0).unwrap_or(0) }
+/// When the newest message of others in a notification was sent (ms), by
+/// its messages' own times only; 0 when they give none: a notification's
+/// own time moves with a silent repost, and is never taken for a message's
+/// (`replies::check`, a reply crossing their newer messages).
+pub(crate) fn newest_timed_from_others(p: &Posted, extra: &Extra) -> i64 {
+    p.messages.iter().enumerate().filter(|(_, m)| m.sender.as_ref().is_some_and(|s| !is_user(p, s))).filter_map(|(i, _)| extra.messages.get(i).map(|e| e.at)).max().unwrap_or(0)
+}
+
+/// A group's title as its lines keep it (one line, `NAME_MAX`); "" for a conversation between two.
+pub(crate) fn title_of(c: &appnotes::Conversation) -> String {
+    if c.group { one_line(&c.title, NAME_MAX) } else { String::new() }
 }
 
 /// Who a code came from, as safe to say: the last sender's name, else the
@@ -476,7 +482,7 @@ pub fn lines_of(n: &Notice) -> Vec<Line> {
             // A text from a sender named in letters that no address book knows: a service's.
             let service = sms && n.who.is_none() && matches!(talk.sender, Sender::Named { .. });
             let who = if service { "automaton".to_string() } else { n.who.unwrap_or(Who::Stranger).id().to_string() };
-            let (talk_key, title, group) = talk.conversation.as_ref().map_or((String::new(), String::new(), false), |c| (c.key.clone(), if c.group { one_line(&c.title, NAME_MAX) } else { String::new() }, c.group));
+            let (talk_key, title, group) = talk.conversation.as_ref().map_or((String::new(), String::new(), false), |c| (c.key.clone(), title_of(c), c.group));
             let line = Line { kind: kind.into(), talk: talk_key, title, group, who, always: n.listed && !group, ..base };
             messages_of(n, line, heard)
         }

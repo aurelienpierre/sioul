@@ -1527,10 +1527,12 @@ fn draft_taken(id: &str) -> Value {
 /// A text written here for the phone to send: refused at once when the
 /// phone would refuse it (said why), else a request with a key of its own in
 /// this device's file, which the sharing carries. {said, shared, key}.
-fn send(to: &str, body: &str, again: &str) -> (Value, bool) {
+fn send(to: &str, body: &str, again: &str, from: &str) -> (Value, bool) {
     let tr = tr();
     let Some((here, seal, _)) = sealed() else { return (json!({ "said": tr.text("texts-page-off", None), "shared": false }), false) };
-    let Some(phone) = sending_phone() else { return (json!({ "said": tr.text("texts-page-no-phone", None), "shared": false }), false) };
+    // From the phone asked (a reply on the Porch: the phone the text came to), else the one that sends.
+    let phone = if from.is_empty() || (demo() && !phone()) { sending_phone() } else { phones().into_iter().find(|p| p.id == from) };
+    let Some(phone) = phone else { return (json!({ "said": tr.text("texts-page-no-phone", None), "shared": false }), false) };
     let region = sioul_core::reach::region(&load_config());
     if let Some(why) = rules::refusal(to, body, region) {
         return (json!({ "said": tr.text(&format!("texts-refused-{why}"), None), "shared": false }), false);
@@ -1550,7 +1552,7 @@ fn send(to: &str, body: &str, again: &str) -> (Value, bool) {
 fn again(key: &str) -> (Value, bool) {
     let Some((_, seal, _)) = sealed() else { return (json!({ "said": tr().text("texts-page-off", None), "shared": false }), false) };
     match rules::read_requests(&root(), &seal).into_iter().find(|r| r.key == key) {
-        Some(old) => send(&old.to, &old.body, key),
+        Some(old) => send(&old.to, &old.body, key, &old.phone),
         None => (json!({ "said": "", "shared": false }), false),
     }
 }
@@ -1685,7 +1687,7 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     let (answer, shared) = match verb {
         "view" => (view(&text("query")), false),
         "conversation" => (conversation(&text("id")), false),
-        "send" => send(&text("to"), &text("body"), ""),
+        "send" => send(&text("to"), &text("body"), "", &text("phone")),
         "again" => again(&text("key")),
         "parts" => (parts(&text("body")), false),
         // An AI agent's draft: its words for the box, or gone; nothing is sent.
@@ -1735,17 +1737,26 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     (answer.to_string(), shared)
 }
 
-/// The texts this computer wrote to a number (`dial`) since a moment (ms),
-/// oldest first, for the Porch's reply under a line (`replies::Mine`): the
-/// words and their state in the texts' own words ("Sent at 14:03.").
-pub(crate) fn sent_to(dial: &str, since_ms: i64) -> Vec<sioul_core::replies::Mine> {
+/// Whether a phone sends texts for this computer: the part on here, and its
+/// texts read here (its log): a text that came to it is answered from it.
+pub(crate) fn sends_texts(phone_id: &str) -> bool {
+    if demo() && !phone() {
+        return phone_id == "demo-phone";
+    }
+    !phone_id.is_empty() && sealed().is_some() && rules::own_file(&root(), rules::LOG, phone_id).is_file()
+}
+
+/// The texts this computer wrote from a phone to a number (`dial`) since a
+/// moment (ms), oldest first, for the Porch's reply under a line
+/// (`replies::Mine`): the words and their state in the texts' own words ("Sent at 14:03.").
+pub(crate) fn sent_to(phone_id: &str, dial: &str, since_ms: i64) -> Vec<sioul_core::replies::Mine> {
     let Some((here, seal, _)) = sealed() else { return Vec::new() };
     let (_, requests, outcomes) = records(&here, &seal);
     let region = sioul_core::reach::region(&load_config());
     let to = phones::key(dial, region);
     let shared = sending_phone().filter(|p| p.exported > 0).map(|p| p.exported * 1000);
     let now = Zoned::now();
-    let mut sent: Vec<&Request> = requests.iter().filter(|r| r.device == here && r.written >= since_ms && phones::key(&r.to, region) == to).collect();
+    let mut sent: Vec<&Request> = requests.iter().filter(|r| r.device == here && r.phone == phone_id && r.written >= since_ms && phones::key(&r.to, region) == to).collect();
     sent.sort_by_key(|r| r.written);
     sent.into_iter()
         .map(|r| {
