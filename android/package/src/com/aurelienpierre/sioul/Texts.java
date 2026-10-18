@@ -806,13 +806,18 @@ public final class Texts
         if (!key.isEmpty()) {
             String[] columns = { Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX, Telephony.Mms.CREATOR };
             try (Cursor cursor = resolver.query(Telephony.Mms.CONTENT_URI, columns, Telephony.Mms.TRANSACTION_ID + " = ?", new String[] { key }, null)) {
-                while (cursor != null && cursor.moveToNext()) {
+                // No cursor: the provider did not answer, which is no "none there".
+                if (cursor == null)
+                    return new JSONObject().put("found", found).put("error", true);
+                while (cursor.moveToNext()) {
                     Row row = of(cursor);
                     if (own.equals(row.text(Telephony.Mms.CREATOR)))
                         found.put(new JSONObject().put("id", row.number(Telephony.Mms._ID)).put("date", row.number(Telephony.Mms.DATE)).put("box", row.number(Telephony.Mms.MESSAGE_BOX)));
                 }
             } catch (RuntimeException e) {
+                // A look that failed says so: Rust looks again, never reads it as "not there".
                 Log.w(TAG, "Texts: the multimedia messages sent could not be read: " + e);
+                return new JSONObject().put("found", new JSONArray()).put("error", true);
             }
         }
         return new JSONObject().put("found", found);

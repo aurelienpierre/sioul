@@ -51,7 +51,7 @@ fn main() {
         ("a TIFF with its description and GPS", tiff_with_gps),
         ("a WebP with EXIF, XMP and a profile", webp_with_metadata),
         ("a BMP and a still GIF", bmp_and_still_gif),
-        ("an animated GIF, as it is", animated_gif),
+        ("an animated GIF, its frames alone", animated_gif),
         ("a HEIC where Qt reads it", heic),
         ("a large picture made small, or refused", large_picture),
         ("a whole message", whole_message),
@@ -257,15 +257,30 @@ fn animated_gif(here: &Path) -> Result<String, String> {
     let source = here.join("dance.gif");
     let frame = |n: usize| (0..120 * 120).map(|p| ((p / 120 + p % 120 + n) % 4) as u8).collect::<Vec<u8>>();
     let bytes = gif(120, 120, &[frame(0), frame(1), frame(2)]);
-    std::fs::write(&source, &bytes).map_err(|e| e.to_string())?;
+    // A comment and XMP after its loop block, and words after its end, as an editor may leave them (the review's L-1).
+    let comment = [&[0x21, 0xFE, 20][..], b"SIOUL-SECRET-COMMENT", &[0]].concat();
+    let mut xmp = [&[0x21, 0xFF, 0x0B][..], b"XMP DataXMP", xmp().as_bytes(), &[0x01]].concat();
+    xmp.extend((0..=255u8).rev());
+    xmp.push(0);
+    let screen_and_loop = 6 + 7 + 12 + 19;
+    let edited = [&bytes[..screen_and_loop], &comment, &xmp, &bytes[screen_and_loop..], b"SIOUL-SECRET-AFTER"].concat();
+    std::fs::write(&source, &edited).map_err(|e| e.to_string())?;
     let (_, _, read) = sioul_app::picture_read(&source);
     if read.map(|(w, h, frames)| (w, h, frames)) != Some((120, 120, 3)) {
         return Err(format!("read as {read:?}"));
     }
     let (made, left) = sioul_app::attach_made(&[source.clone()], 300 * 1024, 0, &here.join("made"));
     let [(kind, ct, path, size)] = made.as_slice() else { return Err(format!("{made:?} {left:?}")) };
-    if (kind.as_str(), ct.as_str(), *size) != ("picture", "image/gif", bytes.len() as u64) || std::fs::read(path).ok().as_deref() != Some(bytes.as_slice()) {
-        return Err(format!("{kind} {ct} {size}: not as it is"));
+    let written = std::fs::read(path).map_err(|e| e.to_string())?;
+    if (kind.as_str(), ct.as_str(), *size) != ("picture", "image/gif", bytes.len() as u64) || written != bytes {
+        return Err(format!("{kind} {ct} {size}: not its frames alone, byte for byte"));
+    }
+    if String::from_utf8_lossy(&written).contains(SECRET) {
+        return Err("a comment, XMP or a tail left in it".into());
+    }
+    let (_, _, again) = sioul_app::picture_read(Path::new(path));
+    if again.map(|(_, _, frames)| frames) != Some(3) {
+        return Err(format!("written again, read as {again:?}"));
     }
     let (made, left) = sioul_app::attach_made(&[source], 20 * 1024, 0, &here.join("small"));
     if !made.is_empty() || !left.iter().map(|(_, why)| why.as_str()).eq(["gif-too-large"]) {
@@ -409,10 +424,16 @@ fn whole_message(here: &Path) -> Result<String, String> {
     let pdf = write("lease.pdf", b"%PDF-1.7\n%stand-in\n".to_vec())?;
     let broken = write("broken.jpg", vec![7u8; 1000])?;
     let big = write("long.mp4", [b"\0\0\0\x18ftypisom\0\0\x02\0isomiso2".as_slice(), &[0u8; 400_000]].concat())?;
+    // A PDF named as a video: another file, told by its bytes (the review's I-3).
+    let named = write("lease.mp4", b"%PDF-1.7\n%stand-in\n".to_vec())?;
     let (made, left) = sioul_app::attach_made(&[pdf.clone(), here.to_path_buf(), broken.clone(), big.clone(), drawing.clone()], limit, 0, &here.join("refused"));
-    let whys: Vec<(String, String)> = vec![(pdf.display().to_string(), "file".into()), (here.display().to_string(), "unreadable".into()), (broken.display().to_string(), "unreadable".into()), (big.display().to_string(), "too-large".into())];
+    let whys: Vec<(String, String)> = vec![(pdf.display().to_string(), "file".into()), (here.display().to_string(), "unreadable".into()), (broken.display().to_string(), "file".into()), (big.display().to_string(), "too-large".into())];
     if made.len() != 1 || left != whys {
         return Err(format!("refusals: made {made:?}, left {left:?}"));
+    }
+    let (made, left) = sioul_app::attach_made(&[named.clone()], limit, 0, &here.join("named"));
+    if !made.is_empty() || left != [(named.display().to_string(), "file".to_string())] {
+        return Err(format!("a PDF named .mp4: made {made:?}, left {left:?}"));
     }
     // Five pictures for 80 kB: room for four of 16 KB each beside the words; the last one said so.
     let five: Vec<PathBuf> = (0..5).map(|n| write(&format!("p{n}.png"), png(32, 32, move |x, y| [(x * 8) as u8, (y * 8) as u8, (n * 50) as u8, 255], &[]))).collect::<Result<_, _>>()?;
@@ -423,16 +444,21 @@ fn whole_message(here: &Path) -> Result<String, String> {
     Ok(format!("{whole} of {limit} bytes, the pictures {pictures}"))
 }
 
-/// A file of SIOUL_ATTACH_SAMPLES made fit and checked: a picture made a
-/// clean JPEG (its size and what it became said), or what it was taken for.
+/// A file of SIOUL_ATTACH_SAMPLES made fit as the page makes it
+/// (`attach_made`), and checked: a picture made a clean JPEG; an animated
+/// GIF holding none of the made-up words; anything else said as it went,
+/// or why it did not.
 fn sample(source: &Path, out: &Path) -> Result<String, String> {
-    let (format, reads, read) = sioul_app::picture_read(source);
-    if format.is_empty() || !reads {
-        let (made, left) = sioul_app::attach_made(&[source.to_path_buf()], 600_000, 0, &out.with_extension("made"));
-        return Ok(format!("no picture Qt reads here (\"{format}\"): {:?}", made.iter().map(|m| m.1.clone()).chain(left.into_iter().map(|l| l.1)).collect::<Vec<_>>()));
+    let (format, _, read) = sioul_app::picture_read(source);
+    let (made, left) = sioul_app::attach_made(&[source.to_path_buf()], 600_000, 0, &out.with_extension("made"));
+    let [(kind, ct, path, size)] = made.as_slice() else { return Ok(format!("\"{format}\" {read:?}: refused, {:?}", left.iter().map(|(_, why)| why.as_str()).collect::<Vec<_>>())) };
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    match ct.as_str() {
+        "image/jpeg" => clean(&bytes)?,
+        "image/gif" if String::from_utf8_lossy(&bytes).contains(SECRET) || bytes.windows(11).any(|w| w == b"XMP DataXMP") => return Err("an animated GIF kept its comment or XMP".into()),
+        _ => {}
     }
-    let (side, quality, size) = made_clean(source, out)?;
-    Ok(format!("{format} {read:?} → {side} px, quality {quality}, {size} bytes, clean"))
+    Ok(format!("\"{format}\" {read:?} → {kind} {ct}, {size} bytes{}", if ct == "image/jpeg" { ", clean" } else { "" }))
 }
 
 // ---------------------------------------------------------------- pictures, byte by byte

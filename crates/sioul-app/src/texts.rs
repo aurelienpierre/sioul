@@ -841,21 +841,31 @@ fn unhex(hex: &str) -> Option<Vec<u8>> {
     (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok()).collect()
 }
 
-/// Each multimedia message's outcome from its result (`texts::took`): sent
-/// (Android's Ok and the carrier's), not sent and why; and the keys whose
-/// result is Android's Ok without the carrier's answer, for the sent box to
-/// say (`Step::copy_results`). Never "delivered": no report is asked.
+/// Each multimedia message's outcome from its result (`texts::took`, with
+/// the HTTP status Java read): sent (Android's Ok and the carrier's), not
+/// sent and why, in doubt when each of Android's tries ended on the network
+/// ("network": the carrier may have it); and the keys whose result is
+/// Android's Ok without the carrier's answer, for the sent box to say
+/// (`Step::copy_results`). Never "delivered": no report is asked.
 fn mms_outcomes(results: &[PartResult]) -> (Vec<Outcome>, Vec<(String, i64)>) {
     let (mut out, mut look) = (Vec::new(), Vec::new());
     for r in results.iter().filter(|r| r.kind == "mms" && !r.key.is_empty()) {
         let conf = unhex(&r.conf).and_then(|bytes| sioul_core::mms::conf(&bytes));
-        match rules::took(r.code, conf.as_ref()) {
+        match rules::took(r.code, conf.as_ref(), r.http) {
             rules::Took::Sent => out.push(Outcome { key: r.key.clone(), state: "sent".into(), at: r.at, row: row_of(&r.uri), ..Outcome::default() }),
             rules::Took::Failed(why) => out.push(Outcome { key: r.key.clone(), state: "failed".into(), at: r.at, reason: why.into(), ..Outcome::default() }),
+            rules::Took::Doubt => out.push(Outcome { key: r.key.clone(), state: "doubt".into(), at: r.at, reason: "network".into(), ..Outcome::default() }),
             rules::Took::Look => look.push((r.key.clone(), r.at)),
         }
     }
     (out, look)
+}
+
+/// Whether Java could look in the provider (`Texts.findMms`): the permission
+/// given and the query answered. A look not made is never read as "not
+/// there": made again at the next step.
+fn looked(answer: &Value) -> bool {
+    answer["allowed"] == true && answer["error"] != true
 }
 
 /// The row Sioul's multimedia message was filed as in the sent box, by its
@@ -906,12 +916,15 @@ struct Step<'a> {
     memory: PathBuf,
     vault: Option<&'a Vault>,
     android: &'a dyn Android,
+    /// Whether the sharing counts a device now (`share::counting`): a
+    /// request is sent only for one (`texts::verdict`).
+    counted: &'a dyn Fn(&str) -> bool,
 }
 
 impl Step<'_> {
     /// This phone's.
-    fn here<'a>(here: &'a str, seal: &'a Seal, region: Option<&'static phones::Region>, vault: Option<&'a Vault>) -> Step<'a> {
-        Step { here, seal, region, root: root(), private: private(), copies: crate::share::texts_copies(), memory: crate::share::memory_path(), vault, android: &Phone }
+    fn here<'a>(here: &'a str, seal: &'a Seal, region: Option<&'static phones::Region>, vault: Option<&'a Vault>, counted: &'a dyn Fn(&str) -> bool) -> Step<'a> {
+        Step { here, seal, region, root: root(), private: private(), copies: crate::share::texts_copies(), memory: crate::share::memory_path(), vault, android: &Phone, counted }
     }
 
     /// Outcomes added to this phone's own file, each (key, state) once.
@@ -955,12 +968,16 @@ impl Step<'_> {
         let (mms, look) = mms_outcomes(&results);
         outcomes.extend(mms);
         for (key, at) in look {
-            if said.contains(&format!("{key}/sent")) || said.contains(&format!("{key}/failed")) {
+            if ["sent", "failed", "doubt"].iter().any(|state| said.contains(&format!("{key}/{state}"))) {
                 continue;
             }
             let answer = self.android.ask("texts-find-mms", &json!({ "key": key }));
-            let found = (answer["allowed"] == true).then(|| sent_row(&answer)).flatten();
-            outcomes.push(match found {
+            // The sent box not readable now (the permission withdrawn, the query failed): looked at again at the
+            // next step, and by the look for lost claims until Android's last word; never said refused for it.
+            if !looked(&answer) {
+                continue;
+            }
+            outcomes.push(match sent_row(&answer) {
                 Some(row) => Outcome { key, state: "sent".into(), at, row, ..Outcome::default() },
                 None => Outcome { key, state: "failed".into(), at, reason: "carrier-refused".into(), ..Outcome::default() },
             });
@@ -985,14 +1002,14 @@ impl Step<'_> {
     /// SIM's carrier takes now (Android's live value, never one raised:
     /// larger, refused in words, never left to Android's code 5); written and
     /// flushed where Android will read it. The SIM: as asked, else the
-    /// conversation's last.
-    fn prepare(&self, r: &Request, texts: &[Text], now: i64) -> Prepared {
+    /// conversation's last (`sim_for`).
+    fn prepare(&self, r: &Request, log: &std::cell::OnceCell<Vec<Text>>, now: i64) -> Prepared {
         let Some(vault) = self.vault else { return Prepared::Waiting };
         if r.key.len() != 32 || !r.key.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Prepared::Refused("other");
         }
         let to = phones::key(&r.to, self.region);
-        let sub = if r.sub >= 0 { r.sub } else { rules::last_sim(&rules::conversation_id(std::slice::from_ref(&to)), self.here, texts) };
+        let sub = self.sim_for(r, log);
         let answer = self.android.ask("texts-limits", &json!({ "sub": sub }));
         let limits = limits_from(&answer);
         let carrier = limits.iter().find(|l| l.sub == sub).or_else(|| limits.first());
@@ -1039,6 +1056,23 @@ impl Step<'_> {
         }
     }
 
+    /// The SIM a request about to go leaves from: as asked, else the
+    /// conversation's last on this phone, its log read then and once a step
+    /// at most (`log`): never for requests decided already, which a step
+    /// meets at every exchange and inside a dose's alarm (the review of 18
+    /// October 2026, M-1).
+    fn sim_for(&self, r: &Request, log: &std::cell::OnceCell<Vec<Text>>) -> i32 {
+        if r.sub >= 0 {
+            return r.sub;
+        }
+        let texts = log.get_or_init(|| {
+            #[cfg(test)]
+            LOG_READS.with(|reads| reads.set(reads.get() + 1));
+            rules::read_logs(&self.root, self.seal)
+        });
+        rules::last_sim(&rules::conversation_id(&[phones::key(&r.to, self.region)]), self.here, texts)
+    }
+
     /// A multimedia message's media asked for by their names (`blobs::Wanted::media`,
     /// which the pull's fetch brings from the server, and Sioul keeping the
     /// folder itself too): those missing; those here no longer.
@@ -1080,14 +1114,15 @@ impl Step<'_> {
             return false;
         }
         let mine = |r: &&Request| r.phone == self.here;
-        let texts = if requests.iter().filter(mine).any(|r| r.sub < 0) { rules::read_logs(&self.root, self.seal) } else { Vec::new() };
+        // The phone's log, read only when a request about to go names no SIM (`sim_for`).
+        let log = std::cell::OnceCell::new();
         // The multimedia messages that may go, made ready outside the ledger's
         // lock (the step's lock keeps the phone's other process out).
         let mut ready: BTreeMap<String, Prepared> = BTreeMap::new();
         if let Ok(ledger) = rules::Ledger::open(&self.private, now) {
             for r in requests.iter().filter(mine).filter(|r| r.multimedia()) {
-                if rules::verdict(r, self.here, now, &ledger, self.region) == Verdict::Send {
-                    ready.insert(r.key.clone(), self.prepare(r, &texts, now));
+                if rules::verdict(r, self.here, now, &ledger, self.region, self.counted) == Verdict::Send {
+                    ready.insert(r.key.clone(), self.prepare(r, &log, now));
                 }
             }
         }
@@ -1098,7 +1133,7 @@ impl Step<'_> {
         let claimed = sioul_core::filelock::with_lock(&ledger_path, || -> Result<(), String> {
             let ledger = rules::Ledger::open(&self.private, now)?;
             for r in &requests {
-                let verdict = rules::verdict(r, self.here, now, &ledger, self.region);
+                let verdict = rules::verdict(r, self.here, now, &ledger, self.region, self.counted);
                 let (state, reason) = match verdict {
                     Verdict::NotMine | Verdict::Decided => continue,
                     Verdict::Send if r.multimedia() => match ready.get(&r.key) {
@@ -1147,7 +1182,7 @@ impl Step<'_> {
         }
         for r in to_send {
             // The SIM: as asked, else the conversation's last on this phone.
-            let sub = if r.sub >= 0 { r.sub } else { rules::last_sim(&rules::conversation_id(&[phones::key(&r.to, self.region)]), self.here, &texts) };
+            let sub = self.sim_for(&r, &log);
             let answer = self.android.ask("texts-send", &json!({ "key": r.key, "to": phones::key(&r.to, self.region), "body": r.body, "sub": sub }));
             if answer["handed"] == true {
                 self.record(&Claim { key: r.key.clone(), at: now_ms(), state: "handed".into(), ..Claim::default() });
@@ -1189,8 +1224,10 @@ impl Step<'_> {
     /// the hand-off, or a phone restarted while Android waited): a text's
     /// looked for among the texts Sioul sent since, by its number and its
     /// words' hash, two minutes on; a multimedia message's by its key (the
-    /// provider's `tr_id`), handed or not, `LOOK_AFTER_MMS_MS` on. Found,
-    /// sent; else in doubt. Never sent again.
+    /// provider's `tr_id`), handed or not, at each step from
+    /// `LOOK_AFTER_MMS_MS` on, until Android's last word (`MMS_LAST_WORD_MS`:
+    /// it may still go until then). Found, sent; else in doubt. Never sent
+    /// again.
     fn look_for_lost(&self, now: i64) -> bool {
         let Ok(ledger) = rules::Ledger::open(&self.private, now) else { return false };
         let lost: Vec<&Claim> = ledger.claims.iter().filter(|c| c.state == "claimed" && !c.mms && ledger.state(&c.key) == Some("claimed") && now - c.at >= rules::LOOK_AFTER_MS).collect();
@@ -1215,10 +1252,12 @@ impl Step<'_> {
         }
         for claim in lost_mms {
             let answer = self.android.ask("texts-find-mms", &json!({ "key": claim.key }));
-            if answer["allowed"] != true {
+            // A look not made is made again at the next step; past Android's last word, the doubt all the same.
+            if !looked(&answer) && now - claim.at < rules::MMS_LAST_WORD_MS {
                 continue;
             }
-            if let Some(outcome) = rules::doubt_after(claim, sent_row(&answer), now) {
+            let found = if looked(&answer) { sent_row(&answer) } else { None };
+            if let Some(outcome) = rules::doubt_after(claim, found, now) {
                 self.record(&Claim { key: claim.key.clone(), at: now, state: "done".into(), ..Claim::default() });
                 let _ = std::fs::remove_file(self.pdu_path(&claim.key));
                 said.push(outcome);
@@ -1273,6 +1312,12 @@ impl Step<'_> {
 /// Where a multimedia message waits on the phone, in the private texts folder.
 const OUTGOING: &str = "outgoing";
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread's steps read the phone's log (`Step::sim_for`): tests count them.
+    static LOG_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// A private file written whole beside, flushed to the disk, then put in place.
 fn write_flushed(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
@@ -1300,7 +1345,10 @@ static LIMITS_ASKED: Mutex<i64> = Mutex::new(0);
 /// message left behind swept. Under one lock for the phone's processes.
 /// Whether something was written.
 fn light_step(here: &str, seal: &Seal, region: Option<&'static phones::Region>, vault: Option<&Vault>) -> bool {
-    let step = Step::here(here, seal, region, vault);
+    // The devices the sharing counts, read only when a request not decided yet asks (`texts::verdict`).
+    let devices: std::cell::OnceCell<BTreeSet<String>> = std::cell::OnceCell::new();
+    let counted = |device: &str| devices.get_or_init(|| vault.map(|(folder, key)| sioul_sync::share::counting(folder, key, &crate::share::memory_path(), here, now_ms())).unwrap_or_default()).contains(device);
+    let step = Step::here(here, seal, region, vault, &counted);
     sioul_core::filelock::with_lock(&step.private.join(".step"), || {
         let now = now_ms();
         let mut changed = step.copy_results(now);
@@ -1934,7 +1982,7 @@ fn send(to: &str, body: &str, again: &str, from: &str) -> (Value, bool) {
         return (json!({ "said": tr.text(&format!("texts-refused-{why}"), None), "shared": false }), false);
     }
     let request = Request { key: rules::new_key(), phone: phone.id.clone(), to: to.trim().to_string(), body: body.to_string(), sub: -1, written: now_ms(), ahead: ahead_of(&phone.id), again: again.to_string(), ..Request::default() };
-    match rules::append(&rules::own_file(&root(), rules::SEND, &here), std::slice::from_ref(&request), &seal, None) {
+    match rules::write_request(&root(), &here, &request, &seal) {
         Ok(_) => {
             // Its small file to the server now, not behind the records.
             crate::share::texts_now();
@@ -2019,7 +2067,7 @@ const LOW_KB: u64 = 300;
 fn weigh(phone: &str, id: &str) -> Weigh {
     let Some((here, seal, _)) = sealed() else { return Weigh::Unknown };
     let (texts, _, outcomes) = records(&here, &seal);
-    weighed(rules::limits_of(&outcomes, phone).map(|(_, limits)| limits), rules::last_sim(id, phone, &texts), choice().mms_kb)
+    weighed(rules::limits_of(&outcomes, phone, now_ms()).map(|(_, limits)| limits), rules::last_sim(id, phone, &texts), choice().mms_kb)
 }
 
 /// What a message may weigh by what the phone said (`limits`, none before
@@ -2035,7 +2083,8 @@ fn weighed(limits: Option<&[rules::Limits]>, sim: i32, chosen_kb: Option<u64>) -
         Some(l) if !l.mms => Weigh::None,
         // A line with no size is none the phone wrote (`limits_from` keeps sizes only).
         Some(l) if l.max == 0 => Weigh::Unknown,
-        Some(l) => Weigh::Up { max: chosen_kb.map_or(l.max, |kb| (kb * 1024).min(l.max)), side: l.width.max(l.height) },
+        // Never above Android's own ceiling for a multimedia message, whatever a line says.
+        Some(l) => Weigh::Up { max: chosen_kb.map_or(l.max, |kb| (kb * 1024).min(l.max)).min(rules::MMS_MAX_EVER), side: l.width.max(l.height) },
     }
 }
 
@@ -2059,6 +2108,14 @@ static ATTACHING: Mutex<()> = Mutex::new(());
 /// passed (a newer one asked, or the files let go meanwhile) makes nothing,
 /// or deletes what it made. The window never waits on `ATTACHING`.
 static ATTACH_TURN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// At the window's start (lib.rs `run`, once this process is the profile's
+/// Sioul): what an earlier run left attached on the Texts page, one that quit
+/// or crashed with files attached, goes (the review of 18 October 2026, I-6).
+#[cfg(not(target_os = "android"))]
+pub(crate) fn at_start() {
+    let_attached_go();
+}
 
 /// The files attached let go, and any attaching under way told so: the window's thread never waits.
 fn let_attached_go() {
@@ -2179,7 +2236,7 @@ fn parts_mms(body: &str, media: &[Value], id: &str, from: &str) -> Value {
 fn sending() -> Value {
     let tr = tr();
     let phone = sending_phone();
-    let limits = sealed().map(|(here, seal, _)| records(&here, &seal).2).and_then(|outcomes| phone.as_ref().and_then(|p| rules::limits_of(&outcomes, &p.id).map(|(_, l)| l.to_vec()))).unwrap_or_default();
+    let limits = sealed().map(|(here, seal, _)| records(&here, &seal).2).and_then(|outcomes| phone.as_ref().and_then(|p| rules::limits_of(&outcomes, &p.id, now_ms()).map(|(_, l)| l.to_vec()))).unwrap_or_default();
     let carrier = limits.iter().filter(|l| l.mms).map(|l| l.max).min().unwrap_or(614_400);
     let size = |bytes: u64| {
         let mut args = sioul_core::i18n::args();
@@ -2251,7 +2308,7 @@ fn request_mms(to: &str, words: &str, media: Vec<rules::Medium>, again: &str, fr
         return (json!({ "said": tr.text(&format!("texts-refused-{why}"), None), "shared": false }), false);
     }
     let request = Request { key: rules::new_key(), phone: phone.id.clone(), to: to.trim().to_string(), sub: -1, written: now_ms(), ahead: ahead_of(&phone.id), again: again.to_string(), words: words.to_string(), media, ..Request::default() };
-    match rules::append(&rules::own_file(&root(), rules::SEND, &here), std::slice::from_ref(&request), &seal, None) {
+    match rules::write_request(&root(), &here, &request, &seal) {
         Ok(_) => {
             // Its media, then its small file, to the server now, not behind the records.
             crate::share::texts_now();
@@ -3261,6 +3318,8 @@ mod tests {
         filed: std::cell::RefCell<BTreeMap<String, (i64, i64, i64)>>,
         /// What Android answers a hand-off: none for the default (taken).
         refuse: Option<&'static str>,
+        /// The provider's query fails (`Texts.findMms` says so).
+        look_fails: std::cell::Cell<bool>,
     }
 
     impl Android for Carrier {
@@ -3275,6 +3334,7 @@ mod tests {
                     self.handed.borrow_mut().push((asked["key"].as_str().unwrap_or_default().to_string(), asked["sub"].as_i64().unwrap_or(-9), bytes));
                     json!({ "handed": true })
                 }
+                "texts-find-mms" if self.look_fails.get() => json!({ "allowed": true, "found": [], "error": true }),
                 "texts-find-mms" => {
                     let key = asked["key"].as_str().unwrap_or_default();
                     let found: Vec<Value> = self.filed.borrow().get(key).map(|(id, date, mbox)| json!({ "id": id, "date": date, "box": mbox })).into_iter().collect();
@@ -3288,6 +3348,11 @@ mod tests {
                 _ => Value::Null,
             }
         }
+    }
+
+    /// A sharing that counts every device.
+    fn every_device(_: &str) -> bool {
+        true
     }
 
     /// A phone's quick step on folders of its own: its data, its private
@@ -3310,12 +3375,17 @@ mod tests {
         }
 
         fn step<'a>(&'a self, android: &'a dyn Android) -> Step<'a> {
-            Step { here: "phone", seal: &self.seal, region: phones::region_named("FR"), root: self.base.join("data"), private: self.base.join("private"), copies: Vec::new(), memory: self.base.join("share").join("memory.json"), vault: Some(&self.vault), android }
+            self.step_counting(android, &every_device)
         }
 
-        /// A request written on a computer: its line in that computer's file.
+        /// The same, the sharing counting the devices `counted` says.
+        fn step_counting<'a>(&'a self, android: &'a dyn Android, counted: &'a dyn Fn(&str) -> bool) -> Step<'a> {
+            Step { here: "phone", seal: &self.seal, region: phones::region_named("FR"), root: self.base.join("data"), private: self.base.join("private"), copies: Vec::new(), memory: self.base.join("share").join("memory.json"), vault: Some(&self.vault), android, counted }
+        }
+
+        /// A request written on a computer: its line in that computer's file, its writer sealed in it.
         fn asks(&self, request: &Request) {
-            rules::append(&rules::own_file(&self.base.join("data"), rules::SEND, "desk"), std::slice::from_ref(request), &self.seal, None).unwrap();
+            rules::write_request(&self.base.join("data"), "desk", request, &self.seal).unwrap();
         }
 
         /// A medium sealed into the sharing, as the computer that wrote the message seals it.
@@ -3349,9 +3419,14 @@ mod tests {
 
         /// Java's word on a multimedia message, as TextSend.Result writes it.
         fn result(&self, key: &str, code: i64, uri: &str, conf: &[u8], at: i64) {
+            self.result_http(key, code, uri, conf, 0, at);
+        }
+
+        /// The same, with the HTTP status Android adds to its code 4 (0 none).
+        fn result_http(&self, key: &str, code: i64, uri: &str, conf: &[u8], http: i64, at: i64) {
             use std::io::Write as _;
             let hex: String = conf.iter().map(|b| format!("{b:02x}")).collect();
-            let line = json!({ "key": key, "kind": "mms", "code": code, "uri": uri, "http": 200, "conf": hex, "at": at });
+            let line = json!({ "key": key, "kind": "mms", "code": code, "uri": uri, "http": http, "conf": hex, "at": at });
             let path = self.base.join("private").join(rules::RESULTS);
             let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
             writeln!(file, "{line}").unwrap();
@@ -3488,13 +3563,24 @@ mod tests {
         desk.result(k3, -1, "content://mms/sent/41", &conf(k3, 0xE5), NOW);
         desk.result(k4, 11, "", &[], NOW);
         desk.result(k5, 4, "", &conf(k5, 0xC2), NOW);
+        // Code 4: every try ended on the network (no HTTP status), or the carrier answered 503 (the review's M-2).
+        let (k6, k7) = ("6f708192a3b4c5d6e7f8091011121314", "708192a3b4c5d6e7f809101112131415");
+        desk.result_http(k6, 4, "", &[], 0, NOW);
+        desk.result_http(k7, 4, "", &[], 503, NOW);
+        // The sent box unreadable a first time (the review's L-2): nothing said of KEY_B then.
+        carrier.look_fails.set(true);
         assert!(desk.step(&carrier).copy_results(NOW + MINUTE));
+        assert!(desk.states(KEY_B).is_empty(), "a look not made says nothing: {:?}", desk.states(KEY_B));
+        carrier.look_fails.set(false);
+        assert!(desk.step(&carrier).copy_results(NOW + 2 * MINUTE));
         let said: BTreeMap<String, (String, String)> = desk.outcomes().into_iter().map(|o| (o.key.clone(), (o.state, if o.row.is_empty() { o.reason } else { o.row }))).collect();
         assert_eq!(said[KEY_A], ("sent".to_string(), format!("mms-40@{}", NOW / 1000)), "Android's Ok, the sent box holds it");
         assert_eq!(said[KEY_B], ("failed".to_string(), "carrier-refused".to_string()), "Android's Ok, not in the sent box");
         assert_eq!(said[k3], ("failed".to_string(), "carrier-content".to_string()));
         assert_eq!(said[k4], ("failed".to_string(), "mms-data-off".to_string()));
         assert_eq!(said[k5], ("failed".to_string(), "carrier-busy".to_string()));
+        assert_eq!(said[k6], ("doubt".to_string(), "network".to_string()), "the carrier may have it");
+        assert_eq!(said[k7], ("failed".to_string(), "carrier-refused".to_string()));
         // Read again: each said once.
         let count = desk.outcomes().len();
         desk.step(&carrier).copy_results(NOW + 2 * MINUTE);
@@ -3503,11 +3589,12 @@ mod tests {
 
     /// A multimedia message's claim with no word from Android (a restart
     /// while it waited for a network, Sioul stopped after the hand-off):
-    /// looked for by its key 40 minutes on, handed or not; found, sent;
-    /// else in doubt; never sent again; its file gone. A text's claim, two
-    /// minutes on as before.
+    /// looked for by its key from 40 minutes on, handed or not; found, sent;
+    /// not found, said in doubt only past Android's last word (100 minutes:
+    /// the review's L-3), a look that fails made again; never sent again;
+    /// its file gone.
     #[test]
-    fn a_multimedia_message_with_no_word_is_looked_for_forty_minutes_on() {
+    fn a_multimedia_message_with_no_word_is_looked_for_until_android_s_last_word() {
         let desk = Desk::new("lost");
         let carrier = Carrier { max: 614_400, mms: true, ..Carrier::default() };
         desk.asks(&mms(KEY_A, vec![desk.seals(b"picture a")], NOW - MINUTE));
@@ -3519,10 +3606,17 @@ mod tests {
         carrier.filed.borrow_mut().insert(KEY_A.into(), (51, (NOW + 30 * MINUTE) / 1000, 2));
         assert!(step.look_for_lost(NOW + 41 * MINUTE));
         assert_eq!(desk.states(KEY_A).last().unwrap().0, "sent");
+        assert_eq!(desk.states(KEY_B).last().unwrap().0, "handed", "it may still go");
+        assert!(!step.pdu_path(KEY_A).exists() && step.pdu_path(KEY_B).exists());
+        assert!(!step.look_for_lost(NOW + 70 * MINUTE));
+        carrier.look_fails.set(true);
+        assert!(!step.look_for_lost(NOW + 99 * MINUTE), "a look not made, before Android's last word: nothing said");
+        carrier.look_fails.set(false);
+        assert!(step.look_for_lost(NOW + 100 * MINUTE));
         assert_eq!(desk.states(KEY_B).last().unwrap().0, "doubt");
-        assert!(!step.pdu_path(KEY_A).exists() && !step.pdu_path(KEY_B).exists());
-        assert!(!step.decide(NOW + 42 * MINUTE) && carrier.handed.borrow().len() == 2, "never sent again");
-        assert!(!step.look_for_lost(NOW + 60 * MINUTE), "said once");
+        assert!(!step.pdu_path(KEY_B).exists());
+        assert!(!step.decide(NOW + 101 * MINUTE) && carrier.handed.borrow().len() == 2, "never sent again");
+        assert!(!step.look_for_lost(NOW + 120 * MINUTE), "said once");
     }
 
     /// Only the files the page made fit are sent: none elsewhere, through a
@@ -3578,6 +3672,99 @@ mod tests {
         assert_eq!(weighed(Some(&[sim(1, true, 614_400), sim(3, true, 307_200)]), -1, None), Weigh::Up { max: 307_200, side: 2592 }, "the smallest of two");
         assert_eq!(weighed(Some(&[sim(1, true, 0)]), 1, None), Weigh::Unknown, "a line with no size");
         assert_eq!(weighed(Some(&[]), 1, None), Weigh::Unknown);
+    }
+
+    /// The phone's log is read only when a request about to go names no SIM,
+    /// once a step at most; never in a step whose requests are decided, as
+    /// every step is but the one that sends, a dose's alarm's included (the
+    /// review of 18 October 2026, M-1).
+    #[test]
+    fn a_quick_step_reads_the_log_only_for_a_text_about_to_go() {
+        let desk = Desk::new("log-reads");
+        a_log_of(&desk, 200);
+        let carrier = Carrier { max: 614_400, mms: true, ..Carrier::default() };
+        let reads = || LOG_READS.with(std::cell::Cell::get);
+        let text = |key: &str, sub: i32| Request { key: key.into(), phone: "phone".into(), to: "01 99 00 12 34".into(), body: "J’arrive.".into(), sub, written: NOW - MINUTE, ..Request::default() };
+        // Decided already, with no SIM: the log stays shut.
+        desk.asks(&text(KEY_A, -1));
+        rules::record(&desk.base.join("private"), &Claim { key: KEY_A.into(), at: NOW - MINUTE, state: "done".into(), ..Claim::default() }).unwrap();
+        let step = desk.step(&carrier);
+        let before = reads();
+        step.copy_results(NOW);
+        step.decide(NOW);
+        step.look_for_lost(NOW);
+        assert_eq!(reads(), before, "every request decided: the log never read");
+        // About to go with its SIM named: shut still.
+        desk.asks(&text(KEY_B, 1));
+        step.decide(NOW);
+        assert_eq!(reads(), before, "its SIM named");
+        // Two about to go with none named: read once.
+        desk.asks(&text("1b2c3d4e5f60718293a4b5c6d7e8f901", -1));
+        desk.asks(&text("2c3d4e5f60718293a4b5c6d7e8f90112", -1));
+        step.decide(NOW);
+        assert_eq!(reads(), before + 1, "read once for both");
+    }
+
+    /// Only a device the sharing counts asks the phone to send; a request
+    /// whose sealed writer is not its file's device is passed over (the
+    /// review of 18 October 2026, I-4).
+    #[test]
+    fn only_a_device_the_sharing_counts_asks_the_phone_to_send() {
+        let desk = Desk::new("counted");
+        let carrier = Carrier { max: 614_400, mms: true, ..Carrier::default() };
+        desk.asks(&Request { key: KEY_A.into(), phone: "phone".into(), to: "01 99 00 12 34".into(), body: "J’arrive.".into(), sub: 1, written: NOW - MINUTE, ..Request::default() });
+        let none = |_: &str| false;
+        assert!(desk.step_counting(&carrier, &none).decide(NOW));
+        assert_eq!(desk.states(KEY_A), [("refused".to_string(), "not-counted".to_string())]);
+        assert!(carrier.handed.borrow().is_empty());
+        // Moved into another device's file (the server could): passed over, never decided.
+        let line = std::fs::read_to_string(rules::own_file(&desk.base.join("data"), rules::SEND, "desk")).unwrap();
+        std::fs::write(rules::own_file(&desk.base.join("data"), rules::SEND, "laptop"), line).unwrap();
+        assert!(rules::read_requests(&desk.base.join("data"), &desk.seal).iter().all(|r| r.device == "desk"), "the moved line passed over");
+    }
+
+    /// A phone's log of `count` texts, sealed as the phone seals it, every
+    /// column of a provider's row kept (made up: fiction numbers).
+    fn a_log_of(desk: &Desk, count: usize) {
+        let texts: Vec<Text> = (0..count)
+            .map(|n| {
+                let at = NOW - DAY_MS * 400 + n as i64 * 600_000;
+                let number = format!("+3319900{:04}", n % 140);
+                let body: String = (0..90).map(|i| char::from(b'a' + ((n * 7 + i) % 26) as u8)).collect();
+                let mut fields = BTreeMap::new();
+                for (k, v) in [("_id", json!(n)), ("thread_id", json!(n % 140)), ("address", json!(number)), ("person", Value::Null), ("date", json!(at)), ("date_sent", json!(at - 2_000)), ("protocol", json!(0)), ("read", json!(1)), ("status", json!(-1)), ("type", json!(1 + n % 2)), ("reply_path_present", json!(0)), ("subject", Value::Null), ("body", json!(body)), ("service_center", json!("+33199000000")), ("locked", json!(0)), ("sub_id", json!(1)), ("error_code", json!(0)), ("creator", json!("foundation.e.message")), ("seen", json!(1))] {
+                    fields.insert(k.to_string(), v);
+                }
+                Text { id: format!("sms-{n}@{at}"), at, thread: (n % 140).to_string(), direction: if n % 2 == 0 { "in".into() } else { "out".into() }, with: vec![number], body, sub: 1, fields, ..Text::default() }
+            })
+            .collect();
+        rules::append(&rules::own_file(&desk.base.join("data"), rules::LOG, "phone"), &texts, &desk.seal, None).unwrap();
+    }
+
+    /// The quick step's time with 20,000 texts in the phone's log and only
+    /// decided requests (a dose's alarm runs it: `health::alarm_decide` →
+    /// `share::exchange_here` → `before_exchange` → `light_step`), best of
+    /// five: `cargo test --release -p sioul-app quick_step_s_time -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn a_quick_step_s_time_with_twenty_thousand_texts() {
+        let desk = Desk::new("quick-time");
+        a_log_of(&desk, 20_000);
+        let request = Request { key: KEY_A.into(), phone: "phone".into(), to: "01 99 00 12 34".into(), body: "J’arrive.".into(), sub: -1, written: NOW - MINUTE, ..Request::default() };
+        desk.asks(&request);
+        rules::record(&desk.base.join("private"), &Claim { key: KEY_A.into(), at: NOW - MINUTE, state: "done".into(), ..Claim::default() }).unwrap();
+        let carrier = Carrier { max: 614_400, mms: true, ..Carrier::default() };
+        let step = desk.step(&carrier);
+        let mut best = std::time::Duration::MAX;
+        for _ in 0..5 {
+            let t = std::time::Instant::now();
+            step.copy_results(NOW);
+            step.decide(NOW);
+            step.look_for_lost(NOW);
+            step.sweep_outgoing(NOW);
+            best = best.min(t.elapsed());
+        }
+        println!("the quick step, 20,000 texts in the log, its one request decided: {best:?} (best of five)");
     }
 
     /// What its carriers let the phone send, said once a day, and at once

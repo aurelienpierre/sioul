@@ -165,7 +165,8 @@ Une image que vous joignez à un SMS sur un ordinateur y est réécrite, depuis 
 
 - **Elle garde** ce qu’elle montre : tournée dans le sens où l’appareil était tenu, en couleurs standard (sRGB), de 1 600 pixels au plus sur son grand côté, en JPEG.
 - **Elle perd** tout ce qu’un appareil photo, un téléphone ou un logiciel de retouche écrit d’autre dans le fichier d’une image : la position GPS de la prise de vue, l’appareil ou le téléphone qui l’a prise, l’heure, les réglages, les commentaires, légendes et mots-clés (EXIF, XMP, IPTC, les textes d’un PNG), et son profil de couleur. Le nom de son fichier ne part jamais non plus : le message l’appelle `image1.jpg`.
-- **Une vidéo, un son ou une fiche de contact** part tel quel, avec tout ce que son fichier contient (une vidéo peut contenir le lieu où elle a été filmée) : n’en joignez qu’à qui vous l’enverriez par courriel.
+- **Un GIF animé** ne garde que ses images : ses commentaires et les blocs d’autres logiciels (XMP, un profil de couleur) s’en vont.
+- **Une vidéo, un son ou une fiche de contact** part tel quel, avec tout ce que son fichier contient (une vidéo peut contenir le lieu où elle a été filmée, un son ses étiquettes) : n’en joignez qu’à qui vous l’enverriez par courriel.
 
 Elle est ensuite scellée comme tous les médias de vos SMS, passe par votre propre partage jusqu’à votre téléphone, et votre téléphone l’envoie par votre opérateur au téléphone de l’autre personne : votre opérateur et le sien la transportent, comme tout message multimédia.
 

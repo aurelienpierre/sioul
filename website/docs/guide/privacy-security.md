@@ -165,7 +165,8 @@ A picture you attach to a text on a computer is written again there, from its pi
 
 - **It keeps** what it shows: turned the way the camera was held, in standard colours (sRGB), at most 1,600 pixels on its long side, as a JPEG.
 - **It loses** everything else a camera, a phone or an editing program writes in a picture's file: the GPS position where it was taken, the camera or phone that took it, the time, the settings, comments, captions and keywords (EXIF, XMP, IPTC, a PNG's texts), and its colour profile. Its file's name never goes either: the message calls it `image1.jpg`.
-- **A video, a sound or a contact card** goes as it is, with whatever its file holds (a video can hold where it was filmed): attach one only where you would send it by mail.
+- **An animated GIF** keeps its frames alone: its comments and other programs' blocks (XMP, a colour profile) go.
+- **A video, a sound or a contact card** goes as it is, with whatever its file holds (a video can hold where it was filmed, a sound its tags): attach one only where you would send it by mail.
 
 It is then sealed as all your texts' media are, travels through your own sharing to your phone, and your phone sends it through your carrier to the other person's phone: your carrier and theirs carry it, as any multimedia message.
 

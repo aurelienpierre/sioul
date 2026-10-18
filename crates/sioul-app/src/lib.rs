@@ -329,6 +329,9 @@ pub fn run() -> i32 {
     if !addresses.is_empty() {
         outside::hand(&addresses);
     }
+    // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
+    #[cfg(not(target_os = "android"))]
+    texts::at_start();
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking

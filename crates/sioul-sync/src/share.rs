@@ -10550,7 +10550,7 @@ mod tests {
         let book = texts::Ledger::open(ledger, now).unwrap();
         let mut sent = Vec::new();
         for r in texts::read_requests(&texts_of(phone), seal) {
-            if texts::verdict(&r, &phone.id, now, &book, None) == texts::Verdict::Send {
+            if texts::verdict(&r, &phone.id, now, &book, None, &|_| true) == texts::Verdict::Send {
                 texts::record(ledger, &texts::Claim { key: r.key.clone(), at: now, state: "claimed".into(), ..texts::Claim::default() }).unwrap();
                 let outcome = texts::Outcome { key: r.key.clone(), state: "sent".into(), at: now, row: "sms-412".into(), ..texts::Outcome::default() };
                 texts::append(&texts::own_file(&texts_of(phone), texts::OUTCOME, &phone.id), &[outcome], seal, None).unwrap();
@@ -10575,7 +10575,7 @@ mod tests {
         let on = [texts::PART];
         texts::Ledger::open(&ledger, NOW - MINUTE).unwrap();
         let request = to_send("0123456789abcdef0123456789abcdef", &phone.id, NOW);
-        texts::append(&texts::own_file(&texts_of(&desk), texts::SEND, &desk.id), std::slice::from_ref(&request), &seal, None).unwrap();
+        texts::write_request(&texts_of(&desk), &desk.id, &request, &seal).unwrap();
         desk.exchange_with(&folder, &key, NOW, &notes, &on);
         let came = phone.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
         assert!(came.written.contains(TEXTS_SEND), "{came:?}");

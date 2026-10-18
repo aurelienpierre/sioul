@@ -89,10 +89,22 @@ pub const AHEAD_MS: i64 = 2 * 60_000;
 pub const LEDGER_KEPT_MS: i64 = 30 * DAY_MS;
 /// A claim with no word from Android this long after is looked for in the provider.
 pub const LOOK_AFTER_MS: i64 = 2 * 60_000;
-/// …a multimedia message's, handed or not, this long after: Android may
-/// wait 30 minutes for a mobile network, then try three times, and loses
-/// its queue if the phone restarts meanwhile (docs/texts.md).
+/// …a multimedia message's, handed or not, from this long after: Android
+/// may wait 30 minutes for a mobile network before its first try, and loses
+/// its queue if the phone restarts meanwhile (docs/texts.md)…
 pub const LOOK_AFTER_MMS_MS: i64 = 40 * 60_000;
+/// …until this long after, Android's last word at the latest: each of its
+/// three tries may wait 30 minutes and 5 seconds for a network, then two
+/// minutes on it, with 2 and 4 seconds between (`MmsRequest`,
+/// `MmsNetworkManager`, android16-release: some 97 minutes). Not found by
+/// then: the doubt; until then, it may still go.
+pub const MMS_LAST_WORD_MS: i64 = 100 * 60_000;
+/// A phone's "limits" line dated further ahead of the reader's clock than
+/// this is passed over (a phone whose clock was once set ahead).
+pub const LIMITS_AHEAD_MS: i64 = DAY_MS;
+/// The most a multimedia message may weigh, whatever a phone said: Android's
+/// own ceiling for one (`MmsService.MAX_MMS_FILE_SIZE`, 8 MB).
+pub const MMS_MAX_EVER: u64 = 8 * 1024 * 1024;
 /// A multimedia message from a computer: at most this many media.
 pub const MEDIA_MAX: usize = 5;
 /// A text written on a computer: at most this many characters.
@@ -329,7 +341,18 @@ pub struct Request {
     /// A group's other numbers, beside `to` (a later step: refused, "several", until then).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also: Vec<String>,
-    /// The device that wrote it (its file's name). Never written.
+    /// The device that wrote it, its name in the sharing, sealed with it
+    /// (`write_request`), as a reply's is: a line read from another
+    /// device's file than its writer's is passed over (`read_requests`), so
+    /// that nothing (the server, a stray file) moves a request from one
+    /// device's name to another's; the phone sends only for a device the
+    /// sharing counts (`verdict`). Empty in a request of a Sioul before 19
+    /// October 2026: judged by its file's device while this phone's ledger
+    /// says writers were not checked yet when it was written (`Mark::writers`),
+    /// refused after.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub writer: String,
+    /// The device that wrote it: its sealed writer, else its file's name. Never written.
     #[serde(skip)]
     pub device: String,
 }
@@ -681,8 +704,24 @@ fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> b
     changed
 }
 
+/// Every device's requests under `root`, each with its device: its sealed
+/// writer (a line whose writer is not its file's device is passed over:
+/// moved from another device's file), else, a request of an older Sioul,
+/// its file's name.
 pub fn read_requests(root: &Path, sealer: &dyn Sealer) -> Vec<Request> {
-    read_store(root, SEND, sealer, |r: &mut Request, d| r.device = d.to_string())
+    let mut all: Vec<Request> = read_store(root, SEND, sealer, |r: &mut Request, d| r.device = d.to_string());
+    all.retain(|r| r.writer.is_empty() || calls::file_safe(&r.writer) == r.device);
+    for r in all.iter_mut().filter(|r| !r.writer.is_empty()) {
+        r.device = r.writer.clone();
+    }
+    all
+}
+
+/// A request added to its device's own file under `root`, its writer
+/// (`device`) sealed in it, padded and sealed, under its lock.
+pub fn write_request(root: &Path, device: &str, request: &Request, sealer: &dyn Sealer) -> Result<usize, String> {
+    let request = Request { writer: device.to_string(), device: String::new(), ..request.clone() };
+    append(&own_file(root, SEND, device), std::slice::from_ref(&request), sealer, None)
 }
 
 pub fn read_outcomes(root: &Path, sealer: &dyn Sealer) -> Vec<Outcome> {
@@ -1015,6 +1054,13 @@ pub struct Claim {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mark {
     pub since: i64,
+    /// When this phone began to check who wrote each request (ms, its
+    /// clock; `Request::writer`): one with no writer written before is judged
+    /// by its file's device, one written after is refused, its computer's
+    /// Sioul older ("old-computer"). Set at the first opening by a Sioul that
+    /// checks; 0 in a ledger of an older one (none refused so).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub writers: i64,
 }
 
 /// The phone's private ledger, never shared: every key it decided, and its mark.
@@ -1034,9 +1080,15 @@ impl Ledger {
     pub fn open(dir: &Path, now_ms: i64) -> Result<Ledger, String> {
         let mark_path = dir.join(MARK);
         let mark = match std::fs::read_to_string(&mark_path).ok().and_then(|t| serde_json::from_str::<Mark>(&t).ok()) {
-            Some(mark) => mark,
+            Some(mark) if mark.writers > 0 => mark,
+            // A mark of an older Sioul: its time kept, writers checked from now.
+            Some(older) => {
+                let mark = Mark { writers: now_ms.max(older.since), ..older };
+                replace_flushed(&mark_path, &serde_json::to_string(&mark).map_err(|e| e.to_string())?)?;
+                mark
+            }
             None => {
-                let mark = Mark { since: now_ms };
+                let mark = Mark { since: now_ms, writers: now_ms };
                 write_flushed(&mark_path, &serde_json::to_string(&mark).map_err(|e| e.to_string())?, false)?;
                 mark
             }
@@ -1110,6 +1162,14 @@ fn write_flushed(path: &Path, text: &str, append: bool) -> Result<(), String> {
     file.sync_all().map_err(fail)
 }
 
+/// A file written whole beside, flushed, then put in place: a crash leaves
+/// the old one or the new one, never an empty one.
+fn replace_flushed(path: &Path, text: &str) -> Result<(), String> {
+    let beside = path.with_extension("new");
+    write_flushed(&beside, text, false)?;
+    std::fs::rename(&beside, path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The ledger's old keys taken out, `LEDGER_KEPT_MS` on (any request expired
 /// long before; the mark refuses those written before it anyway).
 pub fn trim_ledger(dir: &Path, now_ms: i64) -> Result<usize, String> {
@@ -1138,7 +1198,8 @@ pub enum Verdict {
     Expired,
     /// Dated ahead of the phone's clock: the clocks disagree; not sent, said.
     Clocks,
-    /// Not a text Sioul sends from a computer: said why.
+    /// Not a text Sioul sends from a computer, or not asked by one of your
+    /// devices ("not-counted", "old-computer"): said why.
     Refused(&'static str),
 }
 
@@ -1199,18 +1260,28 @@ pub fn sendable(ct: &str) -> bool {
 }
 
 /// The never-twice decision, step for step: another phone's; decided already
-/// (the ledger holds the key, whatever the sharing read again); refused
-/// (`refusal`, a multimedia message's `refusal_mms`); written before the
-/// ledger's mark; dated ahead of the phone's clock; older than
-/// `EXPIRY_MS`; else sent. The time written is corrected by how far the
-/// writer's clock may run ahead (`Request::ahead`, measured by the writer as
-/// an upper bound: a request looks older, never younger).
-pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, region: Option<&Region>) -> Verdict {
+/// (the ledger holds the key, whatever the sharing read again); written by
+/// a computer of an older Sioul after this phone began to check writers
+/// ("old-computer"); asked by a device the sharing does not count now
+/// (`counted`: left, forgotten, replaced, silent, or a stray file:
+/// "not-counted"); refused (`refusal`, a multimedia message's
+/// `refusal_mms`); written before the ledger's mark; dated ahead of the
+/// phone's clock; older than `EXPIRY_MS`; else sent. The time written is
+/// corrected by how far the writer's clock may run ahead (`Request::ahead`,
+/// measured by the writer as an upper bound: a request looks older, never
+/// younger). `counted` is asked only of a request not decided yet.
+pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, region: Option<&Region>, counted: &dyn Fn(&str) -> bool) -> Verdict {
     if request.phone != here || request.key.is_empty() {
         return Verdict::NotMine;
     }
     if ledger.has(&request.key) {
         return Verdict::Decided;
+    }
+    if request.writer.is_empty() && ledger.mark.writers > 0 && request.written - request.ahead >= ledger.mark.writers {
+        return Verdict::Refused("old-computer");
+    }
+    if !counted(&request.device) {
+        return Verdict::Refused("not-counted");
     }
     let refused = if request.multimedia() { refusal_mms(&request.to, &request.words, &request.media, &request.also, region) } else { refusal(&request.to, &request.body, region) };
     if let Some(why) = refused {
@@ -1233,36 +1304,48 @@ pub fn verdict(request: &Request, here: &str, now_ms: i64, ledger: &Ledger, regi
 /// claim `LOOK_AFTER_MS` old with no result, given whether the provider holds
 /// a sent row Sioul filed for it (`found`: its row). Found: sent. Not found:
 /// "doubt", never sent again.
-/// A multimedia message's claim, `LOOK_AFTER_MMS_MS` on: looked for by its key.
+/// A multimedia message's claim is looked for by its key from
+/// `LOOK_AFTER_MMS_MS` on, and said in doubt only once Android's last word
+/// is past (`MMS_LAST_WORD_MS`): until then it may still go.
 pub fn doubt_after(claim: &Claim, found: Option<String>, now_ms: i64) -> Option<Outcome> {
-    if now_ms - claim.at < if claim.mms { LOOK_AFTER_MMS_MS } else { LOOK_AFTER_MS } {
+    let age = now_ms - claim.at;
+    if age < if claim.mms { LOOK_AFTER_MMS_MS } else { LOOK_AFTER_MS } {
         return None;
     }
-    Some(match found {
-        Some(row) => Outcome { key: claim.key.clone(), state: "sent".into(), at: now_ms, row, ..Outcome::default() },
-        None => Outcome { key: claim.key.clone(), state: "doubt".into(), at: now_ms, ..Outcome::default() },
-    })
+    match found {
+        Some(row) => Some(Outcome { key: claim.key.clone(), state: "sent".into(), at: now_ms, row, ..Outcome::default() }),
+        None if claim.mms && age < MMS_LAST_WORD_MS => None,
+        None => Some(Outcome { key: claim.key.clone(), state: "doubt".into(), at: now_ms, ..Outcome::default() }),
+    }
 }
 
 /// What a multimedia message's result says (`TextSend.Result`): sent, when
 /// Android took it to the carrier and the carrier answered Ok; not sent, and
 /// why; or, Android's Ok with no answer of the carrier's, to be looked for
 /// in the provider's sent box (a message Android moved to its failed box is
-/// out of Sioul's sight: none there, not sent).
+/// out of Sioul's sight: none there, not sent); or in doubt, when each of
+/// Android's tries ended on the network with no answer of the carrier's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Took {
     Sent,
     Failed(&'static str),
     Look,
+    Doubt,
 }
 
 /// A multimedia message's result: Android's code (-1, `Activity.RESULT_OK`;
-/// else `SmsManager.MMS_ERROR_…`) and the carrier's answer (M-Send.conf),
-/// when it came. Android's Ok alone is not the carrier's.
-pub fn took(code: i64, conf: Option<&crate::mms::Conf>) -> Took {
+/// else `SmsManager.MMS_ERROR_…`), the carrier's answer (M-Send.conf) when it
+/// came, and the HTTP status Android adds to its code 4 (0 none). Android's
+/// Ok alone is not the carrier's. Its code 4 with no HTTP status, or one
+/// under 400, says that every try ended on the network (an I/O failure,
+/// even a read timeout after the message was posted: `MmsHttpClient`,
+/// `MmsRequest`, android16-release): the carrier may have taken it, once
+/// or more; with a status of 400 or more, the carrier refused it.
+pub fn took(code: i64, conf: Option<&crate::mms::Conf>, http: i64) -> Took {
     match (code, conf) {
         (-1, Some(conf)) if conf.ok() => Took::Sent,
         (-1, None) => Took::Look,
+        (4, None) if http < 400 => Took::Doubt,
         (code, conf) => Took::Failed(mms_failure(code, conf.map(|c| c.status))),
     }
 }
@@ -1294,9 +1377,16 @@ pub fn mms_failure(code: i64, status: Option<u8>) -> &'static str {
 }
 
 /// What a phone last said its carriers let it send (its newest "limits"
-/// line), and when (ms); none before it said.
-pub fn limits_of<'a>(outcomes: &'a [Outcome], phone: &str) -> Option<(i64, &'a [Limits])> {
-    outcomes.iter().filter(|o| o.key.is_empty() && o.state == "limits" && o.device == calls::file_safe(phone)).max_by_key(|o| o.at).map(|o| (o.at, o.limits.as_slice()))
+/// line), and when (ms); none before it said. A line dated more than
+/// `LIMITS_AHEAD_MS` ahead of `now_ms` (the reader's clock) is passed over:
+/// a phone whose clock was once set ahead would otherwise be read by it
+/// until that date, whatever it said since.
+pub fn limits_of<'a>(outcomes: &'a [Outcome], phone: &str, now_ms: i64) -> Option<(i64, &'a [Limits])> {
+    outcomes
+        .iter()
+        .filter(|o| o.key.is_empty() && o.state == "limits" && o.device == calls::file_safe(phone) && o.at <= now_ms + LIMITS_AHEAD_MS)
+        .max_by_key(|o| o.at)
+        .map(|o| (o.at, o.limits.as_slice()))
 }
 
 /// A random key, 32 hex digits, from the system's randomness (`/dev/urandom`); the clock's when none.
@@ -1378,6 +1468,8 @@ pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translato
             None => ("waiting", tr.text("texts-waiting", None), false),
         },
         Some(o) => match o.state.as_str() {
+            // A multimedia message Android still holds past its first look: it may still go, until its last word.
+            "taken" | "handed" if media && now.timestamp().as_millisecond() - o.at >= LOOK_AFTER_MMS_MS => ("sending", with("texts-sending-still", "time", time(o.at + MMS_LAST_WORD_MS)), false),
             "taken" | "handed" => ("sending", tr.text("texts-sending", None), false),
             "sent" => ("sent", with("texts-sent-at", "time", time(o.at)), false),
             "delivered" => ("delivered", with("texts-delivered-at", "time", time(o.at)), false),
@@ -1386,9 +1478,11 @@ pub fn said(outcome: Option<&Outcome>, phone_shared: Option<i64>, tr: &Translato
             "expired" => ("expired", tr.text("texts-expired", None), true),
             "refused" => {
                 let why = if media && o.reason == "empty" { "old-phone" } else { known_refusal(&o.reason) };
-                ("refused", tr.text(&format!("texts-refused-{why}"), None), matches!(why, "before-mark" | "old-phone"))
+                ("refused", tr.text(&format!("texts-refused-{why}"), None), matches!(why, "before-mark" | "old-phone" | "old-computer"))
             }
             "clocks" => ("clocks", tr.text("texts-clocks", None), true),
+            // Each of Android's tries ended on the network: the carrier may have it. No Send again here.
+            "doubt" if o.reason == "network" => ("doubt", tr.text("texts-doubt-network", None), false),
             _ => ("doubt", tr.text("texts-doubt", None), true),
         },
     };
@@ -1427,6 +1521,8 @@ fn known_refusal(reason: &str) -> &'static str {
         "too-many-media" => "too-many-media",
         "media-kind" => "media-kind",
         "no-mms" => "no-mms",
+        "not-counted" => "not-counted",
+        "old-computer" => "old-computer",
         _ => "other",
     }
 }
@@ -1770,7 +1866,7 @@ mod tests {
     }
 
     fn request(key: &str, phone: &str, written: i64) -> Request {
-        Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, device: "desk".into(), ..Request::default() }
+        Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, writer: "desk".into(), device: "desk".into(), ..Request::default() }
     }
 
     /// The phone's steps, as `texts.rs` in the app takes them: read every
@@ -1779,7 +1875,7 @@ mod tests {
         let ledger = Ledger::open(dir, now).unwrap();
         let mut sent = Vec::new();
         for r in requests {
-            if verdict(&Request { ahead, ..r.clone() }, here, now, &ledger, fr()) == Verdict::Send {
+            if verdict(&Request { ahead, ..r.clone() }, here, now, &ledger, fr(), &|_| true) == Verdict::Send {
                 record(dir, &Claim { key: r.key.clone(), at: now, state: "claimed".into(), to: phones::key(&r.to, fr()), hash: words_hash(&r.body), ..Claim::default() }).unwrap();
                 sent.push(r.key.clone());
             }
@@ -1800,6 +1896,55 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Who asks (the review of 18 October 2026, I-4): each request names its
+    /// writer inside its seal; a line moved to another device's file is
+    /// passed over; the phone sends only for a device the sharing counts. A
+    /// request of an older Sioul, with no writer, is judged by its file's
+    /// device while the phone's ledger had not begun to check writers when
+    /// it was written, and refused after ("old-computer"); a ledger of an
+    /// older Sioul keeps its mark and begins to check now.
+    #[test]
+    fn requests_name_their_writer_and_only_counted_devices_ask() {
+        let dir = scratch("writers");
+        let seal = Stand;
+        let root = dir.join("data");
+        let mine = Request { writer: String::new(), device: String::new(), ..request("w1", "phone", NOW) };
+        write_request(&root, "desk", &mine, &seal).unwrap();
+        // The same line, as the server could move it into another device's file.
+        let line = std::fs::read_to_string(own_file(&root, SEND, "desk")).unwrap();
+        std::fs::create_dir_all(root.join(SEND)).unwrap();
+        std::fs::write(own_file(&root, SEND, "laptop"), &line).unwrap();
+        let read = read_requests(&root, &seal);
+        assert_eq!(read.iter().map(|r| (r.key.as_str(), r.writer.as_str(), r.device.as_str())).collect::<Vec<_>>(), [("w1", "desk", "desk")], "the moved line passed over");
+        // A ledger of an older Sioul: its mark kept, writers checked from now.
+        let private = dir.join("private");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join(MARK), r#"{"since":1000}"#).unwrap();
+        let ledger = Ledger::open(&private, NOW).unwrap();
+        assert_eq!(ledger.mark, Mark { since: 1000, writers: NOW });
+        assert_eq!(Ledger::open(&private, NOW + DAY_MS).unwrap().mark, Mark { since: 1000, writers: NOW }, "once");
+        let counted = |device: &str| device == "desk";
+        assert_eq!(verdict(&read[0], "phone", NOW, &ledger, fr(), &counted), Verdict::Send);
+        let forgotten = Request { writer: "old-laptop".into(), device: "old-laptop".into(), ..request("w2", "phone", NOW) };
+        assert_eq!(verdict(&forgotten, "phone", NOW, &ledger, fr(), &counted), Verdict::Refused("not-counted"));
+        let older = Request { writer: String::new(), ..request("w3", "phone", NOW - MINUTE) };
+        assert_eq!(verdict(&older, "phone", NOW, &ledger, fr(), &counted), Verdict::Send, "written before the phone checked: by its file's device");
+        assert_eq!(verdict(&Request { device: "old-laptop".into(), ..older.clone() }, "phone", NOW, &ledger, fr(), &counted), Verdict::Refused("not-counted"));
+        let after = Request { writer: String::new(), ..request("w4", "phone", NOW + MINUTE) };
+        assert_eq!(verdict(&after, "phone", NOW + MINUTE, &ledger, fr(), &counted), Verdict::Refused("old-computer"));
+        let decided = Ledger::with(Mark { since: 0, writers: NOW }, vec![Claim { key: "w4".into(), at: NOW, state: "done".into(), ..Claim::default() }]);
+        assert_eq!(verdict(&after, "phone", NOW + MINUTE, &decided, fr(), &|_| panic!("asked only of a request not decided yet")), Verdict::Decided);
+        // As an older phone reads a request: its writer passed over, its words there.
+        let old: Request = serde_json::from_str(&serde_json::to_string(&read[0]).unwrap()).unwrap();
+        assert_eq!((old.writer.as_str(), old.body.as_str()), ("desk", read[0].body.as_str()));
+        let tr = Translator::new("en");
+        for why in ["not-counted", "old-computer"] {
+            let words = said(Some(&Outcome { state: "refused".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &paris(NOW), false);
+            assert!(words.text != tr.text("texts-refused-other", None) && words.again == (why == "old-computer"), "{why}: {}", words.text);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_lost_ledger_s_mark_refuses_the_requests_written_before_it() {
         let dir = scratch("lost");
@@ -1808,7 +1953,7 @@ mod tests {
         assert_eq!(step(&dir, std::slice::from_ref(&r), "phone", NOW - 2 * MINUTE, 0), ["b1"]);
         std::fs::remove_dir_all(&dir).unwrap();
         let ledger = Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(verdict(&r, "phone", NOW, &ledger, fr()), Verdict::BeforeMark, "within its 15 minutes, still never again");
+        assert_eq!(verdict(&r, "phone", NOW, &ledger, fr(), &|_| true), Verdict::BeforeMark, "within its 15 minutes, still never again");
         assert!(step(&dir, &[r], "phone", NOW, 0).is_empty());
         assert_eq!(step(&dir, &[request("b2", "phone", NOW + MINUTE)], "phone", NOW + MINUTE, 0), ["b2"]);
         let _ = std::fs::remove_dir_all(&dir);
@@ -1833,21 +1978,21 @@ mod tests {
         let dir = scratch("expired");
         Ledger::open(&dir, NOW - DAY_MS).unwrap();
         let ledger = Ledger::open(&dir, NOW).unwrap();
-        assert_eq!(verdict(&request("d1", "phone", NOW - 16 * MINUTE), "phone", NOW, &ledger, fr()), Verdict::Expired);
-        assert_eq!(verdict(&request("d2", "phone", NOW - 14 * MINUTE), "phone", NOW, &ledger, fr()), Verdict::Send);
+        assert_eq!(verdict(&request("d1", "phone", NOW - 16 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Expired);
+        assert_eq!(verdict(&request("d2", "phone", NOW - 14 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Send);
         // The computer's clock an hour ahead, as it measured: written "15:00" is 14:00 here.
         let ahead = 60 * MINUTE;
-        assert_eq!(verdict(&Request { ahead, ..request("d3", "phone", NOW + ahead - 20 * MINUTE) }, "phone", NOW, &ledger, fr()), Verdict::Expired);
-        assert_eq!(verdict(&Request { ahead, ..request("d4", "phone", NOW + ahead - 5 * MINUTE) }, "phone", NOW, &ledger, fr()), Verdict::Send);
+        assert_eq!(verdict(&Request { ahead, ..request("d3", "phone", NOW + ahead - 20 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| true), Verdict::Expired);
+        assert_eq!(verdict(&Request { ahead, ..request("d4", "phone", NOW + ahead - 5 * MINUTE) }, "phone", NOW, &ledger, fr(), &|_| true), Verdict::Send);
         // Not measured, and dated well ahead: the clocks disagree, never sent late.
-        assert_eq!(verdict(&request("d5", "phone", NOW + 30 * MINUTE), "phone", NOW, &ledger, fr()), Verdict::Clocks);
+        assert_eq!(verdict(&request("d5", "phone", NOW + 30 * MINUTE), "phone", NOW, &ledger, fr(), &|_| true), Verdict::Clocks);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn short_numbers_groups_and_empty_words_are_refused() {
-        let ledger = Ledger::with(Mark { since: 0 }, Vec::new());
-        let with = |to: &str, body: &str| verdict(&Request { to: to.into(), body: body.into(), ..request("e", "phone", NOW) }, "phone", NOW, &ledger, fr());
+        let ledger = Ledger::with(Mark { since: 0, writers: 0 }, Vec::new());
+        let with = |to: &str, body: &str| verdict(&Request { to: to.into(), body: body.into(), ..request("e", "phone", NOW) }, "phone", NOW, &ledger, fr(), &|_| true);
         assert_eq!(with("36179", "STOP"), Verdict::Refused("short-number"));
         assert_eq!(with("01 99 00 12 34, 04 65 71 00 42", "Bonjour"), Verdict::Refused("several"));
         assert_eq!(with("01 99 00 12 34", "   "), Verdict::Refused("empty"));
@@ -1862,8 +2007,8 @@ mod tests {
         let found = doubt_after(&claim, Some("sms-412".into()), NOW + 3 * MINUTE).unwrap();
         assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "sms-412"));
         assert_eq!(doubt_after(&claim, None, NOW + 3 * MINUTE).unwrap().state, "doubt");
-        let ledger = Ledger::with(Mark { since: 0 }, vec![claim]);
-        assert_eq!(verdict(&request("f1", "phone", NOW + 3 * MINUTE), "phone", NOW + 3 * MINUTE, &ledger, fr()), Verdict::Decided);
+        let ledger = Ledger::with(Mark { since: 0, writers: 0 }, vec![claim]);
+        assert_eq!(verdict(&request("f1", "phone", NOW + 3 * MINUTE), "phone", NOW + 3 * MINUTE, &ledger, fr(), &|_| true), Verdict::Decided);
     }
 
     #[test]
@@ -2378,9 +2523,9 @@ mod tests {
     /// refuses it rather than sending its words alone (decision 11).
     #[test]
     fn a_multimedia_request_is_refused_in_its_own_words() {
-        let ledger = Ledger::with(Mark { since: 0 }, Vec::new());
+        let ledger = Ledger::with(Mark { since: 0, writers: 0 }, Vec::new());
         let mms = |media: Vec<Medium>, words: &str, also: Vec<String>, to: &str| Request { body: String::new(), words: words.into(), media, also, to: to.into(), ..request("m", "phone", NOW) };
-        let v = |r: &Request| verdict(r, "phone", NOW, &ledger, fr());
+        let v = |r: &Request| verdict(r, "phone", NOW, &ledger, fr(), &|_| true);
         let picture = || vec![medium(1, "image/jpeg")];
         assert_eq!(v(&mms(picture(), "Voilà l’entrée.", vec![], "01 99 00 12 34")), Verdict::Send);
         assert_eq!(v(&mms(picture(), "", vec![], "01 99 00 12 34")), Verdict::Send, "a picture alone");
@@ -2411,15 +2556,27 @@ mod tests {
         assert!(said_of(true).text.contains("cannot send pictures yet") && said_of(true).again, "{}", said_of(true).text);
     }
 
-    /// A multimedia message's claim with no word: looked for by its key 40
-    /// minutes on, handed or not (Android waits up to 30 for a network).
+    /// A multimedia message's claim with no word: looked for by its key from
+    /// 40 minutes on, handed or not (Android waits up to 30 for a network
+    /// before its first try), and said in doubt only once Android's last
+    /// word is past (its three tries, each of which may wait so: 100
+    /// minutes); until then, said as it may still go (the review of 18
+    /// October 2026, L-3).
     #[test]
-    fn a_multimedia_claim_is_looked_for_forty_minutes_on() {
+    fn a_multimedia_claim_is_looked_for_until_android_s_last_word() {
         let claim = Claim { key: "n1".into(), at: NOW, state: "handed".into(), mms: true, ..Claim::default() };
         assert!(doubt_after(&claim, None, NOW + 39 * MINUTE).is_none(), "Android may still be waiting for a network");
         let found = doubt_after(&claim, Some("mms-31@1791446400".into()), NOW + 41 * MINUTE).unwrap();
         assert_eq!((found.state.as_str(), found.row.as_str()), ("sent", "mms-31@1791446400"));
-        assert_eq!(doubt_after(&claim, None, NOW + 41 * MINUTE).unwrap().state, "doubt");
+        assert!(doubt_after(&claim, None, NOW + 41 * MINUTE).is_none(), "not found at 41 minutes: Android may still try");
+        assert!(doubt_after(&claim, None, NOW + 99 * MINUTE).is_none());
+        assert_eq!(doubt_after(&claim, None, NOW + 100 * MINUTE).unwrap().state, "doubt", "Android's last word past");
+        let tr = Translator::new("en");
+        let handed = Outcome { key: "n1".into(), state: "handed".into(), at: NOW, ..Outcome::default() };
+        assert_eq!(said(Some(&handed), None, &tr, &paris(NOW + 10 * MINUTE), true).text, "Your phone is sending it.");
+        let still = said(Some(&handed), None, &tr, &paris(NOW + 41 * MINUTE), true);
+        assert!(still.state == "sending" && !still.again && still.text.contains("11:40"), "until about 100 minutes after 10:00: {}", still.text);
+        assert_eq!(said(Some(&handed), None, &tr, &paris(NOW + 41 * MINUTE), false).text, "Your phone is sending it.", "a text: as before");
         let text = Claim { mms: false, ..claim.clone() };
         assert!(doubt_after(&text, None, NOW + 3 * MINUTE).is_some(), "a text's, two minutes on as before");
         let line = serde_json::to_string(&Claim { mms: false, ..claim }).unwrap();
@@ -2432,8 +2589,13 @@ mod tests {
     #[test]
     fn a_multimedia_result_says_the_carrier_s_answer() {
         let conf = |status: u8| crate::mms::Conf { status, ..crate::mms::Conf::default() };
-        assert_eq!(took(-1, Some(&conf(crate::mms::OK))), Took::Sent);
-        assert_eq!(took(-1, None), Took::Look, "Android's Ok, the carrier's answer missing");
+        assert_eq!(took(-1, Some(&conf(crate::mms::OK)), 0), Took::Sent);
+        assert_eq!(took(-1, None, 0), Took::Look, "Android's Ok, the carrier's answer missing");
+        // Android's code 4: every try ended on the network, no answer of the carrier's (the review of 18 October 2026, M-2).
+        assert_eq!(took(4, None, 0), Took::Doubt, "no HTTP status: an I/O failure, perhaps after the message was posted");
+        assert_eq!(took(4, None, 302), Took::Doubt, "an answer under 400: not a refusal");
+        assert_eq!(took(4, None, 404), Took::Failed("carrier-refused"));
+        assert_eq!(took(4, None, 503), Took::Failed("carrier-refused"));
         let cases: [(i64, Option<u8>, &str); 14] = [
             (-1, Some(0xE5), "carrier-content"),
             (-1, Some(0xE1), "carrier-denied"),
@@ -2441,7 +2603,7 @@ mod tests {
             (-1, Some(0xC3), "carrier-busy"),
             (-1, Some(0xE0), "carrier-refused"),
             (-1, Some(0x87), "carrier-content"),
-            (4, None, "carrier-refused"),
+            (5, None, "mms-unreadable"),
             (4, Some(0xC0), "carrier-busy"),
             (11, None, "mms-data-off"),
             (8, None, "mms-data-off"),
@@ -2451,9 +2613,9 @@ mod tests {
             (10, None, "no-sim"),
         ];
         for (code, status, why) in cases {
-            assert_eq!(took(code, status.map(conf).as_ref()), Took::Failed(why), "{code} {status:?}");
+            assert_eq!(took(code, status.map(conf).as_ref(), 0), Took::Failed(why), "{code} {status:?}");
         }
-        assert_eq!(took(1, None), Took::Failed("other"));
+        assert_eq!(took(1, None, 0), Took::Failed("other"));
         // Each in its own words, never "Android refused it".
         let tr = Translator::new("en");
         let now = paris(NOW);
@@ -2464,6 +2626,10 @@ mod tests {
         }
         let late = said(Some(&Outcome { state: "expired".into(), reason: "media".into(), ..Outcome::default() }), None, &tr, &now, true);
         assert!(late.text.contains("did not reach your phone") && late.again, "{}", late.text);
+        // The network's doubt: said, and no Send again; a crash's doubt keeps it.
+        let network = said(Some(&Outcome { state: "doubt".into(), reason: "network".into(), ..Outcome::default() }), None, &tr, &now, true);
+        assert!(network.state == "doubt" && !network.again && network.text != tr.text("texts-doubt", None), "{}", network.text);
+        assert!(said(Some(&Outcome { state: "doubt".into(), ..Outcome::default() }), None, &tr, &now, true).again);
         for why in ["too-large", "too-many-media", "media-kind", "no-mms"] {
             let words = said(Some(&Outcome { state: "refused".into(), reason: why.into(), ..Outcome::default() }), None, &tr, &now, true);
             assert!(words.text != tr.text("texts-refused-other", None) && !words.again, "{why}: {}", words.text);
@@ -2477,9 +2643,13 @@ mod tests {
     fn a_phone_says_what_its_carriers_let_it_send() {
         let line = |at: i64, max: u64, device: &str| Outcome { key: String::new(), state: "limits".into(), at, limits: vec![Limits { sub: 3, max, width: 2592, height: 1944, recipients: 20, group: true, mms: true }], device: device.into(), ..Outcome::default() };
         let outcomes = vec![line(NOW - DAY_MS, 307_200, "phone"), line(NOW, 614_400, "phone"), line(NOW + MINUTE, 102_400, "other-phone"), Outcome { key: "k1".into(), state: "sent".into(), at: NOW, device: "phone".into(), ..Outcome::default() }];
-        let (at, limits) = limits_of(&outcomes, "phone").unwrap();
+        let (at, limits) = limits_of(&outcomes, "phone", NOW).unwrap();
         assert_eq!((at, limits[0].max), (NOW, 614_400));
-        assert_eq!(limits_of(&outcomes, "third-phone"), None);
+        assert_eq!(limits_of(&outcomes, "third-phone", NOW), None);
+        // A line dated a year ahead (a phone whose clock once was): passed over, the lines since read (the review's I-1).
+        let ahead = [outcomes.clone(), vec![line(NOW + 365 * DAY_MS, 100 << 20, "phone")]].concat();
+        assert_eq!(limits_of(&ahead, "phone", NOW).map(|(at, l)| (at, l[0].max)), Some((NOW, 614_400)));
+        assert_eq!(limits_of(&ahead, "phone", NOW + 366 * DAY_MS).map(|(_, l)| l[0].max), Some(100 << 20), "once its date is past");
         assert_eq!(state_of("k1", &outcomes).map(|o| o.state.as_str()), Some("sent"), "a request's state never a limits line");
         assert_eq!(state_of("", &outcomes).map(|o| o.state.as_str()), None, "a limits line is no request's state");
         // As an older Sioul writes and reads its outcomes.

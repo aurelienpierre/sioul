@@ -97,12 +97,16 @@ pub fn size_with_lengths(message: &Message, lengths: &[usize]) -> Result<usize, 
 /// The bytes left under `limit` (the carrier's, else the one chosen) for the
 /// media's own bytes, all of them together, for a message whose media are
 /// given empty (their content types alone): its size so, taken from the
-/// limit, less what their lengths may add once they hold their bytes (two
-/// bytes each, for a medium of up to 2 MB). None when even that is over.
-/// A message whose media hold no more between them then fits (`size`).
+/// limit, less what their lengths may add once they hold their bytes (a
+/// medium's length is a uintvar, one byte when empty, as many as the
+/// limit's own at most: two more each under 2 MB, three from 2 MB on). None
+/// when even that is over. A message whose media hold no more between them
+/// then fits (`size`).
 pub fn room(message: &Message, limit: usize) -> Option<usize> {
     let empty = size(message).ok()?;
-    limit.checked_sub(empty)?.checked_sub(2 * message.media.len())
+    let mut longest = Count(0);
+    uintvar(&mut longest, limit);
+    limit.checked_sub(empty)?.checked_sub(longest.0.saturating_sub(1) * message.media.len())
 }
 
 /// A number as a message's To header writes it: its digits, with the `+`
@@ -896,6 +900,15 @@ mod tests {
             let media: Vec<Medium> = shares.iter().map(|bytes| Medium { ct: "image/jpeg", bytes }).collect();
             let full = size(&Message { media: &media, ..message }).unwrap();
             assert!(full <= limit && limit - full <= 2 * count, "{count}: {full} of {limit}");
+        }
+        // Over 2 MB a medium, its length takes four bytes (the review of 18 October 2026, I-2).
+        for limit in [2_097_151usize, 2_097_152, 2_100_000, 8 << 20] {
+            let empty = [Medium { ct: "video/mp4", bytes: &[] }];
+            let message = Message { key: KEY, to: &["0199001234"], date: WRITTEN, words: "", media: &empty };
+            let room = room(&message, limit).unwrap();
+            let bytes = stand_in(room, 7);
+            let full = size(&Message { media: &[Medium { ct: "video/mp4", bytes: &bytes }], ..message }).unwrap();
+            assert!(full <= limit && limit - full <= 3, "{limit}: {full}");
         }
         let empty = [Medium { ct: "image/jpeg", bytes: &[] }];
         assert_eq!(room(&Message { key: KEY, to: &["0199001234"], date: WRITTEN, words: &"é".repeat(400_000), media: &empty }, limit), None, "words over the limit leave no room");
