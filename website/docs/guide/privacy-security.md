@@ -159,6 +159,16 @@ The subject of an encrypted message stays readable, as in most mail programs tod
 
 Each device keeps its own data. What must travel between your computers and your phone goes through a folder your own sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), sealed on your device before it is written there, with a key made from your passphrase. There is no server of ours in between. The folder's server sees which device wrote, when and how much, and the size of each sealed note or paper; never what. Nothing that happens in that folder, a file damaged or deleted, can take data away from your devices. A notification's words travel only if you turn on **Messages from your phone**, for the apps you choose, a week at most ([On your computers](notifications.md#messages-on-your-computers)). How it works, what it protects and what it cannot hide: [Sharing between your devices](sharing.md).
 
+### Pictures sent by text {#pictures-sent-by-text}
+
+A picture you attach to a text on a computer is written again there, from its pixels alone, before anything leaves it ([Texts](texts.md#pictures-and-files)).
+
+- **It keeps** what it shows: turned the way the camera was held, in standard colours (sRGB), at most 1,600 pixels on its long side, as a JPEG.
+- **It loses** everything else a camera, a phone or an editing program writes in a picture's file: the GPS position where it was taken, the camera or phone that took it, the time, the settings, comments, captions and keywords (EXIF, XMP, IPTC, a PNG's texts), and its colour profile. Its file's name never goes either: the message calls it `image1.jpg`.
+- **A video, a sound or a contact card** goes as it is, with whatever its file holds (a video can hold where it was filmed): attach one only where you would send it by mail.
+
+It is then sealed as all your texts' media are, travels through your own sharing to your phone, and your phone sends it through your carrier to the other person's phone: your carrier and theirs carry it, as any multimedia message.
+
 ### AI, only if you ask {#ai-only-if-you-ask}
 
 Sioul connects no AI by itself.
@@ -181,6 +191,7 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 |---|---|---|
 | Your mail provider | your mail: fetched, filed as you ask, sent when you send | always: it is your mail |
 | Your calendar and contacts server, or Google | your calendars, tasks and contacts, both ways | always |
+| Your mobile carrier, through your phone | a text or a multimedia message you send from a computer, its pictures written again without their details | when you send one |
 | The sites you pin | what any browser sends them | when they are open |
 | Your provider's own settings page, and Thunderbird's list of providers | your address's domain, to find the server | when you add an account |
 | Your system's DNS resolver | lookups of senders' domains, to check them | when mail arrives, and when your spam filter's training downloads your mail |

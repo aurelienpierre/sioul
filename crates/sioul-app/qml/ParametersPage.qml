@@ -5,8 +5,9 @@
 // colours, working hours and days off, what reaches you and when
 // (ReachesTab.qml), the words Sioul looks for (WordsTab.qml), reminders,
 // the pauses, on a phone what sets it up
-// (PhoneSetup.qml), your folder and sharing, invoices. Each setting says in a
-// sentence what it changes and is saved at once.
+// (PhoneSetup.qml), on a computer the multimedia messages sent from it
+// (TextsSending.qml), your folder and sharing, invoices. Each setting says in
+// a sentence what it changes and is saved at once.
 
 pragma ComponentBehavior: Bound
 
@@ -30,9 +31,10 @@ Item {
             page.shareMade = true
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
-    // reminders, the pauses; on a phone, what sets it up; your folder and sharing, invoices;
-    // what AI agents may use (each project closed to them until opened).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices", "ai"])
+    // reminders, the pauses; on a phone, what sets it up; on a computer, the
+    // texts it sends; your folder and sharing, invoices; what AI agents may
+    // use (each project closed to them until opened).
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : ["texts"]).concat(["files", "invoices", "ai"])
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
@@ -308,6 +310,20 @@ Item {
 
                 sourceComponent: Component {
                     PhoneSetup {
+                        sioul: page.sioul
+                        theme: page.theme
+                    }
+                }
+            }
+
+            // The multimedia messages sent from this computer (docs/texts.md).
+            Loader {
+                active: page.section === "texts"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    TextsSending {
                         sioul: page.sioul
                         theme: page.theme
                     }

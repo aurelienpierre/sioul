@@ -267,6 +267,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo test --release --locked -p sioul-app --test icons
 
+      # What a computer attaches to a text, made fit for a multimedia message
+      # with each system's own Qt (crates/sioul-app/tests/attach.rs): a picture
+      # comes out a JPEG holding no metadata, its GPS position included; each
+      # format this Qt reads; the whole message's making and its refusals.
+      - name: Attachments (pictures made fit, no metadata left)
+        if: ${{ !cancelled() }}
+        run: cargo test --release --locked -p sioul-app --test attach
+
       # The code's own comments as rustdoc reads them, private items included, as
       # the website's API reference makes them (pages.yml, website/build.sh --api):
       # a link to nothing or an unclosed tag fails on the push that wrote it, not

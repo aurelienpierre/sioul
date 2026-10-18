@@ -8,7 +8,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**, a computer **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
 
 ## Protected by default {#what-is-protected}
 
@@ -79,9 +79,13 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 - **Calls**: Sioul as Android's caller ID & spam app, so that a call whose row says later goes to your voicemail; what Sioul does with calls, what it never does, and what always rings; reading the contacts; where a declined call goes; texts. See [Calls](calls.md).
 - **Other apps**: Android's **Notification access** (two steps for Sioul installed from a file), **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**. Each app, conversation and site's own choice is in What reaches you ▸ Exceptions. See [Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone).
 - **On your computers**: the part **Messages from your phone**, off until you turn it on, and for each app whether its messages go to your computers' Porch: not at all, who and when, or the words too (the SMS app's words unless you say otherwise); under each app, **Answer from your computers**, on unless you switch it off, lets a reply written on a computer go through that app's own Reply. See [On your computers](notifications.md#messages-on-your-computers).
-- **Texts**: what Sioul does with your texts once you allow it, each permission with what it is for, **Allow in Android…**, and, once Android has not given them after you asked, the steps it may want for an app installed from a file, with **Sioul's app info** ([Install](install.md#on-android)), the part **Texts**, how many texts and how much media your phone holds and how much has gone to your computers, and the largest media file brought there. See [Texts](texts.md).
+- **Texts**: what Sioul does with your texts once you allow it, each permission with what it is for, **Allow in Android…**, and, once Android has not given them after you asked, the steps it may want for an app installed from a file, with **Sioul's app info** ([Install](install.md#on-android)), the part **Texts**, how many texts and how much media your phone holds and how much has gone to your computers, the largest media file brought there, and what its carrier takes for a multimedia message, read only. See [Texts](texts.md).
 - **Do not disturb on this phone**: Android's Do Not Disturb access, which Sioul's modes need, and what each mode lets through; **Starred on this phone**, who of your Always through people is not starred there; **Keep this phone in step in the background**, and **Allow in the background**. See [What each system does](notifications.md#what-each-system-does).
 - **Alarms and notifications**: Android's pages for exact alarms, which reminders, doses and the alarm at waking need to come on time, and for Sioul's own notifications.
+
+## Texts {#texts}
+
+On a computer, the multimedia messages sent from it: **Multimedia messages sent from here**, up to your carrier's limit (600 kB with French carriers) or 300 kB, for older phones and some networks abroad; under it, what your phone said its carrier takes, a line for each SIM. See [Texts](texts.md#pictures-and-files).
 
 ## Your folder and sharing
 

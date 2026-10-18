@@ -147,6 +147,7 @@ fn main() {
         "qml/PhoneMessagesSetup.qml",
         // texts: SMS phase (b).
         "qml/TextsPage.qml",
+        "qml/TextsSending.qml",
         "qml/TextsSetup.qml",
         "qml/LineButton.qml",
         "qml/StatusLine.qml",
@@ -178,6 +179,10 @@ fn main() {
     // colour: each screen's profile and the tables of the sites' colours (docs/colour.md).
     if !android {
         cpp.extend(["cpp/screencolours.h", "cpp/screencolours.cpp"]);
+    }
+    // texts: pictures made small for a multimedia message, on computers (src/attach.rs).
+    if !android {
+        cpp.push("cpp/pictures.cpp");
     }
     let builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])

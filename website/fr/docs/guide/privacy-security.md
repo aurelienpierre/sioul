@@ -159,6 +159,16 @@ L’objet d’un courriel chiffré reste lisible, comme dans la plupart des logi
 
 Chaque appareil garde ses propres données. Ce qui doit voyager entre vos ordinateurs et votre téléphone passe par un dossier que votre propre application de synchronisation transporte (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), scellé sur votre appareil avant d’y être écrit, avec une clé tirée de votre phrase de passe. Il n’y a aucun serveur à nous entre les deux. Le serveur du dossier voit quel appareil a écrit, quand et combien, et la taille de chaque note ou papier scellé ; jamais quoi. Rien de ce qui arrive dans ce dossier, un fichier abîmé ou effacé, ne peut retirer des données à vos appareils. Les mots d’une notification ne voyagent que si vous activez **Messages de votre téléphone**, pour les applications que vous choisissez, une semaine au plus ([Sur vos ordinateurs](notifications.md#messages-on-your-computers)). Comment cela marche, ce que cela protège et ce que cela ne peut pas cacher : [Partager entre vos appareils](sharing.md).
 
+### Les images envoyées par SMS {#pictures-sent-by-text}
+
+Une image que vous joignez à un SMS sur un ordinateur y est réécrite, depuis ses seuls pixels, avant que rien n’en parte ([SMS](texts.md#pictures-and-files)).
+
+- **Elle garde** ce qu’elle montre : tournée dans le sens où l’appareil était tenu, en couleurs standard (sRGB), de 1 600 pixels au plus sur son grand côté, en JPEG.
+- **Elle perd** tout ce qu’un appareil photo, un téléphone ou un logiciel de retouche écrit d’autre dans le fichier d’une image : la position GPS de la prise de vue, l’appareil ou le téléphone qui l’a prise, l’heure, les réglages, les commentaires, légendes et mots-clés (EXIF, XMP, IPTC, les textes d’un PNG), et son profil de couleur. Le nom de son fichier ne part jamais non plus : le message l’appelle `image1.jpg`.
+- **Une vidéo, un son ou une fiche de contact** part tel quel, avec tout ce que son fichier contient (une vidéo peut contenir le lieu où elle a été filmée) : n’en joignez qu’à qui vous l’enverriez par courriel.
+
+Elle est ensuite scellée comme tous les médias de vos SMS, passe par votre propre partage jusqu’à votre téléphone, et votre téléphone l’envoie par votre opérateur au téléphone de l’autre personne : votre opérateur et le sien la transportent, comme tout message multimédia.
+
 ### L’IA, seulement si vous la demandez {#ai-only-if-you-ask}
 
 Sioul ne connecte aucune IA de lui-même.
@@ -181,6 +191,7 @@ Relever ne change rien sur le serveur : aucun courriel n’est marqué lu parc
 |---|---|---|
 | Votre fournisseur de courriel | vos courriels : relevés, rangés comme vous le demandez, envoyés quand vous envoyez | toujours : ce sont vos courriels |
 | Votre serveur d’agendas et de contacts, ou Google | vos agendas, tâches et contacts, dans les deux sens | toujours |
+| Votre opérateur mobile, par votre téléphone | un SMS ou un message multimédia que vous envoyez depuis un ordinateur, ses images réécrites sans leurs détails | quand vous en envoyez un |
 | Les sites que vous épinglez | ce que tout navigateur leur envoie | quand ils sont ouverts |
 | Les réglages publiés par votre fournisseur, et la liste de fournisseurs de Thunderbird | le domaine de votre adresse, pour trouver le serveur | quand vous ajoutez un compte |
 | Le résolveur DNS de votre système | des requêtes sur les domaines des expéditeurs, pour les vérifier | quand des courriels arrivent, et quand l’apprentissage de votre filtre à indésirables télécharge vos courriels |

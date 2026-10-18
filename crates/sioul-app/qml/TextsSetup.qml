@@ -7,8 +7,9 @@
 // sharing's part "Texts" (off until you turn it on, here and on each computer
 // that should read or write them); what the phone holds and how much has gone
 // to your computers, read again while the import runs; the largest media file
-// brought there. Sioul never asks to be the SMS app: the phone's messages app
-// stays their record.
+// brought there; what its carrier takes for a multimedia message, read only.
+// Sioul never asks to be the SMS app: the phone's messages app stays their
+// record.
 
 pragma ComponentBehavior: Bound
 
@@ -22,8 +23,8 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    // texts.rs's `setup`: {android, state: {read, receive, send, phone_state, sms_app, sims}, on, sharing, progress, importing, cap, said}.
-    property var shown: ({ android: false, state: null, on: false, sharing: false, progress: "", importing: false, cap: null, said: "" })
+    // texts.rs's `setup`: {android, state: {read, receive, send, phone_state, sms_app, sims}, on, sharing, progress, importing, cap, limits, said}.
+    property var shown: ({ android: false, state: null, on: false, sharing: false, progress: "", importing: false, cap: null, limits: [], said: "" })
     readonly property var allowed: setup.shown.state || ({})
     readonly property bool all: setup.allowed.read === true && setup.allowed.receive === true && setup.allowed.send === true
 
@@ -153,6 +154,17 @@ ColumnLayout {
         sioul: setup.sioul
         theme: setup.theme
         onSave: (key, value) => setup.act("cap", { value: String(value) })
+    }
+    // What its carrier takes for a multimedia message, as Android says it: read only.
+    Repeater {
+        model: setup.shown.limits || []
+
+        delegate: Line {
+            required property string modelData
+
+            text: modelData
+            color: setup.theme.muted
+        }
     }
     Line {
         visible: (setup.shown.said || "") !== ""
