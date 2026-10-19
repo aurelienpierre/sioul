@@ -96,10 +96,11 @@ public final class AppNotes extends NotificationListenerService
     /** The files whose change may move what is held: the pause and free time, the
      *  switch of do-not-disturb and its people, a focus session, the hours and
      *  settings (who may reach you when among them), the lists of senders, the
-     *  choices, Health's meals and nights. */
+     *  choices, Health's meals and nights, today's slots of time for you (which
+     *  the window writes as it lays out the day). */
     private static final String[] WATCHED = {
         "quiet.toml", "do-not-disturb.toml", "dnd-people.toml", "running.toml", "config.toml", "app-notes.toml", "health.toml", "health-days.toml",
-        "safe-senders.txt", "neutral-senders.txt", "restricted-senders.txt", "blocked-senders.txt",
+        "safe-senders.txt", "neutral-senders.txt", "restricted-senders.txt", "blocked-senders.txt", "slots.toml",
     };
 
     /** Bound by Android, the access given: notifications are decided and held only then. */
@@ -123,7 +124,7 @@ public final class AppNotes extends NotificationListenerService
     /** What is due sent after the step wrote it: one runnable, so that a burst of changes runs it once. */
     private final Runnable answer = this::answer;
 
-    /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why"}. */
+    /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
 
     /** What is held, worked out again: {"snooze": [{"key", "ms"}]}, for the keys Android holds now. */
@@ -555,7 +556,8 @@ public final class AppNotes extends NotificationListenerService
             long hold = decided.optLong("hold", 0);
             if (hold > 0)
                 snooze(sbn.getKey(), hold);
-            // One held come back at its time: Rust's calm line for the log, kinds and counts only (`log_line`).
+            // Rust's calm line for the log, kinds, counts and times only: at each hold, with what
+            // decided it (`hold_line`); at each one held come back at its time (`log_line`).
             String line = decided.optString("line", "");
             if (!line.isEmpty())
                 Log.i(TAG, line);

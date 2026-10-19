@@ -79,7 +79,7 @@ As Sioul does now, unless you change it:
 |---|---|---|---|
 | **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts and hidden numbers; your reminders, doses, codes; Health's notices, the pause to move; a site in real time | | strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
 | **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts and hidden numbers; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' and strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
-| **Leisure** | your safe senders' mail, calls and messages; reminders, doses, codes, Health's notices | | everyone else's mail and messages, for work or admin time; their calls go to voicemail, listed then; what is for work |
+| **Leisure** | your safe senders' mail; calls and messages from your safe and neutral contacts; reminders, doses, codes, Health's notices | | everyone else's mail, and the messages of your restricted contacts, strangers and groups, for work or admin time; calls from your restricted contacts, strangers and hidden numbers go to voicemail, listed then; what is for work |
 | **Meals** | as leisure | | as leisure |
 | **Sleep** | doses; codes; an event's alarms and Sioul's reminder before it when the event is in the night; the alarm at waking | your safe senders' mail | messages and calls, but your Always through people's; dates, until you wake; Health's notices do not come |
 | **Pause** | doses; codes; an event's alarms and Sioul's reminder before it; your Always through people's calls and messages | your safe senders' and Always through people's mail | everything else, until you come back; after it, the Porch rests until your next admin hours |
@@ -128,7 +128,7 @@ As Sioul does now:
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutral | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Strangers | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Hidden numbers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |

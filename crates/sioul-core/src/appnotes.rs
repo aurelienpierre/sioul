@@ -1015,39 +1015,147 @@ fn always(talk: &Talk, who: Who, group: bool, ask: &Ask) -> Decision {
     }
 }
 
+/// Which way a notification is decided (`route`): `decide` follows it, and
+/// `cause` reads it again to say what held one.
+enum Route<'a> {
+    /// It comes now, whatever the time: never held, a code, holding off.
+    Through(Why),
+    /// The app or the site set to come at once.
+    AtOnce,
+    /// Gathered with the automatons.
+    Gathered(Gathering),
+    /// Held for good: a blocked sender, a conversation set to never.
+    ForGood,
+    /// Someone's message, by who wrote and the time: `always` on Always
+    /// through's row; `conversation`, a conversation let through always.
+    Person { talk: &'a Talk, who: Who, group: bool, always: bool, conversation: bool },
+}
+
+/// The way `decide` takes: what the notification is, then who wrote and
+/// what you chose for its conversation. The blocked never, whatever their
+/// conversation says (blocked beats Always through, docs/attention.md, Q3).
+fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) -> Route<'a> {
+    match kind {
+        Kind::Untouched => Route::Through(Why::Untouched),
+        Kind::Code => Route::Through(Why::Code),
+        _ if !choices.hold => Route::Through(Why::Off),
+        Kind::AtOnce => Route::AtOnce,
+        Kind::Automaton { .. } => Route::Gathered(Gathering::Automaton),
+        Kind::People(talk) => {
+            if who == Some(Who::Blocked) {
+                return Route::ForGood;
+            }
+            // A group is judged as the conversation, on its own row: anyone in it may write.
+            let group = talk.conversation.as_ref().is_some_and(|c| c.group);
+            let through = talk.conversation.as_ref().map_or(Through::Usual, |c| choices.through(&c.key));
+            let known = who.unwrap_or(Who::Stranger);
+            match through {
+                Through::Always => Route::Person { talk, who: known, group, always: true, conversation: true },
+                Through::Gathered => Route::Gathered(Gathering::Conversation),
+                Through::Never => Route::ForGood,
+                // An SMS named only, whom no address book knows: a business's sender id.
+                Through::Usual if talk.sms && who.is_none() && matches!(talk.sender, Sender::Named { .. }) => Route::Gathered(Gathering::Named),
+                Through::Usual => Route::Person { talk, who: known, group, always: listed && !group, conversation: false },
+            }
+        }
+    }
+}
+
 /// Whether a notification comes now, or until when it waits.
 /// `who`: the sender as the address books and lists judge them (`named` for
 /// a name), none when nobody knows them; `listed`: the Always through list
 /// holds them. The blocked never, whatever their conversation says (blocked
 /// beats Always through, docs/attention.md, Q3).
 pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, ask: &Ask) -> Decision {
-    match kind {
-        Kind::Untouched => Decision::through(Why::Untouched),
-        Kind::Code => Decision::through(Why::Code),
-        _ if !choices.hold => Decision::through(Why::Off),
-        Kind::AtOnce => at_once(ask),
-        Kind::Automaton { .. } => gathered(ask),
-        Kind::People(talk) => {
-            if who == Some(Who::Blocked) {
-                return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
-            }
-            // A group is judged as the conversation, on its own row: anyone in it may write.
-            let group = talk.conversation.as_ref().is_some_and(|c| c.group);
-            let through = talk.conversation.as_ref().map_or(Through::Usual, |c| choices.through(&c.key));
-            match through {
-                Through::Always => always(talk, who.unwrap_or(Who::Stranger), group, ask),
-                Through::Gathered => gathered(ask),
-                Through::Never => Decision::held(ask.stamp() + FOR_GOOD, Why::Never),
-                Through::Usual => {
-                    // An SMS named only, whom no address book knows: a business's sender id.
-                    if talk.sms && who.is_none() && matches!(talk.sender, Sender::Named { .. }) {
-                        return gathered(ask);
-                    }
-                    person(talk, who.unwrap_or(Who::Stranger), group, listed && !group, ask)
-                }
-            }
-        }
+    match route(kind, who, listed, choices) {
+        Route::Through(why) => Decision::through(why),
+        Route::AtOnce => at_once(ask),
+        Route::Gathered(_) => gathered(ask),
+        Route::ForGood => Decision::held(ask.stamp() + FOR_GOOD, Why::Never),
+        Route::Person { talk, who, group, conversation: true, .. } => always(talk, who, group, ask),
+        Route::Person { talk, who, group, always, .. } => person(talk, who, group, always, ask),
     }
+}
+
+/// What gathers a notification with the automatons (`Cause`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gathering {
+    /// An automaton's: shops, news, a browser's site, a short number's text.
+    Automaton,
+    /// Its app, as you set it: "An automaton: gathered".
+    App,
+    /// Its conversation, as you set it: gathered.
+    Conversation,
+    /// A text whose sender came as a name alone, which no card has: taken
+    /// for a business's sender id ("AMELI").
+    Named,
+}
+
+/// Which own row decides a notification now (`Cause`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Own {
+    Conversation,
+    App,
+}
+
+/// What held a notification, at the moment it was held: for the
+/// listener's line in the phone's log (docs/android.md, "In the phone's
+/// log"). Never who wrote: no name, no number, no list.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Cause {
+    /// Held for good: a blocked sender, or a conversation set to never.
+    pub for_good: bool,
+    /// Gathered, and what gathers it.
+    pub gathered: Option<Gathering>,
+    /// Its conversation's or its app's own row decides it now.
+    pub own: Option<Own>,
+    /// What it is for (its app's area, the address a mail came to), not now.
+    pub area: Option<Area>,
+    /// The columns of the matrix that hold it now (`Attention::holding`):
+    /// the time's, each layer by itself.
+    pub columns: Vec<attention::Column>,
+    /// Free time's "Nothing at all" holds now.
+    pub nothing: bool,
+}
+
+/// What held a notification that `decide` holds, now (`Cause`): the way
+/// `decide` took (`route`), then, of the event it asked the matrix about,
+/// the own row that decides it, what it is for, and the columns that hold
+/// it at this moment. None for one that comes now whatever the time.
+/// `package`: its app's, for an app you set as an automaton.
+pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, ask: &Ask) -> Option<Cause> {
+    let mode = ask.clock.mode(ask.now);
+    let moment = ask.moment(ask.now, &mode);
+    let mut cause = Cause { nothing: moment.nothing, ..Cause::default() };
+    let sources = ask.sources.to_vec();
+    let event = match route(kind, who, listed, choices) {
+        Route::Through(_) => return None,
+        Route::ForGood => {
+            cause.for_good = true;
+            return Some(cause);
+        }
+        Route::Gathered(how) => {
+            cause.gathered = Some(if how == Gathering::Automaton && choices.app(package).kind == AppKind::Automaton { Gathering::App } else { how });
+            Event::own(attention::Kind::AppAutomatons)
+        }
+        Route::AtOnce => Event::own(attention::Kind::AppAtOnce),
+        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, group, always }),
+    };
+    let event = event.for_area(ask.area).from_sources(sources);
+    let out = ask.attention.decide(&event, &moment);
+    if out.step == attention::Step::Chosen {
+        let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
+        cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else { Own::App });
+    }
+    if out.step == attention::Step::Area {
+        cause.area = ask.area;
+    }
+    cause.columns = ask.attention.holding(&event, &moment);
+    // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
+    if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(&mode) {
+        cause.area = ask.area;
+    }
+    Some(cause)
 }
 
 // ---------------------------------------------------------------- what Sioul held
@@ -1729,6 +1837,127 @@ mod tests {
         let open = Some(Gate { until: None });
         let held = decide(&sms, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, None, open));
         assert_eq!(until_of(held), "2026-10-06T10:30:00");
+    }
+
+    /// What held a notification, as the listener's line says it (`cause`):
+    /// do-not-disturb by itself at work, the night, a text named only
+    /// gathered, an automaton, an app or a conversation set to gathered, the
+    /// blocked and Never for good, what it is for, its own row, Free time's
+    /// "Nothing at all", a slot; nothing for what comes whatever the time. And
+    /// whatever holds, something says why: at every hour, with or without
+    /// do-not-disturb and a slot, for every fixture and every sender.
+    #[test]
+    fn what_held_one_is_said() {
+        use crate::attention::Column as C;
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
+        let morning = at("2026-10-06T10:00[Europe/Paris]");
+        let evening = at("2026-10-06T20:30[Europe/Paris]");
+        let night = at("2026-10-06T23:30[Europe/Paris]");
+        // What held a fixture, as the app asks it: its package, its kind with these choices.
+        let said = |json: &str, who: Option<Who>, choices: &Choices, ask: &Ask| {
+            let p = posted(json);
+            cause(&p.package, &classify(&p, choices), who, false, choices, ask)
+        };
+        let columns = |columns: &[C]| Cause { columns: columns.to_vec(), ..Cause::default() };
+        // A contact's text at work during a focus session: do-not-disturb alone holds it, until the session's end.
+        let focus = ask(&morning, &clock, None, Some(Gate { until: Some(at("2026-10-06T10:50[Europe/Paris]").timestamp().as_second()) }));
+        assert_eq!(until_of(decide(&classify(&posted(SMS_CONTACT), &choices), Some(Who::Neutral), false, &choices, &focus)), "2026-10-06T10:50:00");
+        assert_eq!(said(SMS_CONTACT, Some(Who::Neutral), &choices, &focus), Some(columns(&[C::Dnd])));
+        // In the night: the night. A stranger's text in the evening under do-not-disturb: both.
+        assert_eq!(said(WHATSAPP_PERSON, Some(Who::Neutral), &choices, &ask(&night, &clock, None, None)), Some(columns(&[C::Sleep])));
+        assert_eq!(said(SMS_NUMBER, Some(Who::Stranger), &choices, &ask(&evening, &clock, None, Some(Gate { until: None }))), Some(columns(&[C::Leisure, C::Dnd])));
+        // A text named only that no card has: gathered as a business's, in the evening too; in the night, the night holds the gathering.
+        let named = |columns: &[C]| Some(Cause { gathered: Some(Gathering::Named), columns: columns.to_vec(), ..Cause::default() });
+        assert_eq!(said(SMS_SENDER_ID, None, &choices, &ask(&morning, &clock, None, None)), named(&[]));
+        assert_eq!(said(SMS_SENDER_ID, None, &choices, &ask(&evening, &clock, None, None)), named(&[]));
+        assert_eq!(said(SMS_SENDER_ID, None, &choices, &ask(&night, &clock, None, None)), named(&[C::Sleep]));
+        // An automaton; an app you set as one; a conversation you set to gathered.
+        let gathering = |json: &str, choices: &Choices| said(json, None, choices, &ask(&morning, &clock, None, None)).and_then(|c| c.gathered);
+        assert_eq!(gathering(SHOP, &choices), Some(Gathering::Automaton));
+        let mut set = Choices::default();
+        set.app.insert("com.discord".into(), AppChoice { kind: AppKind::Automaton, ..AppChoice::default() });
+        assert_eq!(gathering(DISCORD_DM, &set), Some(Gathering::App));
+        let school = talk_key("com.whatsapp", "120363000000000001@g.us");
+        set.conversation.insert(school.clone(), TalkChoice { through: Through::Gathered, ..TalkChoice::default() });
+        assert_eq!(gathering(WHATSAPP_GROUP, &set), Some(Gathering::Conversation));
+        // The blocked and a conversation set to never: for good, and nothing more.
+        let for_good = Some(Cause { for_good: true, ..Cause::default() });
+        assert_eq!(said(SMS_CONTACT, Some(Who::Blocked), &choices, &ask(&morning, &clock, None, None)), for_good);
+        set.conversation.insert(school, TalkChoice { through: Through::Never, ..TalkChoice::default() });
+        assert_eq!(said(WHATSAPP_GROUP, Some(Who::Safe), &set, &ask(&morning, &clock, None, None)), for_good);
+        // A mail to an address for leisure, in work time: what it is for, no column.
+        assert_eq!(said(PROTON, Some(Who::Neutral), &choices, &ask(&morning, &clock, Some(Area::LEISURE), None)), Some(Cause { area: Some(Area::LEISURE), ..Cause::default() }));
+        // Codes and what is never held: no cause at all.
+        assert_eq!(said(BANK_CODE, None, &choices, &ask(&night, &clock, None, None)), None);
+        // Its own row: Discord held in the evening by its app's row, a server's channel at work by its conversation's.
+        let key = |json: &str| match classify(&posted(json), &choices) {
+            Kind::People(t) => t.conversation.map(|c| c.key).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let dm_rows = attention::source_rows("com.discord", &key(DISCORD_DM));
+        let server_rows = attention::source_rows("com.discord", &key(DISCORD_SERVER));
+        let mut rows = usual().clone();
+        rows.set_source("app.com.discord", C::Leisure, Level::Later).unwrap();
+        rows.set_source(&server_rows[0], C::Work, Level::Later).unwrap();
+        let own = Ask { now: &evening, clock: &clock, attention: &rows, gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &dm_rows };
+        assert_eq!(said(DISCORD_DM, Some(Who::Safe), &choices, &own), Some(Cause { own: Some(Own::App), columns: vec![C::Leisure], ..Cause::default() }));
+        let own = Ask { now: &morning, sources: &server_rows, ..own };
+        assert_eq!(said(DISCORD_SERVER, Some(Who::Stranger), &choices, &own), Some(Cause { own: Some(Own::Conversation), columns: vec![C::Work], ..Cause::default() }));
+        // Free time's "Nothing at all": your safe people wait, and it says so.
+        let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
+        let afternoon = at("2026-10-06T16:00[Europe/Paris]");
+        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
+        assert_eq!(said(SMS_CONTACT, Some(Who::Safe), &choices, &nothing), Some(Cause { columns: vec![C::Free], nothing: true, ..Cause::default() }));
+        // A slot of time for you at nine: an automaton waits it out.
+        let in_slot = |z: &Zoned| z.hour() == 9;
+        let nine = at("2026-10-06T09:20[Europe/Paris]");
+        let slotted = Ask { now: &nine, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
+        assert_eq!(said(SHOP, None, &choices, &slotted), Some(Cause { gathered: Some(Gathering::Automaton), columns: vec![C::Slot], ..Cause::default() }));
+        // Whatever holds, something says why: every fixture, hour, sender, area, layer; an app at once
+        // for work, which the matrix lets come in the night, held there by what it is for.
+        let mut at_once = Choices::default();
+        at_once.app.insert("com.shop.example".into(), AppChoice { kind: AppKind::AtOnce, area: Some(Area::WORK), ..AppChoice::default() });
+        let mut awake = usual().clone();
+        awake.set(Row::Own(attention::Kind::AppAtOnce), C::Sleep, Level::Now).unwrap();
+        let fixtures = [SMS_NUMBER, SMS_CONTACT, SMS_SENDER_ID, SMS_SHORT, WHATSAPP_PERSON, WHATSAPP_GROUP, DISCORD_SERVER, DISCORD_DM, CHROME_SITE, FIREFOX_SITE, PROTON, SHOP];
+        // The test clock's times with no change looked for ahead: whether one waits is decided at now alone.
+        struct AtNow<'a>(&'a TestClock);
+        impl TimeSource for AtNow<'_> {
+            fn mode(&self, at: &Zoned) -> Mode {
+                self.0.mode(at)
+            }
+            fn starts(&self, _: &Zoned, _: &Zoned) -> Vec<Zoned> {
+                Vec::new()
+            }
+        }
+        let quick = AtNow(&clock);
+        let mut held = 0;
+        for (choices, matrix) in [(&Choices::default(), usual()), (&at_once, &awake)] {
+            for fixture in fixtures {
+                let p = posted(fixture);
+                let kind = classify(&p, choices);
+                for hour in ["03:00", "08:30", "09:20", "10:00", "12:30", "13:00", "17:30", "20:00", "22:30"] {
+                    let now = at(&format!("2026-10-06T{hour}[Europe/Paris]"));
+                    for (dnd, slot) in [(false, false), (true, false), (false, true)] {
+                        let slot_at = move |z: &Zoned| slot && z.hour() == 9;
+                        for area in [None, Some(Area::WORK), Some(Area::LEISURE)] {
+                            for who in [None, Some(Who::Safe), Some(Who::Neutral), Some(Who::Restricted), Some(Who::Stranger), Some(Who::Blocked)] {
+                                let ask = Ask { now: &now, clock: &quick, attention: matrix, gathered: &gathered, area, gate: dnd.then_some(Gate { until: None }), slot_at: &slot_at, nothing: false, also: &[], sources: &[] };
+                                if decide(&kind, who, false, choices, &ask).until.is_none() {
+                                    continue;
+                                }
+                                held += 1;
+                                let c = cause(&p.package, &kind, who, false, choices, &ask).expect("a held one has a cause");
+                                assert!(c.for_good || c.gathered.is_some() || c.own.is_some() || c.area.is_some() || !c.columns.is_empty(), "{fixture} {hour} {who:?} {area:?} dnd {dnd} slot {slot}: {c:?}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(held > 1_000, "{held} holds tried");
     }
 
     #[test]
