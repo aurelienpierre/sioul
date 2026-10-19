@@ -4,10 +4,12 @@
 // Settings ▸ This phone ▸ Calls (docs/android.md, "Calls"): what Sioul does
 // with calls, what it never does, what always rings; then this phone: Sioul
 // as Android's "Caller ID & spam app" (Android 10 and later, asked in
-// Android's own dialog), reading the contacts, where a declined call goes
-// (the operator's voicemail, read with the codes the phone app dials), and
-// what Sioul leaves to Android (texts, its own blocked numbers). Who rings
-// when is What reaches you's (By person ▸ Calls; Exceptions ▸ Always through).
+// Android's own dialog), reading the contacts; the call screening, apart from
+// do-not-disturb (its switch, its hours, what becomes of each kind of number
+// nobody knows: calls.rs's `screening_rows`); where a declined call goes (the
+// operator's voicemail, read with the codes the phone app dials), and what
+// Sioul leaves to Android (texts, its own blocked numbers). When the people
+// you know ring is What reaches you's (By person ▸ Calls; Exceptions ▸ Always through).
 
 pragma ComponentBehavior: Bound
 
@@ -21,9 +23,11 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    // calls.rs's `setup`: {android, state: {api, available, held, contacts, table, emergency_at}, moment}.
-    property var shown: ({ android: false, state: null, moment: {} })
+    // calls.rs's `setup`: {android, state: {api, available, held, contacts, table, emergency_at}, moment,
+    // screening: {title, intro, rows, hears, expecting}}.
+    property var shown: ({ android: false, state: null, moment: {}, screening: {} })
     readonly property var phone: setup.shown.state || ({})
+    readonly property var screening: setup.shown.screening || ({})
     readonly property bool held: setup.phone.held === true
     readonly property bool available: setup.phone.available === true
     readonly property bool tooOld: (setup.phone.api || 0) > 0 && setup.phone.api < 29
@@ -146,6 +150,35 @@ ColumnLayout {
     Note {
         visible: setup.held
         text: setup.sioul.text("calls-setup-change-help")
+    }
+
+    // ---------------------------------------------------------------- the call screening, apart
+    Heading {
+        text: setup.screening.title || ""
+    }
+    Said {
+        text: setup.screening.intro || ""
+    }
+    Repeater {
+        model: setup.screening.rows || []
+
+        delegate: SettingRow {
+            required property var modelData
+
+            objectName: "screening-row-" + modelData.key
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            setting: modelData
+            sioul: setup.sioul
+            theme: setup.theme
+            onSave: (key, value) => setup.act("set", { key: key, value: value })
+        }
+    }
+    Note {
+        text: setup.screening.expecting || ""
+    }
+    Note {
+        text: setup.screening.hears || ""
     }
 
     // ---------------------------------------------------------------- who may call when

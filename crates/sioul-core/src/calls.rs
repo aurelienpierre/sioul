@@ -9,19 +9,26 @@
 //! milliseconds, from Java alone (android/…/Calls.java), never from Sioul's
 //! library. So Sioul writes ahead, in its state folder, a **table**
 //! (`calls/table.json`): who each number is (by `phones::key`), the floors
-//! that always ring, "Let every call through" as your devices last said it,
+//! that always ring, Expecting a call as your devices last said it,
 //! and the coming days cut into **frames**, each with whether each row of the
-//! Calls rows of the matrix of what reaches you rings then (`attention`):
-//! the times, Free time's cells, and the layers (today's slots of time for
-//! you, do-not-disturb from its switch or a focus session). Java decides in
-//! this order: the floors (an emergency number or its callback; a day after
-//! you call an emergency number); your blocked numbers, refused; "Let every
-//! call through"; a second call within 15 minutes, which rings; then the
-//! frame for now. No table, or past its frames: it rings. Always through
-//! (`everywhere::People`) is no floor any more: its people's numbers are
-//! written as rows of their own ("always-safe", their own row read where
-//! Always through says "as their list"), never a blocked one: blocked beats
-//! Always through (docs/attention.md, Q3).
+//! people you know rings then (the Calls rows of the matrix of what reaches
+//! you, `attention`: the times, Free time's cells, and the layers, today's
+//! slots of time for you and do-not-disturb from its switch or a focus
+//! session) and whether it is work or admin time; and, from version 2, the
+//! call screening (`screening`): what becomes of the numbers nobody knows,
+//! apart from the matrix, from do-not-disturb and from every state of yours.
+//! Java decides in this order (version 2): what always rings (an emergency
+//! number or its callback; a day after you call an emergency number); your
+//! blocked numbers, refused; a second call within 15 minutes, which rings;
+//! the people you know, by the frame for now; everyone else by the
+//! screening, its hours and Expecting a call. No table, or past its frames:
+//! it rings. Always through (`everywhere::People`) is no floor: its people's
+//! numbers are written as rows of their own ("always-safe", their own row
+//! read where Always through says "as their list"), never a blocked one:
+//! blocked beats Always through (docs/attention.md, Q3). A table of version 1
+//! (an older Sioul's, until this one writes its own) is still read in its own
+//! order: "Let every call through" before a second call, then strangers and
+//! hidden numbers by their frame's rows as everyone else.
 //!
 //! A refused call goes to your voicemail. Java writes **every incoming call it
 //! screened**, declined or let ring (`rang`), in a file of its own
@@ -36,11 +43,14 @@
 //! gone from all. A call is kept `KEPT_DAYS`: each device takes its own lines
 //! out after that (`trim_own`), and the sharing takes them out everywhere.
 //!
-//! **Let every call through** is pressed on any device: each device's own
-//! table in do-not-disturb's switch file (`state/do-not-disturb.toml`,
-//! shared) carries its last press, `[device.<id>.calls]`; the latest press
-//! anywhere holds. The phone's notification writes its press in a file of
-//! its own (`calls/through-here.json`) that Java reads at once and Rust
+//! **Expecting a call** (once "Let every call through", the same press) is
+//! pressed on any device: each device's own table in do-not-disturb's switch
+//! file (`state/do-not-disturb.toml`, shared) carries its last press,
+//! `[device.<id>.calls]`; the latest press anywhere holds. While it lasts,
+//! numbers nobody knows and hidden numbers ring; never the blocked, an
+//! automated caller, a number that cannot be a caller's or one whose
+//! verification failed. The phone's notification writes its press in a file
+//! of its own (`calls/through-here.json`) that Java reads at once and Rust
 //! carries into the switch (`merge_local`).
 
 use crate::attention::{self, Attention, Level, Person};
@@ -48,6 +58,7 @@ use crate::everywhere::{Device, People, Switch};
 use crate::i18n::Translator;
 use crate::phones::{self, Region};
 use crate::reach::{Channel, Clock, Who};
+use crate::screening::{self, Spam};
 use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -66,15 +77,17 @@ pub const LOG: &str = "log";
 /// The folder of the calls marked seen, one file per device, written by
 /// that device alone; shared.
 pub const SEEN_LOG: &str = "seen";
-/// This phone's press of "Let every call through" on the notification (Java's).
+/// This phone's press of Expecting a call (once "Let every call through") on the notification (Java's).
 pub const THROUGH_HERE: &str = "through-here.json";
 /// When this phone last called an emergency number (Java's).
 pub const EMERGENCY: &str = "emergency.json";
 /// The calls seen on the list, as this phone kept them before Seen was
 /// shared: read once into its own seen log, then gone (`adopt_older_seen`).
 pub const SEEN: &str = "seen.toml";
-/// The table's shape: Java reads this one only (another one: every call rings).
-pub const VERSION: u32 = 1;
+/// The table's shape: Java reads this one and version 1 (another one: every
+/// call rings). Version 2 carries the screening apart (`screening`), Expecting
+/// a call (`expecting`), and frames with the people you know only.
+pub const VERSION: u32 = 2;
 /// A second call within this many minutes rings (research 7.3).
 pub const REPEAT_MINUTES: i64 = 15;
 /// Every call rings this many hours after you call an emergency number (research 7.1).
@@ -141,9 +154,16 @@ pub struct Table {
     /// Who a number in the phone's own contacts is, when this table does not know it (research CS6).
     pub phone_contacts: String,
     pub floors: Floors,
-    /// "Let every call through", the latest press of your devices.
+    /// "Let every call through", the latest press of your devices (version 1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub through: Option<Through>,
+    /// Expecting a call, the latest press of your devices (version 2): numbers
+    /// nobody knows and hidden numbers ring while it lasts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expecting: Option<Through>,
+    /// The call screening (version 2): what becomes of numbers nobody knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screening: Option<screening::TablePart>,
     pub frames: Vec<Frame>,
     pub repeat_minutes: i64,
     pub emergency_hours: i64,
@@ -195,7 +215,7 @@ pub struct Floors {
     pub people: Vec<String>,
 }
 
-/// A press of "Let every call through": when (ms, the pressing device's
+/// A press of Expecting a call (once "Let every call through"): when (ms, the pressing device's
 /// hybrid clock), on or off, until when (ms; 0: until turned off).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Through {
@@ -222,14 +242,21 @@ pub struct Frame {
     /// "work", "admin", "leisure", "meals", "sleep", "pause", "free"; a layer
     /// above them, "slot", "dnd": for the list's words.
     pub column: String,
+    /// Work or admin time then, whatever its layers (version 2): for the
+    /// screening's hours.
+    #[serde(default)]
+    pub hours: bool,
     /// `ROWS` → rings.
     pub ring: BTreeMap<String, bool>,
 }
 
-/// The rows a frame says, as Java looks a caller up: the states, hidden
-/// numbers, and Always through read against each state ("always-neutral":
-/// someone on the list whose own row is neutral).
-pub const ROWS: [&str; 9] = ["safe", "neutral", "restricted", "stranger", "hidden", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
+/// The rows a frame says, as Java looks a caller up (version 2): the people
+/// you know, and Always through read against each state ("always-neutral":
+/// someone on the list whose own row is neutral; "always-stranger": someone
+/// on the list in none of your address books, known by the list). Numbers
+/// nobody knows and hidden numbers are the screening's. A table of version 1
+/// also said "stranger" and "hidden".
+pub const ROWS: [&str; 7] = ["safe", "neutral", "restricted", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
 
 /// A frame's row: its person, on the Always through list or not.
 fn person_of(row: &str) -> (Person, bool) {
@@ -279,6 +306,7 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
             let slot = layers.slots.iter().any(|&(a, b)| a <= start && start < b);
             let dnd = layers.dnd.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
             let now = attention::Now::of_moment(&f.moment).layers(slot, dnd);
+            let hours = now.times.iter().any(|c| matches!(c, attention::Column::Work | attention::Column::Admin));
             let ring: BTreeMap<String, bool> = ROWS
                 .iter()
                 .map(|row| {
@@ -289,8 +317,8 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
             let column = column_of(&now).to_string();
             let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
             match out.last_mut() {
-                Some(last) if last.until == from_ms && last.column == column && last.ring == ring => last.until = until_ms,
-                _ => out.push(Frame { from: from_ms, until: until_ms, column, ring }),
+                Some(last) if last.until == from_ms && last.column == column && last.hours == hours && last.ring == ring => last.until = until_ms,
+                _ => out.push(Frame { from: from_ms, until: until_ms, column, hours, ring }),
             }
         }
     }
@@ -318,7 +346,11 @@ pub struct Made {
     pub prefixes: Vec<(String, String)>,
     /// The Always through list's numbers, as rows of their own (`always_numbers`): after `numbers`, they win.
     pub always: Vec<(String, String)>,
-    pub through: Option<Through>,
+    /// Expecting a call, the latest press of your devices.
+    pub expecting: Option<Through>,
+    /// The screening and the numbers it needs (`screening::TablePart::of`);
+    /// none: a table of version 1, as an older Sioul wrote it (tests).
+    pub screening: Option<screening::TablePart>,
     pub frames: Vec<Frame>,
 }
 
@@ -339,8 +371,9 @@ pub fn table(made: Made) -> Table {
     // The longest first; at one length, as given (blocked before restricted before neutral before safe).
     let mut prefixes: Vec<Prefix> = made.prefixes.iter().filter_map(|(p, who)| Some(Prefix { prefix: p.trim_end_matches('*').to_string(), who: who.clone() }).filter(|p| !p.prefix.is_empty() && !p.prefix.contains('*') && !p.who.is_empty() && p.who != "stranger")).collect();
     prefixes.sort_by_key(|p| std::cmp::Reverse(p.prefix.len()));
+    let older = made.screening.is_none();
     Table {
-        v: VERSION,
+        v: if older { 1 } else { VERSION },
         made: made.made,
         region: made.region.map(RegionRules::of),
         trunk_zero: trunk_zero(),
@@ -348,7 +381,9 @@ pub fn table(made: Made) -> Table {
         prefixes,
         phone_contacts: "neutral".to_string(),
         floors: Floors { emergency: emergency_keys(made.region), people: Vec::new() },
-        through: made.through,
+        through: if older { made.expecting } else { None },
+        expecting: if older { None } else { made.expecting },
+        screening: made.screening,
         frames: made.frames,
         repeat_minutes: REPEAT_MINUTES,
         emergency_hours: AFTER_EMERGENCY_HOURS,
@@ -428,7 +463,7 @@ pub struct Incoming {
     pub now: i64,
     /// When the person last called an emergency number (ms), as this phone saw it; 0 never.
     pub emergency_at: i64,
-    /// This phone's own press of "Let every call through" (`through-here.json`).
+    /// This phone's own press of Expecting a call (`through-here.json`).
     pub local: Option<Through>,
     /// The number's last call before this one (ms); 0 none.
     pub last_call: i64,
@@ -436,17 +471,29 @@ pub struct Incoming {
     pub phone_contact: bool,
     /// Android's own list of emergency numbers has it (`TelephonyManager.isEmergencyNumber`).
     pub system_emergency: bool,
+    /// The network's verification of the number (Android 11 and later):
+    /// "passed", "failed"; "" not verified, or not said.
+    pub verified: String,
+    /// When the person last called this number from this phone (ms); 0 never.
+    pub called: i64,
 }
 
 /// What Java answers, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decision {
     pub refuse: bool,
-    /// "outgoing", "no-table", "emergency", "after-emergency", "through", "people", "blocked", "repeat", "no-frame", "no-row", "matrix".
+    /// "outgoing", "no-table", "emergency", "after-emergency", "people",
+    /// "blocked", "repeat", "no-frame", "no-row", "matrix"; the screening's
+    /// (version 2): "screening-off", "work-hours", "impossible", "unverified",
+    /// "automated", "expecting", "screening"; version 1's "through".
     pub why: &'static str,
     /// The row decided by: "safe", "neutral", "restricted", "stranger", "hidden", "blocked"; "" before.
     pub who: String,
     pub column: String,
+    /// Judged as your contacts are because you called this number lately
+    /// (version 2), and let ring by the screening when it lets numbers nobody
+    /// knows ring.
+    pub called: bool,
 }
 
 impl Table {
@@ -463,54 +510,123 @@ impl Table {
 
 /// Java's decision (Calls.decide), step for step: the order's reference,
 /// tested here. Outgoing: rings (to an emergency number, Java marks the
-/// moment). Incoming: what always rings (an emergency number, a day after
-/// you called one, the do-not-disturb list); blocked; "Let every call
-/// through"; a second call within 15 minutes; the frame for now. Nothing to
-/// decide from: it rings.
+/// moment). Incoming, version 2: what always rings (an emergency number, a
+/// day after you called one, an older table's do-not-disturb list); the
+/// blocked; a second call within 15 minutes; the people you know (your lists,
+/// your address books, the phone's contacts, a number you called lately,
+/// Always through), by the frame for now, a number you called lately ringing
+/// also when the screening lets numbers nobody knows ring; everyone else by the screening:
+/// off, outside its hours, a number that cannot be a caller's (unless the
+/// network verified it), a failed verification, an automated caller,
+/// Expecting a call, then its rule for numbers nobody knows and hidden
+/// numbers. Version 1: the blocked, "Let every call through", a second call,
+/// the frame's row for everyone. Nothing to decide from: it rings.
 pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
-    let ring = |why: &'static str, who: &str, column: &str| Decision { refuse: false, why, who: who.to_string(), column: column.to_string() };
+    let ring = |why: &'static str| Decision { refuse: false, why, who: String::new(), column: String::new(), called: false };
     if call.outgoing {
-        return ring("outgoing", "", "");
+        return ring("outgoing");
     }
-    let Some(table) = table else { return ring("no-table", "", "") };
+    let Some(table) = table else { return ring("no-table") };
     let key = if call.hidden { String::new() } else { incoming_key(&call.number, table.region.as_ref(), &table.trunk_zero) };
     // 1. What always rings.
     if !call.hidden && (call.system_emergency || table.floors.emergency.contains(&key)) {
-        return ring("emergency", "", "");
+        return ring("emergency");
     }
     if call.emergency_at > 0 && call.now >= call.emergency_at && call.now - call.emergency_at < table.emergency_hours * 3_600_000 {
-        return ring("after-emergency", "", "");
+        return ring("after-emergency");
     }
     if !call.hidden && table.floors.people.contains(&key) {
-        return ring("people", "", "");
+        return ring("people");
     }
-    // Who: the number's own, a prefix of your lists, a contact of the phone's only, else a stranger.
-    let who = if call.hidden {
-        "hidden".to_string()
-    } else {
-        table.numbers.get(&key).cloned().filter(|w| !w.is_empty()).or_else(|| table.by_prefix(&key).map(str::to_string)).unwrap_or_else(|| if call.phone_contact { table.phone_contacts.clone() } else { "stranger".to_string() })
+    // Who: the number's own, a prefix of your lists, a contact of the phone's
+    // only; from version 2, a number you called lately; else a stranger.
+    let screening = table.screening.as_ref();
+    let listed = if call.hidden { None } else { table.numbers.get(&key).cloned().filter(|w| !w.is_empty()).or_else(|| table.by_prefix(&key).map(str::to_string)) };
+    let lately = screening.is_some_and(|s| s.called_days > 0 && call.called > 0 && call.now >= call.called && call.now - call.called < s.called_days * DAY_MS);
+    let (who, called) = match listed {
+        _ if call.hidden => ("hidden".to_string(), false),
+        Some(who) => (who, false),
+        None if call.phone_contact => (table.phone_contacts.clone(), false),
+        None if lately => (table.phone_contacts.clone(), true),
+        None => ("stranger".to_string(), false),
     };
+    let decided = |refuse: bool, why: &'static str, column: &str| Decision { refuse, why, who: who.clone(), column: column.to_string(), called };
     // 2. Blocked ("blocked entirely": every call let through but theirs).
     if who == "blocked" {
-        return Decision { refuse: true, why: "blocked", who, column: String::new() };
+        return decided(true, "blocked", "");
     }
-    // 3. Let every call through: the later press of this phone's and the table's.
-    let through = match (call.local, table.through) {
+    let repeat = !call.hidden && call.last_call > 0 && call.now - call.last_call <= table.repeat_minutes * 60_000;
+    let frame = table.frame_at(call.now);
+    let by_frame = |frame: Option<&Frame>| match frame {
+        None => decided(false, "no-frame", ""),
+        Some(frame) => match frame.ring.get(&who) {
+            Some(rings) => decided(!rings, "matrix", &frame.column),
+            None => decided(false, "no-row", &frame.column),
+        },
+    };
+    let Some(screening) = screening else {
+        // Version 1: Let every call through, the later press of this phone's and the table's; a second call; the frame's row.
+        if later(call.local, table.through).is_some_and(|t| t.holds(call.now)) {
+            return decided(false, "through", "");
+        }
+        if repeat {
+            return decided(false, "repeat", "");
+        }
+        return by_frame(frame);
+    };
+    // 3. A second call within 15 minutes rings, the blocked's aside.
+    if repeat {
+        return decided(false, "repeat", "");
+    }
+    // 4. The people you know: the matrix, the time and its layers. A number
+    // you called lately counts as your contacts do and never rings less than
+    // a number nobody knows: declined by their row, the screening may still
+    // let it ring (off, outside its hours, Expecting a call, its rule), what
+    // it screens as spam aside; declined by both, their row says why.
+    let known = (who != "stranger" && who != "hidden").then(|| by_frame(frame));
+    if let Some(known) = &known {
+        if !(called && known.refuse) {
+            return known.clone();
+        }
+    }
+    // 5. Everyone else: the screening alone, which no state of yours switches off.
+    if !screening.on {
+        return decided(false, "screening-off", frame.map_or("", |f| f.column.as_str()));
+    }
+    let Some(frame) = frame else { return decided(false, "no-frame", "") };
+    if screening.hours == screening::Hours::OutsideWork && frame.hours {
+        return decided(false, "work-hours", &frame.column);
+    }
+    if !call.hidden && !called {
+        let national = screening::national(&key);
+        let among = |prefixes: &[String]| national.as_deref().is_some_and(|n| screening::starts_with_any(n, prefixes));
+        // The network's word over Sioul's copy of ARCEP's blocks, which ages.
+        if screening.impossible == Spam::Voicemail && call.verified != "passed" && among(&screening.impossible_prefixes) {
+            return decided(true, "impossible", &frame.column);
+        }
+        if screening.unverified == Spam::Voicemail && call.verified == "failed" {
+            return decided(true, "unverified", &frame.column);
+        }
+        if screening.automated == Spam::Voicemail && among(&screening.automated_prefixes) {
+            return decided(true, "automated", &frame.column);
+        }
+    }
+    // Expecting a call: the later press of this phone's and the table's (all devices').
+    if later(call.local, table.expecting).is_some_and(|t| t.holds(call.now)) {
+        return decided(false, "expecting", &frame.column);
+    }
+    let rings = screening.screening().rings(call.hidden, frame.hours);
+    match known {
+        Some(known) if !rings => known,
+        _ => decided(!rings, "screening", &frame.column),
+    }
+}
+
+/// The later of this phone's own press and your devices' latest (by when each was pressed).
+fn later(local: Option<Through>, shared: Option<Through>) -> Option<Through> {
+    match (local, shared) {
         (Some(local), Some(shared)) => Some(if local.pressed > shared.pressed { local } else { shared }),
         (local, shared) => local.or(shared),
-    };
-    if through.is_some_and(|t| t.holds(call.now)) {
-        return ring("through", &who, "");
-    }
-    // 4. A second call within 15 minutes.
-    if !call.hidden && call.last_call > 0 && call.now - call.last_call <= table.repeat_minutes * 60_000 {
-        return ring("repeat", &who, "");
-    }
-    // 5. The frame for now.
-    let Some(frame) = table.frame_at(call.now) else { return ring("no-frame", &who, "") };
-    match frame.ring.get(&who) {
-        Some(rings) => Decision { refuse: !rings, why: "matrix", who, column: frame.column.clone() },
-        None => ring("no-row", &who, &frame.column),
     }
 }
 
@@ -610,7 +726,7 @@ pub fn shown_number(key: &str, region: Option<&Region>) -> String {
     }
 }
 
-// ---------------------------------------------------------------- "Let every call through"
+// ---------------------------------------------------------------- Expecting a call
 
 /// The calls' part of one device's table in the switch's file.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -647,7 +763,7 @@ pub fn set_part(device: &mut Device, part: DevicePart) {
     }
 }
 
-/// "Let every call through" as your devices say it: the latest press of any
+/// Expecting a call as your devices say it: the latest press of any
 /// (an "on" wins a tie); none when none pressed.
 pub fn through_of(switch: &Switch) -> Option<Through> {
     switch
@@ -757,6 +873,10 @@ pub struct Held {
     /// The network's verification of the number: "passed", "failed"; "" not said.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub verified: String,
+    /// Judged as your contacts are because you had called this number in
+    /// the last `screening::CALLED_DAYS` days.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub called: bool,
     /// The phone that screened it: its name in the sharing, its log's file's
     /// name; "" as read from Java's file. Never written in a line.
     #[serde(skip)]
@@ -1120,10 +1240,15 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
     let tr = l.tr;
     let first = group[0];
     let name = if first.hidden { None } else { (l.name_of)(&first.key).or_else(|| group.iter().map(|h| h.name.trim()).find(|n| !n.is_empty()).map(str::to_string)) };
+    // A number nobody knows, as the screening judged it: an automated caller, a number that cannot be a caller's, one the network could not verify.
+    let unknown = match first.why.as_str() {
+        "automated" | "impossible" | "unverified" => format!("calls-who-{}", first.why),
+        _ => "calls-who-stranger".to_string(),
+    };
     let who = if first.hidden {
         tr.text("calls-who-hidden", None)
     } else {
-        name.clone().unwrap_or_else(|| tr.text("calls-who-stranger", None))
+        name.clone().unwrap_or_else(|| tr.text(&unknown, None))
     };
     let context_words = context(tr, column);
     let today = l.now.date();
@@ -1174,8 +1299,14 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
     let row = if first.hidden { "hidden" } else if name.is_none() { "stranger" } else { first.who.trim_start_matches("always-") };
     let mut why_args = crate::i18n::args();
     why_args.set("context", context_words);
-    let why = match row {
-        "safe" | "neutral" | "restricted" | "stranger" | "hidden" => tr.text(&format!("calls-why-{row}"), Some(&why_args)),
+    let why = match (first.why.as_str(), row) {
+        // A number you called lately, declined as your contacts were then (the screening declining it too).
+        ("matrix", _) if first.called => tr.text("calls-why-called", Some(&why_args)),
+        // The screening's own (a table of version 2): what it is, never the time.
+        ("automated" | "impossible" | "unverified", _) => tr.text(&format!("calls-why-{}", first.why), None),
+        ("screening", "hidden") => tr.text("calls-why-screening-hidden", None),
+        ("screening", _) => tr.text("calls-why-screening-stranger", None),
+        (_, "safe" | "neutral" | "restricted" | "stranger" | "hidden") => tr.text(&format!("calls-why-{row}"), Some(&why_args)),
         _ => String::new(),
     };
     Line {
@@ -1261,19 +1392,36 @@ fn history_line(h: &Held, several: bool, l: &Lister) -> String {
     args.set("head", head);
     args.set("outcome", outcome);
     let mut text = capitalized(&tr.text("calls-history-line", Some(&args)));
-    if let Some(reason) = h.rang.then(|| rang_reason(tr, &h.why)).flatten() {
+    let mut said: Vec<String> = Vec::new();
+    said.extend(h.rang.then(|| rang_reason(tr, &h.why)).flatten());
+    // A number you called lately, decided as your contacts are (else the
+    // screening's reason says it); one the network could not verify rang all
+    // the same when you know them (decided before the screening).
+    if h.called && h.why == "matrix" {
+        said.push(tr.text("calls-history-called", None));
+    }
+    if h.verified == "failed" && h.why != "unverified" {
+        said.push(tr.text("calls-history-unverified", None));
+    }
+    for reason in said {
         text.push(' ');
         text.push_str(&reason);
     }
     text
 }
 
-/// Why a call rang when its row alone would not say it: a second call, Let
-/// every call through, an emergency, nothing to decide from.
+/// Why a call rang when its row alone would not say it: a second call,
+/// Expecting a call (once Let every call through), an emergency, the
+/// screening off, resting in your work hours or letting such numbers ring,
+/// nothing to decide from.
 fn rang_reason(tr: &Translator, why: &str) -> Option<String> {
     let key = match why {
         "repeat" => "calls-rang-repeat",
         "through" => "calls-rang-through",
+        "expecting" => "calls-rang-expecting",
+        "screening-off" => "calls-rang-screening-off",
+        "work-hours" => "calls-rang-work-hours",
+        "screening" => "calls-rang-screening",
         "emergency" => "calls-rang-emergency",
         "after-emergency" => "calls-rang-after-emergency",
         "no-table" | "no-frame" | "no-row" | "error" => "calls-rang-undecided",
@@ -1310,10 +1458,11 @@ pub fn message_words(tr: &Translator, seconds: Option<u32>) -> String {
 
 // ---------------------------------------------------------------- what is said of it
 
-/// "Let every call through" in words: "Every call rings until 15:30.",
-/// "… until you turn it off.", or after an emergency call, "Every call rings
-/// until tomorrow at 09:31: you called an emergency number."; "" otherwise.
-/// `through` and `emergency_at` in ms; `when` words an instant (ms).
+/// Expecting a call in words: "Expecting a call until 15:30: numbers nobody
+/// knows ring.", "… until you turn it off.", or after an emergency call,
+/// "Every call rings until tomorrow at 09:31: you called an emergency
+/// number."; "" otherwise. `through` and `emergency_at` in ms; `when` words
+/// an instant (ms).
 pub fn through_line(tr: &Translator, through: Option<&Through>, emergency_at: i64, now: i64, when: &dyn Fn(i64) -> String) -> String {
     let after = emergency_at + AFTER_EMERGENCY_HOURS * 3_600_000;
     if emergency_at > 0 && emergency_at <= now && now < after {
@@ -1325,9 +1474,9 @@ pub fn through_line(tr: &Translator, through: Option<&Through>, emergency_at: i6
         Some(t) if t.until > 0 => {
             let mut args = crate::i18n::args();
             args.set("until", when(t.until));
-            tr.text("calls-through-until", Some(&args))
+            tr.text("calls-expecting-until", Some(&args))
         }
-        Some(_) => tr.text("calls-through-on", None),
+        Some(_) => tr.text("calls-expecting-on", None),
         None => String::new(),
     }
 }
@@ -1399,7 +1548,8 @@ mod tests {
             ],
             prefixes: vec![("+3346571*".into(), "blocked".into())],
             always: always_numbers(&people, fr(), &blocked),
-            through: None,
+            expecting: None,
+            screening: None,
             frames: vec![
                 frame(ms("2026-10-05T00:00[Europe/Paris]"), work.0, "sleep", &["always-stranger"]),
                 frame(work.0, work.1, "work", &["safe", "neutral", "restricted", "hidden", "always-stranger"]),
@@ -1413,9 +1563,13 @@ mod tests {
         Incoming { number: number.into(), hidden: number.is_empty(), now: ms(&format!("2026-10-05T{at}[Europe/Paris]")), ..Incoming::default() }
     }
 
+    /// A table of version 1, as an older Sioul wrote it (until this one
+    /// writes its own): still read, in its own order, strangers and hidden
+    /// numbers by their frame's rows, Let every call through before a second call.
     #[test]
     fn who_rings_when_and_what_always_rings() {
         let t = decision_table();
+        assert_eq!((t.v, t.screening.is_none()), (1, true));
         let said = |c: &Incoming| {
             let d = decide(Some(&t), c);
             (d.refuse, d.why, d.who)
@@ -1479,6 +1633,158 @@ mod tests {
         assert_eq!(said(&Incoming { outgoing: true, ..call("112", "23:00") }).1, "outgoing");
     }
 
+    /// The table of version 2 these tests decide from: `decision_table`'s
+    /// people and frames, the screening as usual (numbers nobody knows to
+    /// voicemail at all hours, hidden numbers ringing in work and admin hours),
+    /// fiction numbers for ARCEP's kinds: 02 61 91 as an automated caller's
+    /// root, 03 53 01 as a block attributed to nobody.
+    fn screening_table() -> Table {
+        let base = decision_table();
+        let part = screening::TablePart { automated_prefixes: vec!["026191".into()], impossible_prefixes: vec!["035301".into(), "089".into()], ..screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), "2026-10-05".parse().unwrap()) };
+        Table { v: VERSION, through: None, screening: Some(part), ..base }
+    }
+
+    /// Every case of the screening apart (the overrides' part 2): what always
+    /// rings, the blocked, the people you know by the matrix, then everyone
+    /// else by the screening alone, never opened nor closed by do-not-disturb
+    /// or any frame of the people you know; a missing or outdated table rings.
+    #[test]
+    fn the_screening_decides_numbers_nobody_knows_apart() {
+        let t = screening_table();
+        let decided = |table: &Table, c: &Incoming| {
+            let d = decide(Some(table), c);
+            (d.refuse, d.why, d.who)
+        };
+        let said = |c: &Incoming| decided(&t, c);
+        let stranger = "01 99 00 55 55";
+        let (automated, impossible, other) = ("02 61 91 12 34", "03 53 01 12 34", "05 36 49 12 34");
+        // What always rings: an emergency number, its callback, the day after you call one (the blocked too).
+        for number in ["112", "15", "0 800 112 112"] {
+            assert_eq!(said(&call(number, "23:00")).1, "emergency", "{number}");
+        }
+        let called_112 = ms("2026-10-05T03:00[Europe/Paris]");
+        for number in ["01 99 00 00 04", stranger, automated, impossible, ""] {
+            assert_eq!(said(&Incoming { emergency_at: called_112, ..call(number, "23:00") }).1, "after-emergency", "{number}");
+        }
+        // The blocked: refused, a second call too, Expecting a call too.
+        let blocked = call("01 99 00 00 04", "10:00");
+        assert_eq!(said(&blocked), (true, "blocked", "blocked".to_string()));
+        assert_eq!(said(&Incoming { last_call: ms("2026-10-05T09:55[Europe/Paris]"), ..blocked.clone() }).1, "blocked");
+        let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..t.clone() };
+        assert_eq!(decided(&expecting, &blocked).1, "blocked");
+        // A second call within 15 minutes rings, whoever it is but the blocked: an automated caller too; never a hidden number.
+        let first = ms("2026-10-05T18:00[Europe/Paris]");
+        assert_eq!(said(&Incoming { last_call: first, ..call(automated, "18:10") }), (false, "repeat", "stranger".to_string()));
+        assert_eq!(said(&Incoming { last_call: first, ..call("", "18:10") }), (true, "screening", "hidden".to_string()));
+        // The people you know: by the matrix's frame, the screening never asked. Always through rings at night.
+        assert_eq!(said(&call("01 99 00 00 09", "23:00")), (false, "matrix", "always-stranger".to_string()));
+        assert_eq!(said(&call("01 99 00 00 01", "10:00")), (false, "matrix", "safe".to_string()));
+        assert_eq!(said(&call("01 99 00 00 01", "23:00")), (true, "matrix", "safe".to_string()));
+        assert_eq!(said(&call("01 99 00 00 02", "18:00")), (true, "matrix", "neutral".to_string()));
+        // A contact of the phone's only: your contacts' row.
+        assert_eq!(said(&Incoming { phone_contact: true, ..call(stranger, "10:00") }), (false, "matrix", "neutral".to_string()));
+        assert_eq!(said(&Incoming { phone_contact: true, ..call(stranger, "18:00") }), (true, "matrix", "neutral".to_string()));
+        // A number you called in the last 14 days counts as your contacts do (at night too as they do); past 14 days, nobody.
+        let lately = Incoming { called: ms("2026-10-02T12:00[Europe/Paris]"), ..call(stranger, "10:00") };
+        let d = decide(Some(&t), &lately);
+        assert_eq!((d.refuse, d.why, d.who.as_str(), d.called), (false, "matrix", "neutral", true));
+        assert_eq!(said(&Incoming { now: ms("2026-10-05T23:00[Europe/Paris]"), ..lately.clone() }), (true, "matrix", "neutral".to_string()));
+        assert_eq!(said(&Incoming { called: ms("2026-09-20T12:00[Europe/Paris]"), ..lately.clone() }).1, "screening");
+        let no_called = Table { screening: t.screening.clone().map(|s| screening::TablePart { called_days: 0, ..s }), ..t.clone() };
+        assert_eq!(decided(&no_called, &lately).1, "screening", "switched off: nobody");
+        // Declined by your contacts' row, it never rings less than a number nobody knows: while you expect a call,
+        // the screening off, its rule letting them ring, its hours resting under do-not-disturb at work. What it
+        // screens as spam aside, since you called it; declined by both, your contacts' row says why.
+        let night = Incoming { now: ms("2026-10-05T23:00[Europe/Paris]"), ..lately.clone() };
+        let with = |part: &dyn Fn(screening::TablePart) -> screening::TablePart| Table { screening: t.screening.clone().map(part), ..t.clone() };
+        assert_eq!(decided(&expecting, &night), (false, "expecting", "neutral".to_string()));
+        assert_eq!(decided(&with(&|s| screening::TablePart { on: false, ..s }), &night), (false, "screening-off", "neutral".to_string()));
+        assert_eq!(decided(&with(&|s| screening::TablePart { unknown: screening::Rule::Ring, ..s }), &night), (false, "screening", "neutral".to_string()));
+        let mut held_at_work = with(&|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s });
+        for f in held_at_work.frames.iter_mut().filter(|f| f.column == "work") {
+            f.column = "dnd".into();
+            f.ring.insert("neutral".into(), false);
+        }
+        assert_eq!(decided(&held_at_work, &lately), (false, "work-hours", "neutral".to_string()));
+        assert_eq!(decided(&held_at_work, &Incoming { phone_contact: true, ..call(stranger, "10:00") }), (true, "matrix", "neutral".to_string()), "a contact: their row alone");
+        let machine = Incoming { called: lately.called, ..call(automated, "10:00") };
+        assert_eq!(said(&machine), (false, "matrix", "neutral".to_string()));
+        assert_eq!(said(&Incoming { now: night.now, ..machine.clone() }), (true, "matrix", "neutral".to_string()));
+        assert_eq!(said(&Incoming { verified: "failed".into(), ..lately.clone() }).1, "matrix");
+        // Numbers nobody knows: to voicemail at all hours, as usual.
+        for at in ["03:00", "10:00", "18:00", "23:00"] {
+            assert_eq!(said(&call(stranger, at)), (true, "screening", "stranger".to_string()), "{at}");
+        }
+        // An automated caller, a number that cannot be a caller's, a failed verification: voicemail, whatever else.
+        assert_eq!(said(&call(automated, "10:00")).1, "automated");
+        assert_eq!(said(&call(impossible, "10:00")).1, "impossible");
+        assert_eq!(said(&call("08 99 12 34 56", "10:00")).1, "impossible", "089 is never a caller ID");
+        let failed = Incoming { verified: "failed".into(), ..call(other, "10:00") };
+        assert_eq!(said(&failed), (true, "unverified", "stranger".to_string()));
+        // The network's word over Sioul's ageing copy of ARCEP's blocks: verified, it is a number nobody knows.
+        assert_eq!(said(&Incoming { verified: "passed".into(), ..call(impossible, "10:00") }).1, "screening");
+        // A failed verification on someone you know: they ring as the matrix says; the line says the network could not verify.
+        let known_failed = decide(Some(&t), &Incoming { verified: "failed".into(), ..call("01 99 00 00 01", "10:00") });
+        assert_eq!((known_failed.refuse, known_failed.why), (false, "matrix"));
+        // Each kind may go as any number nobody knows instead.
+        let lenient = Table { screening: t.screening.clone().map(|s| screening::TablePart { automated: Spam::Unknown, impossible: Spam::Unknown, unverified: Spam::Unknown, unknown: screening::Rule::Ring, ..s }), ..t.clone() };
+        for c in [call(automated, "23:00"), call(impossible, "23:00"), failed.clone()] {
+            assert_eq!(decided(&lenient, &c), (false, "screening", "stranger".to_string()));
+        }
+        // A hidden number at each hour: ringing in work and admin hours as usual, else voicemail; as you set it.
+        for (at, rings) in [("03:00", false), ("10:00", true), ("18:00", false), ("23:00", false)] {
+            assert_eq!(said(&call("", at)), (!rings, "screening", "hidden".to_string()), "{at}");
+        }
+        let held = Table { screening: t.screening.clone().map(|s| screening::TablePart { hidden: screening::Rule::Voicemail, ..s }), ..t.clone() };
+        assert!(decided(&held, &call("", "10:00")).0, "voicemail at all hours, as set");
+        let open = Table { screening: t.screening.clone().map(|s| screening::TablePart { hidden: screening::Rule::Ring, ..s }), ..t.clone() };
+        assert!(!decided(&open, &call("", "23:00")).0);
+        // Expecting a call: numbers nobody knows and hidden numbers ring; never the blocked, an automated caller,
+        // a number that cannot be a caller's or a failed verification; and never the people you know beyond their row.
+        for c in [call(stranger, "23:00"), call("", "23:00")] {
+            assert_eq!(decided(&expecting, &c).1, "expecting");
+        }
+        for (c, why) in [(call(automated, "23:00"), "automated"), (call(impossible, "23:00"), "impossible"), (Incoming { now: ms("2026-10-05T23:00[Europe/Paris]"), ..failed.clone() }, "unverified")] {
+            assert_eq!(decided(&expecting, &c), (true, why, "stranger".to_string()));
+        }
+        assert_eq!(decided(&expecting, &call("01 99 00 00 02", "23:00")), (true, "matrix", "neutral".to_string()), "Expecting a call is for numbers nobody knows");
+        // This phone's own press, later than your devices', turns it off; one that ended, too.
+        assert!(decide(Some(&expecting), &Incoming { local: Some(Through { pressed: 11, on: false, until: 0 }), ..call(stranger, "23:00") }).refuse);
+        assert!(decide(Some(&t), &Incoming { local: Some(Through { pressed: 12, on: true, until: ms("2026-10-05T22:30[Europe/Paris]") }), ..call(stranger, "23:00") }).refuse);
+        // The screening off: every number nobody knows rings, machines too; the blocked never.
+        let off = Table { screening: t.screening.clone().map(|s| screening::TablePart { on: false, ..s }), ..t.clone() };
+        for c in [call(stranger, "23:00"), call(automated, "23:00"), call("", "23:00")] {
+            assert_eq!(decided(&off, &c).1, "screening-off");
+        }
+        assert_eq!(decided(&off, &blocked).1, "blocked");
+        // Only outside your work and admin hours: in them, every number nobody knows rings, machines too.
+        let outside = Table { screening: t.screening.clone().map(|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s }), ..t.clone() };
+        assert_eq!(decided(&outside, &call(automated, "10:00")).1, "work-hours");
+        assert_eq!(decided(&outside, &call(stranger, "18:00")), (true, "screening", "stranger".to_string()));
+        // Neither do-not-disturb nor any frame of the people you know (Reachable to come) opens or closes the
+        // screening: a frame under do-not-disturb, nobody you know ringing; a frame where everyone you know rings.
+        for ringing in [&[][..], &ROWS[..]] {
+            let mut moved = t.clone();
+            for f in &mut moved.frames {
+                f.column = "dnd".into();
+                for row in ROWS {
+                    f.ring.insert(row.to_string(), ringing.contains(&row));
+                }
+            }
+            for (number, at) in [(stranger, "10:00"), (stranger, "23:00"), ("", "10:00"), ("", "18:00"), (automated, "10:00"), (impossible, "23:00")] {
+                assert_eq!(decided(&moved, &call(number, at)).0, said(&call(number, at)).0, "{number} at {at}, known ringing: {}", !ringing.is_empty());
+            }
+        }
+        // Nothing to decide from: it rings. No table; past the frames, everyone but the blocked.
+        assert_eq!(decide(None, &call(automated, "23:00")).why, "no-table");
+        let tomorrow = |number: &str| Incoming { now: ms("2026-10-06T08:00[Europe/Paris]"), ..call(number, "00:00") };
+        for number in [stranger, automated, "01 99 00 00 01", ""] {
+            assert_eq!(said(&tomorrow(number)).1, "no-frame", "{number}");
+        }
+        assert_eq!(said(&tomorrow("01 99 00 00 04")).1, "blocked");
+        assert_eq!(said(&Incoming { outgoing: true, ..call(automated, "23:00") }).1, "outgoing");
+    }
+
     #[test]
     fn frames_follow_the_day_and_its_change_of_hour() {
         use crate::needs::{Days, Needs};
@@ -1497,23 +1803,25 @@ mod tests {
         assert_eq!(frames.first().unwrap().from, from.timestamp().as_millisecond());
         assert_eq!(frames.last().unwrap().until, until.timestamp().as_millisecond());
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from), "{frames:?}");
-        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), through: None, frames: Vec::new() }) };
+        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), expecting: None, screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), from.date())), frames: Vec::new() }) };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
-        // The usual Calls matrix: safe all but sleep and the pause; neutral work, admin, leisure and meals; restricted work; strangers never; hidden work and admin.
-        for (time, column, ringing) in [
-            ("03:00", "sleep", vec![]),
-            ("08:00", "meals", vec!["safe", "neutral"]),
-            ("10:00", "work", vec!["safe", "neutral", "restricted", "hidden"]),
-            ("12:30", "meals", vec!["safe", "neutral"]),
-            ("14:10", "sleep", vec![]),
-            ("18:00", "leisure", vec!["safe", "neutral"]),
-            ("22:30", "sleep", vec![]),
+        // The usual Calls matrix: safe all but sleep and the pause; neutral work, admin, leisure and meals; restricted
+        // work. Numbers nobody knows and hidden numbers are the screening's: no row of theirs in a frame. Work's hours said.
+        for (time, column, hours, ringing) in [
+            ("03:00", "sleep", false, vec![]),
+            ("08:00", "meals", false, vec!["safe", "neutral"]),
+            ("10:00", "work", true, vec!["safe", "neutral", "restricted"]),
+            ("12:30", "meals", false, vec!["safe", "neutral"]),
+            ("14:10", "sleep", false, vec![]),
+            ("18:00", "leisure", false, vec!["safe", "neutral"]),
+            ("22:30", "sleep", false, vec![]),
         ] {
             let f = at_(time);
-            assert_eq!(f.column, column, "{time}");
-            let rings: Vec<&str> = ["safe", "neutral", "restricted", "stranger", "hidden"].into_iter().filter(|r| f.ring[*r]).collect();
+            assert_eq!((f.column.as_str(), f.hours), (column, hours), "{time}");
+            let rings: Vec<&str> = ["safe", "neutral", "restricted"].into_iter().filter(|r| f.ring[*r]).collect();
             assert_eq!(rings, ringing, "{time}");
             assert!(f.ring["always-stranger"], "Always through rings at any time: {time}");
+            assert!(!f.ring.contains_key("stranger") && !f.ring.contains_key("hidden"), "the screening's, apart: {time}");
         }
         // The layers (Q11): do-not-disturb's switch from 18:00 to 19:00 sends the safe to voicemail, Always through rings;
         // a slot of time for you holds no call.
@@ -1524,6 +1832,11 @@ mod tests {
         assert_eq!((at_("18:30").column.as_str(), at_("18:30").ring["safe"], at_("18:30").ring["always-safe"]), ("dnd", false, true));
         assert_eq!((at_("17:30").column.as_str(), at_("17:30").ring["safe"]), ("leisure", true));
         assert_eq!((at_("19:15").column.as_str(), at_("19:15").ring["safe"]), ("slot", true));
+        // A layer over work keeps work's hours: the screening's hours are the time's, never do-not-disturb's.
+        let morning = Layers { slots: Vec::new(), dnd: Some((at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second(), None)) };
+        let table_dnd = Table { frames: super::frames(&attention, &clock, &morning, &from, &until), ..table.clone() };
+        let f = table_dnd.frame_at(ms("2026-10-05T10:30[Europe/Paris]")).unwrap();
+        assert_eq!((f.column.as_str(), f.hours, f.ring["safe"]), ("dnd", true, false));
         // Free time as cells: the safe ring in it, the others not; "Nothing at all", only Always through.
         let free = crate::quiet::Overrides { free_since: Some(at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second()), free_nothing: Some(true), ..crate::quiet::Overrides::default() };
         let clock_free = Clock::new(&config, free, Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() }, Days::default(), Vec::new());
@@ -1569,8 +1882,12 @@ mod tests {
         assert_eq!(phones::key("06 39 98 00 01", fr()), "+262639980001");
     }
 
+    /// The rows a frame of version 1 said, as an older Sioul wrote them.
+    const ROWS_V1: [&str; 9] = ["safe", "neutral", "restricted", "stranger", "hidden", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
+
+    /// A frame with version 1's rows (version 2 reads its known rows alone), work's hours by its column.
     fn frame(from: i64, until: i64, column: &str, ringing: &[&str]) -> Frame {
-        Frame { from, until, column: column.into(), ring: ROWS.iter().map(|r| (r.to_string(), ringing.contains(r))).collect() }
+        Frame { from, until, column: column.into(), hours: matches!(column, "work" | "admin"), ring: ROWS_V1.iter().map(|r| (r.to_string(), ringing.contains(r))).collect() }
     }
 
     #[test]
@@ -1583,7 +1900,8 @@ mod tests {
             numbers: vec![("+262639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
             prefixes: vec![("+33465711*".into(), "blocked".into()), ("+3346571*".into(), "safe".into()), ("+334657112*".into(), "neutral".into()), ("*".into(), "blocked".into())],
             always: always_numbers(&people, fr(), &|_| Who::Safe),
-            through: Some(Through { pressed: 5, on: true, until: 0 }),
+            expecting: Some(Through { pressed: 5, on: true, until: 0 }),
+            screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::built_in(), "2026-10-20".parse().unwrap())),
             frames: vec![frame(0, 1_000, "work", &["safe", "neutral", "restricted", "hidden"]), frame(1_000, 2_000, "sleep", &[])],
         };
         let table = table(made(42));
@@ -1602,12 +1920,19 @@ mod tests {
         assert_eq!(content(&table), content(&self::table(made(43))));
         // As Java reads it: the keys it looks for.
         let json: serde_json::Value = serde_json::from_str(&serde_json::to_string(&table).unwrap()).unwrap();
-        for key in ["v", "made", "region", "trunk_zero", "numbers", "prefixes", "phone_contacts", "floors", "through", "frames", "repeat_minutes", "emergency_hours"] {
+        for key in ["v", "made", "region", "trunk_zero", "numbers", "prefixes", "phone_contacts", "floors", "expecting", "screening", "frames", "repeat_minutes", "emergency_hours"] {
             assert!(json.get(key).is_some(), "{key}");
         }
-        assert_eq!(json["frames"][0]["ring"]["hidden"], true);
+        assert!(json.get("through").is_none(), "version 2 says Expecting a call");
+        assert_eq!((json["frames"][0]["hours"].as_bool(), json["frames"][1]["hours"].as_bool()), (Some(true), Some(false)));
         assert_eq!(json["frames"][1]["column"], "sleep");
-        assert_eq!(json["through"]["on"], true);
+        assert_eq!(json["expecting"]["on"], true);
+        let s = &json["screening"];
+        assert_eq!((s["on"].as_bool(), s["hours"].as_str(), s["unknown"].as_str(), s["hidden"].as_str(), s["automated"].as_str(), s["called_days"].as_i64()), (Some(true), Some("always"), Some("voicemail"), Some("work"), Some("voicemail"), Some(14)));
+        assert!(s["automated_prefixes"].as_array().unwrap().iter().any(|p| p == "0162") && s["impossible_prefixes"].as_array().unwrap().iter().any(|p| p == "089"));
+        // An older Sioul's table: version 1, Let every call through.
+        let older = self::table(Made { screening: None, ..made(42) });
+        assert_eq!((older.v, older.through.is_some(), older.expecting.is_none()), (1, true, true));
         // Written whole, read back the same.
         let dir = std::env::temp_dir().join(format!("sioul-calls-table-{}", std::process::id()));
         let path = dir.join(TABLE);
@@ -1820,8 +2145,13 @@ mod tests {
     fn java_s_lines_read_here() {
         let Some(sample) = std::env::var_os("SIOUL_CALLS_SAMPLE") else { return };
         let calls = read_held(Path::new(&sample));
-        assert_eq!(calls.iter().map(|h| (h.rang, h.why.as_str(), h.column.as_str(), h.hidden)).collect::<Vec<_>>(), [(false, "matrix", "sleep", false), (true, "repeat", "sleep", false), (false, "matrix", "sleep", true), (true, "no-table", "", false)]);
+        assert_eq!(
+            calls.iter().map(|h| (h.rang, h.why.as_str(), h.column.as_str(), h.hidden)).collect::<Vec<_>>(),
+            [(false, "matrix", "sleep", false), (true, "repeat", "sleep", false), (false, "matrix", "sleep", true), (true, "no-table", "", false), (false, "screening", "work", false), (true, "matrix", "work", false)]
+        );
         assert_eq!((calls[0].key.as_str(), calls[0].who.as_str()), ("+33199001234", "stranger"));
+        // A table of version 2's: the screening's refusal, and a number called lately said so.
+        assert_eq!((calls[4].who.as_str(), calls[4].called, calls[5].who.as_str(), calls[5].called), ("stranger", false, "neutral", true));
         assert_eq!(calls[3].logged(fr()).key, "+33465710042");
         assert_eq!(calls[0].logged(fr()).number, "", "the number as given stays on the phone");
     }
@@ -2035,13 +2365,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The calls the screening declined, said for what they are: an automated
+    /// caller, a number that cannot be a caller's, one the network could not
+    /// verify; why, on request, the screening's, never the time's. On a
+    /// sheet: a number called lately, someone known the network could not
+    /// verify, Expecting a call.
+    #[test]
+    fn the_screening_s_calls_are_said_for_what_they_are() {
+        let now = at("2026-10-07T10:00[Europe/Paris]");
+        let tr = Translator::new("en");
+        let name_of = |_: &str| None;
+        let shows = |_: &Held| true;
+        let phone = |_: &str| String::new();
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &name_of, shows: &shows, phone: &phone };
+        let declined = |time: &str, key: &str, why: &str| Held { why: why.into(), ..held(ms(&format!("2026-10-07T{time}[Europe/Paris]")), key, "stranger", "work") };
+        let calls = vec![declined("09:00", "+33261911234", "automated"), declined("09:10", "+33353011234", "impossible"), declined("09:20", "+33536491234", "unverified"), declined("09:30", "+33199005555", "screening"), declined("09:40", "", "screening")];
+        let listed = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
+        let texts: Vec<&str> = listed.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "During work, an automated caller called at 09:00.",
+                "During work, a number that cannot be a caller's called at 09:10.",
+                "During work, a number your network could not verify called at 09:20.",
+                "During work, a number not in your contacts called at 09:30.",
+                "During work, a hidden number called at 09:40."
+            ]
+        );
+        assert!(listed[0].why.starts_with("Automated callers go to your voicemail"), "{}", listed[0].why);
+        assert!(listed[1].why.starts_with("This number cannot be a caller's") && listed[2].why.starts_with("Your network could not verify"));
+        assert_eq!(listed[3].why, "Your call screening sends numbers not in your contacts to your voicemail.");
+        assert_eq!(listed[4].why, "Your call screening sends hidden numbers to your voicemail.");
+        // A number you called lately, declined as your contacts were then: said so, never as a stranger's.
+        let lately = [Held { called: true, ..held(ms("2026-10-07T09:45[Europe/Paris]"), "+33199005556", "neutral", "sleep") }];
+        assert_eq!(lines(&lately, &Seen::default(), &BTreeMap::new(), &l)[0].why, "You had called this number in the last two weeks, so it rings as your contacts do: their calls go to voicemail while you slept.");
+        // On a sheet.
+        let keys = BTreeSet::from(["+33199000001".to_string()]);
+        let mut rang = Held { rang: true, called: true, ..held(ms("2026-10-07T09:50[Europe/Paris]"), "+33199000001", "neutral", "work") };
+        assert!(history(std::slice::from_ref(&rang), &keys, &l)[0].ends_with("it rang. You had called this number in the last two weeks: it rings as your contacts do."), "{:?}", history(std::slice::from_ref(&rang), &keys, &l));
+        rang.called = false;
+        rang.verified = "failed".into();
+        assert!(history(std::slice::from_ref(&rang), &keys, &l)[0].ends_with("it rang. Your network could not verify the number."));
+        rang.verified = String::new();
+        rang.why = "expecting".into();
+        assert!(history(std::slice::from_ref(&rang), &keys, &l)[0].ends_with("it rang. You were expecting a call: numbers nobody knows rang."));
+        // Called lately and let ring by the screening: its reason alone.
+        rang.called = true;
+        rang.why = "screening".into();
+        assert!(history(std::slice::from_ref(&rang), &keys, &l)[0].ends_with("it rang. Your call screening lets such numbers ring then."), "{:?}", history(std::slice::from_ref(&rang), &keys, &l));
+    }
+
     #[test]
     fn letting_calls_through_is_said_with_its_end() {
         let now = 10_000_000;
         let when = |ms: i64| format!("<{ms}>");
         for (language, hour, open, emergency) in [
-            ("en", "Every call rings until <13600000>.", "Every call rings until you turn it off.", "Every call rings until <92810000>: you called an emergency number."),
-            ("fr", "Tous les appels sonnent jusqu’à <13600000>.", "Tous les appels sonnent jusqu’à ce que vous l’arrêtiez.", "Tous les appels sonnent jusqu’à <92810000>\u{202f}: vous avez appelé un numéro d’urgence."),
+            ("en", "Expecting a call until <13600000>: numbers nobody knows ring.", "Expecting a call until you turn it off: numbers nobody knows ring.", "Every call rings until <92810000>: you called an emergency number."),
+            ("fr", "En attente d’un appel jusqu’à <13600000>\u{202f}: les numéros que personne ne connaît sonnent.", "En attente d’un appel, jusqu’à ce que vous l’arrêtiez\u{202f}: les numéros que personne ne connaît sonnent.", "Tous les appels sonnent jusqu’à <92810000>\u{202f}: vous avez appelé un numéro d’urgence."),
         ] {
             let tr = Translator::new(language);
             let on = Through { pressed: 1, on: true, until: now + 3_600_000 };
@@ -2058,9 +2438,11 @@ mod tests {
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
             let mut keys: Vec<String> = [
-                "calls-who-hidden", "calls-who-stranger", "calls-context-day", "calls-day-yesterday", "calls-day-today", "calls-line-once", "calls-line-twice", "calls-line-more", "calls-line-once-on", "calls-line-twice-on", "calls-line-more-on", "calls-may-have-left", "calls-left-message", "calls-left-message-plain", "calls-through-emergency", "calls-through-until", "calls-through-on", "calls-context-any",
+                "calls-who-hidden", "calls-who-stranger", "calls-context-day", "calls-day-yesterday", "calls-day-today", "calls-line-once", "calls-line-twice", "calls-line-more", "calls-line-once-on", "calls-line-twice-on", "calls-line-more-on", "calls-may-have-left", "calls-left-message", "calls-left-message-plain", "calls-through-emergency", "calls-expecting-until", "calls-expecting-on", "calls-context-any", "calls-who-automated", "calls-who-impossible", "calls-who-unverified",
                 "calls-phone-yours", "calls-phone-other", "calls-phone-named", "calls-phone-this", "calls-again-rang", "calls-history-title", "calls-history-when", "calls-history-head", "calls-history-line", "calls-history-declined", "calls-history-rang", "calls-history-declined-on", "calls-history-rang-on",
                 "calls-rang-repeat", "calls-rang-through", "calls-rang-emergency", "calls-rang-after-emergency", "calls-rang-undecided",
+                "calls-rang-expecting", "calls-rang-screening-off", "calls-rang-work-hours", "calls-rang-screening", "calls-history-called", "calls-history-unverified",
+                "calls-why-automated", "calls-why-impossible", "calls-why-unverified", "calls-why-screening-stranger", "calls-why-screening-hidden", "calls-why-called",
             ]
             .iter()
             .map(|k| k.to_string())

@@ -72,6 +72,17 @@ public final class LogCheck
         JSONObject n = new JSONObject(Calls.line(Calls.decideFor(null, "04 65 71 00 42", false, at + 3_600_000, 0, null, 0, phone), null));
         expect("no table", n.getBoolean("rang") && n.getString("why").equals("no-table") && n.getString("key").isEmpty() && n.getString("number").equals("04 65 71 00 42") && n.getString("column").isEmpty());
         lines.add(n.toString());
+        // A table of version 2: a number nobody knows declined by the call screening, and one you called
+        // lately, which rings as your contacts do, said so in its line (Rust's `Held::called`).
+        Calls.Table v2 = Calls.Table.of(new JSONObject("{\"v\":2,\"made\":0,\"region\":{\"code\":\"FR\",\"calling\":\"33\",\"trunk\":\"0\",\"international\":\"00\",\"digits\":[10,10],\"french\":true},\"trunk_zero\":[\"33\"],\"numbers\":{},\"prefixes\":[],\"phone_contacts\":\"neutral\","
+            + "\"floors\":{\"emergency\":[\"112\"],\"people\":[]},\"screening\":{\"on\":true,\"hours\":\"always\",\"unknown\":\"voicemail\",\"hidden\":\"work\",\"automated\":\"voicemail\",\"impossible\":\"voicemail\",\"unverified\":\"voicemail\",\"called_days\":14,\"automated_prefixes\":[],\"impossible_prefixes\":[]},"
+            + "\"frames\":[{\"from\":0,\"until\":4102444800000,\"column\":\"work\",\"hours\":true,\"ring\":{\"safe\":true,\"neutral\":true,\"restricted\":true}}],\"repeat_minutes\":15,\"emergency_hours\":24}"));
+        JSONObject sc = new JSONObject(Calls.line(Calls.decideFor(v2, "01 99 00 12 35", false, at + 7_200_000, 0, null, 0, phone), v2));
+        expect("declined by the screening", !sc.getBoolean("rang") && sc.getString("why").equals("screening") && sc.getString("who").equals("stranger") && sc.getString("column").equals("work") && !sc.has("called"));
+        lines.add(sc.toString());
+        JSONObject la = new JSONObject(Calls.line(Calls.decideFor(v2, "01 99 00 12 36", false, at + 7_300_000, 0, null, 0, phone, "", at), v2));
+        expect("called lately: rang as your contacts, said", la.getBoolean("rang") && la.getString("why").equals("matrix") && la.getString("who").equals("neutral") && la.optBoolean("called", false));
+        lines.add(la.toString());
         // An outgoing call, or one never decided: nothing written, nothing asked of the phone.
         Calls.Decision out = Calls.Decision.ring("outgoing");
         out.at = at;

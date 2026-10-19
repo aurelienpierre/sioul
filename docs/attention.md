@@ -19,7 +19,7 @@ A source is where something comes from. **Sioul's own**: Sioul fetches, keeps or
 | Phone calls (Android 10 and later) | the system's | lets ring, or declines | `calls`, `Calls.java` |
 | Other apps' notifications (Android) | the system's | holds, or lets through | `appnotes`, `AppNotes.java` |
 | The system's do-not-disturb | the system's | turns Sioul's own modes on and off | app `dnd`, `everywhere`, `PauseMode.java` |
-| Your presses | yours | Pause, Free time, the do-not-disturb switch, Let every call through, Work now, Real time | `quiet.toml`, `do-not-disturb.toml` |
+| Your presses | yours | Pause, Free time, the do-not-disturb switch, Expecting a call (once Let every call through), Work now, Real time | `quiet.toml`, `do-not-disturb.toml` |
 
 On a computer Sioul sees no other app and no call: the system's do-not-disturb is its only hold on them.
 
@@ -67,7 +67,7 @@ Two **layers** hold on top of the time, never instead of it:
 - **Time for you**: a slot of today's plan kept for you. The window that lays out the day writes today's slots to `state/slots.toml` (`attention::Slots`, only when they changed); every process reads them: the window, the listener of other apps, a phone's background step, `sioul remind --watch`, `sioul watch`, the calls' table.
 - **Do not disturb**, from its switch or a focus session. Do-not-disturb held for a pause, Free time or sleep is no layer: their own columns apply.
 
-Two **switch layers** have one cell each, outside the grid: **Let every call through** (every call rings but the blocked's) and **Real time** (the Porch's box: mail each minute, every site in real time).
+Two **switch layers** have one cell each, outside the grid: **Expecting a call** (once Let every call through: numbers nobody knows and hidden numbers ring, never the blocked, an automated caller, a number that cannot be a caller's or a failed verification; the call screening's, [android.md](android.md#calls)) and **Real time** (the Porch's box: mail each minute, every site in real time).
 
 **Reading a moment** (`Attention::level`, `Attention::person`): the least strict of the time's columns, then the stricter of that and each layer that holds. For the people's rows, a week without admin hours lends work's cell to admin time and back; the kinds are never lent. Free time's **Nothing at all** holds every state's row, never Always through.
 
@@ -102,7 +102,7 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 | 2. **Emergency** (calls) | an emergency number or its callback; the day after you called one | rings, even blocked |
 | 3. **Blocked** | the blocked row | never: mail set aside and untold, a call declined and not listed, a message held; blocked beats Always through |
 | 4. **Content** (mail) | the lane (`attention::Lane`): a code takes the codes' row; what you sent yourself is shown, never told; set aside, the review queue, hostile, less important accounts, newsletters and mail read elsewhere are shown as their row says, never told | the lane's |
-| 5. **Floors** (calls) | Let every call through; a second call within 15 minutes (never a hidden number's, which cannot be told apart) | rings |
+| 5. **Floors** (calls) | a second call within 15 minutes (never a hidden number's, which cannot be told apart); Expecting a call, for numbers nobody knows only (the call screening's, apart) | rings |
 | 6. **Exceptions** | Always through (its row, `=` and `☆` read against their own row); a chat site naming someone your cards know follows their Messages row when it holds more | the exception's |
 | 7. **The matrix** | the time and its layers, the row | a level |
 | 8. **What it is for** | the source's area (an address, an app, a site, a task) against now: what is for work waits in your evening, but your safe senders' and Always through's, and but when the row and the area never meet in your week | later |
@@ -142,6 +142,8 @@ What Sioul does unless you change it (`attention::usual`; since 11 October 2026,
 | Strangers | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Hidden numbers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Blocked | **–** | **–** | **–** | **–** | **–** | **–** | **–** | **–** | **–** |
+
+Since 19 October 2026 numbers nobody knows and hidden numbers are the call screening's, apart from this matrix ([android.md](android.md#calls), `screening`): neither do-not-disturb nor any state of yours moves it. Their two rows above stay in the model for its first values and for when a declined call is listed; the grid no longer shows them.
 
 | Messages | W | A | L | M | S | P | F | Y | D |
 |---|---|---|---|---|---|---|---|---|---|
@@ -197,7 +199,7 @@ Choosing one writes every row as it says (`apply_preset`), never a lock. The tab
 ## 6. What the system lets through
 Silencing the system is no step of the pipeline: it follows the time. The pause, Free time (with `[dnd] pauses`, on unless set), sleep (with `[dnd] sleep`), a focus session (with `[dnd] focus`) and the switch each turn on one of Sioul's modes (`everywhere::now`).
 
-**On Android** a mode lets through what the matrix lets through at its column, as far as Android can say it (`Attention::silence`, sent flat to `PauseMode.java` by app `dnd`): for calls nobody, starred contacts, contacts or anyone (while this phone screens calls, every contact, Sioul having declined the others already; else starred contacts, Android's nearest to Always through; anyone while Let every call through holds); for messages nobody or starred contacts, never wider, though Sioul may hold other apps' notifications: Android sounds a notification before any listener hears of it, so the mode alone keeps a held message silent; a second call within 15 minutes; conversations marked Priority when Always through's messages pass; alarms always; doses and an event's alarms on channels of their own that pass, when their rows say at once.
+**On Android** a mode lets through what the matrix lets through at its column, as far as Android can say it (`Attention::silence`, sent flat to `PauseMode.java` by app `dnd`): for calls nobody, starred contacts, contacts or anyone (while this phone screens calls, every contact, Sioul having declined the others already, and anyone when the call screening lets numbers nobody knows ring then; else starred contacts, Android's nearest to Always through; anyone while Expecting a call holds); for messages nobody or starred contacts, never wider, though Sioul may hold other apps' notifications: Android sounds a notification before any listener hears of it, so the mode alone keeps a held message silent; a second call within 15 minutes; conversations marked Priority when Always through's messages pass; alarms always; doses and an event's alarms on channels of their own that pass, when their rows say at once.
 
 **On a computer**: Plasma inhibits its pop-ups but critical ones (codes, doses, reminders, mail from Always through); GNOME's switch, with your consent; macOS through two shortcuts; Windows and other desktops cannot be asked ([do-not-disturb.md](do-not-disturb.md)).
 
@@ -286,6 +288,8 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 24. **Older Sioul**: not kept in step; the older keys seed the matrix once, then go.
 25. **The holds outside the matrix** stay named holds, each said in its time's card.
 26. **French**: « type », never « sorte », for a kind.
+
+The decisions of 14 and 18 October 2026 (what reaches you: one control, the screening apart, gentler defaults, a person's own row), built in parts. **The call screening apart** (decisions 3 to 5): spam and numbers nobody knows are screened at all hours unless you choose its hours, never switched off by do-not-disturb or any state; numbers in no address book, automated callers (ARCEP's roots for machines), numbers that cannot be a caller's and failed verifications go to voicemail, hidden numbers as you had them, and a number you called in the last 14 days rings as your contacts do, never less than a number nobody knows; Expecting a call takes the place of Let every call through, for numbers nobody knows only; a screened caller is declined, as before ([android.md](android.md#calls)).
 
 ## 11. What stays outside
 Which device tells (leases), what each platform can show (no codes or dates told on a phone yet), the words of each notification, the ledgers that tell each thing once. The model decides when; they decide where and how.

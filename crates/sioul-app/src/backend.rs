@@ -1618,7 +1618,7 @@ pub mod qobject {
         #[qinvokable]
         fn app_notes_change(self: &Sioul, verb: &QString, json: &QString) -> QString;
 
-        /// "Let every call through" (docs/android.md, "Calls"; `calls::press`): on
+        /// Expecting a call, once "Let every call through" (docs/android.md, "Calls"; `calls::press`): on
         /// for `minutes` (0: until turned off), or calls screened again; on every device.
         #[qinvokable]
         fn calls_through(self: Pin<&mut Sioul>, on: bool, minutes: i32);
@@ -2536,7 +2536,7 @@ pub(crate) fn mode_json() -> String {
         "pauses": crate::pauses::moment(&config, &overrides, &now),
         // Do-not-disturb on every device (docs/do-not-disturb.md): its switch and where it holds.
         "dnd": crate::everywhere::moment(),
-        // "Let every call through", while a phone of yours screens calls (docs/android.md, "Calls").
+        // Expecting a call, while a phone of yours screens calls (docs/android.md, "Calls").
         "calls": crate::calls::moment()
     })
     .to_string()

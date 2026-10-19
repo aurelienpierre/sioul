@@ -10,13 +10,16 @@ import org.json.JSONObject;
 
 /**
  * Calls.Table.of and Calls.decideFor on the calls' table as the core writes
- * it with the matrix of what reaches you (crates/sioul-core/src/calls.rs,
- * 7 October 2026): still v1; the frames' columns "free", "slot", "dnd";
- * nine rows, "always-<state>" among them; Always through's numbers as
- * numbers["<key>"] = "always-<their own state>", never over a blocked one;
- * floors.people empty. Read through org.json's own jar (android.jar's is a
- * stub), from the JSON text as serde writes it, then the cases of calls.rs's
- * `who_rings_when_and_what_always_rings` and of its frames' tests.
+ * it with the matrix of what reaches you (crates/sioul-core/src/calls.rs):
+ * first a table of version 1 (7 October 2026, an older Sioul's, still read):
+ * the frames' columns "free", "slot", "dnd"; nine rows, "always-<state>"
+ * among them; Always through's numbers as numbers["<key>"] = "always-<their
+ * own state>", never over a blocked one; floors.people empty. Then a table of
+ * version 2 (19 October 2026): the call screening apart ("screening", its
+ * prefixes in national form), Expecting a call ("expecting"), frames with
+ * the people you know only and work's hours ("hours"). Read through org.json's
+ * own jar (android.jar's is a stub), from the JSON text as serde writes it,
+ * then the cases of calls.rs's tests.
  */
 public final class TableCheck
 {
@@ -35,6 +38,17 @@ public final class TableCheck
             ring.append(ring.length() == 0 ? "" : ",").append('"').append(row).append("\":").append(on);
         }
         return "{\"from\":" + from + ",\"until\":" + until + ",\"column\":\"" + column + "\",\"ring\":{" + ring + "}}";
+    }
+
+    /** A frame of version 2: the people you know only, work's hours said. */
+    static String frame2(long from, long until, String column, boolean hours, String[] rows, String... ringing)
+    {
+        StringBuilder ring = new StringBuilder();
+        for (String row : rows) {
+            boolean on = java.util.Arrays.asList(ringing).contains(row);
+            ring.append(ring.length() == 0 ? "" : ",").append('"').append(row).append("\":").append(on);
+        }
+        return "{\"from\":" + from + ",\"until\":" + until + ",\"column\":\"" + column + "\",\"hours\":" + hours + ",\"ring\":{" + ring + "}}";
     }
 
     static int failed = 0;
@@ -129,12 +143,60 @@ public final class TableCheck
         // Another version is not read: calls ring.
         checked++;
         try {
-            Calls.Table.of(new JSONObject(json.replace("\"v\":1", "\"v\":2")));
+            Calls.Table.of(new JSONObject(json.replace("\"v\":1", "\"v\":3")));
             failed++;
-            System.out.println("FAIL a table of version 2 was read");
+            System.out.println("FAIL a table of version 3 was read");
         } catch (org.json.JSONException e) {
             // As wanted.
         }
+
+        // ---------------------------------------------------------------- version 2: the call screening apart
+        String[] known = { "safe", "neutral", "restricted", "always-safe", "always-neutral", "always-restricted", "always-stranger" };
+        String v2 = "{\"v\":2,\"made\":" + midnight
+            + ",\"region\":{\"code\":\"FR\",\"calling\":\"33\",\"trunk\":\"0\",\"international\":\"00\",\"digits\":[10,10],\"french\":true,\"overseas\":{\"692\":\"262\"}}"
+            + ",\"trunk_zero\":[\"32\",\"33\",\"44\",\"49\"]"
+            + ",\"numbers\":{\"+33199000001\":\"safe\",\"+33199000004\":\"blocked\",\"+33199000009\":\"always-stranger\"}"
+            + ",\"prefixes\":[],\"phone_contacts\":\"neutral\""
+            + ",\"floors\":{\"emergency\":[\"112\",\"+33800112112\"],\"people\":[]}"
+            + ",\"expecting\":{\"pressed\":10,\"on\":true,\"until\":" + work0 + "}"
+            + ",\"screening\":{\"on\":true,\"hours\":\"always\",\"unknown\":\"voicemail\",\"hidden\":\"work\",\"automated\":\"voicemail\",\"impossible\":\"voicemail\",\"unverified\":\"voicemail\",\"called_days\":14"
+            + ",\"automated_prefixes\":[\"026191\"],\"impossible_prefixes\":[\"035301\",\"089\"]}"
+            + ",\"frames\":["
+            + frame2(midnight, work0, "sleep", false, known, "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(work0, work1, "work", true, known, "safe", "neutral", "restricted", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(work1, dnd0, "leisure", false, known, "safe", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            // Do-not-disturb over leisure: the people you know held; the screening as it is.
+            + frame2(dnd0, dnd1, "dnd", false, known, "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
+            + frame2(dnd1, sleep1, "sleep", false, known, "always-safe", "always-neutral", "always-restricted", "always-stranger")
+            + "],\"repeat_minutes\":15,\"emergency_hours\":24}";
+        Calls.Table s = Calls.Table.of(new JSONObject(v2));
+        checked++;
+        if (s.v != 2 || s.screening == null || s.expecting == null || !s.frames.get(1).hours || s.frames.get(0).hours || !s.screening.automatedPrefixes.contains("026191") || s.screening.longest != 6 || s.screening.calledMs != 14L * 24 * 3600 * 1000) {
+            failed++;
+            System.out.println("FAIL the table of version 2 as read");
+        }
+        // Expecting a call until 09:00: numbers nobody knows ring at night; machines and blocks attributed to nobody never.
+        expect("v2 expecting, nobody knows", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "03:00"), 0, null, 0, none), false, "expecting", "stranger", "sleep");
+        expect("v2 expecting, a machine", Calls.decideFor(s, "02 61 91 12 34", false, ms(day, "03:00"), 0, null, 0, none), true, "automated", "stranger", "sleep");
+        expect("v2 expecting, impossible", Calls.decideFor(s, "03 53 01 12 34", false, ms(day, "03:00"), 0, null, 0, none), true, "impossible", "stranger", "sleep");
+        expect("v2 expecting, the safe at night", Calls.decideFor(s, "01 99 00 00 01", false, ms(day, "03:00"), 0, null, 0, none), true, "matrix", "safe", "sleep");
+        // Past it: numbers nobody knows to voicemail at all hours; hidden numbers ring in work hours only.
+        expect("v2 nobody knows at work", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, 0, none), true, "screening", "stranger", "work");
+        expect("v2 hidden at work", Calls.decideFor(s, "", true, ms(day, "10:00"), 0, null, 0, none), false, "screening", "hidden", "work");
+        expect("v2 hidden in the evening", Calls.decideFor(s, "", true, ms(day, "17:30"), 0, null, 0, none), true, "screening", "hidden", "leisure");
+        // Do-not-disturb holds the people you know, never moves the screening: a hidden number in the evening still voicemail, one at work still rings.
+        expect("v2 safe under do-not-disturb", Calls.decideFor(s, "01 99 00 00 01", false, ms(day, "18:30"), 0, null, 0, none), true, "matrix", "safe", "dnd");
+        expect("v2 Always through under do-not-disturb", Calls.decideFor(s, "01 99 00 00 09", false, ms(day, "18:30"), 0, null, 0, none), false, "matrix", "always-stranger", "dnd");
+        expect("v2 hidden under do-not-disturb", Calls.decideFor(s, "", true, ms(day, "18:30"), 0, null, 0, none), true, "screening", "hidden", "dnd");
+        // A number called lately, a failed verification, the blocked, the floors.
+        expect("v2 called lately", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, 0, none, "", ms(day, "08:00")), false, "matrix", "neutral", "work");
+        expect("v2 failed verification", Calls.decideFor(s, "05 36 49 12 34", false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), true, "unverified", "stranger", "work");
+        expect("v2 blocked", Calls.decideFor(s, "01 99 00 00 04", false, ms(day, "03:00"), 0, null, 0, none), true, "blocked", "blocked", "");
+        expect("v2 emergency callback", Calls.decideFor(s, "08 00 11 21 12", false, ms(day, "23:00"), 0, null, 0, none), false, "emergency", "", "");
+        expect("v2 a second call", Calls.decideFor(s, "02 61 91 12 34", false, ms(day, "10:00"), 0, null, ms(day, "09:58"), none), false, "repeat", "stranger", "");
+        // A table of version 2 that says no screening (never written so): it screens nobody, it rings.
+        Calls.Table bare = Calls.Table.of(new JSONObject(v2.replaceFirst(",\"screening\":\\{[^}]*\\}", "")));
+        expect("v2 without its screening", Calls.decideFor(bare, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, 0, none), false, "screening-off", "stranger", "work");
         System.out.println(failed == 0 ? "all " + checked + " table decisions agree with calls.rs" : failed + " of " + checked + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

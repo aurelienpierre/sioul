@@ -121,6 +121,20 @@ fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) 
     }
 }
 
+/// Whether a sender's number comes from a root ARCEP keeps for automated
+/// systems (`screening::Numbers`, the call screening's data), while the call
+/// screening sends automated callers to voicemail (its `automated`).
+fn machine_number(sender: &Sender, config: &Config, now: &Zoned) -> bool {
+    static ROOTS: std::sync::OnceLock<sioul_core::screening::Numbers> = std::sync::OnceLock::new();
+    let Sender::Known { numbers, .. } = sender else { return false };
+    if sioul_core::screening::Screening::of(config).automated != sioul_core::screening::Spam::Voicemail {
+        return false;
+    }
+    let roots = ROOTS.get_or_init(sioul_core::screening::Numbers::built_in).automated(now.date());
+    let region = sioul_core::reach::region(config);
+    numbers.iter().any(|n| sioul_core::screening::national(&sioul_core::phones::key(n, region)).is_some_and(|national| sioul_core::screening::starts_with_any(&national, &roots)))
+}
+
 /// What a notification's source is for: the app's, as you set it; else, for
 /// mail, the address it came to, when it is one of your accounts' (unsaid: work).
 fn area_of(posted: &Posted, kind: &Kind, choices: &Choices, config: &Config) -> Option<Area> {
@@ -159,6 +173,13 @@ fn decide(json: &str) -> String {
         Kind::People(talk) => who_of(&talk.sender, &Senders::load(&config), &People::load(&People::default_path()), &config),
         _ => (None, false),
     };
+    // A text from a number nobody knows, from a root ARCEP keeps for machines: an automaton's, gathered
+    // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise).
+    let kind = match kind {
+        Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now) => Kind::Automaton { site: String::new() },
+        other => other,
+    };
+    let (who, admitted) = if matches!(kind, Kind::People(_)) { (who, admitted) } else { (None, false) };
     let area = area_of(&posted, &kind, &choices, &config);
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
@@ -913,6 +934,24 @@ mod tests {
         for private in ["org.example", "Noa", "Martin", "01 99 00", "+33", "Chat", "c0ffee", "ce soir", "safe", "neutral", "stranger", "blocked", "restricted"] {
             assert!(!said.contains(private), "{said} says {private}");
         }
+    }
+
+    /// A text from a root ARCEP keeps for machines is an automaton's, while
+    /// the call screening sends automated callers to voicemail: 01 63, a
+    /// root for machines that ARCEP had attributed to no operator yet (so the
+    /// number is nobody's); a fiction number is no machine's. The numbers'
+    /// country set, as a French phone's language says it (with no locale, as
+    /// on CI, it would be Britain's, where 01 63 is no machine's).
+    #[test]
+    fn a_machine_s_text_is_an_automaton_s() {
+        let now: Zoned = "2026-10-20T10:00:00+02:00[Europe/Paris]".parse().unwrap();
+        let config: Config = toml::from_str("[contacts]\nregion = \"FR\"\n").unwrap();
+        let machine = Sender::Known { numbers: vec!["01 63 12 34 56".into()], emails: Vec::new(), contact: false };
+        assert!(machine_number(&machine, &config, &now));
+        assert!(!machine_number(&Sender::Known { numbers: vec!["01 99 00 12 34".into()], emails: Vec::new(), contact: false }, &config, &now));
+        assert!(!machine_number(&Sender::Named { name: "AMELI".into(), book: true }, &config, &now));
+        let as_unknown: Config = toml::from_str("[contacts]\nregion = \"FR\"\n[screening]\nautomated = \"unknown\"\n").unwrap();
+        assert!(!machine_number(&machine, &as_unknown, &now), "set as any number nobody knows");
     }
 
     #[test]
