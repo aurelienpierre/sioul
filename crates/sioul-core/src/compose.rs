@@ -139,6 +139,18 @@ impl Draft {
         Draft::folder().join(format!("{}.eml", self.id))
     }
 
+    /// The copy of the message answered or forwarded, here: where the draft
+    /// says, else this device's copy beside it (a draft made on another
+    /// device names that device's folder).
+    pub fn original_here(&self) -> Option<PathBuf> {
+        let named = self.original.as_ref()?;
+        if named.is_file() {
+            return Some(named.clone());
+        }
+        let copy = self.original_copy();
+        copy.is_file().then_some(copy)
+    }
+
     /// Keeps a copy of the message answered or forwarded next to the draft: it
     /// may be archived, deleted or renamed before the answer leaves.
     pub fn keep_original(&mut self) -> Result<(), String> {
@@ -180,10 +192,17 @@ impl Draft {
         body.trim().is_empty() && self.attachments.is_empty() && (self.kind != DraftKind::New || (self.to.is_empty() && self.subject.trim().is_empty()))
     }
 
-    /// The original's attachments a forward carries, by index and name.
+    /// The original's attachments a forward carries, by index and name; none
+    /// while it is encrypted (opened only at Send: [`Draft::forwarded_from`]).
     pub fn forwarded(&self) -> Vec<(u32, String)> {
-        let Some(original) = self.original.as_deref().filter(|_| self.kind == DraftKind::Forward) else { return Vec::new() };
-        let Some(reading) = reading::read(original) else { return Vec::new() };
+        let raw = self.original_here().and_then(|path| crate::filelock::read_whole(&path).ok()).filter(|raw| !crate::pgp::is_encrypted(raw));
+        self.forwarded_from(raw.as_deref())
+    }
+
+    /// The same from the original as it reads (`original`: opened in memory).
+    pub fn forwarded_from(&self, original: Option<&[u8]>) -> Vec<(u32, String)> {
+        let Some(raw) = original.filter(|_| self.kind == DraftKind::Forward) else { return Vec::new() };
+        let Some(reading) = reading::read_bytes(raw) else { return Vec::new() };
         reading.attachments.into_iter().filter(|a| !self.dropped.contains(&a.index)).map(|a| (a.index, a.name)).collect()
     }
 }
@@ -557,7 +576,9 @@ pub struct Outgoing {
 /// The message as it goes out, from a draft: your text, then what it quotes or
 /// forwards, the attachments, the thread. `from` is the account's name and address.
 pub fn build(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64) -> Result<Outgoing, String> {
-    build_with(draft, from, tr, date, None, None)
+    // An encrypted original is never quoted unprotected.
+    let original = draft.original_here().and_then(|path| crate::filelock::read_whole(&path).ok()).filter(|raw| !crate::pgp::is_encrypted(raw));
+    build_with(draft, from, tr, date, None, None, original.as_deref())
 }
 
 /// How a message is protected with OpenPGP: signed with your key, encrypted
@@ -572,14 +593,17 @@ pub struct Protection<'a> {
 /// The message as it goes out, protected when asked: PGP/MIME (RFC 3156),
 /// multipart/signed for a signature alone, multipart/encrypted otherwise,
 /// the signature then inside. `autocrypt` is your Autocrypt header's value.
-pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64, protection: Option<&mut Protection>, autocrypt: Option<&str>) -> Result<Outgoing, String> {
+/// `original`: the message answered or forwarded as it reads (opened in
+/// memory when it came encrypted), quoted below the text, a forward's
+/// attachments taken from it; none, nothing of it goes.
+pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64, protection: Option<&mut Protection>, autocrypt: Option<&str>, original: Option<&[u8]>) -> Result<Outgoing, String> {
     use mail_builder::headers::content_type::ContentType;
     use mail_builder::mime::MimePart;
     let recipients = draft.recipients();
     if recipients.is_empty() {
         return Err(tr.text("compose-no-recipient", None));
     }
-    let quote = draft.original.as_deref().and_then(|path| quote(path, draft.kind, tr));
+    let quote = original.and_then(|raw| quote(raw, draft.kind, tr));
     let html_text = markdown_html(&draft.body);
     let (text, html) = match &quote {
         Some(q) => (format!("{}\n\n{}", draft.body.trim_end(), q.text), format!("{html_text}\n{}", q.html)),
@@ -594,7 +618,7 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
         false => MimePart::new(kind, body),
     };
     let alternative = MimePart::new("multipart/alternative", vec![text_part("text/plain", text), text_part("text/html", html)]);
-    let files = attachments(draft)?;
+    let files = attachments(draft, original)?;
     let inner = if files.is_empty() {
         alternative
     } else {
@@ -721,16 +745,16 @@ fn name_of(entry: &str) -> String {
 }
 
 /// The files attached by hand, then, for a forward, the original's attachments.
-fn attachments(draft: &Draft) -> Result<Vec<(String, &'static str, Vec<u8>)>, String> {
+fn attachments(draft: &Draft, original: Option<&[u8]>) -> Result<Vec<(String, &'static str, Vec<u8>)>, String> {
     let mut out = Vec::new();
     for path in &draft.attachments {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let name = path.file_name().map_or_else(|| "attachment".to_string(), |n| n.to_string_lossy().to_string());
         out.push((name.clone(), mime_of(&name), bytes));
     }
-    if let Some(original) = &draft.original {
-        for (index, _) in draft.forwarded() {
-            if let Some((name, bytes)) = reading::attachment(original, index) {
+    if let Some(raw) = original {
+        for (index, _) in draft.forwarded_from(Some(raw)) {
+            if let Some((name, bytes)) = reading::attachment_from(raw, index) {
                 out.push((name.clone(), mime_of(&name), bytes));
             }
         }
@@ -769,10 +793,9 @@ struct Quote {
     html: String,
 }
 
-fn quote(original: &Path, kind: DraftKind, tr: &Translator) -> Option<Quote> {
-    let raw = std::fs::read(original).ok()?;
-    let message = MessageParser::default().parse(&raw)?;
-    let reading = reading::read(original)?;
+fn quote(raw: &[u8], kind: DraftKind, tr: &Translator) -> Option<Quote> {
+    let message = MessageParser::default().parse(raw)?;
+    let reading = reading::read_bytes(raw)?;
     let sender = message.from().and_then(|a| a.first()).map_or_else(String::new, |p| entry(p.name(), p.address().unwrap_or("")));
     let date = message.date().map_or_else(String::new, |d| d.to_rfc822());
     let body_text = message.body_text(0).map(|b| b.into_owned()).unwrap_or_default();
@@ -912,13 +935,13 @@ mod tests {
         draft.body = "Hello,\nhere it is.\n\n-- \nMe".into();
         let tr = Translator::new("en");
         let mut signer = crate::pgp::here_signer(&me, "").unwrap();
-        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![] }), None).unwrap();
+        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![] }), None, None).unwrap();
         let keys = crate::pgp::Keys { others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };
         let none = |_: &sequoia_openpgp::Fingerprint| None;
         let sessions = crate::pgp::SessionKeys::new();
         let (_, view) = crate::pgp::open(&signed.raw, &keys, &crate::pgp::Unlock::new(&none, &sessions)).unwrap();
         assert!(!view.encrypted && view.signatures.len() == 1 && view.signatures[0].good, "{view:?}");
-        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![&jane, &me] }), Some("addr=me@example.net; keydata=AAAA")).unwrap();
+        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![&jane, &me] }), Some("addr=me@example.net; keydata=AAAA"), None).unwrap();
         let text = String::from_utf8_lossy(&sealed.raw).to_string();
         assert!(text.contains("multipart/encrypted") && !text.contains("here it is") && text.contains("Autocrypt: addr=me@example.net"), "{text}");
         let jane_keys = crate::pgp::Keys { own: vec![jane.clone()], others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };

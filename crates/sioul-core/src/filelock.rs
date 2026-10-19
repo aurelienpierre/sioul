@@ -25,6 +25,236 @@ pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     written
 }
 
+/// `bytes` in place of `path`'s content, what it held overwritten where the
+/// filesystem lets it be (docs/client.md, "What a disk keeps"): [`Prepared`],
+/// [`Prepared::place`] and [`Placed::finish`] at once, for a file no other
+/// part of Sioul reads meanwhile but through [`read_whole`]. A file that
+/// readers take a lock for is replaced in those three steps, the place alone
+/// under that lock (`draftcopies`: the sharing's exchange lock).
+pub fn replace_wiping(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(placed) = Prepared::new(path, bytes)?.place(None)? {
+        placed.finish();
+    }
+    Ok(())
+}
+
+/// A file as it was when it was read, to know before replacing it that it
+/// still is (its device and number, its size and time; size and time only
+/// where a file has no number: Windows).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    modified: u128,
+}
+
+impl FileStamp {
+    /// What `meta` says of a file (a descriptor's, after reading through it).
+    pub fn of(meta: &std::fs::Metadata) -> FileStamp {
+        #[cfg(unix)]
+        let (dev, ino) = (std::os::unix::fs::MetadataExt::dev(meta), std::os::unix::fs::MetadataExt::ino(meta));
+        #[cfg(not(unix))]
+        let (dev, ino) = (0, 0);
+        let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+        FileStamp { dev, ino, len: meta.len(), modified }
+    }
+
+    /// The file `path` names now; none when there is none.
+    pub fn now(path: &Path) -> Option<FileStamp> {
+        std::fs::metadata(path).ok().map(|meta| FileStamp::of(&meta))
+    }
+}
+
+/// New bytes for a file, written beside it under a hidden name (which the
+/// sharing and the watcher pass over), yours alone, and on the disk, waiting
+/// to take its place; taken out if they never do. The slow part of a
+/// replacement, done before any lock is taken.
+#[derive(Debug)]
+pub struct Prepared {
+    path: PathBuf,
+    temporary: PathBuf,
+    placed: bool,
+}
+
+impl Prepared {
+    pub fn new(path: &Path, bytes: &[u8]) -> std::io::Result<Prepared> {
+        use std::io::Write;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        // Made first, so that a failure below takes it out (`Drop`).
+        let prepared = Prepared { path: path.to_path_buf(), temporary, placed: false };
+        let mut file = options.open(&prepared.temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        Ok(prepared)
+    }
+
+    /// The new bytes in the file's place, when it is still as `was` says
+    /// (None: whatever it is now); else nothing is done and None returned (the
+    /// file changed since it was read, or went). Quick, no byte written: meant
+    /// to run under the lock its readers take. On Unix the old file is held
+    /// open across the rename, to overwrite it once it has no name
+    /// ([`Placed::finish`]); elsewhere it is not held, and never overwritten:
+    /// Windows renames a file held open only at times, and nothing there can
+    /// read zeros.
+    pub fn place(mut self, was: Option<FileStamp>) -> std::io::Result<Option<Placed>> {
+        if let Some(was) = was
+            && FileStamp::now(&self.path) != Some(was)
+        {
+            return Ok(None);
+        }
+        #[cfg(unix)]
+        let old = std::fs::OpenOptions::new().write(true).open(&self.path).ok();
+        #[cfg(not(unix))]
+        let old: Option<std::fs::File> = None;
+        std::fs::rename(&self.temporary, &self.path)?;
+        self.placed = true;
+        Ok(Some(Placed { path: self.path.clone(), old }))
+    }
+}
+
+impl Drop for Prepared {
+    fn drop(&mut self) {
+        if !self.placed {
+            let _ = std::fs::remove_file(&self.temporary);
+        }
+    }
+}
+
+/// A replacement made: what is left once the lock is let go. No reader that
+/// takes that lock holds the old file then (it reads within its own hold,
+/// by the file's name, which names the new file), and a reader that does not
+/// reads through [`read_whole`], which never returns what follows.
+#[derive(Debug)]
+pub struct Placed {
+    path: PathBuf,
+    old: Option<std::fs::File>,
+}
+
+impl Placed {
+    /// The new name on the disk (after a crash, the folder names the new
+    /// file); then the old file, without a name now, overwritten with zeros
+    /// and on the disk before it goes. Kept whole while it has another name
+    /// (a hard link): that name's own replacement overwrites it. A filesystem
+    /// that writes each change elsewhere (copy on write: Btrfs, ZFS, APFS;
+    /// F2FS on phones; snapshots) and a flash disk's own remapping keep the old
+    /// blocks until they are reused: only the disk's encryption makes those
+    /// unreadable.
+    pub fn finish(mut self) {
+        #[cfg(unix)]
+        if let Some(folder) = self.path.parent().and_then(|p| std::fs::File::open(if p.as_os_str().is_empty() { Path::new(".") } else { p }).ok()) {
+            let _ = folder.sync_all();
+        }
+        if let Some(old) = self.old.as_mut() {
+            overwrite(old);
+        }
+    }
+}
+
+/// A file without a name left, its bytes overwritten with zeros, on the disk.
+fn overwrite(file: &mut std::fs::File) {
+    use std::io::{Seek, Write};
+    let Ok(meta) = file.metadata() else { return };
+    // Another name still holds it: left whole for that name.
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::nlink(&meta) > 0 {
+        return;
+    }
+    let zeros = [0u8; 64 * 1024];
+    let mut left = meta.len();
+    if file.seek(std::io::SeekFrom::Start(0)).is_err() {
+        return;
+    }
+    while left > 0 {
+        let n = usize::try_from(left.min(zeros.len() as u64)).unwrap_or(zeros.len());
+        if file.write_all(&zeros[..n]).is_err() {
+            return;
+        }
+        left -= n as u64;
+    }
+    let _ = file.sync_all();
+}
+
+/// How many times a file replaced while it was read is read again before
+/// that is said ("Interrupted").
+const READ_AGAIN: usize = 8;
+
+/// A file's bytes as one of its versions held them whole, never the zeros
+/// [`Placed::finish`] writes over the file it replaced: read through its
+/// descriptor, then checked that the file read still has a name and that
+/// `path` names it (`still_named`); else read again, a few times. A file
+/// replaced while it was read has no name, and its bytes may be zeros by
+/// then; one replaced after it was read is an older version: both are read
+/// again. Where a file has no number to tell (Windows), read once: there
+/// nothing is overwritten.
+pub fn read_whole(path: &Path) -> std::io::Result<Vec<u8>> {
+    read_whole_with(path).map(|(bytes, _)| bytes)
+}
+
+/// [`read_whole`], with what the descriptor said of the file read, after the
+/// read: its size and time are those of the bytes returned.
+pub fn read_whole_with(path: &Path) -> std::io::Result<(Vec<u8>, std::fs::Metadata)> {
+    read_through(path, &mut |path| std::fs::File::open(path))
+}
+
+/// [`read_whole_with`], each file opened by `open` (a test replaces the file
+/// between its opening and its reading).
+fn read_through(path: &Path, open: &mut dyn FnMut(&Path) -> std::io::Result<std::fs::File>) -> std::io::Result<(Vec<u8>, std::fs::Metadata)> {
+    use std::io::Read;
+    for _ in 0..READ_AGAIN {
+        let mut file = open(path)?;
+        let mut bytes = Vec::with_capacity(file.metadata().map_or(0, |m| usize::try_from(m.len()).unwrap_or(0)));
+        file.read_to_end(&mut bytes)?;
+        let held = file.metadata()?;
+        if still_named(path, &held) {
+            return Ok((bytes, held));
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::Interrupted, format!("{}: replaced each time it was read", path.display())))
+}
+
+/// `from` copied to `to` as one of its versions held it whole, with
+/// [`read_whole`]'s check: through its descriptor, then again, a few times,
+/// when the file copied lost its name meanwhile or `from` names another one.
+/// `to` is made yours alone (on Unix). Returns the bytes copied.
+pub fn copy_whole(from: &Path, to: &Path) -> std::io::Result<u64> {
+    for _ in 0..READ_AGAIN {
+        let mut source = std::fs::File::open(from)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut target = options.open(to)?;
+        let copied = std::io::copy(&mut source, &mut target)?;
+        let held = source.metadata()?;
+        if still_named(from, &held) {
+            return Ok(copied);
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::Interrupted, format!("{}: replaced each time it was copied", from.display())))
+}
+
+/// Whether the file read through a descriptor (`held`: what it says after
+/// the read) still has a name, and `path` is it.
+fn still_named(path: &Path, held: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        held.nlink() > 0 && std::fs::metadata(path).is_ok_and(|named| named.dev() == held.dev() && named.ino() == held.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, held);
+        true
+    }
+}
+
 /// Whether a writer of `path` takes its lock here (its hidden lock file is
 /// there): for files the sharing writes without it otherwise (a note, which
 /// most writers do not lock), so that a file one of Sioul's own writers
@@ -218,6 +448,50 @@ fn merge(current: &mut toml::Table, base: &toml::Table, new: &toml::Table, known
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The race main's final pass met (19 October 2026), made to happen: a
+    /// reader opens a copy, the copy is replaced and its old bytes overwritten
+    /// before the reader reads. Read through that descriptor alone, the
+    /// reader gets the zeros; `read_whole` sees that the file it read has no
+    /// name any more, and reads again: the new bytes, never the zeros.
+    #[cfg(unix)]
+    #[test]
+    fn a_file_replaced_between_its_opening_and_its_reading_is_read_again() {
+        use std::io::Read;
+        let base = std::env::temp_dir().join(format!("sioul-read-whole-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let path = base.join("a1.eml");
+        std::fs::write(&path, "The secret clause is on page four.").unwrap();
+        let mut plain = std::fs::File::open(&path).unwrap();
+        let mut opened = 0;
+        let (bytes, held) = read_through(&path, &mut |path| {
+            let file = std::fs::File::open(path)?;
+            opened += 1;
+            if opened == 1 {
+                replace_wiping(path, b"sealed")?;
+            }
+            Ok(file)
+        })
+        .unwrap();
+        assert_eq!(bytes, b"sealed");
+        assert_eq!((opened, held.len()), (2, 6), "read again once, the new file's size recorded");
+        let mut old = Vec::new();
+        plain.read_to_end(&mut old).unwrap();
+        assert!(!old.is_empty() && old.iter().all(|&b| b == 0), "a plain read gets the zeros: {old:?}");
+        // Replaced each time: said, never returned.
+        let again = || {
+            let file = std::fs::File::open(&path)?;
+            replace_wiping(&path, b"sealed")?;
+            Ok(file)
+        };
+        assert_eq!(read_through(&path, &mut |_| again()).unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+        // A copy through the same check.
+        let copied = base.join("copy");
+        assert_eq!(copy_whole(&path, &copied).unwrap(), 6);
+        assert_eq!(std::fs::read(&copied).unwrap(), b"sealed");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// A state saved after another writer changed the file since it was read
     /// keeps that writer's change: only what this one changed is written.

@@ -40,6 +40,10 @@ SioulWindow {
     readonly property string signNotHere: compose.protection.sign_not_here || ""
     // Encrypted while your own certificate cannot take it: you would not read your sent copy.
     readonly property string selfCopy: compose.protection.self_copy || ""
+    // The message answered or forwarded came encrypted: unencrypted, a reply goes without its quote, a forward not at all.
+    readonly property string sealedQuote: compose.protection.sealed_quote || ""
+    // At Send, the security key signs (else it only opens the encrypted message answered, for its quote).
+    property bool keySigns: true
     // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
     property string attaching: compose.draft && compose.draft.attaching ? compose.draft.attaching : ""
     // Under the text: files still coming, until they are there, unless something stops
@@ -135,6 +139,7 @@ SioulWindow {
             return
         }
         if (key) {
+            compose.keySigns = key.signs !== false
             keyBand.start()
             return
         }
@@ -562,6 +567,16 @@ SioulWindow {
                 color: compose.theme.warm
                 font.pixelSize: 13
             }
+            // The message answered or forwarded came encrypted: what unticking "Encrypt" does to it.
+            Label {
+                visible: !encrypt.checked && compose.sealedQuote !== ""
+                Layout.fillWidth: true
+                text: compose.sealedQuote
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: compose.theme.muted
+                font.pixelSize: 13
+            }
             // The security key that signs for this address has expired: when, and how to renew it,
             // said once you ask to sign, not in every message.
             Label {
@@ -582,7 +597,8 @@ SioulWindow {
                 sioul: compose.sioul
                 theme: compose.theme
                 context: compose.draftId
-                purpose: "sign"
+                // Only opening the message answered, for its quote: no "Send unsigned".
+                purpose: compose.keySigns ? "sign" : "open"
                 onGo: pin => compose.sioul.signAndSend(compose.draftId, pin)
                 onUnsigned: {
                     sign.checked = false

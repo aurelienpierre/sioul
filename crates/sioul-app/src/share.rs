@@ -1670,6 +1670,8 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
     // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards`).
     let _ = sioul_core::securitykey::share_cards_if_missing();
+    // The clear earlier versions of copies beside drafts encrypted first (`crypto::seal_clear_drafts_if_idle`).
+    crate::crypto::seal_clear_drafts_if_idle();
     let stores = stores_here(&here);
     let memory = memory_path();
     // A bulk import of texts going on: no full round meanwhile (`share::set_importing`).
@@ -1772,6 +1774,10 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         share::set_importing(&memory_path(), crate::texts::importing_in_bulk());
         // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
         let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A copy beside a draft holding an encrypted message's text in clear
+        // (until 19 October 2026) encrypted first: never kept so among the
+        // earlier versions when another device's encrypted copy comes.
+        crate::crypto::seal_clear_drafts();
         let here = here();
         let Some((folder, key)) = sealed(here.folder_path()) else { return };
         // A phone's calls copied into its own log first, so that they go now (`calls`).

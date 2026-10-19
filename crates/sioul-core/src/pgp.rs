@@ -186,6 +186,20 @@ impl Keys {
         self.own.iter().filter(|c| names(c, address)).find(encrypts)
     }
 
+    /// Your own certificates that can take encryption now (your security
+    /// keys', as your computer read them, and your keys here): what is
+    /// sealed for you alone is encrypted to each, and any of them opens it.
+    pub fn own_certs(&self) -> Vec<&Cert> {
+        let policy = policy();
+        let mut out: Vec<&Cert> = Vec::new();
+        for cert in &self.own {
+            if cert.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some() && !out.iter().any(|c| c.fingerprint() == cert.fingerprint()) {
+                out.push(cert);
+            }
+        }
+        out
+    }
+
     /// Whether `address` is yours by your keys: a security key serves it, or
     /// a key of yours names it.
     pub fn is_own_address(&self, address: &str) -> bool {
@@ -1179,6 +1193,79 @@ pub fn open(raw: &[u8], keys: &Keys, unlock: &Unlock) -> Option<(Option<Vec<u8>>
         }
         Err(_) => (None, closed()),
     })
+}
+
+/// Whether a message is encrypted with OpenPGP: PGP/MIME (RFC 3156), or an
+/// armored message in its text. Nothing is opened.
+pub fn is_encrypted(raw: &[u8]) -> bool {
+    let Some(message) = mail_parser::MessageParser::default().parse(raw) else { return false };
+    let Some(root) = message.parts.first() else { return false };
+    let (kind, protocol) = kind_of(root);
+    (kind == "multipart/encrypted" && protocol == "application/pgp-encrypted") || message.body_text(0).is_some_and(|text| text.contains("-----BEGIN PGP MESSAGE-----"))
+}
+
+/// Where a message's header ends: after its first empty line.
+fn header_end(raw: &[u8]) -> usize {
+    let crlf = raw.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4);
+    let lf = raw.windows(2).position(|w| w == b"\n\n").map(|p| p + 2);
+    match (crlf, lf) {
+        (Some(a), Some(b)) => a.min(b),
+        (a, b) => a.or(b).unwrap_or(raw.len()),
+    }
+}
+
+/// A message as it reads (opened, in clear), sealed again for `to`, as an
+/// encrypted message comes (PGP/MIME, RFC 3156): its own headers in clear but
+/// those of its content (From, To, Date, Subject, Message-ID: what a list of
+/// mail shows), its content and their headers encrypted inside. [`open`]
+/// gives the same message back. For the copy kept beside a draft that
+/// answers an encrypted message, never left in clear.
+pub fn seal_message(clear: &[u8], to: &[&Cert]) -> Result<Vec<u8>, String> {
+    let end = header_end(clear);
+    let (head, body) = clear.split_at(end);
+    let (mut outer, mut inner): (Vec<u8>, Vec<u8>) = (Vec::new(), Vec::new());
+    let mut into_outer = true;
+    let mut skip = false;
+    for line in head.split_inclusive(|b| *b == b'\n') {
+        if line == b"\r\n" || line == b"\n" {
+            continue;
+        }
+        if !line.starts_with(b" ") && !line.starts_with(b"\t") {
+            let name = String::from_utf8_lossy(line.split(|b| *b == b':').next().unwrap_or_default()).trim().to_ascii_lowercase();
+            skip = name == "mime-version";
+            into_outer = !name.starts_with("content-");
+        }
+        if skip {
+            continue;
+        }
+        if into_outer { outer.extend_from_slice(line) } else { inner.extend_from_slice(line) }
+    }
+    if inner.is_empty() {
+        inner.extend_from_slice(b"Content-Type: text/plain; charset=utf-8\r\n");
+    }
+    let mut payload = canonical(&inner);
+    payload.extend_from_slice(b"\r\n");
+    payload.extend_from_slice(body);
+    let armored = encrypt(&payload, to, None)?;
+    let boundary = "sioul-sealed-copy";
+    let mut out = canonical(&outer);
+    out.extend_from_slice(
+        format!(
+            "MIME-Version: 1.0\r\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"{boundary}\"\r\n\r\n--{boundary}\r\nContent-Type: application/pgp-encrypted\r\nContent-Description: PGP/MIME version identification\r\n\r\nVersion: 1\r\n\r\n--{boundary}\r\nContent-Type: application/octet-stream; name=\"encrypted.asc\"\r\nContent-Disposition: inline; filename=\"encrypted.asc\"\r\n\r\n{}\r\n--{boundary}--\r\n",
+            canonical(armored.trim_end().as_bytes()).iter().map(|&b| b as char).collect::<String>()
+        )
+        .as_bytes(),
+    );
+    Ok(out)
+}
+
+/// A key for tests, made now (Curve25519: its primary key certifies and
+/// signs, a subkey decrypts), named `userid`, its secret part unencrypted,
+/// armored: for the crates that do not use Sequoia themselves. Never one of
+/// yours.
+pub fn stand_in_key(userid: &str) -> Result<Vec<u8>, String> {
+    let (cert, _) = CertBuilder::new().set_cipher_suite(CipherSuite::Cv25519).add_userid(userid).add_transport_encryption_subkey().generate().map_err(|e| e.to_string())?;
+    cert.as_tsk().armored().to_vec().map_err(|e| e.to_string())
 }
 
 /// The keys a message is encrypted to, as its packets name them (key IDs or

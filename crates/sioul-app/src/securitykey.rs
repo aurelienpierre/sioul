@@ -18,7 +18,7 @@
 
 use crate::backend::{QtThread, Shared, json, load_config, local_path, offline, say, tell, tr};
 use cxx_qt_lib::QString;
-use sioul_core::compose::Draft;
+use sioul_core::compose::{Draft, DraftKind};
 use sioul_core::pgp::{self, Keys, Place};
 use sioul_core::securitykey::{self, CardAccess, CardError, CardInfo, KnownCard, NoReaders, Password, PinMemory, Purpose, Readers, Remedy, SoftCard, SoftReaders, Touch};
 use sioul_sync::securitykey::{Gnupg, GnupgProblem, GnupgStep, Looked, Released};
@@ -124,22 +124,52 @@ fn problem_line(qt: &QtThread, context: &str, line: String, action: &'static str
     tell_band(qt, context, Band { state: "problem", line, warm: true, action, ..Band::default() });
 }
 
-/// The security key that signs a draft at Send, as JSON {ident, label}; or
-/// {expired: …} when its certificate expired; "" when the draft is signed
-/// another way, or not at all.
+/// The security key asked at Send, as JSON {ident, label, signs}: the one
+/// that signs the draft (signs: true), else the one that opens the encrypted
+/// message it answers, for its quote (signs: false); or {expired: …} when the
+/// signing key's certificate expired, {cannot: …} on a device that cannot use
+/// the key (a phone) to sign, or to open a message forwarded; "" when no
+/// security key is asked (on a phone, a reply then goes without its quote).
 pub(crate) fn for_draft(id: &str) -> String {
-    let Some(draft) = Draft::by_id(id).filter(|d| d.sign) else { return String::new() };
+    let Some(draft) = Draft::by_id(id) else { return String::new() };
     let Some(address) = load_config().account(&draft.account).and_then(|a| a.address.clone()) else { return String::new() };
     let keys = Keys::load();
-    match keys.own_for(&address) {
+    // The message answered, encrypted, opened at Send in the same band that signs.
+    let opens = quote_card(&draft, &keys);
+    let label = |ident: &str| keys.cards.iter().find(|c| c.ident == ident).map(|c| c.label(tr())).unwrap_or_default();
+    let here = sioul_sync::securitykey::usable_here();
+    match draft.sign.then(|| keys.own_for(&address)) {
         // A phone, until it can use the key: said, nothing sent.
-        Some(pgp::Own { place: Place::Card { .. }, .. }) if !sioul_sync::securitykey::usable_here() => json(&serde_json::json!({ "cannot": tr().text("seckey-sign-not-here", None) })),
-        Some(pgp::Own { place: Place::Card { ident }, .. }) => {
-            let label = keys.cards.iter().find(|c| c.ident == ident).map(|c| c.label(tr())).unwrap_or_default();
-            json(&serde_json::json!({ "ident": ident, "label": label }))
-        }
-        Some(_) => String::new(),
-        None => expired_line(&keys, &address).map(|line| json(&serde_json::json!({ "expired": line }))).unwrap_or_default(),
+        Some(Some(pgp::Own { place: Place::Card { .. }, .. })) if !here => json(&serde_json::json!({ "cannot": tr().text("seckey-sign-not-here", None) })),
+        // A forward carries the message itself: from a device that opens it. A
+        // reply goes without its quote (its window said so: `mail::draft`).
+        _ if opens.is_some() && !here && draft.kind == DraftKind::Forward => json(&serde_json::json!({ "cannot": tr().text("seckey-forward-not-here", None) })),
+        Some(Some(pgp::Own { place: Place::Card { ident }, .. })) => json(&serde_json::json!({ "ident": ident, "label": label(&ident), "signs": true })),
+        // No key signs for this address now: its certificate expired, said.
+        signing => match matches!(signing, Some(None)).then(|| expired_line(&keys, &address)).flatten() {
+            Some(line) => json(&serde_json::json!({ "expired": line })),
+            None => opens.filter(|_| here).map(|ident| json(&serde_json::json!({ "ident": ident, "label": label(&ident), "signs": false }))).unwrap_or_default(),
+        },
+    }
+}
+
+/// The security key that must open the message a draft answers or
+/// forwards, at Send: its copy came encrypted, the answer is encrypted (else
+/// it is not quoted), and neither a session key kept since you opened it nor
+/// a key here opens it now. Opened in memory only, to know.
+pub(crate) fn quote_card(draft: &Draft, keys: &Keys) -> Option<String> {
+    if !draft.encrypt {
+        return None;
+    }
+    let raw = crate::crypto::copy_of(draft)?;
+    if !pgp::is_encrypted(&raw) {
+        return None;
+    }
+    let passphrase = |fingerprint: &pgp::Fingerprint| sioul_sync::secret::pgp_passphrase(&fingerprint.to_hex());
+    let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global());
+    match pgp::open(&raw, keys, &unlock) {
+        Some((Some(_), _)) => None,
+        _ => unlock.wanted(),
     }
 }
 
@@ -304,10 +334,22 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
         return problem_line(qt, id, say("account-unknown", &[("id", draft.account.clone())]), "");
     };
     let keys = Keys::load();
-    let ident = match keys.own_for(account.address.as_deref().unwrap_or_default()) {
-        Some(pgp::Own { place: Place::Card { ident }, .. }) => ident,
+    // Signed with your security key, or its quote opened with it (the message
+    // answered came encrypted, and no session key opens it now): one band, one
+    // PIN, both done with the same access.
+    let signs = match draft.sign.then(|| keys.own_for(account.address.as_deref().unwrap_or_default())).flatten() {
+        Some(pgp::Own { place: Place::Card { ident }, .. }) => Some(ident),
+        _ => None,
+    };
+    let opens = quote_card(&draft, &keys);
+    let ident = match (signs.as_deref(), opens.as_deref()) {
+        // Two keys (the message answered was encrypted to another one): that
+        // one opens it first, its session key then kept in memory; then the
+        // one that signs, each with its own PIN, never the other's.
+        (Some(sign), Some(open)) if !same_key(&keys, sign, open) => return open_quote_now(qt, shared, &draft, open, typed),
+        (Some(ident), _) | (None, Some(ident)) => ident.to_string(),
         // Not (or no longer) signed with a security key: sent as any message is.
-        _ => {
+        (None, None) => {
             match crate::mail::send(qt, shared, id) {
                 Some(problem) => problem_line(qt, id, problem, ""),
                 None => tell_band(qt, id, Band { state: "done", ..Band::default() }),
@@ -315,15 +357,19 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
             return;
         }
     };
-    let (info, pin) = match pin_for(&ident, typed.as_ref(), Purpose::Sign) {
+    let purpose = if signs.is_some() { Purpose::Sign } else { Purpose::Open };
+    let (info, pin) = match pin_for(&ident, typed.as_ref(), purpose) {
         Ok(found) => found,
-        Err(CardError::Absent) => return wait_for(qt, shared, id, &ident, Purpose::Sign, typed),
-        Err(error) => return failed(qt, id, error, Purpose::Sign, typed.is_some()),
+        Err(CardError::Absent) => return wait_for(qt, shared, id, &ident, purpose, typed, sign_now),
+        Err(error) => return failed(qt, id, error, purpose, typed.is_some()),
     };
-    let Some(pin) = pin else { return ask_pin(qt, id, &info, Purpose::Sign) };
-    working(qt, id, "seckey-signing");
+    let Some(pin) = pin else { return ask_pin(qt, id, &info, purpose) };
+    working(qt, id, if signs.is_some() { "seckey-signing" } else { "seckey-opening" });
     // Said at the moment the key is asked, when it may wait for a touch: hold it a second or two.
-    let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(info.sign.as_ref()));
+    // Opening the quote and signing: said for whichever slot asks a touch.
+    let opening = opens.is_some().then_some(info.decrypt.as_ref()).flatten().filter(|s| s.touch.asked());
+    let slot = opening.or(if signs.is_some() { info.sign.as_ref() } else { info.decrypt.as_ref() });
+    let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(slot));
     let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
     match sioul_sync::send::build_draft(&account, &draft, tr(), Some(&access)) {
@@ -332,13 +378,60 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
             crate::mail::send_signed(qt, shared, id, account, outgoing);
             tell_band(qt, id, Band { state: "done", ..Band::default() });
         }
-        Err(BuildError::Card(CardError::Absent)) => wait_for(qt, shared, id, &ident, Purpose::Sign, typed),
+        Err(BuildError::Card(CardError::Absent)) => wait_for(qt, shared, id, &ident, purpose, typed, sign_now),
         Err(BuildError::Card(error)) => {
             keep_taken(&ident, &pin, &access, &info);
-            failed(qt, id, error, Purpose::Sign, typed.is_some());
+            failed(qt, id, error, purpose, typed.is_some());
         }
         // A server's words, never read as a command to copy (the band shows backticked commands as such).
         Err(other) => problem_line(qt, id, other.into_sync(tr()).sentence(tr(), &account.id).replace('`', "'"), ""),
+    }
+}
+
+/// Whether the security keys `a` and `b` open the same messages: the same
+/// key, or a copy of it (the same decryption key on both).
+fn same_key(keys: &Keys, a: &str, b: &str) -> bool {
+    let decrypt = |ident: &str| keys.cards.iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|c| c.decrypt.to_ascii_lowercase()).filter(|f| !f.is_empty());
+    a.eq_ignore_ascii_case(b) || decrypt(a).is_some_and(|f| decrypt(b) == Some(f))
+}
+
+/// Opens the encrypted message a draft answers with the security key `ident`,
+/// another than the one that signs: its session key is kept in memory, and
+/// the draft goes on to its signature, whose key asks its own PIN.
+fn open_quote_now(qt: &QtThread, shared: &Arc<Shared>, draft: &Draft, ident: &str, typed: Option<Password>) {
+    let id = draft.id.as_str();
+    let (info, pin) = match pin_for(ident, typed.as_ref(), Purpose::Open) {
+        Ok(found) => found,
+        Err(CardError::Absent) => return wait_for(qt, shared, id, ident, Purpose::Open, typed, sign_now),
+        Err(error) => return failed(qt, id, error, Purpose::Open, typed.is_some()),
+    };
+    let Some(pin) = pin else { return ask_pin(qt, id, &info, Purpose::Open) };
+    working(qt, id, "seckey-opening");
+    let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(info.decrypt.as_ref()));
+    let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
+    let access = CardAccess::new(readers(), &pin, &touch);
+    let passphrase = |fingerprint: &pgp::Fingerprint| sioul_sync::secret::pgp_passphrase(&fingerprint.to_hex());
+    let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global()).with_card(&access);
+    let raw = crate::crypto::copy_of(draft);
+    match raw.and_then(|raw| pgp::open(&raw, &Keys::load(), &unlock)) {
+        Some((Some(_), _)) => {
+            remember(ident, pin.clone(), access.reader(), &info);
+            // Its session key kept, it opens without this key now; else said, never asked again in a loop.
+            if quote_card(draft, &Keys::load()).is_some() {
+                return problem_line(qt, id, tr().text("pgp-quote-locked", None), "retry");
+            }
+            // The PIN typed was this key's: the one that signs asks its own.
+            sign_now(qt, shared, id, None);
+        }
+        _ => match access.failure() {
+            Some(CardError::Absent) => wait_for(qt, shared, id, ident, Purpose::Open, typed, sign_now),
+            Some(error) => {
+                keep_taken(ident, &pin, &access, &info);
+                failed(qt, id, error, Purpose::Open, typed.is_some());
+            }
+            None if draft.kind == DraftKind::Forward => problem_line(qt, id, tr().text("pgp-forward-locked", None), ""),
+            None => problem_line(qt, id, tr().text("pgp-quote-locked", None), ""),
+        },
     }
 }
 
@@ -374,7 +467,7 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
     };
     let (info, pin) = match pin_for(&ident, typed.as_ref(), Purpose::Open) {
         Ok(found) => found,
-        Err(CardError::Absent) => return wait_for(qt, shared, key, &ident, Purpose::Open, typed),
+        Err(CardError::Absent) => return wait_for(qt, shared, key, &ident, Purpose::Open, typed, open_now),
         Err(error) => return failed(qt, key, error, Purpose::Open, typed.is_some()),
     };
     let Some(pin) = pin else { return ask_pin(qt, key, &info, Purpose::Open) };
@@ -390,7 +483,7 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
             tell_band(qt, key, Band { state: "done", ..Band::default() });
         }
         _ => match access.failure() {
-            Some(CardError::Absent) => wait_for(qt, shared, key, &ident, Purpose::Open, typed),
+            Some(CardError::Absent) => wait_for(qt, shared, key, &ident, Purpose::Open, typed, open_now),
             Some(error) => {
                 keep_taken(&ident, &pin, &access, &info);
                 failed(qt, key, error, Purpose::Open, typed.is_some());
@@ -400,9 +493,13 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
     }
 }
 
+/// What goes on once the key is plugged in: [`sign_now`] for a draft (its
+/// signature, or the message it answers opened), [`open_now`] for a message.
+type Resume = fn(&QtThread, &Arc<Shared>, &str, Option<Password>);
+
 /// The key is not plugged in: the band says so, and Sioul looks, without
 /// opening any key, until it comes, "Not now", or a few minutes pass.
-fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, purpose: Purpose, typed: Option<Password>) {
+fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, purpose: Purpose, typed: Option<Password>, resume: Resume) {
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.insert(context.to_string());
     }
@@ -437,10 +534,7 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
                     if let Ok(mut waiting) = WAITING.lock() {
                         waiting.remove(&context);
                     }
-                    return match purpose {
-                        Purpose::Sign => sign_now(&qt, &shared, &context, typed),
-                        _ => open_now(&qt, &shared, &context, typed),
-                    };
+                    return resume(&qt, &shared, &context, typed);
                 }
                 // Plugged in, but GnuPG holds it: said, with "Let GnuPG release it", rather than waited for in vain.
                 Err(CardError::Busy) => {

@@ -1192,11 +1192,18 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.files.insert(file.to_string(), Stat { size: meta.len(), modified, entries: Vec::new(), seen: 0 });
         return;
     }
-    let Some(entries) = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)) else {
+    // Read whole, as one version held it (`filelock::read_whole_with`): never
+    // a file replaced while it was read, whose old bytes may be zeros by the
+    // end (a copy beside a draft encrypted again, `draftcopies`, which takes
+    // its place under the exchange lock this exchange holds, so this is a
+    // last guard). What is recorded, the size, the time and each entry's
+    // hash, is that version's own, from the descriptor that read it: what
+    // goes out is always bytes read whole from a file that had its name.
+    let Some((entries, held)) = sioul_core::filelock::read_whole_with(path).ok().and_then(|(bytes, held)| Some((entries_of(store, &bytes)?, held))) else {
         found.unknown.insert(file.to_string());
         return;
     };
-    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(entries.len()), seen: look.clock };
+    let mut stat = Stat { size: held.len(), modified: modified_ns(&held), entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
         let h = hash(&value);
@@ -1274,7 +1281,7 @@ fn value_of(stores: &[Store], key: &str) -> Option<String> {
         let (h, size) = crate::blobs::hash_file(&path).ok()?;
         return entry.is_empty().then(|| reference(&h, size, modified_ns(&meta)));
     }
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = sioul_core::filelock::read_whole(&path).ok()?;
     entries_of(store, &bytes)?.into_iter().find(|(e, _)| e == entry).map(|(_, value)| value)
 }
 
@@ -1628,9 +1635,11 @@ pub(crate) fn make_private(path: &Path) {
     let _ = path;
 }
 
-/// `std::fs::copy`, the copy yours alone (`make_private`).
+/// `from` copied to `to`, yours alone (`make_private`), as one version of it
+/// held it whole (`filelock::copy_whole`: never a file replaced while it was
+/// copied, whose old bytes may be zeros by the end).
 pub(crate) fn copy_private(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::copy(from, to)?;
+    sioul_core::filelock::copy_whole(from, to)?;
     make_private(to);
     Ok(())
 }
@@ -4408,6 +4417,43 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
         } else if store.path.is_file() {
             keep(&store.path, &target);
         }
+    }
+}
+
+/// The copies beside drafts kept before sharing began (`keep_copies`:
+/// `before-sharing-<day>/data/drafts/<id>.eml`, beside `memory`), which
+/// nothing removes: until 19 October 2026 one could hold an encrypted
+/// message's text in clear (`sioul_core::draftcopies::seal_versions`
+/// encrypts those again).
+pub fn draft_copies_kept_before_sharing(memory: &Path) -> Vec<PathBuf> {
+    let Some(base) = memory.parent() else { return Vec::new() };
+    let mut out = Vec::new();
+    for aside in std::fs::read_dir(base).into_iter().flatten().filter_map(Result::ok) {
+        if !aside.file_name().to_string_lossy().starts_with("before-sharing-") || !aside.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        for copy in std::fs::read_dir(aside.path().join("data").join("drafts")).into_iter().flatten().filter_map(Result::ok) {
+            if copy.file_type().is_ok_and(|t| t.is_file()) && copy.path().extension().is_some_and(|e| e == "eml") {
+                out.push(copy.path());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The exchange lock as `sioul_core::draftcopies::Hold` asks it, for the
+/// copies beside drafts encrypted again: taken for each short batch of their
+/// replacements, waiting for an exchange running, so that no exchange reads a
+/// copy while it is replaced (nor seals and sends the zeros written over the
+/// old one after). A device that has never shared (no `share/` folder beside
+/// `memory`) runs no exchange: a guard that holds nothing, no folder made.
+pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn std::any::Any>> + '_ {
+    move || {
+        if !memory.parent().is_some_and(Path::exists) {
+            return sioul_core::draftcopies::unshared();
+        }
+        exchange_lock(memory, true).ok().flatten().map(|file| Box::new(file) as Box<dyn std::any::Any>)
     }
 }
 
@@ -11058,6 +11104,10 @@ mod rounds_tests;
 #[cfg(test)]
 #[path = "share_gc_tests.rs"]
 mod gc_tests;
+
+#[cfg(test)]
+#[path = "share_drafts_tests.rs"]
+mod drafts_tests;
 
 #[cfg(test)]
 mod probe {

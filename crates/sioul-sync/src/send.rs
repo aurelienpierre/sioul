@@ -20,7 +20,7 @@ use crate::mailbox;
 use crate::sasl::{self, OAuth};
 use mail_send::SmtpClientBuilder;
 use mail_send::smtp::message::Message;
-use sioul_core::compose::{self, Draft, Outgoing};
+use sioul_core::compose::{self, Draft, DraftKind, Outgoing};
 use sioul_core::config::{self, Account, Security};
 use sioul_core::folders::Role;
 use sioul_core::i18n::Translator;
@@ -54,6 +54,10 @@ pub enum BuildError {
     /// Your security key of this identifier signs it, and it was not given:
     /// the draft is built at Send, in the writing window, with its PIN.
     CardNeeded(String),
+    /// The message it answers or forwards came encrypted, and only your
+    /// security key of this identifier opens it now: built at Send, in the
+    /// writing window, which asks for the key.
+    OpenNeeded(String),
     /// Your security key could not sign.
     Card(CardError),
     /// Anything else, as the sending says it.
@@ -65,6 +69,7 @@ impl BuildError {
     pub fn into_sync(self, tr: &Translator) -> SyncError {
         match self {
             BuildError::CardNeeded(_) => SyncError::Message(tr.text("seckey-sign-in-window", None)),
+            BuildError::OpenNeeded(_) => SyncError::Message(tr.text("seckey-open-in-window", None)),
             BuildError::Card(e) => SyncError::Message(e.sentence(tr, Purpose::Sign)),
             BuildError::Other(e) => e,
         }
@@ -95,6 +100,52 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
             args.set(*name, value.clone());
         }
         BuildError::Other(SyncError::Message(tr.text(id, Some(&args))))
+    };
+    // The message answered or forwarded, as it reads. Its copy beside the
+    // draft stays as it came, encrypted when it came so: opened here, in
+    // memory only, with the session key kept since you opened it, a key
+    // here, or your security key (`card`), the same access that signs: one
+    // PIN. An encrypted one never goes into a message that is not encrypted:
+    // a reply goes without its quote (the window says so), a forward not at
+    // all. One that no key of yours opens (encrypted to a key you no longer
+    // have, or to others alone) leaves an encrypted reply without its quote,
+    // as the window said, and a forward not at all.
+    let original = match draft.original_here() {
+        None => None,
+        Some(path) => {
+            // Read whole, never the zeros written over a copy replaced meanwhile (`filelock::read_whole`).
+            let raw = sioul_core::filelock::read_whole(&path).map_err(|e| BuildError::Other(SyncError::Disk(format!("{}: {e}", path.display()))))?;
+            if !pgp::is_encrypted(&raw) {
+                Some(raw)
+            } else if !draft.encrypt {
+                if draft.kind == DraftKind::Forward {
+                    return Err(say("pgp-forward-needs-encryption", &[]));
+                }
+                None
+            } else {
+                let passphrase = |fingerprint: &pgp::Fingerprint| crate::secret::pgp_passphrase(&fingerprint.to_hex());
+                let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global());
+                let unlock = match card {
+                    Some(card) => unlock.with_card(card),
+                    None => unlock,
+                };
+                match pgp::open(&raw, keys, &unlock) {
+                    Some((Some(opened), _)) => Some(opened),
+                    _ => {
+                        match (card.and_then(CardAccess::failure), unlock.wanted(), card) {
+                            (Some(failure), _, _) => return Err(BuildError::Card(failure)),
+                            // A phone, until it can use the key: the reply goes without its quote, as its window said.
+                            (None, Some(_), None) if !crate::securitykey::usable_here() && draft.kind != DraftKind::Forward => None,
+                            (None, Some(ident), None) => return Err(BuildError::OpenNeeded(ident)),
+                            _ if draft.kind == DraftKind::Forward => return Err(say("pgp-forward-locked", &[])),
+                            // Your security key was asked and opened nothing.
+                            (None, Some(_), Some(_)) => return Err(say("pgp-quote-locked", &[])),
+                            (None, None, _) => None,
+                        }
+                    }
+                }
+            }
+        }
     };
     // The signer: your key here, opened with its passphrase; or your security key.
     let mut here = None;
@@ -147,7 +198,7 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
     } else {
         None
     };
-    compose::build_with(draft, (&name, &address), tr, date, protection.as_mut(), autocrypt.as_deref()).map_err(|e| match card.and_then(|c| c.failure()) {
+    compose::build_with(draft, (&name, &address), tr, date, protection.as_mut(), autocrypt.as_deref(), original.as_deref()).map_err(|e| match card.and_then(|c| c.failure()) {
         Some(failure) => BuildError::Card(failure),
         None => BuildError::Other(SyncError::Message(e)),
     })
@@ -451,5 +502,117 @@ mod tests {
         // A recipient without a key: stopped and said, never sent to fewer.
         draft.to.push("Bob <bob@example.org>".into());
         assert!(build_draft_with(&keys, &account, &draft, &tr, None).is_err());
+    }
+
+    const LEASE: &str = "From: Jane <jane@example.org>\r\nTo: Card Holder <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-send@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is on page four.\r\n";
+
+    fn answer_to(copy: &Path) -> Draft {
+        let mut draft = Draft::new("me");
+        draft.kind = DraftKind::Reply;
+        draft.original = Some(copy.to_path_buf());
+        draft.in_reply_to = Some("lease-send@example.org".into());
+        draft.to = vec!["Jane <jane@example.org>".into()];
+        draft.subject = "Re: The lease".into();
+        draft.body = "Fine by me.".into();
+        draft.encrypt = true;
+        draft
+    }
+
+    /// What Jane reads of what was sent: opened with her key, in clear.
+    fn as_jane_reads(raw: &[u8], jane: &Keys) -> String {
+        let sessions = SessionKeys::new();
+        let (opened, _) = pgp::open(raw, jane, &Unlock::new(&|_| None, &sessions)).expect("protected");
+        String::from_utf8_lossy(&opened.expect("Jane opens it")).to_string()
+    }
+
+    /// Batch B (19 October 2026): the copy of an encrypted message answered
+    /// stays encrypted beside the draft; at Send it opens in memory with the
+    /// security key that signs, in the same access (one PIN, two uses), and
+    /// the quote goes encrypted, to Jane and to you. Opened once, its session
+    /// key opens it again without the key. Unencrypted, the answer goes
+    /// without its quote; a forward does not go at all.
+    #[test]
+    fn an_encrypted_message_answered_opens_at_send_with_the_key_that_signs() {
+        let (card, public) = SoftCard::generate_rsa("0006:12345678", &["Card Holder <me@example.org>"], "123456").unwrap();
+        let mine = pgp::certificates_in(&public);
+        let known = KnownCard {
+            ident: "0006:12345678".into(),
+            sign: card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: mine[0].fingerprint().to_hex(),
+            addresses: vec!["me@example.org".into()],
+            ..KnownCard::default()
+        };
+        let jane = pgp::certificates_in(&pgp::stand_in_key("Jane <jane@example.org>").unwrap());
+        let keys = Keys { own: mine.clone(), others: jane.clone(), cards: vec![known] };
+        let jane_keys = Keys { own: jane.clone(), others: mine.clone(), ..Keys::default() };
+        let dir = std::env::temp_dir().join(format!("sioul-send-quote-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let copy = dir.join("q1.eml");
+        let sealed = pgp::seal_message(LEASE.as_bytes(), &[&mine[0]]).unwrap();
+        std::fs::write(&copy, &sealed).unwrap();
+        let account: Account = toml::from_str("id = \"me\"\naddress = \"me@example.org\"\nname = \"Card Holder\"\n").unwrap();
+        let mut draft = answer_to(&copy);
+        draft.sign = true;
+        let tr = Translator::new("en");
+        // Not from the ten seconds' end: only your key opens it, in its window.
+        assert!(matches!(build_draft_with(&keys, &account, &draft, &tr, None), Err(BuildError::OpenNeeded(ident)) if ident == "0006:12345678"));
+        assert!(BuildError::OpenNeeded("x".into()).into_sync(&tr).detail().contains("window"));
+        let readers = SoftReaders::with(vec![card]);
+        let pin = sioul_core::securitykey::Password::from("123456");
+        let access = CardAccess::new(&readers, &pin, &|| {});
+        let outgoing = build_draft_with(&keys, &account, &draft, &tr, Some(&access)).unwrap();
+        assert_eq!(readers.card("0006:12345678", |c| c.operations), Some(2), "opened, then signed");
+        let text = String::from_utf8_lossy(&outgoing.raw).to_string();
+        assert!(text.contains("multipart/encrypted") && !text.contains("secret clause"), "{text}");
+        let read = as_jane_reads(&outgoing.raw, &jane_keys);
+        assert!(read.contains("Fine by me.") && read.contains("The secret clause is on page four."), "{read}");
+        // To you too: your own certificate among its recipients.
+        let recipients = pgp::recipients_of(&outgoing.raw);
+        assert!(recipients.iter().any(|r| keys.cards[0].decrypt.to_ascii_uppercase().ends_with(&r.to_ascii_uppercase())), "{recipients:?}");
+        // The copy stays as it came.
+        assert_eq!(std::fs::read(&copy).unwrap(), sealed);
+        // Its session key kept in memory: opened again without the key.
+        draft.sign = false;
+        let again = build_draft_with(&keys, &account, &draft, &tr, None).unwrap();
+        assert!(as_jane_reads(&again.raw, &jane_keys).contains("The secret clause"));
+        assert_eq!(readers.card("0006:12345678", |c| c.operations), Some(2), "the key not asked again");
+        // Unencrypted: the answer goes, without the quote; a forward does not.
+        draft.encrypt = false;
+        let plain = build_draft_with(&keys, &account, &draft, &tr, None).unwrap();
+        let plain = String::from_utf8_lossy(&plain.raw).to_string();
+        assert!(plain.contains("Fine by me.") && !plain.contains("secret clause") && !plain.contains("multipart/encrypted"), "{plain}");
+        draft.kind = DraftKind::Forward;
+        assert!(matches!(build_draft_with(&keys, &account, &draft, &tr, None), Err(BuildError::Other(SyncError::Message(m))) if m == tr.text("pgp-forward-needs-encryption", None)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// With your key here, the copy opens at Send without asking anything;
+    /// encrypted to someone else's key alone, it opens nowhere: the encrypted
+    /// reply goes without its quote, a forward does not go.
+    #[test]
+    fn a_key_here_opens_the_copy_and_a_stranger_s_does_not() {
+        let me = pgp::certificates_in(&pgp::stand_in_key("Me <me@example.org>").unwrap());
+        let jane = pgp::certificates_in(&pgp::stand_in_key("Jane <jane@example.org>").unwrap());
+        let bob = pgp::certificates_in(&pgp::stand_in_key("Bob <bob@example.org>").unwrap());
+        let keys = Keys { own: me.clone(), others: jane.clone(), ..Keys::default() };
+        let jane_keys = Keys { own: jane.clone(), others: me.clone(), ..Keys::default() };
+        let dir = std::env::temp_dir().join(format!("sioul-send-here-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mine, bobs) = (dir.join("q2.eml"), dir.join("q3.eml"));
+        std::fs::write(&mine, pgp::seal_message(LEASE.as_bytes(), &[&me[0]]).unwrap()).unwrap();
+        std::fs::write(&bobs, pgp::seal_message(LEASE.as_bytes(), &[&bob[0]]).unwrap()).unwrap();
+        let account: Account = toml::from_str("id = \"me\"\naddress = \"me@example.org\"\nname = \"Me\"\n").unwrap();
+        let tr = Translator::new("en");
+        let outgoing = build_draft_with(&keys, &account, &answer_to(&mine), &tr, None).unwrap();
+        assert!(as_jane_reads(&outgoing.raw, &jane_keys).contains("The secret clause is on page four."));
+        assert!(!String::from_utf8_lossy(&outgoing.raw).contains("secret clause"));
+        let unquoted = build_draft_with(&keys, &account, &answer_to(&bobs), &tr, None).unwrap();
+        let read = as_jane_reads(&unquoted.raw, &jane_keys);
+        assert!(read.contains("Fine by me.") && !read.contains("secret clause"), "{read}");
+        let mut forward = answer_to(&bobs);
+        forward.kind = DraftKind::Forward;
+        assert!(matches!(build_draft_with(&keys, &account, &forward, &tr, None), Err(BuildError::Other(SyncError::Message(m))) if m == tr.text("pgp-forward-locked", None)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
