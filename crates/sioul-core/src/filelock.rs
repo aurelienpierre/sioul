@@ -75,6 +75,9 @@ pub struct Prepared {
     path: PathBuf,
     temporary: PathBuf,
     placed: bool,
+    /// The new file as written: the same once it takes the path's place (a
+    /// rename keeps its device, number, size and time).
+    stamp: Option<FileStamp>,
 }
 
 impl Prepared {
@@ -88,10 +91,11 @@ impl Prepared {
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         // Made first, so that a failure below takes it out (`Drop`).
-        let prepared = Prepared { path: path.to_path_buf(), temporary, placed: false };
+        let mut prepared = Prepared { path: path.to_path_buf(), temporary, placed: false, stamp: None };
         let mut file = options.open(&prepared.temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;
+        prepared.stamp = file.metadata().ok().map(|meta| FileStamp::of(&meta));
         Ok(prepared)
     }
 
@@ -123,7 +127,7 @@ impl Prepared {
         let old: Option<std::fs::File> = None;
         std::fs::rename(&self.temporary, &self.path)?;
         self.placed = true;
-        Ok(Some(Placed { path: self.path.clone(), old }))
+        Ok(Some(Placed { path: self.path.clone(), old, stamp: self.stamp }))
     }
 }
 
@@ -143,9 +147,16 @@ impl Drop for Prepared {
 pub struct Placed {
     path: PathBuf,
     old: Option<std::fs::File>,
+    stamp: Option<FileStamp>,
 }
 
 impl Placed {
+    /// The file that took the path's place, as it was written: what the path
+    /// names after another version replaces it is another file.
+    pub fn stamp(&self) -> Option<FileStamp> {
+        self.stamp
+    }
+
     /// The new name on the disk (after a crash, the folder names the new
     /// file); then the old file, without a name now, overwritten with zeros
     /// and on the disk before it goes. Kept whole while it has another name

@@ -30,13 +30,47 @@ pub fn save(account: &Account, password: &str) -> Result<(), SyncError> {
 /// Whether the keyring is left alone: tests against a local server
 /// (`SIOUL_TEST_PASSWORD`), and the tests of the crates built on this one
 /// (the `no-keyring` feature); never in Sioul's builds, whose binaries the
-/// final pass reads for this mark.
+/// final pass reads for this mark. On Windows, the one test of this crate
+/// that checks the Credential Manager on purpose reaches it whatever the
+/// feature says, on its own thread (`with_real_keyring`).
 pub(crate) fn testing() -> bool {
+    #[cfg(all(test, windows))]
+    if REAL_KEYRING.with(std::cell::Cell::get) {
+        return false;
+    }
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_PASSWORD").is_some() {
         return true;
     }
     no_keyring()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Set by `with_real_keyring`, on its thread alone.
+    static REAL_KEYRING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `f`, with the system's keyring reached on this thread on Windows alone:
+/// the Windows job's own check of the Credential Manager
+/// (`microsoft::tests::windows_keeps_a_4_kb_token`). CI tests core, sync and
+/// the command line in one command (build.yml), and Cargo then turns the
+/// command line's `no-keyring` on for this crate's tests too (run
+/// 39216227853: the test found nothing kept, the feature keeping nothing).
+/// Anywhere else the keyring is the person's own, and nothing changes; on
+/// every other thread neither. In this crate's own tests only: never in a
+/// build of Sioul, nor in another crate's tests.
+#[cfg(test)]
+pub(crate) fn with_real_keyring<T>(f: impl FnOnce() -> T) -> T {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            REAL_KEYRING.with(|real| real.set(false));
+        }
+    }
+    REAL_KEYRING.with(|real| real.set(true));
+    let _reset = Reset;
+    f()
 }
 
 /// The `no-keyring` feature, its mark kept in the binary for the final pass to find.
@@ -176,5 +210,25 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
     match entry(account)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(SyncError::Keyring(e.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CI's Windows job tests core, sync and the command line in one
+    /// command, which turns the command line's `no-keyring` on for this
+    /// crate's tests too (run 39216227853, `windows_keeps_a_4_kb_token`:
+    /// "the grant written did not read back whole"). The one test that
+    /// checks Windows' Credential Manager reaches it there, on its own
+    /// thread; on Linux and macOS, and on any other thread, the keyring is
+    /// left as the build says, whatever that test asks.
+    #[test]
+    fn only_the_windows_test_of_the_keyring_reaches_it_and_only_there() {
+        let built = testing();
+        let inside = with_real_keyring(|| (testing(), std::thread::spawn(testing).join().unwrap()));
+        assert_eq!(inside, (built && !cfg!(windows), built), "on Windows its own thread alone reaches the keyring");
+        assert_eq!(testing(), built, "given back after");
     }
 }

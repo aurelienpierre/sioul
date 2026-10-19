@@ -1584,10 +1584,12 @@ mod tests {
     /// Windows job of the CI (build.yml tests sioul-sync), under a name of
     /// its own, removed after; never on another system, whose keyring is the
     /// person's own (the round trip above covers the splitting everywhere).
+    /// The keyring reached on purpose, whatever `no-keyring` a command
+    /// testing several crates turns on (`secret::with_real_keyring`).
     #[cfg(windows)]
     #[test]
     fn windows_keeps_a_4_kb_token() {
-        a_4_kb_token_through_the_system_keyring();
+        crate::secret::with_real_keyring(a_4_kb_token_through_the_system_keyring);
     }
 
     /// The Windows test's body, compiled on every system so that a slip in

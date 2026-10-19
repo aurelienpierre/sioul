@@ -105,6 +105,8 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
+Install right after building: running the tests (`cargo test`) in between leaves programs built for testing in `target/release/`, which keep no password. `tools/install.sh` does both builds and the installs in one go, and refuses such a program (`tools/check-test-marks.sh`).
+
 Try it on invented mail first:
 
 ```
