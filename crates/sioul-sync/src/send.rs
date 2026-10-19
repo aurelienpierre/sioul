@@ -474,7 +474,7 @@ mod tests {
             addresses: vec!["jane@example.org".into()],
             ..KnownCard::default()
         };
-        let keys = Keys { own: mine.clone(), others: jane_cert.clone(), cards: vec![known] };
+        let keys = Keys { own: mine.clone(), others: jane_cert.clone(), cards: vec![known], ..Keys::default() };
         let account: Account = toml::from_str("id = \"me\"\naddress = \"me@example.org\"\nname = \"Card Holder\"\n").unwrap();
         let mut draft = Draft::new("me");
         draft.to = vec!["Jane <jane@example.org>".into()];
@@ -544,7 +544,7 @@ mod tests {
             ..KnownCard::default()
         };
         let jane = pgp::certificates_in(&pgp::stand_in_key("Jane <jane@example.org>").unwrap());
-        let keys = Keys { own: mine.clone(), others: jane.clone(), cards: vec![known] };
+        let keys = Keys { own: mine.clone(), others: jane.clone(), cards: vec![known], ..Keys::default() };
         let jane_keys = Keys { own: jane.clone(), others: mine.clone(), ..Keys::default() };
         let dir = std::env::temp_dir().join(format!("sioul-send-quote-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

@@ -24,11 +24,17 @@ fn key_entry() -> Result<keyring::Entry, SyncError> {
 
 /// The key kept for Anthropic's API, if any.
 pub fn api_key() -> Option<String> {
+    if crate::secret::testing() {
+        return None;
+    }
     key_entry().ok()?.get_password().ok().filter(|k| !k.trim().is_empty())
 }
 
 /// Keeps the key, replacing any older one; an empty key forgets it.
 pub fn save_api_key(key: &str) -> Result<(), SyncError> {
+    if crate::secret::testing() {
+        return Ok(());
+    }
     let entry = key_entry()?;
     if key.trim().is_empty() {
         return match entry.delete_credential() {

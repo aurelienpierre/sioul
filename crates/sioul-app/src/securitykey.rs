@@ -127,24 +127,33 @@ fn problem_line(qt: &QtThread, context: &str, line: String, action: &'static str
 /// The security key asked at Send, as JSON {ident, label, signs}: the one
 /// that signs the draft (signs: true), else the one that opens the encrypted
 /// message it answers, for its quote (signs: false); or {expired: …} when the
-/// signing key's certificate expired, {cannot: …} on a device that cannot use
-/// the key (a phone) to sign, or to open a message forwarded; "" when no
-/// security key is asked (on a phone, a reply then goes without its quote).
+/// signing key's certificate expired; or {cannot: …}, nothing sent, when
+/// Send would only be refused later (review of 19 October 2026, F15): the
+/// key cannot sign here (a phone; on a computer, a key read on another
+/// computer, F18), or an encrypted message forwarded unencrypted, or where
+/// nothing opens it. "" when no security key is asked (on a phone, a reply
+/// then goes without its quote, as its window says).
 pub(crate) fn for_draft(id: &str) -> String {
     let Some(draft) = Draft::by_id(id) else { return String::new() };
     let Some(address) = load_config().account(&draft.account).and_then(|a| a.address.clone()) else { return String::new() };
     let keys = Keys::load();
+    let here = sioul_sync::securitykey::usable_here();
+    let cannot = |id: &str| json(&serde_json::json!({ "cannot": tr().text(id, None) }));
+    // A forward carries the message itself: only encrypted, only from where it opens.
+    if draft.kind == DraftKind::Forward
+        && let Some(id) = forward_refused(draft.encrypt, &crate::crypto::answered(crate::crypto::copy_of(&draft).as_deref()))
+    {
+        return cannot(id);
+    }
     // The message answered, encrypted, opened at Send in the same band that signs.
     let opens = quote_card(&draft, &keys);
-    let label = |ident: &str| keys.cards.iter().find(|c| c.ident == ident).map(|c| c.label(tr())).unwrap_or_default();
-    let here = sioul_sync::securitykey::usable_here();
+    let label = |ident: &str| keys.all_cards().find(|c| c.ident == ident).map(|c| c.label(tr())).unwrap_or_default();
     match draft.sign.then(|| keys.own_for(&address)) {
         // A phone, until it can use the key: said, nothing sent.
-        Some(Some(pgp::Own { place: Place::Card { .. }, .. })) if !here => json(&serde_json::json!({ "cannot": tr().text("seckey-sign-not-here", None) })),
-        // A forward carries the message itself: from a device that opens it. A
-        // reply goes without its quote (its window said so: `mail::draft`).
-        _ if opens.is_some() && !here && draft.kind == DraftKind::Forward => json(&serde_json::json!({ "cannot": tr().text("seckey-forward-not-here", None) })),
+        Some(Some(pgp::Own { place: Place::Card { .. }, .. })) if !here => cannot("seckey-sign-not-here"),
         Some(Some(pgp::Own { place: Place::Card { ident }, .. })) => json(&serde_json::json!({ "ident": ident, "label": label(&ident), "signs": true })),
+        // Your security key serves the address, read on another device: it signs only where it was read.
+        Some(None) if keys.card_for(&address).is_none() && keys.serving_card(&address).is_some() => cannot(if here { "seckey-sign-read-here" } else { "seckey-sign-not-here" }),
         // No key signs for this address now: its certificate expired, said.
         signing => match matches!(signing, Some(None)).then(|| expired_line(&keys, &address)).flatten() {
             Some(line) => json(&serde_json::json!({ "expired": line })),
@@ -153,8 +162,24 @@ pub(crate) fn for_draft(id: &str) -> String {
     }
 }
 
+/// Why Send refuses a forward at once (review of 19 October 2026, F15: it
+/// was refused only at the end of the ten seconds): its copy is encrypted
+/// and the forward is not, or nothing here opens it (encrypted to a key
+/// this device cannot use, or to none of yours: the words the window shows
+/// under the text, F16). None: it may go.
+fn forward_refused(encrypt: bool, answered: &crate::crypto::Answered) -> Option<&'static str> {
+    use crate::crypto::Answered;
+    match answered {
+        Answered::Clear => None,
+        _ if !encrypt => Some("pgp-forward-needs-encryption"),
+        Answered::Elsewhere => Some("seckey-forward-not-here"),
+        Answered::NoKey => Some("compose-forward-sealed-no-key"),
+        Answered::Opens(_) | Answered::AtSend => None,
+    }
+}
+
 /// The security key that must open the message a draft answers or
-/// forwards, at Send: its copy came encrypted, the answer is encrypted (else
+/// forwards, at Send: its copy is encrypted, the answer is encrypted (else
 /// it is not quoted), and neither a session key kept since you opened it nor
 /// a key here opens it now. Opened in memory only, to know.
 pub(crate) fn quote_card(draft: &Draft, keys: &Keys) -> Option<String> {
@@ -334,8 +359,8 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
         return problem_line(qt, id, say("account-unknown", &[("id", draft.account.clone())]), "");
     };
     let keys = Keys::load();
-    // Signed with your security key, or its quote opened with it (the message
-    // answered came encrypted, and no session key opens it now): one band, one
+    // Signed with your security key, or its quote opened with it (the copy of
+    // the message answered is encrypted, and no session key opens it now): one band, one
     // PIN, both done with the same access.
     let signs = match draft.sign.then(|| keys.own_for(account.address.as_deref().unwrap_or_default())).flatten() {
         Some(pgp::Own { place: Place::Card { ident }, .. }) => Some(ident),
@@ -391,7 +416,7 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
 /// Whether the security keys `a` and `b` open the same messages: the same
 /// key, or a copy of it (the same decryption key on both).
 fn same_key(keys: &Keys, a: &str, b: &str) -> bool {
-    let decrypt = |ident: &str| keys.cards.iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|c| c.decrypt.to_ascii_lowercase()).filter(|f| !f.is_empty());
+    let decrypt = |ident: &str| keys.all_cards().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|c| c.decrypt.to_ascii_lowercase()).filter(|f| !f.is_empty());
     a.eq_ignore_ascii_case(b) || decrypt(a).is_some_and(|f| decrypt(b) == Some(f))
 }
 
@@ -924,10 +949,11 @@ pub(crate) fn stop_using(qt: &QtThread, shared: &Shared, ident: &str) {
         let _ = forget_pin();
     }
     let line = match securitykey::forget(ident) {
-        Ok(()) => tr().text("seckey-stopped", None),
-        // Read on another device of yours: stopped there.
-        Err(None) => tr().text("seckey-forget-elsewhere", None),
-        Err(Some(e)) => e,
+        // Read here: stopped here, its record and certificate gone from here; your other computers' own.
+        Ok(true) => tr().text("seckey-stopped", None),
+        // Known here only from another device: stopped here alone.
+        Ok(false) => tr().text("seckey-stopped-shared", None),
+        Err(e) => e,
     };
     tell(qt, shared, line);
     let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
@@ -961,15 +987,16 @@ struct KnownView {
 pub(crate) fn known_view() -> String {
     let keys = Keys::load();
     let holder = PIN.lock().ok().and_then(|m| m.holder().map(str::to_string));
+    let here = sioul_sync::securitykey::usable_here();
     let cards: Vec<KnownView> = keys
-        .cards
-        .iter()
+        .all_cards()
         .map(|card| {
             let name = holder_name(&card.holder);
             let title = if name.is_empty() { card.label(tr()) } else { format!("{}, {name}", card.label(tr())) };
-            let read_here = securitykey::known_cards().iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
+            let read_here = keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
             let source = match card.source.as_str() {
-                // Learnt from another device of yours (a phone): said so.
+                // Read on another computer of yours: on a computer, read it here to sign here (F18); a phone cannot yet.
+                _ if !read_here && here => tr().text("seckey-source-shared-computer", None),
                 _ if !read_here => tr().text("seckey-source-shared", None),
                 "file" => say("seckey-source-file", &[("date", securitykey::full_date(tr(), card.checked))]),
                 "gnupg" => say("seckey-source-gnupg", &[("date", securitykey::full_date(tr(), card.checked))]),
@@ -1012,6 +1039,22 @@ fn host_of(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review of 19 October 2026, F15: a forward of an encrypted message
+    /// unencrypted, or of one that opens nowhere here, is refused at Send
+    /// (it was only at the end of the ten seconds); every other forward goes.
+    #[test]
+    fn a_forward_that_cannot_go_is_refused_at_send() {
+        use crate::crypto::Answered;
+        assert_eq!(forward_refused(false, &Answered::Clear), None);
+        for answered in [Answered::Opens(Vec::new()), Answered::AtSend, Answered::Elsewhere, Answered::NoKey] {
+            assert_eq!(forward_refused(false, &answered), Some("pgp-forward-needs-encryption"));
+        }
+        assert_eq!(forward_refused(true, &Answered::Elsewhere), Some("seckey-forward-not-here"));
+        assert_eq!(forward_refused(true, &Answered::NoKey), Some("compose-forward-sealed-no-key"));
+        assert_eq!(forward_refused(true, &Answered::Opens(Vec::new())), None);
+        assert_eq!(forward_refused(true, &Answered::AtSend), None);
+    }
 
     #[test]
     fn the_holder_reads_in_the_usual_order() {

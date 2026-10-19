@@ -1117,15 +1117,18 @@ pub(crate) fn draft(id: &str) -> Option<String> {
         (DraftKind::Forward, Some(card)) => say("compose-below-forward", &[("name", card.sender().to_string()), ("date", view::date(tr(), card.date))]),
         (_, Some(card)) => say("compose-below-quote", &[("name", card.sender().to_string()), ("date", view::date(tr(), card.date))]),
     };
-    // Came encrypted: it stays so, and the window says where it opens; its
+    // Its copy encrypted: it stays so, and the window says where it opens; its
     // attachments are listed only from what opens here, in memory.
     let answered = crate::crypto::answered(copy.as_deref());
     let sealed = match (&answered, draft.kind) {
         (crate::crypto::Answered::Clear, _) | (_, DraftKind::New) => None,
         (crate::crypto::Answered::Opens(_), _) => Some(tr().text("compose-below-sealed", None)),
         (crate::crypto::Answered::AtSend, _) => Some(tr().text("compose-below-sealed-card", None)),
-        (crate::crypto::Answered::NotHere, DraftKind::Forward) => Some(tr().text("compose-forward-sealed-not-here", None)),
-        (crate::crypto::Answered::NotHere, _) => Some(tr().text("compose-below-sealed-not-here", None)),
+        (crate::crypto::Answered::Elsewhere, DraftKind::Forward) => Some(tr().text("compose-forward-sealed-not-here", None)),
+        (crate::crypto::Answered::Elsewhere, _) => Some(tr().text("compose-below-sealed-not-here", None)),
+        // No key of yours known here opens it: never quoted nor forwarded from here (F16).
+        (crate::crypto::Answered::NoKey, DraftKind::Forward) => Some(tr().text("compose-forward-sealed-no-key", None)),
+        (crate::crypto::Answered::NoKey, _) => Some(tr().text("compose-below-sealed-no-key", None)),
     };
     let below = match sealed {
         Some(line) if !below.is_empty() => format!("{below} {line}"),

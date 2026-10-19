@@ -97,3 +97,9 @@ ndk-context = "0.1"
 # Accepts any server certificate when SIOUL_TEST_INSECURE_TLS is set: for tests
 # against a local server only. Never enabled in Sioul's builds.
 insecure-test-tls = []
+# The tests of the crates built on this one (their [dev-dependencies] turn it
+# on): every function of `secret` reads no entry and keeps nothing, so that no
+# test reaches a keyring, whatever bus it runs on (review of 19 October 2026,
+# F11). Never enabled in Sioul's builds: `cargo tree -e features` shows it in
+# test builds alone.
+no-keyring = []

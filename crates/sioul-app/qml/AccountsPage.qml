@@ -1418,6 +1418,17 @@ Item {
                                             }
                                         }
                                     }
+                                    // Copies kept beside drafts waiting for a certificate of yours to be
+                                    // encrypted again: one quiet line, nothing to press.
+                                    Label {
+                                        visible: (page.keys.copies_waiting || "") !== ""
+                                        Layout.fillWidth: true
+                                        text: page.keys.copies_waiting || ""
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                        font.pixelSize: 13
+                                    }
                                     Repeater {
                                         model: page.keys.without_key
 

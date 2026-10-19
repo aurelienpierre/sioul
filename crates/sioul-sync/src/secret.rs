@@ -27,12 +27,26 @@ pub fn save(account: &Account, password: &str) -> Result<(), SyncError> {
     entry(account)?.set_password(password).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
-/// Tests against a local server leave the keyring alone (never in Sioul's builds).
-fn testing() -> bool {
+/// Whether the keyring is left alone: tests against a local server
+/// (`SIOUL_TEST_PASSWORD`), and the tests of the crates built on this one
+/// (the `no-keyring` feature); never in Sioul's builds, whose binaries the
+/// final pass reads for this mark.
+pub(crate) fn testing() -> bool {
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_PASSWORD").is_some() {
         return true;
     }
+    no_keyring()
+}
+
+/// The `no-keyring` feature, its mark kept in the binary for the final pass to find.
+#[cfg(feature = "no-keyring")]
+fn no_keyring() -> bool {
+    !std::hint::black_box("SIOUL_TEST_NO_KEYRING: this build keeps nothing in the keyring").is_empty()
+}
+
+#[cfg(not(feature = "no-keyring"))]
+fn no_keyring() -> bool {
     false
 }
 
@@ -49,6 +63,9 @@ pub fn password(account: &Account) -> Result<String, SyncError> {
     if let Ok(password) = std::env::var("SIOUL_TEST_PASSWORD") {
         return Ok(password);
     }
+    if testing() {
+        return Err(SyncError::NoPassword);
+    }
     match entry(account)?.get_password() {
         Ok(password) => Ok(password),
         Err(keyring::Error::NoEntry) => Err(SyncError::NoPassword),
@@ -62,13 +79,14 @@ fn passphrase_entry(fingerprint: &str) -> Result<Entry, SyncError> {
 
 /// The passphrase of your OpenPGP key, when the keyring keeps it.
 pub fn pgp_passphrase(fingerprint: &str) -> Option<String> {
-    // This crate's own tests leave the keyring alone: their stand-in keys have no passphrase.
-    if cfg!(test) {
-        return None;
-    }
     #[cfg(feature = "insecure-test-tls")]
     if let Ok(passphrase) = std::env::var("SIOUL_TEST_PASSWORD") {
         return Some(passphrase);
+    }
+    // This crate's own tests, and those built on it, leave the keyring alone:
+    // their stand-in keys have no passphrase.
+    if cfg!(test) || testing() {
+        return None;
     }
     passphrase_entry(fingerprint).ok()?.get_password().ok()
 }

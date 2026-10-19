@@ -76,6 +76,12 @@ pub struct Draft {
     /// What it belongs with: a task, an event, a note (`links`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<String>,
+    /// Its copy of the message answered or forwarded was kept as it came
+    /// ([`Draft::keep_original`], from 19 October 2026): never a decrypted
+    /// one, so the look at the copies written before (`draftcopies`) passes
+    /// it over wherever the draft goes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub copy_as_received: bool,
 }
 
 /// The line above a signature (RFC 3676 §4.3): readers recognise and fold what follows.
@@ -162,6 +168,7 @@ impl Draft {
         std::fs::create_dir_all(Draft::folder()).map_err(|e| e.to_string())?;
         std::fs::copy(&original, &copy).map_err(|e| format!("{}: {e}", original.display()))?;
         self.original = Some(copy);
+        self.copy_as_received = true;
         Ok(())
     }
 

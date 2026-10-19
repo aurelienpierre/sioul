@@ -55,18 +55,25 @@ fn own_dir() -> PathBuf {
     pgp_dir().join("own")
 }
 
-fn others_dir() -> PathBuf {
-    pgp_dir().join("others")
-}
-
 /// The keys Sioul knows: yours (their secret parts here, or on a security
 /// key), others', and your security keys.
 #[derive(Default, Clone)]
 pub struct Keys {
     pub own: Vec<Cert>,
     pub others: Vec<Cert>,
-    /// Your security keys, as `pgp/cards.toml` lists them.
+    /// Your security keys read on this device, as `pgp/cards.toml` lists
+    /// them: they alone sign here (review of 19 October 2026, F18).
     pub cards: Vec<KnownCard>,
+    /// Your security keys your other devices made known and this one did not
+    /// read (`pgp/cards/`), those stopped here aside (`pgp/stopped.toml`):
+    /// they serve encryption to you, Autocrypt and the reader's words, never
+    /// signing here.
+    pub shared: Vec<KnownCard>,
+    /// Your addresses: your accounts' (`config.toml`). With the addresses
+    /// your security keys serve, they are yours whatever certificate claims
+    /// them; never taken from a certificate's user IDs (review of 19 October
+    /// 2026, F1).
+    pub addresses: Vec<String>,
 }
 
 /// Where the private part of one of your keys is.
@@ -99,14 +106,41 @@ fn read_certs(dir: &std::path::Path) -> Vec<Cert> {
         .collect()
 }
 
-/// Whether a key holds `address` among its user IDs.
+/// Whether a key holds `address` among its user IDs bound to it, as
+/// Sequoia's policy sees them: a user ID with no binding signature of the
+/// key's own, revoked, or bound under an algorithm the policy refuses, names
+/// nothing (review of 19 October 2026, F1: `userids()` alone counts every
+/// user ID, "even those without a binding signature").
 fn names(cert: &Cert, address: &str) -> bool {
-    cert.userids().any(|u| u.userid().email().ok().flatten().is_some_and(|e| e.eq_ignore_ascii_case(address.trim())))
+    let policy = policy();
+    let Ok(valid) = cert.with_policy(&policy, None) else { return false };
+    valid.userids().revoked(false).any(|u| email_is(u.userid(), address))
+}
+
+/// `names`, for the window's words: whether `cert` holds `address` among
+/// the user IDs bound to it.
+pub fn names_address(cert: &Cert, address: &str) -> bool {
+    names(cert, address)
+}
+
+fn email_is(userid: &openpgp::packet::UserID, address: &str) -> bool {
+    userid.email().ok().flatten().is_some_and(|e| e.eq_ignore_ascii_case(address.trim()))
+}
+
+/// `cert` with only its user IDs for `address`, when one of them is bound
+/// to it (`names`); none otherwise. What a certificate brings from
+/// elsewhere (an Autocrypt header, a lookup) is kept for the address it
+/// came for alone: its other user IDs, bound or not, never make it
+/// another address's key (review of 19 October 2026, F2).
+fn for_its_address(cert: Cert, address: &str) -> Option<Cert> {
+    let kept = cert.retain_userids(|u| email_is(u.userid(), address));
+    names(&kept, address).then_some(kept)
 }
 
 impl Keys {
     pub fn load() -> Keys {
-        Keys::load_at(&pgp_dir())
+        let addresses = crate::config::Config::load(&crate::config::default_path()).map(|c| c.accounts.iter().filter_map(|a| a.address.clone()).collect()).unwrap_or_default();
+        Keys { addresses, ..Keys::load_at(&pgp_dir()) }
     }
 
     /// The keys of the folder `root` (`pgp/`): yours, others', your security
@@ -117,10 +151,16 @@ impl Keys {
     /// this device read itself says what it is; its certificate is merged
     /// with the shared one (a renewal made on another computer).
     pub fn load_at(root: &std::path::Path) -> Keys {
-        let mut keys = Keys { own: read_certs(&root.join("own")), others: read_certs(&root.join("others")), cards: securitykey::known_cards_in(&root.join("cards.toml")) };
+        let mut keys = Keys { own: read_certs(&root.join("own")), others: read_certs(&root.join("others")), cards: securitykey::known_cards_in(&root.join("cards.toml")), ..Keys::default() };
+        let stopped = securitykey::stopped_in(root);
         for (card, cert) in securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)) {
-            if !keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident)) {
-                keys.cards.push(card);
+            let read_here = keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
+            // Stopped on this device: never taken back from what the others share (F4).
+            if !read_here && stopped.iter().any(|ident| ident.eq_ignore_ascii_case(&card.ident)) {
+                continue;
+            }
+            if !read_here {
+                keys.shared.push(card);
             }
             match keys.own.iter_mut().find(|own| own.fingerprint() == cert.fingerprint()) {
                 Some(own) => {
@@ -134,10 +174,12 @@ impl Keys {
         keys
     }
 
-    /// Your key for an address, able to sign now. A security key that serves
-    /// the address comes first, and alone: a key kept here for the same
-    /// address only opens older mail. When that security key's certificate
-    /// expired, nothing signs for the address until it is renewed.
+    /// Your key for an address, able to sign now. A security key read on
+    /// this device that serves the address comes first, and alone: a key kept
+    /// here for the same address only opens older mail. When that security
+    /// key's certificate expired, nothing signs for the address until it is
+    /// renewed. A security key another computer read signs nowhere but there
+    /// (review of 19 October 2026, F18): to sign here, it is read here.
     pub fn own_for(&self, address: &str) -> Option<Own<'_>> {
         if let Some((card, cert)) = self.card_for(address) {
             return can_sign_with(cert, &card.sign).then(|| Own { cert, place: Place::Card { ident: card.ident.clone() } });
@@ -149,10 +191,23 @@ impl Keys {
             .map(|cert| Own { cert, place: Place::Here })
     }
 
-    /// The security key that signs for `address`, and its certificate, even
-    /// when it expired: to say so.
+    /// The security key read here that signs for `address`, and its
+    /// certificate, even when it expired: to say so.
     pub fn card_for(&self, address: &str) -> Option<(&KnownCard, &Cert)> {
         self.cards.iter().filter(|card| card.serves(address)).find_map(|card| Some((card, self.cert(&card.cert)?)))
+    }
+
+    /// The security key of yours that serves `address`, read here or on
+    /// another device of yours, and its certificate: encryption to you,
+    /// Autocrypt, and what the reader says wait for it.
+    pub fn serving_card(&self, address: &str) -> Option<(&KnownCard, &Cert)> {
+        self.all_cards().filter(|card| card.serves(address)).find_map(|card| Some((card, self.cert(&card.cert)?)))
+    }
+
+    /// Every security key of yours known here: read here first, then those
+    /// your other devices made known.
+    pub fn all_cards(&self) -> impl Iterator<Item = &KnownCard> {
+        self.cards.iter().chain(&self.shared)
     }
 
     /// Your certificate of this fingerprint.
@@ -164,13 +219,26 @@ impl Keys {
     /// own addresses, your own key alone: never a certificate someone sent
     /// claiming it (an Autocrypt header, a lookup), which would read what you
     /// send yourself; none when yours cannot take encryption now.
+    ///
+    /// Someone's keys are kept for the address each came for alone
+    /// (`for_its_address`). Two of them for one address (a key made anew,
+    /// the old one kept): the one whose newest live encryption key is the
+    /// most recent, then the one whose primary key is, then by fingerprint;
+    /// never the order the folder lists them in (review of 19 October 2026,
+    /// F2). Others' before a key of yours that names the address.
     pub fn for_address(&self, address: &str) -> Option<&Cert> {
-        let policy = policy();
-        let encrypts = |c: &&Cert| c.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some();
         if self.is_own_address(address) {
             return self.self_cert_for(address);
         }
-        self.others.iter().chain(&self.own).filter(|c| names(c, address)).find(encrypts)
+        let policy = policy();
+        let newest = |c: &Cert| {
+            let encryption = c.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().map(|k| k.key().creation_time()).max();
+            (encryption, c.primary_key().key().creation_time(), c.fingerprint().to_hex())
+        };
+        let best = |certs: &'_ [Cert]| -> Option<usize> {
+            certs.iter().enumerate().filter(|(_, c)| names(c, address)).filter_map(|(i, c)| { let n = newest(c); n.0.map(|_| (n, i)) }).max_by(|a, b| a.0.cmp(&b.0)).map(|(_, i)| i)
+        };
+        best(&self.others).map(|i| &self.others[i]).or_else(|| best(&self.own).map(|i| &self.own[i]))
     }
 
     /// Your own certificate to encrypt to, for `address`: your security key's
@@ -180,30 +248,40 @@ impl Keys {
     pub fn self_cert_for(&self, address: &str) -> Option<&Cert> {
         let policy = policy();
         let encrypts = |c: &&Cert| c.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some();
-        if let Some((_, cert)) = self.card_for(address) {
+        if let Some((_, cert)) = self.serving_card(address) {
             return Some(cert).filter(encrypts);
         }
         self.own.iter().filter(|c| names(c, address)).find(encrypts)
     }
 
-    /// Your own certificates that can take encryption now (your security
-    /// keys', as your computer read them, and your keys here): what is
-    /// sealed for you alone is encrypted to each, and any of them opens it.
+    /// Your own certificates that can take what is sealed for you alone
+    /// (your security keys', as your computer read them, and your keys
+    /// here): an encryption key not revoked, expired or not, since you open
+    /// such a seal with it (F19). Encrypted to each, any of them opens it.
     pub fn own_certs(&self) -> Vec<&Cert> {
         let policy = policy();
         let mut out: Vec<&Cert> = Vec::new();
         for cert in &self.own {
-            if cert.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some() && !out.iter().any(|c| c.fingerprint() == cert.fingerprint()) {
+            if cert.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption().next().is_some() && !out.iter().any(|c| c.fingerprint() == cert.fingerprint()) {
                 out.push(cert);
             }
         }
         out
     }
 
-    /// Whether `address` is yours by your keys: a security key serves it, or
-    /// a key of yours names it.
+    /// Whether `address` is yours: one of your accounts' addresses, or one a
+    /// security key of yours serves. Never from a certificate's user IDs,
+    /// which anyone can write (review of 19 October 2026, F1).
     pub fn is_own_address(&self, address: &str) -> bool {
-        self.cards.iter().any(|card| card.serves(address)) || self.own.iter().any(|c| names(c, address))
+        let address = address.trim();
+        self.addresses.iter().any(|a| a.trim().eq_ignore_ascii_case(address)) || self.all_cards().any(|card| card.serves(address))
+    }
+
+    /// Whether `fingerprint` is one of your certificates: kept with yours,
+    /// or your security keys' (`cards.toml`).
+    pub fn is_yours(&self, fingerprint: &Fingerprint) -> bool {
+        let hex = fingerprint.to_hex();
+        self.own.iter().any(|c| c.fingerprint() == *fingerprint) || self.all_cards().any(|card| card.cert.eq_ignore_ascii_case(&hex))
     }
 
     fn all(&self) -> impl Iterator<Item = &Cert> {
@@ -251,7 +329,8 @@ fn summary(cert: &Cert, own: bool) -> KeySummary {
     let date = |t: std::time::SystemTime| jiff::Timestamp::try_from(t).map(|t| t.strftime("%Y-%m-%d").to_string()).unwrap_or_default();
     KeySummary {
         fingerprint: cert.fingerprint().to_hex(),
-        names: cert.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect(),
+        // The user IDs bound to it, as matching reads them (`names`).
+        names: valid.as_ref().map(|v| v.userids().revoked(false).map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect()).unwrap_or_default(),
         own,
         created: date(cert.primary_key().key().creation_time()),
         expires: valid.as_ref().and_then(|v| v.primary_key().key_expiration_time()).map(date).unwrap_or_default(),
@@ -266,7 +345,7 @@ pub fn summaries() -> Vec<KeySummary> {
     let keys = Keys::load();
     let mut all: Vec<KeySummary> = keys.own.iter().map(|c| summary(c, true)).chain(keys.others.iter().map(|c| summary(c, false))).collect();
     for key in all.iter_mut().filter(|k| k.own) {
-        if let Some(card) = keys.cards.iter().find(|c| c.cert.eq_ignore_ascii_case(&key.fingerprint)) {
+        if let Some(card) = keys.all_cards().find(|c| c.cert.eq_ignore_ascii_case(&key.fingerprint)) {
             key.card = card.ident.clone();
         }
         key.revocation = revocation_path(&key.fingerprint).is_file();
@@ -274,11 +353,42 @@ pub fn summaries() -> Vec<KeySummary> {
     all
 }
 
-/// Keeps a key, merged with what was known of it. Secret parts go with
-/// yours, and so does the certificate of a security key of yours, whatever
-/// brings it again (an Autocrypt header, a lookup).
+/// Keeps a key you chose (imported, made here), merged with what was known
+/// of it. Secret parts go with yours, and so does a certificate of yours.
 fn store(cert: Cert) -> Result<KeySummary, String> {
     store_at(&pgp_dir(), cert)
+}
+
+/// Keeps a key that came from elsewhere for `address` (a lookup: its
+/// domain's Web Key Directory, keys.openpgp.org): its user IDs for that
+/// address alone. One of yours brought again so is merged without anything
+/// it names: only what your own primary key binds (a renewal's signatures,
+/// a subkey), never another source's user IDs into your certificate
+/// (review of 19 October 2026, F1).
+fn store_from_elsewhere_at(root: &std::path::Path, cert: Cert, address: &str) -> Option<KeySummary> {
+    let cert = for_its_address(cert.strip_secret_key_material(), address)?;
+    let fingerprint = cert.fingerprint().to_hex();
+    let yours = root.join("own").join(format!("{fingerprint}.asc"));
+    if let Some(known) = std::fs::read(&yours).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
+        let names: Vec<Vec<u8>> = known.userids().map(|u| u.userid().value().to_vec()).collect();
+        let merged = known.merge_public(cert).ok()?.retain_userids(|u| names.iter().any(|n| n.as_slice() == u.userid().value()));
+        return store_in(root, merged, true).ok();
+    }
+    if yours_at(root, &fingerprint) {
+        return None;
+    }
+    store_in(root, cert, false).ok()
+}
+
+/// Whether the certificate `fingerprint` (hexadecimal) is one of yours in
+/// the folder `root` (`pgp/`): kept with your keys, a security key's read
+/// here, or one your other devices made known (`cards/`), as a phone knows
+/// your security key's certificate: never kept among others' keys, from
+/// wherever it comes again (your own mail's Autocrypt header, a lookup).
+fn yours_at(root: &std::path::Path, fingerprint: &str) -> bool {
+    root.join("own").join(format!("{fingerprint}.asc")).exists()
+        || securitykey::known_cards_in(&root.join("cards.toml")).iter().any(|card| card.cert.eq_ignore_ascii_case(fingerprint))
+        || securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)).iter().any(|(card, _)| card.cert.eq_ignore_ascii_case(fingerprint))
 }
 
 /// [`store`] into the folder `root` (`pgp/`).
@@ -711,16 +821,21 @@ pub fn export_public(fingerprint: &str) -> Option<String> {
 /// Removes a key; yours are kept aside in `pgp/removed`, never deleted, with
 /// their revocation certificate.
 pub fn remove(fingerprint: &str) -> Result<(), String> {
-    for (dir, own) in [(own_dir(), true), (others_dir(), false)] {
+    remove_in(&pgp_dir(), fingerprint)
+}
+
+/// [`remove`] in the folder `root` (`pgp/`).
+pub(crate) fn remove_in(root: &std::path::Path, fingerprint: &str) -> Result<(), String> {
+    for (dir, own) in [(root.join("own"), true), (root.join("others"), false)] {
         let path = dir.join(format!("{fingerprint}.asc"));
         if !path.exists() {
             continue;
         }
         if own {
-            let aside = data_dir().join("pgp").join("removed");
+            let aside = root.join("removed");
             std::fs::create_dir_all(&aside).map_err(|e| e.to_string())?;
             std::fs::rename(&path, aside.join(format!("{fingerprint}.asc"))).map_err(|e| e.to_string())?;
-            let revocation = revocation_path(fingerprint);
+            let revocation = dir.join(format!("{fingerprint}.rev"));
             if revocation.exists() {
                 std::fs::rename(&revocation, aside.join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
             }
@@ -788,6 +903,19 @@ pub fn sign_detached(data: &[u8], signer: &mut Signing<'_>) -> Result<(String, S
 pub fn encrypt(data: &[u8], recipients: &[&Cert], signer: Option<&mut Signing<'_>>) -> Result<String, String> {
     let policy = policy();
     let keys: Vec<_> = recipients.iter().flat_map(|c| c.keys().with_policy(&policy, None).supported().alive().revoked(false).for_transport_encryption()).collect();
+    encrypt_to(data, keys, signer)
+}
+
+/// `data` encrypted for you alone, to `yours`: an encryption key of yours
+/// that expired but was not revoked still takes it, since you open it with
+/// that key, which Sequoia's policy allows (review of 19 October 2026, F19).
+fn encrypt_for_yourself(data: &[u8], yours: &[&Cert]) -> Result<String, String> {
+    let policy = policy();
+    let keys: Vec<_> = yours.iter().flat_map(|c| c.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption()).collect();
+    encrypt_to(data, keys, None)
+}
+
+fn encrypt_to<'a>(data: &[u8], keys: Vec<ValidErasedKeyAmalgamation<'a, openpgp::packet::key::PublicParts>>, signer: Option<&mut Signing<'_>>) -> Result<String, String> {
     if keys.is_empty() {
         return Err("no encryption key".into());
     }
@@ -977,7 +1105,7 @@ impl DecryptionHelper for Helper<'_> {
         // otherwise the message says which key it waits for.
         for pkesk in pkesks {
             let Some(recipient) = pkesk.recipient() else { continue };
-            for card in &self.keys.cards {
+            for card in self.keys.all_cards() {
                 let Ok(fingerprint) = card.decrypt.parse::<Fingerprint>() else { continue };
                 if !KeyHandle::from(fingerprint).aliases(&recipient) {
                     continue;
@@ -1082,7 +1210,12 @@ fn zbase32(bytes: &[u8]) -> String {
 
 /// Keeps keys found for `address`: public parts only, and only those naming it.
 pub fn learn(bytes: &[u8], address: &str) -> Vec<KeySummary> {
-    certificates_of(bytes).unwrap_or_default().into_iter().filter(|c| names(c, address)).filter_map(|c| store(c.strip_secret_key_material()).ok()).collect()
+    learn_at(&pgp_dir(), bytes, address)
+}
+
+/// [`learn`] into the folder `root` (`pgp/`).
+fn learn_at(root: &std::path::Path, bytes: &[u8], address: &str) -> Vec<KeySummary> {
+    certificates_of(bytes).unwrap_or_default().into_iter().filter_map(|c| store_from_elsewhere_at(root, c, address)).collect()
 }
 
 /// What a protected message showed when opened, for the reader's line.
@@ -1195,13 +1328,56 @@ pub fn open(raw: &[u8], keys: &Keys, unlock: &Unlock) -> Option<(Option<Vec<u8>>
     })
 }
 
-/// Whether a message is encrypted with OpenPGP: PGP/MIME (RFC 3156), or an
-/// armored message in its text. Nothing is opened.
+/// Whether a message is encrypted with OpenPGP, as a whole: PGP/MIME (RFC
+/// 3156, the shape [`seal_message`] writes), or an inline message whose whole
+/// first text part is one armored message. Never a text that quotes one
+/// among its words (review of 19 October 2026, F7: a decrypted copy quoting
+/// an older armored block was taken for sealed). Nothing is opened.
 pub fn is_encrypted(raw: &[u8]) -> bool {
     let Some(message) = mail_parser::MessageParser::default().parse(raw) else { return false };
     let Some(root) = message.parts.first() else { return false };
     let (kind, protocol) = kind_of(root);
-    (kind == "multipart/encrypted" && protocol == "application/pgp-encrypted") || message.body_text(0).is_some_and(|text| text.contains("-----BEGIN PGP MESSAGE-----"))
+    if kind == "multipart/encrypted" && protocol == "application/pgp-encrypted" {
+        return true;
+    }
+    message.body_text(0).is_some_and(|text| {
+        let text = text.trim();
+        text.starts_with("-----BEGIN PGP MESSAGE-----") && text.ends_with("-----END PGP MESSAGE-----") && text.matches("-----BEGIN PGP MESSAGE-----").count() == 1
+    })
+}
+
+/// The head of a message as [`open`] rebuilds an encrypted one: its outer
+/// header lines (none of them `Content-` nor `MIME-Version`), the line
+/// `MIME-Version: 1.0` it adds after them, then the opened entity's own
+/// header lines, a `Content-` one among them. Where that line is, when the
+/// head has that shape: what a copy decrypted by Sioul before 19 October
+/// 2026 looks like (a message that came in clear may too).
+fn opened_split(raw: &[u8]) -> Option<usize> {
+    let head = &raw[..header_end(raw)];
+    let mut at = 0;
+    let mut seen_mime = None;
+    let mut content_after = false;
+    for line in head.split_inclusive(|b| *b == b'\n') {
+        let start = at;
+        at += line.len();
+        if line.starts_with(b" ") || line.starts_with(b"\t") || line.trim_ascii().is_empty() {
+            continue;
+        }
+        let name = String::from_utf8_lossy(line.split(|b| *b == b':').next().unwrap_or_default()).trim().to_ascii_lowercase();
+        match seen_mime {
+            None if line == b"MIME-Version: 1.0\r\n" => seen_mime = Some(start),
+            None if name.starts_with("content-") || name == "mime-version" => return None,
+            None => {}
+            Some(_) => content_after |= name.starts_with("content-"),
+        }
+    }
+    seen_mime.filter(|_| content_after)
+}
+
+/// Whether `raw` has the head of a message [`open`] rebuilt (`opened_split`):
+/// what may be a copy decrypted by Sioul before 19 October 2026.
+pub fn looks_opened(raw: &[u8]) -> bool {
+    opened_split(raw).is_some()
 }
 
 /// Where a message's header ends: after its first empty line.
@@ -1224,21 +1400,34 @@ pub fn seal_message(clear: &[u8], to: &[&Cert]) -> Result<Vec<u8>, String> {
     let end = header_end(clear);
     let (head, body) = clear.split_at(end);
     let (mut outer, mut inner): (Vec<u8>, Vec<u8>) = (Vec::new(), Vec::new());
-    let mut into_outer = true;
-    let mut skip = false;
-    for line in head.split_inclusive(|b| *b == b'\n') {
-        if line == b"\r\n" || line == b"\n" {
-            continue;
+    // A message `open` rebuilt: outside, only the outer headers it came with
+    // (those before the `MIME-Version: 1.0` it adds); everything after goes
+    // inside, the entity's own headers whatever they are: protected headers
+    // (the subject its sender encrypted) never come out in clear (review of
+    // 19 October 2026, F8). Any other message: its own headers outside, its
+    // content's (`Content-`) inside.
+    if let Some(split) = opened_split(clear) {
+        let mime = b"MIME-Version: 1.0\r\n".len();
+        outer.extend_from_slice(&head[..split]);
+        inner.extend_from_slice(head[split + mime..].trim_ascii_end());
+        inner.extend_from_slice(b"\r\n");
+    } else {
+        let mut into_outer = true;
+        let mut skip = false;
+        for line in head.split_inclusive(|b| *b == b'\n') {
+            if line == b"\r\n" || line == b"\n" {
+                continue;
+            }
+            if !line.starts_with(b" ") && !line.starts_with(b"\t") {
+                let name = String::from_utf8_lossy(line.split(|b| *b == b':').next().unwrap_or_default()).trim().to_ascii_lowercase();
+                skip = name == "mime-version";
+                into_outer = !name.starts_with("content-");
+            }
+            if skip {
+                continue;
+            }
+            if into_outer { outer.extend_from_slice(line) } else { inner.extend_from_slice(line) }
         }
-        if !line.starts_with(b" ") && !line.starts_with(b"\t") {
-            let name = String::from_utf8_lossy(line.split(|b| *b == b':').next().unwrap_or_default()).trim().to_ascii_lowercase();
-            skip = name == "mime-version";
-            into_outer = !name.starts_with("content-");
-        }
-        if skip {
-            continue;
-        }
-        if into_outer { outer.extend_from_slice(line) } else { inner.extend_from_slice(line) }
     }
     if inner.is_empty() {
         inner.extend_from_slice(b"Content-Type: text/plain; charset=utf-8\r\n");
@@ -1246,7 +1435,7 @@ pub fn seal_message(clear: &[u8], to: &[&Cert]) -> Result<Vec<u8>, String> {
     let mut payload = canonical(&inner);
     payload.extend_from_slice(b"\r\n");
     payload.extend_from_slice(body);
-    let armored = encrypt(&payload, to, None)?;
+    let armored = encrypt_for_yourself(&payload, to)?;
     let boundary = "sioul-sealed-copy";
     let mut out = canonical(&outer);
     out.extend_from_slice(
@@ -1303,15 +1492,27 @@ pub fn autocrypt_key(header: &str, from: &str) -> Option<Cert> {
         return None;
     }
     let bytes = crate::lines::base64_decode(&keydata?)?;
-    // One certificate, as `Cert::from_bytes` reads it.
+    // One certificate, as `Cert::from_bytes` reads it, kept for `addr`
+    // alone (Autocrypt Level 1 binds the key to it; its other user IDs, bound
+    // or not, are decoration: review of 19 October 2026, F1 and F2).
     let [cert] = <[Cert; 1]>::try_from(certificates_of(&bytes).ok()?).ok()?;
-    names(&cert, from).then_some(cert)
+    for_its_address(cert, from)
 }
 
-/// Keeps a key from an Autocrypt header: only public parts, only when it names its sender.
+/// Keeps a key from an Autocrypt header: only public parts, only for its
+/// sender's address, never one of yours (whoever sends your own key back
+/// cannot add anything to it).
 pub fn learn_autocrypt(header: &str, from: &str) -> Option<KeySummary> {
-    let cert = autocrypt_key(header, from)?;
-    store(cert.strip_secret_key_material()).ok()
+    learn_autocrypt_at(&pgp_dir(), header, from)
+}
+
+/// [`learn_autocrypt`] into the folder `root` (`pgp/`).
+fn learn_autocrypt_at(root: &std::path::Path, header: &str, from: &str) -> Option<KeySummary> {
+    let cert = autocrypt_key(header, from)?.strip_secret_key_material();
+    if yours_at(root, &cert.fingerprint().to_hex()) {
+        return None;
+    }
+    store_in(root, cert, false).ok()
 }
 
 /// The Autocrypt header for your outgoing mail: your key, smallest form
@@ -1527,9 +1728,9 @@ mod tests {
         // The phone: nothing of its own, the card's file carried by the sharing.
         carry(&computer, &phone);
         let keys = Keys::load_at(&phone);
-        assert_eq!(keys.cards.len(), 1);
-        let own = keys.own_for("me@example.org").expect("your key, known on the phone");
-        assert_eq!(own.place, Place::Card { ident: "0006:12345678".into() });
+        assert_eq!((keys.cards.len(), keys.shared.len()), (0, 1), "known from the computer, not read here");
+        assert!(keys.own_for("me@example.org").is_none(), "signing only where it was read (F18)");
+        assert_eq!(keys.serving_card("me@example.org").map(|(card, _)| card.ident.as_str()), Some("0006:12345678"));
         let yours = keys.self_cert_for("me@example.org").expect("yours to encrypt to");
         assert_eq!(yours.fingerprint(), on_card.fingerprint());
         assert!(autocrypt_header(yours, "me@example.org").is_some(), "Autocrypt from the phone too");
@@ -1545,6 +1746,12 @@ mod tests {
         let pin = Password::from("123456");
         let access = CardAccess::new(&readers, &pin, &|| {});
         assert_eq!(decrypt(sealed.as_bytes(), &keys, &Unlock::new(&none, &sessions).with_card(&access)).unwrap().data, b"Hello me.");
+        // Your own mail read on the phone carries your security key's
+        // certificate in its Autocrypt header, which the phone knows from the
+        // sharing alone: never kept among others' keys there, nor from a lookup.
+        assert!(learn_autocrypt_at(&phone, &autocrypt_header(yours, "me@example.org").unwrap(), "me@example.org").is_none());
+        assert!(learn_at(&phone, &on_card.clone().strip_secret_key_material().armored().to_vec().unwrap(), "me@example.org").is_empty());
+        assert!(!phone.join("others").join(format!("{}.asc", on_card.fingerprint().to_hex())).exists());
         // A certificate claiming your address from outside (an Autocrypt header) is never yours.
         let stranger = key("me@example.org");
         store_in(&phone, stranger.clone().strip_secret_key_material(), false).unwrap();
@@ -1556,7 +1763,7 @@ mod tests {
         replaced.certificate = String::from_utf8(stranger.clone().strip_secret_key_material().armored().to_vec().unwrap()).unwrap();
         std::fs::write(phone.join("cards").join("0006-12345678.toml"), toml::to_string(&replaced).unwrap()).unwrap();
         let keys = Keys::load_at(&phone);
-        assert!(keys.cards.is_empty() && keys.own_for("me@example.org").is_none() && keys.own.iter().all(|c| c.fingerprint() != stranger.fingerprint()), "replaced: refused");
+        assert!(keys.shared.is_empty() && keys.serving_card("me@example.org").is_none() && keys.own.iter().all(|c| c.fingerprint() != stranger.fingerprint()), "replaced: refused");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1576,7 +1783,7 @@ mod tests {
             securitykey::change_known_at(&computer.join("cards.toml"), |cards| cards.push(record(&card, &on_card, "me@example.org"))).unwrap();
             read_here(computer);
         }
-        let expires = |keys: &Keys| keys.own_for("me@example.org").and_then(|o| o.cert.with_policy(&policy(), None).ok()?.primary_key().key_expiration_time());
+        let expires = |keys: &Keys| keys.serving_card("me@example.org").and_then(|(_, cert)| cert.with_policy(&policy(), None).ok()?.primary_key().key_expiration_time());
         carry(&one, &phone);
         let before = expires(&Keys::load_at(&phone)).unwrap();
         // Renewed on the first computer: kept with its keys, the shared file follows.
@@ -1599,6 +1806,157 @@ mod tests {
         let old_card = securitykey::SoftCard::new("0006:00000001", &old, "123456");
         let keys = Keys { own: vec![old.clone().strip_secret_key_material()], cards: vec![record(&old_card, &old, "old@example.org")], ..Keys::default() };
         assert!(keys.is_own_address("old@example.org") && keys.self_cert_for("old@example.org").is_none() && keys.for_address("old@example.org").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// This device's marks, as `state/security-keys.toml` keeps them.
+    fn marks(root: &std::path::Path) -> std::path::PathBuf {
+        root.join("marks.toml")
+    }
+
+    /// An exchange's pass over the security keys read on `root`.
+    fn exchange_pass(root: &std::path::Path) {
+        securitykey::share_cards_marked_in(&root.join("cards.toml"), &root.join("own"), &root.join(securitykey::SHARED_CARDS), &marks(root)).unwrap();
+    }
+
+    /// Review of 19 October 2026, P4 (F4): two computers read the key; the
+    /// first stops using it. The second computer's next exchange no longer
+    /// makes its file again ("once if missing" ran at every exchange), and
+    /// when the second computer shares it again later, the first never takes
+    /// it back: it signed with the key again, and said it was read on another
+    /// device. The second computer still signs with it; the phone encrypts to it.
+    #[test]
+    fn a_card_stopped_on_one_computer_never_comes_back_to_it() {
+        let root = temporary().join("cards-stopped");
+        let _ = std::fs::remove_dir_all(&root);
+        let (one, two, phone) = (root.join("one"), root.join("two"), root.join("phone"));
+        let on_card = card_key("me@example.org", None);
+        let card = securitykey::SoftCard::new("0006:12345678", &on_card, "123456");
+        for computer in [&one, &two] {
+            store_in(computer, on_card.clone().strip_secret_key_material(), true).unwrap();
+            securitykey::change_known_at(&computer.join("cards.toml"), |cards| cards.push(record(&card, &on_card, "me@example.org"))).unwrap();
+            exchange_pass(computer);
+        }
+        carry(&one, &phone);
+        let file = |root: &std::path::Path| root.join(securitykey::SHARED_CARDS).join("0006-12345678.toml");
+        assert!(file(&two).exists() && file(&phone).exists());
+        // The first computer stops using it: listed as stopped there, its file taken out, everywhere.
+        assert!(securitykey::forget_in(&one, "0006:12345678").unwrap());
+        assert!(Keys::load_at(&one).own_for("me@example.org").is_none());
+        carry(&one, &two);
+        carry(&one, &phone);
+        // The second computer's next exchange makes nothing again.
+        exchange_pass(&two);
+        assert!(!file(&two).exists(), "never made again by the exchange's pass");
+        // Later, what the second computer knows of the key changes: written again, it travels;
+        // the first computer never takes it back.
+        securitykey::change_known_at(&two.join("cards.toml"), |cards| cards[0].holder = "Ferrand<<Noa".into()).unwrap();
+        read_here(&two);
+        carry(&two, &one);
+        let first = Keys::load_at(&one);
+        assert!(first.own_for("me@example.org").is_none() && first.shared.is_empty() && first.serving_card("me@example.org").is_none(), "stopped there");
+        // The second computer signs with it; the phone encrypts to it and signs nothing.
+        assert_eq!(Keys::load_at(&two).own_for("me@example.org").map(|o| o.place), Some(Place::Card { ident: "0006:12345678".into() }));
+        carry(&two, &phone);
+        let on_phone = Keys::load_at(&phone);
+        assert!(on_phone.self_cert_for("me@example.org").is_some() && on_phone.own_for("me@example.org").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, F18: a computer that keeps a key of its own
+    /// for an address goes on signing with it when another computer shares a
+    /// security key serving that address; the shared key serves encryption to
+    /// you and Autocrypt there.
+    #[test]
+    fn a_card_read_on_another_computer_signs_only_there() {
+        let root = temporary().join("cards-f18");
+        let _ = std::fs::remove_dir_all(&root);
+        let (one, three) = (root.join("one"), root.join("three"));
+        let on_card = card_key("me@example.org", None);
+        let card = securitykey::SoftCard::new("0006:12345678", &on_card, "123456");
+        store_in(&one, on_card.clone().strip_secret_key_material(), true).unwrap();
+        securitykey::change_known_at(&one.join("cards.toml"), |cards| cards.push(record(&card, &on_card, "me@example.org"))).unwrap();
+        exchange_pass(&one);
+        let here = key("me@example.org");
+        store_at(&three, here.clone()).unwrap();
+        carry(&one, &three);
+        let keys = Keys::load_at(&three);
+        let signer = keys.own_for("me@example.org").expect("the key kept here signs");
+        assert_eq!((signer.place, signer.cert.fingerprint()), (Place::Here, here.fingerprint()));
+        assert_eq!(keys.self_cert_for("me@example.org").map(Cert::fingerprint), Some(on_card.fingerprint()));
+        assert!(autocrypt_header(keys.self_cert_for("me@example.org").unwrap(), "me@example.org").is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, P3 (F3): a shared certificate whose
+    /// decryption key has no binding, or is revoked, is never the security
+    /// key's, as Sequoia's policy reads it; one in order is.
+    #[test]
+    fn a_shared_certificate_counts_only_with_the_cards_keys_bound() {
+        let on_card = card_key("me@example.org", None);
+        let card = securitykey::SoftCard::new("0006:12345678", &on_card, "123456");
+        let known = record(&card, &on_card, "me@example.org");
+        let armored = |c: &Cert| String::from_utf8(c.clone().strip_secret_key_material().armored().to_vec().unwrap()).unwrap();
+        assert!(securitykey::vouched(&known, &armored(&on_card)).is_some());
+        let unbound = Cert::from_packets(on_card.clone().into_packets().filter(|p| !matches!(p, openpgp::Packet::Signature(sig) if sig.typ() == openpgp::types::SignatureType::SubkeyBinding))).unwrap();
+        assert!(on_card.keys().subkeys().count() == 1 && unbound.keys().subkeys().count() == 1);
+        assert!(securitykey::vouched(&known, &armored(&unbound)).is_none(), "no binding");
+        let mut signer = on_card.primary_key().key().clone().parts_into_secret().unwrap().into_keypair().unwrap();
+        let subkey = on_card.keys().subkeys().next().unwrap().key().clone();
+        let revocation = SubkeyRevocationBuilder::new().set_reason_for_revocation(openpgp::types::ReasonForRevocation::KeyCompromised, b"lost").unwrap().build(&mut signer, &on_card, &subkey, None).unwrap();
+        let revoked = on_card.clone().insert_packets(vec![openpgp::Packet::from(revocation)]).unwrap().0;
+        assert!(securitykey::vouched(&known, &armored(&revoked)).is_none(), "revoked");
+        assert_eq!(securitykey::revoked_encryption(&revoked), Some(subkey.fingerprint().to_hex()));
+        assert_eq!(securitykey::revoked_encryption(&on_card), None);
+    }
+
+    /// Review of 19 October 2026, P5 (F5): renewed on the first computer, the
+    /// second (not reached yet) writes its older certificate after: the phone
+    /// had the expired one until the first computer's record changed. Now
+    /// the first computer's next exchange writes the renewal again.
+    #[test]
+    fn a_renewal_lost_to_an_older_write_comes_back_at_the_next_exchange() {
+        let root = temporary().join("cards-renewal-lost");
+        let _ = std::fs::remove_dir_all(&root);
+        let (one, two, phone) = (root.join("one"), root.join("two"), root.join("phone"));
+        let made = std::time::SystemTime::now() - std::time::Duration::from_secs(400 * 24 * 3600);
+        let on_card = card_key("me@example.org", Some(made));
+        let card = securitykey::SoftCard::new("0006:12345678", &on_card, "123456");
+        for computer in [&one, &two] {
+            store_in(computer, on_card.clone().strip_secret_key_material(), true).unwrap();
+            securitykey::change_known_at(&computer.join("cards.toml"), |cards| cards.push(record(&card, &on_card, "me@example.org"))).unwrap();
+            exchange_pass(computer);
+        }
+        let mut signer = on_card.primary_key().key().clone().parts_into_secret().unwrap().into_keypair().unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(2 * 365 * 24 * 3600);
+        let mut packets = on_card.set_expiration_time(&policy(), None, &mut signer, Some(later)).unwrap();
+        let subkey = on_card.keys().subkeys().next().unwrap().key().clone().parts_into_secret().unwrap();
+        let primary = on_card.primary_key().key().clone();
+        let binding = openpgp::packet::signature::SignatureBuilder::new(openpgp::types::SignatureType::SubkeyBinding)
+            .set_key_flags(openpgp::types::KeyFlags::empty().set_transport_encryption().set_storage_encryption())
+            .unwrap()
+            .set_key_validity_period(later.duration_since(subkey.creation_time()).unwrap())
+            .unwrap()
+            .sign_subkey_binding(&mut signer, &primary, &subkey)
+            .unwrap();
+        packets.push(binding.into());
+        let renewed = on_card.clone().insert_packets(packets).unwrap().0;
+        store_in(&one, renewed.strip_secret_key_material(), true).unwrap();
+        assert!(Keys::load_at(&one).self_cert_for("me@example.org").is_some(), "renewed on the first");
+        // The second, not reached yet, writes its older certificate: it travels after the renewal.
+        securitykey::change_known_at(&two.join("cards.toml"), |cards| cards[0].holder = "Ferrand<<Noa".into()).unwrap();
+        read_here(&two);
+        carry(&two, &one);
+        carry(&two, &phone);
+        assert!(Keys::load_at(&phone).self_cert_for("me@example.org").is_none(), "the race: expired on the phone");
+        // The first computer's next exchange writes it again: the phone has the renewal.
+        exchange_pass(&one);
+        carry(&one, &phone);
+        assert!(Keys::load_at(&phone).self_cert_for("me@example.org").is_some(), "renewed on the phone");
+        // And it settles: nothing more written.
+        let written = std::fs::read(one.join(securitykey::SHARED_CARDS).join("0006-12345678.toml")).unwrap();
+        exchange_pass(&one);
+        assert_eq!(std::fs::read(one.join(securitykey::SHARED_CARDS).join("0006-12345678.toml")).unwrap(), written);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1679,14 +2037,129 @@ mod tests {
         assert!(kept.own);
         let file = std::fs::read_to_string(root.join("own").join(&name)).unwrap();
         assert!(file.starts_with("-----BEGIN PGP PUBLIC KEY BLOCK-----"), "public only: {file}");
-        // Brought again, by an Autocrypt header or a lookup: with yours, never with others'.
+        // Brought again by an Autocrypt header: refused, never with others'
+        // (whoever sends your own key back cannot add to it: F1); by a
+        // lookup: merged with yours, nothing it names added.
         let header = autocrypt_header(&on_card, "me@example.org").unwrap();
-        let again = autocrypt_key(&header, "me@example.org").unwrap();
-        assert!(store_at(&root, again.strip_secret_key_material()).unwrap().own);
+        assert!(learn_autocrypt_at(&root, &header, "me@example.org").is_none());
+        assert!(learn_at(&root, &on_card.armored().to_vec().unwrap(), "me@example.org").iter().all(|k| k.own));
         assert!(!root.join("others").join(&name).exists());
         // Someone else's goes with others'.
         let jane = key("jane@example.org").strip_secret_key_material();
         assert!(!store_at(&root, jane).unwrap().own);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, P8 (F8): a message whose sender used
+    /// protected headers ("..." outside, the real subject inside), opened as
+    /// Sioul opened such a message before, then sealed again: its real subject
+    /// stays inside, and opens again with the rest.
+    #[test]
+    fn a_sealed_copy_keeps_the_protected_headers_inside() {
+        let me = key("me@example.org");
+        let inner = "Content-Type: multipart/mixed; boundary=\"b\"; protected-headers=\"v1\"\r\nSubject: Lease renewal for flat 4B\r\nFrom: Jane <jane@example.org>\r\nTo: Me <me@example.org>\r\nMessage-ID: <ph@example.org>\r\n\r\n--b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe renewal.\r\n--b--\r\n";
+        let outer = "From: Jane <jane@example.org>\r\nTo: Me <me@example.org>\r\nSubject: ...\r\nMessage-ID: <ph@example.org>\r\n";
+        let received = format!(
+            "{outer}MIME-Version: 1.0\r\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"o\"\r\n\r\n--o\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\r\n--o\r\nContent-Type: application/octet-stream\r\n\r\n{}\r\n--o--\r\n",
+            encrypt(inner.as_bytes(), &[&me], None).unwrap()
+        );
+        let keys = Keys { own: vec![me.clone()], ..Keys::default() };
+        let sessions = SessionKeys::new();
+        let passphrase = |_: &Fingerprint| Some("secret words".to_string());
+        let copy = open(received.as_bytes(), &keys, &Unlock::new(&passphrase, &sessions)).unwrap().0.unwrap();
+        assert!(looks_opened(&copy), "as Sioul wrote it before");
+        let sealed = seal_message(&copy, &[&me]).unwrap();
+        let head = String::from_utf8_lossy(&sealed[..header_end(&sealed)]).to_string();
+        assert!(!head.contains("Lease renewal") && head.contains("Subject: ..."), "{head}");
+        let again = open(&sealed, &keys, &Unlock::new(&passphrase, &sessions)).unwrap().0.unwrap();
+        assert!(String::from_utf8_lossy(&again).contains("Subject: Lease renewal for flat 4B"));
+        // An expired encryption key of yours, not revoked, still takes a seal for you alone (F19).
+        let late = CertBuilder::general_purpose(Some("Me <late@example.org>")).set_cipher_suite(CipherSuite::Cv25519).set_creation_time(std::time::SystemTime::now() - std::time::Duration::from_secs(400 * 24 * 3600)).set_validity_period(std::time::Duration::from_secs(365 * 24 * 3600)).generate().unwrap().0;
+        assert!(encrypt(b"x", &[&late], None).is_err(), "nobody encrypts to it");
+        assert!(seal_message(&copy, &[&late]).is_ok());
+        assert_eq!(Keys { own: vec![late], ..Keys::default() }.own_certs().len(), 1);
+    }
+
+    /// A header carrying every packet of `cert`, as anyone may write one.
+    fn header_of(cert: &Cert, addr: &str) -> String {
+        let mut bytes = Vec::new();
+        cert.serialize(&mut bytes).unwrap();
+        format!("addr={addr}; keydata={}", crate::lines::base64_encode(&bytes))
+    }
+
+    /// Review of 19 October 2026, P1 (F1): a sender whose domain vouches for
+    /// him sends, in his Autocrypt header, your own primary key with two user
+    /// IDs bound by nothing, his and Jane's. It was kept as yours: Jane's
+    /// address became yours, and a message to her went to you alone, on every
+    /// device through your security key's shared file. Now refused: your
+    /// certificate gains nothing, your addresses are your accounts', Jane's
+    /// key stays hers.
+    #[test]
+    fn an_autocrypt_header_never_makes_another_address_yours() {
+        let root = temporary().join("pgp-p1");
+        let _ = std::fs::remove_dir_all(&root);
+        let me = card_key("me@example.org", None);
+        store_in(&root, me.clone().strip_secret_key_material(), true).unwrap();
+        let jane = key("jane@example.org");
+        assert!(learn_autocrypt_at(&root, &autocrypt_header(&jane, "jane@example.org").unwrap(), "jane@example.org").is_some());
+        let load = || Keys { addresses: vec!["me@example.org".into()], ..Keys::load_at(&root) };
+        assert_eq!(load().for_address("jane@example.org").map(Cert::fingerprint), Some(jane.fingerprint()));
+        let forged = Cert::from_packets(vec![openpgp::Packet::from(me.primary_key().key().clone()), openpgp::packet::UserID::from("Mallory <mallory@example.net>").into(), openpgp::packet::UserID::from("Jane <jane@example.org>").into()].into_iter()).unwrap();
+        assert!(!names(&forged, "jane@example.org") && !names(&forged, "mallory@example.net"), "unbound user IDs name nothing");
+        assert!(learn_autocrypt_at(&root, &header_of(&forged, "mallory@example.net"), "mallory@example.net").is_none());
+        let keys = load();
+        assert!(!keys.is_own_address("jane@example.org"));
+        assert!(keys.is_own_address("me@example.org"));
+        assert_eq!(keys.for_address("jane@example.org").map(Cert::fingerprint), Some(jane.fingerprint()));
+        assert_eq!(keys.own.iter().find(|c| c.fingerprint() == me.fingerprint()).unwrap().userids().count(), 1, "nothing added to yours");
+        // A message to Jane: her key opens it.
+        let sealed = encrypt(b"Hello Jane.", &[keys.for_address("jane@example.org").unwrap()], None).unwrap();
+        let sessions = SessionKeys::new();
+        let passphrase = |_: &Fingerprint| Some("secret words".to_string());
+        assert!(decrypt(sealed.as_bytes(), &Keys { own: vec![jane.clone()], ..Keys::default() }, &Unlock::new(&passphrase, &sessions)).is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, P2 (F2): a verified sender's own key with a
+    /// user ID of Jane's he signed himself, in his own header: kept for his
+    /// address alone, never Jane's key, whatever order the folder lists keys
+    /// in. Two keys of Jane's: the newer. A lookup keeps the user ID asked for
+    /// alone; one of yours that it brings gains no user ID.
+    #[test]
+    fn a_senders_key_naming_janes_address_never_becomes_janes() {
+        let root = temporary().join("pgp-p2");
+        let _ = std::fs::remove_dir_all(&root);
+        let mallory = CertBuilder::new().add_userid("Mallory <mallory@example.net>").add_userid("Jane <jane@example.org>").set_cipher_suite(CipherSuite::Cv25519).add_transport_encryption_subkey().generate().unwrap().0;
+        assert!(names(&mallory, "jane@example.org"), "bound by Mallory himself");
+        let kept = learn_autocrypt_at(&root, &header_of(&mallory, "mallory@example.net"), "mallory@example.net").unwrap();
+        assert_eq!(kept.names, vec!["Mallory <mallory@example.net>".to_string()]);
+        let keys = Keys::load_at(&root);
+        assert!(keys.for_address("jane@example.org").is_none(), "Jane's key unknown: none, never Mallory's");
+        assert_eq!(keys.for_address("mallory@example.net").map(Cert::fingerprint), Some(mallory.fingerprint()));
+        // Jane's key, an older one and her new one: the new one, whichever file comes first.
+        let year = std::time::Duration::from_secs(365 * 24 * 3600);
+        let old = CertBuilder::general_purpose(Some("Jane <jane@example.org>")).set_cipher_suite(CipherSuite::Cv25519).set_creation_time(std::time::SystemTime::now() - year).generate().unwrap().0;
+        let new = key("jane@example.org");
+        for jane in [&new, &old] {
+            assert!(learn_autocrypt_at(&root, &autocrypt_header(jane, "jane@example.org").unwrap(), "jane@example.org").is_some());
+        }
+        assert_eq!(Keys::load_at(&root).for_address("jane@example.org").map(Cert::fingerprint), Some(new.fingerprint()));
+        // A lookup for Bob keeps Bob's user ID alone.
+        let bob = CertBuilder::new().add_userid("Bob <bob@example.org>").add_userid("Robert <robert@example.net>").set_cipher_suite(CipherSuite::Cv25519).add_transport_encryption_subkey().generate().unwrap().0;
+        let found = learn_at(&root, &bob.armored().to_vec().unwrap(), "bob@example.org");
+        assert_eq!(found.iter().map(|k| k.names.clone()).collect::<Vec<_>>(), vec![vec!["Bob <bob@example.org>".to_string()]]);
+        assert!(Keys::load_at(&root).for_address("robert@example.net").is_none());
+        // One of yours, a user ID of yours added elsewhere: a lookup for that
+        // address merges what your primary binds, adds no user ID.
+        let me = key("me@example.org");
+        store_at(&root, me.clone()).unwrap();
+        let mut signer = me.primary_key().key().clone().parts_into_secret().unwrap().decrypt_secret(&Password::from("secret words")).unwrap().into_keypair().unwrap();
+        let other = openpgp::packet::UserID::from("Me <other@example.net>");
+        let binding = other.bind(&mut signer, &me, openpgp::packet::signature::SignatureBuilder::new(openpgp::types::SignatureType::PositiveCertification)).unwrap();
+        let more = me.clone().insert_packets(vec![openpgp::Packet::from(other), binding.into()]).unwrap().0.strip_secret_key_material();
+        assert!(learn_at(&root, &more.armored().to_vec().unwrap(), "other@example.net").iter().all(|k| k.own));
+        let mine = Keys::load_at(&root).own.into_iter().find(|c| c.fingerprint() == me.fingerprint()).unwrap();
+        assert_eq!(mine.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect::<Vec<_>>(), vec!["Someone <me@example.org>".to_string()]);
         let _ = std::fs::remove_dir_all(&root);
     }
 

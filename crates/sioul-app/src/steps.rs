@@ -413,6 +413,11 @@ fn step(reason: &str) -> serde_json::Value {
     // the spam filter's table, the next step's. Waited for before the answer,
     // with the mail; never by a dose's alarm.
     let wanted = std::thread::spawn(crate::share::fetch_wanted_here);
+    // The copies beside drafts that hold an encrypted message's text in
+    // clear, and their earlier versions, encrypted again, after this step's
+    // exchange and beside the mail: never on a dose's alarm (review of 19
+    // October 2026, F9). Waited for before the answer, as the mail is.
+    let look = std::thread::spawn(crate::crypto::seal_clear_drafts);
     // The calls' table as your devices' news left it, and the notification's words for them.
     let calls = calls.unwrap_or_else(|| crate::calls::step(false));
     // 2. Do-not-disturb: Sioul's own process asked when what it should ask changed.
@@ -435,7 +440,7 @@ fn step(reason: &str) -> serde_json::Value {
     // paper on a slow line goes on without holding the step (asked again
     // later if it is cut).
     let until = std::time::Instant::now() + std::time::Duration::from_secs(25);
-    while !wanted.is_finished() && std::time::Instant::now() < until {
+    while !(wanted.is_finished() && look.is_finished()) && std::time::Instant::now() < until {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     // Whether the phone keeps close, read again now that this step's pull brought
