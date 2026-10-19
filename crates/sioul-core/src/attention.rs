@@ -1187,6 +1187,37 @@ impl Attention {
         }
     }
 
+    /// What holds an event now, for a line that says why it waits (the
+    /// phone's log, `appnotes::cause`): the time's columns when they hold it
+    /// (two times open together hold it only together, so both are said),
+    /// then each layer that holds it by itself, as `silence` reads a layer
+    /// alone. What its source is for is left aside (`Step::Area` says it).
+    /// Empty when the matrix lets it come now, or when it only waits for a
+    /// gathered time.
+    pub fn holding(&self, event: &Event, now: &Now) -> Vec<Column> {
+        let event = Event { area: None, ..event.clone() };
+        let holds = |moment: &Now| self.decide(&event, moment).level >= Level::Later;
+        let mut columns = Vec::new();
+        if holds(&Now { slot: false, dnd: false, ..now.clone() }) {
+            columns.extend(now.times.iter().copied());
+        }
+        for (on, layer) in [(now.slot, Column::Slot), (now.dnd, Column::Dnd)] {
+            if on && holds(&Now { times: Vec::new(), slot: layer == Column::Slot, dnd: layer == Column::Dnd, nothing: false, ..now.clone() }) {
+                columns.push(layer);
+            }
+        }
+        columns
+    }
+
+    /// The first of these sources' own rows (the most precise first) with a
+    /// cell set at a column read now (the time's, each layer that holds):
+    /// the row that decides the event now, when one does (`Step::Chosen`).
+    pub fn chosen_source<'a>(&self, ids: &'a [String], now: &Now) -> Option<&'a str> {
+        let mut read: Vec<Column> = now.times.clone();
+        read.extend([(now.slot, Column::Slot), (now.dnd, Column::Dnd)].into_iter().filter(|(on, _)| *on).map(|(_, c)| c));
+        ids.iter().find(|id| self.source(id).is_some_and(|cells| read.iter().any(|c| cells[c.index()] != Level::As))).map(String::as_str)
+    }
+
     /// A message as the Porch judged it, now: its sender's row as the Porch
     /// weighs it (set aside or unproven, a stranger's), Always through when
     /// the list holds its proven address, what the address it came to is for.

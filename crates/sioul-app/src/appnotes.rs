@@ -16,14 +16,16 @@
 //! computer, nothing of it runs: the listener is the phone's.
 
 use crate::backend::{load_config, tr};
+use crate::everywhere::Gated;
 use jiff::Zoned;
 use serde_json::{Value, json};
-use sioul_core::appnotes::{self, AppKind, Ask, Choices, Decision, Gate, Kind, Ledger, Live, Posted, Sender, Through, Why};
+use sioul_core::appnotes::{self, AppKind, Ask, Cause, Choices, Decision, Gate, Gathering, Kind, Ledger, Live, Own, Posted, Sender, Through, Why};
 use sioul_core::areas::Area;
+use sioul_core::attention::Column;
 use sioul_core::config::Config;
 use sioul_core::everywhere::People;
 use sioul_core::porch::{By, Senders};
-use sioul_core::reach::{Clock, Who};
+use sioul_core::reach::{Channel, Clock, Who};
 use std::ffi::c_char;
 use std::path::Path;
 use std::sync::Mutex;
@@ -133,9 +135,10 @@ fn area_of(posted: &Posted, kind: &Kind, choices: &Choices, config: &Config) -> 
 }
 
 /// Do-not-disturb's switch or a focus session, holding now: when it ends,
-/// when that is known (a layer of the matrix).
-fn gate() -> Option<Option<i64>> {
-    crate::everywhere::gate()
+/// when that is known (a layer of the matrix), and which of them holds (for
+/// the log).
+fn gate() -> Option<Gated> {
+    crate::everywhere::gated()
 }
 
 /// One notification decided (`AppNotes.decide`): {"hold": milliseconds (0:
@@ -172,7 +175,7 @@ fn decide(json: &str) -> String {
         _ => String::new(),
     };
     let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
-    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources };
     let hash = appnotes::key_hash(&posted.key);
     // A conversation you answered from a computer in the last twenty minutes, or a number
     // texted from one, by the SMS app: at once, but in a pause (`replies`).
@@ -185,7 +188,7 @@ fn decide(json: &str) -> String {
             _ => false,
         };
     let path = Ledger::default_path();
-    let (decision, released) = sioul_core::filelock::with_lock(&path, || {
+    let (decision, released, returning) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let returning = ledger.returning(&hash, stamp);
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
@@ -219,7 +222,7 @@ fn decide(json: &str) -> String {
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        (decision, released)
+        (decision, released, returning)
     });
     // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`);
     // a reply from a computer handed lately, looked for in it as shown (`replies`).
@@ -227,7 +230,12 @@ fn decide(json: &str) -> String {
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
     let mut answer = json!({ "hold": hold, "why": decision.why.id(), "shared": shared });
     if let Some(counted) = released {
-        answer["line"] = json!(log_line("release", &counted, &columns_now(&live, &now, slot(&now), gate.is_some()), &now));
+        let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
+        answer["line"] = json!(log_line("release", &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now));
+    } else if decision.until.is_some() {
+        // Held: a line of its own, with what decided it (`appnotes::cause`).
+        let cause = appnotes::cause(&posted.package, &kind, who, admitted, &choices, &ask);
+        answer["line"] = json!(hold_line(if returning { "held again" } else { "held" }, kind_word(&kind), &decision, cause.as_ref(), gate.as_ref(), &now));
     }
     answer.to_string()
 }
@@ -267,7 +275,7 @@ fn review(json: &str) -> String {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
-            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources };
             let mut decided = appnotes::again(&held, &choices, &ask);
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
@@ -288,7 +296,8 @@ fn review(json: &str) -> String {
         (again, counted)
     });
     let event = if reason.is_empty() { "review".to_string() } else { format!("review ({reason})") };
-    let line = log_line(&event, &counted, &columns_now(&live, &now, slot(&now), gate.is_some()), &now);
+    let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
+    let line = log_line(&event, &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now);
     json!({ "snooze": again, "line": line }).to_string()
 }
 
@@ -327,26 +336,109 @@ fn kind_of(held: &appnotes::Held) -> &'static str {
 /// What reaches you now, as the matrix reads it: the time's column (or two,
 /// work and admin at once), then its layers, a slot of time for you and
 /// do-not-disturb (its switch or a focus session).
-fn columns_now(live: &Live, now: &Zoned, slot: bool, dnd: bool) -> Vec<&'static str> {
-    use sioul_core::attention::Column;
+fn columns_now(live: &Live, now: &Zoned, slot: bool, dnd: bool) -> Vec<Column> {
     let moment = sioul_core::attention::Now::of(&live.clock.mode(now)).layers(slot, dnd);
-    let mut columns: Vec<&'static str> = moment.times.iter().map(|c| c.id()).collect();
+    let mut columns = moment.times.clone();
     if moment.slot {
-        columns.push(Column::Slot.id());
+        columns.push(Column::Slot);
     }
     if moment.dnd {
-        columns.push(Column::Dnd.id());
+        columns.push(Column::Dnd);
     }
     columns
+}
+
+/// The matrix's columns as the log says them: their ids ("leisure", "slot"),
+/// Free time's "Nothing at all" when it holds ("free (nothing at all)"), and
+/// do-not-disturb with what holds it ("dnd (focus session)", "dnd (switch)").
+fn column_words(columns: &[Column], nothing: bool, gated: Option<&Gated>) -> Vec<String> {
+    columns
+        .iter()
+        .map(|column| match column {
+            Column::Free if nothing => "free (nothing at all)".to_string(),
+            Column::Dnd => match gated {
+                Some(Gated { focus: true, switch: true, .. }) => "dnd (switch and focus session)".to_string(),
+                Some(Gated { focus: true, .. }) => "dnd (focus session)".to_string(),
+                Some(Gated { switch: true, .. }) => "dnd (switch)".to_string(),
+                _ => column.id().to_string(),
+            },
+            _ => column.id().to_string(),
+        })
+        .collect()
+}
+
+/// A time as the log says it: "22:00" today, "tomorrow 07:00", else "2026-10-20 09:00".
+fn at_words(at: i64, now: &Zoned) -> String {
+    match jiff::Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone())) {
+        Err(_) => "an unknown time".to_string(),
+        Ok(at) if at.date() == now.date() => at.strftime("%H:%M").to_string(),
+        Ok(at) if now.date().tomorrow().is_ok_and(|tomorrow| tomorrow == at.date()) => at.strftime("tomorrow %H:%M").to_string(),
+        Ok(at) => at.strftime("%Y-%m-%d %H:%M").to_string(),
+    }
+}
+
+/// The kind of channel a notification came on, as the log says it (`kind_of`).
+fn kind_word(kind: &Kind) -> &'static str {
+    match kind {
+        Kind::People(talk) => match talk.via {
+            Channel::Calls => "calls",
+            Channel::Messages => "messages",
+            Channel::Mail => "mail",
+        },
+        _ => "other apps",
+    }
+}
+
+/// The listener's line at a hold (docs/android.md, "In the phone's log"):
+/// the kind of its channel, until when it waits, or for good, and what
+/// decided it (`appnotes::cause`): its conversation's or its app's own row,
+/// a gathering and what gathers it, what it is for, the columns of the
+/// matrix that hold it now (do-not-disturb with what holds it). "Notes:
+/// held: messages 1 until 10:50; why: dnd (focus session)." Held again on
+/// its return at its time: "held again". Never a name, a number, an app nor
+/// who wrote.
+fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>, gated: Option<&Gated>, now: &Zoned) -> String {
+    let until = match decision.until {
+        _ if decision.why == Why::Never => "for good".to_string(),
+        Some(until) => format!("until {}", at_words(until, now)),
+        None => "until now".to_string(),
+    };
+    let mut why: Vec<String> = Vec::new();
+    if let Some(cause) = cause {
+        if cause.for_good {
+            why.push("never".into());
+        }
+        match cause.own {
+            Some(Own::Conversation) => why.push("its conversation's row".into()),
+            Some(Own::App) => why.push("its app's row".into()),
+            None => {}
+        }
+        match cause.gathered {
+            Some(Gathering::Automaton) => why.push("gathered".into()),
+            Some(Gathering::App) => why.push("gathered (its app)".into()),
+            Some(Gathering::Conversation) => why.push("gathered (its conversation)".into()),
+            Some(Gathering::Named) => why.push("gathered (a sender named only)".into()),
+            None => {}
+        }
+        if let Some(area) = cause.area {
+            why.push(format!("area ({})", area.id()));
+        }
+        if !cause.columns.is_empty() {
+            why.push(column_words(&cause.columns, cause.nothing, gated).join(" + "));
+        }
+    }
+    let why = if why.is_empty() { "unknown".to_string() } else { why.join(", ") };
+    format!("Notes: {event}: {kind} 1 {until}; why: {why}.")
 }
 
 /// The listener's line in the phone's log (`adb logcat -s sioul`), at each
 /// review of what is held and at each release (docs/android.md,
 /// "Notifications from other apps"): how many notifications are held, and how
 /// many come now, by the kind of their channel; why, the matrix's column now
-/// and its layers ("leisure + dnd"), or Always through when that let one come;
-/// when the next one comes back. Never a name, a number, an app nor a word of
-/// a message: kinds, counts and times only.
+/// and its layers ("leisure + dnd (switch)"), or Always through when that let
+/// one come; when the next one comes back. Never a name, a number, an app nor
+/// a word of a message: kinds, counts and times only. At each hold, a line of
+/// its own (`hold_line`).
 fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
     let (released, held): (Vec<&Counted>, Vec<&Counted>) = counted.iter().partition(|c| c.until.is_none_or(|until| until <= stamp));
@@ -364,13 +456,7 @@ fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> 
         columns.join(" + ")
     };
     // Held for good (the blocked, a conversation set to never) comes back at no time of the matrix's.
-    let next = held.iter().filter(|c| c.why != Why::Never).filter_map(|c| c.until).min();
-    let next = match next.and_then(|at| jiff::Timestamp::from_second(at).ok()).map(|t| t.to_zoned(now.time_zone().clone())) {
-        None => "none".to_string(),
-        Some(at) if at.date() == now.date() => at.strftime("%H:%M").to_string(),
-        Some(at) if now.date().tomorrow().is_ok_and(|tomorrow| tomorrow == at.date()) => at.strftime("tomorrow %H:%M").to_string(),
-        Some(at) => at.strftime("%Y-%m-%d %H:%M").to_string(),
-    };
+    let next = held.iter().filter(|c| c.why != Why::Never).filter_map(|c| c.until).min().filter(|at| jiff::Timestamp::from_second(*at).is_ok()).map_or_else(|| "none".to_string(), |at| at_words(at, now));
     format!("Notes: {event}: held {}; released {}; why: {why}; next release {next}.", by_kind(&held), by_kind(&released))
 }
 
@@ -763,6 +849,69 @@ mod tests {
             for private in ["org.example", "Noa", "Courrier", "01 99 00", "Actualités", "Bloqué", "c0ffee", "safe", "neutral", "stranger", "blocked"] {
                 assert!(!line.contains(private), "{line} says {private}");
             }
+        }
+        // Do-not-disturb with what holds it, Free time's "Nothing at all".
+        let switch = Gated { until: None, focus: false, switch: true };
+        let columns = column_words(&[Column::Free, Column::Dnd], true, Some(&switch));
+        assert_eq!(columns, ["free (nothing at all)", "dnd (switch)"]);
+        assert_eq!(column_words(&[Column::Leisure, Column::Dnd], true, None), ["leisure", "dnd"], "nothing at all says nothing outside Free time");
+    }
+
+    /// The listener's line at each hold (decision 2 of the overrides, 18
+    /// October 2026): the kind of its channel, until when it waits or for
+    /// good, and what decided it, never who: the proposal's case (a
+    /// contact's text at work held by a focus session), the switch and both,
+    /// a text named only, an automaton in the night, an app's and a
+    /// conversation's own rows, what it is for, held for good, held again.
+    /// Then a real hold, decided and said: no name, number, app, conversation
+    /// nor list in it, whatever the notification said.
+    #[test]
+    fn the_hold_line_says_what_decided_it_and_names_no_one() {
+        let now: Zoned = "2026-10-14T10:20:00+02:00[Europe/Paris]".parse().unwrap();
+        let stamp = now.timestamp().as_second();
+        let focus = Gated { until: Some(stamp + 30 * 60), focus: true, switch: false };
+        let both = Gated { until: None, focus: true, switch: true };
+        let line = |event: &str, kind: &str, until: Option<i64>, why: Why, cause: Cause, gated: Option<&Gated>| hold_line(event, kind, &Decision { until, why }, Some(&cause), gated, &now);
+        let columns = |columns: &[Column]| Cause { columns: columns.to_vec(), ..Cause::default() };
+        let in_minutes = |m: i64| Some(stamp + m * 60);
+        assert_eq!(line("held", "messages", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&focus)), "Notes: held: messages 1 until 10:50; why: dnd (focus session).");
+        assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and focus session).");
+        assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Named), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a sender named only).");
+        assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
+        assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::App), columns: vec![Column::Work, Column::Admin], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its app's row, work + admin.");
+        assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Conversation), gathered: None, columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its conversation's row, work.");
+        assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Conversation), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (its conversation).");
+        assert_eq!(line("held", "other apps", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::App), ..Cause::default() }, None), "Notes: held: other apps 1 until 12:00; why: gathered (its app).");
+        assert_eq!(line("held", "mail", in_minutes(400), Why::Waiting, Cause { area: Some(Area::LEISURE), ..Cause::default() }, None), "Notes: held: mail 1 until 17:00; why: area (leisure).");
+        assert_eq!(line("held", "messages", Some(stamp + 7 * 86_400), Why::Never, Cause { for_good: true, ..Cause::default() }, None), "Notes: held: messages 1 for good; why: never.");
+        assert_eq!(line("held again", "messages", Some(stamp + 3 * 86_400), Why::Waiting, columns(&[Column::Pause]), None), "Notes: held again: messages 1 until 2026-10-17 10:20; why: pause.");
+        assert_eq!(hold_line("held", "messages", &Decision { until: in_minutes(5), why: Why::Waiting }, None, None, &now), "Notes: held: messages 1 until 10:25; why: unknown.");
+        // A real one: a contact's text at work, held by a focus session, decided and said as the listener does.
+        struct Work;
+        impl appnotes::TimeSource for Work {
+            fn mode(&self, _: &Zoned) -> sioul_core::quiet::Mode {
+                let week = sioul_core::areas::Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+                sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week, reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() }
+            }
+            fn starts(&self, _: &Zoned, _: &Zoned) -> Vec<Zoned> {
+                Vec::new()
+            }
+        }
+        let posted: Posted = serde_json::from_str(r#"{"key":"0|org.example.chat|7|c0ffee12|10100","package":"org.example.chat","app":"Chat de Noa","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa Martin","shortcut":"c0ffee12","messages":[{"sender":{"name":"Noa Martin","uri":"tel:%2B33199001234"},"text":"Tu passes ce soir ?"}]}"#).unwrap();
+        let choices = Choices::default();
+        let kind = appnotes::classify(&posted, &choices, sioul_core::words::Words::builtin_ref());
+        let attention = sioul_core::attention::Attention::usual();
+        let gathered = vec!["09:00".to_string(), "12:00".into(), "15:00".into(), "18:00".into()];
+        let never = |_: &Zoned| false;
+        let sources = sioul_core::attention::source_rows(&posted.package, "");
+        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources };
+        let decision = appnotes::decide(&kind, Some(Who::Neutral), false, &choices, &ask);
+        assert_eq!(decision.until, focus.until, "held until the session's end");
+        let cause = appnotes::cause(&posted.package, &kind, Some(Who::Neutral), false, &choices, &ask);
+        let said = hold_line("held", kind_word(&kind), &decision, cause.as_ref(), Some(&focus), &now);
+        assert_eq!(said, "Notes: held: messages 1 until 10:50; why: dnd (focus session).");
+        for private in ["org.example", "Noa", "Martin", "01 99 00", "+33", "Chat", "c0ffee", "ce soir", "safe", "neutral", "stranger", "blocked", "restricted"] {
+            assert!(!said.contains(private), "{said} says {private}");
         }
     }
 

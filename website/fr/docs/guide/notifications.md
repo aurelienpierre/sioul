@@ -79,7 +79,7 @@ Comme Sioul le fait maintenant, sauf si vous le changez :
 |---|---|---|---|
 | **Travail** | les courriels et les messages de tout le monde ; les appels de vos contacts sûrs, neutres et restreints et des numéros masqués ; vos rappels, prises, codes ; les avis de Santé, la pause pour bouger ; un site en temps réel | | les appels des inconnus vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
 | **Démarches** | les courriels et les messages de tous sauf vos contacts restreints ; les appels de vos contacts sûrs et neutres et des numéros masqués ; rappels, prises, codes, avis de Santé ; « Les heures de travail sont finies » | | les courriels et les messages de vos contacts restreints, jusqu’à un moment de travail ; les appels de vos contacts restreints et des inconnus vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
-| **Loisirs** | les courriels, les appels et les messages de vos expéditeurs sûrs ; rappels, prises, codes, avis de Santé | | les courriels et les messages de tous les autres, jusqu’à un moment de travail ou de démarches ; leurs appels vont sur la messagerie, listés alors ; ce qui est pour le travail |
+| **Loisirs** | les courriels de vos expéditeurs sûrs ; les appels et les messages de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé | | les courriels de tous les autres, et les messages de vos contacts restreints, des inconnus et des groupes, jusqu’à un moment de travail ou de démarches ; les appels de vos contacts restreints, des inconnus et des numéros masqués vont sur la messagerie, listés alors ; ce qui est pour le travail |
 | **Repas** | comme les loisirs | | comme les loisirs |
 | **Sommeil** | les prises ; les codes ; les alarmes d’un événement et le rappel de Sioul avant lui quand l’événement est dans la nuit ; le réveil | les courriels de vos expéditeurs sûrs | les messages et les appels, sauf ceux des personnes qui passent toujours ; les dates, jusqu’à votre réveil ; les avis de Santé ne viennent pas |
 | **En pause** | les prises ; les codes ; les alarmes d’un événement et le rappel de Sioul avant lui ; les appels et les messages des personnes qui passent toujours | les courriels de vos expéditeurs sûrs et des personnes qui passent toujours | tout le reste, jusqu’à votre retour ; après elle, le Porche se repose jusqu’à vos prochaines heures de démarches |
@@ -128,7 +128,7 @@ Comme Sioul le fait maintenant :
 |---|---|---|---|---|---|---|---|---|---|
 | Passent toujours | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Sûrs | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutres | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+| Neutres | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Inconnus | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Numéros masqués | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |

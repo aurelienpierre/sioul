@@ -203,10 +203,25 @@ pub(crate) fn holds_others() -> bool {
 /// of the matrix of what reaches you): when it ends, when that is known
 /// (none: until turned off, or a session open-ended); none otherwise.
 pub(crate) fn gate() -> Option<Option<i64>> {
+    gated().map(|g| g.until)
+}
+
+/// Do-not-disturb holding from its switch or a focus session (`gated`):
+/// when it ends, when that is known, and which of the two holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Gated {
+    pub(crate) until: Option<i64>,
+    pub(crate) focus: bool,
+    pub(crate) switch: bool,
+}
+
+/// The same as `gate`, with which of them holds: for the listener's line in
+/// the phone's log ("dnd (focus session)").
+pub(crate) fn gated() -> Option<Gated> {
     let state = now();
     let gates: Vec<&sioul_core::everywhere::Held> = state.holds.iter().filter(|h| matches!(h.why, Why::Focus | Why::Manual)).collect();
     let until = if gates.iter().any(|h| h.until.is_none()) { None } else { gates.iter().filter_map(|h| h.until).max() };
-    (!gates.is_empty()).then_some(until)
+    (!gates.is_empty()).then_some(Gated { until, focus: gates.iter().any(|h| h.why == Why::Focus), switch: gates.iter().any(|h| h.why == Why::Manual) })
 }
 
 // ---------------------------------------------------------------- applying
