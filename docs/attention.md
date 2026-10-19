@@ -185,10 +185,10 @@ Each says only how it differs from **As Sioul does now** (`attention::Preset`):
 
 | Preset | Mail | Calls | Messages | Sioul's own |
 |---|---|---|---|---|
-| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral: ○ in admin, leisure and meals; hidden numbers: ○ in admin | neutral: ○ in leisure and meals; safe: ○ in Free time | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
-| **More reachable** (« Plus joignable ») | neutral: ● in leisure and meals; strangers: ◑ in leisure | hidden numbers: ● in leisure | as usual | automatons: ● in work and admin |
+| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral: ○ in admin, leisure and meals | neutral: ○ in leisure and meals; safe: ○ in Free time | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
+| **More reachable** (« Plus joignable ») | neutral: ● in leisure and meals; strangers: ◑ in leisure | as usual | as usual | automatons: ● in work and admin |
 
-Choosing one writes every row as it says (`apply_preset`), never a lock. The tab asks first when your own changes would give way, and says "Yours: 3 changes from As Sioul does now", one press from going back.
+Choosing one writes every row as it says (`apply_preset`), never a lock, and never the Calls rows of strangers and hidden numbers: those are the call screening's, apart, and the presets changed hidden numbers' calls until the review of 19 October 2026 (F2) took that out, so that no preset moves the screening ([android.md](android.md#calls)). The tab asks first when your own changes would give way, and says "Yours: 3 changes from As Sioul does now", one press from going back.
 
 ## 5. Two answers at once
 - Two times open together (work and admin): the less strict cell.
@@ -289,7 +289,7 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 25. **The holds outside the matrix** stay named holds, each said in its time's card.
 26. **French**: « type », never « sorte », for a kind.
 
-The decisions of 14 and 18 October 2026 (what reaches you: one control, the screening apart, gentler defaults, a person's own row), built in parts. **The call screening apart** (decisions 3 to 5): spam and numbers nobody knows are screened at all hours unless you choose its hours, never switched off by do-not-disturb or any state; numbers in no address book, automated callers (ARCEP's roots for machines), numbers that cannot be a caller's and failed verifications go to voicemail, hidden numbers as you had them, and a number you called in the last 14 days rings as your contacts do, never less than a number nobody knows; Expecting a call takes the place of Let every call through, for numbers nobody knows only; a screened caller is declined, as before ([android.md](android.md#calls)).
+The decisions of 14 and 18 October 2026 (what reaches you: one control, the screening apart, gentler defaults, a person's own row), built in parts. **The call screening apart** (decisions 3 to 5, and the decisions after the review of 19 October 2026): spam and numbers nobody knows are screened at all hours unless you choose its hours, never switched off by do-not-disturb or any state; numbers in no address book, automated callers (ARCEP's roots for machines), numbers that cannot be a caller's (089) and failed verifications go to voicemail, hidden numbers as you had them, and a number you called in the last 14 days rings as your contacts do; the spam kinds stay out at all hours, a second call too; whatever the screening lets ring by itself never rings where your contacts' row declines (do-not-disturb, the night, a pause), only Expecting a call opening beyond; Expecting a call takes the place of Let every call through, for numbers nobody knows only; a screened caller is declined, as before ([android.md](android.md#calls)). No preset nor any write of the matrix touches the Calls rows of strangers and hidden numbers, kept for the screening's first values.
 
 ## 11. What stays outside
 Which device tells (leases), what each platform can show (no codes or dates told on a phone yet), the words of each notification, the ledgers that tell each thing once. The model decides when; they decide where and how.

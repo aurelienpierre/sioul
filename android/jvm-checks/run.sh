@@ -19,7 +19,9 @@
 # - KeyCheck: Calls.key against phones::key, on the Rust test's own numbers;
 # - LogCheck: the log of calls screened (Calls.line, Calls.append), as Rust
 #   reads it; with SIOUL_CALLS_SAMPLE, its lines are written there for
-#   calls::tests::java_s_lines_read_here (tools/final-pass.sh does both);
+#   calls::tests::java_s_lines_read_here (tools/final-pass.sh does both); the
+#   numbers you called, kept 14 days at most and only while the call
+#   screening counts them (Calls.rememberCalled, Calls.calledAt);
 # - ModeCheck: Sioul's modes (PauseMode's policy from Rust's ask, which modes
 #   let a channel through), an event's own alarm (EventAlarms.isAlarm), a
 #   conversation's key against Rust's (AppNotes.talkKey), the conversations

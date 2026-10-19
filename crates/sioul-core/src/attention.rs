@@ -129,7 +129,9 @@ pub fn persons(channel: Channel) -> &'static [Person] {
 /// Whether a row is the call screening's (`screening`), apart from the
 /// matrix: numbers nobody knows and hidden numbers, on calls. Kept in the
 /// matrix for the screening's first values and for when a declined call is
-/// listed (`listed`), never shown in its grid nor said by its cards.
+/// listed (`listed`), never shown in its grid nor said by its cards. No
+/// preset nor any write of the matrix sets them, and no count of changes
+/// counts them (review of part 2, 19 October 2026, F2).
 pub fn screened(row: Row) -> bool {
     matches!(row, Row::People(Channel::Calls, Person::Stranger | Person::Hidden))
 }
@@ -802,9 +804,10 @@ impl Attention {
     }
 
     /// How many cells differ from another matrix's (a preset's); the
-    /// sources' own rows aside, which no preset sets.
+    /// sources' own rows aside, which no preset sets, and the call screening's
+    /// (`screened`).
     pub fn changes_from(&self, other: &Attention) -> usize {
-        Row::ALL.iter().flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        Row::ALL.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -1424,8 +1427,9 @@ pub struct Phone {
     pub screens: bool,
     /// While it screens calls, the call screening lets numbers nobody knows,
     /// or hidden ones, ring then (`screening::Screening::rings`): their calls
-    /// go through the mode too. The Calls rows of strangers and hidden
-    /// numbers are no part of it any more: the screening is apart.
+    /// go through the mode too, where your contacts may ring then (never
+    /// beyond them: review of part 2, F3). The Calls rows of strangers and
+    /// hidden numbers are no part of it any more: the screening is apart.
     pub unknown: bool,
 }
 
@@ -1448,8 +1452,9 @@ impl Attention {
         let passes = |channel: Channel, person: Person| self.person(channel, person, false, now) == Level::Now;
         let always = |channel: Channel| self.person(channel, Person::Always, true, now) == Level::Now;
         let senders = |channel: Channel, own: bool| {
-            // While this phone screens calls, numbers nobody knows are the screening's, apart from the matrix.
-            let strangers = if channel == Channel::Calls && own { phone.unknown } else { [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p)) };
+            // While this phone screens calls, numbers nobody knows are the screening's, apart from the matrix,
+            // and never ring where your contacts' row declines (review of part 2, F3).
+            let strangers = if channel == Channel::Calls && own { phone.unknown && passes(channel, Person::Neutral) } else { [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p)) };
             let known = [Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| passes(channel, *p));
             match (own, strangers, known || always(channel)) {
                 (true, true, _) => Senders::Anyone,
@@ -1522,7 +1527,6 @@ impl Preset {
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
                 (Row::People(Channel::Calls, Person::Neutral), &[Admin, Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
-                (Row::People(Channel::Calls, Person::Hidden), &[Admin], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
                 (Row::Own(Kind::Dates), &[Leisure, Meals], Later),
                 (Row::Own(Kind::SitesLive), &[Leisure, Meals], Later),
@@ -1531,7 +1535,6 @@ impl Preset {
                 (Row::People(Channel::Mail, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::People(Channel::Mail, Person::Stranger), &[Leisure], Quiet),
                 (Row::People(Channel::Calls, Person::Neutral), &[Leisure, Meals], Now),
-                (Row::People(Channel::Calls, Person::Hidden), &[Leisure], Now),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Now),
                 (Row::Own(Kind::AppAutomatons), &[Work, Admin], Now),
             ],
@@ -1879,6 +1882,9 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
         // The older grid of who may reach you: ticks across work…pause.
         let (channel, person) = rest.split_once('.').unwrap_or(("mail", rest));
         let row = Row::read(&format!("{channel}.{person}")).filter(|r| matches!(r, Row::People(_, p) if p.state())).ok_or_else(|| format!("{key}: no such row"))?;
+        if screened(row) {
+            return Err(screened_refusal(key));
+        }
         let ticked: Vec<Column> = words.iter().filter_map(|w| Column::read(w)).collect();
         for column in [Column::Work, Column::Admin, Column::Leisure, Column::Meals, Column::Sleep, Column::Pause] {
             let comes = matches!(attention.cell(row, column), Level::Now | Level::Quiet);
@@ -1906,6 +1912,9 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     }
     let rest = key.strip_prefix("attention.").or_else(|| key.strip_prefix("notify.")).ok_or_else(|| format!("{key}: no such row"))?;
     let row = Row::read(rest).ok_or_else(|| format!("{key}: no such row"))?;
+    if screened(row) {
+        return Err(screened_refusal(key));
+    }
     for text in words {
         let (column, level) = word(text).ok_or_else(|| format!("{key}: {text}: not understood"))?;
         attention.set(row, column, level)?;
@@ -1913,8 +1922,14 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     write(path, config, &attention, &[row])
 }
 
+/// The refusal said when a write would set one of the call screening's rows.
+fn screened_refusal(key: &str) -> String {
+    format!("{key}: the call screening's own (Settings ▸ This phone ▸ Calls ▸ Call screening: screening.unknown, screening.hidden)")
+}
+
 /// A preset chosen: every row written as it says (the usual taken out),
-/// under the configuration's lock, from the file as it is then.
+/// under the configuration's lock, from the file as it is then; the call
+/// screening's rows left as they are (`screened`).
 pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
@@ -1931,14 +1946,19 @@ fn write(path: &Path, config: &Config, attention: &Attention, rows: &[Row]) -> R
 
 /// `write`, with sources' own rows (`sources`, by id) written too, each as
 /// set or taken out when as usual everywhere; the other sources' rows stay.
+/// The call screening's rows are never set (`screened`): left as they are;
+/// the first time, written as the older keys seeded them, so that taking
+/// those keys out moves neither them nor the screening's first values.
 fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row], sources: &[String]) -> Result<(), String> {
     let usual = Attention::usual();
     let first = config.attention.is_none();
-    let rows: Vec<Row> = if first { Row::ALL.to_vec() } else { rows.to_vec() };
+    let now = Attention::of(config);
+    let rows: Vec<Row> = if first { Row::ALL.to_vec() } else { rows.iter().copied().filter(|r| !screened(*r)).collect() };
     let mut said: Vec<(String, Option<Vec<String>>)> = rows
         .iter()
         .filter(|r| !matches!(r, Row::People(_, Person::Blocked)))
         .map(|row| {
+            let attention = if screened(*row) { &now } else { attention };
             let same = Column::ALL.iter().all(|c| attention.cell(*row, *c) == usual.cell(*row, *c));
             (row.id(), (!same).then(|| attention.words(*row)))
         })
@@ -2778,6 +2798,47 @@ mod tests {
         assert!(own.shown && !own.told);
     }
 
+    /// F3 (review of part 2): while this phone screens calls, a mode lets
+    /// anyone's call through only where the call screening lets numbers
+    /// nobody knows ring and your contacts may ring then: never in a focus
+    /// session at work, nor at night, where the people you know wait.
+    #[test]
+    fn a_mode_lets_nobody_unknown_through_where_your_contacts_wait() {
+        let a = Attention::usual();
+        let unknown = Phone { screens: true, unknown: true };
+        assert_eq!(a.silence(&[Column::Work], false, unknown).calls, Senders::Anyone);
+        assert_eq!(a.silence(&[Column::Work, Column::Dnd], false, unknown).calls, Senders::Contacts);
+        assert_eq!(a.silence(&[Column::Dnd], false, unknown).calls, Senders::Contacts);
+        assert_ne!(a.silence(&[Column::Sleep], false, unknown).calls, Senders::Anyone);
+    }
+
+    /// F2 (review of part 2): the matrix's writes leave the call screening's
+    /// rows alone (calls.stranger, calls.hidden): no preset sets them, no count
+    /// of changes counts them, and setting one is refused, said.
+    #[test]
+    fn the_matrix_s_writes_leave_the_screening_s_rows_alone() {
+        let hidden = Row::People(Channel::Calls, Person::Hidden);
+        for preset in Preset::ALL {
+            for column in Column::ALL {
+                assert_eq!(preset.matrix().cell(hidden, column), Attention::usual().cell(hidden, column), "{preset:?} {column:?}");
+            }
+        }
+        let mut moved = Attention::usual();
+        moved.set(hidden, Column::Leisure, Level::Now).unwrap();
+        assert_eq!(moved.changes_from(&Attention::usual()), 0);
+        let dir = std::env::temp_dir().join(format!("sioul-attention-screened-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "").unwrap();
+        let words = SettingValue::Texts(vec!["leisure".into()]);
+        for key in ["attention.calls.hidden", "attention.calls.stranger", "reach.calls.stranger"] {
+            assert!(apply(&path, &Config::default(), key, &words).unwrap_err().contains("screening"), "{key}");
+        }
+        apply(&path, &Config::default(), "attention.calls.safe", &SettingValue::Texts(vec!["leisure".into()])).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn what_each_mode_lets_through() {
         let a = Attention::usual();
@@ -2821,9 +2882,11 @@ mod tests {
             }
         }
         // While this phone screens calls, numbers nobody knows are the call screening's, apart: anyone's call
-        // through the mode when it lets them ring (before: the Calls rows of strangers and hidden numbers).
+        // through the mode when it lets them ring and your contacts may ring then (before: the Calls rows of
+        // strangers and hidden numbers).
         let unknown = Phone { screens: true, unknown: true };
-        assert_eq!(a.silence(&[Column::Pause], false, unknown).calls, Senders::Anyone);
+        assert_eq!(a.silence(&[Column::Work], false, unknown).calls, Senders::Anyone);
+        assert_eq!(a.silence(&[Column::Pause], false, unknown).calls, Senders::Contacts, "never where your contacts wait");
         assert_eq!(a.silence(&[Column::Pause], false, phone).calls, Senders::Contacts);
         let mut loose = Attention::usual();
         loose.set(row("calls.stranger"), Column::Dnd, Level::Now).unwrap();
@@ -2916,8 +2979,9 @@ mod tests {
         apply(&path, &config, "reach.safe", &SettingValue::Texts(vec!["work".into(), "admin".into(), "sleep".into()])).unwrap();
         let a = Attention::of(&Config::load(&path).unwrap());
         assert_eq!((a.cell(row("mail.safe"), Column::Leisure), a.cell(row("mail.safe"), Column::Sleep)), (Level::Later, Level::Quiet));
-        apply(&path, &config, "reach.calls.stranger", &SettingValue::Texts(vec!["work".into()])).unwrap();
-        assert_eq!(Attention::of(&Config::load(&path).unwrap()).cell(row("calls.stranger"), Column::Work), Level::Now);
+        // The call screening's rows: never set from here (review of part 2, F2).
+        assert!(apply(&path, &config, "reach.calls.stranger", &SettingValue::Texts(vec!["work".into()])).is_err());
+        assert_eq!(Attention::of(&Config::load(&path).unwrap()).cell(row("calls.stranger"), Column::Work), Level::Later);
         // A preset: Quieter written whole.
         apply_preset(&path, &Config::load(&path).unwrap(), Preset::Quieter).unwrap();
         assert_eq!(Attention::of(&Config::load(&path).unwrap()), Preset::Quieter.matrix());

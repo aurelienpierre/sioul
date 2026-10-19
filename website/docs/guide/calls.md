@@ -1,5 +1,5 @@
 ---
-description: Calls on an Android phone with Sioul - who may ring, and when. A call from someone who may not reach you now is declined plainly and goes to your voicemail; what always rings; letting every call through when you expect one; who called, listed calmly on the Porch afterwards.
+description: Calls on an Android phone with Sioul - who may ring, and when. A call from someone who may not reach you now is declined plainly and goes to your voicemail; what always rings; the call screening, apart, for numbers nobody knows; Expecting a call; who called, listed calmly on the Porch afterwards.
 ---
 
 # Calls: who may ring, and when {#calls-who-may-ring-and-when}
@@ -11,7 +11,7 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 1. **Settings ▸ This phone** (on the phone) says what Sioul does with calls, what it never does, and what always rings.
 2. **Let Sioul screen calls**: Android asks "Set Sioul as your default caller ID & spam app?". Say yes. It gives Sioul no other permission. To stop later, **Android's default apps** on the same page, then "None".
 3. **Allow reading contacts**, if Android has not been asked yet: without it, Android rings your contacts' calls without asking Sioul, and Sioul screens the others only.
-4. **Who may call you, and when**: Settings ▸ What reaches you ▸ By person ▸ **Calls** ([What reaches you, and when](notifications.md#by-person)). Each row (your safe, neutral and restricted contacts, numbers not in your contacts, hidden numbers) rings at the times its row says, across work, admin, leisure, meals, sleep, the pause, Free time, and the two layers, time for you and do-not-disturb. The others go to voicemail.
+4. **Who may call you, and when**: Settings ▸ What reaches you ▸ By person ▸ **Calls** ([What reaches you, and when](notifications.md#by-person)). Each row of the people you know (your safe, neutral and restricted contacts) rings at the times its row says, across work, admin, leisure, meals, sleep, the pause, Free time, and the two layers, time for you and do-not-disturb. The others go to voicemail. Numbers not in your contacts and hidden numbers have left that grid: they are the call screening's, apart ([The call screening](#the-call-screening)).
 5. **The people who must always get through** (a carer, your doctor's office): put them on your Always through list, in What reaches you ▸ Exceptions, or from their card, **How … reaches you** ([A person's sheet](notifications.md#a-persons-sheet)). Their calls ring at any time, sleep and pauses included, unless you blocked them.
 6. **Where declined calls go**: **Check \*#67#** and **Check \*#61#** open the phone app with the code typed in; you press call. Most operators send declined calls to voicemail.
 
@@ -23,16 +23,27 @@ Android 9 lets no app screen calls, and Sioul cannot silence it either: that tak
 
 - Emergency numbers, and emergency services calling back (in France from 0 800 112 112, or the emergency number itself).
 - Every call for a day after you call an emergency number, if Android shows Sioul your outgoing call (this cannot be tried without calling one).
-- A second call from the same number within 15 minutes, unless you blocked it.
+- A second call from the same number within 15 minutes, unless you blocked it, or the call screening keeps it out whatever else (an automated caller, a number that cannot be a caller's, a number your network could not verify).
 - Your Always through people, unless you blocked them.
-- Every call while **Let every call through** is on, but the numbers you blocked.
 - Any call Sioul cannot decide in time.
 
-Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, its switch), the calls Sioul lets ring ring through it, your contacts' while this phone screens calls, and a second call within 15 minutes. Your own do-not-disturb, set in Android, lets through whom you set there ([What each system does](notifications.md#what-each-system-does)).
+Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, its switch), the calls Sioul lets ring ring through it, your contacts' while this phone screens calls, and a second call within 15 minutes. Numbers nobody knows never ring through it, unless you expect a call. Your own do-not-disturb, set in Android, lets through whom you set there ([What each system does](notifications.md#what-each-system-does)).
 
-## Let every call through {#let-every-call-through}
+## The call screening {#the-call-screening}
 
-When you expect a call. On Sioul's quiet notification on the phone, the one that says what now is for (its channel: "Devices in step"): **Let calls ring, 1 h**, or **Let calls ring** until you turn it off; **Screen calls again** ends it. In the window, the phone button in the status line, on any of your devices: a click lets every call ring for an hour; a right click, or a long press, chooses until when.
+Calls from numbers nobody knows (in none of your address books, Sioul's or the phone's) and from hidden numbers are the call screening's, apart from do-not-disturb: neither do-not-disturb nor any state of yours switches it off. On the phone, Settings ▸ This phone ▸ Calls ▸ **Call screening**:
+
+- **Screen calls from numbers nobody knows**: on, at all hours as usual. Off, such numbers ring when your contacts may.
+- **When**: at all hours, or only outside your work and admin hours.
+- **Numbers not in your contacts** and **Hidden numbers**: to your voicemail, ringing in your work and admin hours (a hospital's switchboard often calls from a hidden number), or ringing. Until you change one of the screening's settings, they follow what your Calls rows of numbers not in your contacts and hidden numbers said; the first setting you change fixes both, and no preset of What reaches you changes them.
+- **Automated callers** (since 2023, a machine may show only a number from the roots ARCEP keeps for machines), **numbers that cannot be a caller's** (France's numbering plan forbids numbers beginning 08 9 as a caller ID) and **numbers your network could not verify**: to your voicemail at all hours, a second call too, even while you expect a call; or each as other numbers nobody knows.
+- **Numbers you called in the last 14 days** ring as your contacts do, so that someone you called can call you back. The phone keeps the numbers you call for 14 days, and only while this is on.
+
+Whatever the screening lets ring never rings where your contacts wait: under do-not-disturb, at night, in a pause or in Free time, numbers nobody knows go to your voicemail too, unless you expect a call. The people you know ring as their rows say.
+
+## Expecting a call {#expecting-a-call}
+
+<span id="let-every-call-through"></span>When you expect a call from a number you may not know: a hospital, a delivery, someone calling you back. Numbers nobody knows, hidden numbers and numbers you called lately then ring, even where your contacts wait; your blocked numbers, automated callers, numbers that cannot be a caller's and numbers your network could not verify stay out. The people you know still ring as their rows say: until 19 October 2026 this was **Let every call through**, which let every call ring, the people you know at night included; it no longer does. On Sioul's quiet notification on the phone, the one that says what now is for (its channel: "Devices in step"): **Expecting a call, 1 h**, or **Expecting a call** until you turn it off; **Screen calls again** ends it. In the window, the phone button in the status line, on any of your devices: a click, for an hour; a right click, or a long press, chooses until when.
 
 ## Afterwards, on the Porch {#afterwards-on-the-porch}
 

@@ -18,7 +18,10 @@ import org.json.JSONObject;
  * never an outgoing call; the file trimmed to a month past its size (in a
  * temporary folder, removed after). With SIOUL_CALLS_SAMPLE set, the lines
  * are written there for Rust's test (calls::tests::java_s_lines_read_here).
- * Fiction numbers only (ARCEP's 01 99 00 and 04 65 71).
+ * Then the numbers you called (Calls.rememberCalled, Calls.calledAt): kept
+ * only the days the table counts, 14 at most, and not at all while it counts
+ * none (review of part 2, F5). Fiction numbers only (ARCEP's 01 99 00 and
+ * 04 65 71).
  */
 public final class LogCheck
 {
@@ -98,6 +101,26 @@ public final class LogCheck
         Calls.append(folder, d.toString(), at);
         List<String> kept = Files.readAllLines(new File(folder, Calls.HELD).toPath());
         expect("trimmed to a month, then appended: " + kept.size(), kept.size() == 1 && kept.get(0).equals(d.toString()));
+        // The numbers you called (review of part 2, F5): kept only the days the table counts, 14 at most, pruned
+        // at every read and write; nothing recorded and the file gone while the screening counts none.
+        long day = 24L * 3600 * 1000;
+        File calledFile = new File(folder, Calls.CALLED);
+        Files.write(calledFile.toPath(), ("{\"+33199005556\":" + (at - 20 * day) + ",\"+33199005557\":" + (at - 2 * day) + "}").getBytes(StandardCharsets.UTF_8));
+        Calls.rememberCalled(folder, "+33199005555", at, 14 * day);
+        JSONObject called = new JSONObject(new String(Files.readAllBytes(calledFile.toPath()), StandardCharsets.UTF_8));
+        expect("written: the fortnight's only: " + called, called.length() == 2 && called.has("+33199005555") && called.has("+33199005557"));
+        expect("read within the days", Calls.calledAt(folder, "+33199005557", at, 14 * day) == at - 2 * day);
+        expect("read past them: forgotten", Calls.calledAt(folder, "+33199005557", at + 13 * day, 14 * day) == 0);
+        JSONObject read = new JSONObject(new String(Files.readAllBytes(calledFile.toPath()), StandardCharsets.UTF_8));
+        expect("pruned at the read: " + read, read.length() == 1 && read.has("+33199005555"));
+        Calls.rememberCalled(folder, "+33199005558", at, 31 * day);
+        Files.write(calledFile.toPath(), ("{\"+33199005559\":" + (at - 20 * day) + "}").getBytes(StandardCharsets.UTF_8));
+        expect("never more than 14 days, whatever the table says", Calls.calledAt(folder, "+33199005559", at, 31 * day) == 0);
+        Calls.rememberCalled(folder, "+33199005555", at, 0);
+        expect("the setting off: nothing recorded, the file gone", !calledFile.exists());
+        Files.write(calledFile.toPath(), ("{\"+33199005557\":" + (at - 2 * day) + "}").getBytes(StandardCharsets.UTF_8));
+        expect("the setting off: nothing read", Calls.calledAt(folder, "+33199005557", at, 0) == 0);
+        expect("the setting off: the file gone at the read", !calledFile.exists());
         File[] left = folder.listFiles();
         for (File file : left == null ? new File[0] : left)
             file.delete();

@@ -422,9 +422,12 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
             });
         }
     }
-    // Numbers nobody knows and hidden numbers: the call screening's, apart, whatever the time or the layer.
+    // Numbers nobody knows and hidden numbers: the call screening's, apart, whatever the time or the layer;
+    // where your contacts wait (do-not-disturb, the night, a pause), they wait too, but while you expect a
+    // call (review of part 2, F3).
     if chans.contains(&Channel::Calls) {
-        lines.push(text("attention-card-screening"));
+        let contacts_wait = attention.cell(Row::People(Channel::Calls, Person::Neutral), column) != Level::Now;
+        lines.push(text(if contacts_wait { "attention-card-screening-held" } else { "attention-card-screening" }));
     }
     lines
 }
@@ -1147,7 +1150,7 @@ mod tests {
                 }
             }
             said_well(&text("attention-mail-areas"), language);
-            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-card-screening", "attention-sheet-line-calls-screening", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
+            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-card-screening", "attention-card-screening-held", "attention-sheet-line-calls-screening", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
                 said_well(&text(key), language);
             }
         }
@@ -1218,10 +1221,13 @@ mod tests {
         // line of their own in each card where calls apply, never said by the time; the phone's mode lets anyone's
         // call through when the screening lets them ring (here: off).
         let screening = "Calls from numbers nobody knows and hidden numbers: as your call screening says, apart (Settings ▸ This phone).";
+        let held = "Calls from numbers nobody knows and hidden numbers: to voicemail then, as your contacts' are, unless you expect a call (Settings ▸ This phone).";
         has(&leisure, screening);
         for column in Column::ALL {
             let lines = card_lines(&usual, &config, column, phone);
-            assert_eq!(lines.iter().filter(|l| l.contains("hidden numbers")).collect::<Vec<_>>(), [screening], "{column:?}");
+            // Where your contacts wait (do-not-disturb's card, the night, a pause), so do they (review of part 2, F3).
+            let wait = matches!(column, Column::Sleep | Column::Pause | Column::Free | Column::Dnd);
+            assert_eq!(lines.iter().filter(|l| l.contains("hidden numbers")).collect::<Vec<_>>(), [if wait { held } else { screening }], "{column:?}");
         }
         // Strangers ringing by an old cell of their Calls row, where their mail and messages wait: never said.
         let mut old_cell = Attention::usual();
@@ -1230,8 +1236,12 @@ mod tests {
         assert!(!card_lines(&usual, &config, Column::Leisure, computer).iter().any(|l| l == screening), "no calls here");
         let rows: Vec<String> = shown_rows(true).iter().map(|r| r.id()).collect();
         assert!(rows.contains(&"calls.safe".to_string()) && !rows.contains(&"calls.stranger".to_string()) && !rows.contains(&"calls.hidden".to_string()) && rows.contains(&"messages.stranger".to_string()), "{rows:?}");
+        // The screening off: anyone's call through the mode where your contacts ring then, never where they wait.
         let off: Config = toml::from_str("[screening]\non = false\n").unwrap();
-        assert!(system_line(&usual, &off, Column::Pause, phone).contains("calls from anyone"), "{}", system_line(&usual, &off, Column::Pause, phone));
+        assert!(system_line(&usual, &off, Column::Pause, phone).contains("calls from your contacts"), "{}", system_line(&usual, &off, Column::Pause, phone));
+        let mut free = Attention::usual();
+        free.set(Row::People(Channel::Calls, Person::Neutral), Column::Free, Level::Now).unwrap();
+        assert!(system_line(&free, &off, Column::Free, phone).contains("calls from anyone"), "{}", system_line(&free, &off, Column::Free, phone));
         // A person's lines: a neutral contact, and the same on Always through.
         assert_eq!(
             channel_line(&usual, Channel::Mail, Person::Neutral, false, "attention-sheet-line").unwrap(),

@@ -149,7 +149,8 @@ pub(crate) fn refresh(now: bool) {
     let busy = if now { Some(BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner)) } else { crate::backend::one_at_a_time(&BUSY) };
     let Some(_busy) = busy else { return };
     if cfg!(target_os = "android") && !screens_here() {
-        // Not screening: no table to keep; your other devices told so, once.
+        // Not screening: no table to keep, no number called to keep; your other devices told so, once.
+        let _ = rules::prune_called(&path(rules::CALLED), 0, 0);
         let here = here_id();
         if Switch::load(&Switch::default_path()).device.get(&here).is_some_and(|d| rules::part_of(d).screens) {
             carry();
@@ -167,6 +168,10 @@ pub(crate) fn refresh(now: bool) {
     }
     let switch = carry();
     let table = make(&config, &switch, &at);
+    // The numbers called lately, kept only the days they count (none, the setting off).
+    if let Err(e) = rules::prune_called(&path(rules::CALLED), at.timestamp().as_millisecond(), table.screening.as_ref().map_or(0, |s| s.called_days)) {
+        eprintln!("sioul: calls: {}: {e}", rules::CALLED);
+    }
     let content = rules::content(&table);
     let same = there && MADE.lock().ok().and_then(|made| made.as_ref().map(|(_, _, said)| *said == content)).unwrap_or(false);
     if !same && let Err(e) = rules::write(&path(rules::TABLE), &table) {
@@ -213,8 +218,7 @@ fn named(switch: &mut Switch, here: &str) {
 
 /// The numbers the screening knows by their kind, as Sioul ships them: read once.
 fn numbers() -> &'static screening::Numbers {
-    static NUMBERS: std::sync::OnceLock<screening::Numbers> = std::sync::OnceLock::new();
-    NUMBERS.get_or_init(screening::Numbers::built_in)
+    screening::shipped()
 }
 
 /// The table: who each number is (the Always through list's as rows of their
@@ -777,27 +781,29 @@ fn row(key: &str, kind: &str, label: &str, help: &str, value: serde_json::Value,
 
 /// Settings ▸ This phone ▸ Calls ▸ Call screening: {title, intro, rows,
 /// hears, expecting}; each row at its value now (`Screening::of`: the
-/// first values while unsaid), what never-attributed blocks count until said.
+/// first values while unsaid); numbers nobody knows said with ARCEP's list of
+/// the blocks it gave to no operator, its day, and until when a call's line
+/// says it (it decides nothing: review of part 2, F1).
 fn screening_rows(config: &Config, now: &Zoned) -> serde_json::Value {
     let tr = tr();
     let text = |id: &str| tr.text(id, None);
     let s = Screening::of(config);
     let rules = [("voicemail", text("screening-rule-voicemail")), ("work", text("screening-rule-work")), ("ring", text("screening-rule-ring"))];
     let spam = [("voicemail", text("screening-spam-voicemail")), ("unknown", text("screening-spam-unknown"))];
-    // The blocks attributed to nobody: until when Sioul's copy of ARCEP's list counts.
+    // The blocks attributed to nobody: until when Sioul's copy of ARCEP's list is said.
     let today = now.date();
     let unattributed = numbers().group.iter().find(|g| g.kind == "unattributed");
-    let impossible_help = match unattributed {
+    let unknown_help = match unattributed {
         Some(g) => {
-            let day = |d: jiff::civil::Date| tr.day_month(d);
+            let day = |d: jiff::civil::Date| format!("{} {}", tr.day_month(d), d.year());
             let read = g.checked.parse::<jiff::civil::Date>().ok();
             let until = read.zip(g.valid_days).and_then(|(r, days)| r.checked_add(jiff::Span::new().days(days)).ok());
             let mut args = sioul_core::i18n::args();
             args.set("date", read.map(day).unwrap_or_default());
             args.set("until", until.map(day).unwrap_or_default());
-            tr.text(if g.counts(today) { "screening-impossible-help" } else { "screening-impossible-help-old" }, Some(&args))
+            tr.text(if g.counts(today) { "screening-unknown-help" } else { "screening-unknown-help-old" }, Some(&args))
         }
-        None => String::new(),
+        None => text("screening-unknown-help-old"),
     };
     json!({
         "title": text("screening-title"),
@@ -805,10 +811,10 @@ fn screening_rows(config: &Config, now: &Zoned) -> serde_json::Value {
         "rows": [
             row("on", "bool", &text("screening-on"), &text("screening-on-help"), json!(s.on), &[]),
             row("hours", "choice", &text("screening-hours"), &text("screening-hours-help"), json!(s.hours.id()), &[("always", text("screening-hours-always")), ("outside-work", text("screening-hours-outside-work"))]),
-            row("unknown", "choice", &text("screening-unknown"), &text("screening-unknown-help"), json!(s.unknown.id()), &rules),
+            row("unknown", "choice", &text("screening-unknown"), &unknown_help, json!(s.unknown.id()), &rules),
             row("hidden", "choice", &text("screening-hidden"), &text("screening-hidden-help"), json!(s.hidden.id()), &rules),
             row("automated", "choice", &text("screening-automated"), &text("screening-automated-help"), json!(s.automated.id()), &spam),
-            row("impossible", "choice", &text("screening-impossible"), &impossible_help, json!(s.impossible.id()), &spam),
+            row("impossible", "choice", &text("screening-impossible"), &text("screening-impossible-help"), json!(s.impossible.id()), &spam),
             row("unverified", "choice", &text("screening-unverified"), &text("screening-unverified-help"), json!(s.unverified.id()), &spam),
             row("called", "bool", &text("screening-called"), &text("screening-called-help"), json!(s.called), &[]),
         ],
@@ -913,9 +919,10 @@ mod tests {
         assert!(table.expecting.is_some_and(|e| e.on && e.holds(now.timestamp().as_millisecond())));
         let s = table.screening.clone().unwrap();
         assert_eq!((s.on, s.hours, s.unknown, s.hidden, s.called_days), (true, screening::Hours::Always, screening::Rule::Voicemail, screening::Rule::Work, screening::CALLED_DAYS));
-        assert!(s.automated_prefixes.contains(&"0162".to_string()) && s.impossible_prefixes.contains(&"089".to_string()) && s.impossible_prefixes.len() > 1_000);
+        // What can never be a caller's: 089 alone; the blocks attributed to nobody on a day decide nothing (review of part 2, F1).
+        assert!(s.automated_prefixes.contains(&"0162".to_string()));
+        assert_eq!(s.impossible_prefixes, vec!["089".to_string()]);
         assert!(table.frames.iter().all(|f| !f.ring.contains_key("stranger") && !f.ring.contains_key("hidden")));
-        // 200 days on, the blocks attributed to nobody no longer count; 089 does.
         let later: Zoned = "2027-05-08T10:00:00+02:00[Europe/Paris]".parse().unwrap();
         assert_eq!(make(&config, &switch, &later).screening.unwrap().impossible_prefixes, vec!["089".to_string()]);
         // Hidden numbers held at every time: voicemail at all hours, from their row.
@@ -932,11 +939,13 @@ mod tests {
         assert_eq!(keys, ["screening.on", "screening.hours", "screening.unknown", "screening.hidden", "screening.automated", "screening.impossible", "screening.unverified", "screening.called"]);
         assert_eq!((rows["rows"][0]["value"].as_bool(), rows["rows"][3]["value"].as_str(), rows["rows"][3]["choices"].as_array().unwrap().len()), (Some(true), Some("voicemail"), 3));
         assert!(rows["rows"].as_array().unwrap().iter().all(|r| !r["label"].as_str().unwrap().is_empty() && !r["label"].as_str().unwrap().starts_with("screening-")));
-        // The blocks attributed to nobody: the day ARCEP's list was read, and until when it counts; past it, said so.
-        let help = |rows: &serde_json::Value| rows["rows"][5]["help"].as_str().unwrap().to_string();
-        assert!(help(&rows).contains("19") && help(&rows).contains("17"), "{}", help(&rows));
+        // Numbers nobody knows: the day ARCEP's list of the blocks it gave to no operator was read, and until
+        // when a call's line says it (17 January 2027); past it, said so. 089 with the plan's date.
+        let help = |rows: &serde_json::Value, at: usize| rows["rows"][at]["help"].as_str().unwrap().to_string();
+        assert!(help(&rows, 2).contains("19") && help(&rows, 2).contains("17") && help(&rows, 2).contains("2027"), "{}", help(&rows, 2));
         let old = screening_rows(&held, &later);
-        assert!(help(&old).contains("19") && help(&old) != help(&rows), "{}", help(&old));
+        assert!(help(&old, 2).contains("19") && help(&old, 2) != help(&rows, 2), "{}", help(&old, 2));
+        assert!(help(&rows, 5).contains("2026") && help(&rows, 5).contains("08 9"), "{}", help(&rows, 5));
     }
 
     /// Old lines taken out once a day, whatever the exchanges in between.

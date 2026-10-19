@@ -12,9 +12,11 @@ import java.util.Set;
 /**
  * Calls.decideFor on the cases of calls.rs's `who_rings_when_and_what_always_rings`
  * (a table of version 1, an older Sioul's: still read in its own order), then
- * of `the_screening_decides_numbers_nobody_knows_apart` (version 2: the call
- * screening apart). Fiction numbers only: 02 61 91 stands for an automated
- * caller's root, 03 53 01 for a block attributed to nobody.
+ * of `the_screening_decides_numbers_nobody_knows_apart` and of the review of
+ * part 2's (version 2: the call screening apart, never ringing where your
+ * contacts wait but while you expect a call; what it keeps out whatever else,
+ * a second call too). Fiction numbers only: 02 61 91 stands for an automated
+ * caller's root; 089 is never a caller ID.
  */
 public final class DecideCheck
 {
@@ -51,7 +53,7 @@ public final class DecideCheck
         Calls.Screening s = new Calls.Screening();
         s.calledMs = 14L * 24 * 3600 * 1000;
         s.automatedPrefixes.add("026191");
-        s.impossiblePrefixes.addAll(Arrays.asList("035301", "089"));
+        s.impossiblePrefixes.add("089");
         s.longest = 6;
         return s;
     }
@@ -146,14 +148,16 @@ public final class DecideCheck
         t.frames.add(frame(work1, leisure1, "leisure", "safe", "always-stranger"));
         t.frames.add(frame(leisure1, sleep1, "sleep", "always-stranger"));
         t.screening = screening();
-        String stranger = "01 99 00 55 55", automated = "02 61 91 12 34", impossible = "03 53 01 12 34", other = "05 36 49 12 34";
+        String stranger = "01 99 00 55 55", automated = "02 61 91 12 34", impossible = "08 99 12 34 56", other = "05 36 49 12 34";
         for (String n : new String[] { "112", "15", "0 800 112 112" })
             expect("v2 emergency " + n, Calls.decideFor(t, n, false, ms(day, "23:00"), 0, null, 0, none), false, "emergency");
         for (String n : new String[] { "01 99 00 00 04", stranger, automated, impossible, "" })
             expect("v2 after an emergency call: " + n, Calls.decideFor(t, n, n.isEmpty(), ms(day, "23:00"), called, null, 0, none), false, "after-emergency");
         expect("v2 blocked", Calls.decideFor(t, "01 99 00 00 04", false, ms(day, "10:00"), 0, null, 0, none), true, "blocked");
         expect("v2 blocked again", Calls.decideFor(t, "01 99 00 00 04", false, ms(day, "10:00"), 0, null, ms(day, "09:55"), none), true, "blocked");
-        expectWho("v2 a machine's second call", Calls.decideFor(t, automated, false, ms(day, "18:10"), 0, null, first, none), false, "repeat", "stranger");
+        // A second call within 15 minutes rings, but the blocked's and what the screening keeps out whatever else; never a hidden number.
+        expectWho("v2 a second call from a number nobody knows", Calls.decideFor(t, stranger, false, ms(day, "18:10"), 0, null, first, none), false, "repeat", "stranger");
+        expectWho("v2 a machine's second call", Calls.decideFor(t, automated, false, ms(day, "18:10"), 0, null, first, none), true, "automated", "stranger");
         expectWho("v2 a hidden number's second call", Calls.decideFor(t, "", true, ms(day, "18:10"), 0, null, first, none), true, "screening", "hidden");
         expectWho("v2 Always through at night", Calls.decideFor(t, "01 99 00 00 09", false, ms(day, "23:00"), 0, null, 0, none), false, "matrix", "always-stranger");
         expectWho("v2 safe at work", Calls.decideFor(t, "01 99 00 00 01", false, ms(day, "10:00"), 0, null, 0, none), false, "matrix", "safe");
@@ -170,44 +174,70 @@ public final class DecideCheck
         }
         expectWho("v2 called lately, at night", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), true, "matrix", "neutral");
         expectWho("v2 called a while ago", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none, "", ms("2026-09-20", "12:00")), true, "screening", "stranger");
-        // Declined by your contacts' row, a number called lately never rings less than a number nobody knows; spam kinds aside.
+        // Declined by your contacts' row, a number called lately rings only while you expect a call, and never with a failed verification.
         Calls.Press waiting = new Calls.Press(); waiting.pressed = 10; waiting.on = true;
         t.expecting = waiting;
         expectWho("v2 called lately, at night, expecting a call", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), false, "expecting", "neutral");
+        expectWho("v2 called lately, expecting a call, verification failed", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "failed", lately), true, "unverified", "neutral");
+        expectWho("v2 called lately, expecting a call, at work, verification failed", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none, "failed", lately), false, "matrix", "neutral");
+        expectWho("v2 a machine's number called lately, expecting a call", Calls.decideFor(t, automated, false, ms(day, "23:00"), 0, null, 0, none, "", lately), false, "expecting", "neutral");
         t.expecting = null;
         t.screening.on = false;
-        expectWho("v2 called lately, at night, the screening off", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), false, "screening-off", "neutral");
+        expectWho("v2 called lately, at night, the screening off", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), true, "matrix", "neutral");
         t.screening = screening();
         t.screening.unknown = "ring";
-        expectWho("v2 called lately, at night, numbers nobody knows ringing", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), false, "screening", "neutral");
+        expectWho("v2 called lately, at night, numbers nobody knows ringing", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none, "", lately), true, "matrix", "neutral");
         t.screening = screening();
         t.screening.hours = "outside-work";
+        // A focus session at work: do-not-disturb over work's hours, the people you know held.
         Calls.Frame workFrame = t.frames.get(1);
         workFrame.column = "dnd";
-        workFrame.ring.put("neutral", false);
-        expectWho("v2 called lately, do-not-disturb at work, the screening resting", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none, "", lately), false, "work-hours", "neutral");
+        for (String row : new String[] { "safe", "neutral", "restricted" })
+            workFrame.ring.put(row, false);
+        expectWho("v2 called lately, do-not-disturb at work, the screening resting", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none, "", lately), true, "matrix", "neutral");
         expectWho("v2 a phone contact, do-not-disturb at work: their row alone", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, contact), true, "matrix", "neutral");
-        workFrame.column = "work";
-        workFrame.ring.put("neutral", true);
+        expectWho("v2 nobody known, do-not-disturb at work, the screening resting", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none), true, "matrix", "stranger");
+        expectWho("v2 hidden, do-not-disturb at work, the screening resting", Calls.decideFor(t, "", true, ms(day, "10:00"), 0, null, 0, none), true, "matrix", "hidden");
         t.screening = screening();
+        expectWho("v2 hidden, do-not-disturb at work, as usual", Calls.decideFor(t, "", true, ms(day, "10:00"), 0, null, 0, none), true, "matrix", "hidden");
+        workFrame.column = "work";
+        for (String row : new String[] { "safe", "neutral", "restricted" })
+            workFrame.ring.put(row, true);
         expectWho("v2 a machine's number called lately, at work", Calls.decideFor(t, automated, false, ms(day, "10:00"), 0, null, 0, none, "", lately), false, "matrix", "neutral");
         expectWho("v2 a machine's number called lately, at night", Calls.decideFor(t, automated, false, ms(day, "23:00"), 0, null, 0, none, "", lately), true, "matrix", "neutral");
         expect("v2 called lately, verification failed", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none, "failed", lately), false, "matrix");
         for (String at : new String[] { "03:00", "10:00", "18:00", "23:00" })
             expectWho("v2 a number nobody knows at " + at, Calls.decideFor(t, stranger, false, ms(day, at), 0, null, 0, none), true, "screening", "stranger");
         expect("v2 automated", Calls.decideFor(t, automated, false, ms(day, "10:00"), 0, null, 0, none), true, "automated");
-        expect("v2 impossible", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none), true, "impossible");
-        expect("v2 089", Calls.decideFor(t, "08 99 12 34 56", false, ms(day, "10:00"), 0, null, 0, none), true, "impossible");
+        expect("v2 089", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none), true, "impossible");
         expectWho("v2 failed verification", Calls.decideFor(t, other, false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), true, "unverified", "stranger");
-        expect("v2 verified, in a block attributed to nobody", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none, "passed", 0), true, "screening");
+        expect("v2 089, verified all the same", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none, "passed", 0), true, "impossible");
         expect("v2 someone known, verification failed", Calls.decideFor(t, "01 99 00 00 01", false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), false, "matrix");
-        // Each kind as any number nobody knows, and those let ring.
+        // Resting in work and admin hours: numbers nobody knows and hidden numbers only; what the screening keeps out stays out.
+        t.screening.hours = "outside-work";
+        expect("v2 resting, nobody known at work", Calls.decideFor(t, stranger, false, ms(day, "10:00"), 0, null, 0, none), false, "work-hours");
+        expect("v2 resting, hidden at work", Calls.decideFor(t, "", true, ms(day, "10:00"), 0, null, 0, none), false, "work-hours");
+        expect("v2 resting, a machine at work", Calls.decideFor(t, automated, false, ms(day, "10:00"), 0, null, 0, none), true, "automated");
+        expect("v2 resting, 089 at work", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none), true, "impossible");
+        expect("v2 resting, a failed verification at work", Calls.decideFor(t, other, false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), true, "unverified");
+        expect("v2 resting, in the evening", Calls.decideFor(t, stranger, false, ms(day, "18:00"), 0, null, 0, none), true, "screening");
+        t.screening = screening();
+        // A second call is no floor for what the screening keeps out whatever else.
+        long early = ms(day, "02:55");
+        expect("v2 a machine's second call at night", Calls.decideFor(t, automated, false, ms(day, "03:00"), 0, null, early, none), true, "automated");
+        expect("v2 089's second call", Calls.decideFor(t, impossible, false, ms(day, "03:00"), 0, null, early, none), true, "impossible");
+        expect("v2 a failed verification's second call", Calls.decideFor(t, other, false, ms(day, "03:00"), 0, null, early, none, "failed", 0), true, "unverified");
+        expect("v2 a second call at night from a number nobody knows", Calls.decideFor(t, stranger, false, ms(day, "03:00"), 0, null, early, none), false, "repeat");
+        expect("v2 a second call from someone known, verification failed", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "03:00"), 0, null, early, none, "failed", 0), false, "repeat");
+        // Each kind as any number nobody knows, and those let ring where your contacts may.
         Calls.Screening lenient = screening();
         lenient.automated = "unknown"; lenient.impossible = "unknown"; lenient.unverified = "unknown"; lenient.unknown = "ring";
         t.screening = lenient;
-        expect("v2 lenient automated", Calls.decideFor(t, automated, false, ms(day, "23:00"), 0, null, 0, none), false, "screening");
-        expect("v2 lenient impossible", Calls.decideFor(t, impossible, false, ms(day, "23:00"), 0, null, 0, none), false, "screening");
+        expect("v2 lenient automated", Calls.decideFor(t, automated, false, ms(day, "10:00"), 0, null, 0, none), false, "screening");
+        expect("v2 lenient impossible", Calls.decideFor(t, impossible, false, ms(day, "10:00"), 0, null, 0, none), false, "screening");
         expect("v2 lenient failed", Calls.decideFor(t, other, false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), false, "screening");
+        expect("v2 lenient automated at night", Calls.decideFor(t, automated, false, ms(day, "23:00"), 0, null, 0, none), true, "matrix");
+        expect("v2 lenient, a machine's second call", Calls.decideFor(t, automated, false, ms(day, "03:00"), 0, null, early, none), false, "repeat");
         t.screening = screening();
         String[][] hidden = { { "03:00", "true" }, { "10:00", "false" }, { "18:00", "true" }, { "23:00", "true" } };
         for (String[] h : hidden)
@@ -215,9 +245,11 @@ public final class DecideCheck
         t.screening.hidden = "voicemail";
         expect("v2 hidden, voicemail at all hours", Calls.decideFor(t, "", true, ms(day, "10:00"), 0, null, 0, none), true, "screening");
         t.screening.hidden = "ring";
-        expect("v2 hidden, ringing", Calls.decideFor(t, "", true, ms(day, "23:00"), 0, null, 0, none), false, "screening");
+        expect("v2 hidden, ringing at work", Calls.decideFor(t, "", true, ms(day, "10:00"), 0, null, 0, none), false, "screening");
+        expect("v2 hidden, ringing, never at night", Calls.decideFor(t, "", true, ms(day, "23:00"), 0, null, 0, none), true, "matrix");
         t.screening = screening();
-        // Expecting a call: numbers nobody knows and hidden ones ring; never the blocked, machines, impossible numbers, failed verifications; nor the people you know beyond their row.
+        // Expecting a call: numbers nobody knows and hidden ones ring, even where your contacts wait; never the blocked, machines,
+        // impossible numbers, failed verifications; nor the people you know beyond their row.
         Calls.Press expecting = new Calls.Press(); expecting.pressed = 10; expecting.on = true;
         t.expecting = expecting;
         expect("v2 expecting, nobody knows", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, null, 0, none), false, "expecting");
@@ -230,17 +262,16 @@ public final class DecideCheck
         expect("v2 expecting, off on the phone after", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, offHere, 0, none), true, "screening");
         t.expecting = null;
         expect("v2 expecting that ended", Calls.decideFor(t, stranger, false, ms(day, "23:00"), 0, ended, 0, none), true, "screening");
-        // The screening off; only outside work and admin hours.
+        // The screening off: numbers nobody knows ring where your contacts may, machines too; never where they wait.
         t.screening.on = false;
         for (String n : new String[] { stranger, automated, "" })
-            expect("v2 off: " + n, Calls.decideFor(t, n, n.isEmpty(), ms(day, "23:00"), 0, null, 0, none), false, "screening-off");
+            expect("v2 off at work: " + n, Calls.decideFor(t, n, n.isEmpty(), ms(day, "10:00"), 0, null, 0, none), false, "screening-off");
+        for (String n : new String[] { stranger, automated, "" })
+            expect("v2 off at night: " + n, Calls.decideFor(t, n, n.isEmpty(), ms(day, "23:00"), 0, null, 0, none), true, "matrix");
         expect("v2 off, blocked", Calls.decideFor(t, "01 99 00 00 04", false, ms(day, "23:00"), 0, null, 0, none), true, "blocked");
         t.screening = screening();
-        t.screening.hours = "outside-work";
-        expect("v2 outside work, a machine at work", Calls.decideFor(t, automated, false, ms(day, "10:00"), 0, null, 0, none), false, "work-hours");
-        expect("v2 outside work, in the evening", Calls.decideFor(t, stranger, false, ms(day, "18:00"), 0, null, 0, none), true, "screening");
-        t.screening = screening();
-        // Neither do-not-disturb nor any frame of the people you know opens or closes the screening.
+        // Do-not-disturb, or any frame of the people you know, never opens the screening: where everyone you know rings, as
+        // the screening says; where nobody you know rings, no number nobody knows rings either.
         String[][] unknownCalls = { { stranger, "10:00" }, { stranger, "23:00" }, { "", "10:00" }, { "", "18:00" }, { automated, "10:00" }, { impossible, "23:00" } };
         boolean[] before = new boolean[unknownCalls.length];
         for (int i = 0; i < unknownCalls.length; i++)
@@ -253,9 +284,10 @@ public final class DecideCheck
             }
             for (int i = 0; i < unknownCalls.length; i++) {
                 Calls.Decision d = Calls.decideFor(t, unknownCalls[i][0], unknownCalls[i][0].isEmpty(), ms(day, unknownCalls[i][1]), 0, null, 0, none);
-                if (d.refuse != before[i]) {
+                boolean wanted = everyone ? before[i] : true;
+                if (d.refuse != wanted) {
                     failed++;
-                    System.out.println("FAIL v2 a frame of the people you know moved the screening: " + unknownCalls[i][0] + " at " + unknownCalls[i][1]);
+                    System.out.println("FAIL v2 a frame of the people you know (everyone: " + everyone + ") moved the screening: " + unknownCalls[i][0] + " at " + unknownCalls[i][1]);
                 }
             }
         }
