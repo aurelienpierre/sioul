@@ -187,6 +187,8 @@ fn self_copy_line(keys: &Keys, address: &str, computer: bool) -> String {
     // Accounts on a computer; a key kept here, only the program that made it,
     // or a new key.
     let renew = match (card.is_some(), computer) {
+        // Known here from another computer only: Accounts renews a key read here (review of 19 October 2026, Info).
+        (true, true) if keys.card_for(address).is_none() => tr().text("pgp-self-copy-renew-read-here", None),
         (true, true) => tr().text("pgp-self-copy-renew", None),
         (true, false) => tr().text("pgp-self-copy-renew-phone", None),
         (false, _) => tr().text("pgp-self-copy-new-key", None),
@@ -497,6 +499,10 @@ mod tests {
             assert_eq!(protection_with(&here, "me@example.org", &draft, computer).self_copy, say("pgp-self-copy-why", &[("why", why.clone()), ("renew", tr().text("pgp-self-copy-new-key", None))]));
         }
         assert!(protection_with(&card, "me@example.org", &draft, true).self_copy.ends_with(&tr().text("pgp-self-copy-renew", None)));
+        // Known on this computer from another one only: read it here first.
+        let shared = Keys { shared: card.cards.clone(), cards: Vec::new(), ..card.clone() };
+        assert!(protection_with(&shared, "me@example.org", &draft, true).self_copy.ends_with(&tr().text("pgp-self-copy-renew-read-here", None)));
+        assert!(protection_with(&shared, "me@example.org", &draft, false).self_copy.ends_with(&tr().text("pgp-self-copy-renew-phone", None)));
     }
 
     /// Review of 19 October 2026, N4: an address your security key serves,

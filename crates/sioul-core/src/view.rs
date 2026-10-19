@@ -1108,6 +1108,9 @@ fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
             parts.push(tr.text("pgp-signed-by", Some(&args)));
         } else if signature.problem == "unknown key" {
             parts.push(tr.text("pgp-signed-unknown", None));
+        } else if signature.problem == "revoked key" {
+            fine = false;
+            parts.push(tr.text("pgp-signed-revoked", None));
         } else {
             fine = false;
             parts.push(tr.text("pgp-signature-bad", None));

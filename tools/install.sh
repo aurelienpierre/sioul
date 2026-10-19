@@ -9,11 +9,12 @@
 #     tools/install.sh
 #
 # PREFIX sets where (default: ~/.local). Each program is built right here,
-# alone, then checked for test hooks before it is installed
-# (tools/check-test-marks.sh): a `cargo test` run after the last
-# `cargo build --release` leaves programs built for tests in
-# target/release/, which keep no password (review of 19 October 2026, N1).
-# Nothing is installed when a check fails.
+# alone, then copied beside its place under a hidden name and checked for
+# test hooks there (tools/check-test-marks.sh): a `cargo test` run after the
+# last `cargo build --release`, by you or by anything else on this machine
+# meanwhile, leaves programs built for tests in target/release/, which keep
+# no password (review of 19 October 2026, N1). The copy checked is the one
+# that takes its place; nothing is installed when a check fails.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,10 +25,15 @@ prefix=${PREFIX:-$HOME/.local}
 # their features into a third variant of the command line.
 cargo build --release -p sioul-cli
 cargo build --release -p sioul-app
-sh tools/check-test-marks.sh target/release/sioul target/release/sioul-app
 
-install -Dm755 target/release/sioul-app "$prefix/bin/sioul-app"
-install -Dm755 target/release/sioul "$prefix/bin/sioul"
+mkdir -p "$prefix/bin"
+staged=("$prefix/bin/.sioul-app.new" "$prefix/bin/.sioul.new")
+trap 'rm -f "${staged[@]}"' EXIT
+install -m755 target/release/sioul-app "${staged[0]}"
+install -m755 target/release/sioul "${staged[1]}"
+sh tools/check-test-marks.sh "${staged[@]}"
+mv -f "${staged[0]}" "$prefix/bin/sioul-app"
+mv -f "${staged[1]}" "$prefix/bin/sioul"
 install -Dm644 data/com.aurelienpierre.Sioul.desktop "$prefix/share/applications/com.aurelienpierre.Sioul.desktop"
 install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml "$prefix/share/metainfo/com.aurelienpierre.Sioul.metainfo.xml"
 mkdir -p "$prefix/share/icons" && cp -r data/icons/hicolor "$prefix/share/icons/"
