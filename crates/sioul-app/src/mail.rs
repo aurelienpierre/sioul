@@ -1107,11 +1107,34 @@ pub(crate) fn draft(id: &str) -> Option<String> {
         DraftKind::Reply | DraftKind::ReplyAll => say("compose-title-reply", &[("names", names(&draft.to))]),
         DraftKind::Forward => tr().text("compose-title-forward", None),
     };
-    let original = draft.original.as_deref().and_then(maildir::read_one);
+    // Its copy here (the path saved may be another device's), read once and
+    // whole (`crypto::copy_of`); who wrote it and when, from its headers,
+    // which an encrypted message keeps in clear.
+    let copy = crate::crypto::copy_of(&draft);
+    let original = copy.as_deref().and_then(Card::from_bytes);
     let below = match (draft.kind, original) {
         (DraftKind::New, _) | (_, None) => String::new(),
         (DraftKind::Forward, Some(card)) => say("compose-below-forward", &[("name", card.sender().to_string()), ("date", view::date(tr(), card.date))]),
         (_, Some(card)) => say("compose-below-quote", &[("name", card.sender().to_string()), ("date", view::date(tr(), card.date))]),
+    };
+    // Came encrypted: it stays so, and the window says where it opens; its
+    // attachments are listed only from what opens here, in memory.
+    let answered = crate::crypto::answered(copy.as_deref());
+    let sealed = match (&answered, draft.kind) {
+        (crate::crypto::Answered::Clear, _) | (_, DraftKind::New) => None,
+        (crate::crypto::Answered::Opens(_), _) => Some(tr().text("compose-below-sealed", None)),
+        (crate::crypto::Answered::AtSend, _) => Some(tr().text("compose-below-sealed-card", None)),
+        (crate::crypto::Answered::NotHere, DraftKind::Forward) => Some(tr().text("compose-forward-sealed-not-here", None)),
+        (crate::crypto::Answered::NotHere, _) => Some(tr().text("compose-below-sealed-not-here", None)),
+    };
+    let below = match sealed {
+        Some(line) if !below.is_empty() => format!("{below} {line}"),
+        _ => below,
+    };
+    let forwarded = match &answered {
+        crate::crypto::Answered::Clear => draft.forwarded(),
+        crate::crypto::Answered::Opens(opened) => draft.forwarded_from(Some(opened)),
+        _ => Vec::new(),
     };
     Some(json(&DraftView {
         id: draft.id.clone(),
@@ -1137,7 +1160,7 @@ pub(crate) fn draft(id: &str) -> Option<String> {
                 size: std::fs::metadata(path).map(|m| size(m.len())).unwrap_or_default(),
             })
             .collect(),
-        forwarded: draft.forwarded().into_iter().map(|(index, name)| AttachedView { index: index as usize, name, size: String::new() }).collect(),
+        forwarded: forwarded.into_iter().map(|(index, name)| AttachedView { index: index as usize, name, size: String::new() }).collect(),
         title,
         below,
         sign: draft.sign,

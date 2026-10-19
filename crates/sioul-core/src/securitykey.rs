@@ -1466,6 +1466,19 @@ impl SoftCard {
         SoftCard::generate_dated(ident, userids, pin, None)
     }
 
+    /// The same with RSA keys (2048 bits), which the stand-in opens messages
+    /// with by itself: for other crates' tests of what a key decrypts
+    /// (Curve25519 needs X25519 lent, which only this crate's tests have).
+    pub fn generate_rsa(ident: &str, userids: &[&str], pin: &str) -> Result<(SoftCard, Vec<u8>), String> {
+        let mut builder = CertBuilder::new().set_cipher_suite(CipherSuite::RSA2k).set_primary_key_flags(openpgp::types::KeyFlags::empty().set_certification().set_signing()).add_transport_encryption_subkey();
+        for userid in userids {
+            builder = builder.add_userid(*userid);
+        }
+        let (cert, _) = builder.generate().map_err(|e| e.to_string())?;
+        let public = cert.clone().strip_secret_key_material().armored().to_vec().map_err(|e| e.to_string())?;
+        Ok((SoftCard::new(ident, &cert, pin), public))
+    }
+
     /// The same, made at a time and valid so long from then (`dated`): a key
     /// expired, for tests.
     pub fn generate_dated(ident: &str, userids: &[&str], pin: &str, dated: Option<(SystemTime, Duration)>) -> Result<(SoftCard, Vec<u8>), String> {

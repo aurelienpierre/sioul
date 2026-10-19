@@ -7,7 +7,8 @@
 //! decrypted messages stay in memory.
 
 use crate::backend::{json, load_config, say, tr};
-use sioul_core::compose::Draft;
+use sioul_core::compose::{Draft, DraftKind};
+use sioul_core::draftcopies;
 use sioul_core::pgp::{self, Keys, PgpView};
 use sioul_core::porch::Triaged;
 use sioul_core::trust::Trust;
@@ -73,6 +74,40 @@ pub(crate) struct DraftProtection {
     /// Encrypted, your own certificate cannot take it (expired): you would
     /// not read your sent copy; said before sending; else "".
     pub self_copy: String,
+    /// The message answered or forwarded came encrypted: what becomes of it
+    /// when "Encrypt" is unticked (a reply goes without its quote, a forward
+    /// not at all); said only then; else "".
+    pub sealed_quote: String,
+}
+
+/// The message a draft answers or forwards, as this device can read it. Its
+/// copy beside the draft stays as it came: encrypted when it came so.
+pub(crate) enum Answered {
+    /// None, or not encrypted.
+    Clear,
+    /// Encrypted, and it opens here now (a key here, or the session key kept
+    /// since you opened it): what it reads, in memory only.
+    Opens(Vec<u8>),
+    /// Encrypted to your security key, which this device can use: opened at Send.
+    AtSend,
+    /// Encrypted, and nothing on this device opens it (a phone, a key elsewhere).
+    NotHere,
+}
+
+/// The copy beside `draft`, read whole (`filelock::read_whole`: never the
+/// zeros written over a copy replaced meanwhile); none when there is none.
+pub(crate) fn copy_of(draft: &Draft) -> Option<Vec<u8>> {
+    draft.original_here().and_then(|path| sioul_core::filelock::read_whole(&path).ok())
+}
+
+/// How the copy beside a draft reads here (`raw`: as [`copy_of`] read it).
+pub(crate) fn answered(raw: Option<&[u8]>) -> Answered {
+    let Some(raw) = raw.filter(|raw| pgp::is_encrypted(raw)) else { return Answered::Clear };
+    match open(raw) {
+        Some((Some(opened), _)) => Answered::Opens(opened),
+        Some((None, view)) if view.security_key.is_some() && !view.key_elsewhere => Answered::AtSend,
+        _ => Answered::NotHere,
+    }
 }
 
 pub(crate) fn draft_protection(draft: &Draft) -> DraftProtection {
@@ -93,22 +128,99 @@ fn protection_with(keys: &Keys, address: &str, draft: &Draft, card_here: bool) -
     let sign_not_here = if card_here { String::new() } else { tr().text("seckey-sign-not-here", None) };
     // Your own key for the address, there, and it cannot take encryption now: the sent copy would not open.
     let self_copy = if keys.is_own_address(&address) && keys.self_cert_for(&address).is_none() { tr().text("pgp-self-copy-expired", None) } else { String::new() };
-    DraftProtection { can_sign: can_sign && card_here, can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing, expired, sign_not_here, self_copy }
+    // An encrypted message is never quoted nor forwarded in clear.
+    let sealed = copy_of(draft).is_some_and(|raw| pgp::is_encrypted(&raw));
+    let sealed_quote = match (sealed, draft.kind) {
+        (false, _) | (_, DraftKind::New) => String::new(),
+        (true, DraftKind::Forward) => tr().text("pgp-forward-needs-encryption", None),
+        (true, _) => tr().text("pgp-quote-left-out", None),
+    };
+    DraftProtection { can_sign: can_sign && card_here, can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing, expired, sign_not_here, self_copy, sealed_quote }
 }
 
-/// Answering an encrypted message: the copy kept with the draft is the
-/// decrypted one (in your drafts folder, as your own text is), and the answer
-/// is encrypted when every key is known.
+/// Answering an encrypted message: the answer is encrypted when every key is
+/// known. The copy kept with the draft stays as it came, encrypted: it opens
+/// only at Send, in memory (`sioul_sync::send::build_draft`), never in clear
+/// on a disk, nor in the sharing, which carries drafts to every device. Until
+/// 19 October 2026 its decrypted text was written there (`seal_clear_drafts`
+/// seals those copies again).
 pub(crate) fn protect_answer(draft: &mut Draft) {
-    let Some(original) = draft.original.clone() else { return };
-    let Ok(raw) = std::fs::read(&original) else { return };
-    let Some((opened, view)) = open(&raw) else { return };
-    if let Some(bytes) = opened {
-        let _ = std::fs::write(&original, bytes);
-    }
-    if view.encrypted {
+    if copy_of(draft).is_some_and(|raw| pgp::is_encrypted(&raw)) {
         draft.encrypt = draft_protection(draft).can_encrypt;
     }
+}
+
+/// The copies beside drafts looked at in this process (`draftcopies`): one
+/// look at a time, the exchanges' after the start's.
+static JUDGED: std::sync::Mutex<Option<draftcopies::Judged>> = std::sync::Mutex::new(None);
+
+/// The copies beside drafts that hold an encrypted message's text in clear,
+/// their earlier versions kept here and the copies kept before sharing
+/// began (`share/before-sharing-<day>/`), encrypted again to your own
+/// certificates (`sioul_core::draftcopies`): at the start, and before each
+/// exchange, so that none is kept in clear among earlier versions when
+/// another device's encrypted copy comes. Cheap once done: a file looked at
+/// is read again only when it changes. Said in counts only, never what a
+/// copy says.
+pub(crate) fn seal_clear_drafts() {
+    let mut judged = JUDGED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    seal_with(judged.get_or_insert_with(Default::default));
+}
+
+/// Before an exchange without the window (a phone's background step, a
+/// dose's alarm, which Android gives a few seconds), the earlier versions
+/// alone, which need no look through your mail; nothing when a look runs
+/// already: the next exchange's look does it.
+pub(crate) fn seal_clear_drafts_if_idle() {
+    if let Ok(mut judged) = JUDGED.try_lock() {
+        let memory = crate::share::memory_path();
+        let hold = sioul_sync::share::replacements_hold(&memory);
+        let done = draftcopies::seal_versions(&kept_versions(&memory), &Keys::load(), judged.get_or_insert_with(Default::default), &hold);
+        if done.any() {
+            eprintln!("{}", said(&done));
+        }
+    }
+}
+
+/// The copies' earlier versions kept here (`history`), and those kept before
+/// sharing began (`share/before-sharing-<day>/`), beside the sharing's `memory`.
+fn kept_versions(memory: &Path) -> Vec<PathBuf> {
+    let mut kept = sioul_sync::history::draft_copies(&sioul_sync::history::root(memory));
+    kept.extend(sioul_sync::share::draft_copies_kept_before_sharing(memory));
+    kept
+}
+
+fn seal_with(judged: &mut draftcopies::Judged) {
+    let config = load_config();
+    let roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == sioul_core::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
+    let cache = sioul_core::config::cache_dir().join("mail-index.tsv");
+    let done = seal_in(&Draft::folder(), &crate::share::memory_path(), &Keys::load(), &roots, &cache, judged);
+    if done.any() {
+        eprintln!("{}", said(&done));
+    }
+}
+
+/// [`seal_clear_drafts`] in these folders: the drafts', the sharing's memory
+/// (its history and what it kept before sharing began beside it), your mail
+/// (`roots`, its index of Message-IDs kept in `cache`). Each copy takes its
+/// place under the sharing's exchange lock, a short hold at a time
+/// (`share::replacements_hold`): no exchange reads one while it is replaced.
+fn seal_in(drafts: &Path, memory: &Path, keys: &Keys, roots: &[PathBuf], cache: &Path, judged: &mut draftcopies::Judged) -> draftcopies::Sealed {
+    // Your mail by Message-ID, read only when a copy in clear asks it.
+    let mut index: Option<sioul_core::mailindex::MailIndex> = None;
+    let mut find = |id: &str| index.get_or_insert_with(|| sioul_core::mailindex::MailIndex::build(roots, cache)).get(id).map(|m| m.path.clone());
+    let hold = sioul_sync::share::replacements_hold(memory);
+    let beside = draftcopies::seal_beside(drafts, keys, &mut find, judged, &hold);
+    // Their earlier versions kept here, and what was kept before sharing began.
+    beside.and(draftcopies::seal_versions(&kept_versions(memory), keys, judged, &hold))
+}
+
+/// What a look did, for the log: counts only, never what a copy says.
+fn said(done: &draftcopies::Sealed) -> String {
+    format!(
+        "sioul: drafts: {} copies encrypted again, {} earlier versions, {} left to the device with their message, {} not written, {} waiting for a key",
+        done.copies, done.versions, done.unknown, done.failed, done.waiting
+    )
 }
 
 #[derive(serde::Serialize)]
@@ -208,6 +320,32 @@ mod tests {
         Keys { own: mine, cards: vec![known], ..Keys::default() }
     }
 
+    /// Batch B (18 October 2026): answering an encrypted message keeps its
+    /// copy beside the draft as it came, encrypted: never its text in clear,
+    /// which the sharing would carry to every device.
+    #[test]
+    fn an_answered_encrypted_message_stays_encrypted_beside_the_draft() {
+        let tsk = pgp::stand_in_key("Me <me@example.org>").unwrap();
+        let keys = Keys { own: pgp::certificates_in(&tsk), ..Keys::default() };
+        let clear = b"From: Jane <jane@example.org>\r\nTo: Me <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-b@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is here.\r\n";
+        let sealed = pgp::seal_message(clear, &[&keys.own[0]]).unwrap();
+        let dir = std::env::temp_dir().join(format!("sioul-answer-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let original = dir.join("lease.eml");
+        std::fs::write(&original, &sealed).unwrap();
+        let mut draft = sioul_core::compose::answer(&original, sioul_core::compose::DraftKind::Reply, "me", &["me@example.org".to_string()]).unwrap();
+        draft.keep_original().unwrap();
+        // The key here opens it (as a session key kept since you opened it would).
+        let passphrase = |_: &pgp::Fingerprint| None;
+        assert!(pgp::open(&sealed, &keys, &pgp::Unlock::new(&passphrase, &pgp::SessionKeys::new())).is_some_and(|(opened, _)| opened.is_some()));
+        protect_answer(&mut draft);
+        let kept = std::fs::read(draft.original.as_ref().unwrap()).unwrap();
+        draft.discard();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!String::from_utf8_lossy(&kept).contains("secret clause"), "never in clear beside the draft");
+        assert_eq!(kept, sealed, "kept as it came");
+    }
+
     /// Batch A (18 October 2026): a phone knows your key and cannot sign with
     /// it yet: "Sign" is off, said; a computer signs. An expired certificate
     /// of yours: encrypting is said to leave you no copy to read, before Send.
@@ -225,5 +363,116 @@ mod tests {
         let late = protection_with(&expired, "me@example.org", &draft, true);
         assert_eq!(late.self_copy, tr().text("pgp-self-copy-expired", None));
         assert!(!late.can_sign && !late.can_encrypt, "to yourself, with no key that takes it: {:?}", late.missing);
+    }
+
+    const LEASE: &[u8] = b"From: Jane <jane@example.org>\r\nTo: Card Holder <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-view@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is here.\r\n";
+
+    /// Batch B (19 October 2026): unticking "Encrypt" says what becomes of
+    /// an encrypted message answered (its quote left out) or forwarded (not
+    /// sent); of one that came in clear, nothing. At Send, the copy encrypted
+    /// to your security key waits for it, when the answer is encrypted.
+    #[test]
+    fn unticking_encrypt_says_what_becomes_of_an_encrypted_quote() {
+        let keys = yours(None);
+        let dir = std::env::temp_dir().join(format!("sioul-sealed-quote-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (sealed, clear) = (dir.join("sealed.eml"), dir.join("clear.eml"));
+        std::fs::write(&sealed, pgp::seal_message(LEASE, &[&keys.own[0]]).unwrap()).unwrap();
+        std::fs::write(&clear, LEASE).unwrap();
+        let mut draft = Draft::new("me");
+        draft.to = vec!["me@example.org".into()];
+        draft.kind = DraftKind::Reply;
+        draft.original = Some(sealed.clone());
+        assert_eq!(protection_with(&keys, "me@example.org", &draft, true).sealed_quote, tr().text("pgp-quote-left-out", None));
+        draft.kind = DraftKind::Forward;
+        assert_eq!(protection_with(&keys, "me@example.org", &draft, true).sealed_quote, tr().text("pgp-forward-needs-encryption", None));
+        draft.original = Some(clear.clone());
+        assert!(protection_with(&keys, "me@example.org", &draft, true).sealed_quote.is_empty());
+        draft.kind = DraftKind::Reply;
+        draft.original = Some(sealed);
+        draft.encrypt = true;
+        assert_eq!(crate::securitykey::quote_card(&draft, &keys).as_deref(), Some("0006:12345678"));
+        draft.encrypt = false;
+        assert_eq!(crate::securitykey::quote_card(&draft, &keys), None, "not encrypted: not quoted, no key asked");
+        draft.encrypt = true;
+        draft.original = Some(clear);
+        assert_eq!(crate::securitykey::quote_card(&draft, &keys), None, "came in clear");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Batch B: the look at the start and before each exchange encrypts the
+    /// clear copies beside drafts, their earlier versions and what was kept
+    /// before sharing began; nothing of their text is left in clear in those
+    /// folders nor in the cache, and the log says counts only.
+    #[test]
+    fn the_look_leaves_no_clear_copy_and_says_counts_only() {
+        let base = std::env::temp_dir().join(format!("sioul-seal-in-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (drafts, state, mail, cache) = (base.join("data/drafts"), base.join("state/share"), base.join("mail"), base.join("cache"));
+        let memory = state.join("memory.json");
+        let put = |path: PathBuf, bytes: &[u8]| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        };
+        let keys = Keys { own: pgp::certificates_in(&pgp::stand_in_key("Card Holder <me@example.org>").unwrap()), ..Keys::default() };
+        // The message came encrypted, in your mail (a Maildir).
+        put(mail.join("INBOX/cur/1790000000.U1-1.sioul:2,S"), &pgp::seal_message(LEASE, &[&keys.own[0]]).unwrap());
+        std::fs::create_dir_all(mail.join("INBOX/new")).unwrap();
+        put(drafts.join("b1.toml"), toml::to_string(&Draft { id: "b1".into(), ..Draft::default() }).unwrap().as_bytes());
+        put(drafts.join("b1.eml"), LEASE);
+        put(state.join("history/drafts/data/drafts/b1.eml/2026-10-18T10-00-00.000Z"), LEASE);
+        put(state.join("before-sharing-2026-09-21/data/drafts/b1.eml"), LEASE);
+        let done = seal_in(&drafts, &memory, &keys, &[mail.clone()], &cache.join("mail-index.tsv"), &mut draftcopies::Judged::default());
+        assert_eq!(done, draftcopies::Sealed { copies: 1, versions: 2, ..draftcopies::Sealed::default() });
+        for folder in [&drafts, &state, &cache] {
+            for path in sioul_core::mailindex::message_files(folder).into_iter().chain(walk(folder)) {
+                assert!(!String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).contains("secret clause"), "{}", path.display());
+            }
+        }
+        assert!(Draft::load(&drafts.join("b1.toml")).is_some(), "the draft itself untouched");
+        let line = said(&done);
+        assert!(!line.contains("lease") && !line.contains("secret") && !line.contains("b1"), "{line}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Every file below `dir`.
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+            if entry.path().is_dir() {
+                out.extend(walk(&entry.path()));
+            } else {
+                out.push(entry.path());
+            }
+        }
+        out
+    }
+
+    /// Batch B: a draft whose message came encrypted, opened on a device
+    /// where no key opens it: the window says so, lists none of what it
+    /// forwards, and the copy stays as it came.
+    #[test]
+    fn a_draft_opened_without_the_key_says_so_and_stays_encrypted() {
+        let elsewhere = pgp::certificates_in(&pgp::stand_in_key("Card Holder <me@example.org>").unwrap());
+        let sealed = pgp::seal_message(LEASE, &[&elsewhere[0]]).unwrap();
+        let mut draft = Draft::new("me");
+        draft.kind = DraftKind::Forward;
+        draft.to = vec!["bob@example.org".into()];
+        std::fs::create_dir_all(Draft::folder()).unwrap();
+        let copy = Draft::folder().join(format!("{}.eml", draft.id));
+        std::fs::write(&copy, &sealed).unwrap();
+        draft.original = Some(copy.clone());
+        draft.save().unwrap();
+        let view = |id: &str| serde_json::from_str::<serde_json::Value>(&crate::mail::draft(id).unwrap()).unwrap();
+        let shown = view(&draft.id);
+        let below = shown["below"].as_str().unwrap_or_default().to_string();
+        assert!(below.ends_with(&tr().text("compose-forward-sealed-not-here", None)), "{below}");
+        assert!(shown["forwarded"].as_array().is_some_and(Vec::is_empty), "{shown}");
+        draft.kind = DraftKind::Reply;
+        draft.save().unwrap();
+        let below = view(&draft.id)["below"].as_str().unwrap_or_default().to_string();
+        assert!(below.ends_with(&tr().text("compose-below-sealed-not-here", None)), "{below}");
+        assert_eq!(std::fs::read(&copy).unwrap(), sealed, "kept as it came");
+        draft.discard();
     }
 }

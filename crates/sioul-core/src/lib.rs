@@ -185,6 +185,7 @@ pub mod contracts;
 pub mod dayview;
 pub mod demands;
 pub mod doses;
+pub mod draftcopies;
 pub mod dose_reminders;
 pub mod filelock;
 pub mod contacts;

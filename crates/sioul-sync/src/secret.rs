@@ -62,6 +62,10 @@ fn passphrase_entry(fingerprint: &str) -> Result<Entry, SyncError> {
 
 /// The passphrase of your OpenPGP key, when the keyring keeps it.
 pub fn pgp_passphrase(fingerprint: &str) -> Option<String> {
+    // This crate's own tests leave the keyring alone: their stand-in keys have no passphrase.
+    if cfg!(test) {
+        return None;
+    }
     #[cfg(feature = "insecure-test-tls")]
     if let Ok(passphrase) = std::env::var("SIOUL_TEST_PASSWORD") {
         return Some(passphrase);

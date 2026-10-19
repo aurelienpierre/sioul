@@ -148,6 +148,7 @@ When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](acco
 - **Encrypt** makes the message readable only by them and by you. It works when Sioul knows every recipient's key; otherwise it says whose key is missing, and **Look for their keys** asks for them. Sioul looks only when you press it, since looking tells a server to whom you write.
 - **The subject is not encrypted**: anyone who carries the message can read it. Keep it plain.
 - Your messages carry your public key, so that people who write back can encrypt.
+- **Answering an encrypted message** keeps it encrypted: Sioul switches **Encrypt** on when it can, and opens the message you answer only when you press **Send**, with the same PIN as the signature. Unencrypted, your answer goes without the quote, and a forward does not go.
 
 An encrypted message is decrypted when you open it; a signature is checked and said under the sender: "Encrypted · Signed by …", or "The signature does not match the text", in warm colours, never red.
 

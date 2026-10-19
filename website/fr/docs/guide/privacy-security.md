@@ -153,6 +153,8 @@ Avec OpenPGP, Sioul signe et chiffre vos courriels quand vous les envoyez, déch
 
 Vos clés secrètes restent sur l’appareil où elles ont été créées. Une clé gardée sur une [clé de sécurité](accounts.md#security-key) ne la quitte jamais : la clé signe et ouvre elle-même, après son code PIN, que Sioul garde en mémoire quinze minutes sans usage et n’écrit ni ne journalise jamais nulle part. Sioul se contente d’utiliser la clé : il ne demande jamais son code PIN d’administration et ne change jamais ce qu’elle contient. Voir [Les courriels](mail.md#signing-and-encrypting).
 
+Quand vous répondez à un courriel chiffré ou le transférez, la copie que Sioul garde avec votre brouillon reste chiffrée, telle qu’elle est arrivée. Elle ne s’ouvre qu’au moment où vous appuyez sur **Envoyer**, en mémoire, avec le même code PIN que la signature, et sa citation part chiffrée. Envoyée sans chiffrement, votre réponse part sans la citation, et un transfert ne part pas : la fenêtre le dit dès que vous décochez **Chiffrer**. Sur un appareil où aucune de vos clés ne l’ouvre, comme un téléphone pour l’instant, le brouillon le dit, la copie reste chiffrée, et une réponse envoyée de là part sans la citation.
+
 L’objet d’un courriel chiffré reste lisible, comme dans la plupart des logiciels de courriel aujourd’hui.
 
 ### Entre vos appareils {#between-your-devices}
@@ -218,6 +220,7 @@ Dire où la protection s’arrête en fait partie :
 
 - **Votre boîte de courriel reste chez votre fournisseur.** Sioul est un logiciel de courriel : vos courriels, vos agendas et vos contacts restent sur les serveurs de vos fournisseurs, et ce que ces serveurs peuvent lire dépend d’eux. Seuls les courriels que vous chiffrez avec OpenPGP leur sont illisibles, leur objet mis à part. Choisissez un fournisseur en qui vous avez confiance.
 - **Votre appareil est protégé par votre système.** Les fichiers de Sioul sont de simples fichiers, pour que vous et d’autres programmes puissiez les lire ; le chiffrement du disque de votre système et le mot de passe de votre session gardent les autres dehors.
+- **Ce qu’un disque garde d’un fichier remplacé.** Jusqu’au 19 octobre 2026, répondre à un courriel chiffré gardait son texte déchiffré avec le brouillon, sur chaque appareil où le brouillon arrivait. Sioul chiffre maintenant ces copies à nouveau et écrase les anciennes, mais les SSD, les téléphones et certains systèmes de fichiers (Btrfs, APFS) gardent les anciens blocs jusqu’à leur réemploi, et les sauvegardes gardent ce qu’elles ont pris : c’est le chiffrement du disque de votre système qui les rend illisibles ([Vos données restent à vous](#what-stays-on-your-computer)).
 - **Le dossier entre vos appareils en dit un peu.** Son serveur voit quel appareil a écrit, quand et combien ([le détail](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 - **Un téléphone a moins de protections.** Sur Android, il n’y a ni antivirus pour vérifier les pièces jointes ni clé de sécurité, et les sites s’ouvrent dans votre navigateur.
 - **Les domaines qui en imitent d’autres ne sont pas encore repérés**, seulement les noms empruntés, et la liste des marques est fixe : surtout des services français et de grandes plateformes.

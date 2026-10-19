@@ -153,6 +153,8 @@ With OpenPGP, Sioul signs and encrypts your messages as you send them, decrypts 
 
 Your secret keys stay on the device they were made on. A key kept on a [security key](accounts.md#security-key) never leaves it: the key signs and opens itself, after its PIN, which Sioul keeps in memory fifteen minutes without use and never writes or logs anywhere. Sioul only uses the key: it never asks for its administration PIN and never changes what is on it. See [Mail](mail.md#signing-and-encrypting).
 
+When you answer or forward an encrypted message, the copy Sioul keeps with your draft stays encrypted, as it came. It opens only when you press **Send**, in memory, with the same PIN as the signature, and its quote leaves encrypted. Sent without encryption, your answer goes without the quote, and a forward does not go: the window says so as soon as you untick **Encrypt**. On a device where no key of yours opens it, such as a phone for now, the draft says so, the copy stays encrypted, and an answer sent from there goes without the quote.
+
 The subject of an encrypted message stays readable, as in most mail programs today.
 
 ### Between your devices {#between-your-devices}
@@ -218,6 +220,7 @@ Saying where protection stops is part of it:
 
 - **Your mailbox stays at your provider.** Sioul is a mail program: your mail, calendars and contacts stay on your providers' servers, and what those servers can read depends on them. Only the mail you encrypt with OpenPGP is unreadable to them, its subject aside. Choose a provider you trust.
 - **Your device is protected by your system.** Sioul's files are plain files, so that you and other programs can read them; your system's disk encryption and your session's password keep others out.
+- **What a disk keeps of a file replaced.** Until 19 October 2026, answering an encrypted message kept its decrypted text with the draft, on each device the draft reached. Sioul now encrypts those copies again and overwrites the old ones, but SSDs, phones and some filesystems (Btrfs, APFS) keep the old blocks until they are reused, and backups keep what they saved: your system's disk encryption is what makes those unreadable ([Your data stays yours](#what-stays-on-your-computer)).
 - **The folder between your devices tells a little.** Its server sees which device wrote, when and how much ([details](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 - **A phone has fewer protections.** On Android there is no antivirus to check attachments and no security key, and sites open in your browser.
 - **Look-alike domains are not caught yet**, only borrowed names, and the list of brands is fixed: mostly French services and large platforms.

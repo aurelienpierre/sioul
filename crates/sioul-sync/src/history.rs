@@ -245,6 +245,26 @@ fn walk(top: &Path, dir: &Path, out: &mut Vec<(String, Vec<Version>)>) {
     }
 }
 
+/// The versions kept here of the copies beside drafts of the messages they
+/// answer or forward (`data/drafts/<id>.eml`), as files: until 19 October
+/// 2026 one could hold an encrypted message's text in clear
+/// (`sioul_core::draftcopies::seal_versions` encrypts those again).
+pub fn draft_copies(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for (file, versions) in files(root, "drafts") {
+        let Some(name) = file.strip_prefix("data/drafts/") else { continue };
+        if name.contains('/') || !name.ends_with(".eml") {
+            continue;
+        }
+        for kept in versions.iter().filter(|v| v.sealed.is_none()) {
+            if let Some(Kept::Copy(path)) = version(root, "drafts", &file, &kept.stamp) {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
 /// Where a version kept is, if it is there: never outside the history.
 pub fn version(root: &Path, part: &str, file: &str, stamp: &str) -> Option<Kept> {
     kept_at(stamp)?;
