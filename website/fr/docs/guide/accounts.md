@@ -101,7 +101,7 @@ Vos clés OpenPGP, pour signer et chiffrer vos courriels ([Les courriels](mail.m
 - **Importer une clé…** : une clé exportée de GnuPG, avec sa phrase secrète, demandée une fois.
 - **Enregistrer la clé publique** : dans vos téléchargements, pour la donner aux autres.
 - **Enregistrer le certificat de révocation**, pour une clé créée ici : une copie dans vos téléchargements, à garder en lieu sûr, ailleurs que sur cet appareil. C’est lui qui déclare la clé hors d’usage, si elle est un jour perdue ou volée ; qui le détient peut le faire. Sioul le garde à côté de la clé, lisible par vous seulement ([Les courriels, OpenPGP](mail.md)), et ne sait pas encore révoquer une clé.
-- **Clés des autres** : celles venues avec leurs courriels, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
+- **Clés des autres** : celles venues avec leurs courriels, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture. Chacune ne sert que l’adresse pour laquelle elle est venue, ou toutes les adresses d’un fichier que vous importez. Une clé que Sioul gardait avant le 19 octobre 2026 et qui nomme plus d’une adresse, dans l’un quelconque de ses identifiants, n’en sert aucune jusqu’à ce qu’elle revienne : le prochain courriel de son propriétaire, **Chercher leurs clés**, ou le fichier importé de nouveau. Une clé que son propriétaire a révoquée n’en sert aucune non plus.
 
 Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas. La partie publique d’une clé de sécurité fait exception : elle voyage (ci-dessous).
 
