@@ -1608,6 +1608,32 @@ pub(crate) fn temporary(path: &Path) -> PathBuf {
 /// crash is cleaned after an hour (`clean_leftovers`).
 pub(crate) const TEMPORARY: &str = ".sioul.tmp";
 
+/// A file's last change set to `when`, through a handle that cannot write it.
+/// On Windows, a handle on its attributes alone (`FILE_WRITE_ATTRIBUTES`):
+/// closing a handle that could write the file has the antivirus read it
+/// whole before the close returns, a quarter of a second and more for a
+/// note of 24 MB, under the exchanges' lock when a put back dates it there
+/// (CI's Windows job, 19 October 2026); an attribute's handle is not
+/// scanned. Elsewhere a read handle: the owner sets its times
+/// (`futimens`); where a file system asks for write access to set them, a
+/// write handle after all.
+pub(crate) fn set_time(path: &Path, when: std::time::SystemTime) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+        const SYNCHRONIZE: u32 = 0x0010_0000;
+        std::fs::OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES | SYNCHRONIZE).open(path)?.set_modified(when)
+    }
+    #[cfg(not(windows))]
+    {
+        match std::fs::File::open(path)?.set_modified(when) {
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => std::fs::File::options().write(true).open(path)?.set_modified(when),
+            done => done,
+        }
+    }
+}
+
 // ---------------------------------------------------------------- yours alone
 
 /// What the sharing writes is yours alone on Unix, as the calls' logs are
@@ -6239,9 +6265,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
                 }
                 std::fs::rename(&temporary, path).map_err(local)?;
                 // Its time as where it was made, never after this computer's clock (another's may be ahead).
-                if let Ok(written) = std::fs::File::options().write(true).open(path) {
-                    let _ = written.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(wanted.t.min(how.clock).max(0) as u64));
-                }
+                let _ = set_time(path, std::time::UNIX_EPOCH + std::time::Duration::from_millis(wanted.t.min(how.clock).max(0) as u64));
                 let now = std::fs::metadata(path).map_err(local)?;
                 Some(Stat { size: now.len(), modified: modified_ns(&now), entries: vec![(String::new(), wanted.h.clone())], seen: how.clock })
             }
@@ -6459,7 +6483,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             crate::history::keep(&root, part, file, &path, now_ms)?;
         }
         // Dated now, wherever the copy took its time from: a change made here, which the others take.
-        let _ = std::fs::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(std::time::SystemTime::now()));
+        let _ = set_time(&temporary, std::time::SystemTime::now());
         std::fs::rename(&temporary, &path).map_err(fail)
     };
     // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
@@ -7089,10 +7113,9 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
                     }
                     beside
                 };
-                // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1).
-                if let Ok(placed) = std::fs::File::options().write(true).open(&beside) {
-                    let _ = placed.set_modified(*when);
-                }
+                // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1);
+                // through a handle that cannot write it, which no antivirus reads at its close (`set_time`).
+                let _ = set_time(&beside, *when);
                 if place_new(&beside, path) {
                     back += 1;
                 }
@@ -7930,6 +7953,33 @@ mod tests {
 
     pub(super) fn quick_key(folder: &Path, passphrase: &str) -> Result<[u8; 32], Refused> {
         key_with(folder, passphrase, 64, 1)
+    }
+
+    /// A file dated through a handle that cannot write it (`set_time`: on
+    /// Windows its attributes alone, no antivirus reading the file at its
+    /// close; elsewhere a read handle): its time set, the file unchanged; a
+    /// file only its owner may read dated too, where a write handle could
+    /// not even be opened.
+    #[test]
+    fn a_file_is_dated_without_a_handle_that_writes_it() {
+        let base = scratch("set-time");
+        let path = base.join("note.md");
+        std::fs::write(&path, b"# Note\n").unwrap();
+        let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_789_990_000);
+        set_time(&path, when).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), when);
+        assert_eq!(std::fs::read(&path).unwrap(), b"# Note\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).unwrap();
+            let later = when + std::time::Duration::from_secs(60);
+            set_time(&path, later).unwrap();
+            assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), later, "read-only: dated all the same");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert!(set_time(&base.join("gone.md"), when).is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn put(dir: &Path, relative: &str, bytes: &[u8]) {
