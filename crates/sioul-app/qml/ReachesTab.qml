@@ -385,7 +385,7 @@ ColumnLayout {
             }
         }
     }
-    // Let every call through, Real time: a line each.
+    // Expecting a call, Real time: a line each.
     Repeater {
         model: tab.view === "time" && tab.time === "" ? tab.shown.switches : []
 

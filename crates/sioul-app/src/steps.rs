@@ -32,7 +32,7 @@
 //!    fetched, which never tell what the spam filter flagged or moved, nor
 //!    what a mail filter moves out of the inbox or marks read;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
-//!    changed, and the notification's "Let every call through";
+//!    changed, and the notification's Expecting a call;
 //! 5. when to look next: two minutes while the phone keeps close
 //!    (`keeps_close`, read again after the step's pull: another device in
 //!    use; while you sleep, a computer only with someone at it, or any while
@@ -386,7 +386,7 @@ fn step(reason: &str) -> serde_json::Value {
             crate::mailnote::tick();
         })
     });
-    // "Let every call through" pressed on the notification: carried into the switch
+    // Expecting a call pressed on the notification: carried into the switch
     // and the calls' table first, and sent at once, the sync app not waited for.
     let pressed = reason == "calls";
     let calls = if pressed { Some(crate::calls::step(true)) } else { None };

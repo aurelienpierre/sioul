@@ -149,6 +149,7 @@
 //! ## On a phone
 //!
 //! - [`calls`]: calls screened on a phone.
+//! - [`screening`]: the call screening, apart: numbers nobody knows, ARCEP's numbers for machines.
 //! - [`appnotes`]: other apps' notifications on a phone: shown now, or held until their time.
 //! - [`texts`]: the phone's texts, read on your computers, and texts written there that the phone sends.
 //! - [`mms`]: multimedia messages sent from a computer: written as Android sends them, measured, and the carrier's answer.
@@ -234,6 +235,7 @@ pub mod projects;
 pub mod projectview;
 pub mod reading;
 pub mod rules;
+pub mod screening;
 pub mod securitykey;
 pub mod settings;
 pub mod shield;

@@ -98,8 +98,9 @@ impl Look {
     /// Always through); do-not-disturb's at sleep's, or at the time now under
     /// the switch's or a focus session's layer, as the matrix reads a layer.
     /// While this phone screens calls, every contact's call goes through the
-    /// mode, Sioul having declined the others already, else the starred; and
-    /// anyone's while "Let every call through" holds.
+    /// mode, Sioul having declined the others already, and anyone's when the
+    /// call screening lets numbers nobody knows ring then; else the starred;
+    /// and anyone's while Expecting a call holds.
     fn asks(&self) -> [(Which, Option<Ask>); 3] {
         use sioul_core::attention::{Column, Now as Moment, Senders};
         let (config, state) = (&self.config, &self.state);
@@ -108,6 +109,9 @@ impl Look {
         let free = state.has(Why::FreeTime) && !paused;
         let attention = sioul_core::attention::Attention::of(config);
         let phone = phone_does();
+        // While this phone screens calls: whether the call screening lets numbers nobody knows ring at each
+        // mode's moment by itself (`calls::unknown_rings`), so that the mode silences nothing it lets ring.
+        let phone_at = |moment: &Moment| sioul_core::attention::Phone { unknown: phone.screens && crate::calls::unknown_rings(config, moment.times.iter().any(|c| matches!(c, Column::Work | Column::Admin))), ..phone };
         let mode = &self.mode;
         let through = self.through();
         let moment = |times: Vec<Column>, dnd: bool, nothing: bool| {
@@ -119,7 +123,7 @@ impl Look {
             moment
         };
         let ask = |which: Which, moment: Moment| {
-            let silence = attention.silence_at(&moment, phone);
+            let silence = attention.silence_at(&moment, phone_at(&moment));
             Ask { which, people: silence.calls != Senders::None, doses: silence.doses, desktop: gnome, silence: Some(silence), stack: true }
         };
         // The switch's mode adds nothing over this device's own do-not-disturb
@@ -135,7 +139,7 @@ impl Look {
         ]
     }
 
-    /// "Let every call through" holds now, as this device knows it.
+    /// Expecting a call (once "Let every call through") holds now, as this device knows it.
     fn through(&self) -> bool {
         crate::calls::through_now(&self.switch).is_some_and(|t| t.holds(self.now.timestamp().as_millisecond()))
     }
@@ -148,7 +152,7 @@ impl Look {
 
     /// When to look again by itself: a reason's end, the next night or nap
     /// when sleep counts, the time's end while do-not-disturb's layer reads
-    /// it, the end of "Let every call through" (Unix seconds).
+    /// it, the end of Expecting a call (Unix seconds).
     fn next_change(&self) -> Option<i64> {
         let stamp = self.now.timestamp().as_second();
         let night = if self.config.dnd.sleep { blocks(&self.now).kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.start > stamp).map(|k| k.start).min() } else { None };
@@ -170,7 +174,7 @@ fn phone_does() -> sioul_core::attention::Phone {
     if !cfg!(target_os = "android") {
         return sioul_core::attention::Phone::default();
     }
-    sioul_core::attention::Phone { screens: crate::calls::screens_here() }
+    sioul_core::attention::Phone { screens: crate::calls::screens_here(), unknown: false }
 }
 
 /// Why do-not-disturb holds now, on every device alike.
@@ -908,7 +912,7 @@ mod tests {
         assert_ne!(look(false, true).signature(), off);
         assert_ne!(look(true, false).signature(), look(false, true).signature());
         assert_eq!(look(true, true).asks().iter().filter(|(_, a)| a.is_some()).count(), 2, "the pause and the switch, each its own mode");
-        // "Let every call through" pressed: anyone's call through the pause's mode, said in what it asks.
+        // Expecting a call pressed: anyone's call through the pause's mode, said in what it asks.
         let mut through = look(true, false);
         sioul_core::calls::press(&mut through.switch, "phone", true, 0, Zoned::now().timestamp().as_millisecond());
         let calls = |look: &Look| look.asks()[0].1.as_ref().and_then(|a| a.silence).map(|s| s.calls);

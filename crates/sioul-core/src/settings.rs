@@ -1247,6 +1247,8 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             }
             set_value(config_path, key, &SettingValue::Float(wanted))
         }
+        // The call screening (Settings ▸ This phone ▸ Call screening): a key at a time, its words checked.
+        _ if key.starts_with("screening.") => crate::screening::set(config_path, key, value),
         // "Like the others": the account's own value goes.
         _ if key.starts_with("account.") && key.ends_with(".history_weeks") && *value == SettingValue::Int(-1) => set_value(config_path, key, &SettingValue::Text(String::new())),
         _ if key.starts_with("account.") && key.ends_with(".fetch_minutes") && *value == SettingValue::Int(0) => set_value(config_path, key, &SettingValue::Text(String::new())),

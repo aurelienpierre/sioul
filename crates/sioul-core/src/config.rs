@@ -109,6 +109,11 @@ pub struct Config {
     /// Do-not-disturb on every device: what turns it on, who gets through (`[dnd]`, docs/do-not-disturb.md).
     #[serde(default)]
     pub dnd: crate::everywhere::DndSettings,
+    /// The call screening, apart from do-not-disturb (`[screening]`,
+    /// `screening::Screening::of`, docs/android.md, "Calls"): each key
+    /// unsaid at its first value; none while never written.
+    #[serde(default)]
+    pub screening: Option<crate::screening::Settings>,
     /// Paper letters: where their scans arrive (docs/porch.md).
     #[serde(default)]
     pub letters: LetterSettings,

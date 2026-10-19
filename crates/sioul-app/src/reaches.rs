@@ -108,9 +108,10 @@ fn kinds(phone: bool) -> Vec<Kind> {
 }
 
 /// The rows the tab shows here, by id: every channel's (By person says when
-/// one does not apply yet), and the kinds that act on this device.
+/// one does not apply yet), but the call screening's (numbers nobody knows and
+/// hidden numbers on calls: Settings ▸ This phone), and the kinds that act on this device.
 fn shown_rows(phone: bool) -> Vec<Row> {
-    let mut rows: Vec<Row> = Channel::ALL.iter().flat_map(|c| attention::channel_rows(*c)).collect();
+    let mut rows: Vec<Row> = Channel::ALL.iter().flat_map(|c| attention::channel_rows(*c)).filter(|r| !attention::screened(*r)).collect();
     let mut own = kinds(phone);
     own.push(Kind::Time);
     rows.extend(Kind::ALL.iter().filter(|k| own.contains(k)).map(|k| Row::Own(*k)));
@@ -243,7 +244,7 @@ fn people_words(subjects: &[(Channel, Person)], said: &mut Vec<(Channel, Person)
     // Each channel's people in words: everyone, everyone else, or by name.
     let mut worded: Vec<(Vec<Channel>, String)> = Vec::new();
     for (channel, persons) in &by_channel {
-        let all: Vec<Person> = attention::persons(*channel).iter().copied().filter(|p| p.state()).collect();
+        let all: Vec<Person> = matrix_persons(*channel);
         let before: Vec<Person> = said.iter().filter(|(c, _)| c == channel).map(|(_, p)| *p).collect();
         let fresh = persons.iter().all(|p| !before.contains(p));
         let everyone = persons.iter().all(|p| *p != Person::Always) && all.iter().all(|p| persons.contains(p) || before.contains(p)) && fresh;
@@ -259,6 +260,12 @@ fn people_words(subjects: &[(Channel, Person)], said: &mut Vec<(Channel, Person)
     let parts: Vec<String> = worded.iter().map(|(channels, who)| from_words(channels, who)).collect();
     let plural = parts.len() > 1 || worded.iter().any(|(channels, _)| channels.len() > 1 || channels[0] != Channel::Mail || mail_plural());
     Some((listed(&parts, false), plural))
+}
+
+/// The people of a channel the matrix decides for (the states), the call
+/// screening's aside: numbers nobody knows and hidden numbers, on calls.
+fn matrix_persons(channel: Channel) -> Vec<Person> {
+    attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p))).collect()
 }
 
 /// Sioul's own kinds in words, the four reminders together when all are
@@ -336,7 +343,7 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
     for channel in &chans {
         let level = attention.cell(Row::People(*channel, Person::Always), column);
         // Said only when it gives them more than every list does then.
-        let lists = attention::persons(*channel).iter().filter(|p| p.state()).map(|p| attention.cell(Row::People(*channel, *p), column)).max().unwrap_or(Level::Now);
+        let lists = matrix_persons(*channel).iter().map(|p| attention.cell(Row::People(*channel, *p), column)).max().unwrap_or(Level::Now);
         if level == Level::As || (level != Level::Through && level >= lists) {
             continue;
         }
@@ -377,12 +384,12 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
         }
     };
     for channel in &chans {
-        for person in attention::persons(*channel).iter().filter(|p| p.state()) {
-            let row = Row::People(*channel, *person);
+        for person in matrix_persons(*channel) {
+            let row = Row::People(*channel, person);
             let level = attention.cell(row, column);
             let calls = *channel == Channel::Calls;
             let until = if level == Level::Later && !calls { comes_in(attention, row) } else { Vec::new() };
-            add((rank(level, calls), until), Subject::People(*channel, *person));
+            add((rank(level, calls), until), Subject::People(*channel, person));
         }
     }
     for kind in kinds(reach.phone) {
@@ -415,6 +422,10 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
             });
         }
     }
+    // Numbers nobody knows and hidden numbers: the call screening's, apart, whatever the time or the layer.
+    if chans.contains(&Channel::Calls) {
+        lines.push(text("attention-card-screening"));
+    }
     lines
 }
 
@@ -437,7 +448,8 @@ fn system_line(attention: &Attention, config: &Config, column: Column, reach: Re
     if !reach.phone {
         return text("attention-system-computer");
     }
-    let silence = attention.silence(&[column], false, Phone { screens: reach.screens });
+    let hours = matches!(column, Column::Work | Column::Admin);
+    let silence = attention.silence(&[column], false, Phone { screens: reach.screens, unknown: reach.screens && crate::calls::unknown_rings(config, hours) });
     let senders = |senders: Senders| match senders {
         Senders::None => None,
         Senders::Starred => Some(text("attention-senders-starred")),
@@ -664,12 +676,12 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
         None => groups.push((rank, vec![subject])),
     };
     for channel in channels(reach) {
-        for person in attention::persons(channel).iter().filter(|p| p.state()) {
-            match attention.person(channel, *person, false, now) {
-                Level::Now => add(0, Subject::People(channel, *person)),
-                Level::Quiet => add(2, Subject::People(channel, *person)),
+        for person in matrix_persons(channel) {
+            match attention.person(channel, person, false, now) {
+                Level::Now => add(0, Subject::People(channel, person)),
+                Level::Quiet => add(2, Subject::People(channel, person)),
                 Level::Never => {}
-                _ => add(3, Subject::People(channel, *person)),
+                _ => add(3, Subject::People(channel, person)),
             }
         }
     }
@@ -958,7 +970,8 @@ fn person_with(someone: &Someone, note: String) -> String {
     let lines: Vec<String> = Channel::ALL
         .iter()
         .filter_map(|channel| {
-            let line = channel_line(&attention, *channel, Person::of(who), always, "attention-sheet-line")?;
+            // Someone no list nor address book knows: their calls are the call screening's, apart.
+            let line = if *channel == Channel::Calls && !always && attention::screened(Row::People(Channel::Calls, Person::of(who))) { text("attention-sheet-line-calls-screening") } else { channel_line(&attention, *channel, Person::of(who), always, "attention-sheet-line")? };
             let missing = match channel {
                 Channel::Calls if !reach.calls => Some(text("attention-sheet-calls-none")),
                 Channel::Calls if someone.phones().is_empty() => Some(text("attention-sheet-no-number")),
@@ -1134,7 +1147,7 @@ mod tests {
                 }
             }
             said_well(&text("attention-mail-areas"), language);
-            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
+            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-card-screening", "attention-sheet-line-calls-screening", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
                 said_well(&text(key), language);
             }
         }
@@ -1201,6 +1214,24 @@ mod tests {
         assert_eq!(system_line(&usual, &config, Column::Leisure, phone), "The phone is not silenced.");
         let pause = system_line(&usual, &config, Column::Pause, phone);
         assert!(pause.starts_with("The phone is silenced; it lets through calls") && pause.contains("from your contacts") && pause.contains("alarms"), "{pause}");
+        // Numbers nobody knows and hidden numbers: the call screening's, apart: no row of theirs in the grid, a
+        // line of their own in each card where calls apply, never said by the time; the phone's mode lets anyone's
+        // call through when the screening lets them ring (here: off).
+        let screening = "Calls from numbers nobody knows and hidden numbers: as your call screening says, apart (Settings ▸ This phone).";
+        has(&leisure, screening);
+        for column in Column::ALL {
+            let lines = card_lines(&usual, &config, column, phone);
+            assert_eq!(lines.iter().filter(|l| l.contains("hidden numbers")).collect::<Vec<_>>(), [screening], "{column:?}");
+        }
+        // Strangers ringing by an old cell of their Calls row, where their mail and messages wait: never said.
+        let mut old_cell = Attention::usual();
+        old_cell.set(Row::People(Channel::Calls, Person::Stranger), Column::Leisure, Level::Now).unwrap();
+        assert!(!card_lines(&old_cell, &config, Column::Leisure, phone).iter().any(|l| l.contains("strangers")), "{:#?}", card_lines(&old_cell, &config, Column::Leisure, phone));
+        assert!(!card_lines(&usual, &config, Column::Leisure, computer).iter().any(|l| l == screening), "no calls here");
+        let rows: Vec<String> = shown_rows(true).iter().map(|r| r.id()).collect();
+        assert!(rows.contains(&"calls.safe".to_string()) && !rows.contains(&"calls.stranger".to_string()) && !rows.contains(&"calls.hidden".to_string()) && rows.contains(&"messages.stranger".to_string()), "{rows:?}");
+        let off: Config = toml::from_str("[screening]\non = false\n").unwrap();
+        assert!(system_line(&usual, &off, Column::Pause, phone).contains("calls from anyone"), "{}", system_line(&usual, &off, Column::Pause, phone));
         // A person's lines: a neutral contact, and the same on Always through.
         assert_eq!(
             channel_line(&usual, Channel::Mail, Person::Neutral, false, "attention-sheet-line").unwrap(),

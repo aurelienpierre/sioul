@@ -24,7 +24,7 @@
 //! **The pipeline** (`Attention::decide`): what an event is; the emergency
 //! numbers (calls); who wrote, proven or not; the blocked, never, whatever
 //! else says (blocked beats Always through); the content (a code, a lane never
-//! told); the floors (a second call, Let every call through); the exceptions
+//! told); the floors (a second call, Expecting a call); the exceptions
 //! (Always through, a conversation, a site); the matrix; what the source is
 //! for (its area); the named holds (the Porch resting after a pause, a
 //! meeting, the chat limit). Each caller asks it, and stays where it is.
@@ -124,6 +124,14 @@ pub fn persons(channel: Channel) -> &'static [Person] {
         Channel::Calls => &[Always, Safe, Neutral, Restricted, Stranger, Hidden, Blocked],
         Channel::Messages => &[Always, Safe, Neutral, Restricted, Stranger, Groups, Blocked],
     }
+}
+
+/// Whether a row is the call screening's (`screening`), apart from the
+/// matrix: numbers nobody knows and hidden numbers, on calls. Kept in the
+/// matrix for the screening's first values and for when a declined call is
+/// listed (`listed`), never shown in its grid nor said by its cards.
+pub fn screened(row: Row) -> bool {
+    matches!(row, Row::People(Channel::Calls, Person::Stranger | Person::Hidden))
 }
 
 /// Sioul's own and the automated sources: a row each, with no who.
@@ -621,7 +629,8 @@ pub struct Now {
     pub gathering: bool,
     /// The Porch's Real time box: every site in real time.
     pub realtime: bool,
-    /// Let every call through: every call rings but the blocked's.
+    /// Expecting a call (once "Let every call through"), while a phone screens calls:
+    /// numbers nobody knows ring, so the modes let anyone's call through.
     pub through: bool,
     pub holds: Holds,
 }
@@ -1138,7 +1147,7 @@ pub enum Step {
     Blocked,
     /// A lane, a code.
     Content,
-    /// A floor: a second call within 15 minutes, Let every call through.
+    /// A floor: a second call within 15 minutes, Expecting a call.
     Floor,
     /// The matrix, the time and its layers.
     Matrix,
@@ -1307,7 +1316,8 @@ impl Attention {
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
-        if now.through || (repeat && who.is_some()) {
+        // Expecting a call opens only to numbers nobody knows (the call screening's, `calls::decide`); a second call, to anyone known by number.
+        if (now.through && matches!(person, Person::Stranger | Person::Hidden)) || (repeat && who.is_some()) {
             return rings(Step::Floor);
         }
         let level = self.person(Channel::Calls, person, always && who.is_some(), now);
@@ -1409,8 +1419,14 @@ pub struct Silence {
 /// What this phone does itself.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Phone {
-    /// It screens calls: Sioul has declined what the matrix holds already.
+    /// It screens calls: Sioul has declined what the matrix and the call
+    /// screening hold already.
     pub screens: bool,
+    /// While it screens calls, the call screening lets numbers nobody knows,
+    /// or hidden ones, ring then (`screening::Screening::rings`): their calls
+    /// go through the mode too. The Calls rows of strangers and hidden
+    /// numbers are no part of it any more: the screening is apart.
+    pub unknown: bool,
 }
 
 impl Attention {
@@ -1418,10 +1434,11 @@ impl Attention {
     /// the times together the least strict, a layer (do-not-disturb over the
     /// time now) the stricter, "Nothing at all" holding the states' rows.
     /// Calls: where this phone screens them, every contact's, Sioul having
-    /// declined the others already; else the starred, Android's nearest to
-    /// Always through; anyone's while "Let every call through" holds
-    /// (`Now::through`), so that the mode lets ring what the screening lets
-    /// through. Messages: the starred when the matrix lets anyone write
+    /// declined the others already, and anyone's when the call screening lets
+    /// numbers nobody knows ring then (`Phone::unknown`); else the starred,
+    /// Android's nearest to Always through; anyone's while Expecting a call
+    /// holds (`Now::through`), so that the mode lets ring what the screening
+    /// lets through. Messages: the starred when the matrix lets anyone write
     /// then, never wider, though Sioul may hold other apps' notifications:
     /// Android sounds a notification before any listener hears of it
     /// (docs/android.md, "Sound"), so a contact's message let through the
@@ -1431,7 +1448,8 @@ impl Attention {
         let passes = |channel: Channel, person: Person| self.person(channel, person, false, now) == Level::Now;
         let always = |channel: Channel| self.person(channel, Person::Always, true, now) == Level::Now;
         let senders = |channel: Channel, own: bool| {
-            let strangers = [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p));
+            // While this phone screens calls, numbers nobody knows are the screening's, apart from the matrix.
+            let strangers = if channel == Channel::Calls && own { phone.unknown } else { [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p)) };
             let known = [Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| passes(channel, *p));
             match (own, strangers, known || always(channel)) {
                 (true, true, _) => Senders::Anyone,
@@ -2595,10 +2613,11 @@ mod tests {
         // Q11: calls carry the layers: a safe caller under the switch goes to voicemail, the list's rings.
         let dnd = Now::time(Column::Leisure).layers(false, true);
         assert!(!call(Some(Who::Safe), false, &dnd).told && call(Some(Who::Safe), true, &dnd).told);
-        // Floors after the blocked: Let every call through, a second call.
+        // Floors after the blocked: Expecting a call (numbers nobody knows only, never the people you know beyond their row), a second call.
         let mut through = night.clone();
         through.through = true;
-        assert!(call(Some(Who::Stranger), false, &through).told && !call(Some(Who::Blocked), false, &through).told);
+        assert!(call(Some(Who::Stranger), false, &through).told && call(None, false, &through).told && !call(Some(Who::Blocked), false, &through).told);
+        assert!(!call(Some(Who::Neutral), false, &through).told, "the people you know as their row says");
         let repeat = a.decide(&Event::of(Source::Call { who: None, always: false, emergency: false, repeat: true }), &night);
         assert!(!repeat.told, "hidden numbers cannot be told apart: no second call");
         assert!(a.decide(&Event::of(Source::Call { who: Some(Who::Blocked), always: false, emergency: true, repeat: false }), &night).told, "an emergency number rings, even blocked");
@@ -2762,7 +2781,7 @@ mod tests {
     #[test]
     fn what_each_mode_lets_through() {
         let a = Attention::usual();
-        let phone = Phone { screens: true };
+        let phone = Phone { screens: true, unknown: false };
         // The pause: Always through only, their calls through the mode as contacts' while this phone screens; doses and alarms pass.
         let pause = a.silence(&[Column::Pause], false, phone);
         assert_eq!((pause.calls, pause.messages, pause.repeat, pause.conversations, pause.doses, pause.events), (Senders::Contacts, Senders::Starred, true, true, true, true));
@@ -2801,25 +2820,36 @@ mod tests {
                 assert_eq!((through.calls, through.repeat, through.messages), (Senders::Anyone, true, Senders::None), "{columns:?}");
             }
         }
-        // Do-not-disturb over the time now, as `level` reads a layer (before: the layer's column alone): a cell
-        // loosened under the switch lets no more through than the time does.
+        // While this phone screens calls, numbers nobody knows are the call screening's, apart: anyone's call
+        // through the mode when it lets them ring (before: the Calls rows of strangers and hidden numbers).
+        let unknown = Phone { screens: true, unknown: true };
+        assert_eq!(a.silence(&[Column::Pause], false, unknown).calls, Senders::Anyone);
+        assert_eq!(a.silence(&[Column::Pause], false, phone).calls, Senders::Contacts);
         let mut loose = Attention::usual();
         loose.set(row("calls.stranger"), Column::Dnd, Level::Now).unwrap();
-        assert_eq!(loose.silence(&[Column::Dnd], false, phone).calls, Senders::Anyone, "the layer by itself");
-        assert_eq!(loose.silence(&[Column::Leisure, Column::Dnd], false, phone).calls, Senders::Contacts, "over leisure, where strangers wait");
+        assert_eq!(loose.silence(&[Column::Dnd], false, phone).calls, Senders::Contacts, "the strangers' row is the screening's now");
+        assert_eq!(Attention::usual().silence(&[Column::Work], false, Phone { screens: false, unknown: true }).calls, Senders::Starred, "without screening, starred only");
+        // Do-not-disturb over the time now, as `level` reads a layer (before: the layer's column alone): a cell
+        // loosened under the switch lets no more through than the time does. Restricted alone: work only.
+        let mut only = none.clone();
+        for column in Column::ALL {
+            for person in [Person::Safe, Person::Neutral] {
+                only.set(Row::People(Channel::Calls, person), column, Level::Later).unwrap();
+            }
+        }
+        let mut loosened = only.clone();
+        loosened.set(row("calls.restricted"), Column::Dnd, Level::Now).unwrap();
+        assert_eq!(loosened.silence(&[Column::Dnd], false, phone).calls, Senders::Contacts, "the layer by itself");
+        assert_eq!(loosened.silence(&[Column::Leisure, Column::Dnd], false, phone).calls, Senders::None, "over leisure, where the restricted wait");
         // Two times at once (no hours set: work and admin), the least strict; a layer above them, the stricter.
-        let mut hidden = Attention::usual();
-        hidden.set(row("calls.hidden"), Column::Admin, Level::Later).unwrap();
-        assert_eq!(hidden.silence(&[Column::Admin], false, phone).calls, Senders::Contacts);
-        assert_eq!(hidden.silence(&[Column::Work, Column::Admin], false, phone).calls, Senders::Anyone);
-        assert_eq!(hidden.silence(&[Column::Work, Column::Admin, Column::Dnd], false, phone).calls, Senders::Contacts);
-        // The same moment as the window reads it: no admin hours, work time takes admin's cells (people's rows).
-        let mut lent = Attention::usual();
-        lent.set(row("calls.hidden"), Column::Work, Level::Later).unwrap();
-        let mut work = Now::time(Column::Work);
-        assert_eq!(lent.silence_at(&work, phone).calls, Senders::Contacts);
-        work.week.admin_hours = false;
-        assert_eq!(lent.silence_at(&work, phone).calls, Senders::Anyone);
+        assert_eq!(only.silence(&[Column::Admin], false, phone).calls, Senders::None);
+        assert_eq!(only.silence(&[Column::Work, Column::Admin], false, phone).calls, Senders::Contacts);
+        assert_eq!(only.silence(&[Column::Work, Column::Admin, Column::Dnd], false, phone).calls, Senders::None);
+        // The same moment as the window reads it: no work hours, admin time takes work's cells (people's rows).
+        let mut admin = Now::time(Column::Admin);
+        assert_eq!(only.silence_at(&admin, phone).calls, Senders::None);
+        admin.week.work_hours = false;
+        assert_eq!(only.silence_at(&admin, phone).calls, Senders::Contacts);
     }
 
     #[test]

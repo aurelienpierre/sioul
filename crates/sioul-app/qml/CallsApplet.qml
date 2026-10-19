@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// "Let every call through" (docs/android.md, "Calls"): a switch for the
+// Expecting a call, once "Let every call through" (docs/android.md, "Calls"): a switch for the
 // status line, a button of the line (LineButton.qml), shown on every device
 // while a phone of yours screens calls,
-// for when you expect a call. One click lets every call ring on that phone
-// for an hour; a click while it is on screens calls again; a right click or
+// for when you expect a call. One click lets numbers nobody knows and hidden
+// numbers ring on that phone for an hour, never automated callers nor the
+// blocked; a click while it is on screens them again; a right click or
 // a long press chooses until when. Its words say until when; no colour but
 // the accent while it is on. Self-contained: the status line places it
 // (main.qml), beside do-not-disturb's switch.

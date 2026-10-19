@@ -7,16 +7,20 @@
 //!
 //! - **The table** Java decides from (`refresh`): written again when what it
 //!   is made of changed (the settings, the lists, the do-not-disturb list,
-//!   "Let every call through", the pauses and the times, Health), and at
+//!   Expecting a call, the call screening, the pauses and the times, Health), and at
 //!   least every ten minutes while something of Sioul's runs: the window's
 //!   minute and each do-not-disturb applied (`everywhere::apply`), the
 //!   background service's step, Android's daily look for the events'
 //!   reminders. Its frames reach four days ahead: Sioul closed that long, the
 //!   calls ring.
-//! - **Let every call through** (`press`), from the window on any device, or
-//!   from the phone's notification (Java keeps that press; it is carried into
-//!   the shared switch here, `carry`); said in the status line (`moment`) and
-//!   the notification (`step`).
+//! - **Expecting a call** (`press`; once "Let every call through"), from the
+//!   window on any device, or from the phone's notification (Java keeps that
+//!   press; it is carried into the shared switch here, `carry`); said in the
+//!   status line (`moment`) and the notification (`step`).
+//! - **The call screening** (`sioul_core::screening`): its settings in
+//!   Settings ▸ This phone ▸ Calls (`setup`, "set"), written into the table
+//!   with the numbers it knows by their kind (`make`); whether it lets numbers
+//!   nobody knows ring at a time, for the phone's modes (`unknown_rings`).
 //! - **The log**: on a phone, Java's calls copied into this phone's own log,
 //!   which the sharing carries to your other devices (`before_exchange`); on
 //!   every device, its own lines taken out after their month.
@@ -37,6 +41,7 @@ use sioul_core::porch::{Senders, Standing};
 use sioul_core::attention::{Attention, Person};
 use sioul_core::quiet::Overrides;
 use sioul_core::reach::{Clock, Who};
+use sioul_core::screening::{self, Screening};
 use sioul_core::voicemail::{self, Voicemail};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -176,7 +181,7 @@ pub(crate) fn refresh(now: bool) {
 
 /// This phone's press on its notification (Java's file) carried into the
 /// shared switch once, and whether it screens calls said there, for your
-/// other devices: their window offers "Let every call through" then.
+/// other devices: their window offers Expecting a call then.
 fn carry() -> Switch {
     let path = Switch::default_path();
     let here = here_id();
@@ -206,9 +211,16 @@ fn named(switch: &mut Switch, here: &str) {
     own.name = if own.kind == "phone" { String::new() } else { crate::devices::name() };
 }
 
+/// The numbers the screening knows by their kind, as Sioul ships them: read once.
+fn numbers() -> &'static screening::Numbers {
+    static NUMBERS: std::sync::OnceLock<screening::Numbers> = std::sync::OnceLock::new();
+    NUMBERS.get_or_init(screening::Numbers::built_in)
+}
+
 /// The table: who each number is (the Always through list's as rows of their
-/// own, never a blocked one), the floors, "Let every call through", and the
-/// frames from today's midnight, four days on (from midnight, so that a
+/// own, never a blocked one), the floors, Expecting a call, the call
+/// screening with the numbers it knows by their kind that count today, and
+/// the frames from today's midnight, four days on (from midnight, so that a
 /// table made a minute later says the same and is not written again), with
 /// the matrix's layers: today's slots of time for you, do-not-disturb.
 fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
@@ -234,9 +246,20 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
         numbers: senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect(),
         prefixes: senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect(),
         always,
-        through: rules::through_of(switch),
+        expecting: rules::through_of(switch),
+        screening: Some(screening::TablePart::of(&Screening::of(config), numbers(), now.date())),
         frames: rules::frames(&attention, &clock, &layers(), &from, &until),
     })
+}
+
+/// Whether the call screening lets a number nobody knows, or a hidden one,
+/// ring at a moment by itself (off, outside its hours, its rules), work or
+/// admin time then or not (`hours`): the phone's modes then let anyone's call
+/// through, so that nothing it lets ring is silenced (`attention::Phone::unknown`).
+/// Expecting a call is said apart (`attention::Now::through`).
+pub(crate) fn unknown_rings(config: &Config, hours: bool) -> bool {
+    let screening = Screening::of(config);
+    screening.rings(false, hours) || screening.rings(true, hours)
 }
 
 /// What holds on top of the times, ahead: today's slots of time for you
@@ -248,9 +271,9 @@ fn layers() -> rules::Layers {
     rules::Layers { slots: crate::hours::slots().slots, dnd: crate::everywhere::gate().map(|until| (since, until)) }
 }
 
-// ---------------------------------------------------------------- "Let every call through"
+// ---------------------------------------------------------------- Expecting a call
 
-/// "Let every call through" as this device knows it: the shared switch, and
+/// Expecting a call (once "Let every call through") as this device knows it: the shared switch, and
 /// on the phone its notification's own press, the later of the two.
 pub(crate) fn through_now(switch: &Switch) -> Option<Through> {
     let shared = rules::through_of(switch);
@@ -735,16 +758,86 @@ pub(crate) fn setup() -> String {
         "android": cfg!(target_os = "android"),
         "state": state,
         "moment": moment(),
+        "screening": screening_rows(&load_config(), &Zoned::now()),
     })
     .to_string()
 }
 
+/// A row of the call screening's settings, as `SettingRow.qml` shows it.
+fn row(key: &str, kind: &str, label: &str, help: &str, value: serde_json::Value, choices: &[(&str, String)]) -> serde_json::Value {
+    json!({
+        "key": format!("screening.{key}"),
+        "kind": kind,
+        "label": label,
+        "help": help,
+        "value": value,
+        "choices": choices.iter().map(|(value, label)| json!({ "value": value, "label": label })).collect::<Vec<_>>(),
+    })
+}
+
+/// Settings ▸ This phone ▸ Calls ▸ Call screening: {title, intro, rows,
+/// hears, expecting}; each row at its value now (`Screening::of`: the
+/// first values while unsaid), what never-attributed blocks count until said.
+fn screening_rows(config: &Config, now: &Zoned) -> serde_json::Value {
+    let tr = tr();
+    let text = |id: &str| tr.text(id, None);
+    let s = Screening::of(config);
+    let rules = [("voicemail", text("screening-rule-voicemail")), ("work", text("screening-rule-work")), ("ring", text("screening-rule-ring"))];
+    let spam = [("voicemail", text("screening-spam-voicemail")), ("unknown", text("screening-spam-unknown"))];
+    // The blocks attributed to nobody: until when Sioul's copy of ARCEP's list counts.
+    let today = now.date();
+    let unattributed = numbers().group.iter().find(|g| g.kind == "unattributed");
+    let impossible_help = match unattributed {
+        Some(g) => {
+            let day = |d: jiff::civil::Date| tr.day_month(d);
+            let read = g.checked.parse::<jiff::civil::Date>().ok();
+            let until = read.zip(g.valid_days).and_then(|(r, days)| r.checked_add(jiff::Span::new().days(days)).ok());
+            let mut args = sioul_core::i18n::args();
+            args.set("date", read.map(day).unwrap_or_default());
+            args.set("until", until.map(day).unwrap_or_default());
+            tr.text(if g.counts(today) { "screening-impossible-help" } else { "screening-impossible-help-old" }, Some(&args))
+        }
+        None => String::new(),
+    };
+    json!({
+        "title": text("screening-title"),
+        "intro": text("screening-intro"),
+        "rows": [
+            row("on", "bool", &text("screening-on"), &text("screening-on-help"), json!(s.on), &[]),
+            row("hours", "choice", &text("screening-hours"), &text("screening-hours-help"), json!(s.hours.id()), &[("always", text("screening-hours-always")), ("outside-work", text("screening-hours-outside-work"))]),
+            row("unknown", "choice", &text("screening-unknown"), &text("screening-unknown-help"), json!(s.unknown.id()), &rules),
+            row("hidden", "choice", &text("screening-hidden"), &text("screening-hidden-help"), json!(s.hidden.id()), &rules),
+            row("automated", "choice", &text("screening-automated"), &text("screening-automated-help"), json!(s.automated.id()), &spam),
+            row("impossible", "choice", &text("screening-impossible"), &impossible_help, json!(s.impossible.id()), &spam),
+            row("unverified", "choice", &text("screening-unverified"), &text("screening-unverified-help"), json!(s.unverified.id()), &spam),
+            row("called", "bool", &text("screening-called"), &text("screening-called-help"), json!(s.called), &[]),
+        ],
+        "hears": text("screening-hears"),
+        "expecting": text("screening-expecting"),
+    })
+}
+
 /// An action of Settings ▸ Calls: "ask-role" (Android's question), "open-roles"
 /// (its default apps, to change or stop), "allow-contacts", "open-blocked",
-/// "dial" {number} (the phone app with a code typed in, never called). The tab again.
+/// "dial" {number} (the phone app with a code typed in, never called), "set"
+/// {key, value} (a setting of the call screening, `screening::set`; the table
+/// made again at once, off the window's thread). The tab again.
 pub(crate) fn setup_change(verb: &str, json: &str) -> String {
     let asked: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
     match verb {
+        "set" => {
+            let key = asked["key"].as_str().unwrap_or_default();
+            let value = match &asked["value"] {
+                serde_json::Value::Bool(on) => sioul_core::config::SettingValue::Bool(*on),
+                other => sioul_core::config::SettingValue::Text(other.as_str().unwrap_or_default().to_string()),
+            };
+            match screening::set(&crate::backend::config_path(), key, &value) {
+                Ok(()) => {
+                    std::thread::spawn(|| refresh(true));
+                }
+                Err(e) => eprintln!("sioul: calls: {e}"),
+            }
+        }
         "ask-role" => {
             crate::steps::java("calls-ask-role", "{}");
         }
@@ -802,6 +895,48 @@ mod tests {
         assert!(listed(&root, "desk", false, now).is_empty(), "the setting off: a computer lists none");
         assert_eq!(listed(&root, "phone-a", false, now).len(), 1, "a phone its own");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The table this phone writes: version 2, the call screening as the
+    /// settings say (its first values while unsaid), the numbers it knows by
+    /// their kind that count today, Expecting a call as your devices last
+    /// pressed it; whether the screening lets numbers nobody knows ring, for
+    /// the phone's modes; its settings' rows at their values.
+    #[test]
+    fn the_phone_writes_the_screening_into_its_table() {
+        let now: Zoned = "2026-10-20T10:00:00+02:00[Europe/Paris]".parse().unwrap();
+        let config = Config::default();
+        let mut switch = Switch::default();
+        rules::press(&mut switch, "desk", true, 0, now.timestamp().as_millisecond());
+        let table = make(&config, &switch, &now);
+        assert_eq!((table.v, table.through), (rules::VERSION, None));
+        assert!(table.expecting.is_some_and(|e| e.on && e.holds(now.timestamp().as_millisecond())));
+        let s = table.screening.clone().unwrap();
+        assert_eq!((s.on, s.hours, s.unknown, s.hidden, s.called_days), (true, screening::Hours::Always, screening::Rule::Voicemail, screening::Rule::Work, screening::CALLED_DAYS));
+        assert!(s.automated_prefixes.contains(&"0162".to_string()) && s.impossible_prefixes.contains(&"089".to_string()) && s.impossible_prefixes.len() > 1_000);
+        assert!(table.frames.iter().all(|f| !f.ring.contains_key("stranger") && !f.ring.contains_key("hidden")));
+        // 200 days on, the blocks attributed to nobody no longer count; 089 does.
+        let later: Zoned = "2027-05-08T10:00:00+02:00[Europe/Paris]".parse().unwrap();
+        assert_eq!(make(&config, &switch, &later).screening.unwrap().impossible_prefixes, vec!["089".to_string()]);
+        // The owner's hidden numbers, held at every time: voicemail at all hours, from his row.
+        let held: Config = toml::from_str("[attention]\n\"calls.hidden\" = [\"work:later\", \"admin:later\", \"leisure:later\", \"meals:later\", \"sleep:later\", \"pause:later\", \"free:later\", \"slot:later\", \"dnd:later\"]\n").unwrap();
+        assert_eq!(make(&held, &switch, &now).screening.unwrap().hidden, screening::Rule::Voicemail);
+        // For the phone's modes: hidden numbers ring in work hours as usual; his never; all, the screening off.
+        assert!(unknown_rings(&config, true) && !unknown_rings(&config, false));
+        assert!(!unknown_rings(&held, true) && !unknown_rings(&held, false));
+        let off: Config = toml::from_str("[screening]\non = false\n").unwrap();
+        assert!(unknown_rings(&off, false));
+        // The settings' rows: eight, each at its value, with its words.
+        let rows = screening_rows(&held, &now);
+        let keys: Vec<&str> = rows["rows"].as_array().unwrap().iter().map(|r| r["key"].as_str().unwrap()).collect();
+        assert_eq!(keys, ["screening.on", "screening.hours", "screening.unknown", "screening.hidden", "screening.automated", "screening.impossible", "screening.unverified", "screening.called"]);
+        assert_eq!((rows["rows"][0]["value"].as_bool(), rows["rows"][3]["value"].as_str(), rows["rows"][3]["choices"].as_array().unwrap().len()), (Some(true), Some("voicemail"), 3));
+        assert!(rows["rows"].as_array().unwrap().iter().all(|r| !r["label"].as_str().unwrap().is_empty() && !r["label"].as_str().unwrap().starts_with("screening-")));
+        // The blocks attributed to nobody: the day ARCEP's list was read, and until when it counts; past it, said so.
+        let help = |rows: &serde_json::Value| rows["rows"][5]["help"].as_str().unwrap().to_string();
+        assert!(help(&rows).contains("19") && help(&rows).contains("17"), "{}", help(&rows));
+        let old = screening_rows(&held, &later);
+        assert!(help(&old).contains("19") && help(&old) != help(&rows), "{}", help(&old));
     }
 
     /// Old lines taken out once a day, whatever the exchanges in between.
