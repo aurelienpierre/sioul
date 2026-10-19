@@ -110,7 +110,8 @@ impl Look {
         let attention = sioul_core::attention::Attention::of(config);
         let phone = phone_does();
         // While this phone screens calls: whether the call screening lets numbers nobody knows ring at each
-        // mode's moment by itself (`calls::unknown_rings`), so that the mode silences nothing it lets ring.
+        // mode's moment by itself (`calls::unknown_rings`), so that the mode silences nothing it lets ring; the
+        // matrix then lets them through only where your contacts may ring (`attention::Phone::unknown`).
         let phone_at = |moment: &Moment| sioul_core::attention::Phone { unknown: phone.screens && crate::calls::unknown_rings(config, moment.times.iter().any(|c| matches!(c, Column::Work | Column::Admin))), ..phone };
         let mode = &self.mode;
         let through = self.through();

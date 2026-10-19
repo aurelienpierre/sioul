@@ -56,17 +56,19 @@ import java.util.Set;
  * crates/sioul-core/src/screening.rs): the floors first, which always ring (an
  * emergency number or the emergency services' callback number; any call for
  * a day after you call an emergency number; the numbers of `floors.people`,
- * from an older table only); then your blocked numbers, refused; then a
- * second call from the same number within 15 minutes, which rings; then the
- * people you know (your lists, your address books, this phone's contacts, a
- * number you called in the last days, Always through), as the table's frame
- * for now says: the times, Free time, and the layers above them (a slot of
- * time for you, do-not-disturb from its switch or a focus session), a number
- * you called ringing also when the screening lets numbers nobody knows ring;
- * then everyone else by the call screening alone: off, outside its hours, a number
- * that cannot be a caller's (unless the network verified it), a failed
- * verification, an automated caller, Expecting a call, then its rule for
- * numbers nobody knows and hidden numbers. A table of version 1 (an older
+ * from an older table only); then your blocked numbers, refused; then, for a
+ * number nobody knows, what the screening keeps out whatever else (a number
+ * never shown as a caller's, a failed verification, an automated caller);
+ * then a second call from the same number within 15 minutes, which rings;
+ * then the people you know (your lists, your address books, this phone's
+ * contacts, a number you called in the last days, Always through), as the
+ * table's frame for now says: the times, Free time, and the layers above them
+ * (a slot of time for you, do-not-disturb from its switch or a focus
+ * session), a number you called beyond its row only while you expect a call;
+ * then everyone else by the call screening: Expecting a call, then what it
+ * lets ring by itself (off, resting in your work and admin hours, its rule
+ * for numbers nobody knows and hidden numbers), never where your contacts'
+ * row declines (review of part 2, 19 October 2026). A table of version 1 (an older
  * Sioul's) is read in its own order: "Let every call through" before a
  * second call, then the frame's row for everyone. Nothing to decide from (no
  * table, a table past its frames, a row a frame does not name, anything that
@@ -78,8 +80,9 @@ import java.util.Set;
  * press of Expecting a call (once "Let every call through") on the background
  * service's notification, kept in a file of this phone's (`through-here.json`)
  * that Rust reads and shares with your other devices; and the numbers you
- * called lately, by their key, a fortnight at most, never shared
- * (`called.json`), which count as your contacts.
+ * called lately, by their key, a fortnight at most and only while the call
+ * screening counts them, never shared (`called.json`), which count as your
+ * contacts.
  */
 final class Calls
 {
@@ -95,8 +98,8 @@ final class Calls
     static final String CALLED = "called.json";
     /** The table's shape this code reads, and the one before it; another one is not read (the calls ring). */
     private static final int VERSION = 2;
-    /** Numbers called are kept this long at most, whatever the table says (ms). */
-    private static final long CALLED_KEPT_MS = 31L * 24 * 3600 * 1000;
+    /** A number called counts this long at most, whatever a table says (ms): screening.rs's CALLED_DAYS. */
+    private static final long CALLED_MAX_MS = 14L * 24 * 3600 * 1000;
     /** Calls screened are kept this long in the list's file. */
     private static final long KEPT_MS = 30L * 24 * 3600 * 1000;
     /** Past this size the list's file is rewritten without its old lines. */
@@ -161,21 +164,40 @@ final class Calls
         /** The longest prefix of either: how far a number is looked up. */
         int longest;
 
+        /**
+         * As a table says it. A word this Java does not know (a later
+         * Sioul's, after a downgrade), or a setting that is not one, never
+         * declines a call: whatever cannot be decided rings (review of part
+         * 2, 19 October 2026, F9). The screening on only when it says true,
+         * at hours it knows; a rule not known rings; a kind of spam not
+         * known goes as any number nobody knows.
+         */
         static Screening of(JSONObject json)
         {
             if (json == null)
                 return null;
             Screening s = new Screening();
-            s.on = json.optBoolean("on", true);
-            s.hours = json.optString("hours", "always");
-            s.unknown = json.optString("unknown", "voicemail");
-            s.hidden = json.optString("hidden", "work");
-            s.automated = json.optString("automated", "voicemail");
-            s.impossible = json.optString("impossible", "voicemail");
-            s.unverified = json.optString("unverified", "voicemail");
+            String hours = word(json, "hours", null, "always", "outside-work");
+            s.on = Boolean.TRUE.equals(json.opt("on")) && hours != null;
+            s.hours = hours == null ? "always" : hours;
+            s.unknown = word(json, "unknown", "ring", "voicemail", "work", "ring");
+            s.hidden = word(json, "hidden", "ring", "voicemail", "work", "ring");
+            s.automated = word(json, "automated", "unknown", "voicemail", "unknown");
+            s.impossible = word(json, "impossible", "unknown", "voicemail", "unknown");
+            s.unverified = word(json, "unverified", "unknown", "voicemail", "unknown");
             s.calledMs = Math.max(0, json.optLong("called_days", 0)) * 24 * 3600 * 1000L;
             s.longest = Math.max(prefixes(json.optJSONArray("automated_prefixes"), s.automatedPrefixes), prefixes(json.optJSONArray("impossible_prefixes"), s.impossiblePrefixes));
             return s;
+        }
+
+        /** A word of the table, when it is one of `known`; else `otherwise`. */
+        private static String word(JSONObject json, String key, String otherwise, String... known)
+        {
+            Object value = json.opt(key);
+            for (String word : known)
+                if (word.equals(value))
+                    return word;
+            return otherwise;
         }
 
         /** The prefixes of an array kept (national form, digits from 0); the longest's length. */
@@ -664,7 +686,7 @@ final class Calls
             if (!hidden && (phone.emergency(raw) || (table != null && table.emergency.contains(key))))
                 rememberEmergency(context, now);
             else if (!hidden && !key.isEmpty())
-                rememberCalled(context, key, now);
+                rememberCalled(folder(context), key, now, calledKeep(table));
             return Decision.ring("outgoing");
         }
         String key = hidden || table == null ? "" : key(raw, table.region, table.trunkZero);
@@ -676,7 +698,7 @@ final class Calls
             int status = details.getCallerNumberVerificationStatus();
             verified = status == Connection.VERIFICATION_STATUS_PASSED ? "passed" : status == Connection.VERIFICATION_STATUS_FAILED ? "failed" : "";
         }
-        long called = hidden || key.isEmpty() ? 0 : calledAt(context, key);
+        long called = hidden || key.isEmpty() ? 0 : calledAt(folder(context), key, now, calledKeep(table));
         Decision decision = decideFor(table, raw, hidden, now, emergencyAt(context), local, last, phone, verified, called);
         decision.presentation = presentation;
         decision.verified = verified;
@@ -692,11 +714,12 @@ final class Calls
     /**
      * The decision itself, from what the phone knows (crates/sioul-core/src/
      * calls.rs, `decide`, takes the same steps, and its tests the same
-     * cases): the floors; who; blocked; then, version 2, a second call, the
-     * people you know by the frame (a number you called lately ringing also
-     * when the screening lets numbers nobody knows ring), everyone else by
-     * the call screening; version 1, Let every call through, a second call,
-     * the frame.
+     * cases): the floors; who; blocked; then, version 2, what the screening
+     * keeps out of a number nobody knows whatever else, a second call, the
+     * people you know by the frame (a number called lately beyond its row
+     * only while you expect a call), everyone else by the call screening,
+     * never where your contacts' row declines but while you expect a call;
+     * version 1, Let every call through, a second call, the frame.
      * `verified`: the network's word ("passed", "failed", ""); `called`: when
      * you last called this number (ms, 0 never).
      */
@@ -754,48 +777,67 @@ final class Calls
                 return said(decision, false, "repeat");
             return byFrame(decision, frame, who);
         }
-        // 3. A second call within 15 minutes rings, the blocked's aside (hidden numbers cannot be told apart: not them).
+        // 3. What the screening keeps out of a number nobody knows (no list, no address book, not called lately)
+        // whatever else, while it screens and the table is current: a number never shown as a caller's (089), a
+        // failed verification, an automated caller, each while it goes to voicemail. No second call, no hours and
+        // no rule let them ring; Expecting a call neither (review of part 2, F4 and F7).
+        if (screening.on && frame != null && "stranger".equals(who)) {
+            String spam = spam(screening, key, verified);
+            if (spam != null) {
+                decision.column = frame.column;
+                return said(decision, true, spam);
+            }
+        }
+        // 4. A second call within 15 minutes rings, the blocked's and that aside (hidden numbers cannot be told apart: not them).
         if (repeat)
             return said(decision, false, "repeat");
-        // 4. The people you know: the matrix, the time and its layers, as the frame says. A number
-        // you called lately counts as your contacts do and never rings less than a number nobody
-        // knows: declined by their row, the screening may still let it ring (off, outside its
-        // hours, Expecting a call, its rule), what it screens as spam aside; declined by both,
-        // their row says why.
-        boolean known = !"stranger".equals(who) && !"hidden".equals(who);
-        if (known) {
+        // Expecting a call: the later press of this phone's and the table's (all devices').
+        Press pressed = later(local, table.expecting);
+        boolean expecting = pressed != null && pressed.holds(now);
+        // 5. The people you know: the matrix, the time and its layers, as the frame says. A number you called lately
+        // counts as your contacts do: declined by their row, only Expecting a call lets it ring, never when the network
+        // could not verify it (a borrowed caller ID of a number you called; review of part 2, F3 and F8).
+        if (!"stranger".equals(who) && !"hidden".equals(who)) {
             byFrame(decision, frame, who);
-            if (!decision.called || !decision.refuse)
+            if (!(decision.called && decision.refuse && expecting))
                 return decision;
+            if (screening.on && "voicemail".equals(screening.unverified) && "failed".equals(verified))
+                return said(decision, true, "unverified");
+            return said(decision, false, "expecting");
         }
-        // 5. Everyone else: the call screening alone, which no state of yours switches off.
-        if (!screening.on) {
-            decision.column = frame == null ? "" : frame.column;
-            return said(decision, false, "screening-off");
-        }
+        // 6. Everyone else, by the screening, which no state of yours switches off; past the frames, it rings.
+        // Expecting a call opens to them.
         if (frame == null)
             return said(decision, false, "no-frame");
         decision.column = frame.column;
-        if ("outside-work".equals(screening.hours) && frame.hours)
-            return said(decision, false, "work-hours");
-        if (!hidden && !decision.called) {
-            String national = national(key);
-            // The network's word over Sioul's copy of ARCEP's blocks, which ages.
-            if ("voicemail".equals(screening.impossible) && !"passed".equals(verified) && screening.among(national, screening.impossiblePrefixes))
-                return said(decision, true, "impossible");
-            if ("voicemail".equals(screening.unverified) && "failed".equals(verified))
-                return said(decision, true, "unverified");
-            if ("voicemail".equals(screening.automated) && screening.among(national, screening.automatedPrefixes))
-                return said(decision, true, "automated");
-        }
-        // Expecting a call: the later press of this phone's and the table's (all devices').
-        Press expecting = later(local, table.expecting);
-        if (expecting != null && expecting.holds(now))
+        if (expecting)
             return said(decision, false, "expecting");
-        boolean rings = screening.rings(hidden, frame.hours);
-        if (known && !rings)
+        // What the screening lets ring by itself: off, resting in your work and admin hours, its rule.
+        String opened = !screening.on ? "screening-off" : "outside-work".equals(screening.hours) && frame.hours ? "work-hours" : screening.rings(hidden, frame.hours) ? "screening" : null;
+        if (opened == null)
+            return said(decision, true, "screening");
+        // Never beyond your contacts: where their row declines (do-not-disturb, the night, a pause), so does it (F3).
+        if (Boolean.FALSE.equals(frame.ring.get(table.phoneContacts)))
             return said(decision, true, "matrix");
-        return said(decision, !rings, "screening");
+        return said(decision, false, opened);
+    }
+
+    /**
+     * What the screening keeps out of a number nobody knows whatever else
+     * (decideFor's step 3; calls.rs's `spam`): a number never shown as a
+     * caller's, a failed verification, an automated caller, each while set
+     * to voicemail; null otherwise.
+     */
+    private static String spam(Screening screening, String key, String verified)
+    {
+        String national = national(key);
+        if ("voicemail".equals(screening.impossible) && screening.among(national, screening.impossiblePrefixes))
+            return "impossible";
+        if ("voicemail".equals(screening.unverified) && "failed".equals(verified))
+            return "unverified";
+        if ("voicemail".equals(screening.automated) && screening.among(national, screening.automatedPrefixes))
+            return "automated";
+        return null;
     }
 
     /** Who rings now, as the frame for now says; past the frames, nothing to decide from. */
@@ -896,22 +938,31 @@ final class Calls
     }
 
     /**
-     * A number you called, by its key, with when (`called.json`, this phone's
-     * own, never shared): numbers called more than a month ago forgotten
-     * (the table says how long one counts, a fortnight as usual).
+     * How long a number called counts, as the table says (0: not at all, the
+     * call screening counting none, or no table of version 2), never more
+     * than CALLED_MAX_MS.
      */
-    private static synchronized void rememberCalled(Context context, String key, long now)
+    static long calledKeep(Table table)
     {
-        File file = new File(folder(context), CALLED);
-        JSONObject called = readJson(file);
-        JSONObject kept = new JSONObject();
+        return table == null || table.screening == null ? 0 : Math.min(Math.max(0, table.screening.calledMs), CALLED_MAX_MS);
+    }
+
+    /**
+     * A number you called, by its key, with when (`called.json`, in `folder`,
+     * this phone's own, never shared), kept `keepMs` (14 days at most): the
+     * others pruned as it is written; with `keepMs` 0, nothing recorded and
+     * the file gone (review of part 2, F5).
+     */
+    static synchronized void rememberCalled(File folder, String key, long now, long keepMs)
+    {
+        File file = new File(folder, CALLED);
+        long keep = Math.min(keepMs, CALLED_MAX_MS);
+        if (keep <= 0) {
+            file.delete();
+            return;
+        }
+        JSONObject kept = keptCalls(readJson(file), now, keep);
         try {
-            for (Iterator<String> keys = called == null ? new ArrayList<String>().iterator() : called.keys(); keys.hasNext();) {
-                String other = keys.next();
-                long at = called.optLong(other, 0);
-                if (now - at < CALLED_KEPT_MS && at <= now)
-                    kept.put(other, at);
-            }
             kept.put(key, now);
         } catch (JSONException e) {
             return;
@@ -919,11 +970,45 @@ final class Calls
         writeWhole(file, kept.toString());
     }
 
-    /** When you last called this number from this phone (ms); 0 never, or forgotten. */
-    static long calledAt(Context context, String key)
+    /**
+     * When you last called this number from this phone (ms), within `keepMs`
+     * (14 days at most); 0 never, or forgotten. The file pruned as it is
+     * read, gone when nothing is left, when it does not read, or with
+     * `keepMs` 0.
+     */
+    static synchronized long calledAt(File folder, String key, long now, long keepMs)
     {
-        JSONObject called = readJson(new File(folder(context), CALLED));
-        return called == null ? 0 : called.optLong(key, 0);
+        File file = new File(folder, CALLED);
+        long keep = Math.min(keepMs, CALLED_MAX_MS);
+        JSONObject called = keep > 0 ? readJson(file) : null;
+        if (called == null) {
+            file.delete();
+            return 0;
+        }
+        JSONObject kept = keptCalls(called, now, keep);
+        if (kept.length() == 0)
+            file.delete();
+        else if (kept.length() != called.length())
+            writeWhole(file, kept.toString());
+        return kept.optLong(key, 0);
+    }
+
+    /** The numbers called within `keep` before `now`, none ahead of it. */
+    private static JSONObject keptCalls(JSONObject called, long now, long keep)
+    {
+        JSONObject kept = new JSONObject();
+        for (Iterator<String> keys = called == null ? new ArrayList<String>().iterator() : called.keys(); keys.hasNext();) {
+            String other = keys.next();
+            long at = called.optLong(other, 0);
+            if (at > 0 && at <= now && now - at < keep) {
+                try {
+                    kept.put(other, at);
+                } catch (JSONException e) {
+                    // Left out.
+                }
+            }
+        }
+        return kept;
     }
 
     private static void rememberEmergency(Context context, long now)

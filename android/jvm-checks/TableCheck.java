@@ -160,7 +160,7 @@ public final class TableCheck
             + ",\"floors\":{\"emergency\":[\"112\",\"+33800112112\"],\"people\":[]}"
             + ",\"expecting\":{\"pressed\":10,\"on\":true,\"until\":" + work0 + "}"
             + ",\"screening\":{\"on\":true,\"hours\":\"always\",\"unknown\":\"voicemail\",\"hidden\":\"work\",\"automated\":\"voicemail\",\"impossible\":\"voicemail\",\"unverified\":\"voicemail\",\"called_days\":14"
-            + ",\"automated_prefixes\":[\"026191\"],\"impossible_prefixes\":[\"035301\",\"089\"]}"
+            + ",\"automated_prefixes\":[\"026191\"],\"impossible_prefixes\":[\"089\"]}"
             + ",\"frames\":["
             + frame2(midnight, work0, "sleep", false, known, "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
             + frame2(work0, work1, "work", true, known, "safe", "neutral", "restricted", "always-safe", "always-neutral", "always-restricted", "always-stranger") + ","
@@ -175,10 +175,11 @@ public final class TableCheck
             failed++;
             System.out.println("FAIL the table of version 2 as read");
         }
-        // Expecting a call until 09:00: numbers nobody knows ring at night; machines and blocks attributed to nobody never.
+        // Expecting a call until 09:00: numbers nobody knows ring at night; machines and 089 never.
         expect("v2 expecting, nobody knows", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "03:00"), 0, null, 0, none), false, "expecting", "stranger", "sleep");
         expect("v2 expecting, a machine", Calls.decideFor(s, "02 61 91 12 34", false, ms(day, "03:00"), 0, null, 0, none), true, "automated", "stranger", "sleep");
-        expect("v2 expecting, impossible", Calls.decideFor(s, "03 53 01 12 34", false, ms(day, "03:00"), 0, null, 0, none), true, "impossible", "stranger", "sleep");
+        expect("v2 expecting, impossible", Calls.decideFor(s, "08 99 12 34 56", false, ms(day, "03:00"), 0, null, 0, none), true, "impossible", "stranger", "sleep");
+        expect("v2 expecting, a block ARCEP's list gave to nobody: nobody knows it", Calls.decideFor(s, "03 53 01 12 34", false, ms(day, "03:00"), 0, null, 0, none), false, "expecting", "stranger", "sleep");
         expect("v2 expecting, the safe at night", Calls.decideFor(s, "01 99 00 00 01", false, ms(day, "03:00"), 0, null, 0, none), true, "matrix", "safe", "sleep");
         // Past it: numbers nobody knows to voicemail at all hours; hidden numbers ring in work hours only.
         expect("v2 nobody knows at work", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, 0, none), true, "screening", "stranger", "work");
@@ -193,10 +194,39 @@ public final class TableCheck
         expect("v2 failed verification", Calls.decideFor(s, "05 36 49 12 34", false, ms(day, "10:00"), 0, null, 0, none, "failed", 0), true, "unverified", "stranger", "work");
         expect("v2 blocked", Calls.decideFor(s, "01 99 00 00 04", false, ms(day, "03:00"), 0, null, 0, none), true, "blocked", "blocked", "");
         expect("v2 emergency callback", Calls.decideFor(s, "08 00 11 21 12", false, ms(day, "23:00"), 0, null, 0, none), false, "emergency", "", "");
-        expect("v2 a second call", Calls.decideFor(s, "02 61 91 12 34", false, ms(day, "10:00"), 0, null, ms(day, "09:58"), none), false, "repeat", "stranger", "");
+        expect("v2 a second call", Calls.decideFor(s, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, ms(day, "09:58"), none), false, "repeat", "stranger", "");
+        expect("v2 a machine's second call", Calls.decideFor(s, "02 61 91 12 34", false, ms(day, "10:00"), 0, null, ms(day, "09:58"), none), true, "automated", "stranger", "work");
         // A table of version 2 that says no screening (never written so): it screens nobody, it rings.
         Calls.Table bare = Calls.Table.of(new JSONObject(v2.replaceFirst(",\"screening\":\\{[^}]*\\}", "")));
         expect("v2 without its screening", Calls.decideFor(bare, "01 99 00 55 55", false, ms(day, "10:00"), 0, null, 0, none), false, "screening-off", "stranger", "work");
+        // A word of the screening this Java does not know (a later Sioul's, after a downgrade): read as letting the
+        // call ring, never declining it; a setting that is not one, the same (review of part 2, F9).
+        String[][] later = {
+            { "\"unknown\":\"voicemail\"", "\"unknown\":\"later-word\"", "01 99 00 55 55", "", "rings" },
+            { "\"hidden\":\"work\"", "\"hidden\":\"later-word\"", "", "", "rings" },
+            { "\"hours\":\"always\"", "\"hours\":\"later-word\"", "01 99 00 55 55", "", "rings" },
+            { "\"on\":true", "\"on\":\"off\"", "01 99 00 55 55", "", "rings" },
+            { "\"on\":true", "\"on\":0", "01 99 00 55 55", "", "rings" },
+            { "\"automated\":\"voicemail\"", "\"automated\":\"later-word\"", "02 61 91 12 34", "", "automated" },
+            { "\"impossible\":\"voicemail\"", "\"impossible\":\"later-word\"", "08 99 12 34 56", "", "impossible" },
+            { "\"unverified\":\"voicemail\"", "\"unverified\":7", "01 99 00 55 55", "failed", "unverified" },
+        };
+        for (String[] w : later) {
+            checked++;
+            if (!v2.contains(w[0])) {
+                failed++;
+                System.out.println("FAIL F9: the table does not say " + w[0]);
+                continue;
+            }
+            // At work, where your contacts ring: a word not known lets the call ring, or keeps out nothing as spam.
+            Calls.Table worded = Calls.Table.of(new JSONObject(v2.replace(w[0], w[1])));
+            Calls.Decision d = Calls.decideFor(worded, w[2], w[2].isEmpty(), ms(day, "10:00"), 0, null, 0, none, w[3], 0);
+            boolean ok = w[4].equals("rings") ? !d.refuse : !d.why.equals(w[4]);
+            if (!ok) {
+                failed++;
+                System.out.println("FAIL F9: " + w[1] + " decided " + (d.refuse ? "voicemail" : "rings") + " (" + d.why + ")");
+            }
+        }
         System.out.println(failed == 0 ? "all " + checked + " table decisions agree with calls.rs" : failed + " of " + checked + " failed");
         System.exit(failed == 0 ? 0 : 1);
     }

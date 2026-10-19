@@ -81,6 +81,10 @@ pub const SEEN_LOG: &str = "seen";
 pub const THROUGH_HERE: &str = "through-here.json";
 /// When this phone last called an emergency number (Java's).
 pub const EMERGENCY: &str = "emergency.json";
+/// The numbers this phone called lately, by their key, with when (ms; Java's,
+/// never shared): kept only while the screening counts them, and only for
+/// the days they count (`prune_called`).
+pub const CALLED: &str = "called.json";
 /// The calls seen on the list, as this phone kept them before Seen was
 /// shared: read once into its own seen log, then gone (`adopt_older_seen`).
 pub const SEEN: &str = "seen.toml";
@@ -491,8 +495,7 @@ pub struct Decision {
     pub who: String,
     pub column: String,
     /// Judged as your contacts are because you called this number lately
-    /// (version 2), and let ring by the screening when it lets numbers nobody
-    /// knows ring.
+    /// (version 2); beyond their row, let ring only while you expect a call.
     pub called: bool,
 }
 
@@ -512,15 +515,17 @@ impl Table {
 /// tested here. Outgoing: rings (to an emergency number, Java marks the
 /// moment). Incoming, version 2: what always rings (an emergency number, a
 /// day after you called one, an older table's do-not-disturb list); the
-/// blocked; a second call within 15 minutes; the people you know (your lists,
-/// your address books, the phone's contacts, a number you called lately,
-/// Always through), by the frame for now, a number you called lately ringing
-/// also when the screening lets numbers nobody knows ring; everyone else by the screening:
-/// off, outside its hours, a number that cannot be a caller's (unless the
-/// network verified it), a failed verification, an automated caller,
-/// Expecting a call, then its rule for numbers nobody knows and hidden
-/// numbers. Version 1: the blocked, "Let every call through", a second call,
-/// the frame's row for everyone. Nothing to decide from: it rings.
+/// blocked; for a number nobody knows, what the screening keeps out whatever
+/// else (a number never shown as a caller's, a failed verification, an
+/// automated caller); a second call within 15 minutes; the people you know
+/// (your lists, your address books, the phone's contacts, a number you called
+/// lately, Always through), by the frame for now, a number called lately
+/// beyond its row only while you expect a call; everyone else by the
+/// screening: Expecting a call, then what the screening lets ring by itself
+/// (off, resting in your work and admin hours, its rule), never where your
+/// contacts' row declines (review of part 2, 19 October 2026: F3, F4, F7,
+/// F8). Version 1: the blocked, "Let every call through", a second call, the
+/// frame's row for everyone. Nothing to decide from: it rings.
 pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
     let ring = |why: &'static str| Decision { refuse: false, why, who: String::new(), column: String::new(), called: false };
     if call.outgoing {
@@ -574,52 +579,108 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
         }
         return by_frame(frame);
     };
-    // 3. A second call within 15 minutes rings, the blocked's aside.
+    let column = frame.map_or("", |f| f.column.as_str());
+    // 3. What the screening keeps out of a number nobody knows (no list, no
+    // address book, not called lately) whatever else, while it screens and the
+    // table is current: a number never shown as a caller's (089), a failed
+    // verification, an automated caller, each while it goes to voicemail. No
+    // second call, no hours and no rule let them ring; Expecting a call neither.
+    if screening.on && frame.is_some() && who == "stranger" {
+        if let Some(why) = spam(screening, &key, &call.verified) {
+            return decided(true, why, column);
+        }
+    }
+    // 4. A second call within 15 minutes rings, the blocked's and that aside.
     if repeat {
         return decided(false, "repeat", "");
     }
-    // 4. The people you know: the matrix, the time and its layers. A number
-    // you called lately counts as your contacts do and never rings less than
-    // a number nobody knows: declined by their row, the screening may still
-    // let it ring (off, outside its hours, Expecting a call, its rule), what
-    // it screens as spam aside; declined by both, their row says why.
-    let known = (who != "stranger" && who != "hidden").then(|| by_frame(frame));
-    if let Some(known) = &known {
-        if !(called && known.refuse) {
-            return known.clone();
-        }
-    }
-    // 5. Everyone else: the screening alone, which no state of yours switches off.
-    if !screening.on {
-        return decided(false, "screening-off", frame.map_or("", |f| f.column.as_str()));
-    }
-    let Some(frame) = frame else { return decided(false, "no-frame", "") };
-    if screening.hours == screening::Hours::OutsideWork && frame.hours {
-        return decided(false, "work-hours", &frame.column);
-    }
-    if !call.hidden && !called {
-        let national = screening::national(&key);
-        let among = |prefixes: &[String]| national.as_deref().is_some_and(|n| screening::starts_with_any(n, prefixes));
-        // The network's word over Sioul's copy of ARCEP's blocks, which ages.
-        if screening.impossible == Spam::Voicemail && call.verified != "passed" && among(&screening.impossible_prefixes) {
-            return decided(true, "impossible", &frame.column);
-        }
-        if screening.unverified == Spam::Voicemail && call.verified == "failed" {
-            return decided(true, "unverified", &frame.column);
-        }
-        if screening.automated == Spam::Voicemail && among(&screening.automated_prefixes) {
-            return decided(true, "automated", &frame.column);
-        }
-    }
     // Expecting a call: the later press of this phone's and the table's (all devices').
-    if later(call.local, table.expecting).is_some_and(|t| t.holds(call.now)) {
+    let expecting = later(call.local, table.expecting).is_some_and(|t| t.holds(call.now));
+    // 5. The people you know: the matrix, the time and its layers. A number
+    // you called lately counts as your contacts do: declined by their row, only
+    // Expecting a call lets it ring, never when the network could not verify it
+    // (a borrowed caller ID of a number you called).
+    if who != "stranger" && who != "hidden" {
+        let known = by_frame(frame);
+        if !(called && known.refuse && expecting) {
+            return known;
+        }
+        if screening.on && screening.unverified == Spam::Voicemail && call.verified == "failed" {
+            return decided(true, "unverified", column);
+        }
+        return decided(false, "expecting", column);
+    }
+    // 6. Everyone else, by the screening, which no state of yours switches
+    // off; past the frames, it rings. Expecting a call opens to them.
+    let Some(frame) = frame else { return decided(false, "no-frame", "") };
+    if expecting {
         return decided(false, "expecting", &frame.column);
     }
-    let rings = screening.screening().rings(call.hidden, frame.hours);
-    match known {
-        Some(known) if !rings => known,
-        _ => decided(!rings, "screening", &frame.column),
+    // What the screening lets ring by itself: off, resting in your work and admin hours, its rule.
+    let opened = if !screening.on {
+        Some("screening-off")
+    } else if screening.hours == screening::Hours::OutsideWork && frame.hours {
+        Some("work-hours")
+    } else {
+        screening.screening().rings(call.hidden, frame.hours).then_some("screening")
+    };
+    match opened {
+        None => decided(true, "screening", &frame.column),
+        // Never beyond your contacts: where their row declines (do-not-disturb, the night, a pause), so does it.
+        Some(_) if frame.ring.get(&table.phone_contacts) == Some(&false) => decided(true, "matrix", &frame.column),
+        Some(why) => decided(false, why, &frame.column),
     }
+}
+
+/// What the screening keeps out of a number nobody knows whatever else
+/// (`decide`, its step 3): a number never shown as a caller's, a failed
+/// verification, an automated caller, each while set to voicemail.
+fn spam(screening: &screening::TablePart, key: &str, verified: &str) -> Option<&'static str> {
+    let national = screening::national(key);
+    let among = |prefixes: &[String]| national.as_deref().is_some_and(|n| screening::starts_with_any(n, prefixes));
+    if screening.impossible == Spam::Voicemail && among(&screening.impossible_prefixes) {
+        Some("impossible")
+    } else if screening.unverified == Spam::Voicemail && verified == "failed" {
+        Some("unverified")
+    } else if screening.automated == Spam::Voicemail && among(&screening.automated_prefixes) {
+        Some("automated")
+    } else {
+        None
+    }
+}
+
+/// Java's numbers called lately (`CALLED`) pruned to the days that count
+/// (`days`, the table's `called_days`): never more than
+/// `screening::CALLED_DAYS`, and none while the screening counts none, the
+/// file then gone; gone too when nothing is left or it does not read (review
+/// of part 2, 19 October 2026, F5). Java prunes it at each call; this, at each
+/// table made, so that nothing stays its days out while no call comes.
+pub fn prune_called(path: &Path, now_ms: i64, days: i64) -> std::io::Result<()> {
+    let gone = || match std::fs::remove_file(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    };
+    let days = days.clamp(0, screening::CALLED_DAYS);
+    if days == 0 {
+        return gone();
+    }
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let Ok(serde_json::Value::Object(called)) = serde_json::from_str::<serde_json::Value>(&text) else { return gone() };
+    let all = called.len();
+    let kept: serde_json::Map<String, serde_json::Value> = called.into_iter().filter(|(_, at)| at.as_i64().is_some_and(|at| at <= now_ms && now_ms - at < days * DAY_MS)).collect();
+    if kept.is_empty() {
+        return gone();
+    }
+    if kept.len() == all {
+        return Ok(());
+    }
+    let fresh = path.with_extension(format!("json.{}", std::process::id()));
+    std::fs::write(&fresh, serde_json::Value::Object(kept).to_string())?;
+    std::fs::rename(&fresh, path)
 }
 
 /// The later of this phone's own press and your devices' latest (by when each was pressed).
@@ -1309,6 +1370,18 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         (_, "safe" | "neutral" | "restricted" | "stranger" | "hidden") => tr.text(&format!("calls-why-{row}"), Some(&why_args)),
         _ => String::new(),
     };
+    // A number nobody knows from a block ARCEP had given to no operator, while
+    // that list counts: said, deciding nothing (it may be a new line; review
+    // of part 2, F1).
+    let unattributed = (!first.hidden && name.is_none() && !first.called && matches!(first.why.as_str(), "screening" | "matrix")).then(|| screening::shipped().unattributed_since(&first.key, today)).flatten();
+    let why = match unattributed {
+        Some(read) if !why.is_empty() => {
+            let mut args = crate::i18n::args();
+            args.set("date", format!("{} {}", tr.day_month(read), read.year()));
+            format!("{why} {}", tr.text("calls-why-unattributed", Some(&args)))
+        }
+        _ => why,
+    };
     Line {
         ids,
         text: capitalized(&text),
@@ -1636,18 +1709,20 @@ mod tests {
     /// The table of version 2 these tests decide from: `decision_table`'s
     /// people and frames, the screening as usual (numbers nobody knows to
     /// voicemail at all hours, hidden numbers ringing in work and admin hours),
-    /// fiction numbers for ARCEP's kinds: 02 61 91 as an automated caller's
-    /// root, 03 53 01 as a block attributed to nobody.
+    /// a fiction number for ARCEP's roots for machines, 02 61 91, and 089,
+    /// which the plan never lets be a caller ID.
     fn screening_table() -> Table {
         let base = decision_table();
-        let part = screening::TablePart { automated_prefixes: vec!["026191".into()], impossible_prefixes: vec!["035301".into(), "089".into()], ..screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), "2026-10-05".parse().unwrap()) };
+        let part = screening::TablePart { automated_prefixes: vec!["026191".into()], impossible_prefixes: vec!["089".into()], ..screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), "2026-10-05".parse().unwrap()) };
         Table { v: VERSION, through: None, screening: Some(part), ..base }
     }
 
-    /// Every case of the screening apart (the overrides' part 2): what always
-    /// rings, the blocked, the people you know by the matrix, then everyone
-    /// else by the screening alone, never opened nor closed by do-not-disturb
-    /// or any frame of the people you know; a missing or outdated table rings.
+    /// Every case of the screening apart (the overrides' part 2, and its
+    /// review): what always rings, the blocked, what the screening keeps out
+    /// whatever else, the people you know by the matrix, then everyone else by
+    /// the screening, never opened by do-not-disturb or any frame of the people
+    /// you know, and never ringing where your contacts' row declines but while
+    /// you expect a call; a missing or outdated table rings.
     #[test]
     fn the_screening_decides_numbers_nobody_knows_apart() {
         let t = screening_table();
@@ -1657,7 +1732,7 @@ mod tests {
         };
         let said = |c: &Incoming| decided(&t, c);
         let stranger = "01 99 00 55 55";
-        let (automated, impossible, other) = ("02 61 91 12 34", "03 53 01 12 34", "05 36 49 12 34");
+        let (automated, impossible, other) = ("02 61 91 12 34", "08 99 12 34 56", "05 36 49 12 34");
         // What always rings: an emergency number, its callback, the day after you call one (the blocked too).
         for number in ["112", "15", "0 800 112 112"] {
             assert_eq!(said(&call(number, "23:00")).1, "emergency", "{number}");
@@ -1672,9 +1747,11 @@ mod tests {
         assert_eq!(said(&Incoming { last_call: ms("2026-10-05T09:55[Europe/Paris]"), ..blocked.clone() }).1, "blocked");
         let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..t.clone() };
         assert_eq!(decided(&expecting, &blocked).1, "blocked");
-        // A second call within 15 minutes rings, whoever it is but the blocked: an automated caller too; never a hidden number.
+        // A second call within 15 minutes rings, whoever it is but the blocked and what the screening keeps out
+        // whatever else (an automated caller here); never a hidden number.
         let first = ms("2026-10-05T18:00[Europe/Paris]");
-        assert_eq!(said(&Incoming { last_call: first, ..call(automated, "18:10") }), (false, "repeat", "stranger".to_string()));
+        assert_eq!(said(&Incoming { last_call: first, ..call(stranger, "18:10") }), (false, "repeat", "stranger".to_string()));
+        assert_eq!(said(&Incoming { last_call: first, ..call(automated, "18:10") }), (true, "automated", "stranger".to_string()));
         assert_eq!(said(&Incoming { last_call: first, ..call("", "18:10") }), (true, "screening", "hidden".to_string()));
         // The people you know: by the matrix's frame, the screening never asked. Always through rings at night.
         assert_eq!(said(&call("01 99 00 00 09", "23:00")), (false, "matrix", "always-stranger".to_string()));
@@ -1692,21 +1769,21 @@ mod tests {
         assert_eq!(said(&Incoming { called: ms("2026-09-20T12:00[Europe/Paris]"), ..lately.clone() }).1, "screening");
         let no_called = Table { screening: t.screening.clone().map(|s| screening::TablePart { called_days: 0, ..s }), ..t.clone() };
         assert_eq!(decided(&no_called, &lately).1, "screening", "switched off: nobody");
-        // Declined by your contacts' row, it never rings less than a number nobody knows: while you expect a call,
-        // the screening off, its rule letting them ring, its hours resting under do-not-disturb at work. What it
-        // screens as spam aside, since you called it; declined by both, your contacts' row says why.
+        // Declined by your contacts' row, only Expecting a call lets it ring (review of part 2, F3): neither the
+        // screening off, nor its rule letting them ring, nor its hours resting under do-not-disturb at work.
         let night = Incoming { now: ms("2026-10-05T23:00[Europe/Paris]"), ..lately.clone() };
         let with = |part: &dyn Fn(screening::TablePart) -> screening::TablePart| Table { screening: t.screening.clone().map(part), ..t.clone() };
         assert_eq!(decided(&expecting, &night), (false, "expecting", "neutral".to_string()));
-        assert_eq!(decided(&with(&|s| screening::TablePart { on: false, ..s }), &night), (false, "screening-off", "neutral".to_string()));
-        assert_eq!(decided(&with(&|s| screening::TablePart { unknown: screening::Rule::Ring, ..s }), &night), (false, "screening", "neutral".to_string()));
+        assert_eq!(decided(&with(&|s| screening::TablePart { on: false, ..s }), &night), (true, "matrix", "neutral".to_string()));
+        assert_eq!(decided(&with(&|s| screening::TablePart { unknown: screening::Rule::Ring, ..s }), &night), (true, "matrix", "neutral".to_string()));
         let mut held_at_work = with(&|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s });
         for f in held_at_work.frames.iter_mut().filter(|f| f.column == "work") {
             f.column = "dnd".into();
             f.ring.insert("neutral".into(), false);
         }
-        assert_eq!(decided(&held_at_work, &lately), (false, "work-hours", "neutral".to_string()));
+        assert_eq!(decided(&held_at_work, &lately), (true, "matrix", "neutral".to_string()), "as your contacts, no further");
         assert_eq!(decided(&held_at_work, &Incoming { phone_contact: true, ..call(stranger, "10:00") }), (true, "matrix", "neutral".to_string()), "a contact: their row alone");
+        assert_eq!(decided(&held_at_work, &call(stranger, "10:00")), (true, "matrix", "stranger".to_string()), "nobody known: no further either");
         let machine = Incoming { called: lately.called, ..call(automated, "10:00") };
         assert_eq!(said(&machine), (false, "matrix", "neutral".to_string()));
         assert_eq!(said(&Incoming { now: night.now, ..machine.clone() }), (true, "matrix", "neutral".to_string()));
@@ -1717,20 +1794,20 @@ mod tests {
         }
         // An automated caller, a number that cannot be a caller's, a failed verification: voicemail, whatever else.
         assert_eq!(said(&call(automated, "10:00")).1, "automated");
-        assert_eq!(said(&call(impossible, "10:00")).1, "impossible");
-        assert_eq!(said(&call("08 99 12 34 56", "10:00")).1, "impossible", "089 is never a caller ID");
+        assert_eq!(said(&call(impossible, "10:00")).1, "impossible", "089 is never a caller ID");
         let failed = Incoming { verified: "failed".into(), ..call(other, "10:00") };
         assert_eq!(said(&failed), (true, "unverified", "stranger".to_string()));
-        // The network's word over Sioul's ageing copy of ARCEP's blocks: verified, it is a number nobody knows.
-        assert_eq!(said(&Incoming { verified: "passed".into(), ..call(impossible, "10:00") }).1, "screening");
+        // 089 stays out whatever the network says: the plan never lets it be a caller ID.
+        assert_eq!(said(&Incoming { verified: "passed".into(), ..call(impossible, "10:00") }).1, "impossible");
         // A failed verification on someone you know: they ring as the matrix says; the line says the network could not verify.
         let known_failed = decide(Some(&t), &Incoming { verified: "failed".into(), ..call("01 99 00 00 01", "10:00") });
         assert_eq!((known_failed.refuse, known_failed.why), (false, "matrix"));
-        // Each kind may go as any number nobody knows instead.
+        // Each kind may go as any number nobody knows instead: ringing where your contacts may.
         let lenient = Table { screening: t.screening.clone().map(|s| screening::TablePart { automated: Spam::Unknown, impossible: Spam::Unknown, unverified: Spam::Unknown, unknown: screening::Rule::Ring, ..s }), ..t.clone() };
-        for c in [call(automated, "23:00"), call(impossible, "23:00"), failed.clone()] {
+        for c in [call(automated, "10:00"), call(impossible, "10:00"), failed.clone()] {
             assert_eq!(decided(&lenient, &c), (false, "screening", "stranger".to_string()));
         }
+        assert_eq!(decided(&lenient, &call(automated, "23:00")), (true, "matrix", "stranger".to_string()));
         // A hidden number at each hour: ringing in work and admin hours as usual, else voicemail; as you set it.
         for (at, rings) in [("03:00", false), ("10:00", true), ("18:00", false), ("23:00", false)] {
             assert_eq!(said(&call("", at)), (!rings, "screening", "hidden".to_string()), "{at}");
@@ -1738,7 +1815,8 @@ mod tests {
         let held = Table { screening: t.screening.clone().map(|s| screening::TablePart { hidden: screening::Rule::Voicemail, ..s }), ..t.clone() };
         assert!(decided(&held, &call("", "10:00")).0, "voicemail at all hours, as the owner has it");
         let open = Table { screening: t.screening.clone().map(|s| screening::TablePart { hidden: screening::Rule::Ring, ..s }), ..t.clone() };
-        assert!(!decided(&open, &call("", "23:00")).0);
+        assert!(!decided(&open, &call("", "10:00")).0);
+        assert_eq!(decided(&open, &call("", "23:00")), (true, "matrix", "hidden".to_string()), "never where your contacts wait");
         // Expecting a call: numbers nobody knows and hidden numbers ring; never the blocked, an automated caller,
         // a number that cannot be a caller's or a failed verification; and never the people you know beyond their row.
         for c in [call(stranger, "23:00"), call("", "23:00")] {
@@ -1751,18 +1829,24 @@ mod tests {
         // This phone's own press, later than your devices', turns it off; one that ended, too.
         assert!(decide(Some(&expecting), &Incoming { local: Some(Through { pressed: 11, on: false, until: 0 }), ..call(stranger, "23:00") }).refuse);
         assert!(decide(Some(&t), &Incoming { local: Some(Through { pressed: 12, on: true, until: ms("2026-10-05T22:30[Europe/Paris]") }), ..call(stranger, "23:00") }).refuse);
-        // The screening off: every number nobody knows rings, machines too; the blocked never.
+        // The screening off: every number nobody knows rings where your contacts may, machines too; the blocked never.
         let off = Table { screening: t.screening.clone().map(|s| screening::TablePart { on: false, ..s }), ..t.clone() };
-        for c in [call(stranger, "23:00"), call(automated, "23:00"), call("", "23:00")] {
+        for c in [call(stranger, "10:00"), call(automated, "10:00"), call("", "10:00")] {
             assert_eq!(decided(&off, &c).1, "screening-off");
         }
+        for c in [call(stranger, "23:00"), call(automated, "23:00"), call("", "18:00")] {
+            assert_eq!(decided(&off, &c).1, "matrix", "where your contacts wait");
+        }
         assert_eq!(decided(&off, &blocked).1, "blocked");
-        // Only outside your work and admin hours: in them, every number nobody knows rings, machines too.
+        // Only outside your work and admin hours: in them, numbers nobody knows and hidden numbers ring; what it
+        // keeps out whatever else stays out (review of part 2, F4).
         let outside = Table { screening: t.screening.clone().map(|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s }), ..t.clone() };
-        assert_eq!(decided(&outside, &call(automated, "10:00")).1, "work-hours");
+        assert_eq!(decided(&outside, &call(stranger, "10:00")).1, "work-hours");
+        assert_eq!(decided(&outside, &call(automated, "10:00")).1, "automated");
         assert_eq!(decided(&outside, &call(stranger, "18:00")), (true, "screening", "stranger".to_string()));
-        // Neither do-not-disturb nor any frame of the people you know (Reachable to come) opens or closes the
-        // screening: a frame under do-not-disturb, nobody you know ringing; a frame where everyone you know rings.
+        // Do-not-disturb, or any frame of the people you know (Reachable to come), never opens the screening: a
+        // frame where everyone you know rings changes nothing; one where nobody you know rings (do-not-disturb)
+        // lets no number nobody knows ring.
         for ringing in [&[][..], &ROWS[..]] {
             let mut moved = t.clone();
             for f in &mut moved.frames {
@@ -1772,7 +1856,8 @@ mod tests {
                 }
             }
             for (number, at) in [(stranger, "10:00"), (stranger, "23:00"), ("", "10:00"), ("", "18:00"), (automated, "10:00"), (impossible, "23:00")] {
-                assert_eq!(decided(&moved, &call(number, at)).0, said(&call(number, at)).0, "{number} at {at}, known ringing: {}", !ringing.is_empty());
+                let expected = if ringing.is_empty() { true } else { said(&call(number, at)).0 };
+                assert_eq!(decided(&moved, &call(number, at)).0, expected, "{number} at {at}, known ringing: {}", !ringing.is_empty());
             }
         }
         // Nothing to decide from: it rings. No table; past the frames, everyone but the blocked.
@@ -1783,6 +1868,144 @@ mod tests {
         }
         assert_eq!(said(&tomorrow("01 99 00 00 04")).1, "blocked");
         assert_eq!(said(&Incoming { outgoing: true, ..call(automated, "23:00") }).1, "outgoing");
+    }
+
+    /// Decided on `table`: refused or not, why, the row.
+    fn decided_on(table: &Table, c: &Incoming) -> (bool, &'static str, String) {
+        let d = decide(Some(table), c);
+        (d.refuse, d.why, d.who)
+    }
+
+    /// `screening_table` with its screening changed.
+    fn screening_with(change: &dyn Fn(screening::TablePart) -> screening::TablePart) -> Table {
+        let t = screening_table();
+        Table { screening: t.screening.clone().map(change), ..t }
+    }
+
+    /// The work frame of `table` under do-not-disturb (a focus session): the
+    /// people you know held, Always through ringing, work's hours kept.
+    fn focus_at_work(mut table: Table) -> Table {
+        for f in table.frames.iter_mut().filter(|f| f.column == "work") {
+            f.column = "dnd".into();
+            for row in ROWS {
+                f.ring.insert(row.to_string(), row.starts_with("always-"));
+            }
+        }
+        table
+    }
+
+    /// The review of part 2 (19 October 2026), F3: a number nobody knows, a
+    /// hidden number or a number called lately never rings by the screening's
+    /// own openings (off, resting in work hours, a rule letting it ring) where
+    /// your contacts' row declines: under do-not-disturb, in leisure here, at
+    /// night. Expecting a call is the one exception.
+    #[test]
+    fn nobody_unknown_rings_where_your_contacts_wait() {
+        let stranger = "01 99 00 55 55";
+        // As usual, hidden numbers ring in work hours; in a focus session at work, where your contacts wait, not.
+        let usual = screening_table();
+        assert_eq!(decided_on(&usual, &call("", "10:00")), (false, "screening", "hidden".to_string()));
+        assert_eq!(decided_on(&focus_at_work(usual.clone()), &call("", "10:00")), (true, "matrix", "hidden".to_string()));
+        // Resting in work hours: never under do-not-disturb.
+        let resting = screening_with(&|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s });
+        assert_eq!(decided_on(&resting, &call(stranger, "10:00")), (false, "work-hours", "stranger".to_string()));
+        assert_eq!(decided_on(&focus_at_work(resting.clone()), &call(stranger, "10:00")), (true, "matrix", "stranger".to_string()));
+        // Off: where your contacts ring only.
+        let off = screening_with(&|s| screening::TablePart { on: false, ..s });
+        assert_eq!(decided_on(&off, &call(stranger, "10:00")), (false, "screening-off", "stranger".to_string()));
+        for at in ["18:00", "23:00", "03:00"] {
+            assert_eq!(decided_on(&off, &call(stranger, at)), (true, "matrix", "stranger".to_string()), "{at}");
+        }
+        // Letting such numbers ring: where your contacts ring only.
+        let ring = screening_with(&|s| screening::TablePart { unknown: screening::Rule::Ring, hidden: screening::Rule::Ring, ..s });
+        for number in [stranger, ""] {
+            assert!(!decided_on(&ring, &call(number, "10:00")).0, "{number:?}");
+            for at in ["18:00", "23:00"] {
+                assert_eq!(decided_on(&ring, &call(number, at)).1, "matrix", "{number:?} at {at}");
+            }
+        }
+        // A number called lately: as your contacts, no further.
+        let lately = Incoming { called: ms("2026-10-02T12:00[Europe/Paris]"), ..call(stranger, "10:00") };
+        assert_eq!(decided_on(&focus_at_work(resting.clone()), &lately), (true, "matrix", "neutral".to_string()));
+        assert_eq!(decided_on(&off, &Incoming { now: ms("2026-10-05T23:00[Europe/Paris]"), ..lately.clone() }), (true, "matrix", "neutral".to_string()));
+        // Expecting a call opens beyond them: numbers nobody knows, hidden numbers, numbers called lately.
+        let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..focus_at_work(screening_table()) };
+        for c in [call(stranger, "10:00"), call("", "10:00"), lately.clone(), call(stranger, "23:00"), call("", "18:00")] {
+            assert_eq!(decided_on(&expecting, &c).1, "expecting", "{c:?}");
+        }
+    }
+
+    /// F8: a number called lately keeps the failed-verification check where
+    /// only Expecting a call would let it ring: a spoofed caller ID of a number
+    /// you called stays out, as the same spoof from a number nobody knows does.
+    /// Where your contacts ring, it rings whatever its verification; a machine's
+    /// root you called exists, you called it.
+    #[test]
+    fn a_number_called_lately_keeps_the_failed_verification_check() {
+        let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..screening_table() };
+        let lately = |number: &str, at: &str, verified: &str| Incoming { called: ms("2026-10-03T12:00[Europe/Paris]"), verified: verified.into(), ..call(number, at) };
+        assert_eq!(decided_on(&expecting, &lately("01 99 00 55 55", "23:00", "failed")), (true, "unverified", "neutral".to_string()));
+        assert_eq!(decided_on(&expecting, &Incoming { verified: "failed".into(), ..call("01 99 00 55 55", "23:00") }), (true, "unverified", "stranger".to_string()));
+        assert_eq!(decided_on(&expecting, &lately("01 99 00 55 55", "23:00", "")), (false, "expecting", "neutral".to_string()));
+        assert_eq!(decided_on(&expecting, &lately("01 99 00 55 55", "10:00", "failed")), (false, "matrix", "neutral".to_string()));
+        assert_eq!(decided_on(&screening_table(), &lately("01 99 00 55 55", "23:00", "failed")), (true, "matrix", "neutral".to_string()));
+        assert_eq!(decided_on(&expecting, &lately("02 61 91 12 34", "23:00", "")), (false, "expecting", "neutral".to_string()));
+    }
+
+    /// F4 (the owner's decision after the review): "only outside work and
+    /// admin hours" rests for numbers nobody knows and hidden numbers only;
+    /// automated callers, numbers never shown as a caller's (089) and failed
+    /// verifications stay screened at all hours, unless set to go as other
+    /// numbers nobody knows.
+    #[test]
+    fn the_hours_rest_for_numbers_nobody_knows_only() {
+        let resting = screening_with(&|s| screening::TablePart { hours: screening::Hours::OutsideWork, ..s });
+        let said = |table: &Table, c: &Incoming| decided_on(table, c).1;
+        assert_eq!(said(&resting, &call("01 99 00 55 55", "10:00")), "work-hours");
+        assert_eq!(said(&resting, &call("", "10:00")), "work-hours");
+        assert_eq!(decided_on(&resting, &call("02 61 91 12 34", "10:00")), (true, "automated", "stranger".to_string()));
+        assert_eq!(decided_on(&resting, &call("08 99 12 34 56", "10:00")), (true, "impossible", "stranger".to_string()));
+        assert_eq!(decided_on(&resting, &Incoming { verified: "failed".into(), ..call("05 36 49 12 34", "10:00") }), (true, "unverified", "stranger".to_string()));
+        let lenient = screening_with(&|s| screening::TablePart { hours: screening::Hours::OutsideWork, automated: Spam::Unknown, ..s });
+        assert_eq!(decided_on(&lenient, &call("02 61 91 12 34", "10:00")), (false, "work-hours", "stranger".to_string()));
+    }
+
+    /// F7 (the owner's decision after the review): a second call within 15
+    /// minutes rings for the people you know and for numbers nobody knows,
+    /// never for an automated caller, a failed verification or 089 while their
+    /// kind goes to voicemail.
+    #[test]
+    fn a_second_call_is_no_floor_for_spam() {
+        let t = screening_table();
+        let again = |number: &str, verified: &str| Incoming { last_call: ms("2026-10-05T02:55[Europe/Paris]"), verified: verified.into(), ..call(number, "03:00") };
+        assert_eq!(decided_on(&t, &again("02 61 91 12 34", "")), (true, "automated", "stranger".to_string()));
+        assert_eq!(decided_on(&t, &again("08 99 12 34 56", "")), (true, "impossible", "stranger".to_string()));
+        assert_eq!(decided_on(&t, &again("05 36 49 12 34", "failed")), (true, "unverified", "stranger".to_string()));
+        assert_eq!(decided_on(&t, &again("01 99 00 55 55", "")), (false, "repeat", "stranger".to_string()));
+        assert_eq!(decided_on(&t, &again("01 99 00 00 02", "failed")), (false, "repeat", "neutral".to_string()), "someone you know");
+        let lenient = screening_with(&|s| screening::TablePart { automated: Spam::Unknown, ..s });
+        assert_eq!(decided_on(&lenient, &again("02 61 91 12 34", "")).1, "repeat");
+        let off = screening_with(&|s| screening::TablePart { on: false, ..s });
+        assert_eq!(decided_on(&off, &again("02 61 91 12 34", "")).1, "repeat");
+    }
+
+    /// F1: the snapshot of blocks ARCEP had attributed to nobody (a block
+    /// attributed since may hold a new line) never declines more than a number
+    /// nobody knows: it rings while you expect a call and when such numbers
+    /// ring. 089, which the plan never lets be a caller ID, stays out.
+    #[test]
+    fn the_snapshot_never_declines_more_than_nobody_knows() {
+        let snapshot = "03 53 01 12 34";
+        let numbers = screening::Numbers::built_in();
+        assert!(numbers.group.iter().any(|g| g.kind == "unattributed" && g.prefixes.iter().any(|p| "0353011234".starts_with(p.as_str()))), "a fiction block attributed to nobody in the snapshot");
+        let part = |s: screening::Screening| screening::TablePart::of(&s, &numbers, "2026-10-20".parse().unwrap());
+        let t = Table { screening: Some(part(screening::Screening::default())), ..screening_table() };
+        assert_eq!(decided_on(&t, &call(snapshot, "10:00")), (true, "screening", "stranger".to_string()));
+        let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..t.clone() };
+        assert_eq!(decided_on(&expecting, &call(snapshot, "10:00")), (false, "expecting", "stranger".to_string()));
+        assert_eq!(decided_on(&expecting, &call("08 99 12 34 56", "10:00")), (true, "impossible", "stranger".to_string()));
+        let ring = Table { screening: Some(part(screening::Screening { unknown: screening::Rule::Ring, ..screening::Screening::default() })), ..screening_table() };
+        assert_eq!(decided_on(&ring, &call(snapshot, "10:00")), (false, "screening", "stranger".to_string()));
     }
 
     #[test]
@@ -2413,6 +2636,67 @@ mod tests {
         rang.called = true;
         rang.why = "screening".into();
         assert!(history(std::slice::from_ref(&rang), &keys, &l)[0].ends_with("it rang. Your call screening lets such numbers ring then."), "{:?}", history(std::slice::from_ref(&rang), &keys, &l));
+    }
+
+    /// The review of part 2: a number from a block ARCEP's list of 19 October
+    /// 2026 gave to no operator is declined as any number nobody knows, its
+    /// line saying what that list said, dated, while it counts (F1); 089 is
+    /// said with the plan's date; in French, a machine is « un automate
+    /// d'appel » (F12).
+    #[test]
+    fn the_snapshot_and_the_plan_are_said_with_their_dates() {
+        let name_of = |_: &str| None;
+        let shows = |_: &Held| true;
+        let phone = |_: &str| String::new();
+        let declined = |key: &str, why: &str| Held { why: why.into(), ..held(ms("2026-10-20T09:00[Europe/Paris]"), key, "stranger", "work") };
+        let calls = vec![declined("+33353011234", "screening"), declined("+33899123456", "impossible"), declined("+33261911234", "automated")];
+        let now = at("2026-10-20T10:00[Europe/Paris]");
+        let tr = Translator::new("en");
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &name_of, shows: &shows, phone: &phone };
+        let listed = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
+        let why = |key: &str| listed.iter().find(|line| line.dial == key).map(|line| line.why.clone()).unwrap();
+        assert_eq!(why("+33353011234"), "Your call screening sends numbers not in your contacts to your voicemail. ARCEP's list of 19 October 2026 gave this number's block to no operator: it may be a new line, or a borrowed number.");
+        assert!(why("+33899123456").contains("version of 1 January 2026") && !why("+33899123456").contains("ARCEP had"), "{}", why("+33899123456"));
+        // Past the list's days: nothing said of it.
+        let later = at("2027-02-20T10:00[Europe/Paris]");
+        let l = Lister { now: &later, ..l };
+        let old = Held { at: ms("2027-02-20T09:00[Europe/Paris]"), ..calls[0].clone() };
+        assert_eq!(lines(&[old], &Seen::default(), &BTreeMap::new(), &l)[0].why, "Your call screening sends numbers not in your contacts to your voicemail.");
+        let fr_tr = Translator::new("fr");
+        let l = Lister { now: &now, tr: &fr_tr, region: fr(), name_of: &name_of, shows: &shows, phone: &phone };
+        let listed = lines(&calls[2..], &Seen::default(), &BTreeMap::new(), &l);
+        assert!(listed[0].text.contains("un automate d’appel a appelé"), "{}", listed[0].text);
+    }
+
+    /// F5 (review of part 2): the numbers called are kept only for the days
+    /// they count, never more than 14, and not at all while the screening
+    /// counts none: the file pruned, or gone.
+    #[test]
+    fn numbers_called_are_kept_their_days_only() {
+        let dir = std::env::temp_dir().join(format!("sioul-called-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(CALLED);
+        let now = ms("2026-10-20T10:00[Europe/Paris]");
+        let day = 86_400_000;
+        let write = || std::fs::write(&path, format!("{{\"+33199005555\":{},\"+33199005556\":{},\"+33199005557\":{}}}", now - day, now - 20 * day, now + day)).unwrap();
+        write();
+        prune_called(&path, now, 14).unwrap();
+        let kept: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(kept.as_object().unwrap().keys().collect::<Vec<_>>(), ["+33199005555"], "a day ago kept; twenty days and the future out");
+        write();
+        prune_called(&path, now, 31).unwrap();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).unwrap()).unwrap().as_object().unwrap().len(), 1, "14 at most");
+        prune_called(&path, now, 0).unwrap();
+        assert!(!path.exists(), "the setting off: gone");
+        prune_called(&path, now, 0).unwrap();
+        std::fs::write(&path, format!("{{\"+33199005556\":{}}}", now - 20 * day)).unwrap();
+        prune_called(&path, now, 14).unwrap();
+        assert!(!path.exists(), "nothing left: gone");
+        std::fs::write(&path, "not json").unwrap();
+        prune_called(&path, now, 14).unwrap();
+        assert!(!path.exists(), "unreadable: gone");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

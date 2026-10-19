@@ -121,16 +121,19 @@ fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) 
     }
 }
 
+/// The why of a text gathered because its number is one ARCEP keeps for
+/// machines (`appnotes::why_text`, "appnotes-why-machine").
+const MACHINE: &str = "machine";
+
 /// Whether a sender's number comes from a root ARCEP keeps for automated
 /// systems (`screening::Numbers`, the call screening's data), while the call
 /// screening sends automated callers to voicemail (its `automated`).
 fn machine_number(sender: &Sender, config: &Config, now: &Zoned) -> bool {
-    static ROOTS: std::sync::OnceLock<sioul_core::screening::Numbers> = std::sync::OnceLock::new();
     let Sender::Known { numbers, .. } = sender else { return false };
     if sioul_core::screening::Screening::of(config).automated != sioul_core::screening::Spam::Voicemail {
         return false;
     }
-    let roots = ROOTS.get_or_init(sioul_core::screening::Numbers::built_in).automated(now.date());
+    let roots = sioul_core::screening::shipped().automated(now.date());
     let region = sioul_core::reach::region(config);
     numbers.iter().any(|n| sioul_core::screening::national(&sioul_core::phones::key(n, region)).is_some_and(|national| sioul_core::screening::starts_with_any(&national, &roots)))
 }
@@ -174,11 +177,10 @@ fn decide(json: &str) -> String {
         _ => (None, false),
     };
     // A text from a number nobody knows, from a root ARCEP keeps for machines: an automaton's, gathered
-    // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise).
-    let kind = match kind {
-        Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now) => Kind::Automaton { site: String::new() },
-        other => other,
-    };
+    // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise);
+    // said so in its why and its line (review of part 2, F11).
+    let machine = matches!(&kind, Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now));
+    let kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
     let (who, admitted) = if matches!(kind, Kind::People(_)) { (who, admitted) } else { (None, false) };
     let area = area_of(&posted, &kind, &choices, &config);
     let live = live(&config, &now);
@@ -239,6 +241,11 @@ fn decide(json: &str) -> String {
             released = Some(counted);
         }
         ledger.note(&posted, &kind, who, admitted, area, &decision, stamp);
+        if machine && decision.why == Why::Gathered
+            && let Some(app) = ledger.apps.get_mut(&posted.package)
+        {
+            app.why = MACHINE.to_string();
+        }
         ledger.forget_old(stamp, &choices);
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
@@ -249,13 +256,19 @@ fn decide(json: &str) -> String {
     // a reply from a computer handed lately, looked for in it as shown (`replies`).
     let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision) | crate::replies::heard(json, &posted);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
-    let mut answer = json!({ "hold": hold, "why": decision.why.id(), "shared": shared });
+    let why = if machine && decision.why == Why::Gathered { MACHINE } else { decision.why.id() };
+    let mut answer = json!({ "hold": hold, "why": why, "shared": shared });
     if let Some(counted) = released {
         let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
         answer["line"] = json!(log_line("release", &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now));
     } else if decision.until.is_some() {
-        // Held: a line of its own, with what decided it (`appnotes::cause`).
-        let cause = appnotes::cause(&posted.package, &kind, who, admitted, &choices, &ask);
+        // Held: a line of its own, with what decided it (`appnotes::cause`), a machine's number said.
+        let cause = appnotes::cause(&posted.package, &kind, who, admitted, &choices, &ask).map(|mut cause| {
+            if machine && cause.gathered == Some(Gathering::Automaton) {
+                cause.gathered = Some(Gathering::Machine);
+            }
+            cause
+        });
         answer["line"] = json!(hold_line(if returning { "held again" } else { "held" }, kind_word(&kind), &decision, cause.as_ref(), gate.as_ref(), &now));
     }
     answer.to_string()
@@ -439,6 +452,7 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
             Some(Gathering::App) => why.push("gathered (its app)".into()),
             Some(Gathering::Conversation) => why.push("gathered (its conversation)".into()),
             Some(Gathering::Named) => why.push("gathered (a sender named only)".into()),
+            Some(Gathering::Machine) => why.push("gathered (a number kept for machines)".into()),
             None => {}
         }
         if let Some(area) = cause.area {
@@ -898,6 +912,7 @@ mod tests {
         assert_eq!(line("held", "messages", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&focus)), "Notes: held: messages 1 until 10:50; why: dnd (focus session).");
         assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and focus session).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Named), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a sender named only).");
+        assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Machine), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a number kept for machines).");
         assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::App), columns: vec![Column::Work, Column::Admin], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its app's row, work + admin.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Conversation), gathered: None, columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its conversation's row, work.");

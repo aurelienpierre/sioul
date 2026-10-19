@@ -45,7 +45,7 @@ Two **layers** hold on top of the time, never instead of it; of the time and a l
 - **Time for you**: a slot of today's plan kept for you ([Tasks](tasks.md#the-day)).
 - **Do not disturb**, from its switch or a focus session ([below](#do-not-disturb-on-every-device)). Do-not-disturb held for a pause, Free time or sleep changes nothing: their own columns say it.
 
-Two more switches have a line each under the cards: **Let every call through**, in the status line on any of your devices ([Calls](calls.md#let-every-call-through)), and **Real time**, in the Porch's menu ([The Porch](porch.md)).
+Two more switches have a line each under the cards: **Expecting a call**, in the status line on any of your devices ([Calls](calls.md#expecting-a-call)), and **Real time**, in the Porch's menu ([The Porch](porch.md)).
 
 ## What each mark says {#the-levels}
 
@@ -64,8 +64,8 @@ Two more switches have a line each under the cards: **Let every call through**, 
 ## Where you start from {#presets}
 
 - **As Sioul does now**: what this page describes.
-- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; neutral contacts' calls to voicemail in admin time, leisure and meals, and their messages held in leisure and meals; hidden numbers' calls to voicemail in admin time; your safe senders' messages held in Free time; reminders of dates, and sites in real time, wait in leisure and meals.
-- **More reachable**: neutral contacts' mail at once in leisure and meals (their calls and messages come then already); strangers' mail shown in leisure; hidden numbers ring in leisure; other apps' automatons at once in work and admin.
+- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; neutral contacts' calls to voicemail in admin time, leisure and meals, and their messages held in leisure and meals; your safe senders' messages held in Free time; reminders of dates, and sites in real time, wait in leisure and meals.
+- **More reachable**: neutral contacts' mail at once in leisure and meals (their calls and messages come then already); strangers' mail shown in leisure; other apps' automatons at once in work and admin. No preset changes the call screening ([Calls](calls.md#the-call-screening)).
 
 A preset never touches a fixed cell. Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are."
 
@@ -77,9 +77,9 @@ As Sioul does now, unless you change it:
 
 | Time | Comes at once | Shown, not told | Waits |
 |---|---|---|---|
-| **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts and hidden numbers; your reminders, doses, codes; Health's notices, the pause to move; a site in real time | | strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
-| **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts and hidden numbers; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' and strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
-| **Leisure** | your safe senders' mail; calls and messages from your safe and neutral contacts; reminders, doses, codes, Health's notices | | everyone else's mail, and the messages of your restricted contacts, strangers and groups, for work or admin time; calls from your restricted contacts, strangers and hidden numbers go to voicemail, listed then; what is for work |
+| **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts; your reminders, doses, codes; Health's notices, the pause to move; a site in real time | | your sites and other apps' automatons come at the gathered times |
+| **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
+| **Leisure** | your safe senders' mail; calls and messages from your safe and neutral contacts; reminders, doses, codes, Health's notices | | everyone else's mail, and the messages of your restricted contacts, strangers and groups, for work or admin time; calls from your restricted contacts go to voicemail, listed then; what is for work |
 | **Meals** | as leisure | | as leisure |
 | **Sleep** | doses; codes; an event's alarms and Sioul's reminder before it when the event is in the night; the alarm at waking | your safe senders' mail | messages and calls, but your Always through people's; dates, until you wake; Health's notices do not come |
 | **Pause** | doses; codes; an event's alarms and Sioul's reminder before it; your Always through people's calls and messages | your safe senders' and Always through people's mail | everything else, until you come back; after it, the Porch rests until your next admin hours |
@@ -89,6 +89,8 @@ The two layers hold on top of the time, and only ever hold more:
 
 - **Time for you**: mail is shown at most, untold; your sites and other apps' automatons wait; the pause to move does not come. Calls, messages, reminders, doses and codes follow the time.
 - **Do not disturb**: your Always through people's mail, calls and messages come at once; everyone else's mail is shown at most, untold; their calls go to voicemail and their messages wait; your sites, a call in a site and other apps' automatons wait; the pause to move does not come. Reminders, doses, codes and Health's notices follow the time.
+
+Calls from numbers nobody knows and hidden numbers are in none of these rows: the call screening decides them, apart from the times, and each card says so in a line of its own. Where your contacts wait (sleep, a pause, Free time, do-not-disturb), they wait too, unless you expect a call ([The call screening](calls.md#the-call-screening)).
 
 **Free time** has its own choice, on its card: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come. Free time's menu in the status line offers it too ([Pauses](pauses.md#free-time)).
 
@@ -109,8 +111,8 @@ Mail, calls and other apps' messages follow who wrote, whatever the address or t
 - **Safe**: friends, chosen colleagues, chosen family. Only you put someone there.
 - **Neutral**: anyone in your address books, or let in from the screener, until you choose otherwise.
 - **Restricted**: those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs.
-- **Strangers**: in none of your address books, and on no list; and mail nothing proves is theirs.
-- **Hidden numbers** (calls): a call that shows no number, someone who hides theirs or a hospital's switchboard, which is why they ring in work and admin time.
+- **Strangers**: in none of your address books, and on no list; and mail nothing proves is theirs. Their calls are the call screening's, apart ([Calls](calls.md#the-call-screening)).
+- **Hidden numbers** (calls): a call that shows no number, someone who hides theirs or a hospital's switchboard. The call screening decides them too, ringing in work and admin time as usual.
 - **Groups** (messages): a conversation where several people write, as strangers until you change their row.
 - **Blocked**: never, on any channel, even on your Always through list: their mail set aside for good, never shown, never counted; their calls declined and never listed. Nothing is deleted.
 
@@ -130,8 +132,8 @@ As Sioul does now:
 | Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
 | Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-| Strangers | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-| Hidden numbers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+
+Calls from numbers not in your contacts and from hidden numbers left this grid on 19 October 2026: the call screening decides them, apart ([Calls](calls.md#the-call-screening)).
 
 Messages go as calls, but strangers' and groups' messages come at once in work and admin time. A mail app's notification on a phone follows the Mail grid, and is held where mail would be shown, not told: a phone cannot show what it holds. A call that goes to voicemail is listed on the Porch when its caller may reach you, or in work and admin time for a row that never rings ([Calls](calls.md#afterwards-on-the-porch)).
 
@@ -309,7 +311,7 @@ In What reaches you ▸ **Do not disturb**:
 Each device turns on a do-not-disturb of its own for Sioul's three modes: the pause, Free time, and do-not-disturb from its switch, a focus session or your sleep. It does so as far as its system lets an application do it. Its line says what was silenced and what could not be: in the switch's menu, and in What reaches you ▸ Do not disturb ▸ **On this device**. Turned off from Sioul, a device's own do-not-disturb goes off too, where Sioul can ([Both ways](#both-ways)).
 
 - **Android** (10 and later): a mode of Sioul's own for each, "Pause", "Free time" and "Do not disturb (Sioul)", among Android's do-not-disturb schedules (its modes, from Android 15). Each lets through what the matrix lets through then, as far as Android can say it:
-    - **Calls**: while this phone screens calls ([Calls](calls.md)), your contacts' calls ring through the mode, Sioul having sent the others to your voicemail already; anyone's, when the matrix lets strangers through too. Without the screening, your starred contacts' only. Nobody, when the matrix lets no one call then (Free time's **Nothing at all**, say), but Always through.
+    - **Calls**: while this phone screens calls ([Calls](calls.md)), your contacts' calls ring through the mode, Sioul having sent the others to your voicemail already; anyone's, when the call screening lets numbers nobody knows ring then and your contacts may ring then, or while you expect a call. Without the screening, your starred contacts' only. Nobody, when the matrix lets no one call then (Free time's **Nothing at all**, say), but Always through.
     - **Messages**: your starred contacts', when the matrix lets someone write then. Never more: Android plays a message's sound before Sioul can hold it, and the mode is what keeps a held message silent.
     - **A second call** from the same number within 15 minutes, whenever calls get through.
     - **Conversations marked Priority** in Android (Android 11 and later), whenever Always through's messages get through: the conversations you let through always ([above](#other-apps-on-a-phone)).
@@ -390,7 +392,7 @@ A person has a list and Always through; no times of their own. To give one perso
 
 ## Calls {#calls}
 
-On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.md)). Android asks Sioul first: a call from someone whose Calls row says later goes to your voicemail; your Always through people ring as their row says, never when blocked. Android's do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, Sioul's own do-not-disturb), your contacts' calls ring through it, the screening having sent the others to voicemail already, and a second call within 15 minutes; without the screening, starred contacts only ([What each system does](#what-each-system-does)). A do-not-disturb of your own, in Android's settings, lets through what you set there; turning it on or off turns Sioul's on or off too ([Both ways](#both-ways)).
+On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.md)). Android asks Sioul first: a call from someone you know whose Calls row says later goes to your voicemail, and a call from a number nobody knows as the call screening says, never where your contacts wait but while you expect a call ([Calls](calls.md#the-call-screening)); your Always through people ring as their row says, never when blocked. Android's do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, Sioul's own do-not-disturb), your contacts' calls ring through it, the screening having sent the others to voicemail already, and a second call within 15 minutes; without the screening, starred contacts only ([What each system does](#what-each-system-does)). A do-not-disturb of your own, in Android's settings, lets through what you set there; turning it on or off turns Sioul's on or off too ([Both ways](#both-ways)).
 
 ## Where to change each thing {#where-to-change-each-thing}
 

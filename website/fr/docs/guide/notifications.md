@@ -45,7 +45,7 @@ Deux **couches** s’ajoutent au moment, jamais à sa place ; du moment et d�
 - **Du temps pour vous** : un créneau que le plan du jour garde pour vous ([Les tâches](tasks.md#the-day)).
 - **Ne pas déranger**, par son interrupteur ou une séance de concentration ([plus bas](#do-not-disturb-on-every-device)). « Ne pas déranger » tenu pour une pause, le temps libre ou le sommeil ne change rien : leurs propres colonnes le disent.
 
-Deux interrupteurs de plus ont chacun une ligne sous les cartes : **Laisser passer tous les appels**, dans la ligne d’état, sur n’importe lequel de vos appareils ([Les appels](calls.md#let-every-call-through)), et le **Temps réel**, dans le menu du Porche ([Le Porche](porch.md)).
+Deux interrupteurs de plus ont chacun une ligne sous les cartes : **J’attends un appel**, dans la ligne d’état, sur n’importe lequel de vos appareils ([Les appels](calls.md#expecting-a-call)), et le **Temps réel**, dans le menu du Porche ([Le Porche](porch.md)).
 
 ## Ce que dit chaque marque {#the-levels}
 
@@ -64,8 +64,8 @@ Deux interrupteurs de plus ont chacun une ligne sous les cartes : **Laisser pa
 ## D’où vous partez {#presets}
 
 - **Comme Sioul le fait maintenant** : ce que décrit cette page.
-- **Plus calme** : les courriels de vos expéditeurs sûrs affichés sans notification pendant les loisirs et les repas ; les appels de vos contacts neutres sur la messagerie pendant les démarches, les loisirs et les repas, et leurs messages retenus pendant les loisirs et les repas ; les appels des numéros masqués sur la messagerie pendant les démarches ; les messages de vos expéditeurs sûrs retenus pendant le temps libre ; les rappels de dates, et les sites en temps réel, attendent pendant les loisirs et les repas.
-- **Plus joignable** : les courriels de vos contacts neutres tout de suite pendant les loisirs et les repas (leurs appels et leurs messages viennent déjà alors) ; les courriels des inconnus affichés pendant les loisirs ; les numéros masqués sonnent pendant les loisirs ; les automates des autres applications tout de suite pendant le travail et les démarches.
+- **Plus calme** : les courriels de vos expéditeurs sûrs affichés sans notification pendant les loisirs et les repas ; les appels de vos contacts neutres sur la messagerie pendant les démarches, les loisirs et les repas, et leurs messages retenus pendant les loisirs et les repas ; les messages de vos expéditeurs sûrs retenus pendant le temps libre ; les rappels de dates, et les sites en temps réel, attendent pendant les loisirs et les repas.
+- **Plus joignable** : les courriels de vos contacts neutres tout de suite pendant les loisirs et les repas (leurs appels et leurs messages viennent déjà alors) ; les courriels des inconnus affichés pendant les loisirs ; les automates des autres applications tout de suite pendant le travail et les démarches. Aucun préréglage ne change le filtrage des appels ([Les appels](calls.md#the-call-screening)).
 
 Un préréglage ne touche jamais une case fixe. En choisir un alors que vous avez des changements à vous demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. »
 
@@ -77,9 +77,9 @@ Comme Sioul le fait maintenant, sauf si vous le changez :
 
 | Moment | Arrive tout de suite | Affiché, sans notification | Attend |
 |---|---|---|---|
-| **Travail** | les courriels et les messages de tout le monde ; les appels de vos contacts sûrs, neutres et restreints et des numéros masqués ; vos rappels, prises, codes ; les avis de Santé, la pause pour bouger ; un site en temps réel | | les appels des inconnus vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
-| **Démarches** | les courriels et les messages de tous sauf vos contacts restreints ; les appels de vos contacts sûrs et neutres et des numéros masqués ; rappels, prises, codes, avis de Santé ; « Les heures de travail sont finies » | | les courriels et les messages de vos contacts restreints, jusqu’à un moment de travail ; les appels de vos contacts restreints et des inconnus vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
-| **Loisirs** | les courriels de vos expéditeurs sûrs ; les appels et les messages de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé | | les courriels de tous les autres, et les messages de vos contacts restreints, des inconnus et des groupes, jusqu’à un moment de travail ou de démarches ; les appels de vos contacts restreints, des inconnus et des numéros masqués vont sur la messagerie, listés alors ; ce qui est pour le travail |
+| **Travail** | les courriels et les messages de tout le monde ; les appels de vos contacts sûrs, neutres et restreints ; vos rappels, prises, codes ; les avis de Santé, la pause pour bouger ; un site en temps réel | | vos sites et les automates des autres applications arrivent aux heures de regroupement |
+| **Démarches** | les courriels et les messages de tous sauf vos contacts restreints ; les appels de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé ; « Les heures de travail sont finies » | | les courriels et les messages de vos contacts restreints, jusqu’à un moment de travail ; les appels de vos contacts restreints vont sur la messagerie ; vos sites et les automates des autres applications arrivent aux heures de regroupement |
+| **Loisirs** | les courriels de vos expéditeurs sûrs ; les appels et les messages de vos contacts sûrs et neutres ; rappels, prises, codes, avis de Santé | | les courriels de tous les autres, et les messages de vos contacts restreints, des inconnus et des groupes, jusqu’à un moment de travail ou de démarches ; les appels de vos contacts restreints vont sur la messagerie, listés alors ; ce qui est pour le travail |
 | **Repas** | comme les loisirs | | comme les loisirs |
 | **Sommeil** | les prises ; les codes ; les alarmes d’un événement et le rappel de Sioul avant lui quand l’événement est dans la nuit ; le réveil | les courriels de vos expéditeurs sûrs | les messages et les appels, sauf ceux des personnes qui passent toujours ; les dates, jusqu’à votre réveil ; les avis de Santé ne viennent pas |
 | **En pause** | les prises ; les codes ; les alarmes d’un événement et le rappel de Sioul avant lui ; les appels et les messages des personnes qui passent toujours | les courriels de vos expéditeurs sûrs et des personnes qui passent toujours | tout le reste, jusqu’à votre retour ; après elle, le Porche se repose jusqu’à vos prochaines heures de démarches |
@@ -89,6 +89,8 @@ Les deux couches s’ajoutent au moment, et ne retiennent jamais que davantage�
 
 - **Du temps pour vous** : les courriels sont au plus affichés, sans notification ; vos sites et les automates des autres applications attendent ; la pause pour bouger ne vient pas. Les appels, les messages, les rappels, les prises et les codes suivent le moment.
 - **Ne pas déranger** : les courriels, les appels et les messages des personnes qui passent toujours arrivent tout de suite ; les courriels de tous les autres sont au plus affichés, sans notification ; leurs appels vont sur la messagerie et leurs messages attendent ; vos sites, un appel dans un site et les automates des autres applications attendent ; la pause pour bouger ne vient pas. Les rappels, les prises, les codes et les avis de Santé suivent le moment.
+
+Les appels des numéros que personne ne connaît et des numéros masqués ne sont dans aucune de ces lignes : le filtrage des appels en décide, à part des moments, et chaque carte le dit dans une ligne à elle. Quand vos contacts attendent (le sommeil, une pause, le temps libre, « Ne pas déranger »), ils attendent aussi, sauf si vous attendez un appel ([Le filtrage des appels](calls.md#the-call-screening)).
 
 Le **temps libre** a un choix à lui, sur sa carte : **Rien du tout**, pas même vos expéditeurs sûrs. Les personnes qui passent toujours, les prises et les codes demandés viennent encore. Le menu du temps libre dans la ligne d’état le propose aussi ([Les pauses](pauses.md#free-time)).
 
@@ -109,8 +111,8 @@ Les courriels, les appels et les messages des autres applications suivent qui a 
 - **Sûrs** : les amis, les collègues et la famille que vous choisissez. Vous seul y mettez quelqu’un.
 - **Neutres** : toute personne de vos carnets d’adresses, ou laissée entrer depuis le filtre, tant que vous n’en décidez pas autrement.
 - **Restreints** : ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont les courriels pèsent.
-- **Inconnus** : dans aucun de vos carnets d’adresses, et sur aucune liste ; et les courriels que rien ne prouve être les leurs.
-- **Numéros masqués** (appels) : un appel qui ne montre aucun numéro, quelqu’un qui cache le sien ou le standard d’un hôpital ; c’est pourquoi ils sonnent pendant le travail et les démarches.
+- **Inconnus** : dans aucun de vos carnets d’adresses, et sur aucune liste ; et les courriels que rien ne prouve être les leurs. Leurs appels relèvent du filtrage des appels, à part ([Les appels](calls.md#the-call-screening)).
+- **Numéros masqués** (appels) : un appel qui ne montre aucun numéro, quelqu’un qui cache le sien ou le standard d’un hôpital. Le filtrage des appels en décide aussi ; d’habitude, ils sonnent pendant le travail et les démarches.
 - **Groupes** (messages) : une conversation où plusieurs personnes écrivent, comme des inconnus tant que vous ne changez pas leur ligne.
 - **Bloqués** : jamais, sur aucun canal, même sur votre liste Passent toujours : leurs courriels mis de côté pour de bon, jamais montrés, jamais comptés ; leurs appels refusés et jamais listés. Rien n’est supprimé.
 
@@ -130,8 +132,8 @@ Comme Sioul le fait maintenant :
 | Sûrs | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
 | Neutres | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-| Inconnus | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-| Numéros masqués | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+
+Les appels des numéros absents de vos contacts et des numéros masqués ont quitté cette grille le 19 octobre 2026 : le filtrage des appels en décide, à part ([Les appels](calls.md#the-call-screening)).
 
 Les messages vont comme les appels, mais les messages des inconnus et des groupes arrivent tout de suite pendant le travail et les démarches. La notification d’une application de courriel, sur un téléphone, suit la grille Courriels, et elle est retenue là où les courriels seraient affichés sans notification : un téléphone ne peut pas montrer ce qu’il retient. Un appel envoyé sur la messagerie est listé sur le Porche quand son auteur peut vous joindre, ou pendant le travail et les démarches pour une ligne qui ne sonne jamais ([Les appels](calls.md#afterwards-on-the-porch)).
 
@@ -309,7 +311,7 @@ Dans Ce qui vous joint ▸ **Ne pas déranger** :
 Chaque appareil active un mode « Ne pas déranger » à lui pour les trois modes de Sioul : la pause, le temps libre, et « Ne pas déranger » par son interrupteur, une séance de concentration ou votre sommeil. Il le fait autant que son système le permet à une application. Sa ligne dit ce qui a été mis en silence et ce qui n’a pas pu l’être : dans le menu de l’interrupteur, et dans Ce qui vous joint ▸ Ne pas déranger ▸ **Sur cet appareil**. Désactivé depuis Sioul, le mode « Ne pas déranger » propre à un appareil se désactive aussi, là où Sioul le peut ([Dans les deux sens](#both-ways)).
 
 - **Android** (10 et plus récent) : un mode propre à Sioul pour chacun, « En pause », « Temps libre » et « Ne pas déranger (Sioul) », parmi les programmes « Ne pas déranger » d’Android (ses modes, à partir d’Android 15). Chacun laisse passer ce que la matrice laisse passer à ce moment, autant qu’Android peut le dire :
-    - **Les appels** : tant que ce téléphone filtre les appels ([Les appels](calls.md)), les appels de vos contacts sonnent à travers le mode, Sioul ayant déjà envoyé les autres sur votre messagerie ; ceux de tout le monde, quand la matrice laisse aussi passer les inconnus. Sans le filtrage, ceux de vos contacts favoris seulement. Personne, quand la matrice ne laisse appeler personne (**Rien du tout** du temps libre, par exemple), sauf ceux qui passent toujours.
+    - **Les appels** : tant que ce téléphone filtre les appels ([Les appels](calls.md)), les appels de vos contacts sonnent à travers le mode, Sioul ayant déjà envoyé les autres sur votre messagerie ; ceux de tout le monde, quand le filtrage des appels laisse alors sonner les numéros que personne ne connaît et que vos contacts le peuvent aussi, ou pendant que vous attendez un appel. Sans le filtrage, ceux de vos contacts favoris seulement. Personne, quand la matrice ne laisse appeler personne (**Rien du tout** du temps libre, par exemple), sauf ceux qui passent toujours.
     - **Les messages** : ceux de vos contacts favoris, quand la matrice laisse écrire quelqu’un à ce moment. Jamais plus : Android joue le son d’un message avant que Sioul puisse le retenir, et c’est le mode qui garde silencieux un message retenu.
     - **Un second appel** du même numéro dans les 15 minutes, dès que des appels passent.
     - **Les conversations marquées Prioritaire** dans Android (Android 11 et plus récent), dès que passent les messages de ceux qui passent toujours : les conversations que vous laissez toujours passer ([plus haut](#other-apps-on-a-phone)).
@@ -390,7 +392,7 @@ Une personne a une liste et Passe toujours ; pas de moments à elle. Pour donn
 
 ## Les appels {#calls}
 
-Sur un téléphone Android, le filtrage des appels est à part de « Ne pas déranger » ([Les appels](calls.md)). Android demande d’abord à Sioul : un appel de quelqu’un dont la ligne Appels dit plus tard va sur votre messagerie ; les personnes qui passent toujours sonnent comme le dit leur ligne, jamais si elles sont bloquées. Le mode « Ne pas déranger » d’Android vient ensuite : tant que l’un des modes de Sioul est activé (une pause, le temps libre, « Ne pas déranger » de Sioul), les appels de vos contacts le traversent, le filtrage ayant déjà envoyé les autres sur la messagerie, ainsi qu’un second appel dans les 15 minutes ; sans le filtrage, les contacts favoris seulement ([Ce que fait chaque système](#what-each-system-does)). Un mode « Ne pas déranger » à vous, dans les paramètres d’Android, laisse passer ce que vous y avez réglé ; l’activer ou le désactiver active ou désactive aussi celui de Sioul ([Dans les deux sens](#both-ways)).
+Sur un téléphone Android, le filtrage des appels est à part de « Ne pas déranger » ([Les appels](calls.md)). Android demande d’abord à Sioul : un appel de quelqu’un que vous connaissez dont la ligne Appels dit plus tard va sur votre messagerie, et un appel d’un numéro que personne ne connaît comme le dit le filtrage des appels, jamais quand vos contacts attendent, sauf si vous attendez un appel ([Les appels](calls.md#the-call-screening)) ; les personnes qui passent toujours sonnent comme le dit leur ligne, jamais si elles sont bloquées. Le mode « Ne pas déranger » d’Android vient ensuite : tant que l’un des modes de Sioul est activé (une pause, le temps libre, « Ne pas déranger » de Sioul), les appels de vos contacts le traversent, le filtrage ayant déjà envoyé les autres sur la messagerie, ainsi qu’un second appel dans les 15 minutes ; sans le filtrage, les contacts favoris seulement ([Ce que fait chaque système](#what-each-system-does)). Un mode « Ne pas déranger » à vous, dans les paramètres d’Android, laisse passer ce que vous y avez réglé ; l’activer ou le désactiver active ou désactive aussi celui de Sioul ([Dans les deux sens](#both-ways)).
 
 ## Où changer chaque chose {#where-to-change-each-thing}
 

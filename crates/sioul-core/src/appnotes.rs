@@ -1089,6 +1089,10 @@ pub enum Gathering {
     /// A text whose sender came as a name alone, which no card has: taken
     /// for a business's sender id ("AMELI").
     Named,
+    /// A text from a number nobody knows from a root ARCEP keeps for
+    /// automated systems, while the call screening sends their calls to
+    /// voicemail (the app's `machine_number`; review of part 2, F11).
+    Machine,
 }
 
 /// Which own row decides a notification now (`Cause`).
@@ -1467,7 +1471,7 @@ pub fn why_text(tr: &Translator, why: &str, until: i64, now: &Zoned) -> String {
     args.set("when", if until > 0 { when_text(tr, until, now) } else { String::new() });
     let held = until > now.timestamp().as_second();
     let id = match (why, held) {
-        ("waiting", true) | ("gathered", true) | ("at-once", true) | ("never", true) | ("times", true) => format!("appnotes-why-{why}-held"),
+        ("waiting", true) | ("gathered", true) | ("machine", true) | ("at-once", true) | ("never", true) | ("times", true) => format!("appnotes-why-{why}-held"),
         _ => format!("appnotes-why-{why}"),
     };
     tr.text(&id, Some(&args))
@@ -2238,7 +2242,9 @@ mod tests {
         let fr = Translator::new("fr");
         assert_eq!(why_text(&fr, "gathered", at13, &now), "D’un automate\u{202f}: retenue jusqu’à 13:00, une heure de regroupement.");
         assert_eq!(why_text(&tr, "times", at13, &now), "As you chose for this time: held until 13:00.");
-        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "never", "again", "times"] {
+        // A text gathered because its number is one ARCEP keeps for machines: said so (review of part 2, F11).
+        assert_eq!(why_text(&tr, "machine", at13, &now), "From a number kept for automated systems: held until 13:00, a gathered time.");
+        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "machine", "never", "again", "times"] {
             for tr in [&tr, &fr] {
                 let said = why_text(tr, why, 0, &now);
                 assert!(!said.starts_with("appnotes-"), "{why}: {said}");

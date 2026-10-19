@@ -20,18 +20,28 @@
 //! **What it screens**, each kind on its own: a number in no address book
 //! (`unknown`), a hidden number (`hidden`), an automated caller (`automated`:
 //! ARCEP's roots for machines), a number that cannot be a caller's
-//! (`impossible`: one the plan forbids as a caller ID, or from a block ARCEP
-//! attributed to nobody), a number whose verification failed (`unverified`).
-//! A number you called in the last 14 days counts as your contacts do, and
-//! never rings less than a number nobody knows (`called`). Its hours: at all
-//! hours, or only outside your work and admin hours (`hours`).
+//! (`impossible`: one the plan forbids as a caller ID, 089), a number whose
+//! verification failed (`unverified`). The last three it keeps out at all
+//! hours, a second call too, while they go to voicemail. A number you called
+//! in the last 14 days counts as your contacts do (`called`). Its hours: at
+//! all hours, or only outside your work and admin hours (`hours`), for
+//! numbers nobody knows and hidden numbers. Whatever it lets ring by itself
+//! never rings where your contacts' row declines (do-not-disturb, the night,
+//! a pause): only Expecting a call opens beyond (`calls::decide`; review of
+//! part 2, 19 October 2026). ARCEP's list of the blocks it had attributed to
+//! no operator on a day decides nothing: a block attributed since may hold a
+//! new line. A declined call's line only says it, while the list counts
+//! (`unattributed_since`).
 //!
 //! **Kept** in `[screening]`, shared with the settings; each key unsaid takes
 //! its first value: unknown and hidden numbers from your Calls rows of
 //! strangers and hidden numbers as they were before the screening was apart
-//! (never screening more than they did), the rest as decided. Written a key
-//! at a time, only when you change it (`set`); an older Sioul keeps the
-//! section as it is. The numbers known by their kind: `data/screening-numbers.toml`.
+//! (never ringing where the row declined), the rest as decided. Written a key
+//! at a time, only when you change one; the first written also fixes unknown
+//! and hidden numbers at their first values, which the Calls rows then move
+//! no more (`set`). No preset nor any write of the matrix touches those rows
+//! (`attention::screened`). An older Sioul keeps the section as it is. The
+//! numbers known by their kind: `data/screening-numbers.toml`.
 
 use crate::attention::{Attention, Column, Level, Person, Row};
 use crate::config::{Config, SettingValue};
@@ -51,8 +61,9 @@ pub enum Hours {
     /// At all hours (the default).
     #[default]
     Always,
-    /// Only outside your work and admin hours: in them, every call rings as
-    /// it would without the screening.
+    /// Only outside your work and admin hours: in them, numbers nobody knows
+    /// and hidden numbers ring where your contacts may; what it keeps out as
+    /// spam stays out.
     OutsideWork,
 }
 
@@ -197,7 +208,8 @@ impl Screening {
     /// Whether a number nobody knows, or a hidden one, rings at a time of the
     /// day (`hours`: work or admin hours then), as the screening says by
     /// itself: off, outside its hours, or its rule letting it ring. What it
-    /// screens as spam aside, and Expecting a call, which holds for a while.
+    /// screens as spam aside, and Expecting a call, which holds for a while;
+    /// never beyond your contacts' row then (`calls::decide`).
     pub fn rings(&self, hidden: bool, hours: bool) -> bool {
         if !self.on || (self.hours == Hours::OutsideWork && hours) {
             return true;
@@ -211,19 +223,21 @@ impl Screening {
 }
 
 /// A rule's first value, from your Calls row of strangers or hidden numbers
-/// as it was before the screening was apart: never screening more than the
-/// row did. Voicemail when it rang at no time; ringing in work and admin
-/// hours when it rang only then; ringing otherwise. Its layers (time for
-/// you, do-not-disturb) are no part of the screening.
+/// as it was before the screening was apart: the closest rule that never
+/// rings where the row declined. Ringing at every hour only when it rang at
+/// every time; ringing in work and admin hours when it rang in either;
+/// voicemail otherwise (review of part 2, F2: a row that rang in leisure alone
+/// once gave ringing at night). Its layers (time for you, do-not-disturb) are
+/// no part of the screening.
 pub fn first_rule(attention: &Attention, person: Person) -> Rule {
     let row = Row::People(Channel::Calls, person);
-    let rings: Vec<Column> = Column::TIMES.iter().copied().filter(|c| attention.cell(row, *c) == Level::Now).collect();
-    if rings.is_empty() {
-        Rule::Voicemail
-    } else if rings.iter().all(|c| matches!(c, Column::Work | Column::Admin)) {
+    let rings = |column: Column| attention.cell(row, column) == Level::Now;
+    if Column::TIMES.into_iter().all(|column| rings(column)) {
+        Rule::Ring
+    } else if rings(Column::Work) || rings(Column::Admin) {
         Rule::Work
     } else {
-        Rule::Ring
+        Rule::Voicemail
     }
 }
 
@@ -253,6 +267,17 @@ pub fn set(path: &Path, key: &str, value: &SettingValue) -> Result<(), String> {
         _ if boolean => return Err(format!("{key}: on or off")),
         _ => return Err(format!("{key}: {}", words.join(", "))),
     };
+    // The first setting written fixes unknown and hidden numbers at their
+    // first values: the Calls rows they come from move them no more.
+    if path.exists() {
+        let config = Config::load(path)?;
+        let now = Screening::of(&config);
+        for (unsaid, rule) in [("unknown", now.unknown), ("hidden", now.hidden)] {
+            if unsaid != name && config.screening.as_ref().and_then(|s| s.word(unsaid)).and_then(Rule::read).is_none() {
+                crate::config::set_value(path, &format!("screening.{unsaid}"), &SettingValue::Text(rule.id().to_string()))?;
+            }
+        }
+    }
     crate::config::set_value(path, &format!("screening.{name}"), &checked)
 }
 
@@ -315,12 +340,27 @@ impl Numbers {
         self.of(&["automated"], today)
     }
 
-    /// What cannot be a caller's number on `today`, in national form: what the
-    /// plan forbids as a caller ID, and the blocks attributed to nobody while
-    /// their group counts.
-    pub fn impossible(&self, today: jiff::civil::Date) -> Vec<String> {
-        self.of(&["never-shown", "unattributed"], today)
+    /// What can never be a caller's number, in national form: what the plan
+    /// forbids as a caller ID (089). The blocks attributed to nobody on a day
+    /// are no part of it: a block attributed since may hold a new line
+    /// (review of part 2, F1).
+    pub fn never_shown(&self, today: jiff::civil::Date) -> Vec<String> {
+        self.of(&["never-shown"], today)
     }
+
+    /// The day ARCEP's list was read, when a number's key falls in a block it
+    /// had attributed to no operator then and that list still counts on
+    /// `today`: said on a declined call's line, deciding nothing.
+    pub fn unattributed_since(&self, key: &str, today: jiff::civil::Date) -> Option<jiff::civil::Date> {
+        let national = national(key)?;
+        self.group.iter().filter(|g| g.kind == "unattributed" && g.counts(today)).find(|g| starts_with_any(&national, &g.prefixes)).and_then(|g| g.checked.parse().ok())
+    }
+}
+
+/// The numbers as Sioul ships them, read once.
+pub fn shipped() -> &'static Numbers {
+    static SHIPPED: std::sync::OnceLock<Numbers> = std::sync::OnceLock::new();
+    SHIPPED.get_or_init(Numbers::built_in)
 }
 
 /// A number's key (`phones::key`, "+33199001234") in the French plan's
@@ -353,7 +393,8 @@ pub struct TablePart {
     /// The automated callers' roots, in national form.
     #[serde(default)]
     pub automated_prefixes: Vec<String>,
-    /// What cannot be a caller's number, in national form.
+    /// What can never be a caller's number, in national form: what the plan
+    /// forbids as a caller ID (089).
     #[serde(default)]
     pub impossible_prefixes: Vec<String>,
 }
@@ -371,7 +412,7 @@ impl TablePart {
             unverified: screening.unverified,
             called_days: if screening.called { CALLED_DAYS } else { 0 },
             automated_prefixes: numbers.automated(today),
-            impossible_prefixes: numbers.impossible(today),
+            impossible_prefixes: numbers.never_shown(today),
         }
     }
 
@@ -413,24 +454,26 @@ mod tests {
             assert!(automated.contains(&root.to_string()), "{root}");
         }
         assert_eq!(automated.len(), 22, "nothing else: the public-interest roots stay out");
-        let impossible = numbers.impossible(today);
-        assert!(impossible.contains(&"089".to_string()));
+        // What can never be a caller's: the plan's own rule, 089, and nothing of the snapshot (review of part 2, F1).
+        assert_eq!(numbers.never_shown(today), vec!["089".to_string()]);
+        let unattributed = numbers.group.iter().find(|g| g.kind == "unattributed").unwrap();
         // The public-interest multi-use numbers (plan § 2.3.10 a): a category of their own, as any number nobody
-        // knows (CS12), never impossible though most of their blocks are attributed to nobody yet; nor machines.
+        // knows (CS12), never said attributed to nobody though most of their blocks are yet; nor machines.
         for root in ["01510", "02810", "03410", "04410", "05410", "09410", "059850", "059864", "094700", "094709", "02687", "050860"] {
-            assert!(!impossible.iter().chain(&automated).any(|p| p.starts_with(root) || root.starts_with(p.as_str())), "{root}");
+            assert!(!unattributed.prefixes.iter().chain(&automated).any(|p| p.starts_with(root) || root.starts_with(p.as_str())), "{root}");
         }
-        assert!(impossible.len() > 1_000, "the blocks attributed to nobody, while they count");
+        assert!(unattributed.prefixes.len() > 1_000, "the blocks attributed to nobody on the day read");
         // No root for machines among the numbers never shown.
         assert!(!automated.iter().any(|a| a.starts_with("089")));
-        // The blocks attributed to nobody count 90 days after the day read; 089 always.
-        let unattributed = numbers.group.iter().find(|g| g.kind == "unattributed").unwrap();
+        // The blocks attributed to nobody are said 90 days after the day read, then no more.
         assert_eq!(unattributed.valid_days, Some(90));
         let read = day(&unattributed.checked);
         assert!(unattributed.counts(read) && unattributed.counts(read.checked_add(jiff::Span::new().days(89)).unwrap()));
         assert!(!unattributed.counts(read.checked_add(jiff::Span::new().days(90)).unwrap()), "past its days");
         assert!(!unattributed.counts(read.yesterday().unwrap()), "a clock before the day read: not counted");
-        assert_eq!(numbers.impossible(read.checked_add(jiff::Span::new().days(200)).unwrap()), vec!["089".to_string()], "then only the plan's own rule");
+        assert_eq!(numbers.unattributed_since("+33353011234", read), Some(read), "a fiction block attributed to nobody that day");
+        assert_eq!(numbers.unattributed_since("+33353011234", read.checked_add(jiff::Span::new().days(90)).unwrap()), None);
+        assert_eq!(numbers.unattributed_since("+441632960000", read), None, "another country's");
         assert_eq!(Numbers::built_in(), numbers);
     }
 
@@ -458,13 +501,13 @@ mod tests {
         // The owner's: hidden numbers held at every time.
         let config: Config = toml::from_str("[attention]\n\"calls.hidden\" = [\"work:later\", \"admin:later\", \"leisure:later\", \"meals:later\", \"sleep:later\", \"pause:later\", \"free:later\", \"slot:later\", \"dnd:later\"]\n").unwrap();
         assert_eq!(Screening::of(&config).hidden, Rule::Voicemail);
-        // Strangers let ring at work and admin: ringing then; at leisure too: ringing.
+        // Strangers let ring at work and admin: ringing then; at leisure too: still only then, never at night.
         let mut attention = Attention::usual();
         attention.set(Row::People(Channel::Calls, Person::Stranger), C::Work, Level::Now).unwrap();
         attention.set(Row::People(Channel::Calls, Person::Stranger), C::Admin, Level::Now).unwrap();
         assert_eq!(first_rule(&attention, Person::Stranger), Rule::Work);
         attention.set(Row::People(Channel::Calls, Person::Stranger), C::Leisure, Level::Now).unwrap();
-        assert_eq!(first_rule(&attention, Person::Stranger), Rule::Ring, "never more screening than the row had");
+        assert_eq!(first_rule(&attention, Person::Stranger), Rule::Work, "never ringing where the row declined");
         // A layer is no part of it: time for you's cell lets strangers through as usual, voicemail all the same.
         assert_eq!(attention.cell(Row::People(Channel::Calls, Person::Stranger), C::Slot), Level::Now);
         assert_eq!(first_rule(&Attention::usual(), Person::Stranger), Rule::Voicemail);
@@ -472,6 +515,70 @@ mod tests {
         let config: Config = toml::from_str("[screening]\non = false\nhours = \"outside-work\"\nunknown = \"ring\"\nautomated = \"unknown\"\nimpossible = \"later-word\"\ncalled = \"yes\"\n").unwrap();
         let read = Screening::of(&config);
         assert_eq!((read.on, read.hours, read.unknown, read.hidden, read.automated, read.impossible, read.called), (false, Hours::OutsideWork, Rule::Ring, Rule::Work, Spam::Unknown, Spam::Voicemail, true));
+    }
+
+    /// The owner's row of hidden numbers, held at every time, as the review
+    /// of part 2 tried it (19 October 2026).
+    const OWNER_HIDDEN: &str = "[attention]\n\"calls.hidden\" = [\"work:later\", \"admin:later\", \"leisure:later\", \"meals:later\", \"sleep:later\", \"pause:later\", \"free:later\", \"slot:later\", \"dnd:later\"]\n";
+
+    /// A configuration file of its own, in a folder of its own.
+    fn scratch(name: &str, text: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("sioul-screening-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, text).unwrap();
+        (dir, path)
+    }
+
+    /// F2 (review of part 2): no preset moves the call screening. Each leaves
+    /// the owner's hidden numbers to voicemail at all hours, his row as it
+    /// was, and the screening as it stood.
+    #[test]
+    fn the_presets_never_move_the_screening() {
+        for preset in crate::attention::Preset::ALL {
+            let (dir, path) = scratch(preset.id(), OWNER_HIDDEN);
+            let before = Screening::of(&Config::load(&path).unwrap());
+            crate::attention::apply_preset(&path, &Config::load(&path).unwrap(), preset).unwrap();
+            let after = Screening::of(&Config::load(&path).unwrap());
+            assert_eq!((after, after.hidden), (before, Rule::Voicemail), "{preset:?}");
+            assert!(std::fs::read_to_string(&path).unwrap().contains("\"calls.hidden\" = [\"work:later\""), "{preset:?}: the row as it was");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// F2: the first setting of the screening written fixes unknown and hidden
+    /// numbers at their first values: a Calls row changed afterwards (an
+    /// older device's grid) moves the screening no more.
+    #[test]
+    fn the_first_key_written_fixes_unknown_and_hidden() {
+        let (dir, path) = scratch("first", OWNER_HIDDEN);
+        set(&path, "screening.on", &SettingValue::Bool(true)).unwrap();
+        let written = Config::load(&path).unwrap().screening.unwrap();
+        assert_eq!((written.word("unknown"), written.word("hidden")), (Some("voicemail"), Some("voicemail")));
+        let text = std::fs::read_to_string(&path).unwrap().replace("\"calls.hidden\" = [\"work:later\", \"admin:later\"", "\"calls.hidden\" = [\"work\", \"admin\"");
+        std::fs::write(&path, text).unwrap();
+        assert_eq!(Screening::of(&Config::load(&path).unwrap()).hidden, Rule::Voicemail);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// F2: a row that rang in some hours out of work never makes its numbers
+    /// ring at every hour: ringing in work and admin hours when it rang then,
+    /// else voicemail; at every hour only when it rang at every time.
+    #[test]
+    fn a_row_that_rang_out_of_work_never_rings_at_all_hours() {
+        let stranger = Row::People(Channel::Calls, Person::Stranger);
+        let mut leisure = Attention::usual();
+        leisure.set(stranger, C::Leisure, Level::Now).unwrap();
+        assert_eq!(first_rule(&leisure, Person::Stranger), Rule::Voicemail);
+        let mut both = leisure.clone();
+        both.set(stranger, C::Work, Level::Now).unwrap();
+        assert_eq!(first_rule(&both, Person::Stranger), Rule::Work);
+        let mut every = Attention::usual();
+        for column in C::TIMES {
+            every.set(stranger, column, Level::Now).unwrap();
+        }
+        assert_eq!(first_rule(&every, Person::Stranger), Rule::Ring);
     }
 
     /// Whether a number nobody knows rings by the screening alone, at each
@@ -508,7 +615,10 @@ mod tests {
         let config = Config::load(&path).unwrap();
         let read = Screening::of(&config);
         assert_eq!((read.on, read.hidden, read.unknown), (true, Rule::Voicemail, Rule::Voicemail));
-        assert!(!config.screening.as_ref().unwrap().0.contains_key("unknown"), "only the keys changed");
+        // The first key written fixed unknown numbers at their first value too; nothing else is written.
+        let written = &config.screening.as_ref().unwrap().0;
+        assert_eq!(written.get("unknown").and_then(toml::Value::as_str), Some("voicemail"));
+        assert!(!written.contains_key("automated") && !written.contains_key("hours"), "only the keys changed, and the two fixed");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
