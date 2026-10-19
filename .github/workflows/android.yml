@@ -178,6 +178,11 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign" -c -P 16 4 "$apk" && echo "APK aligned for 16 KB pages" | tee -a "$GITHUB_STEP_SUMMARY" || echo "APK not aligned for 16 KB pages" | tee -a "$GITHUB_STEP_SUMMARY"
           [ "$ours" = ok ]
 
+      # Sioul's own library in the APK holds no test hook
+      # (tools/check-test-marks.sh): no test runs here, and the check says so.
+      - name: No test build in the APK
+        run: sh tools/check-test-marks.sh apk-libs/lib/*/libsioul_*.so
+
       - uses: actions/upload-artifact@v7
         with:
           name: sioul-android-arm64

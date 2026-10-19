@@ -111,16 +111,39 @@ fn read_certs(dir: &std::path::Path) -> Vec<Cert> {
 /// key's own, revoked, or bound under an algorithm the policy refuses, names
 /// nothing (review of 19 October 2026, F1: `userids()` alone counts every
 /// user ID, "even those without a binding signature").
-fn names(cert: &Cert, address: &str) -> bool {
+fn bound(cert: &Cert, address: &str) -> bool {
     let policy = policy();
     let Ok(valid) = cert.with_policy(&policy, None) else { return false };
     valid.userids().revoked(false).any(|u| email_is(u.userid(), address))
 }
 
-/// `names`, for the window's words: whether `cert` holds `address` among
-/// the user IDs bound to it.
+/// Whether a certificate may serve at all: valid under Sequoia's policy and
+/// not revoked as a whole. Sequoia's `revoked(false)` on a key asks that
+/// key's own revocation, never the certificate's: a certificate revoked as
+/// compromised still has live, unrevoked subkeys (review of 19 October 2026,
+/// N3). A revoked certificate never takes a message or a seal and never
+/// signs; it still opens what was sent to it before.
+fn usable(cert: &Cert) -> bool {
+    let policy = policy();
+    cert.with_policy(&policy, None).is_ok_and(|valid| !matches!(valid.revocation_status(), openpgp::types::RevocationStatus::Revoked(_)))
+}
+
+/// Whether a key serves `address`: bound to it (`bound`) and not revoked as
+/// a whole (`usable`). Every choice of a key for an address goes through it
+/// (`for_address`, `self_cert_for`, `own_for`).
+fn names(cert: &Cert, address: &str) -> bool {
+    usable(cert) && bound(cert, address)
+}
+
+/// For the window's words: whether `cert` holds `address` among the user
+/// IDs bound to it, revoked as a whole or not.
 pub fn names_address(cert: &Cert, address: &str) -> bool {
-    names(cert, address)
+    bound(cert, address)
+}
+
+/// Whether `cert` is valid but revoked as a whole, for the window's words.
+pub fn revoked_whole(cert: &Cert) -> bool {
+    !usable(cert) && cert.with_policy(&policy(), None).is_ok()
 }
 
 fn email_is(userid: &openpgp::packet::UserID, address: &str) -> bool {
@@ -134,7 +157,129 @@ fn email_is(userid: &openpgp::packet::UserID, address: &str) -> bool {
 /// another address's key (review of 19 October 2026, F2).
 fn for_its_address(cert: Cert, address: &str) -> Option<Cert> {
     let kept = cert.retain_userids(|u| email_is(u.userid(), address));
-    names(&kept, address).then_some(kept)
+    // Bound, revoked as a whole or not: a revocation that comes is kept, and stops the key kept.
+    bound(&kept, address).then_some(kept)
+}
+
+/// The addresses bound to `cert` (`bound`), as written there, each once.
+fn bound_addresses(cert: &Cert) -> Vec<String> {
+    let policy = policy();
+    let Ok(valid) = cert.with_policy(&policy, None) else { return Vec::new() };
+    let mut out: Vec<String> = Vec::new();
+    for address in valid.userids().revoked(false).filter_map(|u| u.userid().email().ok().flatten().map(|e| e.trim().to_string())) {
+        if !out.iter().any(|kept| kept.eq_ignore_ascii_case(&address)) {
+            out.push(address);
+        }
+    }
+    out
+}
+
+/// What travels beside each of others' keys (`others/<fingerprint>.toml`):
+/// the addresses it was learned for (an Autocrypt header's, a lookup's) or,
+/// imported from a file you chose, every address bound to it. The only ones
+/// it serves (review of 19 October 2026, N2).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Served {
+    format: u32,
+    #[serde(default)]
+    addresses: Vec<String>,
+}
+
+/// The format of `others/`: 2 since its keys say what they serve; 1 (none
+/// said), what Sioul kept before, or what an older Sioul writes through the
+/// sharing.
+const OTHERS_FORMAT: u32 = 2;
+
+fn served_path(dir: &std::path::Path, fingerprint: &str) -> PathBuf {
+    dir.join(format!("{fingerprint}.toml"))
+}
+
+/// The addresses someone's key `cert`, kept in `dir`, serves: those its file
+/// beside says, as they are bound to it. One kept without that file (before
+/// 19 October 2026, or written through the sharing by an older Sioul) is
+/// judged as it is, at each reading: its one bound address when it names
+/// one, which is the address it came for (a header's key had to name its
+/// sender, a lookup's its address); none when it names several, since which
+/// one it came for is not known and a key's owner can name any address
+/// (N2): it waits, kept, until it comes again for an address.
+fn served_by(dir: &std::path::Path, cert: &Cert) -> Vec<String> {
+    let said = std::fs::read_to_string(served_path(dir, &cert.fingerprint().to_hex())).ok().and_then(|text| toml::from_str::<Served>(&text).ok());
+    match said {
+        Some(served) => served.addresses,
+        None => Some(bound_addresses(cert)).filter(|bound| bound.len() == 1).unwrap_or_default(),
+    }
+}
+
+/// `cert` cut to the user IDs of `addresses`.
+fn only_for(cert: Cert, addresses: &[String]) -> Cert {
+    cert.retain_userids(|u| u.userid().email().ok().flatten().is_some_and(|e| addresses.iter().any(|a| a.trim().eq_ignore_ascii_case(e.trim()))))
+}
+
+/// Others' keys in `dir`, each cut to the addresses it serves (`served_by`);
+/// one that serves none is left out of every use, its signatures said as a
+/// key's Sioul does not know (kept on the disk, it comes back once learned
+/// again for an address).
+fn read_others(dir: &std::path::Path) -> Vec<Cert> {
+    read_certs(dir)
+        .into_iter()
+        .filter_map(|cert| {
+            let served = served_by(dir, &cert);
+            let cut = only_for(cert, &served);
+            cut.userids().next().is_some().then_some(cut)
+        })
+        .collect()
+}
+
+/// Writes what someone's key serves beside it.
+fn write_served(dir: &std::path::Path, fingerprint: &str, addresses: &[String]) -> Result<(), String> {
+    let text = format!(
+        "# Sioul: the addresses this key was learned for, the only ones it serves (docs/client.md, \"Which key is whose\").\n{}",
+        toml::to_string(&Served { format: OTHERS_FORMAT, addresses: addresses.to_vec() }).map_err(|e| e.to_string())?
+    );
+    write_key(&served_path(dir, fingerprint), text.as_bytes())
+}
+
+/// Once on each device (`state/pgp-others.toml`): each key of `others/`
+/// kept without what it serves (format 1) gets it, as it is judged now: one
+/// address when it names one, none when it names several. Kept so, an older
+/// Sioul's later write to it (every user ID of a header, merged) adds no
+/// address it serves. The key's own file is never touched: one that serves
+/// none stays, to serve again once it comes for an address (its owner's
+/// next message, a lookup). How many keys it wrote it for.
+pub fn keep_others_for_their_addresses() -> Result<usize, String> {
+    keep_others_for_their_addresses_at(&pgp_dir(), &crate::config::state_dir().join("pgp-others.toml"))
+}
+
+/// `keep_others_for_their_addresses` in the folder `root` (`pgp/`), its mark at `mark`.
+fn keep_others_for_their_addresses_at(root: &std::path::Path, mark: &std::path::Path) -> Result<usize, String> {
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    struct Mark {
+        #[serde(default)]
+        format: u32,
+    }
+    let done = std::fs::read_to_string(mark).ok().and_then(|text| toml::from_str::<Mark>(&text).ok()).unwrap_or_default();
+    if done.format >= OTHERS_FORMAT {
+        return Ok(0);
+    }
+    let dir = root.join("others");
+    let mut written = 0;
+    for cert in read_certs(&dir) {
+        let fingerprint = cert.fingerprint().to_hex();
+        if served_path(&dir, &fingerprint).exists() {
+            continue;
+        }
+        write_served(&dir, &fingerprint, &served_by(&dir, &cert))?;
+        written += 1;
+    }
+    if let Some(parent) = mark.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let text = format!(
+        "# Sioul: others' keys say beside them what they serve (pgp/others/<fingerprint>.toml) since this format; never shared.\n{}",
+        toml::to_string(&Mark { format: OTHERS_FORMAT }).map_err(|e| e.to_string())?
+    );
+    crate::filelock::replace(mark, text.as_bytes()).map_err(|e| format!("{}: {e}", mark.display()))?;
+    Ok(written)
 }
 
 impl Keys {
@@ -151,7 +296,7 @@ impl Keys {
     /// this device read itself says what it is; its certificate is merged
     /// with the shared one (a renewal made on another computer).
     pub fn load_at(root: &std::path::Path) -> Keys {
-        let mut keys = Keys { own: read_certs(&root.join("own")), others: read_certs(&root.join("others")), cards: securitykey::known_cards_in(&root.join("cards.toml")), ..Keys::default() };
+        let mut keys = Keys { own: read_certs(&root.join("own")), others: read_others(&root.join("others")), cards: securitykey::known_cards_in(&root.join("cards.toml")), ..Keys::default() };
         let stopped = securitykey::stopped_in(root);
         for (card, cert) in securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)) {
             let read_here = keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
@@ -247,7 +392,7 @@ impl Keys {
     /// encryption now (expired, revoked).
     pub fn self_cert_for(&self, address: &str) -> Option<&Cert> {
         let policy = policy();
-        let encrypts = |c: &&Cert| c.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some();
+        let encrypts = |c: &&Cert| usable(c) && c.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some();
         if let Some((_, cert)) = self.serving_card(address) {
             return Some(cert).filter(encrypts);
         }
@@ -257,12 +402,13 @@ impl Keys {
     /// Your own certificates that can take what is sealed for you alone
     /// (your security keys', as your computer read them, and your keys
     /// here): an encryption key not revoked, expired or not, since you open
-    /// such a seal with it (F19). Encrypted to each, any of them opens it.
+    /// such a seal with it (F19); never a certificate revoked as a whole
+    /// (N3). Encrypted to each, any of them opens it.
     pub fn own_certs(&self) -> Vec<&Cert> {
         let policy = policy();
         let mut out: Vec<&Cert> = Vec::new();
         for cert in &self.own {
-            if cert.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption().next().is_some() && !out.iter().any(|c| c.fingerprint() == cert.fingerprint()) {
+            if usable(cert) && cert.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption().next().is_some() && !out.iter().any(|c| c.fingerprint() == cert.fingerprint()) {
                 out.push(cert);
             }
         }
@@ -297,7 +443,7 @@ impl Keys {
 /// revoked, allowed to sign.
 fn can_sign_with(cert: &Cert, fingerprint: &str) -> bool {
     let policy = policy();
-    cert.keys().with_policy(&policy, None).alive().revoked(false).for_signing().any(|k| k.key().fingerprint().to_hex().eq_ignore_ascii_case(fingerprint))
+    usable(cert) && cert.keys().with_policy(&policy, None).alive().revoked(false).for_signing().any(|k| k.key().fingerprint().to_hex().eq_ignore_ascii_case(fingerprint))
 }
 
 /// The key `fingerprint` of `cert`, its public part, primary or subkey.
@@ -334,7 +480,7 @@ fn summary(cert: &Cert, own: bool) -> KeySummary {
         own,
         created: date(cert.primary_key().key().creation_time()),
         expires: valid.as_ref().and_then(|v| v.primary_key().key_expiration_time()).map(date).unwrap_or_default(),
-        can_encrypt: cert.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some(),
+        can_encrypt: usable(cert) && cert.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some(),
         card: String::new(),
         revocation: false,
     }
@@ -353,12 +499,6 @@ pub fn summaries() -> Vec<KeySummary> {
     all
 }
 
-/// Keeps a key you chose (imported, made here), merged with what was known
-/// of it. Secret parts go with yours, and so does a certificate of yours.
-fn store(cert: Cert) -> Result<KeySummary, String> {
-    store_at(&pgp_dir(), cert)
-}
-
 /// Keeps a key that came from elsewhere for `address` (a lookup: its
 /// domain's Web Key Directory, keys.openpgp.org): its user IDs for that
 /// address alone. One of yours brought again so is merged without anything
@@ -372,12 +512,23 @@ fn store_from_elsewhere_at(root: &std::path::Path, cert: Cert, address: &str) ->
     if let Some(known) = std::fs::read(&yours).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
         let names: Vec<Vec<u8>> = known.userids().map(|u| u.userid().value().to_vec()).collect();
         let merged = known.merge_public(cert).ok()?.retain_userids(|u| names.iter().any(|n| n.as_slice() == u.userid().value()));
-        return store_in(root, merged, true).ok();
+        return store_in(root, only_bound_subkeys(merged), true).ok();
     }
     if yours_at(root, &fingerprint) {
         return None;
     }
     store_in(root, cert, false).ok()
+}
+
+/// `cert` without the subkeys its own primary key does not bind under the
+/// policy (bound by nothing, or by another key): what a lookup brings of
+/// yours adds only what your key signed (review of 19 October 2026, Info:
+/// such subkeys were inert, but kept, and a security key's travelled in its
+/// shared file).
+fn only_bound_subkeys(cert: Cert) -> Cert {
+    let policy = policy();
+    let bound: Vec<Fingerprint> = cert.keys().subkeys().with_policy(&policy, None).map(|k| k.key().fingerprint()).collect();
+    cert.retain_subkeys(|k| bound.contains(&k.key().fingerprint()))
 }
 
 /// Whether the certificate `fingerprint` (hexadecimal) is one of yours in
@@ -391,7 +542,9 @@ fn yours_at(root: &std::path::Path, fingerprint: &str) -> bool {
         || securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)).iter().any(|(card, _)| card.cert.eq_ignore_ascii_case(fingerprint))
 }
 
-/// [`store`] into the folder `root` (`pgp/`).
+/// Keeps a key you chose (imported, made here) in the folder `root`
+/// (`pgp/`), merged with what was known of it. Secret parts go with yours,
+/// and so does a certificate of yours.
 fn store_at(root: &std::path::Path, cert: Cert) -> Result<KeySummary, String> {
     let known_as_own = root.join("own").join(format!("{}.asc", cert.fingerprint().to_hex())).exists();
     let own = cert.is_tsk() || known_as_own;
@@ -399,6 +552,10 @@ fn store_at(root: &std::path::Path, cert: Cert) -> Result<KeySummary, String> {
 }
 
 fn store_in(root: &std::path::Path, cert: Cert, own: bool) -> Result<KeySummary, String> {
+    if !own {
+        let learned = bound_addresses(&cert);
+        return store_others(root, cert, &learned);
+    }
     let dir = root.join(if own { "own" } else { "others" });
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}.asc", cert.fingerprint().to_hex()));
@@ -416,6 +573,35 @@ fn store_in(root: &std::path::Path, cert: Cert, own: bool) -> Result<KeySummary,
     Ok(summary(&merged, own))
 }
 
+/// Keeps someone's key for `learned`: the address it came for (a key from
+/// elsewhere comes cut to it, `for_its_address`) or, imported from a file
+/// you chose, every address bound to it. Merged with the one kept, it serves
+/// what it served and these (its file beside, written first), cut to their
+/// user IDs: an address a key kept before, or an older Sioul's write, named
+/// besides is never kept nor served (review of 19 October 2026, N2), and the
+/// user IDs of an address it was learned for before stay.
+fn store_others(root: &std::path::Path, cert: Cert, learned: &[String]) -> Result<KeySummary, String> {
+    let dir = root.join("others");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let fingerprint = cert.fingerprint().to_hex();
+    let path = dir.join(format!("{fingerprint}.asc"));
+    let kept = std::fs::read(&path).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok());
+    let mut served = kept.as_ref().map(|kept| served_by(&dir, kept)).unwrap_or_default();
+    for address in learned {
+        if !served.iter().any(|a| a.trim().eq_ignore_ascii_case(address.trim())) {
+            served.push(address.trim().to_string());
+        }
+    }
+    let merged = match kept {
+        Some(kept) => kept.merge_public(cert.strip_secret_key_material()).map_err(|e| e.to_string())?,
+        None => cert.strip_secret_key_material(),
+    };
+    let merged = only_for(merged, &served);
+    write_served(&dir, &fingerprint, &served)?;
+    write_key(&path, &merged.armored().to_vec().map_err(|e| e.to_string())?)?;
+    Ok(summary(&merged, false))
+}
+
 /// Keeps the certificate of your security key with your keys: public parts only.
 pub fn keep_card_certificate(cert: &Cert) -> Result<KeySummary, String> {
     store_in(&pgp_dir(), cert.clone().strip_secret_key_material(), true)
@@ -425,7 +611,9 @@ pub fn keep_card_certificate(cert: &Cert) -> Result<KeySummary, String> {
 /// you alone, whatever the umask: your secret keys, and whose keys you keep.
 fn write_key(path: &std::path::Path, armored: &[u8]) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-    let temporary = path.with_extension("tmp");
+    // Named after the whole file: a key and what it serves (`<fingerprint>.asc`,
+    // `.toml`) never share one; hidden, so that the sharing passes it over.
+    let temporary = path.with_file_name(format!(".{}.tmp", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     // A file left by an interrupted write keeps its permissions when truncated: it goes first.
     let _ = std::fs::remove_file(&temporary);
     let mut options = std::fs::OpenOptions::new();
@@ -705,12 +893,19 @@ fn put_packet(out: &mut Vec<u8>, tag: u8, body: &[u8]) {
 }
 
 /// Imports the keys of a file: armored or binary, public or secret.
+/// Someone's key imported so serves every address bound to it: you chose
+/// the file.
 pub fn import(bytes: &[u8]) -> Result<Vec<KeySummary>, String> {
+    import_at(&pgp_dir(), bytes)
+}
+
+/// [`import`] into the folder `root` (`pgp/`).
+fn import_at(root: &std::path::Path, bytes: &[u8]) -> Result<Vec<KeySummary>, String> {
     let certs = certificates_of(bytes)?;
     if certs.is_empty() {
         return Err("no OpenPGP key".into());
     }
-    certs.into_iter().map(store).collect()
+    certs.into_iter().map(|cert| store_at(root, cert)).collect()
 }
 
 /// Whether `passphrase` opens the secret parts of your key `fingerprint`.
@@ -841,6 +1036,7 @@ pub(crate) fn remove_in(root: &std::path::Path, fingerprint: &str) -> Result<(),
             }
         } else {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            let _ = std::fs::remove_file(served_path(&dir, fingerprint));
         }
     }
     Ok(())
@@ -902,7 +1098,8 @@ pub fn sign_detached(data: &[u8], signer: &mut Signing<'_>) -> Result<(String, S
 /// `data` encrypted to the recipients' keys, signed by yours when given; armored.
 pub fn encrypt(data: &[u8], recipients: &[&Cert], signer: Option<&mut Signing<'_>>) -> Result<String, String> {
     let policy = policy();
-    let keys: Vec<_> = recipients.iter().flat_map(|c| c.keys().with_policy(&policy, None).supported().alive().revoked(false).for_transport_encryption()).collect();
+    // Never to a certificate revoked as a whole (N3), whoever chose it.
+    let keys: Vec<_> = recipients.iter().filter(|c| usable(c)).flat_map(|c| c.keys().with_policy(&policy, None).supported().alive().revoked(false).for_transport_encryption()).collect();
     encrypt_to(data, keys, signer)
 }
 
@@ -911,7 +1108,7 @@ pub fn encrypt(data: &[u8], recipients: &[&Cert], signer: Option<&mut Signing<'_
 /// that key, which Sequoia's policy allows (review of 19 October 2026, F19).
 fn encrypt_for_yourself(data: &[u8], yours: &[&Cert]) -> Result<String, String> {
     let policy = policy();
-    let keys: Vec<_> = yours.iter().flat_map(|c| c.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption()).collect();
+    let keys: Vec<_> = yours.iter().filter(|c| usable(c)).flat_map(|c| c.keys().with_policy(&policy, None).supported().revoked(false).for_transport_encryption()).collect();
     encrypt_to(data, keys, None)
 }
 
@@ -1353,6 +1550,15 @@ pub fn is_encrypted(raw: &[u8]) -> bool {
 /// head has that shape: what a copy decrypted by Sioul before 19 October
 /// 2026 looks like (a message that came in clear may too).
 fn opened_split(raw: &[u8]) -> Option<usize> {
+    mime_split(raw, true)
+}
+
+/// Where the `MIME-Version: 1.0` line [`open`] adds after a message's outer
+/// headers starts, when nothing of MIME comes before it; with `content`,
+/// only when a content's header follows it (what `open` rebuilt from an
+/// entity with headers of its own). Without, whatever follows: an entity
+/// with an empty head, or none, rebuilt so (review of 19 October 2026, N7).
+fn mime_split(raw: &[u8], content: bool) -> Option<usize> {
     let head = &raw[..header_end(raw)];
     let mut at = 0;
     let mut seen_mime = None;
@@ -1371,7 +1577,7 @@ fn opened_split(raw: &[u8]) -> Option<usize> {
             Some(_) => content_after |= name.starts_with("content-"),
         }
     }
-    seen_mime.filter(|_| content_after)
+    seen_mime.filter(|_| content_after || !content)
 }
 
 /// Whether `raw` has the head of a message [`open`] rebuilt (`opened_split`):
@@ -1401,16 +1607,16 @@ pub fn seal_message(clear: &[u8], to: &[&Cert]) -> Result<Vec<u8>, String> {
     let (head, body) = clear.split_at(end);
     let (mut outer, mut inner): (Vec<u8>, Vec<u8>) = (Vec::new(), Vec::new());
     // A message `open` rebuilt: outside, only the outer headers it came with
-    // (those before the `MIME-Version: 1.0` it adds); everything after goes
-    // inside, the entity's own headers whatever they are: protected headers
-    // (the subject its sender encrypted) never come out in clear (review of
-    // 19 October 2026, F8). Any other message: its own headers outside, its
-    // content's (`Content-`) inside.
-    if let Some(split) = opened_split(clear) {
+    // (those before the `MIME-Version: 1.0` it adds); inside, everything
+    // after, as it is: the entity's own headers whatever they are (protected
+    // headers, the subject its sender encrypted, never come out in clear:
+    // review of 19 October 2026, F8), or no head at all (N7: its first line
+    // would read as a header, and stay outside). Any other message: its own
+    // headers outside, its content's (`Content-`) inside.
+    let payload = if let Some(split) = mime_split(clear, false) {
         let mime = b"MIME-Version: 1.0\r\n".len();
         outer.extend_from_slice(&head[..split]);
-        inner.extend_from_slice(head[split + mime..].trim_ascii_end());
-        inner.extend_from_slice(b"\r\n");
+        clear[split + mime..].to_vec()
     } else {
         let mut into_outer = true;
         let mut skip = false;
@@ -1428,13 +1634,14 @@ pub fn seal_message(clear: &[u8], to: &[&Cert]) -> Result<Vec<u8>, String> {
             }
             if into_outer { outer.extend_from_slice(line) } else { inner.extend_from_slice(line) }
         }
-    }
-    if inner.is_empty() {
-        inner.extend_from_slice(b"Content-Type: text/plain; charset=utf-8\r\n");
-    }
-    let mut payload = canonical(&inner);
-    payload.extend_from_slice(b"\r\n");
-    payload.extend_from_slice(body);
+        if inner.is_empty() {
+            inner.extend_from_slice(b"Content-Type: text/plain; charset=utf-8\r\n");
+        }
+        let mut payload = canonical(&inner);
+        payload.extend_from_slice(b"\r\n");
+        payload.extend_from_slice(body);
+        payload
+    };
     let armored = encrypt_for_yourself(&payload, to)?;
     let boundary = "sioul-sealed-copy";
     let mut out = canonical(&outer);
@@ -2160,6 +2367,186 @@ mod tests {
         assert!(learn_at(&root, &more.armored().to_vec().unwrap(), "other@example.net").iter().all(|k| k.own));
         let mine = Keys::load_at(&root).own.into_iter().find(|c| c.fingerprint() == me.fingerprint()).unwrap();
         assert_eq!(mine.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect::<Vec<_>>(), vec!["Someone <me@example.org>".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A key whose secret part is unencrypted, made `ago` before now, for
+    /// the tests that sign with it (a binding, a revocation).
+    fn open_key(userids: &[&str], ago: std::time::Duration) -> Cert {
+        let mut builder = CertBuilder::new().set_cipher_suite(CipherSuite::Cv25519).add_transport_encryption_subkey().set_creation_time(std::time::SystemTime::now() - ago);
+        for userid in userids {
+            builder = builder.add_userid(*userid);
+        }
+        builder.generate().unwrap().0
+    }
+
+    fn signer_of(cert: &Cert) -> crypto::KeyPair {
+        cert.primary_key().key().clone().parts_into_secret().unwrap().into_keypair().unwrap()
+    }
+
+    fn public(cert: &Cert) -> Vec<u8> {
+        cert.clone().strip_secret_key_material().armored().to_vec().unwrap()
+    }
+
+    fn revoked(cert: &Cert) -> Cert {
+        let revocation = CertRevocationBuilder::new().set_reason_for_revocation(openpgp::types::ReasonForRevocation::KeyCompromised, b"stolen").unwrap().build(&mut signer_of(cert), cert, None).unwrap();
+        cert.clone().insert_packets(vec![openpgp::Packet::from(revocation)]).unwrap().0
+    }
+
+    /// Review of 19 October 2026, N2 (probe `probe2_f2_replay_and_residue`):
+    /// Mallory's key with his and Jane's self-bound user IDs, as Sioul kept
+    /// it before or as an older Sioul's sharing brings it, beside Jane's
+    /// real key, a year old. Not known for which address it came, it serves
+    /// none: never Jane's, though its key is newer. His next header heals
+    /// his file to his own address, Accounts names him alone, and Jane's
+    /// address never comes back to it.
+    #[test]
+    fn a_key_kept_before_serves_no_address_it_was_not_learned_for() {
+        let root = temporary().join("pgp-n2");
+        let _ = std::fs::remove_dir_all(&root);
+        let jane = open_key(&["Jane <jane@example.org>"], std::time::Duration::from_secs(365 * 24 * 3600));
+        learn_autocrypt_at(&root, &autocrypt_header(&jane, "jane@example.org").unwrap(), "jane@example.org").unwrap();
+        let mallory = open_key(&["Mallory <mallory@example.net>", "Jane <jane@example.org>"], std::time::Duration::ZERO);
+        let legacy = root.join("others").join(format!("{}.asc", mallory.fingerprint().to_hex()));
+        std::fs::write(&legacy, public(&mallory)).unwrap();
+        let keys = Keys::load_at(&root);
+        assert_eq!(keys.for_address("jane@example.org").map(Cert::fingerprint), Some(jane.fingerprint()), "Jane's own key, never the newer one naming her");
+        assert!(keys.for_address("mallory@example.net").is_none(), "which address it came for is not known: none until it comes again");
+        assert!(keys.others.iter().all(|c| c.fingerprint() == jane.fingerprint() || !bound(c, "jane@example.org")), "no other key names her");
+        let kept = learn_autocrypt_at(&root, &header_of(&mallory.clone().strip_secret_key_material(), "mallory@example.net"), "mallory@example.net").unwrap();
+        assert_eq!(kept.names, vec!["Mallory <mallory@example.net>".to_string()]);
+        assert_eq!(Cert::from_bytes(&std::fs::read(&legacy).unwrap()).unwrap().userids().count(), 1, "Jane's user ID gone from his file");
+        let keys = Keys::load_at(&root);
+        assert_eq!(keys.for_address("mallory@example.net").map(Cert::fingerprint), Some(mallory.fingerprint()));
+        assert_eq!(keys.for_address("jane@example.org").map(Cert::fingerprint), Some(jane.fingerprint()));
+        // Jane's key gone: her address has none, never his.
+        remove_in(&root, &jane.fingerprint().to_hex()).unwrap();
+        assert!(!root.join("others").join(format!("{}.toml", jane.fingerprint().to_hex())).exists(), "what it served goes with it");
+        assert!(Keys::load_at(&root).for_address("jane@example.org").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// N2's migration and what follows: once on each device, each key kept
+    /// without what it serves gets it as judged now (Bob's one address;
+    /// Carol's two, her own, none until she writes). An older Sioul's later
+    /// write to Bob's key, a user ID of Jane's he bound merged in, adds no
+    /// address it serves; its new key naming two addresses serves neither.
+    /// Carol writing from work, then from home, makes her key serve one,
+    /// then both; a key imported from a file serves every address bound to
+    /// it.
+    #[test]
+    fn others_keys_say_what_they_serve_and_an_older_write_adds_none() {
+        let root = temporary().join("pgp-n2-migration");
+        let _ = std::fs::remove_dir_all(&root);
+        let mark = root.join("state").join("pgp-others.toml");
+        let others = root.join("others");
+        std::fs::create_dir_all(&others).unwrap();
+        let file = |cert: &Cert, end: &str| others.join(format!("{}.{end}", cert.fingerprint().to_hex()));
+        let bob = open_key(&["Bob <bob@example.org>"], std::time::Duration::ZERO);
+        let carol = open_key(&["Carol <carol@work.example>", "Carol <carol@home.example>"], std::time::Duration::ZERO);
+        for cert in [&bob, &carol] {
+            std::fs::write(file(cert, "asc"), public(cert)).unwrap();
+        }
+        assert_eq!(keep_others_for_their_addresses_at(&root, &mark).unwrap(), 2);
+        assert_eq!(keep_others_for_their_addresses_at(&root, &mark).unwrap(), 0, "once");
+        let said = |cert: &Cert| toml::from_str::<Served>(&std::fs::read_to_string(file(cert, "toml")).unwrap()).unwrap();
+        assert_eq!((said(&bob).format, said(&bob).addresses), (2, vec!["bob@example.org".to_string()]));
+        assert!(said(&carol).addresses.is_empty());
+        // An older Sioul merges into Bob's file a user ID of Jane's he bound himself.
+        let jane_id = openpgp::packet::UserID::from("Bob <jane@example.org>");
+        let binding = jane_id.bind(&mut signer_of(&bob), &bob, openpgp::packet::signature::SignatureBuilder::new(openpgp::types::SignatureType::PositiveCertification)).unwrap();
+        let more = bob.clone().insert_packets(vec![openpgp::Packet::from(jane_id), binding.into()]).unwrap().0;
+        assert!(bound(&more, "jane@example.org"));
+        std::fs::write(file(&bob, "asc"), public(&more)).unwrap();
+        // And writes a new key naming two addresses, with nothing beside it.
+        let dave = open_key(&["Dave <dave@example.org>", "Dave <jane@example.org>"], std::time::Duration::ZERO);
+        std::fs::write(file(&dave, "asc"), public(&dave)).unwrap();
+        let keys = Keys::load_at(&root);
+        assert_eq!(keys.for_address("bob@example.org").map(Cert::fingerprint), Some(bob.fingerprint()));
+        assert!(keys.for_address("jane@example.org").is_none(), "neither Bob's nor Dave's");
+        assert!(keys.for_address("dave@example.org").is_none());
+        assert!(keys.for_address("carol@work.example").is_none() && keys.for_address("carol@home.example").is_none());
+        // Carol writes from work, then from home.
+        assert!(learn_autocrypt_at(&root, &header_of(&carol.clone().strip_secret_key_material(), "carol@work.example"), "carol@work.example").is_some());
+        let keys = Keys::load_at(&root);
+        assert_eq!(keys.for_address("carol@work.example").map(Cert::fingerprint), Some(carol.fingerprint()));
+        assert!(keys.for_address("carol@home.example").is_none());
+        assert!(learn_autocrypt_at(&root, &header_of(&carol.clone().strip_secret_key_material(), "carol@home.example"), "carol@home.example").is_some());
+        let keys = Keys::load_at(&root);
+        assert!(keys.for_address("carol@work.example").is_some() && keys.for_address("carol@home.example").is_some(), "learned for both: both");
+        // Imported from a file you chose: every address bound to it.
+        let erin = open_key(&["Erin <erin@work.example>", "Erin <erin@home.example>"], std::time::Duration::ZERO);
+        import_at(&root, &public(&erin)).unwrap();
+        let keys = Keys::load_at(&root);
+        assert!(keys.for_address("erin@work.example").is_some() && keys.for_address("erin@home.example").is_some());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, N3 (probe
+    /// `probe2_revoked_user_id_and_certificate`): a certificate revoked as a
+    /// whole never serves. From a header it is kept, so that its revocation
+    /// stops the copy kept, and never chosen; a revocation learnt later by a
+    /// lookup stops a key that served; of two keys of Jane's, the newer
+    /// revoked as compromised, the older live one serves; yours revoked
+    /// takes no seal and no copy of your own, and signs nothing; nothing is
+    /// ever encrypted to it; what was encrypted to it before still opens.
+    #[test]
+    fn a_revoked_certificate_never_serves() {
+        let jane = open_key(&["Jane <jane@example.org>"], std::time::Duration::ZERO);
+        let root = temporary().join("pgp-n3");
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(learn_autocrypt_at(&root, &header_of(&revoked(&jane).strip_secret_key_material(), "jane@example.org"), "jane@example.org").is_some());
+        assert!(Keys::load_at(&root).for_address("jane@example.org").is_none());
+        assert!(encrypt(b"x", &[&revoked(&jane)], None).is_err(), "nothing is encrypted to it");
+        // Kept live, then its revocation from a lookup.
+        let _ = std::fs::remove_dir_all(&root);
+        learn_autocrypt_at(&root, &autocrypt_header(&jane, "jane@example.org").unwrap(), "jane@example.org").unwrap();
+        assert!(Keys::load_at(&root).for_address("jane@example.org").is_some());
+        assert!(!learn_at(&root, &public(&revoked(&jane)), "jane@example.org").is_empty(), "the revocation kept");
+        assert!(Keys::load_at(&root).for_address("jane@example.org").is_none());
+        // Her older key live, her newer one revoked as compromised.
+        let _ = std::fs::remove_dir_all(&root);
+        let old = open_key(&["Jane <jane@example.org>"], std::time::Duration::from_secs(365 * 24 * 3600));
+        learn_autocrypt_at(&root, &autocrypt_header(&old, "jane@example.org").unwrap(), "jane@example.org").unwrap();
+        learn_at(&root, &public(&revoked(&jane)), "jane@example.org");
+        assert_eq!(Keys::load_at(&root).for_address("jane@example.org").map(Cert::fingerprint), Some(old.fingerprint()));
+        // Yours, revoked: no seal, no copy of your own, no signature.
+        let me = open_key(&["Me <me@example.org>"], std::time::Duration::ZERO);
+        let yours = Keys { own: vec![revoked(&me)], addresses: vec!["me@example.org".into()], ..Keys::default() };
+        assert!(yours.own_certs().is_empty() && yours.self_cert_for("me@example.org").is_none() && yours.own_for("me@example.org").is_none());
+        assert!(revoked_whole(&yours.own[0]) && names_address(&yours.own[0], "me@example.org"), "the window can say it");
+        // A message sent to it before its revocation still opens with it.
+        let sealed = encrypt(b"Before.", &[&me], None).unwrap();
+        let none = |_: &Fingerprint| None;
+        let sessions = SessionKeys::new();
+        assert_eq!(decrypt(sealed.as_bytes(), &yours, &Unlock::new(&none, &sessions)).unwrap().data, b"Before.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review of 19 October 2026, Info (probe `probe2_lookups_…`): a lookup
+    /// that brings your own certificate with a subkey bound by someone
+    /// else's key adds nothing of it: only what your key signed is merged.
+    #[test]
+    fn a_lookup_bringing_yours_adds_only_what_your_key_signed() {
+        let root = temporary().join("pgp-lookup-yours");
+        let _ = std::fs::remove_dir_all(&root);
+        let me = open_key(&["Me <me@example.org>"], std::time::Duration::ZERO);
+        store_in(&root, me.clone(), true).unwrap();
+        let mallory = open_key(&["Mallory <mallory@example.net>"], std::time::Duration::ZERO);
+        let stray = open_key(&[], std::time::Duration::ZERO).keys().subkeys().next().unwrap().key().clone();
+        let binding = openpgp::packet::signature::SignatureBuilder::new(openpgp::types::SignatureType::SubkeyBinding)
+            .set_key_flags(openpgp::types::KeyFlags::empty().set_transport_encryption())
+            .unwrap()
+            .sign_subkey_binding(&mut signer_of(&mallory), me.primary_key().key(), &stray)
+            .unwrap();
+        let mut packets: Vec<openpgp::Packet> = me.clone().strip_secret_key_material().into_packets().collect();
+        packets.push(openpgp::Packet::from(stray.clone()));
+        packets.push(binding.into());
+        let polluted = Cert::from_packets(packets.into_iter()).unwrap();
+        assert!(!learn_at(&root, &polluted.armored().to_vec().unwrap(), "me@example.org").is_empty());
+        let stored = Cert::from_bytes(&std::fs::read(root.join("own").join(format!("{}.asc", me.fingerprint().to_hex()))).unwrap()).unwrap();
+        assert_eq!(stored.keys().subkeys().count(), me.keys().subkeys().count(), "the stray subkey left out");
+        assert!(stored.is_tsk(), "still your secret key");
         let _ = std::fs::remove_dir_all(&root);
     }
 

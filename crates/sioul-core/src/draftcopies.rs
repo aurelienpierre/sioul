@@ -24,17 +24,24 @@
 //! returns them.
 //!
 //! Which copies may hold decrypted text, in doubt sealed (review of 19
-//! October 2026, F6): a copy kept as it came (its draft says so, from 19
-//! October 2026: `Draft::copy_as_received`) never; nor one without the
-//! head of a message `pgp::open` rebuilt (`pgp::looks_opened`: its outer
-//! headers, then the `MIME-Version: 1.0` line it adds, then the entity's
-//! own): never opened by Sioul, it is a message as it came. Any other copy
-//! is sealed, unless it is, byte for byte, a message of its Message-ID found
-//! here, every message of that ID here having come in clear: a copy without
-//! a Message-ID, of a message found nowhere, or of one another message
-//! shares its ID with (anyone who knows an ID can send one), is sealed. Its
-//! earlier versions and what was kept before sharing began are judged the
-//! same way, and "Put back" opens a sealed one with your key at Send.
+//! October 2026, F6 and N7), judged by where they come from, never by their
+//! shape alone: a copy kept as it came (its draft says so, from 19 October
+//! 2026: `Draft::copy_as_received`) never. Any other was written before: the
+//! message itself when it came in clear, its decrypted text when it came
+//! encrypted. It is sealed unless it is, byte for byte, a message found here
+//! under its Message-ID or the one its draft answers (`Draft::in_reply_to`),
+//! every message of those IDs here having come in clear: a copy of a message
+//! found nowhere, or of one another message shares its ID with (anyone who
+//! knows an ID can send one), is sealed. A decrypted entity with no header
+//! of its own looks like a message that came as it is (N7): its shape says
+//! nothing. Its earlier versions and what was kept before sharing began are
+//! judged the same way, and "Put back" opens a sealed one with your key at
+//! Send.
+//!
+//! What a look decides is kept with the file as it was read (its stamp
+//! taken from the descriptor that read it, or from the new file before it
+//! took its place), never as the path names it afterwards: a version an
+//! exchange puts in place meanwhile is looked at again (N6).
 
 use crate::compose::Draft;
 use crate::filelock::{FileStamp, Prepared};
@@ -171,18 +178,20 @@ impl Judged {
         Ok(())
     }
 
-    fn seen(&mut self, path: &Path) -> bool {
-        let Some(now) = FileStamp::now(path) else { return false };
+    /// The file's stamp now, when it was not judged as it is (None: judged,
+    /// or gone).
+    fn unseen(&mut self, path: &Path) -> Option<FileStamp> {
+        let now = FileStamp::now(path)?;
         self.met.insert(path.to_path_buf());
-        self.files.get(path) == Some(&now)
+        (self.files.get(path) != Some(&now)).then_some(now)
     }
 
-    fn mark(&mut self, path: &Path) {
-        if let Some(now) = FileStamp::now(path) {
-            self.met.insert(path.to_path_buf());
-            if self.files.insert(path.to_path_buf(), now) != Some(now) {
-                self.changed = true;
-            }
+    /// What was judged: the file as it was then (`stamp`), never what the
+    /// path names now, which another version may have taken meanwhile (N6).
+    fn mark(&mut self, path: &Path, stamp: FileStamp) {
+        self.met.insert(path.to_path_buf());
+        if self.files.insert(path.to_path_buf(), stamp) != Some(stamp) {
+            self.changed = true;
         }
     }
 }
@@ -246,14 +255,18 @@ pub fn message_id(raw: &[u8]) -> Option<String> {
 }
 
 /// Whether a copy in clear may hold an encrypted message's text (in doubt,
-/// yes): see the module's words. `find` gives every file of a Message-ID in
-/// your mail here.
-fn may_hold_decrypted(raw: &[u8], find: &mut dyn FnMut(&str) -> Vec<PathBuf>) -> bool {
-    if !pgp::looks_opened(raw) {
-        return false;
+/// yes), a copy not kept as it came: see the module's words. `answers`, the
+/// Message-ID its draft answers, if any; `find` gives every file of a
+/// Message-ID in your mail here.
+fn may_hold_decrypted(raw: &[u8], answers: Option<&str>, find: &mut dyn FnMut(&str) -> Vec<PathBuf>) -> bool {
+    let mut ids: Vec<String> = message_id(raw).into_iter().collect();
+    if let Some(answers) = answers.map(crate::mailindex::bare_id).filter(|id| !id.is_empty() && !ids.contains(id)) {
+        ids.push(answers);
     }
-    let Some(id) = message_id(raw) else { return true };
-    let found: Vec<Vec<u8>> = find(&id).iter().filter_map(|path| crate::filelock::read_whole(path).ok()).collect();
+    if ids.is_empty() {
+        return true;
+    }
+    let found: Vec<Vec<u8>> = ids.iter().flat_map(|id| find(id)).filter_map(|path| crate::filelock::read_whole(&path).ok()).collect();
     let every_clear = !found.is_empty() && found.iter().all(|message| !pgp::is_encrypted(message));
     !(every_clear && found.iter().any(|message| message.as_slice() == raw))
 }
@@ -276,21 +289,22 @@ pub fn seal_beside(drafts: &Path, certs: &Certs, find: &mut dyn FnMut(&str) -> V
             orphans.push(path);
             continue;
         }
-        if judged.seen(&path) {
-            continue;
-        }
+        let Some(stamp) = judged.unseen(&path) else { continue };
         // Kept as it came, wherever the draft was written: never decrypted.
-        if draft.is_some_and(|d| d.copy_as_received) {
-            judged.mark(&path);
+        if draft.as_ref().is_some_and(|d| d.copy_as_received) {
+            judged.mark(&path, stamp);
             continue;
         }
         let Ok((raw, meta)) = read_copy(&path) else { continue };
-        if pgp::is_encrypted(&raw) || !may_hold_decrypted(&raw, find) {
-            judged.mark(&path);
+        // Judged as read: the stamp of the bytes read, from their descriptor (N6).
+        let read = FileStamp::of(&meta);
+        let answers = draft.as_ref().and_then(|d| d.in_reply_to.clone());
+        if pgp::is_encrypted(&raw) || !may_hold_decrypted(&raw, answers.as_deref(), find) {
+            judged.mark(&path, read);
             continue;
         }
         match prepare(&path, &raw, &certs.get()) {
-            Some(Ok((prepared, size))) => batch.push(Waiting { prepared, was: FileStamp::of(&meta), path, version: false }, size, judged, &mut out),
+            Some(Ok((prepared, size))) => batch.push(Waiting { prepared, was: read, path, version: false }, size, judged, &mut out),
             Some(Err(_)) => out.failed += 1,
             None => out.waiting += 1,
         }
@@ -332,16 +346,17 @@ pub fn seal_versions(paths: &[PathBuf], certs: &Certs, find: &mut dyn FnMut(&str
     let mut out = Sealed::default();
     let mut batch = Batch { waiting: VecDeque::new(), bytes: 0, hold };
     for path in paths {
-        if judged.seen(path) {
+        if judged.unseen(path).is_none() {
             continue;
         }
         let Ok((raw, meta)) = read_copy(path) else { continue };
-        if pgp::is_encrypted(&raw) || !may_hold_decrypted(&raw, find) {
-            judged.mark(path);
+        let read = FileStamp::of(&meta);
+        if pgp::is_encrypted(&raw) || !may_hold_decrypted(&raw, None, find) {
+            judged.mark(path, read);
             continue;
         }
         match prepare(path, &raw, &certs.get()) {
-            Some(Ok((prepared, size))) => batch.push(Waiting { prepared, was: FileStamp::of(&meta), path: path.clone(), version: true }, size, judged, &mut out),
+            Some(Ok((prepared, size))) => batch.push(Waiting { prepared, was: read, path: path.clone(), version: true }, size, judged, &mut out),
             Some(Err(_)) => out.failed += 1,
             None => out.waiting += 1,
         }
@@ -411,13 +426,17 @@ impl Batch<'_> {
             }
             drop(held);
             for (done, path, version) in placed {
+                // The sealed copy as it took its place, never what an exchange puts there after the hold (N6).
+                let stamp = done.stamp();
                 done.finish();
                 if version {
                     out.versions += 1;
                 } else {
                     out.copies += 1;
                 }
-                judged.mark(&path);
+                if let Some(stamp) = stamp {
+                    judged.mark(&path, stamp);
+                }
             }
             if !self.waiting.is_empty() {
                 std::thread::sleep(LET_GO);
@@ -568,30 +587,155 @@ mod tests {
     }
 
     /// A copy kept as it came (its draft says so, from 19 October 2026) is
-    /// never judged, even when its message is found nowhere here (a phone);
-    /// one whose head is not one Sioul rebuilt (`MIME-Version` after the
-    /// content's headers, written otherwise, or missing) came as it is:
-    /// neither is sealed. A head that has that shape (many mailers write
-    /// `MIME-Version: 1.0` before the rest) is judged by its message.
+    /// never judged, even when its message is found nowhere here (a phone),
+    /// whatever its shape. One written before is judged by where it comes
+    /// from, never by its shape (review of 19 October 2026, N7): a clear
+    /// message's copy is left where that message is found here byte for
+    /// byte (by its Message-ID, or the one its draft answers), sealed where
+    /// it is found nowhere, whatever mailer wrote it.
     #[test]
-    fn copies_kept_as_they_came_are_left_as_they_are() {
+    fn copies_kept_as_they_came_are_left_and_the_others_judged_by_their_message() {
         let base = scratch("as-came");
+        let mail = scratch("as-came-mail");
         let keys = keys_of(&pgp::stand_in_key("Noa <noa@example.org>").unwrap());
         std::fs::write(base.join("a1.eml"), CLEAR).unwrap();
         let draft = Draft { id: "a1".into(), copy_as_received: true, ..Draft::default() };
         std::fs::write(base.join("a1.toml"), toml::to_string(&draft).unwrap()).unwrap();
         let apple = "Content-Type: text/plain; charset=us-ascii\r\nMime-Version: 1.0 (Mac OS X Mail 16.0)\r\nFrom: Jane <jane@example.org>\r\nSubject: The lease\r\nMessage-ID: <a@example.org>\r\n\r\nThe clause.\r\n";
         let outlook = "From: Jane <jane@example.org>\r\nSubject: The lease\r\nContent-Type: text/plain; charset=utf-8\r\nMIME-Version: 1.0\r\nMessage-ID: <o@example.org>\r\n\r\nThe clause.\r\n";
-        let plain = "From: Jane <jane@example.org>\r\nSubject: The lease\r\nMessage-ID: <p@example.org>\r\n\r\nThe clause.\r\n";
-        let gmail = "MIME-Version: 1.0\r\nFrom: Jane <jane@example.org>\r\nSubject: The lease\r\nMessage-ID: <g@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe clause.\r\n";
-        assert!(pgp::looks_opened(gmail.as_bytes()), "judged by its message, then");
+        let plain = "From: Jane <jane@example.org>\r\nSubject: The lease\r\n\r\nThe clause, no Message-ID.\r\n";
         for (id, text) in [("a2", apple), ("a3", outlook), ("a4", plain)] {
-            assert!(!pgp::looks_opened(text.as_bytes()), "{id}");
             std::fs::write(base.join(format!("{id}.eml")), text).unwrap();
-            draft_with(&base, id, false);
+            std::fs::write(mail.join(id), text).unwrap();
         }
-        assert_eq!(seal_beside(&base, &Certs::lazy(|| -> Keys { panic!("nothing to seal") }), &mut |_| Vec::new(), &mut Judged::default(), &unshared), Sealed::default());
-        let _ = keys;
+        draft_with(&base, "a2", false);
+        draft_with(&base, "a3", false);
+        // The plain one names no Message-ID: its draft says what it answers.
+        let answering = Draft { id: "a4".into(), in_reply_to: Some("<p@example.org>".into()), ..Draft::default() };
+        std::fs::write(base.join("a4.toml"), toml::to_string(&answering).unwrap()).unwrap();
+        let mut find = |id: &str| match id {
+            "a@example.org" => vec![mail.join("a2")],
+            "o@example.org" => vec![mail.join("a3")],
+            "p@example.org" => vec![mail.join("a4")],
+            _ => Vec::new(),
+        };
+        let left = seal_beside(&base, &Certs::lazy(|| -> Keys { panic!("nothing to seal") }), &mut find, &mut Judged::default(), &unshared);
+        assert_eq!(left, Sealed::default(), "kept as it came, or byte for byte a clear message found here");
+        // On a device where those messages are not (a phone): sealed, the kept one aside.
+        let sealed = seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &unshared);
+        assert_eq!(sealed, Sealed { copies: 3, ..Sealed::default() });
+        assert_eq!(std::fs::read_to_string(base.join("a1.eml")).unwrap(), CLEAR, "kept as it came: untouched");
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&mail);
+    }
+
+    /// Review of 19 October 2026, N7 (probe `probe2_shapes_of_copies`): the
+    /// copy of an encrypted message whose encrypted entity had an empty
+    /// head, or none, as Sioul wrote it before: no `Content-` line follows
+    /// the `MIME-Version: 1.0` it added, and the shape looked like a message
+    /// that came as it is. Sealed, its message found encrypted here or
+    /// found nowhere.
+    #[test]
+    fn a_decrypted_copy_without_headers_of_its_own_is_sealed() {
+        let base = scratch("headless");
+        let mail = scratch("headless-mail");
+        let key = pgp::stand_in_key("Noa <noa@example.org>").unwrap();
+        let keys = keys_of(&key);
+        let cert = Cert::from_bytes(&key).unwrap();
+        let none = |_: &pgp::Fingerprint| None;
+        let sessions = SessionKeys::new();
+        let unlock = Unlock::new(&none, &sessions);
+        for (n, entity) in ["\r\nSECRET-2 the clause\r\n", "SECRET-3 the clause\r\nline two\r\n"].iter().enumerate() {
+            let armored = pgp::encrypt(entity.as_bytes(), &[&cert], None).unwrap();
+            let received = format!(
+                "From: Jane <jane@example.org>\nTo: Noa <noa@example.org>\nSubject: ...\nMessage-ID: <s{n}@example.org>\nMIME-Version: 1.0\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"o\"\n\n--o\nContent-Type: application/pgp-encrypted\n\nVersion: 1\n\n--o\nContent-Type: application/octet-stream\n\n{armored}\n--o--\n"
+            );
+            std::fs::write(mail.join(format!("m{n}")), &received).unwrap();
+            let (opened, _) = pgp::open(received.as_bytes(), &keys, &unlock).unwrap();
+            let copy = opened.unwrap();
+            assert!(!pgp::looks_opened(&copy), "its shape says nothing");
+            std::fs::write(base.join(format!("b{n}.eml")), &copy).unwrap();
+            draft_with(&base, &format!("b{n}"), false);
+        }
+        let mut find = |id: &str| if id == "s0@example.org" { vec![mail.join("m0")] } else { Vec::new() };
+        let done = seal_beside(&base, &Certs::of(keys.clone()), &mut find, &mut Judged::default(), &unshared);
+        assert_eq!(done, Sealed { copies: 2, ..Sealed::default() });
+        for n in 0..2 {
+            let copy = std::fs::read(base.join(format!("b{n}.eml"))).unwrap();
+            assert!(pgp::is_encrypted(&copy) && !String::from_utf8_lossy(&copy).contains("SECRET-"));
+        }
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&mail);
+    }
+
+    /// Review of 19 October 2026, N6 (probe `probe2_race_a_…`): a clear
+    /// copy, byte for byte its clear message; while the look reads the mail,
+    /// an exchange puts another device's decrypted version in its place. The
+    /// verdict is kept for the file read, not for the one there now: the
+    /// next look reads the new one and seals it, in this process and in a
+    /// later one.
+    #[test]
+    fn a_copy_replaced_while_the_look_reads_the_mail_is_looked_at_again() {
+        let base = scratch("race-a");
+        let mail = scratch("race-a-mail");
+        let keys = keys_of(&pgp::stand_in_key("Noa <noa@example.org>").unwrap());
+        let thunderbird = "Message-ID: <lease@example.org>\r\nMIME-Version: 1.0\r\nSubject: The lease\r\nFrom: Jane <jane@example.org>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nNothing secret here.\r\n";
+        std::fs::write(mail.join("m1"), thunderbird).unwrap();
+        let path = base.join("a1.eml");
+        std::fs::write(&path, thunderbird).unwrap();
+        draft_with(&base, "a1", false);
+        let incoming = CLEAR.to_string();
+        let mut find = |id: &str| {
+            let beside = base.join(".incoming");
+            std::fs::write(&beside, &incoming).unwrap();
+            std::fs::rename(&beside, &path).unwrap();
+            if id == "lease@example.org" { vec![mail.join("m1")] } else { Vec::new() }
+        };
+        let verdicts = base.join("state").join("draftcopies.json");
+        let mut judged = Judged::load(&verdicts);
+        assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut find, &mut judged, &unshared), Sealed::default(), "the copy read was its clear message");
+        judged.save(&verdicts).unwrap();
+        let mut later = Judged::load(&verdicts);
+        assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut later, &unshared).copies, 1, "the version put in its place meanwhile, looked at");
+        assert!(pgp::is_encrypted(&std::fs::read(&path).unwrap()));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&mail);
+    }
+
+    /// Review of 19 October 2026, N6 (probe `probe2_race_b_…`): a decrypted
+    /// copy sealed; as soon as the lock is let go, an exchange waiting puts
+    /// another device's decrypted version in its place. The verdict is kept
+    /// for the sealed file that took the place, not for the one there now:
+    /// the next look seals the new one.
+    #[test]
+    fn a_copy_replaced_as_soon_as_the_look_lets_go_is_looked_at_again() {
+        struct Swap {
+            path: PathBuf,
+            bytes: Vec<u8>,
+            armed: std::rc::Rc<std::cell::Cell<bool>>,
+        }
+        impl Drop for Swap {
+            fn drop(&mut self) {
+                if self.armed.replace(false) {
+                    let beside = self.path.with_extension("incoming");
+                    std::fs::write(&beside, &self.bytes).unwrap();
+                    std::fs::rename(&beside, &self.path).unwrap();
+                }
+            }
+        }
+        let base = scratch("race-b");
+        let keys = keys_of(&pgp::stand_in_key("Noa <noa@example.org>").unwrap());
+        let path = base.join("a1.eml");
+        std::fs::write(&path, CLEAR).unwrap();
+        draft_with(&base, "a1", true);
+        let second = CLEAR.replace("page four", "page five");
+        let armed = std::rc::Rc::new(std::cell::Cell::new(true));
+        let hold = || -> Option<Box<dyn std::any::Any>> { Some(Box::new(Swap { path: path.clone(), bytes: second.clone().into_bytes(), armed: armed.clone() })) };
+        let mut judged = Judged::default();
+        assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &hold).copies, 1);
+        assert!(String::from_utf8_lossy(&std::fs::read(&path).unwrap()).contains("page five"), "the other version took its place");
+        assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &unshared).copies, 1, "and is looked at");
+        assert!(pgp::is_encrypted(&std::fs::read(&path).unwrap()));
         let _ = std::fs::remove_dir_all(&base);
     }
 

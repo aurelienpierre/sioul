@@ -141,6 +141,16 @@ jobs:
       - name: Build the window and the command line
         run: cargo build --release --locked -p sioul-app -p sioul-cli
 
+      # What is packed below holds no test hook (tools/check-test-marks.sh): a
+      # test run builds the programs with the tests' features (sioul-sync's
+      # `no-keyring`), so the programs are packed from this build, before any
+      # test step, and checked.
+      - name: No test build among the programs
+        shell: bash
+        run: |
+          exe=; [ "${{ runner.os }}" = Windows ] && exe=.exe
+          sh tools/check-test-marks.sh "target/release/sioul-app$exe" "target/release/sioul$exe"
+
       - name: Build for Intel Macs too, and join both
         if: runner.os == 'macOS' && github.event_name == 'workflow_dispatch' && inputs.universal_mac
         run: |
@@ -149,6 +159,7 @@ jobs:
           for program in sioul-app sioul; do
             lipo -create "target/release/$program" "target/x86_64-apple-darwin/release/$program" -output "universal/$program"
           done
+          sh tools/check-test-marks.sh universal/sioul-app universal/sioul
 
       # The programs alone: they need Qt 6.11 on the computer (Linux: the system's).
       # A tarball keeps their executable bit, which artifacts (zip) lose.
@@ -248,8 +259,10 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # Last, so a failing test still leaves the programs above. In release, to
-      # reuse what the build compiled (a debug build would compile everything again).
+      # Last, so a failing test still leaves the programs above, packed before
+      # it: a test run leaves programs built for tests in target/release/ (they
+      # keep no password), never to ship. In release, to reuse what the build
+      # compiled (a debug build would compile everything again).
       # The sharing's simulations run every seed the reviews ran on Linux, where
       # they take minutes, and a few on Windows and macOS (SIOUL_SWEEP; the
       # seeds that once found a bug run everywhere).

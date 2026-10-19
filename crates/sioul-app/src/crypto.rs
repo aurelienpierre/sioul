@@ -169,8 +169,13 @@ fn protection_with(keys: &Keys, address: &str, draft: &Draft, card_here: bool) -
 /// part had, and said nothing when none was known.
 fn self_copy_line(keys: &Keys, address: &str, computer: bool) -> String {
     let now = jiff::Timestamp::now().as_second();
-    let cert = keys.serving_card(address).map(|(_, cert)| cert).or_else(|| keys.own.iter().find(|c| pgp::names_address(c, address)));
+    let card = keys.serving_card(address).map(|(_, cert)| cert);
+    let cert = card.or_else(|| keys.own.iter().find(|c| pgp::names_address(c, address)));
     let Some(cert) = cert else { return tr().text("pgp-self-copy-none", None) };
+    // Revoked as a whole: nothing renews it (review of 19 October 2026, N3).
+    if pgp::revoked_whole(cert) {
+        return tr().text("pgp-self-copy-revoked", None);
+    }
     let mut why = securitykey::expired_parts(tr(), &securitykey::parts(cert), now);
     if why.is_empty() {
         why.extend(securitykey::revoked_encryption(cert).map(|fingerprint| say("seckey-part-revoked-encrypt", &[("fingerprint", securitykey::short_fingerprint(&fingerprint))])));
@@ -178,7 +183,14 @@ fn self_copy_line(keys: &Keys, address: &str, computer: bool) -> String {
     if why.is_empty() {
         return tr().text("pgp-self-copy-none", None);
     }
-    let renew = if computer { tr().text("pgp-self-copy-renew", None) } else { tr().text("pgp-self-copy-renew-phone", None) };
+    // What can renew it (N8): your security key's certificate, GnuPG through
+    // Accounts on a computer; a key kept here, only the program that made it,
+    // or a new key.
+    let renew = match (card.is_some(), computer) {
+        (true, true) => tr().text("pgp-self-copy-renew", None),
+        (true, false) => tr().text("pgp-self-copy-renew-phone", None),
+        (false, _) => tr().text("pgp-self-copy-new-key", None),
+    };
     say("pgp-self-copy-why", &[("why", why.join(" ")), ("renew", renew)])
 }
 
@@ -214,6 +226,12 @@ fn verdicts_path() -> PathBuf {
 /// read again only once it changed, and your keys are read only when a copy
 /// is to be sealed. Said in counts only, never what a copy says.
 pub(crate) fn seal_clear_drafts() {
+    // Others' keys kept before say once what they serve (review of 19 October 2026, N2).
+    match pgp::keep_others_for_their_addresses() {
+        Ok(0) => {}
+        Ok(n) => eprintln!("sioul: keys: {n} kept before now say which address they serve"),
+        Err(e) => eprintln!("sioul: keys: what others' keys serve not written: {e}"),
+    }
     let mut judged = JUDGED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let judged = judged.get_or_insert_with(|| draftcopies::Judged::load(&verdicts_path()));
     seal_with(judged);
@@ -276,18 +294,51 @@ struct KeysView {
     /// certificate of yours to be encrypted again: one quiet line, nothing to
     /// press (F19); "" when none waits.
     copies_waiting: String,
+    /// On a computer, your addresses a security key of yours serves that
+    /// another computer read: a line each, and "Use a security key", rather
+    /// than "Make a key for" (review of 19 October 2026, N4).
+    read_here: Vec<String>,
+}
+
+/// Your addresses Accounts offers "Make a key for", and those it offers to
+/// read your security key for here instead: an address a security key of
+/// yours serves has its key, read here or on another device (N4: since a
+/// device signs only with the security key it read, `card_for` alone left
+/// the phone, and a computer that did not read it, offering a second key).
+/// Read here is offered on a computer only (a phone cannot read one yet),
+/// also where a key kept here signs for the address meanwhile: read here,
+/// the security key signs, and Autocrypt hands out the certificate that
+/// signs.
+fn offers(keys: &Keys, addresses: &[String], card_here: bool) -> (Vec<String>, Vec<String>) {
+    let (mut make, mut read) = (Vec::new(), Vec::new());
+    for address in addresses {
+        if keys.card_for(address).is_some() {
+            continue;
+        }
+        if keys.serving_card(address).is_some() {
+            if card_here {
+                read.push(say("pgp-read-card-here", &[("address", address.clone())]));
+            }
+            continue;
+        }
+        if keys.own_for(address).is_none() {
+            make.push(address.clone());
+        }
+    }
+    (make, read)
 }
 
 /// Your keys and others', and the addresses that could have one.
 pub(crate) fn keys_view() -> String {
     let keys = Keys::load();
     let config = load_config();
-    // An address your security key serves has its key, even expired: it alone signs for it.
-    let without_key: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).filter_map(|a| a.address.clone()).filter(|a| keys.own_for(a).is_none() && keys.card_for(a).is_none()).collect();
+    // An address your security key serves has its key, even expired, wherever it was read.
+    let addresses: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).filter_map(|a| a.address.clone()).collect();
+    let (without_key, read_here) = offers(&keys, &addresses, sioul_sync::securitykey::usable_here());
     // A look running holds its verdicts: what the last one kept on the disk, rather than wait for it.
     let waiting = JUDGED.try_lock().ok().and_then(|j| j.as_ref().map(draftcopies::Judged::waiting)).unwrap_or_else(|| draftcopies::Judged::load(&verdicts_path()).waiting());
     let copies_waiting = if waiting == 0 { String::new() } else { tr().text("pgp-copies-waiting", Some(&tr().counted(waiting))) };
-    json(&KeysView { keys: pgp::summaries(), without_key, copies_waiting })
+    json(&KeysView { keys: pgp::summaries(), without_key, copies_waiting, read_here })
 }
 
 /// Makes a key for one of your addresses; its passphrase, random, goes to the keyring.
@@ -428,6 +479,43 @@ mod tests {
         let elsewhere = protection_with(&shared, "me@example.org", &draft, true);
         assert!(!elsewhere.can_sign && elsewhere.sign_not_here == tr().text("seckey-sign-read-here", None) && elsewhere.self_copy.is_empty());
         assert_eq!(protection_with(&shared, "me@example.org", &draft, false).sign_not_here, tr().text("seckey-sign-not-here", None));
+    }
+
+    /// Review of 19 October 2026, N8: the self-copy line says what can renew
+    /// the certificate: your security key's, GnuPG through Accounts (on a
+    /// computer) or one of your computers (on a phone); a key kept here, only
+    /// the program that made it, or a new key: never a button Accounts lacks.
+    #[test]
+    fn the_self_copy_line_says_what_can_renew_the_key() {
+        let mut draft = Draft::new("me");
+        draft.to = vec!["me@example.org".into()];
+        let year = std::time::Duration::from_secs(365 * 24 * 3600);
+        let card = yours(Some((std::time::SystemTime::now() - 2 * year, year)));
+        let here = Keys { cards: Vec::new(), ..card.clone() };
+        let why = securitykey::expired_parts(tr(), &securitykey::parts(&here.own[0]), jiff::Timestamp::now().as_second()).join(" ");
+        for computer in [true, false] {
+            assert_eq!(protection_with(&here, "me@example.org", &draft, computer).self_copy, say("pgp-self-copy-why", &[("why", why.clone()), ("renew", tr().text("pgp-self-copy-new-key", None))]));
+        }
+        assert!(protection_with(&card, "me@example.org", &draft, true).self_copy.ends_with(&tr().text("pgp-self-copy-renew", None)));
+    }
+
+    /// Review of 19 October 2026, N4: an address your security key serves,
+    /// read on another device, is never offered "Make a key for": a computer
+    /// offers to read the key there, a phone nothing; an address without a
+    /// key of yours is offered one.
+    #[test]
+    fn a_shared_security_key_is_read_here_never_doubled_by_a_new_key() {
+        let keys = yours(None);
+        let shared = Keys { shared: keys.cards.clone(), cards: Vec::new(), ..keys.clone() };
+        let addresses = vec!["me@example.org".to_string(), "other@example.org".to_string()];
+        let other = vec!["other@example.org".to_string()];
+        assert_eq!(offers(&shared, &addresses, true), (other.clone(), vec![say("pgp-read-card-here", &[("address", "me@example.org".to_string())])]));
+        assert_eq!(offers(&shared, &addresses, false), (other.clone(), Vec::new()), "a phone cannot read it yet");
+        assert_eq!(offers(&keys, &addresses, true), (other.clone(), Vec::new()), "read here: it serves");
+        // A key of yours kept here for that address meanwhile: reading the security key here is still offered.
+        let mut both = shared.clone();
+        both.own.extend(pgp::certificates_in(&pgp::stand_in_key("Me <me@example.org>").unwrap()));
+        assert_eq!(offers(&both, &addresses, true).1.len(), 1);
     }
 
     const LEASE: &[u8] = b"From: Jane <jane@example.org>\r\nTo: Card Holder <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-view@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is here.\r\n";

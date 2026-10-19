@@ -1208,6 +1208,7 @@ Item {
                                                     onClicked: page.sioul.forgetSecurityKeyPin()
                                                 }
                                                 Button {
+                                                    visible: knownKey.modelData.stoppable !== false
                                                     flat: true
                                                     text: page.sioul.text("seckey-stop")
                                                     onClicked: page.sioul.stopUsingSecurityKey(knownKey.modelData.ident)
@@ -1439,6 +1440,36 @@ Item {
 
                                             text: page.theme.plain(page.sioul.textWith("ui-make-key", "address", makeKey.modelData))
                                             onClicked: page.sioul.pgpGenerate(makeKey.modelData)
+                                        }
+                                    }
+                                    // On a computer, an address your security key serves, read on
+                                    // another computer of yours: read it here, never a second key.
+                                    Repeater {
+                                        model: page.keys.read_here || []
+
+                                        delegate: ColumnLayout {
+                                            id: readHere
+
+                                            required property string modelData
+
+                                            Layout.fillWidth: true
+                                            spacing: 4
+
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: readHere.modelData
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.muted
+                                                font.pixelSize: 13
+                                            }
+                                            Button {
+                                                text: page.sioul.text("seckey-use")
+                                                onClicked: {
+                                                    page.lookingFor = ""
+                                                    page.sioul.readSecurityKey()
+                                                }
+                                            }
                                         }
                                     }
                                     RowLayout {

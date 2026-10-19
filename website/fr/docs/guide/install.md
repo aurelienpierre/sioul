@@ -109,9 +109,11 @@ mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 
 Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul ». La ligne de commande `sioul` vaut la peine d’être installée aussi : les rappels s’en servent quand la fenêtre est fermée ([Paramètres](settings.md#reminders)).
 
+Installez juste après avoir construit. Si vous lancez les tests de Sioul (`cargo test`) entre les deux, ils laissent dans `target/release/` des programmes construits pour les tests, qui ne gardent aucun mot de passe : construisez à nouveau avant d’installer. `tools/install.sh` fait les constructions et les installations d’un coup, et refuse un programme construit pour les tests.
+
 ### Mettre à jour {#updating}
 
-Dans le dossier `sioul` : `git pull`, puis à nouveau les deux lignes `cargo build` et les trois lignes `install`. Vos réglages et vos données sont gardés à part du programme, dans vos propres dossiers : ils restent tels quels.
+Dans le dossier `sioul` : `git pull`, puis à nouveau les deux lignes `cargo build` et les trois lignes `install`, ou `tools/install.sh`. Vos réglages et vos données sont gardés à part du programme, dans vos propres dossiers : ils restent tels quels.
 
 ## L’essayer d’abord sur des courriels inventés {#trying-it-on-invented-mail-first}
 

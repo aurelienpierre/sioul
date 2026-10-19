@@ -21,8 +21,10 @@
 #    (`org.freedesktop.secrets`) fails the pass (review of 19 October 2026,
 #    F11); sioul-core's reads the JVM's lines of the calls' log
 #    (SIOUL_CALLS_SAMPLE, calls::tests::java_s_lines_read_here);
-# 3. the two programs, in release, and no test hook in them (the SIOUL_TEST_*
-#    names belong to the test build alone);
+# 3. the two programs, in release, after every test run, and no test hook in
+#    them (tools/check-test-marks.sh: no SIOUL_TEST_ name at all; a test run
+#    leaves them built with the tests' features, which keep no password:
+#    review of 19 October 2026, N1);
 # 4. every message in every language, and French typography
 #    (tools/check-messages.py);
 # 5. the QML: words from outside drawn as plain text (tools/check-plain-text.py),
@@ -48,8 +50,12 @@ out=$(cd "$out" && pwd)
 # The tests and the QML tests run with folders of their own, empty, as on CI:
 # a test that reads or writes `config::state_dir()` (or the data, the
 # configuration, the caches) never reaches the folders of whoever runs it.
+# Emptied again before each run (`fresh`): no run reads what another left.
 xdg="$out/xdg"
-rm -rf "$xdg" && mkdir -p "$xdg/config" "$xdg/data" "$xdg/state" "$xdg/cache" || exit 1
+fresh() {
+    rm -rf "$xdg" && mkdir -p "$xdg/config" "$xdg/data" "$xdg/state" "$xdg/cache"
+}
+fresh || exit 1
 apart=(XDG_CONFIG_HOME="$xdg/config" XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache")
 min_free_gb=${MIN_FREE_GB:-1.5}
 # The tests' session bus: nothing can be started on it (no service directory),
@@ -138,6 +144,7 @@ for crate in "${crates[@]}"; do
     echo "$(date +%H:%M:%S) test $crate, $(free_gb) GB free"
     env=()
     [[ "$crate" == sioul-core && -s "$sample" ]] && env=(SIOUL_CALLS_SAMPLE="$sample")
+    fresh || exit 1
     env "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session --config-file="$bus_conf" -- cargo test --release -p "$crate" > "$out/test-$crate.log" 2>&1
     status=$?
     grep -E "^test result: [A-Za-z]+\. [0-9]+ passed|FAILED|panicked|^error" "$out/test-$crate.log" | grep -v " 0 passed; 0 failed" | sort | uniq -c | head -12
@@ -145,6 +152,7 @@ for crate in "${crates[@]}"; do
     # Again with no locale, as CI runs them: a test that names no language
     # reads English only there, and a French word it relies on is missed
     # (8 October 2026: CI failed on such a test that passed here).
+    fresh || exit 1
     watched "$out/bus-$crate.log" env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${apart[@]}" "${env[@]}" timeout 3600 cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
     status=$?
     grep -E "FAILED|panicked|^error" "$out/test-$crate-no-locale.log" | sort | uniq -c | head -8 | sed 's/^/  no locale: /'
@@ -163,15 +171,10 @@ for crate in sioul-app sioul-cli; do
     [[ $status -eq 0 ]] || { echo "  exit $status"; failed+=("build-$crate"); }
 done
 for program in target/release/sioul-app target/release/sioul; do
-    if [[ ! -f "$program" ]]; then
-        echo "$program: missing"
-        failed+=("$(basename "$program")-missing")
-        continue
-    fi
-    hooks=$(grep -c -a -E 'SIOUL_TEST_(PASSWORD|INSECURE_TLS|GITHUB|GOOGLE|NO_ANTIVIRUS|VAULT|NO_KEYRING)' "$program")
-    echo "$program, built $(date -r "$program" '+%Y-%m-%d %H:%M'), test hooks: $hooks"
-    [[ $hooks -eq 0 ]] || failed+=("hooks-in-$(basename "$program")")
+    [[ -f "$program" ]] && echo "$program, built $(date -r "$program" '+%Y-%m-%d %H:%M')"
 done
+sh tools/check-test-marks.sh target/release/sioul-app target/release/sioul 2>&1 | sed 's/^/  /'
+[[ ${PIPESTATUS[0]} -eq 0 ]] || failed+=(test-marks-in-programs)
 
 # 4. The messages.
 python3 tools/check-messages.py > "$out/check-messages.log" 2>&1
@@ -190,6 +193,7 @@ status=$?
 echo "$(date +%H:%M:%S) lint-qml exit $status, $(grep -c '^Warning' "$out/lint-qml.log") warnings"
 grep '^Warning' "$out/lint-qml.log" | grep -v 'missing-property' | head -5
 [[ $status -eq 0 ]] || failed+=(lint-qml)
+fresh || exit 1
 env "${apart[@]}" bash tools/qml-test.sh > "$out/qml-test.log" 2>&1
 status=$?
 echo "$(date +%H:%M:%S) $(tail -1 "$out/qml-test.log")"

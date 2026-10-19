@@ -128,6 +128,11 @@ jobs:
         env:
           SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: cargo build --release --locked -p sioul-app -p sioul-cli
+      # No test hook in what ships (tools/check-test-marks.sh): no test runs
+      # here, and the check says so.
+      - name: No test build among the programs
+        shell: bash
+        run: sh tools/check-test-marks.sh target/release/sioul-app.exe target/release/sioul.exe
       # Qt beside the program (QtWebEngineProcess and its resources included),
       # and the MSVC runtime, for computers without it.
       - name: Gather Qt
@@ -193,6 +198,8 @@ jobs:
             lipo -create "target/aarch64-apple-darwin/release/$program" "target/x86_64-apple-darwin/release/$program" -output "universal/$program"
             lipo -info "universal/$program"
           done
+          # No test hook in what ships (tools/check-test-marks.sh).
+          sh tools/check-test-marks.sh universal/sioul-app universal/sioul
       # The bundle: the programs, Info.plist (the microphone and camera
       # sentences without which macOS ends the program at their first use),
       # the icon, then Qt's frameworks; signed ad hoc (Apple silicon runs
@@ -274,6 +281,9 @@ jobs:
         env:
           SIOUL_MICROSOFT_CLIENT_ID: ${{ secrets.SIOUL_MICROSOFT_CLIENT_ID }}
         run: cargo build --release --locked -p sioul-app -p sioul-cli
+      # No test hook in what ships (tools/check-test-marks.sh).
+      - name: No test build among the programs
+        run: sh tools/check-test-marks.sh target/release/sioul-app target/release/sioul
       # The programs, the desktop file and the icon in an AppDir; linuxdeploy
       # and its Qt plugin add Qt (Qt WebEngine's process and resources, the
       # QML modules the pages import, Wayland and X11), then make the AppImage.

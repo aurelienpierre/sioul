@@ -945,6 +945,14 @@ pub(crate) fn send_to_keys_openpgp(qt: &QtThread, ident: &str) {
 /// "Stop using this security key": it leaves Sioul's list, its certificate
 /// is kept aside; the PIN held, if it was its, is forgotten.
 pub(crate) fn stop_using(qt: &QtThread, shared: &Shared, ident: &str) {
+    // A key this device did not read, on a device that cannot read one (a
+    // phone): nothing there could take it back (review of 19 October 2026,
+    // N5). Stopped on a computer that read it, it leaves every device.
+    let read_here = Keys::load().cards.iter().any(|card| card.ident.eq_ignore_ascii_case(ident));
+    if !may_stop(read_here, sioul_sync::securitykey::usable_here()) {
+        tell(qt, shared, tr().text("seckey-stop-on-computer", None));
+        return;
+    }
     if PIN.lock().is_ok_and(|m| m.holder().is_some_and(|h| h.eq_ignore_ascii_case(ident))) {
         let _ = forget_pin();
     }
@@ -957,6 +965,15 @@ pub(crate) fn stop_using(qt: &QtThread, shared: &Shared, ident: &str) {
     };
     tell(qt, shared, line);
     let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
+}
+
+/// Whether "Stop using this security key" is offered, and done: for a key
+/// read here; for one another device read, only on a device that can read
+/// a security key, where reading it again takes it back. Not on a phone: it
+/// cannot read one yet, so a stop there could never be undone there, and
+/// would only stop it encrypting your own copies (N5).
+fn may_stop(read_here: bool, card_here: bool) -> bool {
+    read_here || card_here
 }
 
 /// One known security key, as Accounts ▸ Encryption lists it.
@@ -976,8 +993,10 @@ struct KnownView {
     touch: String,
     /// Its PIN is held now.
     pin_held: bool,
-    /// Expired or expiring, and GnuPG here can renew it: "Renew for two years".
+    /// Expired or expiring, read here, and GnuPG here can renew it: "Renew for two years".
     renewable: bool,
+    /// "Stop using this security key" offered (`may_stop`).
+    stoppable: bool,
     /// The commands that do by hand what its buttons do, to copy ("By hand"):
     /// its certificate written into a file; expired or expiring, its renewal.
     by_hand: Vec<String>,
@@ -1022,8 +1041,10 @@ pub(crate) fn known_view() -> String {
                 late,
                 touch: tr().text(touch, None),
                 pin_held: holder.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(&card.ident)),
-                // GnuPG asked only for a key that needs it.
-                renewable: late && renewable(),
+                // GnuPG asked only for a key that needs it, and read here: renewing
+                // looks for it among the keys read here.
+                renewable: read_here && late && renewable(),
+                stoppable: may_stop(read_here, here),
                 by_hand: std::iter::once(sioul_sync::securitykey::export_command(&card.cert)).chain(if late { sioul_sync::securitykey::renew_commands(&card.cert, &subkeys) } else { Vec::new() }).collect(),
             }
         })
@@ -1039,6 +1060,15 @@ fn host_of(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review of 19 October 2026, N5: on a phone, a key another device read
+    /// cannot be stopped (nothing there could take it back); a key read here,
+    /// and any key on a computer (reading it again takes it back), can.
+    #[test]
+    fn a_shared_key_is_stopped_only_where_it_can_be_read_again() {
+        assert!(!may_stop(false, false), "a phone, a key another device read");
+        assert!(may_stop(false, true) && may_stop(true, true) && may_stop(true, false));
+    }
 
     /// Review of 19 October 2026, F15: a forward of an encrypted message
     /// unencrypted, or of one that opens nowhere here, is refused at Send

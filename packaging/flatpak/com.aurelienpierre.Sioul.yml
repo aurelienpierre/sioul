@@ -92,6 +92,8 @@ modules:
     build-commands:
       - sh packaging/flatpak/qt-both.sh
       - cargo build --release --locked -p sioul-app -p sioul-cli
+      # No test hook in what ships (tools/check-test-marks.sh).
+      - sh tools/check-test-marks.sh target/release/sioul-app target/release/sioul
       - install -Dm755 target/release/sioul-app /app/bin/sioul-app
       - install -Dm755 target/release/sioul /app/bin/sioul
       # The desktop file, the icon and the AppStream file, all under the application's id.

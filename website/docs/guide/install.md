@@ -109,9 +109,11 @@ mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 
 Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too: reminders use it when the window is closed ([Settings](settings.md#reminders)).
 
+Install right after building. If you run Sioul's tests (`cargo test`) in between, they leave programs built for testing in `target/release/`, which keep no password: build again before installing. `tools/install.sh` does the builds and the installs in one go, and refuses a program built for testing.
+
 ### Updating
 
-In the `sioul` folder: `git pull`, then the two `cargo build` lines and the three `install` lines again. Your settings and data are kept apart from the program, in your own folders: they stay as they are.
+In the `sioul` folder: `git pull`, then the two `cargo build` lines and the three `install` lines again, or `tools/install.sh`. Your settings and data are kept apart from the program, in your own folders: they stay as they are.
 
 ## Trying it on invented mail first
 
