@@ -13,8 +13,13 @@
 #    Rust decides, then javadoc, strict; skipped without a JDK or android.jar.
 #    Their lines of the calls' log are kept for step 2;
 # 2. each crate's tests, in release, one crate at a time, each on a D-Bus
-#    session of its own (dbus-run-session), so that no test reaches the
-#    desktop's, then again with no locale set, as CI runs them; sioul-core's reads the JVM's lines of the calls' log
+#    session of its own that can start nothing (`dbus-run-session` with a
+#    configuration that names no service directory: the system's keyring is
+#    never started on it), so that no test reaches the desktop's; then again
+#    with no locale set, as CI runs them, on such a bus watched by
+#    `dbus-monitor`: a single call to the keyring's service
+#    (`org.freedesktop.secrets`) fails the pass (review of 19 October 2026,
+#    F11); sioul-core's reads the JVM's lines of the calls' log
 #    (SIOUL_CALLS_SAMPLE, calls::tests::java_s_lines_read_here);
 # 3. the two programs, in release, and no test hook in them (the SIOUL_TEST_*
 #    names belong to the test build alone);
@@ -47,6 +52,41 @@ xdg="$out/xdg"
 rm -rf "$xdg" && mkdir -p "$xdg/config" "$xdg/data" "$xdg/state" "$xdg/cache" || exit 1
 apart=(XDG_CONFIG_HOME="$xdg/config" XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache")
 min_free_gb=${MIN_FREE_GB:-1.5}
+# The tests' session bus: nothing can be started on it (no service directory),
+# and it may be watched (eavesdropping allowed), for the keyring's count.
+bus_conf="$out/session.conf"
+cat > "$bus_conf" <<CONF || exit 1
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <keep_umask/>
+  <listen>unix:tmpdir=$out</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+CONF
+# The keyring's calls on a bus of its own while `command` runs: its address
+# given to the command, every call heard written to `log`; the bus and its
+# watcher stopped by their own numbers. Returns the command's status.
+watched() {
+    local log=$1; shift
+    local address pid watcher status
+    address=$(dbus-daemon --config-file="$bus_conf" --fork --print-address=1 --print-pid=3 3>"$log.pid") || return 1
+    pid=$(head -1 "$log.pid")
+    dbus-monitor --address "$address" > "$log" 2>&1 &
+    watcher=$!
+    sleep 1
+    DBUS_SESSION_BUS_ADDRESS=$address "$@"
+    status=$?
+    kill "$watcher" "$pid" 2>/dev/null
+    rm -f "$log.pid"
+    return $status
+}
 crates=(sioul-core sioul-sync sioul-learn sioul-cli sioul-app)
 failed=()
 skipped=()
@@ -98,17 +138,19 @@ for crate in "${crates[@]}"; do
     echo "$(date +%H:%M:%S) test $crate, $(free_gb) GB free"
     env=()
     [[ "$crate" == sioul-core && -s "$sample" ]] && env=(SIOUL_CALLS_SAMPLE="$sample")
-    env "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate.log" 2>&1
+    env "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session --config-file="$bus_conf" -- cargo test --release -p "$crate" > "$out/test-$crate.log" 2>&1
     status=$?
     grep -E "^test result: [A-Za-z]+\. [0-9]+ passed|FAILED|panicked|^error" "$out/test-$crate.log" | grep -v " 0 passed; 0 failed" | sort | uniq -c | head -12
     [[ $status -eq 0 ]] || { echo "  exit $status"; failed+=("test-$crate"); }
     # Again with no locale, as CI runs them: a test that names no language
     # reads English only there, and a French word it relies on is missed
     # (8 October 2026: CI failed on such a test that passed here).
-    env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${apart[@]}" "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
+    watched "$out/bus-$crate.log" env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${apart[@]}" "${env[@]}" timeout 3600 cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
     status=$?
     grep -E "FAILED|panicked|^error" "$out/test-$crate-no-locale.log" | sort | uniq -c | head -8 | sed 's/^/  no locale: /'
     [[ $status -eq 0 ]] || { echo "  exit $status with no locale"; failed+=("test-$crate-no-locale"); }
+    secrets=$(grep -c "destination=org.freedesktop.secrets" "$out/bus-$crate.log")
+    [[ $secrets -eq 0 ]] || { echo "  $secrets call(s) to the keyring's service"; failed+=("keyring-$crate"); }
 done
 
 # 3. The programs, and no test hook in them.
@@ -126,7 +168,7 @@ for program in target/release/sioul-app target/release/sioul; do
         failed+=("$(basename "$program")-missing")
         continue
     fi
-    hooks=$(grep -c -a -E 'SIOUL_TEST_(PASSWORD|INSECURE_TLS|GITHUB|GOOGLE|NO_ANTIVIRUS|VAULT)' "$program")
+    hooks=$(grep -c -a -E 'SIOUL_TEST_(PASSWORD|INSECURE_TLS|GITHUB|GOOGLE|NO_ANTIVIRUS|VAULT|NO_KEYRING)' "$program")
     echo "$program, built $(date -r "$program" '+%Y-%m-%d %H:%M'), test hooks: $hooks"
     [[ $hooks -eq 0 ]] || failed+=("hooks-in-$(basename "$program")")
 done

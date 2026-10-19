@@ -33,6 +33,10 @@ pub struct MailRef {
 #[derive(Debug, Clone, Default)]
 pub struct MailIndex {
     by_id: BTreeMap<String, MailRef>,
+    /// Every file of each Message-ID, in the order found: a message copied
+    /// into two folders, or another message given the same ID (anyone who
+    /// knows one can), each kept.
+    paths: BTreeMap<String, Vec<PathBuf>>,
 }
 
 /// "<abc@example.org>", "mid:abc@example.org" → "abc@example.org".
@@ -122,7 +126,8 @@ impl MailIndex {
             };
             let clean = |t: &str| t.replace(['\t', '\n', '\r'], " ");
             fresh.push(format!("{unique}\t{}\t{}\t{}\t{}\t{}\t{}", clean(&id), clean(&mail.subject), clean(&mail.from), clean(&mail.address), mail.date, clean(&mail.refs.join(" "))));
-            // The same message in two folders (Gmail's labels): the first found stays.
+            // The same message in two folders (Gmail's labels): the first found stays; every file is kept by its ID.
+            index.paths.entry(id.clone()).or_default().push(mail.path.clone());
             index.by_id.entry(id).or_insert(mail);
         }
         if let Some(parent) = cache.parent() {
@@ -137,8 +142,14 @@ impl MailIndex {
         self.by_id.get(&bare_id(id))
     }
 
+    /// Every file of this Message-ID found here, in the order found.
+    pub fn paths(&self, id: &str) -> Vec<PathBuf> {
+        self.paths.get(&bare_id(id)).cloned().unwrap_or_default()
+    }
+
     /// Adds a message known otherwise (a test, a message just sent).
     pub fn insert(&mut self, id: &str, mail: MailRef) {
+        self.paths.entry(bare_id(id)).or_default().push(mail.path.clone());
         self.by_id.insert(bare_id(id), mail);
     }
 

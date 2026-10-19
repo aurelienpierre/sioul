@@ -67,6 +67,11 @@ cxx-qt-build.workspace = true
 # The Windows program's icon and details (Explorer's properties); used only when building for Windows.
 winresource = { version = "0.1.31", default-features = false }
 
+[dev-dependencies]
+# No test reaches a keyring (review of 19 October 2026, F11): resolver 3 keeps
+# this feature out of the release builds.
+sioul-sync = { path = "../sioul-sync", features = ["no-keyring"] }
+
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).
 insecure-test-tls = ["sioul-sync/insecure-test-tls", "sioul-learn/insecure-test-tls"]

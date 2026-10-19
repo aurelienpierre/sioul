@@ -1668,10 +1668,12 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     HURRY.store(true, std::sync::atomic::Ordering::Relaxed);
     let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
-    // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards`).
-    let _ = sioul_core::securitykey::share_cards_if_missing();
-    // The clear earlier versions of copies beside drafts encrypted first (`crypto::seal_clear_drafts_if_idle`).
-    crate::crypto::seal_clear_drafts_if_idle();
+    // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards_at_exchange`).
+    let _ = sioul_core::securitykey::share_cards_at_exchange();
+    // No look at the copies beside drafts here: a dose's alarm and "Taken"
+    // come through, and Android gives them seconds (review of 19 October
+    // 2026, F9); the window's start and exchanges and the phone's background
+    // step look (`crypto::seal_clear_drafts`).
     let stores = stores_here(&here);
     let memory = memory_path();
     // A bulk import of texts going on: no full round meanwhile (`share::set_importing`).
@@ -1772,12 +1774,15 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // a bulk import of texts going on (in the background service), too (`share::set_importing`).
         share::set_frugal(&memory_path(), frugal_now());
         share::set_importing(&memory_path(), crate::texts::importing_in_bulk());
+        // A copy beside a draft holding an encrypted message's text in clear
+        // (until 19 October 2026) encrypted first, so that none is kept so
+        // among the earlier versions when another device's encrypted copy
+        // comes; before `BUSY`, which a dose's alarm waits for: the look takes
+        // the exchange lock in short holds of its own (review of 19 October
+        // 2026, F9).
+        crate::crypto::seal_clear_drafts();
         // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
         let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        // A copy beside a draft holding an encrypted message's text in clear
-        // (until 19 October 2026) encrypted first: never kept so among the
-        // earlier versions when another device's encrypted copy comes.
-        crate::crypto::seal_clear_drafts();
         let here = here();
         let Some((folder, key)) = sealed(here.folder_path()) else { return };
         // A phone's calls copied into its own log first, so that they go now (`calls`).
@@ -1788,8 +1793,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // texts: the phone's step (read, decide, send), the clock, the trims;
         // what its thread reads or brings then said to the window.
         crate::texts::before_exchange(Some(&qt));
-        // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards`).
-        let _ = sioul_core::securitykey::share_cards_if_missing();
+        // Your security keys read on this computer, made known to your other devices once (`securitykey::share_cards_at_exchange`).
+        let _ = sioul_core::securitykey::share_cards_at_exchange();
         let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();
@@ -2906,6 +2911,64 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dose's alarm path measured in a fresh process (review of 19 October
+    /// 2026, F9): "Taken"'s exchange (`exchange_here(false)`) with 150 copies
+    /// of 100 KB kept in the history, every one in clear (their first look
+    /// pending), and 300 others' keys. By hand, twice with the same empty
+    /// folders: the first run sets up and joins, the second measures, as a
+    /// fresh process would; with `SIOUL_MEASURE_EMPTY` set, none of the copies
+    /// nor the keys, for the same path without them; with
+    /// `SIOUL_MEASURE_NO_COPIES`, the keys alone (what aaf8130's path met).
+    ///
+    ///     cargo test --release -p sioul-app --lib -- --ignored --exact share::tests::measure_the_alarm_path_with_a_look_pending --nocapture
+    #[test]
+    #[ignore]
+    fn measure_the_alarm_path_with_a_look_pending() {
+        let state = state_dir();
+        let folder = state.join("measure-folder");
+        let set_up = state.join("measure-set-up");
+        let empty = std::env::var_os("SIOUL_MEASURE_EMPTY").is_some();
+        let copies = !empty && std::env::var_os("SIOUL_MEASURE_NO_COPIES").is_none();
+        std::fs::create_dir_all(&folder).unwrap();
+        let key = share::key_for(&folder, "four words make a passphrase").unwrap();
+        if let Ok(mut held) = KEY.lock() {
+            *held = Some(key);
+        }
+        let history = sioul_sync::history::root(&memory_path()).join("drafts").join("data").join("drafts");
+        let clear = format!("From: Jane <jane@example.org>\r\nTo: Me <me@example.org>\r\nSubject: The lease\r\nMessage-ID: <lease@example.org>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n", "The secret clause is on page four. ".repeat(2_900));
+        if !set_up.exists() {
+            let mut here = share::Here::load(&state);
+            here.folder = Some(folder.display().to_string());
+            here.save(&state).unwrap();
+            if copies {
+                for n in 0..150 {
+                    let dir = history.join(format!("c{n}.eml"));
+                    std::fs::create_dir_all(&dir).unwrap();
+                    std::fs::write(dir.join("2026-10-18T10-00-00.000Z"), &clear).unwrap();
+                }
+            }
+            if !empty {
+                let others = sioul_core::config::data_dir().join("pgp").join("others");
+                std::fs::create_dir_all(&others).unwrap();
+                for n in 0..300 {
+                    std::fs::write(others.join(format!("{n}.asc")), sioul_core::pgp::stand_in_key(&format!("Someone {n} <someone{n}@example.org>")).unwrap()).unwrap();
+                }
+            }
+            // Joined, as a phone that shares already is.
+            assert!(exchange_here(false).is_some_and(|o| o.is_ok()));
+            std::fs::write(&set_up, "").unwrap();
+            println!("set up: run it again with the same folders to measure");
+            return;
+        }
+        let started = std::time::Instant::now();
+        let outcome = exchange_here(false);
+        let took = started.elapsed();
+        assert!(outcome.is_some_and(|o| o.is_ok()));
+        let pending = (0..150).filter(|n| std::fs::read(history.join(format!("c{n}.eml")).join("2026-10-18T10-00-00.000Z")).is_ok_and(|b| b == clear.as_bytes())).count();
+        println!("the alarm path's exchange in a fresh process: {took:?} ({}; copies still pending: {pending})", if empty { "nothing kept" } else if copies { "150 copies, 300 keys" } else { "300 keys" });
+        assert_eq!(pending, if copies { 150 } else { 0 }, "the alarm path never looks at the copies");
+    }
 
     /// "Put them back" said as it went (review of 18 October 2026, M-1 and
     /// I-3): nothing when every one came back, or nothing was held any more;

@@ -40,8 +40,10 @@ SioulWindow {
     readonly property string signNotHere: compose.protection.sign_not_here || ""
     // Encrypted while your own certificate cannot take it: you would not read your sent copy.
     readonly property string selfCopy: compose.protection.self_copy || ""
-    // The message answered or forwarded came encrypted: unencrypted, a reply goes without its quote, a forward not at all.
+    // The copy of the message answered or forwarded is encrypted: unencrypted, a reply goes without its quote, a forward not at all.
     readonly property string sealedQuote: compose.protection.sealed_quote || ""
+    // Encrypted with Bcc recipients: every recipient sees which keys it was encrypted to.
+    readonly property string bccSeen: compose.protection.bcc_seen || ""
     // At Send, the security key signs (else it only opens the encrypted message answered, for its quote).
     property bool keySigns: true
     // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
@@ -567,7 +569,17 @@ SioulWindow {
                 color: compose.theme.warm
                 font.pixelSize: 13
             }
-            // The message answered or forwarded came encrypted: what unticking "Encrypt" does to it.
+            // Encrypted with Bcc recipients: what the others can see, said before Send.
+            Label {
+                visible: encrypt.checked && compose.bccSeen !== ""
+                Layout.fillWidth: true
+                text: compose.bccSeen
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: compose.theme.muted
+                font.pixelSize: 13
+            }
+            // The copy of the message answered or forwarded is encrypted: what unticking "Encrypt" does to it.
             Label {
                 visible: !encrypt.checked && compose.sealedQuote !== ""
                 Layout.fillWidth: true

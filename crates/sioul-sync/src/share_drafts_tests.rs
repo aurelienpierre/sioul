@@ -80,43 +80,39 @@ fn clear_copies_are_encrypted_on_every_device_and_none_stays() {
     laptop.exchange(&folder, &key, NOW + MINUTE);
     assert_eq!(laptop.read("data/drafts/a2.eml"), lease("lease2"), "the leak: the text in clear on both");
 
-    // The new Sioul on the laptop first, whose mail holds neither lease: a1's
-    // draft is encrypted, its copy too; a2's is left to the desk. The laptop
-    // edits a1 meanwhile.
-    let first = draftcopies::seal_beside(&laptop.path("data/drafts"), &keys, &mut |_| None, &mut Judged::default(), &replacements_hold(&laptop.memory));
-    assert_eq!(first, Sealed { copies: 1, unknown: 1, ..Sealed::default() });
+    // The laptop, not updated yet (no look), edits a1 and exchanges.
     laptop.write("data/drafts/a1.toml", &draft("a1", true, "From the laptop."));
     laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
-
-    // Then the desk, before its exchange, whose mail has both: each copy
-    // encrypted. The desk edits a1 too, later.
+    // The desk, updated, whose mail has both leases: each copy encrypted
+    // before its exchange. It edits a1 too, later.
     let mut find = |id: &str| match id {
-        "lease@example.org" => Some(mail.join("lease")),
-        "lease2@example.org" => Some(mail.join("lease2")),
-        _ => None,
+        "lease@example.org" => vec![mail.join("lease")],
+        "lease2@example.org" => vec![mail.join("lease2")],
+        _ => Vec::new(),
     };
-    let second = draftcopies::seal_beside(&desk.path("data/drafts"), &keys, &mut find, &mut Judged::default(), &replacements_hold(&desk.memory));
-    assert_eq!(second, Sealed { copies: 2, ..Sealed::default() });
+    let first = draftcopies::seal_beside(&desk.path("data/drafts"), &draftcopies::Certs::of(keys.clone()), &mut find, &mut Judged::default(), &replacements_hold(&desk.memory));
+    assert_eq!(first, Sealed { copies: 2, ..Sealed::default() });
     desk.write("data/drafts/a1.toml", &draft("a1", true, "From the desk."));
     desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+    // The laptop's next exchange: the desk's encrypted copies and edit take
+    // the place of its own, which it keeps among its earlier versions.
     laptop.exchange(&folder, &key, NOW + 4 * MINUTE);
     desk.exchange(&folder, &key, NOW + 5 * MINUTE);
-
-    // The laptop kept its clear a2 among its earlier versions when the
-    // desk's encrypted copy came; the desk, its clear copies in what it kept
-    // before sharing began: their next looks encrypt them.
+    // Then the laptop is updated: its look finds the clear versions it kept,
+    // whose message it does not have (in doubt: sealed); the desk's look, the
+    // clear copies it kept before sharing began.
     let versions = |computer: &Computer| {
         let mut kept = history::draft_copies(&history::root(&computer.memory));
         kept.extend(draft_copies_kept_before_sharing(&computer.memory));
         kept
     };
-    assert!(versions(&laptop).iter().any(|v| std::fs::read(v).is_ok_and(|b| !pgp::is_encrypted(&b))), "the clear version kept on the laptop");
+    assert!(versions(&laptop).iter().any(|v| std::fs::read(v).is_ok_and(|b| !pgp::is_encrypted(&b))), "the clear versions kept on the laptop");
     let mut judged = Judged::default();
-    let third = draftcopies::seal_versions(&versions(&laptop), &keys, &mut judged, &replacements_hold(&laptop.memory));
-    assert_eq!(third, Sealed { versions: 1, ..Sealed::default() });
-    let fourth = draftcopies::seal_versions(&versions(&desk), &keys, &mut Judged::default(), &replacements_hold(&desk.memory));
+    assert_eq!(draftcopies::seal_beside(&laptop.path("data/drafts"), &draftcopies::Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &replacements_hold(&laptop.memory)), Sealed::default());
+    let third = draftcopies::seal_versions(&versions(&laptop), &draftcopies::Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &replacements_hold(&laptop.memory));
+    assert_eq!(third, Sealed { versions: 2, ..Sealed::default() }, "a1 and a2 as the laptop had them");
+    let fourth = draftcopies::seal_versions(&versions(&desk), &draftcopies::Certs::of(keys.clone()), &mut find, &mut Judged::default(), &replacements_hold(&desk.memory));
     assert_eq!(fourth, Sealed { versions: 2, ..Sealed::default() }, "a1 and a2 as they were before sharing");
-    assert_eq!(draftcopies::seal_beside(&laptop.path("data/drafts"), &keys, &mut |_| None, &mut judged, &replacements_hold(&laptop.memory)), Sealed::default());
 
     // Nothing of the text in clear, on either device, in the folder, in the history.
     assert_eq!(holding(&base, SECRET), Vec::<PathBuf>::new());
@@ -139,6 +135,37 @@ fn clear_copies_are_encrypted_on_every_device_and_none_stays() {
         kept.iter().any(|v| matches!(history::version(&root, "drafts", "data/drafts/a1.toml", &v.stamp), Some(history::Kept::Copy(path)) if std::fs::read_to_string(&path).unwrap().contains("From the laptop."))),
         "{kept:?}"
     );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// What a crash leaves among the drafts, a folder whose files travel whole
+/// (a copy's replacement written beside it, `.<name>.<process>-<n>.new`; a
+/// receive's or a Put back's temporary), goes once an hour old, at the
+/// day's tidy, as the folder's sealed files' do; one still being written
+/// stays, and so does a name of yours that only looks alike (review of 19
+/// October 2026, F17: nothing swept them, and they stayed).
+#[test]
+fn a_crash_s_leftovers_among_the_drafts_go_an_hour_later() {
+    let base = scratch("draftleftovers");
+    let folder = base.join("Nextcloud").join("sioul-shared");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("data/drafts/a1.toml", &draft("a1", false, "Fine by me."));
+    let left = |name: &str, ago: u64| {
+        let path = desk.path("data/drafts").join(name);
+        std::fs::write(&path, b"half").unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(ago)).unwrap();
+        path
+    };
+    let replacement = left(".a1.eml.4242-7.new", 7_200);
+    let received = left(&format!(".a1.toml.4242-8{TEMPORARY}"), 7_200);
+    let writing = left(".a1.eml.4242-9.new", 60);
+    let yours = left("plan.new", 7_200);
+    desk.exchange(&folder, &key, NOW);
+    assert!(!replacement.exists() && !received.exists(), "an hour old: swept");
+    assert!(writing.exists(), "still being written: left");
+    assert!(yours.exists(), "not Sioul's: left");
+    assert!(desk.path("data/drafts/a1.toml").exists());
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -220,7 +247,7 @@ fn exchanges_running_while_copies_are_replaced_never_send_zeros() {
             }
         });
         let before = made.load(Ordering::Relaxed);
-        let done = draftcopies::seal_beside(&desk.path("data/drafts"), &keys, &mut |_| None, &mut Judged::default(), &replacements_hold(&desk.memory));
+        let done = draftcopies::seal_beside(&desk.path("data/drafts"), &draftcopies::Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &replacements_hold(&desk.memory));
         let during = made.load(Ordering::Relaxed) - before;
         stop.store(true, Ordering::Relaxed);
         reader.join().unwrap();
@@ -238,7 +265,7 @@ fn exchanges_running_while_copies_are_replaced_never_send_zeros() {
     for computer in [&desk, &laptop] {
         let mut kept = history::draft_copies(&history::root(&computer.memory));
         kept.extend(draft_copies_kept_before_sharing(&computer.memory));
-        draftcopies::seal_versions(&kept, &keys, &mut Judged::default(), &replacements_hold(&computer.memory));
+        draftcopies::seal_versions(&kept, &draftcopies::Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &replacements_hold(&computer.memory));
     }
     assert_eq!(zeroed(&base), Vec::<PathBuf>::new());
     assert_eq!(holding(&base, SECRET), Vec::<PathBuf>::new());
@@ -266,7 +293,7 @@ fn no_copy_is_replaced_while_an_exchange_holds_the_lock() {
     }
     let exchange = exchange_lock(&desk.memory, true).unwrap().expect("the exchange's lock");
     std::thread::scope(|scope| {
-        let migration = scope.spawn(|| draftcopies::seal_beside(&desk.path("data/drafts"), &keys, &mut |_| None, &mut Judged::default(), &replacements_hold(&desk.memory)));
+        let migration = scope.spawn(|| draftcopies::seal_beside(&desk.path("data/drafts"), &draftcopies::Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &replacements_hold(&desk.memory)));
         std::thread::sleep(std::time::Duration::from_millis(500));
         assert!(!migration.is_finished(), "waits for the exchange");
         for n in 0..5 {

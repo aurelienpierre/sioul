@@ -148,7 +148,7 @@ Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffre
 - **Chiffrer** rend le courriel lisible seulement par elles et par vous. Cela fonctionne quand Sioul connaît la clé de chaque destinataire ; sinon il dit pour qui la clé manque, et **Chercher leurs clés** les demande. Sioul ne cherche que quand vous appuyez, puisque chercher dit à un serveur à qui vous écrivez.
 - **L’objet n’est pas chiffré** : quiconque transporte le courriel peut le lire. Gardez-le neutre.
 - Vos courriels portent votre clé publique, pour que les personnes qui vous répondent puissent chiffrer.
-- **Répondre à un courriel chiffré** le garde chiffré : Sioul coche **Chiffrer** quand il le peut, et n’ouvre le courriel auquel vous répondez qu’au moment où vous appuyez sur **Envoyer**, avec le même code PIN que la signature. Sans chiffrement, votre réponse part sans la citation, et un transfert ne part pas.
+- **Répondre à un courriel chiffré** le garde chiffré : Sioul coche **Chiffrer** quand il le peut, et n’ouvre le courriel auquel vous répondez qu’au moment où vous appuyez sur **Envoyer**, avec le même code PIN que la signature. Sans chiffrement, votre réponse part sans la citation, et un transfert ne part pas. Ce que vous tapez dans votre réponse est gardé comme tout brouillon : en clair sur chacun de vos appareils, et scellé entre eux.
 
 Un courriel chiffré est déchiffré quand vous l’ouvrez ; une signature est vérifiée et dite sous l’expéditeur : « Chiffré · Signé par … », ou « La signature ne correspond pas au texte », en couleurs chaudes, jamais en rouge.
 

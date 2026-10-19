@@ -151,7 +151,7 @@ pub enum CardPublic {
 }
 
 /// One key of the security key, as it describes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SlotInfo {
     /// Its fingerprint as the card keeps it: 40 hexadecimal digits, upper
     /// case (a card holds version 4 keys).
@@ -167,7 +167,7 @@ pub struct SlotInfo {
 }
 
 /// What a security key says without its PIN.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CardInfo {
     /// Its maker's number and its serial number, as `openpgp-card` names a
     /// card: "0006:12345678".
@@ -924,10 +924,21 @@ fn shared_name(ident: &str) -> String {
 /// the keys the security key holds (signing, decryption). Anything else (a
 /// certificate replaced, another key's, one missing a key the security key
 /// holds) is never taken for yours.
+///
+/// Checked through Sequoia's policy, as [`check`] checks a certificate at
+/// setup: the primary key valid and not revoked, the signing key bound to
+/// it for signing, the decryption key for encryption, neither revoked; a key
+/// with no binding, revoked, or bound by another key never makes the
+/// certificate the security key's (review of 19 October 2026, F3). Expired,
+/// it is still the key's: the window says so.
 pub fn vouched(card: &KnownCard, certificate: &str) -> Option<Cert> {
     let cert = Cert::from_bytes(certificate.as_bytes()).ok()?.strip_secret_key_material();
-    let has = |fingerprint: &str| fingerprint.is_empty() || cert.keys().any(|k| k.key().fingerprint().to_hex().eq_ignore_ascii_case(fingerprint));
-    (!card.cert.is_empty() && cert.fingerprint().to_hex().eq_ignore_ascii_case(&card.cert) && has(&card.sign) && has(&card.decrypt) && !(card.sign.is_empty() && card.decrypt.is_empty())).then_some(cert)
+    if card.cert.is_empty() || !cert.fingerprint().to_hex().eq_ignore_ascii_case(&card.cert) || (card.sign.is_empty() && card.decrypt.is_empty()) {
+        return None;
+    }
+    let slot = |fingerprint: &str| (!fingerprint.is_empty()).then(|| SlotInfo { fingerprint: fingerprint.to_string(), ..SlotInfo::default() });
+    let info = CardInfo { ident: card.ident.clone(), sign: slot(&card.sign), decrypt: slot(&card.decrypt), ..CardInfo::default() };
+    check(&cert, &info).is_ok().then_some(cert)
 }
 
 /// Your security keys as your other devices made them known here
@@ -962,13 +973,102 @@ pub fn shared_cards_in(dir: &Path) -> Vec<(KnownCard, Cert)> {
 /// when what it says changed. Keys this device does not know are left as
 /// they are (another computer's).
 pub fn share_cards() -> Result<(), String> {
-    share_cards_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), false)
+    share_cards_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), false)?;
+    for card in known_cards() {
+        mark_shared(&marks_path(), &card.ident)?;
+    }
+    Ok(())
 }
 
-/// The same for the keys whose file is not there yet: an existing setup's
-/// first sharing, before each exchange (it writes nothing once they are).
-pub fn share_cards_if_missing() -> Result<(), String> {
-    share_cards_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), true)
+/// Before each exchange: each security key read here and not shared yet
+/// from this device is shared once (an existing setup's first sharing), and
+/// marked so on this device (`state/security-keys.toml`, never shared);
+/// once marked, a file another device took out (it stopped using the key)
+/// is never made again here by this pass (review of 19 October 2026, F4),
+/// and a file there is written again only when this device's certificate
+/// adds to it (a renewal the other computer's older write missed: F5).
+pub fn share_cards_at_exchange() -> Result<(), String> {
+    share_cards_marked_in(&cards_path(), &data_dir().join("pgp").join("own"), &shared_cards_dir(), &marks_path())
+}
+
+/// Where this device marks the security keys it shared once: in its state, never shared.
+pub fn marks_path() -> PathBuf {
+    crate::config::state_dir().join("security-keys.toml")
+}
+
+/// This device's own marks and list of security keys stopped here.
+#[derive(Default, Serialize, Deserialize)]
+struct Marks {
+    /// Shared once from here.
+    #[serde(default)]
+    shared: Vec<String>,
+}
+
+fn read_marks(path: &Path) -> Marks {
+    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+}
+
+fn mark_shared(path: &Path, ident: &str) -> Result<(), String> {
+    let mut marks = read_marks(path);
+    if marks.shared.iter().any(|i| i.eq_ignore_ascii_case(ident)) {
+        return Ok(());
+    }
+    marks.shared.push(ident.to_string());
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    crate::filelock::replace(path, toml::to_string(&marks).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// [`share_cards_at_exchange`] with its places: `cards.toml`, your keys'
+/// folder, the shared folder, the marks' file.
+pub fn share_cards_marked_in(cards: &Path, own: &Path, shared: &Path, marks: &Path) -> Result<(), String> {
+    let known = read_known(cards);
+    if known.is_empty() {
+        return Ok(());
+    }
+    let marked = read_marks(marks);
+    for card in known {
+        let path = shared.join(shared_name(&card.ident));
+        let first = !marked.shared.iter().any(|i| i.eq_ignore_ascii_case(&card.ident));
+        if path.exists() {
+            // Written again only when this device's certificate adds to it (F5): merging only adds, so this settles at once.
+            share_one(&card, own, shared, true)?;
+        } else if first {
+            share_one(&card, own, shared, false)?;
+        }
+        if first {
+            mark_shared(marks, &card.ident)?;
+        }
+    }
+    Ok(())
+}
+
+/// The security keys this device stopped using (`pgp/stopped.toml`, never
+/// shared): another device's file for one of them is never taken back here.
+pub fn stopped_in(root: &Path) -> Vec<String> {
+    #[derive(Default, Deserialize)]
+    struct Stopped {
+        #[serde(default)]
+        stopped: Vec<String>,
+    }
+    std::fs::read_to_string(root.join("stopped.toml")).ok().and_then(|text| toml::from_str::<Stopped>(&text).ok()).map(|s| s.stopped).unwrap_or_default()
+}
+
+/// `ident` added to (or, read again here, taken from) the list of security keys stopped on this device.
+fn set_stopped_in(root: &Path, ident: &str, stopped: bool) -> Result<(), String> {
+    let mut list = stopped_in(root);
+    let before = list.len();
+    list.retain(|i| !i.eq_ignore_ascii_case(ident));
+    if stopped {
+        list.push(ident.to_string());
+    }
+    if list.len() == before && !stopped {
+        return Ok(());
+    }
+    std::fs::create_dir_all(root).map_err(|e| format!("{}: {e}", root.display()))?;
+    let text = format!("# Sioul: the security keys this device stopped using; never shared.\nstopped = {}\n", toml::Value::Array(list.into_iter().map(toml::Value::String).collect()));
+    crate::filelock::replace(&root.join("stopped.toml"), text.as_bytes()).map_err(|e| format!("{}: {e}", root.display()))
 }
 
 /// [`share_cards`] with its three places: `cards.toml`, your keys' folder
@@ -978,33 +1078,54 @@ pub fn share_cards_in(cards: &Path, own: &Path, shared: &Path, missing: bool) ->
     if known.is_empty() {
         return Ok(());
     }
-    let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
     for card in known {
-        let path = shared.join(shared_name(&card.ident));
-        if missing && path.exists() {
+        if missing && shared.join(shared_name(&card.ident)).exists() {
             continue;
         }
-        let Some(mine) = std::fs::read(own.join(format!("{}.asc", card.cert))).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) else { continue };
-        let mine = mine.strip_secret_key_material();
-        let there = std::fs::read_to_string(&path).ok().and_then(|text| toml::from_str::<SharedCard>(&text).ok());
-        let cert = match there.as_ref().and_then(|t| vouched(&t.card, &t.certificate)).filter(|t| t.fingerprint() == mine.fingerprint()) {
-            Some(shared) => mine.clone().merge_public(shared).unwrap_or(mine),
-            None => mine,
-        };
-        let certificate = String::from_utf8(cert.armored().to_vec().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        let text = format!(
-            "# Sioul: one of your security keys, as a computer of yours read it, and its certificate: public parts only (docs/database.md).\n{}",
-            toml::to_string(&SharedCard { card, certificate }).map_err(|e| e.to_string())?
-        );
-        if std::fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
-            continue;
-        }
-        std::fs::create_dir_all(shared).map_err(|e| fail(shared, e))?;
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, &text).map_err(|e| fail(&temporary, e))?;
-        std::fs::rename(&temporary, &path).map_err(|e| fail(&path, e))?;
+        share_one(&card, own, shared, false)?;
     }
     Ok(())
+}
+
+/// One security key's shared file written from this device: what
+/// `cards.toml` says of it, and its certificate merged with the one shared
+/// already, so that a renewal made on another computer is never undone.
+/// Written only when it changed; with `adds`, only when this device's
+/// certificate adds to the shared one (the record itself left as written).
+fn share_one(card: &KnownCard, own: &Path, shared: &Path, adds: bool) -> Result<(), String> {
+    let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
+    let path = shared.join(shared_name(&card.ident));
+    let Some(mine) = std::fs::read(own.join(format!("{}.asc", card.cert))).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) else { return Ok(()) };
+    let mine = mine.strip_secret_key_material();
+    let there = std::fs::read_to_string(&path).ok().and_then(|text| toml::from_str::<SharedCard>(&text).ok());
+    let vouched_there = there.as_ref().and_then(|t| vouched(&t.card, &t.certificate)).filter(|t| t.fingerprint() == mine.fingerprint());
+    let cert = match &vouched_there {
+        Some(shared) => mine.clone().merge_public(shared.clone()).unwrap_or(mine),
+        None => mine,
+    };
+    if adds {
+        // Only when the merge adds a packet the shared certificate lacks.
+        let Some(shared) = &vouched_there else { return Ok(()) };
+        if cert.clone().into_packets().count() == shared.clone().into_packets().count() {
+            return Ok(());
+        }
+    }
+    let record = match (adds, &there) {
+        (true, Some(there)) => there.card.clone(),
+        _ => card.clone(),
+    };
+    let certificate = String::from_utf8(cert.armored().to_vec().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let text = format!(
+        "# Sioul: one of your security keys, as a computer of yours read it, and its certificate: public parts only (docs/database.md).\n{}",
+        toml::to_string(&SharedCard { card: record, certificate }).map_err(|e| e.to_string())?
+    );
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(shared).map_err(|e| fail(shared, e))?;
+    let temporary = path.with_extension("toml.new");
+    std::fs::write(&temporary, &text).map_err(|e| fail(&temporary, e))?;
+    std::fs::rename(&temporary, &path).map_err(|e| fail(&path, e))
 }
 
 /// The shared file of the security key `ident` taken away: this device
@@ -1167,6 +1288,8 @@ pub fn adopt(card: &CardInfo, cert: &Cert, source: &str, addresses: Vec<String>,
     };
     known.update(card);
     let kept = known.clone();
+    // Read here again: no longer stopped here.
+    set_stopped_in(&data_dir().join("pgp"), &known.ident, false)?;
     change_known(|cards| {
         cards.retain(|c| !c.ident.eq_ignore_ascii_case(&kept.ident));
         cards.push(kept);
@@ -1174,25 +1297,34 @@ pub fn adopt(card: &CardInfo, cert: &Cert, source: &str, addresses: Vec<String>,
     Ok(known)
 }
 
-/// Stops using the security key `ident`: it leaves `cards.toml`, and its
-/// certificate leaves your keys for `pgp/removed` (never deleted); your
-/// other devices stop counting it too (its shared file goes). A key this
-/// device only learnt from another (a phone's) is stopped there, where it
-/// was read: `Err(None)`.
-pub fn forget(ident: &str) -> Result<(), Option<String>> {
-    if !known_cards().iter().any(|c| c.ident.eq_ignore_ascii_case(ident)) {
-        return Err(None);
+/// Stops using the security key `ident` on this device, for good: it is
+/// listed as stopped here (`pgp/stopped.toml`, never shared), so that
+/// another device's file for it is never taken back here (review of 19
+/// October 2026, F4). Read here: it also leaves `cards.toml`, its
+/// certificate leaves your keys for `pgp/removed` (never deleted), and its
+/// shared file goes; your other computers that read it keep using it until
+/// they stop it, and share it again when what they know of it changes.
+/// Known here only from another device: stopped here alone (`Ok(false)`).
+pub fn forget(ident: &str) -> Result<bool, String> {
+    forget_in(&data_dir().join("pgp"), ident)
+}
+
+/// [`forget`] in the folder `root` (`pgp/`).
+pub(crate) fn forget_in(root: &Path, ident: &str) -> Result<bool, String> {
+    set_stopped_in(root, ident, true)?;
+    let cards = root.join("cards.toml");
+    if !read_known(&cards).iter().any(|c| c.ident.eq_ignore_ascii_case(ident)) {
+        return Ok(false);
     }
-    let cert = change_known_at(&cards_path(), |cards| {
+    let cert = change_known_at(&cards, |cards| {
         let cert = cards.iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|c| c.cert.clone());
         cards.retain(|c| !c.ident.eq_ignore_ascii_case(ident));
         cert
-    })
-    .map_err(Some)?;
-    unshare_card(&shared_cards_dir(), ident);
+    })?;
+    unshare_card(&root.join(SHARED_CARDS), ident);
     match cert {
-        Some(cert) => crate::pgp::remove(&cert).map_err(Some),
-        None => Ok(()),
+        Some(cert) => crate::pgp::remove_in(root, &cert).map(|()| true),
+        None => Ok(true),
     }
 }
 
@@ -1276,6 +1408,17 @@ pub fn parts(cert: &Cert) -> Vec<Part> {
     // Said in one order whatever the certificate's: signing, encryption, authentication.
     out.sort_by_key(|part| part.role as u8);
     out
+}
+
+/// The fingerprint of a revoked encryption subkey of `cert`, when no other
+/// can take encryption: what the window says instead of an expiry.
+pub fn revoked_encryption(cert: &Cert) -> Option<String> {
+    let policy = StandardPolicy::new();
+    let valid = cert.with_policy(&policy, None).ok()?;
+    if valid.keys().subkeys().revoked(false).for_transport_encryption().next().is_some() {
+        return None;
+    }
+    valid.keys().subkeys().for_transport_encryption().find(|k| matches!(k.revocation_status(), openpgp::types::RevocationStatus::Revoked(_))).map(|k| k.key().fingerprint().to_hex())
 }
 
 /// The parts of the first certificate among `bytes` (`gpg --export`): none

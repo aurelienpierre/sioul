@@ -1063,9 +1063,28 @@ fn confirms(said: &str, file: &str) -> bool {
     if said.ends_with('/') { file.starts_with(said) } else { file == said || file.strip_prefix(said).is_some_and(|rest| rest.starts_with('/')) }
 }
 
-/// What a crash left half written by Sioul: its hidden names ending so.
+/// What a crash left half written by Sioul: its hidden names ending so, and
+/// those its replacements write beside a file (`filelock::Prepared`,
+/// `filelock::replace`: `.<name>.<process>-<number>.new`).
 fn is_leftover(name: &str) -> bool {
-    name.starts_with('.') && [TEMPORARY, ".shared.tmp", ".conflict.tmp"].iter().any(|end| name.ends_with(end))
+    let replacement = name.strip_suffix(".new").and_then(|rest| rest.rsplit_once('.')).is_some_and(|(_, tail)| tail.split_once('-').is_some_and(|(process, number)| !process.is_empty() && !number.is_empty() && process.bytes().all(|b| b.is_ascii_digit()) && number.bytes().all(|b| b.is_ascii_digit())));
+    name.starts_with('.') && ([TEMPORARY, ".shared.tmp", ".conflict.tmp"].iter().any(|end| name.ends_with(end)) || replacement)
+}
+
+/// [`clean_leftovers`] in `dir` and its folders, a few deep: the folders whose
+/// files travel whole (drafts, calendars and address books kept here), where
+/// a crash in a receive, a Put back or a copy's replacement leaves a hidden
+/// file that nothing else ever sweeps (review of 19 October 2026, F17).
+fn clean_leftovers_below(dir: &Path, depth: usize) {
+    clean_leftovers(dir);
+    if depth == 0 {
+        return;
+    }
+    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            clean_leftovers_below(&entry.path(), depth - 1);
+        }
+    }
 }
 
 /// A file left half written, removed once an hour old: never one still being written.
@@ -5577,9 +5596,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
         memory.tidied = now_ms;
     }
-    // What a crash left half written among the folder's sealed files, once a day (`Memory::cleaned`).
+    // What a crash left half written among the folder's sealed files, and in
+    // the folders whose files travel whole (F17), once a day
+    // (`Memory::cleaned`): listing them reads thousands of names.
     if now_ms - memory.cleaned >= DAY {
         clean_leftovers(&sharing.folder.join("blobs"));
+        for store in stores.iter().filter(|s| s.folder && matches!(s.shape, Shape::Whole)) {
+            clean_leftovers_below(&store.path, 3);
+        }
         memory.cleaned = now_ms;
     }
     // A full round, once as much as the last one restated was appended since,

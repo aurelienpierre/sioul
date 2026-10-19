@@ -332,9 +332,6 @@ pub fn run() -> i32 {
     // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
     #[cfg(not(target_os = "android"))]
     texts::at_start();
-    // Copies beside drafts that hold an encrypted message's text in clear
-    // (until 19 October 2026) encrypted again, off the window's start.
-    std::thread::spawn(crypto::seal_clear_drafts);
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking
@@ -350,6 +347,11 @@ pub fn run() -> i32 {
         // SAFETY: as above.
         unsafe { std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic") };
     }
+    // Copies beside drafts that hold an encrypted message's text in clear
+    // (until 19 October 2026) encrypted again, off the window's start; after
+    // the environment is set, which that thread reads (review of 19 October
+    // 2026, F10).
+    std::thread::spawn(crypto::seal_clear_drafts);
     // Where the system puts a window's buttons, read meanwhile for Sioul's own
     // title bar (desktop.rs); after the environment is set, which it reads.
     #[cfg(not(target_os = "android"))]

@@ -41,7 +41,7 @@ pub fn replace_wiping(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// A file as it was when it was read, to know before replacing it that it
 /// still is (its device and number, its size and time; size and time only
 /// where a file has no number: Windows).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileStamp {
     dev: u64,
     ino: u64,
@@ -109,8 +109,16 @@ impl Prepared {
         {
             return Ok(None);
         }
+        // Held for its overwrite; a file yours but read-only (a message copied
+        // with its mode) made writable first, else its old bytes would stay
+        // (review of 19 October 2026, F17).
         #[cfg(unix)]
-        let old = std::fs::OpenOptions::new().write(true).open(&self.path).ok();
+        let old = std::fs::OpenOptions::new().write(true).open(&self.path).ok().or_else(|| {
+            let mut permissions = std::fs::metadata(&self.path).ok()?.permissions();
+            std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o600);
+            std::fs::set_permissions(&self.path, permissions).ok()?;
+            std::fs::OpenOptions::new().write(true).open(&self.path).ok()
+        });
         #[cfg(not(unix))]
         let old: Option<std::fs::File> = None;
         std::fs::rename(&self.temporary, &self.path)?;
@@ -490,6 +498,32 @@ mod tests {
         let copied = base.join("copy");
         assert_eq!(copy_whole(&path, &copied).unwrap(), 6);
         assert_eq!(std::fs::read(&copied).unwrap(), b"sealed");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A copy yours but read-only (a message kept with the mode it came
+    /// with) is made writable to be overwritten: once replaced, its old bytes
+    /// are zeros (review of 19 October 2026, F17, probe P10a: they stayed,
+    /// silently, since it could not be opened for writing).
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_copy_is_overwritten_too() {
+        use std::io::Read;
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("sioul-read-only-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let path = base.join("a1.eml");
+        std::fs::write(&path, "The secret clause is on page four.").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        let mut reader = std::fs::File::open(&path).unwrap();
+        let placed = Prepared::new(&path, b"sealed").unwrap().place(FileStamp::now(&path)).unwrap().expect("placed");
+        placed.finish();
+        let mut old = Vec::new();
+        reader.read_to_end(&mut old).unwrap();
+        assert!(!old.is_empty() && old.iter().all(|&b| b == 0), "the old bytes overwritten: {:?}", String::from_utf8_lossy(&old));
+        assert_eq!(std::fs::read(&path).unwrap(), b"sealed");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600, "the new copy yours alone");
         let _ = std::fs::remove_dir_all(&base);
     }
 

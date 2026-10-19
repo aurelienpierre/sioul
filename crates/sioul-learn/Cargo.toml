@@ -28,6 +28,11 @@ flate2 = "1"
 # Pinned: its n-gram hashing must stay the one the phone's table reproduces.
 fasttext = "=0.8.0"
 
+[dev-dependencies]
+# No test reaches a keyring (review of 19 October 2026, F11): resolver 3 keeps
+# this feature out of the release builds.
+sioul-sync = { path = "../sioul-sync", features = ["no-keyring"] }
+
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).
 insecure-test-tls = ["sioul-sync/insecure-test-tls"]
