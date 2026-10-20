@@ -121,6 +121,12 @@ fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) 
     }
 }
 
+/// Reachable's end, for the listener's question (`Ask::reachable`, Unix
+/// seconds): while it lasts, everyone not blocked comes at once (part 3).
+fn reachable_until() -> Option<i64> {
+    crate::everywhere::reachable().map(|r| r.until.unwrap_or(i64::MAX))
+}
+
 /// The why of a text gathered because its number is one ARCEP keeps for
 /// machines (`appnotes::why_text`, "appnotes-why-machine").
 const MACHINE: &str = "machine";
@@ -198,7 +204,8 @@ fn decide(json: &str) -> String {
         _ => String::new(),
     };
     let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
-    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources };
+    let reachable = reachable_until();
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable };
     let hash = appnotes::key_hash(&posted.key);
     // A conversation you answered from a computer in the last twenty minutes, or a number
     // texted from one, by the SMS app: at once, but in a pause (`replies`).
@@ -217,6 +224,11 @@ fn decide(json: &str) -> String {
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
         if answered {
             decision = decision.answered();
+        }
+        // Back from a release you asked (Reachable, or "Let what your phone holds through"): held
+        // before it, it comes now, once; never the blocked nor a conversation set to never.
+        if returning && let Some(held) = ledger.held.get(&hash) {
+            decision = decision.released(held, &ledger);
         }
         // Back at its time and held again within minutes: not again and again.
         if returning
@@ -298,9 +310,14 @@ fn review(json: &str) -> String {
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     // A conversation answered from a computer in the last twenty minutes: what Sioul holds of it comes now, but in a pause (`replies`).
     let paused = live.clock.mode(&now).paused();
+    let reachable = reachable_until();
+    // A release asked since the last one applied (Reachable pressed on any device, or "Let what your phone
+    // holds through" on a computer): what was held before it comes now, once (part 3).
+    let release = crate::everywhere::release_stamp();
     let path = Ledger::default_path();
     let (again, counted) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
+        ledger.apply_release(release, stamp);
         let present: std::collections::BTreeSet<String> = keys.iter().map(|k| appnotes::key_hash(k)).collect();
         ledger.held.retain(|hash, held| present.contains(hash) || stamp - held.since < 60);
         let mut again = Vec::new();
@@ -309,11 +326,14 @@ fn review(json: &str) -> String {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
-            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources };
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable };
             let mut decided = appnotes::again(&held, &choices, &ask);
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
             }
+            // Held before the release: comes now (snoozed again for a second, never cancelled:
+            // a reply from a computer still finds it), every kind, but what is held for good.
+            decided = decided.released(&held, &ledger);
             let until = decided.until.unwrap_or(stamp);
             counted.push(Counted { why: decided.why, ..Counted::held(&held, until) });
             if (until - held.until).abs() > 60 {
@@ -485,6 +505,8 @@ fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> 
         "Always through".to_string()
     } else if released.iter().any(|c| c.why == Why::Answered) {
         "answered from a computer".to_string()
+    } else if released.iter().any(|c| c.why == Why::Released) {
+        "released as you asked".to_string()
     } else if columns.is_empty() {
         "unknown".to_string()
     } else {
@@ -940,7 +962,7 @@ mod tests {
         let gathered = vec!["09:00".to_string(), "12:00".into(), "15:00".into(), "18:00".into()];
         let never = |_: &Zoned| false;
         let sources = sioul_core::attention::source_rows(&posted.package, "");
-        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources };
+        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources, reachable: None };
         let decision = appnotes::decide(&kind, Some(Who::Neutral), false, &choices, &ask);
         assert_eq!(decision.until, focus.until, "held until the session's end");
         let cause = appnotes::cause(&posted.package, &kind, Some(Who::Neutral), false, &choices, &ask);

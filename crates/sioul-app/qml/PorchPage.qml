@@ -316,21 +316,18 @@ Item {
                             realtime.checked = Qt.binding(() => page.sioul.realtime)
                         }
                     }
-                    // Work shown whatever the hours: while work rests, or once ticked.
-                    // Not during a meal or sleep: they come first, whatever is ticked.
-                    CheckBox {
-                        id: workNow
-
-                        visible: (page.window.moment.quiet && page.window.moment.time !== "meals" && page.window.moment.time !== "sleep") || page.window.moment.work_now === true
-                        text: page.sioul.text("mode-work-now")
-                        checked: page.window.moment.work_now === true
+                    // "Show all mail now" (decision 12): a look at every lane and address, at
+                    // any hour, on this device alone, which tells nothing ("Work now" went:
+                    // Reachable and "Work until tonight" have its two jobs, part 3).
+                    Button {
+                        objectName: "show-all-mail"
+                        visible: page.view.open === true && page.view.all !== true
+                        flat: true
+                        text: page.sioul.text("ui-show-all-mail")
                         ToolTip.visible: hovered
-                        ToolTip.text: page.sioul.text("mode-work-now-help")
+                        ToolTip.text: page.sioul.text("ui-show-all-mail-help")
                         ToolTip.delay: 400
-                        onToggled: {
-                            page.sioul.setWorkNow(checked)
-                            workNow.checked = Qt.binding(() => page.window.moment.work_now === true)
-                        }
+                        onClicked: page.sioul.openAnyway()
                     }
                     SettingsButton {
                         id: settingsButton
@@ -1008,7 +1005,7 @@ Item {
                         color: page.theme.muted
                     }
                     Button {
-                        text: page.sioul.text("ui-open-anyway")
+                        text: page.sioul.text("ui-show-all-mail")
                         onClicked: page.sioul.openAnyway()
                     }
                 }

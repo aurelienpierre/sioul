@@ -51,7 +51,50 @@ fn sources(overrides: &Overrides, blocks: &sioul_core::quiet::Blocks, now: &Zone
     let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, blocks, now.time_zone())));
     let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
     let focus = sioul_core::timelog::running().and_then(|r| rules::focus(&r, stamp));
-    Sources { paused: overrides.paused_from(), free, sleep, focus }
+    Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since }
+}
+
+/// The devices gone from the sharing by a sealed fact (they left, you forgot
+/// them, another replaces them), as this device last found them
+/// (`note_gone`): their presses and release stamps are passed over (part 3
+/// of "What reaches you"). This device's own file, ids only, never shared.
+fn gone_path() -> std::path::PathBuf {
+    crate::share::memory_path().with_file_name("gone-devices.json")
+}
+
+fn gone_devices() -> std::collections::BTreeSet<String> {
+    std::fs::read(gone_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
+}
+
+/// At the window's exchanges, at most once an hour: the devices the sharing
+/// has gone by a sealed fact written down (`sioul_sync::share::asking`), for
+/// the switch's reading. Never on a dose's path: the window's own exchanges only.
+pub(crate) fn note_gone(folder: &std::path::Path, key: &[u8; 32], here: &str) {
+    static LAST: Mutex<i64> = Mutex::new(0);
+    let now = jiff::Timestamp::now().as_millisecond();
+    {
+        let Ok(mut last) = LAST.lock() else { return };
+        if now - *last < 3_600_000 {
+            return;
+        }
+        *last = now;
+    }
+    let (_, gone) = sioul_sync::share::asking(folder, key, &crate::share::memory_path(), here, now);
+    if gone != gone_devices()
+        && let Ok(text) = serde_json::to_vec(&gone)
+    {
+        let path = gone_path();
+        let fresh = path.with_extension(format!("json.{}", std::process::id()));
+        if std::fs::write(&fresh, text).and_then(|()| std::fs::rename(&fresh, &path)).is_err() {
+            let _ = std::fs::remove_file(&fresh);
+        }
+    }
+}
+
+/// The switch as this device reads it: the devices gone from the sharing passed over.
+fn switch_here(here: &str) -> Switch {
+    let gone = gone_devices();
+    Switch::load(&Switch::default_path()).counted(here, &|id| !gone.contains(id))
 }
 
 /// Health's nights, naps and meals: as the window has them; in the background
@@ -85,7 +128,7 @@ impl Look {
         let config = load_config();
         let now = Zoned::now();
         let overrides = Overrides::load(&Overrides::default_path());
-        let switch = Switch::load(&Switch::default_path());
+        let switch = switch_here(&here_id());
         let blocks = blocks(&now);
         let state = rules::now(&config.dnd, &sources(&overrides, &blocks, &now), switch.latest().as_ref(), now.timestamp().as_second());
         let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);
@@ -159,7 +202,8 @@ impl Look {
         let night = if self.config.dnd.sleep { blocks(&self.now).kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.start > stamp).map(|k| k.start).min() } else { None };
         let time = if self.state.gates() { self.mode.until.as_ref().map(|u| u.timestamp().as_second()) } else { None };
         let through = crate::calls::through_now(&self.switch).filter(|t| t.holds(stamp * 1000) && t.until > 0).map(|t| (t.until + 999) / 1000);
-        [self.state.next_end(), night, time, through].into_iter().flatten().filter(|t| *t > stamp).min()
+        let reachable = self.state.reachable.as_ref().and_then(|r| r.until);
+        [self.state.next_end(), night, time, through, reachable].into_iter().flatten().filter(|t| *t > stamp).min()
     }
 }
 
@@ -181,6 +225,33 @@ fn phone_does() -> sioul_core::attention::Phone {
 /// Why do-not-disturb holds now, on every device alike.
 pub(crate) fn now() -> Now {
     Look::now().state
+}
+
+/// Reachable as last read, and when (`reachable`); forgotten at a press here.
+static REACHABLE_KEPT: Mutex<Option<(Instant, Option<rules::Reach>)>> = Mutex::new(None);
+
+/// Reachable now, on every device alike (part 3 of "What reaches you"):
+/// since, until when, from which device. Read again at most every five
+/// seconds: asked at every notification.
+pub(crate) fn reachable() -> Option<rules::Reach> {
+    if let Ok(kept) = REACHABLE_KEPT.lock()
+        && let Some((at, reach)) = kept.as_ref()
+        && at.elapsed() < Duration::from_secs(5)
+    {
+        return reach.clone();
+    }
+    let reach = now().reachable;
+    if let Ok(mut kept) = REACHABLE_KEPT.lock() {
+        *kept = Some((Instant::now(), reach.clone()));
+    }
+    reach
+}
+
+/// What the phone is asked to let through, held before then (milliseconds):
+/// the latest Reachable press while it holds, or "Let what your phone holds
+/// through" pressed on a device; 0 none (`rules::Switch::release_stamp`).
+pub(crate) fn release_stamp() -> i64 {
+    switch_here(&here_id()).release_stamp()
 }
 
 /// Whether the switch or a focus session holds do-not-disturb now: a layer
@@ -407,6 +478,132 @@ pub(crate) fn press(on: bool, until: Option<i64>) -> Result<(), String> {
     press_via(on, until, "")
 }
 
+/// Tonight: when the night begins next, by day, as Health knows it (Unix
+/// seconds); none at night, or with no night known ("Work until tonight").
+pub(crate) fn tonight(now: &Zoned) -> Option<i64> {
+    match night_and_waking(now) {
+        (night, None) => night,
+        _ => None,
+    }
+}
+
+/// When the night begins next (by day) and when the night you are in ends
+/// (at night), as Health knows them (Unix seconds): for Reachable's ends.
+fn night_and_waking(now: &Zoned) -> (Option<i64>, Option<i64>) {
+    let stamp = now.timestamp().as_second();
+    let blocks = blocks(now);
+    let waking = blocks.at(stamp, &["sleep"]).map(|k| k.end);
+    let night = blocks.kept.iter().filter(|k| k.kind == "sleep" && k.start > stamp).map(|k| k.start).min();
+    (night, waking)
+}
+
+/// The ends Reachable may be pressed for now (Unix seconds; 0 none): the end
+/// of the hours you are in, the night's start (or waking, at night), and
+/// whether it is night.
+fn reachable_ends(now: &Zoned) -> (i64, i64, bool) {
+    let stamp = now.timestamp().as_second();
+    let (night, waking) = night_and_waking(now);
+    let mode = crate::hours::mode_at(now);
+    let hours = mode.until.as_ref().map(|u| u.timestamp().as_second()).filter(|u| *u > stamp && waking.is_none());
+    (hours.unwrap_or(0), waking.or(night).unwrap_or(0), waking.is_some())
+}
+
+/// One of the three states pressed here (`rules::State`; part 3 of "What
+/// reaches you"): Reachable for `length` ("30", "60", "120" minutes,
+/// "hours" until the hours you are in end, "tonight", "off" until you turn
+/// it off: at the latest the night's start, or waking at night), As usual,
+/// or Do not disturb for `length` minutes ("0" until turned off, "-1" until
+/// what now is for ends). Applied here, the status line shown again, the
+/// other devices told at once; a Reachable press releases what the phone
+/// holds (`appnotes::review`, at its next look).
+pub(crate) fn choose(mut sioul: Pin<&mut Sioul>, state: &str, length: &str) {
+    let now = Zoned::now();
+    let stamp = now.timestamp().as_second();
+    let (state, until, open) = match rules::State::read(state) {
+        Some(rules::State::Reachable) => {
+            // Never during a pause (decision 9): the pause's button ends it, and it is not offered then.
+            if Look::now().state.has(Why::Paused) {
+                sioul.as_mut().set_status(QString::from(&tr().text("reach-not-in-pause", None)));
+                return;
+            }
+            let length = match length {
+                "hours" => rules::Length::HoursEnd,
+                "tonight" => rules::Length::Tonight,
+                "off" => rules::Length::Off,
+                minutes => rules::Length::Minutes(minutes.parse().unwrap_or(60)),
+            };
+            let (night, waking) = night_and_waking(&now);
+            let hours = reachable_ends(&now).0;
+            match rules::reachable_until(length, stamp, (hours > 0).then_some(hours), night, waking) {
+                Some((until, open)) => (rules::State::Reachable, Some(until), open),
+                None => {
+                    sioul.as_mut().set_status(QString::from(&tr().text("reach-no-end", None)));
+                    return;
+                }
+            }
+        }
+        Some(rules::State::Dnd) => {
+            let until = match length.parse::<i64>().unwrap_or(0) {
+                m if m > 0 => Some(stamp + m * 60),
+                -1 => crate::hours::mode_at(&now).until.map(|u| u.timestamp().as_second()),
+                _ => None,
+            };
+            (rules::State::Dnd, until, false)
+        }
+        _ => (rules::State::Usual, None, false),
+    };
+    if let Err(e) = press_state(state, until, open) {
+        sioul.as_mut().set_status(QString::from(&e));
+        return;
+    }
+    let (qt, shared) = (sioul.qt_thread(), sioul.shared());
+    std::thread::spawn(move || {
+        apply();
+        let _ = qt.queue(|mut sioul| sioul.as_mut().set_mode(QString::from(&mode_json())));
+        crate::backend::follow_reachable(&qt, &shared);
+        crate::share::exchange(&qt, &shared);
+    });
+}
+
+/// A press of one of the three states here, until `until` (Unix seconds),
+/// "until you turn it off" or not (`open`); applied by the caller.
+pub(crate) fn press_state(state: rules::State, until: Option<i64>, open: bool) -> Result<(), String> {
+    crate::devices::pressed();
+    if let Ok(mut kept) = REACHABLE_KEPT.lock() {
+        *kept = None;
+    }
+    let here = here_id();
+    let now = jiff::Timestamp::now().as_millisecond();
+    rules::change_own(&Switch::default_path(), &here, |switch| {
+        switch.press_state(&here, state, until.map_or(0, |u| u.saturating_mul(1000)), open, now, "");
+        let own = switch.device.entry(here.clone()).or_default();
+        own.kind = crate::devices::kind().to_string();
+        own.name = if own.kind == "phone" { String::new() } else { crate::devices::name() };
+        true
+    })?;
+    Ok(())
+}
+
+/// "Let what your phone holds through", pressed on a computer (3.3): a
+/// release stamp in this device's table; the phone lets through what it held
+/// before it, once, and the computer never learns what it was. Sent at once.
+pub(crate) fn let_through(mut sioul: Pin<&mut Sioul>) {
+    let here = here_id();
+    let now = jiff::Timestamp::now().as_millisecond();
+    let written = rules::change_own(&Switch::default_path(), &here, |switch| {
+        switch.release(&here, now);
+        true
+    });
+    if let Err(e) = written {
+        eprintln!("sioul: do-not-disturb: {e}");
+        sioul.as_mut().set_status(QString::from(&e));
+        return;
+    }
+    sioul.as_mut().set_status(QString::from(&tr().text("reach-let-through-done", None)));
+    let (qt, shared) = (sioul.qt_thread(), sioul.shared());
+    crate::share::exchange(&qt, &shared);
+}
+
 /// A press here, saying where it came from (`rules::VIA_SYSTEM`: this
 /// device's own do-not-disturb, heard as it changed; "": the switch).
 fn press_via(on: bool, until: Option<i64>, via: &str) -> Result<(), String> {
@@ -557,10 +754,29 @@ fn moment_of(look: &Look) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
     // The end of what now is for, for "Until 17:00" in the switch's menu (the window's alone).
     let end = if crate::steps::in_service() { None } else { crate::hours::mode_at(now).until.map(|u| u.timestamp().as_second()).filter(|u| *u > stamp && *u - stamp < 24 * 3600) };
+    // The three states (part 3): which holds, Reachable's end and words, and the ends it may be pressed for.
+    let (hours_end, night_end, at_night) = if crate::steps::in_service() { (0, 0, false) } else { reachable_ends(now) };
+    let reach = state.reachable.as_ref().map(|r| {
+        let until = r.until.map(|u| when(u, now)).unwrap_or_default();
+        let line = match (r.open, until.is_empty()) {
+            (_, true) => tr().text("reach-line-open-ended", None),
+            (true, false) => say("reach-line-open", &[("until", until.clone())]),
+            (false, false) => say("reach-line", &[("until", until.clone())]),
+        };
+        serde_json::json!({ "until": until, "until_at": r.until.unwrap_or(0), "open": r.open, "line": line, "from": name_of(&look.switch, &r.from) })
+    });
     let base = serde_json::json!({
         "button": look.config.dnd.button,
         "end_time": end.map(|e| when(e, now)).unwrap_or_default(),
         "end_at": end.unwrap_or(0),
+        "state": if state.reachable.is_some() { "reachable" } else if state.on() { "dnd" } else { "usual" },
+        "reachable": reach.unwrap_or(serde_json::Value::Null),
+        "paused": state.has(Why::Paused),
+        "reach_hours": hours_end,
+        "reach_hours_time": if hours_end > 0 { when(hours_end, now) } else { String::new() },
+        "reach_tonight": night_end,
+        "reach_tonight_time": if night_end > 0 { when(night_end, now) } else { String::new() },
+        "reach_at_night": at_night,
     });
     let here = here_id();
     let own = look.switch.device.get(&here);
@@ -901,7 +1117,7 @@ mod tests {
     fn the_signature_follows_what_is_asked() {
         let look = |paused: bool, manual: bool| {
             let config = Config::default();
-            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into(), via: String::new() });
+            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into(), via: String::new(), state: rules::State::Dnd, open: false });
             let sources = Sources { paused: paused.then_some(1), ..Sources::default() };
             let state = rules::now(&config.dnd, &sources, press.as_ref(), 100);
             let now = Zoned::now();
@@ -919,6 +1135,41 @@ mod tests {
         let calls = |look: &Look| look.asks()[0].1.as_ref().and_then(|a| a.silence).map(|s| s.calls);
         assert_eq!((calls(&through), calls(&look(true, false))), (Some(sioul_core::attention::Senders::Anyone), Some(sioul_core::attention::Senders::Starred)));
         assert_ne!(through.signature(), look(true, false).signature());
+    }
+
+    /// Part 3: the status line's moment says which of the three states
+    /// holds, Reachable's end in its words, whether it is "until you turn it
+    /// off", and a pause, during which Reachable neither holds nor is offered.
+    #[test]
+    fn the_moment_says_which_of_the_three_states_holds() {
+        let look = |press: Option<rules::Press>, paused: bool| {
+            let config = Config::default();
+            let now = Zoned::now();
+            let stamp = now.timestamp().as_second();
+            let sources = Sources { paused: paused.then_some(stamp - 60), pause_pressed: paused.then_some(stamp - 60), ..Sources::default() };
+            let state = rules::now(&config.dnd, &sources, press.as_ref(), stamp);
+            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &Overrides::default(), &sioul_core::quiet::Blocks::default(), &now);
+            Look { config, overrides: Overrides::default(), switch: Switch::default(), state, mode, now }
+        };
+        let at = jiff::Timestamp::now().as_millisecond();
+        let reach = rules::Press { at: at - 1_000, on: false, until: at + 3_600_000, from: "x".into(), via: String::new(), state: rules::State::Reachable, open: false };
+        let said = moment_of(&look(Some(reach.clone()), false));
+        assert_eq!((said["state"].as_str(), said["paused"].as_bool()), (Some("reachable"), Some(false)), "{said}");
+        let line = said["reachable"]["line"].as_str().unwrap_or_default();
+        assert!(!line.is_empty() && !line.starts_with("reach-"), "{said}");
+        assert_eq!(said["reachable"]["until_at"], (at + 3_600_000) / 1000);
+        let open = moment_of(&look(Some(rules::Press { open: true, ..reach.clone() }), false));
+        assert_eq!(open["reachable"]["open"], true);
+        assert_ne!(open["reachable"]["line"], said["reachable"]["line"], "until you turn it off: said so");
+        let dnd = rules::Press { state: rules::State::Dnd, on: true, until: 0, ..reach.clone() };
+        assert_eq!(moment_of(&look(Some(dnd), false))["state"], "dnd");
+        assert_eq!(moment_of(&look(None, false))["state"], "usual");
+        // Past its end: as usual.
+        let over = rules::Press { until: at - 500, ..reach.clone() };
+        assert_eq!(moment_of(&look(Some(over), false))["state"], "usual");
+        // During a pause: no Reachable, and the moment says paused (the menu offers none of its lengths).
+        let paused = moment_of(&look(Some(reach), true));
+        assert!(paused["reachable"].is_null() && paused["paused"] == true, "{paused}");
     }
 
     #[test]

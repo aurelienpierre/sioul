@@ -30,14 +30,14 @@ Each rule is marked:
 
 ## Where the state lives
 
-- **In `quiet.toml`, the sharing's "time" part** (O asked to choose; chosen here). The pauses are overrides of what now is, as "Done for today" and "Work now" already are, in the same file; the time part carries it with the plan's other files, and every device that plans needs it to lay the same day (Free time's moved end, the lighter day after a pause). A pause pressed on one device is a pause on all (P8), once the sharing has carried it: at each device's next exchange, a minute at most when the window is open; a phone with Sioul put away follows when it is opened again (Android freezes an app in the back).
+- **In `quiet.toml`, the sharing's "time" part** (O asked to choose; chosen here). The pauses are overrides of what now is, as "Done for today" and "A little longer" already are, in the same file; the time part carries it with the plan's other files, and every device that plans needs it to lay the same day (Free time's moved end, the lighter day after a pause). A pause pressed on one device is a pause on all (P8), once the sharing has carried it: at each device's next exchange, a minute at most when the window is open; a phone with Sioul put away follows when it is opened again (Android freezes an app in the back).
 - **Two stamps per pause**, `free_since`/`free_ended`, `paused_since`/`paused_ended`: on while the press is later than the end. Never a key taken away: the sharing merges key by key, and a pause is never half on (G).
 - **The setup** is in the configuration, `[free_time]` and `[pause]`, with the settings part.
 - A device whose time part is off pauses alone.
 
 ## Which comes first
 
-The pause, then sleep, then Free time, then meals, then the hours' own overrides ("Done for today", "A little longer", "Work now"), then the hours (`quiet::mode`).
+The pause, then sleep, then Free time, then meals, then the hours' own overrides ("Done for today", "A little longer", "Work until tonight", an older Sioul's "Work now"), then the hours (`quiet::mode`).
 
 | Now | Time | What still comes |
 |---|---|---|
@@ -146,7 +146,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 
 ## The status line's end
 - Free time and Pause have a place of their own at the line's end, never pushed out: what the line holds is cut before them. On a phone they are their icons alone, each with its accessible name; both fit 412 pixels. (O)
-- Free time's menu: a right click, or a long press on a touch screen: **Come back from free time**, **Keep my usual end (17:00)**, **Nothing at all**. The status line's own menu has the same items during Free time ("Work now" and "work a while" are not offered then).
+- Free time's menu: a right click, or a long press on a touch screen: **Come back from free time**, **Keep my usual end (17:00)**, **Nothing at all**. The status line's own menu has the same items during Free time ("Work until tonight" and "work a while" are not offered then).
 
 ## Do-not-disturb
 The pauses hold Sioul's own notifications on every device (above). Each device also puts its system's do-not-disturb on for itself, where the system lets an application do it, with the exceptions set in the pause's settings; the pause's line says what was silenced and what could not be (`crates/sioul-app/src/dnd.rs`: `can`, `enter`, `leave`). While a pause lasts, only what Sioul turned on is turned off at its end; Sioul's do-not-disturb going off altogether turns the system's own off too, where Sioul can, and a system's own do-not-disturb turned on or off presses Sioul's switch ([do-not-disturb.md](do-not-disturb.md#both-ways)). Asked again unchanged, nothing is redone; what Sioul turned on is kept in its state folder (`dnd.toml`), so that the next start puts right what a crash left.

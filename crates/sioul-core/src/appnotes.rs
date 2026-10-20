@@ -724,6 +724,9 @@ pub struct Ask<'a> {
     /// The notification's own rows in the matrix, its conversation's then its
     /// app's (`attention::source_rows`): read over its usual row when set.
     pub sources: &'a [String],
+    /// Reachable until then (Unix seconds; part 3 of "What reaches you"):
+    /// while it lasts, everyone not blocked comes at once (`attention::Now::reachable`).
+    pub reachable: Option<i64>,
 }
 
 impl Ask<'_> {
@@ -744,7 +747,7 @@ impl Ask<'_> {
         let Ok(until) = self.now.checked_add(jiff::Span::new().hours(HORIZON_DAYS * 24)) else { return Vec::new() };
         let mut moments = self.clock.starts(self.now, &until);
         let gate_end = self.gate.as_ref().map(|g| g.until.unwrap_or(stamp + GATE_RECHECK));
-        for second in self.also.iter().copied().chain(gate_end).filter(|s| *s > stamp && *s < until.timestamp().as_second()) {
+        for second in self.also.iter().copied().chain(gate_end).chain(self.reachable).filter(|s| *s > stamp && *s < until.timestamp().as_second()) {
             if let Ok(t) = jiff::Timestamp::from_second(second) {
                 moments.push(t.to_zoned(self.now.time_zone().clone()));
             }
@@ -759,6 +762,7 @@ impl Ask<'_> {
     fn moment(&self, at: &Zoned, mode: &Mode) -> attention::Now {
         let mut now = attention::Now::of(mode).layers((self.slot_at)(at), self.gated(at));
         now.nothing = self.nothing && mode.free();
+        now.reachable = self.reachable.is_some_and(|until| at.timestamp().as_second() < until);
         now
     }
 
@@ -802,6 +806,9 @@ pub enum Why {
     /// A conversation you answered from a computer in the last twenty
     /// minutes (`replies::answered_lately`): let through, but in a pause.
     Answered,
+    /// Held before a release you asked (Reachable pressed, or "Let what
+    /// your phone holds through" on a computer: part 3): let through once.
+    Released,
 }
 
 impl Why {
@@ -819,6 +826,7 @@ impl Why {
             Why::Never => "never",
             Why::Again => "again",
             Why::Answered => "answered",
+            Why::Released => "released",
         }
     }
 }
@@ -846,6 +854,15 @@ impl Decision {
     /// (the blocked, a conversation set to never) stays held.
     pub fn answered(self) -> Decision {
         if self.until.is_some() && self.why != Why::Never { Decision::through(Why::Answered) } else { self }
+    }
+
+    /// Of a notification held at or before the last release applied
+    /// (`Ledger::released_before`; Reachable pressed, or "Let what your phone
+    /// holds through" on a computer: part 3): what would wait comes now, every
+    /// kind; held for good (the blocked, a conversation set to never) stays
+    /// held, and what was held after the release waits as decided.
+    pub fn released(self, held: &Held, ledger: &Ledger) -> Decision {
+        if self.until.is_some() && self.why != Why::Never && ledger.released_before(held) { Decision::through(Why::Released) } else { self }
     }
 }
 
@@ -1268,9 +1285,37 @@ pub struct Ledger {
     /// When the listener last heard from Android (Unix seconds): the access works.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub heard: i64,
+    /// The latest release applied (milliseconds, as the switch stamped it:
+    /// `everywhere::Switch::release_stamp`): each stamp applied once (part 3
+    /// of "What reaches you").
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub released: i64,
+    /// What that release let through: what was held at or before then (Unix
+    /// seconds, this phone's clock; a stamp ahead of it read as its own now
+    /// when applied, never releasing what is held after).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub released_through: i64,
 }
 
 impl Ledger {
+    /// A release asked (`stamp`, milliseconds, the pressing device's clock),
+    /// applied at `now` (Unix seconds) once: whether it is new. What was held
+    /// at or before its time, or before `now` for a stamp ahead of this
+    /// phone's clock, then comes back (`released_before`).
+    pub fn apply_release(&mut self, stamp: i64, now: i64) -> bool {
+        if stamp <= self.released {
+            return false;
+        }
+        self.released = stamp;
+        self.released_through = (stamp / 1000).min(now);
+        true
+    }
+
+    /// Whether a notification held now was held at or before the last release applied.
+    pub fn released_before(&self, held: &Held) -> bool {
+        self.released_through > 0 && held.since <= self.released_through
+    }
+
     pub fn default_path() -> PathBuf {
         crate::config::state_dir().join("app-notes-seen.toml")
     }
@@ -1558,7 +1603,7 @@ mod tests {
     fn ask<'a>(now: &'a Zoned, clock: &'a TestClock, area: Option<Area>, gate: Option<Gate>) -> Ask<'a> {
         static GATHERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
         let gathered = GATHERED.get_or_init(|| vec!["09:00".into(), "13:00".into(), "18:00".into()]);
-        Ask { now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
+        Ask { reachable: None, now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
     }
 
     fn posted(json: &str) -> Posted {
@@ -1799,7 +1844,7 @@ mod tests {
         let late = vec!["06:30".to_string(), "13:00".into(), "22:30".into()];
         let ask_late = |now: &'static str| {
             let now = Box::leak(Box::new(at(now)));
-            Ask { now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
+            Ask { reachable: None, now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
         };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &ask_late("2026-10-06T20:00[Europe/Paris]"))), "2026-10-07T13:00:00", "22:30 and 06:30 are asleep");
         // A pause: nothing gathered until it ends; asked again six hours on, brought back when it ends (`again`).
@@ -1819,7 +1864,7 @@ mod tests {
         let slot = |z: &Zoned| z.date() == at("2026-10-06T00:00[Europe/Paris]").date() && z.hour() == 13;
         let now = at("2026-10-06T10:00[Europe/Paris]");
         let usual = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let with_slot = Ask { now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[], sources: &[] };
+        let with_slot = Ask { reachable: None, now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[], sources: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &with_slot)), "2026-10-06T18:00:00");
         // No time that reads: three a day.
         assert_eq!(times_of(&["later".into()]).len(), 3);
@@ -1905,19 +1950,19 @@ mod tests {
         let mut rows = usual().clone();
         rows.set_source("app.com.discord", C::Leisure, Level::Later).unwrap();
         rows.set_source(&server_rows[0], C::Work, Level::Later).unwrap();
-        let own = Ask { now: &evening, clock: &clock, attention: &rows, gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &dm_rows };
+        let own = Ask { reachable: None, now: &evening, clock: &clock, attention: &rows, gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &dm_rows };
         assert_eq!(said(DISCORD_DM, Some(Who::Safe), &choices, &own), Some(Cause { own: Some(Own::App), columns: vec![C::Leisure], ..Cause::default() }));
         let own = Ask { now: &morning, sources: &server_rows, ..own };
         assert_eq!(said(DISCORD_SERVER, Some(Who::Stranger), &choices, &own), Some(Cause { own: Some(Own::Conversation), columns: vec![C::Work], ..Cause::default() }));
         // Free time's "Nothing at all": your safe people wait, and it says so.
         let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
         let afternoon = at("2026-10-06T16:00[Europe/Paris]");
-        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
+        let nothing = Ask { reachable: None, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
         assert_eq!(said(SMS_CONTACT, Some(Who::Safe), &choices, &nothing), Some(Cause { columns: vec![C::Free], nothing: true, ..Cause::default() }));
         // A slot of time for you at nine: an automaton waits it out.
         let in_slot = |z: &Zoned| z.hour() == 9;
         let nine = at("2026-10-06T09:20[Europe/Paris]");
-        let slotted = Ask { now: &nine, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
+        let slotted = Ask { reachable: None, now: &nine, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
         assert_eq!(said(SHOP, None, &choices, &slotted), Some(Cause { gathered: Some(Gathering::Automaton), columns: vec![C::Slot], ..Cause::default() }));
         // Whatever holds, something says why: every fixture, hour, sender, area, layer; an app at once
         // for work, which the matrix lets come in the night, held there by what it is for.
@@ -1948,7 +1993,7 @@ mod tests {
                         let slot_at = move |z: &Zoned| slot && z.hour() == 9;
                         for area in [None, Some(Area::WORK), Some(Area::LEISURE)] {
                             for who in [None, Some(Who::Safe), Some(Who::Neutral), Some(Who::Restricted), Some(Who::Stranger), Some(Who::Blocked)] {
-                                let ask = Ask { now: &now, clock: &quick, attention: matrix, gathered: &gathered, area, gate: dnd.then_some(Gate { until: None }), slot_at: &slot_at, nothing: false, also: &[], sources: &[] };
+                                let ask = Ask { now: &now, clock: &quick, attention: matrix, gathered: &gathered, area, gate: dnd.then_some(Gate { until: None }), slot_at: &slot_at, nothing: false, also: &[], sources: &[], reachable: None };
                                 if decide(&kind, who, false, choices, &ask).until.is_none() {
                                     continue;
                                 }
@@ -1972,7 +2017,7 @@ mod tests {
         let shop = classify(&posted(SHOP), &choices);
         let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
         let decided = |kind: &Kind, who: Option<Who>, listed: bool, matrix: &Attention, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
-            decide(kind, who, listed, &choices, &Ask { now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] })
+            decide(kind, who, listed, &choices, &Ask { reachable: None, now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] })
         };
         let mut matrix = usual().clone();
         // Always through under do-not-disturb: at once whatever their row (Q2), as usual; their row's times with ☆.
@@ -1999,10 +2044,10 @@ mod tests {
         assert_eq!(until_of(decided(&shop, None, false, &matrix, &morning, &clock, None)), "2026-10-06T18:00:00");
         // Time for you everywhere (Q12): the listener reads the slots, which hold automatons as the window's did.
         let in_slot = |z: &Zoned| z.hour() == 9;
-        let slotted = Ask { now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
+        let slotted = Ask { reachable: None, now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &slotted)), "2026-10-06T13:00:00");
         // "Nothing at all" in Free time: the safe wait too, Always through comes.
-        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
+        let nothing = Ask { reachable: None, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
         assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &nothing).why, Why::Waiting);
         assert_eq!(decide(&sms, Some(Who::Safe), true, &choices, &nothing).why, Why::Allowed);
         // A mail app's notification takes the Mail rows (Q5): a safe sender's at night waits for waking (before: let through).
@@ -2105,10 +2150,72 @@ mod tests {
     /// gathered, under do-not-disturb, worked out again; nothing changes for
     /// an app without a row of its own; the blocked and codes as before; an
     /// automaton the matrix lets through at once comes at once.
+    /// Part 3, Reachable in the listener (decision 7): the people who write
+    /// come at once at every hour while it lasts, the blocked never, an app's
+    /// automatic notifications at their gathered times as before; once it is
+    /// over, as usual again.
+    #[test]
+    fn reachable_lets_people_through_and_leaves_automatons_gathered() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_CONTACT), &choices);
+        let shop = classify(&posted(SHOP), &choices);
+        for hour in ["03:00", "10:00", "12:30", "20:00", "23:30"] {
+            let now = at(&format!("2026-10-06T{hour}[Europe/Paris]"));
+            let until = now.timestamp().as_second() + 3600;
+            for gated in [false, true] {
+                let gate = || gated.then_some(Gate { until: None });
+                let usual = ask(&now, &clock, None, gate());
+                let reach = Ask { reachable: Some(until), ..ask(&now, &clock, None, gate()) };
+                for who in [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger] {
+                    let d = decide(&sms, Some(who), false, &choices, &reach);
+                    assert_eq!(d.until, None, "{who:?} at {hour}, gated {gated}: {d:?}");
+                }
+                assert_eq!(decide(&sms, Some(Who::Blocked), false, &choices, &reach).why, Why::Never, "{hour}");
+                assert_eq!(until_of(decide(&shop, None, false, &choices, &reach)), until_of(decide(&shop, None, false, &choices, &usual)), "an automaton keeps its gathered time at {hour}");
+            }
+        }
+        // At night, over: a contact's text waits again.
+        let night = at("2026-10-06T23:30[Europe/Paris]");
+        let over = Ask { reachable: Some(night.timestamp().as_second() - 60), ..ask(&night, &clock, None, None) };
+        assert!(decide(&sms, Some(Who::Neutral), false, &choices, &over).until.is_some(), "at night, after Reachable, a contact's text waits");
+    }
+
+    /// Part 3, the release (3.3 of the proposal): each stamp applied once;
+    /// what was held at or before it comes back, not what is held after; a
+    /// stamp ahead of the phone's clock read as the phone's now.
+    #[test]
+    fn a_release_lets_through_what_was_held_before_it_once() {
+        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, again: 0 };
+        let mut ledger = Ledger::default();
+        assert!(!ledger.released_before(&held(1_000)), "no release yet");
+        assert!(ledger.apply_release(2_000_000, 5_000));
+        assert!(ledger.released_before(&held(1_000)) && ledger.released_before(&held(2_000)));
+        assert!(!ledger.released_before(&held(2_001)), "held after the press: not released");
+        assert!(!ledger.apply_release(2_000_000, 6_000), "the same stamp, applied once");
+        assert!(!ledger.apply_release(1_000_000, 6_000), "an older stamp: passed over");
+        // A computer's clock ahead of the phone's: what the phone holds after its own now stays held.
+        assert!(ledger.apply_release(9_000_000, 3_000 + 4_000));
+        assert_eq!(ledger.released_through, 7_000);
+        assert!(!ledger.released_before(&held(7_001)));
+        // Kept across a restart.
+        let back: Ledger = toml::from_str(&toml::to_string(&ledger).unwrap()).unwrap();
+        assert_eq!((back.released, back.released_through), (9_000_000, 7_000));
+        // What a release lets through: what waited, every kind, held before it; never what is held for good;
+        // an automaton held after it keeps its gathered time; what comes already, as it is.
+        let before = held(6_000);
+        assert_eq!(Decision::held(9_000, Why::Gathered).released(&before, &ledger), Decision::through(Why::Released));
+        assert_eq!(Decision::held(9_000, Why::Waiting).released(&before, &ledger), Decision::through(Why::Released));
+        assert_eq!(Decision::held(i64::MAX, Why::Never).released(&before, &ledger), Decision::held(i64::MAX, Why::Never), "the blocked, a conversation set to never");
+        assert_eq!(Decision::held(9_000, Why::Gathered).released(&held(7_500), &ledger), Decision::held(9_000, Why::Gathered), "held after the release: its gathered time");
+        assert_eq!(Decision::through(Why::Allowed).released(&before, &ledger), Decision::through(Why::Allowed));
+        assert_eq!(Decision::held(9_000, Why::Gathered).released(&before, &Ledger::default()), Decision::held(9_000, Why::Gathered), "no release");
+    }
+
     #[test]
     fn an_app_s_own_row_decides_when() {
         fn with<'a>(now: &'a Zoned, clock: &'a TestClock, attention: &'a Attention, gathered: &'a [String], sources: &'a [String], gate: Option<Gate>) -> Ask<'a> {
-            Ask { now, clock, attention, gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources }
+            Ask { reachable: None, now, clock, attention, gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources }
         }
         let clock = TestClock::new();
         let choices = Choices::default();
@@ -2244,7 +2351,8 @@ mod tests {
         assert_eq!(why_text(&tr, "times", at13, &now), "As you chose for this time: held until 13:00.");
         // A text gathered because its number is one ARCEP keeps for machines: said so (review of part 2, F11).
         assert_eq!(why_text(&tr, "machine", at13, &now), "From a number kept for automated systems: held until 13:00, a gathered time.");
-        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "machine", "never", "again", "times"] {
+        assert_eq!(why_text(&tr, "released", 0, &now), "Held before you asked your phone to let what it held through: let through.");
+        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "machine", "never", "again", "times", "released"] {
             for tr in [&tr, &fr] {
                 let said = why_text(tr, why, 0, &now);
                 assert!(!said.starts_with("appnotes-"), "{why}: {said}");

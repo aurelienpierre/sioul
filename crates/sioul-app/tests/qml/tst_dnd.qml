@@ -27,6 +27,8 @@ Item {
         id: mock
 
         property var toggles: []
+        property var chosen: []
+        property int letThrough: 0
         property var changes: []
         property bool android: false
         property var people: [
@@ -37,6 +39,8 @@ Item {
         function textWith(key, name, value) { return key + "(" + value + ")" }
         function textArgs(key, args) { return key + JSON.stringify(JSON.parse(args)) }
         function dndToggle(on, minutes) { mock.toggles = mock.toggles.concat([[on, minutes]]) }
+        function reachChoose(state, length) { mock.chosen = mock.chosen.concat([[state, length]]) }
+        function letPhoneThrough() { mock.letThrough += 1 }
         function setup() {
             const s = { here: { on: true, line: "Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.", lines: ["dnd-setup-plasma-mail"], consent: "", offers: [{ key: "plasma", label: "Plasma's notification settings" }] }, gnome: false, people: mock.people, problem: "", said: "", android: mock.android }
             if (mock.android) {
@@ -105,6 +109,62 @@ Item {
             verify(!hidden.visible)
             const held = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: true, button: false, line: "Do not disturb, here only.", why_line: "While you focus on a task.", details: [], end_time: "" } } })
             verify(held.visible, "held on by focus: shown")
+        }
+
+        function menuOf(applet) {
+            applet.openMenu()
+            let menu = null
+            for (let i = 0; i < applet.children.length; ++i)
+                if (applet.children[i].item)
+                    menu = applet.children[i].item
+            return menu
+        }
+
+        function shownTexts(menu) {
+            const texts = []
+            for (let i = 0; i < menu.count; ++i) {
+                const item = menu.itemAt(i)
+                if (item && item.visible && item.text)
+                    texts.push(item.text)
+            }
+            return texts
+        }
+
+        // Part 3 of "What reaches you": Reachable pressed for a while from the menu, its ends as known;
+        // while it lasts, the button says until when and a click goes back to As usual; never during a pause.
+        function test_reachable_is_pressed_and_said() {
+            mock.chosen = []
+            const off = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30" } } })
+            let menu = menuOf(off)
+            tryVerify(() => menu.opened)
+            const texts = shownTexts(menu)
+            verify(texts.indexOf("reach-for-60") >= 0 && texts.indexOf("reach-until-time(17:00)") >= 0 && texts.indexOf("reach-until-tonight(22:30)") >= 0 && texts.indexOf("reach-until-off(22:30)") >= 0, texts)
+            verify(texts.indexOf("reach-let-through") >= 0, "a computer lets what the phone holds through: " + texts)
+            for (let i = 0; i < menu.count; ++i) {
+                const item = menu.itemAt(i)
+                if (item && item.text === "reach-for-60")
+                    item.triggered()
+            }
+            compare(mock.chosen[0][0], "reachable")
+            compare(mock.chosen[0][1], "60")
+            menu.close()
+            const on = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "reachable", reachable: { line: "Reachable until 17:00.", until: "17:00", until_at: 61200, open: false }, paused: false, reach_hours: 0, reach_tonight: 81000, reach_tonight_time: "22:30" } } })
+            compare(on.display, AbstractButton.TextBesideIcon)
+            compare(on.text, "Reachable until 17:00.")
+            mouseClick(on)
+            compare(mock.chosen[mock.chosen.length - 1][0], "usual", "a click while Reachable: as usual")
+            // At night: until tonight and until turned off both end at waking, one choice.
+            const night = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 0, reach_tonight: 111600, reach_tonight_time: "07:00", reach_at_night: true } } })
+            menu = menuOf(night)
+            tryVerify(() => menu.opened)
+            const asleep = shownTexts(menu)
+            verify(asleep.indexOf("reach-until-waking(07:00)") >= 0 && asleep.every(t => t.indexOf("reach-until-off") < 0 && t.indexOf("reach-until-tonight") < 0 && t.indexOf("reach-until-time") < 0), asleep)
+            menu.close()
+            const paused = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: true, button: true, line: "Do not disturb, here only.", why_line: "", details: [], end_time: "", state: "dnd", reachable: null, paused: true, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30" } } })
+            menu = menuOf(paused)
+            tryVerify(() => menu.opened)
+            verify(shownTexts(menu).every(t => t.indexOf("reach-for") < 0 && t.indexOf("reach-until") < 0), "never offered during a pause")
+            menu.close()
         }
 
         function test_its_menu_offers_how_long() {

@@ -353,26 +353,21 @@ Item {
                 text: line.sioul.text("mode-back-to-plan")
                 onTriggered: line.sioul.usualHours()
             }
+            // Working late, or an older Sioul's "Work now" (read until its end): back to the hours.
             MenuItem {
-                visible: line.moment.reason === "working-late"
+                visible: line.moment.reason === "working-late" || line.moment.reason === "work-now"
                 height: visible ? implicitHeight : 0
                 text: line.sioul.text("mode-usual-hours")
                 onTriggered: line.sioul.usualHours()
             }
-            // Work shown whatever the hours, as on the Porch; not during a
-            // meal or sleep, which come first.
+            // Work until tonight (part 3: "Work now" went, its work part here), while work
+            // rests by day; not during a meal or sleep, which come first.
             MenuItem {
-                id: workNowItem
-
-                visible: (line.moment.quiet && line.moment.time !== "meals" && line.moment.time !== "sleep" && line.moment.reason !== "free-time") || line.moment.work_now === true
+                objectName: "work-until-tonight"
+                visible: line.moment.quiet && line.moment.time !== "meals" && line.moment.time !== "sleep" && line.moment.reason !== "free-time" && line.moment.dnd !== undefined && line.moment.dnd.reach_at_night !== true && (line.moment.dnd.reach_tonight || 0) > 0
                 height: visible ? implicitHeight : 0
-                text: line.sioul.text("mode-work-now")
-                checkable: true
-                checked: line.moment.work_now === true
-                onTriggered: {
-                    line.sioul.setWorkNow(!(line.moment.work_now === true))
-                    workNowItem.checked = Qt.binding(() => line.moment.work_now === true)
-                }
+                text: line.theme.plain(line.sioul.textWith("mode-work-until-tonight", "time", line.moment.dnd !== undefined ? (line.moment.dnd.reach_tonight_time || "") : ""))
+                onTriggered: line.sioul.workUntilTonight()
             }
             Repeater {
                 model: line.moment.quiet && line.moment.time !== "meals" && line.moment.time !== "sleep" && line.moment.reason !== "free-time" && !(line.moment.reason === "done-for-the-day" && line.moment.today) ? [30, 60, 120, 240] : []

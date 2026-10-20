@@ -229,6 +229,15 @@ public final class DecideCheck
         expect("v2 a failed verification's second call", Calls.decideFor(t, other, false, ms(day, "03:00"), 0, null, early, none, "failed", 0), true, "unverified");
         expect("v2 a second call at night from a number nobody knows", Calls.decideFor(t, stranger, false, ms(day, "03:00"), 0, null, early, none), false, "repeat");
         expect("v2 a second call from someone known, verification failed", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "03:00"), 0, null, early, none, "failed", 0), false, "repeat");
+        // R1: a number called lately whose verification failed gets no second call: its row, and kept out while you expect a call.
+        long lastWeek = ms("2026-10-03", "12:00");
+        expectWho("v2 a borrowed number called lately, calling twice at night", Calls.decideFor(t, stranger, false, ms(day, "03:00"), 0, null, early, none, "failed", lastWeek), true, "matrix", "neutral");
+        expectWho("v2 a number called lately, calling twice at night, unverified unsaid", Calls.decideFor(t, stranger, false, ms(day, "03:00"), 0, null, early, none, "", lastWeek), false, "repeat", "neutral");
+        expectWho("v2 a borrowed number called lately, calling twice at work", Calls.decideFor(t, stranger, false, ms("2026-10-05", "10:00"), 0, null, ms("2026-10-05", "09:55"), none, "failed", lastWeek), false, "matrix", "neutral");
+        Calls.Press waitingNow = new Calls.Press(); waitingNow.pressed = 10; waitingNow.on = true;
+        t.expecting = waitingNow;
+        expectWho("v2 a borrowed number called lately, calling twice, expecting a call", Calls.decideFor(t, stranger, false, ms(day, "03:00"), 0, null, early, none, "failed", lastWeek), true, "unverified", "neutral");
+        t.expecting = null;
         // Each kind as any number nobody knows, and those let ring where your contacts may.
         Calls.Screening lenient = screening();
         lenient.automated = "unknown"; lenient.impossible = "unknown"; lenient.unverified = "unknown"; lenient.unknown = "ring";

@@ -1321,14 +1321,14 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("settings-hours"),
-                // Work shown whatever the hours, from the Porch.
+                // Reachable for an hour (part 3: "Work now" went): the Porch open, every lane and address.
                 () => {
                     window.page = 0
-                    sioul.setWorkNow(true)
+                    sioul.reachChoose("reachable", "60")
                 },
                 () => {},
-                () => grabber.save("work-now"),
-                () => sioul.setWorkNow(false),
+                () => grabber.save("reachable"),
+                () => sioul.reachChoose("usual", ""),
                 () => window.close()
             ]
             // A site's page closed as Sioul quits (tools/check-sites.py quit, on a demo
@@ -2241,7 +2241,7 @@ SioulWindow {
                 () => window.close()
             ]
             // Who owns which setting: the Porch asking for the hours, its own settings,
-            // "Work now"; an address's own settings on its card; the hours in Settings.
+            // Reachable; an address's own settings on its card; the hours in Settings.
             readonly property var ownership: [
                 () => window.page = 0,
                 () => {},
@@ -2251,10 +2251,10 @@ SioulWindow {
                 () => {},
                 () => porchPage.grabSettings(grabber.folder + "/own-porch-settings.png"),
                 () => porchPage.openSettings(false),
-                () => sioul.setWorkNow(true),
+                () => sioul.reachChoose("reachable", "60"),
                 () => {},
-                () => grabber.save("own-work-now"),
-                () => sioul.setWorkNow(false),
+                () => grabber.save("own-reachable"),
+                () => sioul.reachChoose("usual", ""),
                 () => window.page = 11,
                 () => {},
                 () => accountsPage.openFirstSettings(),

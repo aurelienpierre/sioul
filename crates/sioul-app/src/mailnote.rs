@@ -104,7 +104,8 @@ impl Seen {
     fn now(config: Config, now: &Zoned) -> Seen {
         let mode = crate::hours::mode_at(now);
         let moment = crate::hours::attention_at(&mode, now);
-        let may = config.reminders.mail && !moment.holds.porch_rests;
+        // Reachable lifts the Porch's rest after a pause: new mail told (part 3).
+        let may = config.reminders.mail && (!moment.holds.porch_rests || moment.reachable);
         Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may }
     }
 

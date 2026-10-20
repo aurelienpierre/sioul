@@ -1,5 +1,5 @@
 ---
-description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep from Health; each address, site, budget and task tied to them; quiet time, do not disturb and "Work now".
+description: Hours in Sioul - working hours and hours for your own admin, set in advance; leisure every other time; meals and sleep from Health; each address, site, budget and task tied to them; quiet time, Reachable, do not disturb and "Work until tonight".
 ---
 
 # Hours: work, your admin, leisure, meals, sleep
@@ -32,13 +32,13 @@ Now is always one of five times:
 
 | Time | What it is | Where it is set |
 |---|---|---|
-| **Work** | your working hours, and the work you ask for outside them (**Work half an hour more** and the like, **Work now**) | [Settings ▸ Hours](settings.md#hours) |
+| **Work** | your working hours, and the work you ask for outside them (**Work half an hour more** and the like, **Work until tonight**) | [Settings ▸ Hours](settings.md#hours) |
 | **Admin** | your hours for your admin | [Settings ▸ Hours](settings.md#hours) |
 | **Meals** | each meal, from getting it ready to its end | [Health](health.md#meals-rest-and-sleep) |
 | **Sleep** | the night, from winding down to waking; each nap, with its minutes to come back | [Health](health.md#meals-rest-and-sleep) |
 | **Leisure** | every other time: evenings, days without hours, time off, the rest of a day closed with **Done for today** | nothing to set |
 
-**When they overlap**, sleep comes first, then meals, then the hours: lunch inside your working hours is a meal while it lasts; **Work now** lasting over a night leaves the night to sleep. Working and admin hours may overlap: then what each brings comes, all together.
+**When they overlap**, sleep comes first, then meals, then the hours: lunch inside your working hours is a meal while it lasts; **Work four hours more** running into the night leaves the night to sleep. Working and admin hours may overlap: then what each brings comes, all together.
 
 The hour before bed is sleep's: Health keeps it free, and nothing should keep the mind going then. The night's own notice still comes at its start, to say the night begins.
 
@@ -95,16 +95,14 @@ From winding down to waking, and during a nap, nothing disturbs:
 
 Without a night set on the Health page, nights are leisure and nothing keeps notifications away: the Porch asks for it in a card, **Set my night** or **Leave as is**.
 
-## Work now
+## Reachable, and work until tonight {#work-now}
 
-**Work now** shows work whatever the hours, as in working hours. In quiet time, it is a box beside **Real time** on the Porch, and a choice in the status line's menu on every page.
+**Work now** is gone since version 0.0.7, and its two jobs part ways.
 
-<figure markdown="span">
-  [![The Porch with "Work now" ticked beside "Real time" at the top of the page, and above it the status line, the window's title bar, saying "Work shown until 17:00, by your choice."](../assets/screens/work-now.png){ loading=lazy }](../assets/screens/work-now.png "Open the picture at full size")
-  <figcaption>Work now: work shown whatever the hours, until you untick it.</figcaption>
-</figure>
+- **To see and hear everything for a while**, choose **Reachable** in the menu of the do-not-disturb switch, in the status line (a right click, or a long press): for half an hour, an hour or two hours, until the hours you are in end, until tonight, or until you turn it off, at the latest at the night's start (pressed at night, until you wake). While it lasts, on every device, everyone not blocked who writes and the people you know who call reach you at once; the Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a focus session, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). A click on the switch, or **As usual** in its menu, ends it, and so does a pause; it is not offered during one.
+- **To show work outside your hours**, the status line's menu keeps **Work half an hour more** to **Work four hours more**, and adds **Work until tonight**.
 
-It ends when you untick it, when Sioul closes, or once the next working day is over; without working hours, at midnight. The status line says until when. Sioul does not keep it on after a restart. Meals and sleep still come first.
+Nothing ends when Sioul starts or closes any more: each has its own end. A "Work now" set by an older Sioul on another device is read as work until its end.
 
 ## When no hours are set
 

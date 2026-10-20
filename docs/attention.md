@@ -19,7 +19,7 @@ A source is where something comes from. **Sioul's own**: Sioul fetches, keeps or
 | Phone calls (Android 10 and later) | the system's | lets ring, or declines | `calls`, `Calls.java` |
 | Other apps' notifications (Android) | the system's | holds, or lets through | `appnotes`, `AppNotes.java` |
 | The system's do-not-disturb | the system's | turns Sioul's own modes on and off | app `dnd`, `everywhere`, `PauseMode.java` |
-| Your presses | yours | Pause, Free time, the do-not-disturb switch, Expecting a call (once Let every call through), Work now, Real time | `quiet.toml`, `do-not-disturb.toml` |
+| Your presses | yours | Pause, Free time, the three states (Reachable, As usual, Do not disturb), Expecting a call (once Let every call through), Work … more and Work until tonight, Real time, Show all mail now | `quiet.toml`, `do-not-disturb.toml` |
 
 On a computer Sioul sees no other app and no call: the system's do-not-disturb is its only hold on them.
 
@@ -69,7 +69,9 @@ Two **layers** hold on top of the time, never instead of it:
 
 Two **switch layers** have one cell each, outside the grid: **Expecting a call** (once Let every call through: numbers nobody knows and hidden numbers ring, never the blocked, an automated caller, a number that cannot be a caller's or a failed verification; the call screening's, [android.md](android.md#calls)) and **Real time** (the Porch's box: mail each minute, every site in real time).
 
-**Reading a moment** (`Attention::level`, `Attention::person`): the least strict of the time's columns, then the stricter of that and each layer that holds. For the people's rows, a week without admin hours lends work's cell to admin time and back; the kinds are never lent. Free time's **Nothing at all** holds every state's row, never Always through.
+**Reachable** (« Joignable », the owner's decisions 6 to 12 of 18 October 2026; [do-not-disturb.md](do-not-disturb.md#the-three-states)) is no column: while it lasts (`Now::reachable`), every state's row (safe, neutral, restricted, strangers, groups) and Always through come at once, whatever the time and its layers; mail of every address comes and is told, what an address is for (step 8) and the Porch's rest after a pause left aside; messages from anyone not blocked come at once. The call screening's rows (Calls × strangers and hidden numbers) stay as they are, the blocked never, a conversation set to never stays held (`appnotes::decide`), and Sioul's own rows read as they are. The calls' table has a column `reachable` for its frames (`calls::Layers::reachable`), in which the people you know ring.
+
+**Reading a moment** (`Attention::level`, `Attention::person`): Reachable first, as above; then the least strict of the time's columns, then the stricter of that and each layer that holds. For the people's rows, a week without admin hours lends work's cell to admin time and back; the kinds are never lent. Free time's **Nothing at all** holds every state's row, never Always through.
 
 ### 1.5 Levels
 One scale for every row, from the least strict to the strictest (`attention::Level`):

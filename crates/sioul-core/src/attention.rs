@@ -634,6 +634,12 @@ pub struct Now {
     /// Expecting a call (once "Let every call through"), while a phone screens calls:
     /// numbers nobody knows ring, so the modes let anyone's call through.
     pub through: bool,
+    /// Reachable (« Joignable », the owner's decisions 6 to 12 of 18 October
+    /// 2026): everyone not blocked writes, the people you know call and mail
+    /// comes at once, whatever the time, its layers and what an address is
+    /// for; numbers nobody knows stay the call screening's, a conversation set
+    /// to never stays held, and Sioul's own rows are read as they are.
+    pub reachable: bool,
     pub holds: Holds,
 }
 
@@ -659,7 +665,7 @@ impl Now {
             }
         };
         let end = if mode.paused() { i64::MAX } else { mode.until.as_ref().map_or(i64::MAX, |u| u.timestamp().as_second()) };
-        Now { times, time: mode.time, week: mode.week, slot: false, dnd: false, nothing: false, span: (i64::MIN, end), gathering: false, realtime: false, through: false, holds: Holds::default() }
+        Now { times, time: mode.time, week: mode.week, slot: false, dnd: false, nothing: false, span: (i64::MIN, end), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
     }
 
     /// From a clock's moment (`reach::Clock`, ahead: the calls' frames, other
@@ -681,7 +687,7 @@ impl Now {
                 _ => vec![Column::Leisure],
             }
         };
-        Now { times, time: moment.time, week: moment.week, slot: false, dnd: false, nothing: moment.free && moment.nothing, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, holds: Holds::default() }
+        Now { times, time: moment.time, week: moment.week, slot: false, dnd: false, nothing: moment.free && moment.nothing, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
     }
 
     /// One time alone, no layer: for what has no hours (tests, a grid's card).
@@ -694,7 +700,7 @@ impl Now {
             _ => Time::Leisure,
         };
         let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-        Now { times: vec![column], time, week, slot: false, dnd: false, nothing: false, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, holds: Holds::default() }
+        Now { times: vec![column], time, week, slot: false, dnd: false, nothing: false, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
     }
 
     /// The same moment with its two layers: a slot of time for you, do-not-disturb.
@@ -967,6 +973,14 @@ impl Attention {
     /// alone lets through (= waits, ☆ comes); `person` reads them against a
     /// person's own row.
     pub fn level(&self, row: Row, now: &Now) -> Level {
+        // Reachable: the states' rows at once, whatever the time and its layers; the call screening's apart.
+        if let Row::People(_, person) = row
+            && person.state()
+            && now.reachable
+            && !screened(row)
+        {
+            return Level::Now;
+        }
         if let Row::People(_, person) = row
             && person.state()
             && now.nothing
@@ -999,6 +1013,9 @@ impl Attention {
         let own = Row::People(channel, if person == Person::Always { Person::Safe } else { person });
         if !always && person != Person::Always {
             return self.level(own, now);
+        }
+        if now.reachable {
+            return Level::Now;
         }
         let always_row = Row::People(channel, Person::Always);
         let at = |column: Column| match self.lent(always_row, column, now.week) {
@@ -1293,6 +1310,7 @@ impl Attention {
         // senders' and Always through's; and but when its row and the address
         // never meet in your week, so that nothing waits for good.
         if let Some(area) = event.area
+            && !now.reachable
             && matches!(level, Level::Now | Level::Quiet)
             && person != Person::Safe
             && !always
@@ -1303,7 +1321,8 @@ impl Attention {
         }
         let mut out = Output::at(level, step);
         out.told = level == Level::Now && lane == Lane::Usual;
-        if out.told && now.holds.porch_rests {
+        // Reachable lifts the Porch's rest after a pause too.
+        if out.told && now.holds.porch_rests && !now.reachable {
             (out.told, out.step) = (false, Step::Hold);
         }
         out.pierce = out.told && always;
@@ -1345,12 +1364,17 @@ impl Attention {
         } else {
             (self.person(via, person, always, now), false)
         };
+        // Reachable: everyone not blocked at once, strangers and groups too (a conversation set to
+        // never is the listener's choice, kept there: `appnotes::decide`).
+        if now.reachable && level != Level::Never && !(via == Channel::Calls && screened(Row::People(Channel::Calls, person))) {
+            level = Level::Now;
+        }
         // A phone cannot show what it holds: shown, not told, is held.
         if level == Level::Quiet {
             level = Level::Later;
         }
         let mut step = if chosen { Step::Chosen } else { Step::Matrix };
-        if !chosen && level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
+        if !chosen && !now.reachable && level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
             (level, step) = (Level::Later, Step::Area);
         }
         let mut out = Output::at(level, step);
@@ -2796,6 +2820,54 @@ mod tests {
         assert!(code.shown && code.told && code.pierce);
         let own = a.decide(&Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Own }), &Now::time(Column::Work));
         assert!(own.shown && !own.told);
+    }
+
+    /// Part 3, Reachable (decision 7): everyone not blocked writes and the
+    /// people you know call at once, at every time and under each layer;
+    /// mail of every address comes and is told, the Porch's rest lifted;
+    /// numbers nobody knows stay the call screening's; the blocked never;
+    /// Sioul's own rows as they are.
+    #[test]
+    fn reachable_lets_everyone_not_blocked_through_at_every_time() {
+        let a = Attention::usual();
+        for column in Column::ALL {
+            for (slot, dnd) in [(false, false), (true, false), (false, true)] {
+                let mut now = Now::time(column).layers(slot, dnd);
+                now.reachable = true;
+                now.holds.porch_rests = true;
+                for (channel, persons) in [(Channel::Mail, &[Person::Safe, Person::Neutral, Person::Restricted, Person::Stranger][..]), (Channel::Messages, &[Person::Safe, Person::Neutral, Person::Restricted, Person::Stranger, Person::Groups][..]), (Channel::Calls, &[Person::Safe, Person::Neutral, Person::Restricted][..])] {
+                    for person in persons {
+                        assert_eq!(a.person(channel, *person, false, &now), Level::Now, "{channel:?} {person:?} at {column:?} slot {slot} dnd {dnd}");
+                    }
+                    assert_eq!(a.person(channel, Person::Blocked, false, &now), Level::Never);
+                    assert_eq!(a.person(channel, Person::Always, true, &now), Level::Now);
+                }
+                // The call screening's rows: as they are, never opened by Reachable.
+                for person in [Person::Stranger, Person::Hidden] {
+                    let mut usual = now.clone();
+                    usual.reachable = false;
+                    assert_eq!(a.person(Channel::Calls, person, false, &now), a.person(Channel::Calls, person, false, &usual), "{person:?} at {column:?}");
+                }
+                // Mail to an address for another time, from a stranger: shown and told, the Porch resting or not.
+                let mail = a.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Usual }).for_area(Some(Area::WORK)), &now);
+                assert!(mail.shown && mail.told && mail.level == Level::Now, "{column:?}: {mail:?}");
+                // A stranger's message and a group's: at once.
+                let message = |who: Who, group: bool| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, group, always: false }), &now).level;
+                assert_eq!((message(Who::Stranger, false), message(Who::Neutral, true)), (Level::Now, Level::Now));
+                assert_eq!(message(Who::Blocked, false), Level::Never);
+            }
+        }
+        // A conversation's own row set to later comes (one set to never is the listener's choice, kept: appnotes).
+        let mut rows = Attention::usual();
+        rows.set_source("conversation.c2", Column::Work, Level::Later).unwrap();
+        let mut now = Now::time(Column::Work);
+        now.reachable = true;
+        let talk = |id: &str| rows.decide(&Event { sources: vec![id.to_string()], ..Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: false }) }, &now).level;
+        assert_eq!(talk("conversation.c2"), Level::Now);
+        // Sioul's own rows as they are: dates at night still wait.
+        let mut night = Now::time(Column::Sleep);
+        night.reachable = true;
+        assert_eq!(a.level(Row::Own(Kind::Dates), &night), a.level(Row::Own(Kind::Dates), &Now::time(Column::Sleep)));
     }
 
     /// F3 (review of part 2): while this phone screens calls, a mode lets

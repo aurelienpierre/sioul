@@ -26,7 +26,7 @@ Sans rien régler :
 ## Quand il ouvre {#when-it-opens}
 
 - **À vos heures**, le Porche dit jusqu’à quand il est ouvert (« Ouvert jusqu’à 12:00. »), puis montre ce qui est arrivé, réparti en files.
-- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de vos courriels : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
+- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de vos courriels : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **Montrer tous les courriels maintenant** reste possible, discrètement ([plus bas](#real-time)). D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
 Quels courriels viennent quand dépend de qui écrit, comme le dit la ligne de chaque liste à chaque moment (sûrs, neutres, restreints, inconnus, les personnes qui passent toujours ; les bloqués jamais), et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Ce qui vous joint, et quand](notifications.md#by-person) et [Les heures](hours.md).
@@ -187,7 +187,7 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpie
 
 La case **Temps réel**, en haut du Porche, relève chaque dossier de chaque adresse toutes les minutes, et garde le Porche ouvert : pour un code ou un mot de passe que vous attendez. Décochez-la pour revenir au rythme habituel.
 
-Pendant le calme, **Travailler maintenant** apparaît à côté, pour montrer le travail quelles que soient les heures. Voir [Les heures](hours.md#work-now).
+**Montrer tous les courriels maintenant**, en haut du Porche, montre toutes les voies et toutes les adresses à toute heure, sur cet appareil seulement, jusqu’à **Terminé pour l’instant** ; il n’annonce rien. Pour être joint par tout le monde un moment, sur tous vos appareils, voir [Joignable](hours.md#work-now).
 
 ### Une adresse publique, protégée {#a-public-address-protected}
 

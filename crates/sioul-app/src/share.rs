@@ -1781,6 +1781,14 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         // the exchange lock in short holds of its own (review of 19 October
         // 2026, F9).
         crate::crypto::seal_clear_drafts();
+        // The devices gone from the sharing, for the switch's reading (at most once an hour):
+        // before `BUSY`, which a dose's alarm waits for, and reading only.
+        {
+            let here = here();
+            if let Some((folder, key)) = sealed(here.folder_path()) {
+                crate::everywhere::note_gone(&folder, &key, &here.id);
+            }
+        }
         // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
         let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let here = here();

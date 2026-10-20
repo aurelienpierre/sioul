@@ -1551,10 +1551,10 @@ pub mod qobject {
         #[qinvokable]
         fn usual_hours(self: Pin<&mut Sioul>);
 
-        /// "Work now", ticked or not: work shown, whatever the hours, until
-        /// you untick it, Sioul closes, or the next working day is over.
+        /// Work stays in view until tonight, the night's start (part 3 of
+        /// "What reaches you": "Work now" gone, its work part here).
         #[qinvokable]
-        fn set_work_now(self: Pin<&mut Sioul>, on: bool);
+        fn work_until_tonight(self: Pin<&mut Sioul>);
 
         /// Free time on or off (docs/pauses.md, `pauses::set_free`): on, "true"
         /// when a focus session stopped; off, the line said once on the end of work, else "".
@@ -1601,6 +1601,19 @@ pub mod qobject {
         /// `minutes` (0: until turned off; -1: until what now is for ends), or off.
         #[qinvokable]
         fn dnd_toggle(self: Pin<&mut Sioul>, on: bool, minutes: i32);
+
+        /// One of the three states pressed here (part 3 of "What reaches
+        /// you"; `everywhere::choose`): "reachable" for `length` ("30", "60",
+        /// "120", "hours", "tonight", "off"), "usual", or "dnd" for `length`
+        /// minutes ("0" until turned off, "-1" until what now is for ends).
+        #[qinvokable]
+        fn reach_choose(self: Pin<&mut Sioul>, state: &QString, length: &QString);
+
+        /// "Let what your phone holds through", pressed on a computer
+        /// (`everywhere::let_through`): the phone lets through what it held
+        /// before now, once.
+        #[qinvokable]
+        fn let_phone_through(self: Pin<&mut Sioul>);
 
         /// Settings ▸ Do not disturb, its own part, as JSON (`everywhere::setup`).
         #[qinvokable]
@@ -2048,8 +2061,14 @@ pub struct SioulRust {
 /// What the background threads and the window share.
 #[derive(Default)]
 pub(crate) struct Shared {
-    /// "Open it anyway", until "Done for now".
+    /// "Show all mail now" (once "Open it anyway"), until "Done for now": a
+    /// look on this device at every lane and address, at any hour, which
+    /// tells nothing.
     opened_anyway: AtomicBool,
+    /// Reachable at the last look (part 3 of "What reaches you"): the Porch
+    /// open with every lane and address, new mail told, mail looked for every
+    /// minute (`follow_reachable`).
+    pub(crate) reachable: AtomicBool,
     /// Per account, the last thing its watcher said, and whether it is a problem.
     pub(crate) statuses: Mutex<BTreeMap<String, (String, bool)>>,
     /// Accounts whose password is wanted: none here yet, or refused (`SyncError::wants_password`).
@@ -2470,17 +2489,6 @@ pub(crate) fn mode_now() -> sioul_core::quiet::Mode {
 }
 
 /// Work time or quiet time, as the window shows it.
-/// "Work now" taken back, as Sioul starts or closes; the rest of the overrides kept.
-fn end_work_now() {
-    let path = sioul_core::quiet::Overrides::default_path();
-    let mut overrides = sioul_core::quiet::Overrides::load(&path);
-    if overrides.work_now.take().is_some()
-        && let Err(e) = overrides.save(&path)
-    {
-        eprintln!("{e}");
-    }
-}
-
 pub(crate) fn mode_json() -> String {
     let config = load_config();
     let now = Zoned::now();
@@ -2561,8 +2569,11 @@ fn compute(shared: &Shared) -> Views {
     {
         let area_of = |t: &sioul_core::porch::Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(|a| a.area.as_deref()).and_then(sioul_core::areas::Area::parse).unwrap_or(sioul_core::areas::Area::WORK);
         let attention = sioul_core::attention::Attention::of(&world.config);
-        let moment = crate::hours::attention_at(&mode, &now);
+        let mut moment = crate::hours::attention_at(&mode, &now);
         let always = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
+        // "Show all mail now": every lane and address, at any hour, on this device, as
+        // Reachable shows them, the blocked's apart (decision 12); it tells nothing (`mailnote`).
+        moment.reachable |= shared.opened_anyway.load(Ordering::Relaxed);
         items.retain(|t| attention.mail(t, &world.senders, &always, area_of(t), &moment).shown);
     }
     // Asleep no project shows: what your senders wrote about one comes among the people you know.
@@ -2573,8 +2584,10 @@ fn compute(shared: &Shared) -> Views {
             }
         }
     }
-    let opened = shared.opened_anyway.load(Ordering::Relaxed);
+    // Reachable opens the Porch at any hour, its rest after a pause lifted too (decision 7).
+    let opened = shared.opened_anyway.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed);
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
+    porch.all = shared.opened_anyway.load(Ordering::Relaxed);
     // After a pause, the Porch rests until the next admin hours, unless opened (docs/pauses.md).
     crate::pauses::porch_rests(&mut porch, opened, &now);
     if mode.quiet {
@@ -2810,10 +2823,22 @@ fn pace_of(config: &Config, account: &Account) -> std::time::Duration {
     std::time::Duration::from_secs(u64::from(minutes.max(1)) * 60)
 }
 
+/// Reachable begun or ended since the last look (a press here, one from
+/// another device brought by the sharing, its end): the mail's pace and the
+/// Porch follow. Each minute, and after a press.
+pub(crate) fn follow_reachable(qt: &QtThread, shared: &Arc<Shared>) {
+    let now = crate::everywhere::reachable().is_some();
+    if shared.reachable.swap(now, Ordering::Relaxed) != now {
+        update_paces(shared);
+        show(qt, shared);
+    }
+}
+
 /// Gives every running watcher its pace from the configuration, and real time.
 pub(crate) fn update_paces(shared: &Shared) {
     let config = load_config();
-    let realtime = shared.realtime.load(Ordering::Relaxed);
+    // Mail every minute: the Real time box, or while Reachable lasts (decision 11).
+    let realtime = shared.realtime.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed);
     let Ok(watchers) = shared.watchers.lock() else { return };
     for account in config.accounts.iter() {
         if let Some(control) = watchers.get(&account.id) {
@@ -2826,7 +2851,7 @@ pub(crate) fn update_paces(shared: &Shared) {
 pub(crate) fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Account) {
     let control = Arc::new(Control::default());
     control.set_pace(pace_of(&load_config(), &account));
-    control.set_realtime(shared.realtime.load(Ordering::Relaxed));
+    control.set_realtime(shared.realtime.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed));
     {
         let Ok(mut watchers) = shared.watchers.lock() else { return };
         // Being removed: its mail is deleted once its watcher has ended, and none starts again.
@@ -3345,8 +3370,7 @@ impl qobject::Sioul {
     }
 
     fn start(mut self: Pin<&mut Self>) {
-        // "Work now" lasts while Sioul is open: a session that ended without saying so ends it.
-        end_work_now();
+        // Nothing ends when a window starts or closes (decision 10): each state has its own end.
         // Sites an older file kept among the accounts move to their own list, a copy kept beside, made once.
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
             eprintln!("{e}");
@@ -3881,7 +3905,6 @@ impl qobject::Sioul {
 
     fn flush(self: Pin<&mut Self>) {
         mail::flush(&self.shared());
-        end_work_now();
         securitykey::closing();
     }
 
@@ -5414,19 +5437,11 @@ impl qobject::Sioul {
         });
     }
 
-    fn set_work_now(self: Pin<&mut Self>, on: bool) {
-        let config = load_config();
-        let work: Vec<_> = config.windows.iter().filter(|w| w.kind() == "work").cloned().collect();
-        let until = sioul_core::quiet::end_of_next_workday(&work, &config.time_off, &Zoned::now()).timestamp().as_second();
+    fn work_until_tonight(self: Pin<&mut Self>) {
+        let Some(night) = crate::everywhere::tonight(&Zoned::now()) else { return };
         self.change_overrides(|o| {
-            // Unticked: back to the usual hours, a little longer included.
-            o.work_until = None;
-            if on {
-                o.rest_until = None;
-                o.work_now = Some(until);
-            } else {
-                o.work_now = None;
-            }
+            o.rest_until = None;
+            o.work_until = Some(night);
         });
     }
 
@@ -5472,6 +5487,14 @@ impl qobject::Sioul {
 
     fn dnd_toggle(self: Pin<&mut Self>, on: bool, minutes: i32) {
         crate::everywhere::toggle(self, on, minutes);
+    }
+
+    fn reach_choose(self: Pin<&mut Self>, state: &QString, length: &QString) {
+        crate::everywhere::choose(self, &state.to_string(), &length.to_string());
+    }
+
+    fn let_phone_through(self: Pin<&mut Self>) {
+        crate::everywhere::let_through(self);
     }
 
     fn dnd_setup(&self) -> QString {

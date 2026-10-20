@@ -279,13 +279,18 @@ fn person_of(row: &str) -> (Person, bool) {
 pub struct Layers {
     pub slots: Vec<(i64, i64)>,
     pub dnd: Option<(i64, Option<i64>)>,
+    /// Reachable, from when, until when (Unix seconds; none: until turned
+    /// off): the people you know ring then, whatever the time (part 3).
+    pub reachable: Option<(i64, Option<i64>)>,
 }
 
 /// The column a moment is said by: a layer that holds, else the time's (the
 /// pause, sleep, Free time, the hours; work when work and admin are both
 /// open, or no hours are set).
 fn column_of(now: &attention::Now) -> &'static str {
-    if now.dnd {
+    if now.reachable {
+        "reachable"
+    } else if now.dnd {
         "dnd"
     } else if now.slot {
         "slot"
@@ -301,7 +306,7 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
     let mut out: Vec<Frame> = Vec::new();
     for f in clock.frames(from, until) {
         let mut cuts = vec![f.start, f.end];
-        let edges = layers.slots.iter().flat_map(|&(a, b)| [a, b]).chain(layers.dnd.iter().flat_map(|&(a, b)| [Some(a), b]).flatten());
+        let edges = layers.slots.iter().flat_map(|&(a, b)| [a, b]).chain([layers.dnd, layers.reachable].into_iter().flatten().flat_map(|(a, b)| [Some(a), b]).flatten());
         cuts.extend(edges.filter(|t| *t > f.start && *t < f.end));
         cuts.sort_unstable();
         cuts.dedup();
@@ -309,7 +314,8 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
             let (start, end) = (pair[0], pair[1]);
             let slot = layers.slots.iter().any(|&(a, b)| a <= start && start < b);
             let dnd = layers.dnd.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
-            let now = attention::Now::of_moment(&f.moment).layers(slot, dnd);
+            let mut now = attention::Now::of_moment(&f.moment).layers(slot, dnd);
+            now.reachable = layers.reachable.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
             let hours = now.times.iter().any(|c| matches!(c, attention::Column::Work | attention::Column::Admin));
             let ring: BTreeMap<String, bool> = ROWS
                 .iter()
@@ -590,8 +596,11 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
             return decided(true, why, column);
         }
     }
-    // 4. A second call within 15 minutes rings, the blocked's and that aside.
-    if repeat {
+    // 4. A second call within 15 minutes rings, the blocked's and that aside; and a
+    // number called lately whose verification failed, a borrowed caller ID of
+    // it calling twice (the re-check of part 2, R1).
+    let borrowed = called && screening.on && screening.unverified == Spam::Voicemail && call.verified == "failed";
+    if repeat && !borrowed {
         return decided(false, "repeat", "");
     }
     // Expecting a call: the later press of this phone's and the table's (all devices').
@@ -1399,7 +1408,7 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
 /// "while you slept", "during work": what the time was, in a few words.
 pub(crate) fn context(tr: &Translator, column: &str) -> String {
     match column {
-        "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" => tr.text(&format!("calls-context-{column}"), None),
+        "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" | "reachable" => tr.text(&format!("calls-context-{column}"), None),
         _ => tr.text("calls-context-any", None),
     }
 }
@@ -1989,6 +1998,24 @@ mod tests {
         assert_eq!(decided_on(&off, &again("02 61 91 12 34", "")).1, "repeat");
     }
 
+    /// R1 (the re-check of part 2): a number called lately whose
+    /// verification failed calling a second time is no second call that
+    /// rings: as your contacts' row says, and while you expect a call kept
+    /// out; with its verification unsaid, a second call as before.
+    #[test]
+    fn a_borrowed_number_called_lately_gets_no_second_call() {
+        let lately = |at: &str, verified: &str| Incoming { called: ms("2026-10-03T12:00[Europe/Paris]"), last_call: ms(&format!("2026-10-05T{at}[Europe/Paris]")) - 5 * 60_000, verified: verified.into(), ..call("01 99 00 55 55", at) };
+        let t = screening_table();
+        assert_eq!(decided_on(&t, &lately("23:00", "failed")), (true, "matrix", "neutral".to_string()));
+        let expecting = Table { expecting: Some(Through { pressed: 10, on: true, until: 0 }), ..t.clone() };
+        assert_eq!(decided_on(&expecting, &lately("23:00", "failed")), (true, "unverified", "neutral".to_string()));
+        assert_eq!(decided_on(&t, &lately("10:00", "failed")), (false, "matrix", "neutral".to_string()), "where your contacts ring");
+        assert_eq!(decided_on(&t, &lately("23:00", "")), (false, "repeat", "neutral".to_string()));
+        // A phone contact with a failed verification keeps the second call, as the people you know do.
+        let contact = Incoming { phone_contact: true, called: 0, ..lately("23:00", "failed") };
+        assert_eq!(decided_on(&t, &contact).1, "repeat");
+    }
+
     /// F1: the snapshot of blocks ARCEP had attributed to nobody (a block
     /// attributed since may hold a new line) never declines more than a number
     /// nobody knows: it rings while you expect a call and when such numbers
@@ -2049,17 +2076,24 @@ mod tests {
         // The layers (Q11): do-not-disturb's switch from 18:00 to 19:00 sends the safe to voicemail, Always through rings;
         // a slot of time for you holds no call.
         let (dnd_from, dnd_until) = (at("2026-10-05T18:00[Europe/Paris]").timestamp().as_second(), at("2026-10-05T19:00[Europe/Paris]").timestamp().as_second());
-        let layers = Layers { slots: vec![(dnd_until + 600, dnd_until + 1800)], dnd: Some((dnd_from, Some(dnd_until))) };
+        let layers = Layers { slots: vec![(dnd_until + 600, dnd_until + 1800)], dnd: Some((dnd_from, Some(dnd_until))), reachable: None };
         let table = Table { frames: super::frames(&attention, &clock, &layers, &from, &until), ..table.clone() };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
         assert_eq!((at_("18:30").column.as_str(), at_("18:30").ring["safe"], at_("18:30").ring["always-safe"]), ("dnd", false, true));
         assert_eq!((at_("17:30").column.as_str(), at_("17:30").ring["safe"]), ("leisure", true));
         assert_eq!((at_("19:15").column.as_str(), at_("19:15").ring["safe"]), ("slot", true));
         // A layer over work keeps work's hours: the screening's hours are the time's, never do-not-disturb's.
-        let morning = Layers { slots: Vec::new(), dnd: Some((at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second(), None)) };
+        let morning = Layers { slots: Vec::new(), dnd: Some((at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second(), None)), reachable: None };
         let table_dnd = Table { frames: super::frames(&attention, &clock, &morning, &from, &until), ..table.clone() };
         let f = table_dnd.frame_at(ms("2026-10-05T10:30[Europe/Paris]")).unwrap();
         assert_eq!((f.column.as_str(), f.hours, f.ring["safe"]), ("dnd", true, false));
+        // Reachable (part 3) from 21:00 to waking: the people you know ring, at night too, a frame cut at its edges.
+        let evening = Layers { reachable: Some((at("2026-10-05T21:00[Europe/Paris]").timestamp().as_second(), Some(at("2026-10-06T07:00[Europe/Paris]").timestamp().as_second()))), ..Layers::default() };
+        let table_open = Table { frames: super::frames(&attention, &clock, &evening, &from, &until), ..table.clone() };
+        let f = table_open.frame_at(ms("2026-10-05T23:30[Europe/Paris]")).unwrap();
+        assert_eq!(f.column, "reachable");
+        assert!(["safe", "neutral", "restricted"].iter().all(|row| f.ring[*row]), "{f:?}");
+        assert_eq!(table_open.frame_at(ms("2026-10-05T20:30[Europe/Paris]")).unwrap().column, "leisure");
         // Free time as cells: the safe ring in it, the others not; "Nothing at all", only Always through.
         let free = crate::quiet::Overrides { free_since: Some(at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second()), free_nothing: Some(true), ..crate::quiet::Overrides::default() };
         let clock_free = Clock::new(&config, free, Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() }, Days::default(), Vec::new());
@@ -2731,7 +2765,7 @@ mod tests {
             .iter()
             .map(|k| k.to_string())
             .collect();
-            keys.extend(["work", "admin", "leisure", "meals", "sleep", "pause", "free", "slot", "dnd"].iter().map(|c| format!("calls-context-{c}")));
+            keys.extend(["work", "admin", "leisure", "meals", "sleep", "pause", "free", "slot", "dnd", "reachable"].iter().map(|c| format!("calls-context-{c}")));
             keys.extend(["safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| format!("calls-why-{r}")));
             for key in keys {
                 let mut args = crate::i18n::args();
