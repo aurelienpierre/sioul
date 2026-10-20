@@ -272,7 +272,8 @@ pub(crate) fn unknown_rings(config: &Config, hours: bool) -> bool {
 /// written again at each change, `everywhere::apply`).
 fn layers() -> rules::Layers {
     let since = jiff::Timestamp::now().as_second();
-    rules::Layers { slots: crate::hours::slots().slots, dnd: crate::everywhere::gate().map(|until| (since, until)) }
+    let reachable = crate::everywhere::reachable().map(|r| (r.since, r.until));
+    rules::Layers { slots: crate::hours::slots().slots, dnd: crate::everywhere::gate().map(|until| (since, until)), reachable }
 }
 
 // ---------------------------------------------------------------- Expecting a call

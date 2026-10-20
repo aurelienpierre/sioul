@@ -1,5 +1,5 @@
 ---
-description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; le calme, ne pas déranger et « Travailler maintenant ».
+description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; le calme, « Joignable », « Ne pas déranger » et « Travailler jusqu’à ce soir ».
 ---
 
 # Les heures : travail, démarches, loisirs, repas, sommeil {#hours-work-your-admin-leisure-meals-sleep}
@@ -32,13 +32,13 @@ Le moment présent est toujours l’un de ces cinq :
 
 | Moment | Ce que c’est | Où il se règle |
 |---|---|---|
-| **Travail** | vos heures de travail, et le travail que vous demandez en dehors (**Travailler encore une demi-heure** et les autres, **Travailler maintenant**) | [Paramètres ▸ Heures](settings.md#hours) |
+| **Travail** | vos heures de travail, et le travail que vous demandez en dehors (**Travailler encore une demi-heure** et les autres, **Travailler jusqu’à ce soir**) | [Paramètres ▸ Heures](settings.md#hours) |
 | **Démarches** | vos heures pour vos démarches | [Paramètres ▸ Heures](settings.md#hours) |
 | **Repas** | chaque repas, de sa préparation à sa fin | [Santé](health.md#meals-rest-and-sleep) |
 | **Sommeil** | la nuit, du moment de se détendre au réveil ; chaque sieste, avec ses minutes pour revenir | [Santé](health.md#meals-rest-and-sleep) |
 | **Loisirs** | tout le reste du temps : les soirées, les jours sans heures, les congés, le reste d’une journée close avec **Fini pour aujourd’hui** | rien à régler |
 
-**Quand ils se chevauchent**, le sommeil passe d’abord, puis les repas, puis les heures : un déjeuner pendant vos heures de travail est un repas tant qu’il dure ; **Travailler maintenant** qui dure par-dessus une nuit laisse la nuit au sommeil. Les heures de travail et de démarches peuvent se chevaucher : ce que chacune apporte vient alors, tout ensemble.
+**Quand ils se chevauchent**, le sommeil passe d’abord, puis les repas, puis les heures : un déjeuner pendant vos heures de travail est un repas tant qu’il dure ; **Travailler encore quatre heures** qui déborde sur la nuit laisse la nuit au sommeil. Les heures de travail et de démarches peuvent se chevaucher : ce que chacune apporte vient alors, tout ensemble.
 
 L’heure avant le coucher appartient au sommeil : la Santé la garde libre, et rien ne devrait alors faire tourner la tête. L’avis propre à la nuit vient quand même à son début, pour dire que la nuit commence.
 
@@ -95,16 +95,14 @@ Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange 
 
 Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
 
-## Travailler maintenant {#work-now}
+## Joignable, et travailler jusqu’à ce soir {#work-now}
 
-**Travailler maintenant** montre le travail quelles que soient les heures, comme aux heures de travail. Dans le calme, c’est une case à côté de **Temps réel** sur le Porche, et un choix dans le menu de la ligne d’état, sur chaque page.
+**Travailler maintenant** n’existe plus depuis la version 0.0.7, et ses deux rôles se séparent.
 
-<figure markdown="span">
-  [![Le Porche avec « Travailler maintenant » coché à côté de « Temps réel » en haut, et au-dessus la ligne d’état, la barre de titre de la fenêtre, qui dit « Le travail est montré jusqu’à 17:00, à votre demande. »](../assets/screens/fr/work-now.png){ loading=lazy }](../assets/screens/fr/work-now.png "Ouvrir l’image en grand")
-  <figcaption>Travailler maintenant : le travail montré quelles que soient les heures, jusqu’à ce que vous décochiez la case.</figcaption>
-</figure>
+- **Pour tout voir et tout entendre un moment**, choisissez **Joignable** dans le menu de l’interrupteur « Ne pas déranger », dans la ligne d’état (un clic droit, ou un appui long) : pendant une demi-heure, une heure ou deux heures, jusqu’à la fin des heures où vous êtes, jusqu’à ce soir, ou jusqu’à ce que vous l’arrêtiez, au plus tard au début de la nuit (choisi la nuit, jusqu’à votre réveil). Tant qu’il dure, sur tous vos appareils, tous ceux qui écrivent et ne sont pas bloqués, et les personnes que vous connaissez qui appellent, vous joignent tout de suite ; le Porche s’ouvre avec toutes ses voies et toutes vos adresses, annonce les nouveaux courriels et les relève chaque minute ; ce que retient votre téléphone revient dès le choix. Ni une séance de concentration, ni la nuit, ni le temps libre ne mettent « Ne pas déranger » pendant ce temps. Les numéros que personne ne connaît restent au filtrage des appels ([Les appels](calls.md#the-call-screening)). Un clic sur l’interrupteur, ou **Comme d’habitude** dans son menu, y met fin, et une pause aussi ; il n’est pas proposé pendant une pause.
+- **Pour montrer le travail en dehors de vos heures**, le menu de la ligne d’état garde **Travailler encore une demi-heure** à **Travailler encore quatre heures**, et ajoute **Travailler jusqu’à ce soir**.
 
-Il prend fin quand vous décochez la case, quand Sioul se ferme, ou une fois la prochaine journée de travail finie ; sans heures de travail, à minuit. La ligne d’état dit jusqu’à quand. Sioul ne le garde pas après un redémarrage. Les repas et le sommeil passent quand même d’abord.
+Plus rien ne prend fin quand Sioul démarre ou se ferme : chacun a sa propre fin. Un « Travailler maintenant » réglé par un Sioul plus ancien sur un autre appareil se lit comme du travail jusqu’à sa fin.
 
 ## Quand aucune heure n’est réglée {#when-no-hours-are-set}
 

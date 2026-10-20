@@ -113,12 +113,14 @@ pub(crate) fn attention() -> Attention {
 /// The moment as the matrix reads it at `now`, in `mode`: the time, a slot
 /// of time for you, do-not-disturb from its switch or a focus session
 /// (docs/do-not-disturb.md), Free time's "Nothing at all", the Porch
-/// resting after a pause.
+/// resting after a pause, Reachable.
 pub(crate) fn attention_at(mode: &Mode, now: &Zoned) -> Now {
     let config = load_config();
     let overrides = Overrides::load(&Overrides::default_path());
     let mut moment = Now::of(mode).layers(in_slot(now), crate::everywhere::holds_others());
     moment.nothing = mode.free() && sioul_core::pause::nothing_now(&overrides, &config.free_time);
+    // Reachable (part 3 of "What reaches you"): everyone not blocked at once, whatever the time.
+    moment.reachable = crate::everywhere::reachable().is_some_and(|r| r.until.is_none_or(|u| now.timestamp().as_second() < u));
     moment.holds.porch_rests = overrides.porch_rests(now.timestamp().as_second());
     moment
 }

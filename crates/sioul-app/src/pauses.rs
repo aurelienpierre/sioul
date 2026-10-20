@@ -100,10 +100,12 @@ fn settle(now: &Zoned) {
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // Do-not-disturb both ways: the window kept, the system's own followed (once).
     crate::everywhere::started(qt, shared);
-    let qt = qt.clone();
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         settle(&Zoned::now());
         apply();
+        // Reachable begun or ended (here, on another device, by its end): the Porch and the mail's pace follow.
+        crate::backend::follow_reachable(&qt, &shared);
         if crate::dnd::take_pause_pressed() {
             let _ = qt.queue(|sioul| press(sioul));
         }

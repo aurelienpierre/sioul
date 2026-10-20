@@ -28,7 +28,7 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 
 | Time | What it is | Set where |
 |---|---|---|
-| **Work** | working hours; "A little longer" and "Work now" too | Settings ▸ Hours |
+| **Work** | working hours; "A little longer", "Work … more" and "Work until tonight" too | Settings ▸ Hours |
 | **Admin** | hours for your own admin | Settings ▸ Hours |
 | **Meals** | each meal, from getting it ready to its end | Health: meals, and the day's changes ([health.md](health.md)) |
 | **Sleep** | the night, from winding down to waking; each nap with its minutes to come back | Health: the night, naps |
@@ -57,8 +57,8 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 
 `sioul_core::areas::in_view` is the whole rule for areas, the attention model's `Attention::mail` for mail ([attention.md](attention.md)); the status line says what now is and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Sleep: nothing disturbs until 07:00.", and for the two pauses "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." and "Paused."
 
-### "Work now"
-A box beside "Real time" on the Porch, and in the status line's menu on every page: work shown whatever the hours, as in working hours. It ends when you untick it, when Sioul closes (Sioul takes it back on starting too, after a crash), or once the next working day is over: today's working hours when they are not over yet, else the next working day's, past any time off; without working hours, at midnight (`quiet::end_of_next_workday`, `Overrides::work_now`). The status line says until when. Meals and sleep still come first.
+### "Work now", gone {#work-now}
+"Work now" went with the three states (decision 10 of 18 October 2026, [do-not-disturb.md](do-not-disturb.md#the-three-states)): Reachable took its part for people and the Porch, and the status line's menu its part for work, "Work half an hour more" to "Work four hours more" and **Work until tonight** (`Overrides::work_until` at the night's start, as Health knows it; offered only when a night is known). Nothing ends any more when Sioul starts or closes. A `work_now` an older Sioul wrote is still read as work until its end (`quiet::end_of_next_workday`, `Overrides::work_now`, `Reason::WorkNow`), and "Back to the usual hours", in the status line's menu, clears it. Meals and sleep still come first.
 
 ### When no hours are set
 The Porch asks, in a card, for the hours not set yet (work, your admin), with "Set my hours", which opens Settings at them, and "Leave as is", which stops asking.

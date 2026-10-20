@@ -368,13 +368,14 @@ pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
     let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, &blocks, now.time_zone())));
     let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
     let focus = timelog::running().and_then(|r| everywhere::focus(&r, stamp));
-    let sources = Sources { paused: overrides.paused_from(), free, sleep, focus };
+    let sources = Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since };
     let dnd = everywhere::now(&config.dnd, &sources, Switch::load(&Switch::default_path()).latest().as_ref(), stamp);
     let dnd_until = dnd.until().map(instant).unwrap_or_default();
     // What reaches the person now, row by row of the matrix of what reaches them.
     let matrix = Attention::of(config);
     let mut moment = attention::Now::of(&mode).layers(attention::Slots::load(&attention::Slots::default_path()).at(&now), dnd.gates());
     moment.nothing = mode.free() && nothing;
+    moment.reachable = dnd.reachable.is_some();
     let mut reach = Vec::new();
     let mut by_group: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
     for row in Row::ALL {

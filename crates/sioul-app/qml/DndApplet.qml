@@ -11,6 +11,11 @@
 // device's own system, unheard, it says so, muted, with "Silence this device
 // again"; off while the system still silences this device, it says so, with
 // Android's page; the last "off" made in a system is named in its tip.
+// The three states (part 3 of "What reaches you"): its menu also presses
+// Reachable for a while, or As usual; while Reachable lasts, the button says
+// until when, in the accent, and a click goes back to As usual. On a
+// computer, "Let what your phone holds through". The one button and card of
+// part 5 take its place.
 
 pragma ComponentBehavior: Bound
 
@@ -26,25 +31,30 @@ LineButton {
     required property var moment
     readonly property var dnd: applet.moment && applet.moment.dnd ? applet.moment.dnd : ({ on: false, button: true, line: "", why_line: "", details: [], manual: false, end_time: "", here_off: false, here_offers: [], system_on: false, system_line: "", system_offers: [], last_off: "" })
     readonly property bool on: applet.dnd.on === true
+    // Reachable now (everywhere.rs's `moment`, its `reachable`), on any device.
+    readonly property bool reachable: applet.dnd.state === "reachable" && !applet.on
+    readonly property bool android: Qt.platform.os === "android"
     // On elsewhere, turned off in this device's own system and left so (both ways).
     readonly property bool hereOff: applet.on && applet.dnd.here_off === true
     // The buttons beside what this device's own system holds: Android's page.
     readonly property var offers: applet.hereOff ? (applet.dnd.here_offers || []) : (!applet.on ? (applet.dnd.system_offers || []) : [])
 
     // The switch hidden in the settings shows only while something holds it on.
-    visible: applet.dnd.button !== false || applet.on
+    visible: applet.dnd.button !== false || applet.on || applet.reachable
     checkable: true
     checked: applet.on
-    switchedOn: applet.on
+    switchedOn: applet.on || applet.reachable
     // A long press opens its menu.
     tipOnHold: false
     icon.name: applet.on ? "notification-disabled" : "notification-inactive"
-    display: applet.compact || !applet.on ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-    text: applet.on ? applet.dnd.line : applet.sioul.text("dnd-switch")
+    display: applet.compact || !(applet.on || applet.reachable) ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+    text: applet.on ? applet.dnd.line : applet.reachable ? applet.dnd.reachable.line : applet.sioul.text("dnd-switch")
     tip: applet.tipText()
     menuOpen: menuLoader.item !== null && (menuLoader.item as SioulMenu).opened
 
     function tipText(): string {
+        if (applet.reachable)
+            return applet.sioul.textWith("reach-switch-tip-on", "line", applet.dnd.reachable.line)
         if (!applet.on)
             return [applet.sioul.text("dnd-switch-tip-off"), applet.dnd.system_line || "", applet.dnd.last_off || ""].filter(line => line !== "").join("\n")
         return applet.sioul.textArgs("dnd-switch-tip-on", JSON.stringify({ line: applet.dnd.line, why: applet.dnd.why_line }))
@@ -58,8 +68,11 @@ LineButton {
     }
 
     onChosen: {
-        // On (from anything): off, on every device; off: on until turned off.
-        applet.sioul.dndToggle(!applet.on, 0)
+        // Reachable: as usual; on (from anything): off, on every device; off: on until turned off.
+        if (applet.reachable)
+            applet.sioul.reachChoose("usual", "")
+        else
+            applet.sioul.dndToggle(!applet.on, 0)
         applet.checked = Qt.binding(() => applet.on)
     }
 
@@ -68,7 +81,7 @@ LineButton {
 
         Icon {
             iconName: applet.icon.name
-            color: applet.on && !applet.hereOff ? applet.theme.accent : applet.theme.muted
+            color: (applet.on && !applet.hereOff) || applet.reachable ? applet.theme.accent : applet.theme.muted
             size: 16
         }
         Label {
@@ -158,6 +171,66 @@ LineButton {
                 height: visible ? implicitHeight : 0
                 text: applet.sioul.text("dnd-turn-off")
                 onTriggered: applet.sioul.dndToggle(false, 0)
+            }
+            // Reachable: until when, and back to as usual (part 3); never offered during a pause.
+            MenuItem {
+                visible: applet.reachable
+                height: visible ? implicitHeight : 0
+                enabled: false
+                text: applet.reachable ? applet.theme.plain(applet.dnd.reachable.line) : ""
+            }
+            MenuItem {
+                objectName: "reach-usual"
+                visible: applet.reachable
+                height: visible ? implicitHeight : 0
+                text: applet.sioul.text("reach-usual")
+                onTriggered: applet.sioul.reachChoose("usual", "")
+            }
+            Repeater {
+                model: applet.dnd.paused === true ? [] : ["30", "60", "120"]
+
+                delegate: MenuItem {
+                    required property string modelData
+
+                    objectName: "reach-" + modelData
+                    text: applet.sioul.text("reach-for-" + modelData)
+                    onTriggered: applet.sioul.reachChoose("reachable", modelData)
+                }
+            }
+            MenuItem {
+                visible: applet.dnd.paused !== true && (applet.dnd.reach_hours || 0) > 0
+                height: visible ? implicitHeight : 0
+                text: applet.theme.plain(applet.sioul.textWith("reach-until-time", "time", applet.dnd.reach_hours_time || ""))
+                onTriggered: applet.sioul.reachChoose("reachable", "hours")
+            }
+            // At night, until tonight and until turned off both end at waking: one choice.
+            MenuItem {
+                objectName: "reach-tonight"
+                visible: applet.dnd.paused !== true && (applet.dnd.reach_tonight || 0) > 0
+                height: visible ? implicitHeight : 0
+                text: applet.theme.plain(applet.sioul.textWith(applet.dnd.reach_at_night === true ? "reach-until-waking" : "reach-until-tonight", "time", applet.dnd.reach_tonight_time || ""))
+                onTriggered: applet.sioul.reachChoose("reachable", "tonight")
+            }
+            MenuItem {
+                objectName: "reach-off"
+                visible: applet.dnd.paused !== true && (applet.dnd.reach_tonight || 0) > 0 && applet.dnd.reach_at_night !== true
+                height: visible ? implicitHeight : 0
+                text: applet.theme.plain(applet.sioul.textWith("reach-until-off", "time", applet.dnd.reach_tonight_time || ""))
+                onTriggered: applet.sioul.reachChoose("reachable", "off")
+            }
+            // On a computer: what the phone holds let through, without saying what it holds (3.3).
+            MenuItem {
+                objectName: "reach-let-through"
+                visible: !applet.android
+                height: visible ? implicitHeight : 0
+                text: applet.sioul.text("reach-let-through")
+                onTriggered: applet.sioul.letPhoneThrough()
+            }
+            MenuSeparator {}
+            // Do not disturb's lengths, under its name: Reachable's are above.
+            MenuItem {
+                enabled: false
+                text: applet.sioul.text("dnd-switch")
             }
             Repeater {
                 model: [30, 60, 120]

@@ -26,7 +26,7 @@ Without any setting:
 ## When it opens {#when-it-opens}
 
 - **In your hours**, the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
-- **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
+- **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Show all mail now** stays possible, quietly ([below](#real-time)). Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
 Which mail comes when follows who wrote, as each list's row says at each time (safe, neutral, restricted, strangers, your Always through people; the blocked never), and what each address is for: work, your admin, leisure. See [What reaches you, and when](notifications.md#by-person) and [Hours](hours.md).
@@ -187,7 +187,7 @@ More in [what the research says](../dev/research.md).
 
 The **Real time** box, at the top of the Porch, fetches every folder of every address each minute, and keeps the Porch open: for a code or a password you are waiting for. Untick it to go back to the usual pace.
 
-In quiet time, **Work now** appears beside it, to show work whatever the hours. See [Hours](hours.md#work-now).
+**Show all mail now**, at the top of the Porch, shows every lane and every address at any hour, on this device alone, until **Done for now**; it tells nothing. To be reached by everyone for a while, on every device, see [Reachable](hours.md#work-now).
 
 ### A public address, protected {#a-public-address-protected}
 

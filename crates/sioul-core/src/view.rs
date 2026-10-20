@@ -46,6 +46,8 @@ pub struct PorchView {
     pub status: String,
     /// The lanes, in the order of the Porch; empty when closed.
     pub lanes: Vec<LaneView>,
+    /// "Show all mail now" pressed on this device, until "Done for now": set by the window.
+    pub all: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -130,7 +132,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, t
         let next = window::next_opening(&config.windows, now);
         args.set("when", next.map_or_else(String::new, |z| tr.when(&z)));
         let closed = Some(tr.text("porch-closed", Some(&args)));
-        return PorchView { open, closed, right_now, summary: String::new(), status: String::new(), lanes: Vec::new() };
+        return PorchView { open, closed, right_now, summary: String::new(), status: String::new(), lanes: Vec::new(), all: false };
     }
     let status = match window::current(&config.windows, now) {
         Some((_, closing)) => {
@@ -158,7 +160,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, t
         })
         .filter(|l| !l.items.is_empty())
         .collect();
-    PorchView { open, closed: None, right_now, summary: tr.summary(&porch::summarise(items), store), status, lanes }
+    PorchView { open, closed: None, right_now, summary: tr.summary(&porch::summarise(items), store), status, lanes, all: false }
 }
 
 /// A lane of the Porch, empty or not: what it holds and how mail lands there.

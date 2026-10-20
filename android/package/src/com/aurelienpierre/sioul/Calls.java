@@ -788,8 +788,10 @@ final class Calls
                 return said(decision, true, spam);
             }
         }
-        // 4. A second call within 15 minutes rings, the blocked's and that aside (hidden numbers cannot be told apart: not them).
-        if (repeat)
+        // 4. A second call within 15 minutes rings, the blocked's and that aside (hidden numbers cannot be told apart: not them);
+        // and a number called lately whose verification failed, a borrowed caller ID of it calling twice (re-check of part 2, R1).
+        boolean borrowed = decision.called && screening.on && "voicemail".equals(screening.unverified) && "failed".equals(verified);
+        if (repeat && !borrowed)
             return said(decision, false, "repeat");
         // Expecting a call: the later press of this phone's and the table's (all devices').
         Press pressed = later(local, table.expecting);
