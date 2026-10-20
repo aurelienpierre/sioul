@@ -1043,6 +1043,97 @@ fn put_back_never_keeps_a_dose_waiting() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// A dose's exchange taking the lock as it does, again and again, while
+/// `working` runs: how long it waited at most, and how many times it took it.
+fn waits_beside<T>(memory: &Path, working: &std::thread::JoinHandle<T>, pause: std::time::Duration) -> (std::time::Duration, usize) {
+    let (mut longest, mut taken) = (std::time::Duration::ZERO, 0);
+    while !working.is_finished() {
+        let asked = std::time::Instant::now();
+        let held = exchange_lock(memory, true).unwrap();
+        longest = longest.max(asked.elapsed());
+        taken += 1;
+        drop(held);
+        std::thread::sleep(pause);
+    }
+    (longest, taken)
+}
+
+/// CI's Windows job of 20 October 2026: placing a whole batch of notes put
+/// back in one hold of the exchanges' lock took more than a second on slow
+/// storage, and a dose's exchange waited 1.1 s. Each placement 10 ms slower
+/// here (`SLOW_UNDER_LOCK`, tests only): the lock is held a fifth of a
+/// second at a time, and a dose's exchange waits a third of a second at most.
+#[test]
+fn put_back_on_slow_storage_never_keeps_a_dose_waiting() {
+    let base = scratch("gc-put-back-slow");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..120 {
+        put(&dn, &format!("bulk/{n:03}.md"), format!("# note {n} of a bulk\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + MINUTE, &dn).withheld.map(|w| w[0].count), Some(120));
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let putting = {
+        let (folder, memory, id) = (folder.clone(), memory.clone(), id.clone());
+        std::thread::spawn(move || {
+            SLOW_UNDER_LOCK.with(|slow| slow.set(std::time::Duration::from_millis(10)));
+            put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/")
+        })
+    };
+    let (longest, taken) = waits_beside(&memory, &putting, std::time::Duration::from_millis(30));
+    assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 120, held: 120 }));
+    assert_eq!(names_in(&dn.join("bulk")).len(), 120, "every note back");
+    println!("put back of 120 notes at 10 ms each: a dose's exchange waited {longest:?} at most, {taken} times");
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// "Remove its files" for a device with many: its memory written in one
+/// hold, then its files taken out a fifth of a second at a time, each 10 ms
+/// slower here (`SLOW_UNDER_LOCK`): a dose's exchange waits a third of a
+/// second at most, and everything goes as said before the press.
+#[test]
+fn removing_a_device_s_many_files_never_keeps_a_dose_waiting() {
+    let o = old_one("gc-remove-slow");
+    // A hundred and fifty more of its last words, contents no other record names, sealed long ago.
+    for n in 0..150 {
+        put(&o.on, &format!("many/{n:03}.md"), format!("# the old one's note {n}\n").as_bytes());
+    }
+    with_notes(&o.old, &o.folder, &o.key, o.now, &o.on);
+    for n in 0..150 {
+        sealed_long_ago(&o.folder, &content_name(&o.base, &o.key, format!("# the old one's note {n}\n").as_bytes()));
+    }
+    crate::devices::change(&crate::devices::own_path(&o.old.roots.state), Some((&o.folder, &o.key)), |e| {
+        e.close(o.now / 1000);
+        e.left = true;
+    })
+    .unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now + MINUTE, &o.dn);
+    let stores = stores_with(&o.desk, &o.dn, false);
+    let said = device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + 2 * MINUTE).unwrap();
+    assert!(!said.counts && said.sealed == 152, "its two last words and the hundred and fifty: {said:?}");
+    let removing = {
+        let (folder, key, memory, id, old, now) = (o.folder.clone(), o.key, o.desk.memory.clone(), o.desk.id.clone(), o.old.id.clone(), o.now + 2 * MINUTE);
+        std::thread::spawn(move || {
+            SLOW_UNDER_LOCK.with(|slow| slow.set(std::time::Duration::from_millis(10)));
+            remove_device_files(&folder, &key, &memory, &id, &stores, &old, now)
+        })
+    };
+    let (longest, taken) = waits_beside(&o.desk.memory, &removing, std::time::Duration::from_millis(30));
+    assert_eq!(removing.join().unwrap(), Ok(said.clone()), "as said before the press");
+    assert!(rounds(&o.folder).get(&o.old.id).is_none_or(|r| r.is_empty()), "every round");
+    assert!((0..150).all(|n| !sealed(&o.folder, &content_name(&o.base, &o.key, format!("# the old one's note {n}\n").as_bytes()))) && !sealed(&o.folder, &o.last_word));
+    assert!(sealed(&o.folder, &content_name(&o.base, &o.key, b"# The desk's note\n")), "another device's: never");
+    println!("removal of a device's {} files at 10 ms each: a dose's exchange waited {longest:?} at most, {taken} times", said.rounds + said.small + said.sealed);
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
 /// L-a (review of 18 October 2026): a large note put back is opened beside
 /// its place outside the exchanges' lock, taken only to place it: a dose's
 /// exchange never waits for its time (until then, a 40 MB note held it

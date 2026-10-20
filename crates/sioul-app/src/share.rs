@@ -134,6 +134,21 @@ fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
     })
 }
 
+/// `work` begun once the exchange of this Sioul running (told to hurry: its
+/// notes and papers wait for the next) is done, and run without holding the
+/// window's exchanges back, a dose's alarm first: for work that takes the
+/// exchanges' lock itself, a short hold at a time (`share::remove_device_files`),
+/// between which a dose's exchange goes. Under `quietly`, a dose's alarm
+/// waited for the whole of it.
+fn after_exchange<T>(work: impl FnOnce() -> T) -> T {
+    use std::sync::atomic::Ordering;
+    HURRY.store(true, Ordering::Relaxed);
+    let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    HURRY.store(false, Ordering::Relaxed);
+    drop(busy);
+    work()
+}
+
 /// The notes folder, when a sync app carries it already: notes and papers then
 /// never travel through the sharing too, the two carriers would undo each
 /// other's changes. On a computer, from the sync apps' own settings and the
@@ -884,7 +899,7 @@ pub(crate) fn remove_device_files(id: &str) -> String {
     if !marked.is_empty() {
         return marked;
     }
-    quietly(|| match share::remove_device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) {
+    after_exchange(|| match share::remove_device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) {
         Ok(_) => String::new(),
         Err(e) => problem_text(&e),
     })
