@@ -53,6 +53,15 @@ public final class ModeCheck
         // Nested, as "silence".
         expect("nested", through("{\"people\":true,\"doses\":true,\"silence\":{\"calls\":\"contacts\",\"messages\":\"none\",\"repeat\":true,\"conversations\":false,\"alarms\":true,\"doses\":true,\"events\":false}}"), "2 4 true false true true false 3");
         expect("silence null", through("{\"people\":false,\"doses\":false,\"silence\":null}"), "4 4 false false true false true 3");
+        // A held text let through at a review only when the filter silences every text (review of part 4, S-2).
+        // INTERRUPTION_FILTER ALL 1, PRIORITY 2, NONE 3, ALARMS 4; categories MESSAGES 4, CONVERSATIONS 256; senders NONE 3.
+        expect("silenced: nothing", AppNotes.textsSilenced(3, false, 0, 0), true);
+        expect("silenced: alarms only", AppNotes.textsSilenced(4, false, 0, 0), true);
+        expect("silenced: all", AppNotes.textsSilenced(1, true, 0, 0), false);
+        expect("silenced: priority, its policy unknown", AppNotes.textsSilenced(2, false, 0, 0), false);
+        expect("silenced: priority, starred texts ring", AppNotes.textsSilenced(2, true, 4, 3), false);
+        expect("silenced: priority, priority conversations ring", AppNotes.textsSilenced(2, true, 256, 2), false);
+        expect("silenced: priority, no texts", AppNotes.textsSilenced(2, true, 256 | 8, 3), true);
         // An older Sioul: "people" only, as before (starred and repeat callers, or nobody; no conversation).
         expect("older, people", through("{\"kind\":\"pause\",\"people\":true,\"doses\":true}"), "3 3 true false true true true 3");
         expect("older, nobody", through("{\"kind\":\"pause\",\"people\":false,\"doses\":false}"), "4 4 false false true false true 3");

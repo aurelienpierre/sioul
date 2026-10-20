@@ -602,8 +602,9 @@ public final class AppNotes extends NotificationListenerService
                 for (StatusBarNotification sbn : held)
                     keys.put(sbn.getKey());
             DoseAlarms.load(getApplicationContext());
-            // Whether the phone's do-not-disturb silences now: a text whose cell says ◑ comes then, without a sound.
-            boolean silenced = getCurrentInterruptionFilter() > NotificationListenerService.INTERRUPTION_FILTER_ALL;
+            // Whether the phone's do-not-disturb silences every text now: a text whose cell says ◑ comes then,
+            // without a sound. Android ranks no held notification, so the filter and its policy say it.
+            boolean silenced = silencesTexts();
             String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).toString());
             if (answer == null || answer.isEmpty() || "null".equals(answer)) {
                 Log.w(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.");
@@ -796,6 +797,43 @@ public final class AppNotes extends NotificationListenerService
         // States only, in the phone's log: never a word, a name, an app.
         Log.i(TAG, "Replies: one " + state + (crossed ? ", crossing newer messages" : "") + (held ? ", among those held" : "") + ".");
         return true;
+    }
+
+    /** Whether do-not-disturb silences every text now (`textsSilenced`), as Android says it. */
+    private boolean silencesTexts()
+    {
+        int filter = getCurrentInterruptionFilter();
+        NotificationManager.Policy policy = null;
+        if (filter == NotificationListenerService.INTERRUPTION_FILTER_PRIORITY && Build.VERSION.SDK_INT >= 35) {
+            try {
+                policy = getSystemService(NotificationManager.class).getConsolidatedNotificationPolicy();
+            } catch (RuntimeException e) {
+                policy = null;
+            }
+        }
+        return policy == null ? textsSilenced(filter, false, 0, 0) : textsSilenced(filter, true, policy.priorityCategories, policy.priorityConversationSenders);
+    }
+
+    /**
+     * Whether a filter silences every text (review of part 4, S-2). Android
+     * ranks no held notification, so a held text cannot be asked whether it
+     * would ring: "nothing" and "alarms only" silence every text; "priority"
+     * only when its policy, as Android 15 and later give it in force
+     * (`getConsolidatedNotificationPolicy`, Sioul's mode or yours), lets
+     * neither messages nor conversations ring; an older Android's "priority"
+     * may let starred contacts' texts ring, so it reads as not silenced, and
+     * a text held then waits (docs/android.md). At posting, each text's own
+     * ranking says it (`intercepted`).
+     */
+    static boolean textsSilenced(int filter, boolean known, int categories, int conversationSenders)
+    {
+        if (filter == NotificationListenerService.INTERRUPTION_FILTER_NONE || filter == NotificationListenerService.INTERRUPTION_FILTER_ALARMS)
+            return true;
+        if (filter != NotificationListenerService.INTERRUPTION_FILTER_PRIORITY || !known)
+            return false;
+        boolean texts = (categories & NotificationManager.Policy.PRIORITY_CATEGORY_MESSAGES) != 0;
+        boolean conversations = (categories & NotificationManager.Policy.PRIORITY_CATEGORY_CONVERSATIONS) != 0 && conversationSenders != NotificationManager.Policy.CONVERSATION_SENDERS_NONE;
+        return !texts && !conversations;
     }
 
     /** The ranking Android gives a notification now; null when it gives none (a held one). */

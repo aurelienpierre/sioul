@@ -1382,11 +1382,13 @@ impl Attention {
         if now.reachable && level != Level::Never && !(via == Channel::Calls && screened(Row::People(Channel::Calls, person))) {
             level = Level::Now;
         }
-        // ◑, in the shade without a sound: let through while the phone silences it (Android's
-        // filter, Sioul's mode or yours), held otherwise, so that nothing rings where the cell
-        // says silent (decision 13). A phone cannot show what it holds: a message never stays ◑.
+        // ◑, in the shade without a sound: a text let through while the phone silences it
+        // (Android's filter, Sioul's mode or yours), held otherwise, so that nothing rings where
+        // the cell says silent (decision 13). A mail app's notification stays held: mail is
+        // unchanged (proposal, 3.8; review of part 4, S-1). A phone cannot show what it holds: a
+        // message never stays ◑.
         if level == Level::Quiet {
-            level = if now.silenced && via != Channel::Calls { Level::Now } else { Level::Later };
+            level = if now.silenced && via == Channel::Messages { Level::Now } else { Level::Later };
         }
         let mut step = if chosen { Step::Chosen } else { Step::Matrix };
         if !chosen && !now.reachable && level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
@@ -3142,6 +3144,15 @@ mod tests {
         let mut night = Now::time(Column::Sleep).layers(false, true);
         night.silenced = true;
         assert_eq!(message(Who::Neutral, false, &night), Level::Later, "at night, whatever");
+        // A mail app's notification, its cell ◑ (safe senders at night, under do-not-disturb): held
+        // on the phone, silenced or not (review of part 4, S-1).
+        let mail = |now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, group: false, always: false }), now).level;
+        for column in [Column::Sleep, Column::Pause, Column::Work] {
+            let mut now = Now::time(column).layers(false, column == Column::Work);
+            now.silenced = true;
+            assert_eq!(a.cell(Row::People(Channel::Mail, Person::Safe), if column == Column::Work { Column::Dnd } else { column }), Level::Quiet);
+            assert_eq!(mail(&now), Level::Later, "mail at {column:?}, the phone silenced: held, as before");
+        }
         let call = a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), always: false, emergency: false, repeat: false }), &dnd);
         assert!(!call.told, "a call under do-not-disturb: voicemail");
         // The phone's mode under do-not-disturb lets no more texts ring than before: the starred at most.
