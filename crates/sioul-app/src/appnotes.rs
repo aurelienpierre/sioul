@@ -205,7 +205,9 @@ fn decide(json: &str) -> String {
     };
     let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
     let reachable = reachable_until();
-    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable };
+    // Android silences it now (Sioul's mode or yours): a text whose cell says ◑ comes, without a sound (decision 13).
+    let silenced = posted.intercepted;
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
     let hash = appnotes::key_hash(&posted.key);
     // A conversation you answered from a computer in the last twenty minutes, or a number
     // texted from one, by the SMS app: at once, but in a pause (`replies`).
@@ -301,6 +303,9 @@ fn review(json: &str) -> String {
     let keys: Vec<String> = asked["snoozed"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // Why the review runs, as Java says it ("files", "connected"): a word of its own, never a name.
     let reason: String = asked["reason"].as_str().unwrap_or_default().chars().filter(char::is_ascii_lowercase).take(16).collect();
+    // The phone's do-not-disturb silences now, as Java read its filter: a text whose cell says ◑
+    // comes then, without a sound (decision 13); an older Java says nothing, read as not silenced.
+    let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let now = Zoned::now();
@@ -332,7 +337,7 @@ fn review(json: &str) -> String {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
-            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable };
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
             let mut decided = appnotes::again(&held, &choices, &ask);
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
@@ -1027,7 +1032,7 @@ mod tests {
         let gathered = vec!["09:00".to_string(), "12:00".into(), "15:00".into(), "18:00".into()];
         let never = |_: &Zoned| false;
         let sources = sioul_core::attention::source_rows(&posted.package, "");
-        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources, reachable: None };
+        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources, reachable: None, silenced: false };
         let decision = appnotes::decide(&kind, Some(Who::Neutral), false, &choices, &ask);
         assert_eq!(decision.until, focus.until, "held until the session's end");
         let cause = appnotes::cause(&posted.package, &kind, Some(Who::Neutral), false, &choices, &ask);

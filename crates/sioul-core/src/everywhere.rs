@@ -71,6 +71,9 @@ pub const CLOCK_AHEAD_MS: i64 = 24 * 3600 * 1000;
 /// A release stamped further ahead than this (milliseconds) is not followed
 /// by the hybrid clock (R-3): a release asks nothing of the presses' order.
 pub const RELEASE_FOLLOWED_MS: i64 = 3600 * 1000;
+/// What a device's Reachable press is asked as among the release stamps
+/// (`Switch::release_stamps`): its id and this, apart from its own release.
+pub const REACHABLE_RELEASE: &str = "#reachable";
 /// The devices gone from the sharing as this device last found them, beside
 /// the sharing's memory (`share/`): ids only, never shared (`gone_devices`).
 pub const GONE_FILE: &str = "gone-devices.json";
@@ -411,12 +414,13 @@ impl Switch {
     /// once, apart: a stamp from one device, however far ahead, never stands
     /// in the way of another's (review of part 3, F3).
     pub fn release_stamps(&self) -> Vec<(String, i64)> {
-        let mut out: BTreeMap<String, i64> = self.device.iter().filter(|(_, d)| d.release > 0 && !d.gone).map(|(id, d)| (id.clone(), d.release)).collect();
+        let mut out: Vec<(String, i64)> = self.device.iter().filter(|(_, d)| d.release > 0 && !d.gone).map(|(id, d)| (id.clone(), d.release)).collect();
+        // Its Reachable press apart from its release, so that neither masks the other (check of a23cf0c, C-1).
         if let Some(p) = self.latest().filter(|p| p.state == State::Reachable && !p.gone) {
-            let stamp = out.entry(p.from).or_default();
-            *stamp = (*stamp).max(p.at);
+            out.push((format!("{}{REACHABLE_RELEASE}", p.from), p.at));
         }
-        out.into_iter().collect()
+        out.sort();
+        out
     }
 
     /// The stamp of a press or a release made here at `now_ms`: after every
@@ -1409,7 +1413,7 @@ mod tests {
         let stamp = s.release("desk", 900_000);
         assert_eq!((stamp, s.release_stamps()), (1_000_001, vec![("desk".to_string(), 1_000_001)]), "after every press known, whatever the clock");
         s.press_state("laptop", State::Reachable, 9_000_000, false, 2_000_000, "");
-        assert_eq!(s.release_stamps(), vec![("desk".to_string(), 1_000_001), ("laptop".to_string(), 2_000_000)]);
+        assert_eq!(s.release_stamps(), vec![("desk".to_string(), 1_000_001), (format!("laptop{REACHABLE_RELEASE}"), 2_000_000)]);
         // A quieter press unseen within the minute holds: no release from the Reachable one.
         s.device.insert("phone".into(), pressed(1_970_000, State::Dnd, 0));
         assert_eq!((s.latest().unwrap().state, s.release_stamps()), (State::Dnd, vec![("desk".to_string(), 1_000_001)]));
@@ -1609,6 +1613,30 @@ mod tests {
         let mut screening = switch(&[("old-laptop", pressed(t - 2 * DAY, State::Usual, 0))]);
         crate::calls::set_screens(&mut screening, "old-laptop", true);
         assert!(crate::calls::screens_anywhere(&screening) && !crate::calls::screens_anywhere(&screening.counted("phone", &gone)));
+    }
+
+    /// Check of a23cf0c, C-1: a laptop whose clock was two hours ahead
+    /// releases; set right, its Reachable three minutes later and its "Let
+    /// what your phone holds through" two minutes after both apply, each
+    /// once, never shadowed by its own earlier stamp; another device's too.
+    #[test]
+    fn a_device_s_clock_set_right_never_shadows_its_own_releases() {
+        use crate::appnotes::Ledger;
+        let t = 1_790_000_000_000;
+        const MIN: i64 = 60_000;
+        let mut s = switch(&[("phone", pressed(t - 86_400_000, State::Usual, 0))]);
+        s.release("laptop", t + 120 * MIN);
+        let mut ledger = Ledger::default();
+        assert!(ledger.apply_releases(&s.release_stamps(), t / 1000).0, "applied, at the phone's now");
+        assert!(!ledger.apply_releases(&s.release_stamps(), t / 1000 + 60).0, "once");
+        s.press_state("laptop", State::Reachable, t + 63 * MIN, false, t + 3 * MIN, "");
+        assert!(ledger.apply_releases(&s.release_stamps(), t / 1000 + 180).0, "its Reachable, its clock set right");
+        let release = s.release("laptop", t + 5 * MIN);
+        assert!(release < t + 120 * MIN, "the clock never follows a release hours ahead");
+        assert!(ledger.apply_releases(&s.release_stamps(), t / 1000 + 300).0, "its release, set right");
+        assert!(!ledger.apply_releases(&s.release_stamps(), t / 1000 + 360).0, "each once");
+        s.press_state("desk", State::Reachable, t + 66 * MIN, false, t + 6 * MIN, "");
+        assert!(ledger.apply_releases(&s.release_stamps(), t / 1000 + 360).0, "another device's");
     }
 
     /// Re-check of part 3, R-3: a release from a clock 23 hours ahead never

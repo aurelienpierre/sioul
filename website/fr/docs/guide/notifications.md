@@ -52,7 +52,7 @@ Deux interrupteurs de plus ont chacun une ligne sous les cartes : **J’attend
 | Marque | En mots | Ce qui arrive |
 |---|---|---|
 | ● | **Tout de suite** | Cela vient maintenant : affiché, notifié, laissé passer, ça sonne. Sur une couche : la couche ne change rien. |
-| ◑ | **Affiché, sans notification** | C’est dans Sioul si vous regardez (le Porche) ; rien ne vous le dit. C’est notifié quand vient un moment où cela l’est. |
+| ◑ | **Affiché, sans notification** | C’est dans Sioul si vous regardez (le Porche) ; rien ne vous le dit. C’est notifié quand vient un moment où cela l’est. Pour un message pendant « Ne pas déranger », **dans le volet des notifications, sans son** : il arrive sans bruit dans les notifications de votre téléphone tant que celui-ci est en silence, et attend sinon. |
 | ◐ | **Si son événement tombe dans ce moment** | Les alarmes d’un événement et le rappel de Sioul avant lui : tout de suite quand l’événement tombe dans ce moment ; sinon plus tard. |
 | ◎ | **Aux heures de regroupement** | Cela vient à la prochaine heure de regroupement : 09:00, 13:00 et 18:00 sauf si vous en réglez d’autres. |
 | ○ | **Plus tard** | Cela attend hors de vue, et vient quand commence un moment où cela peut venir : les courriels hors du Porche, un message retenu, un appel envoyé sur la messagerie et listé alors. |
@@ -135,7 +135,7 @@ Comme Sioul le fait maintenant :
 
 Les appels des numéros absents de vos contacts et des numéros masqués ont quitté cette grille le 19 octobre 2026 : le filtrage des appels en décide, à part ([Les appels](calls.md#the-call-screening)).
 
-Les messages vont comme les appels, mais les messages des inconnus et des groupes arrivent tout de suite pendant le travail et les démarches. La notification d’une application de courriel, sur un téléphone, suit la grille Courriels, et elle est retenue là où les courriels seraient affichés sans notification : un téléphone ne peut pas montrer ce qu’il retient. Un appel envoyé sur la messagerie est listé sur le Porche quand son auteur peut vous joindre, ou pendant le travail et les démarches pour une ligne qui ne sonne jamais ([Les appels](calls.md#afterwards-on-the-porch)).
+Les messages vont comme les appels, mais les messages des inconnus arrivent tout de suite pendant le travail et les démarches, et ceux des groupes pendant le travail, les démarches, les loisirs et les repas ; pendant « Ne pas déranger », les messages de vos personnes sûres, de vos contacts et des groupes arrivent dans le volet, sans son (◑), et leurs appels vont sur la messagerie. La notification d’une application de courriel, sur un téléphone, suit la grille Courriels, et elle est retenue là où les courriels seraient affichés sans notification : un téléphone ne peut pas montrer ce qu’il retient. Un appel envoyé sur la messagerie est listé sur le Porche quand son auteur peut vous joindre, ou pendant le travail et les démarches pour une ligne qui ne sonne jamais ([Les appels](calls.md#afterwards-on-the-porch)).
 
 **Les interrupteurs des courriels**, au-dessus de leur grille :
 

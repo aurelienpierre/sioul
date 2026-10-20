@@ -4565,7 +4565,17 @@ pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn std::any:
         if !memory.parent().is_some_and(Path::exists) {
             return sioul_core::draftcopies::unshared();
         }
-        exchange_lock(memory, true).ok().flatten().map(|file| Box::new(file) as Box<dyn std::any::Any>)
+        exchange_lock(memory, true).ok().flatten().map(|file| Box::new(HandedOff(memory.to_path_buf(), Some(file))) as Box<dyn std::any::Any>)
+    }
+}
+
+/// The lock held for a batch of the copies beside drafts, handed to an
+/// exchange waiting in this process when let go (`hand_off`).
+struct HandedOff(PathBuf, Option<std::fs::File>);
+
+impl Drop for HandedOff {
+    fn drop(&mut self) {
+        hand_off(&self.0, self.1.take());
     }
 }
 
@@ -5692,6 +5702,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // What a crash left half written among the folder's sealed files, and in
     // the folders whose files travel whole (F17), once a day
     // (`Memory::cleaned`): listing them reads thousands of names.
+    // What a crash left of the memory written ahead (`Memory::prepare_save`) beside it, at each
+    // exchange: a few names (check of a23cf0c, C-4).
+    if let Some(dir) = sharing.memory.parent() {
+        clean_leftovers(dir);
+    }
     if now_ms - memory.cleaned >= DAY {
         clean_leftovers(&sharing.folder.join("blobs"));
         for store in stores.iter().filter(|s| s.folder && matches!(s.shape, Shape::Whole)) {
@@ -7269,7 +7284,9 @@ fn place_put_back(folder: &Path, key: &[u8; 32], memory: &Path, opened: &Path, p
 /// taken again for the rest: work that grows with a count of files never
 /// keeps an exchange waiting for its whole. An exchange may run between two
 /// holds: `each` looks again at what it does under its own hold. A hold
-/// passes its fifth of a second by the one item it does then, at most.
+/// passes its fifth of a second by the one item it does then, at most, and
+/// ends after the item it does when an exchange of this process comes to wait
+/// (`waiting_here`): a dose's alarm waits for one item, not the hold's rest.
 /// The lock that cannot be taken stops it: why, and the items left.
 fn in_short_holds<I: Iterator>(memory: &Path, items: I, mut each: impl FnMut(I::Item)) -> Result<(), (String, std::iter::Peekable<I>)> {
     let mut items = items.peekable();
@@ -7281,13 +7298,15 @@ fn in_short_holds<I: Iterator>(memory: &Path, items: I, mut each: impl FnMut(I::
         let held = std::time::Instant::now();
         while let Some(item) = items.next() {
             each(item);
-            if held.elapsed() >= SHORT_HOLD {
+            if held.elapsed() >= SHORT_HOLD || waiting_here(memory) {
                 break;
             }
         }
-        drop(running);
+        // Handed to an exchange waiting, before it is taken again (`hand_off`).
         if items.peek().is_some() {
-            std::thread::sleep(PUT_BACK_FREE);
+            hand_off(memory, running);
+        } else {
+            drop(running);
         }
     }
     Ok(())
@@ -7413,8 +7432,11 @@ pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>,
         private_dirs(parent).map_err(fail)?;
     }
     let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).map_err(fail)?;
+    // Counted while it waits, and once it holds, for a holder letting go in short holds (`hand_off`).
+    let _waiting = Waiting::start(&path);
     if wait {
-        file.lock().map_err(fail)?;
+        lock_waiting(&path, &file).map_err(fail)?;
+        _waiting.taken();
         return Ok(Some(file));
     }
     // A program starting elsewhere in Sioul holds a copy of every file open
@@ -7422,12 +7444,123 @@ pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>,
     // let go a moment before, may still be held by it. Tried again for a second.
     for _ in 0..50 {
         match file.try_lock() {
-            Ok(()) => return Ok(Some(file)),
+            Ok(()) => {
+                _waiting.taken();
+                return Ok(Some(file));
+            }
             Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(20)),
             Err(std::fs::TryLockError::Error(e)) => return Err(fail(e)),
         }
     }
     Ok(None)
+}
+
+/// By the exchanges' lock file, in this process: how many wait for it now,
+/// and how many times one that waited took it (`exchange_lock`).
+static WAITERS: std::sync::Mutex<BTreeMap<PathBuf, (usize, u64)>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// One exchange waiting for the lock, counted until it holds it or gives up.
+struct Waiting(PathBuf);
+
+impl Waiting {
+    fn start(path: &Path) -> Waiting {
+        if let Ok(mut all) = WAITERS.lock() {
+            all.entry(path.to_path_buf()).or_default().0 += 1;
+        }
+        Waiting(path.to_path_buf())
+    }
+
+    fn taken(&self) {
+        if let Ok(mut all) = WAITERS.lock() {
+            all.entry(self.0.clone()).or_default().1 += 1;
+        }
+    }
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        if let Ok(mut all) = WAITERS.lock()
+            && let Some(counts) = all.get_mut(&self.0)
+        {
+            counts.0 = counts.0.saturating_sub(1);
+        }
+    }
+}
+
+/// Whether an exchange of this process waits for the lock beside `memory` now (`WAITERS`).
+fn waiting_here(memory: &Path) -> bool {
+    let path = memory.with_file_name("exchange.lock");
+    WAITERS.lock().ok().and_then(|all| all.get(&path).map(|c| c.0 > 0)).unwrap_or(false)
+}
+
+/// The longest a holder letting the lock go waits for an exchange of this
+/// process to take it before taking it again (`hand_off`).
+const HAND_OFF_MOST: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The exchanges' lock let go between two short holds (`in_short_holds`,
+/// the copies beside drafts, "Remove its files" planning again): when an
+/// exchange of this process waits for it (a dose's alarm, the window's), the
+/// holder takes it again only once that one has taken it, or a second has
+/// passed, so that a waiter slow to wake (a loaded machine, a busy phone)
+/// never loses the hand to it again and again (CI's macOS job of 20 October
+/// 2026: two holds back to back, 0.41 s). With none waiting here, a moment
+/// (`PUT_BACK_FREE`): a waiter in another process (the command line, a
+/// phone's background service) gets that moment alone, as before, since a
+/// file's lock keeps no queue.
+pub(crate) fn hand_off(memory: &Path, running: Option<std::fs::File>) {
+    let path = memory.with_file_name("exchange.lock");
+    let (waiting, taken) = WAITERS.lock().ok().and_then(|all| all.get(&path).copied()).unwrap_or((0, 0));
+    drop(running);
+    #[cfg(test)]
+    if let Ok(mut released) = RELEASED.lock() {
+        released.insert(path.clone(), std::time::Instant::now());
+    }
+    if waiting == 0 {
+        std::thread::sleep(PUT_BACK_FREE);
+        return;
+    }
+    let since = std::time::Instant::now();
+    while since.elapsed() < HAND_OFF_MOST && WAITERS.lock().ok().and_then(|all| all.get(&path).map(|c| c.1)).unwrap_or(taken) == taken {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: an exchange waiting on this thread that takes the lock
+    /// only so long after it was last let go between two short holds (a
+    /// loaded machine, whose woken thread runs late). Never in a build.
+    pub(crate) static SLOW_WAKE: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// Tests only: when each lock was last let go between two short holds
+/// (`hand_off`), by its file: another test's lock never delays this one's.
+#[cfg(test)]
+static RELEASED: std::sync::Mutex<BTreeMap<PathBuf, std::time::Instant>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// The lock taken, waiting for it: the system's wait (as slow to wake as a
+/// test asks, `SLOW_WAKE`).
+fn lock_waiting(#[cfg_attr(not(test), allow(unused_variables))] path: &Path, file: &std::fs::File) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        let slow = SLOW_WAKE.with(std::cell::Cell::get);
+        if !slow.is_zero() {
+            loop {
+                // Never before `slow` has passed since the lock was last let go: it wakes that late.
+                let since = RELEASED.lock().ok().and_then(|r| r.get(path).copied()).map(|r| r.elapsed());
+                if let Some(since) = since.filter(|s| *s < slow) {
+                    std::thread::sleep(slow - since);
+                    continue;
+                }
+                match file.try_lock() {
+                    Ok(()) => return Ok(()),
+                    Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(1)),
+                    Err(std::fs::TryLockError::Error(e)) => return Err(e),
+                }
+            }
+        }
+    }
+    file.lock()
 }
 
 fn seen_path(folder: &Path, computer: &str) -> PathBuf {
@@ -7949,13 +8082,12 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
             drop(running);
             break (files, going, state);
         }
-        drop(running);
         drop(prepared);
         tries += 1;
         if tries >= REMOVAL_PLANS {
             return Err("share-busy".into());
         }
-        std::thread::sleep(PUT_BACK_FREE);
+        hand_off(memory, running);
     };
     // Kept in this process, once the lock is let go: an exchange that wrote the memory since
     // leaves files this one never takes for its own (`Memory::kept`).

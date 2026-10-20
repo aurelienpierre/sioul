@@ -79,7 +79,7 @@ One scale for every row, from the least strict to the strictest (`attention::Lev
 | Mark | Level | What it means |
 |---|---|---|
 | ● | **At once** | It comes now: shown, told, let through, rings. On a layer: the layer changes nothing. |
-| ◑ | **Shown, not told** | It is in Sioul now if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. A phone cannot show what it holds: for calls and messages it reads as ○, and is not offered. |
+| ◑ | **Shown, not told**; for a text, **in the shade, without a sound** | It is in Sioul now if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. A phone cannot show what it holds: for calls it reads as ○, and is not offered. For messages, under do-not-disturb alone (decision 13 of 18 October 2026): let through while the phone is silenced (Android's filter, Sioul's mode or yours: `Now::silenced`, from the notification's ranking, or the filter at a review), so that it comes without a sound, and held otherwise, so that nothing rings where the cell says silent. |
 | ◐ | **When its event falls then** | An event's own (its alarms, Sioul's reminder before it): at once when the event begins within this time; else later. Not offered where the time's end is not known (a pause, the layers). |
 | ◎ | **At the gathered times** | Told, or let through, at the next gathered time (`[reminders] gathered`). |
 | ○ | **Later** | It waits out of sight, and comes when a time it may come in begins: mail off the Porch, a message held, a call sent to voicemail and listed then, a reminder told if it still makes sense. |
@@ -87,7 +87,7 @@ One scale for every row, from the least strict to the strictest (`attention::Lev
 | = | **As their list** | Always through's row only: as the person's own row says. |
 | ☆ | **Through, at their own times** | Always through's row, on a layer only: the layer does not hold them; their own row's times do. |
 
-Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; calls and messages ● ○; Always through ● ◑ (mail) and =, with ☆ on a layer; each kind its own (codes ● or –, doses ● or ○, sites ◎ or ○…).
+Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; calls ● ○; messages ● ○, and ◑ under do-not-disturb; Always through ● ◑ (mail) and =, with ☆ on a layer; each kind its own (codes ● or –, doses ● or ○, sites ◎ or ○…).
 
 ### 1.6 Outputs
 - **Shown in Sioul**: the Porch (its lanes; above them codes, doses, calls declined (on every device, the phones' logs shared: [porch.md](porch.md), "Calls declined"), sites' news, the line of held apps, letters, payments), Health, the Agenda, the pages, the status line, the phone's home card, the pause's screen. Showing is never a notification.
@@ -150,11 +150,13 @@ Since 19 October 2026 numbers nobody knows and hidden numbers are the call scree
 | Messages | W | A | L | M | S | P | F | Y | D |
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
-| Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
+| Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ◑ |
+| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ◑ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 | Strangers | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
-| Groups | ● | ● | ○ | ○ | ○ | ○ | ○ | ● | ○ |
+| Groups | ● | ● | ● | ● | ○ | ○ | ○ | ● | ◑ |
+
+Since part 4 of the overrides (decisions 13 and 14 of 18 October 2026): under do-not-disturb, the texts of your safe people, your contacts and groups come in the shade without a sound (◑) instead of waiting, their calls still to voicemail; groups come at once in leisure and meals too, as your contacts do. A busy group is held in one press, from its app's or its conversation's own row. The phone's modes let no more texts ring than before: ◑ is not ●, so the mode keeps them silent (`silence_at`).
 | Blocked | **–** | **–** | **–** | **–** | **–** | **–** | **–** | **–** | **–** |
 
 A mail app's notification on a phone takes the Mail rows (◑ held, since a phone cannot show what it holds); a missed call seen in another app takes the Calls rows.
@@ -187,10 +189,10 @@ Each says only how it differs from **As Sioul does now** (`attention::Preset`):
 
 | Preset | Mail | Calls | Messages | Sioul's own |
 |---|---|---|---|---|
-| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral: ○ in admin, leisure and meals | neutral: ○ in leisure and meals; safe: ○ in Free time | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
+| **Quieter** (« Plus calme ») | safe: ◑ in leisure and meals | neutral: ○ in admin, leisure and meals | neutral and groups: ○ in leisure and meals; safe: ○ in Free time; safe, neutral and groups: ○ under do-not-disturb | dates: ○ in leisure and meals; a site in real time: ○ in leisure and meals |
 | **More reachable** (« Plus joignable ») | neutral: ● in leisure and meals; strangers: ◑ in leisure | as usual | as usual | automatons: ● in work and admin |
 
-Choosing one writes every row as it says (`apply_preset`), never a lock, and never the Calls rows of strangers and hidden numbers: those are the call screening's, apart, and the presets changed hidden numbers' calls until the review of 19 October 2026 (F2) took that out, so that no preset moves the screening ([android.md](android.md#calls)). The tab asks first when your own changes would give way, and says "Yours: 3 changes from As Sioul does now", one press from going back.
+Each goes its own way only, cell by cell, against the usual matrix of part 4 (`the_presets_go_their_own_way_only`): Quieter never lets more through, More reachable never holds more. Choosing one writes every row as it says (`apply_preset`), never a lock, and never the Calls rows of strangers and hidden numbers: those are the call screening's, apart, and the presets changed hidden numbers' calls until the review of 19 October 2026 (F2) took that out, so that no preset moves the screening ([android.md](android.md#calls)). The tab asks first when your own changes would give way, and says "Yours: 3 changes from As Sioul does now", one press from going back.
 
 ## 5. Two answers at once
 - Two times open together (work and admin): the less strict cell.
