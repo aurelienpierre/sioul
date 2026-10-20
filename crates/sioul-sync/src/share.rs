@@ -7004,10 +7004,13 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
 /// every write of the sharing, `disk::fits`). A quarter of a second's worth
 /// at a time, each file opened under a hidden name in the deepest of its
 /// folders that is there, outside the exchanges' lock, which is taken only
-/// to make its own folders, date it and place it, after a last look, then
-/// left free a moment: a dose's exchange never waits for more than placing
-/// them, even behind a note or paper of tens of megabytes (thousands take
-/// half a minute: reviews of 17 and 18 October 2026, L1, L-3 and L-a). No
+/// to make its own folders, date it and place it, after a last look under
+/// that hold, a fifth of a second at a time (`in_short_holds`), then left
+/// free a moment: a dose's exchange never waits for more than a fifth of a
+/// second of placing them and the one file placed as it passes, even behind
+/// a note or paper of tens of megabytes, even on storage that takes tens of
+/// milliseconds a file (thousands take half a minute: reviews of 17 and 18
+/// October 2026, L1, L-3 and L-a; CI's Windows job of 20 October 2026). No
 /// exchange meets a folder made for them before its note is in it: holding
 /// hidden files alone, it would list empty, taken for a folder emptied, and
 /// its notes would leave the hold, for good after a stop meanwhile (L-1); a
@@ -7071,55 +7074,22 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             ready.push((opened, path, store, *when, h));
         }
         rest = &rest[done..];
-        // The lock taken only to place them, each after a last look: never over
-        // a file written meanwhile, never through a link (review of 18 October 2026, L-a).
-        {
-            let _running = match exchange_lock(memory, true) {
-                Ok(running) => running,
-                Err(e) => {
-                    for (opened, ..) in &ready {
-                        let _ = std::fs::remove_file(opened);
-                    }
-                    return Err(e);
-                }
-            };
-            for (opened, path, store, when, h) in &ready {
-                if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
-                    let _ = std::fs::remove_file(opened);
-                    continue;
-                }
-                // Its own folders made only now, its note placed in them before any exchange lists them (L-1).
-                let Some(parent) = path.parent() else {
-                    let _ = std::fs::remove_file(opened);
-                    continue;
-                };
-                if let Err(e) = private_dirs(parent) {
-                    let _ = std::fs::remove_file(opened);
-                    stop.get_or_insert_with(|| format!("{}: {e}", parent.display()));
-                    continue;
-                }
-                // Into its own folder: a rename on one disk; across disks (one
-                // mounted below), opened there again, as before 18 October 2026.
-                let beside = if opened.parent() == Some(parent) {
-                    opened.clone()
-                } else {
-                    let beside = temporary(path);
-                    if std::fs::rename(opened, &beside).is_err() {
-                        let _ = std::fs::remove_file(opened);
-                        if crate::blobs::get(folder, key, h, &beside).is_err() {
-                            let _ = std::fs::remove_file(&beside);
-                            continue;
-                        }
-                    }
-                    beside
-                };
-                // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1);
-                // through a handle that cannot write it, which no antivirus reads at its close (`set_time`).
-                let _ = set_time(&beside, *when);
-                if place_new(&beside, path) {
-                    back += 1;
-                }
+        // The lock taken only to place them, each after a last look under the
+        // hold that places it: never over a file written meanwhile, never
+        // through a link (review of 18 October 2026, L-a); a fifth of a second
+        // at a time, then left free a moment (`in_short_holds`): on slow
+        // storage, placing a whole batch passed a second, and a dose's
+        // exchange waited for it (1.1 s on CI's Windows job of 20 October 2026).
+        let placed = in_short_holds(memory, ready.into_iter(), |(opened, path, store, when, h)| {
+            if place_put_back(folder, key, memory, &opened, &path, store, when, h, &mut stop) {
+                back += 1;
             }
+        });
+        if let Err((e, left)) = placed {
+            for (opened, ..) in left {
+                let _ = std::fs::remove_file(opened);
+            }
+            return Err(e);
         }
         if let Some(said) = stop {
             return Err(said);
@@ -7129,6 +7099,100 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
         }
     }
     Ok(PutBack { back, held: count })
+}
+
+/// One file of "Put them back" placed, under the exchanges' lock (its
+/// caller's hold): after a last look (nothing at its place, a link
+/// included, and still a place the sharing writes), in its own folders made
+/// only now (L-1), dated as it was only now (M-1), through a hard link that
+/// takes only a free name. Whether it came back; the file opened beside goes
+/// in any case. A folder that cannot be made stops the put back, said.
+#[allow(clippy::too_many_arguments)]
+fn place_put_back(folder: &Path, key: &[u8; 32], memory: &Path, opened: &Path, path: &Path, store: &Store, when: std::time::SystemTime, h: &str, stop: &mut Option<String>) -> bool {
+    slow_under_lock();
+    if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
+        let _ = std::fs::remove_file(opened);
+        return false;
+    }
+    // Its own folders made only now, its note placed in them before any exchange lists them (L-1).
+    let Some(parent) = path.parent() else {
+        let _ = std::fs::remove_file(opened);
+        return false;
+    };
+    if let Err(e) = private_dirs(parent) {
+        let _ = std::fs::remove_file(opened);
+        stop.get_or_insert_with(|| format!("{}: {e}", parent.display()));
+        return false;
+    }
+    // Into its own folder: a rename on one disk; across disks (one
+    // mounted below), opened there again, as before 18 October 2026.
+    let beside = if opened.parent() == Some(parent) {
+        opened.to_path_buf()
+    } else {
+        let beside = temporary(path);
+        if std::fs::rename(opened, &beside).is_err() {
+            let _ = std::fs::remove_file(opened);
+            if crate::blobs::get(folder, key, h, &beside).is_err() {
+                let _ = std::fs::remove_file(&beside);
+                return false;
+            }
+        }
+        beside
+    };
+    // Dated as it was only now, under the lock: no exchange's sweep runs meanwhile (M-1);
+    // through a handle that cannot write it, which no antivirus reads at its close (`set_time`).
+    let _ = set_time(&beside, when);
+    place_new(&beside, path)
+}
+
+/// `each` done for every one of `items` under the exchanges' lock, a fifth
+/// of a second at a time (`SHORT_HOLD`), the lock then left free a moment
+/// (`PUT_BACK_FREE`) for whatever exchange waits for it, a dose's first, and
+/// taken again for the rest: work that grows with a count of files never
+/// keeps an exchange waiting for its whole. An exchange may run between two
+/// holds: `each` looks again at what it does under its own hold. A hold
+/// passes its fifth of a second by the one item it does then, at most.
+/// The lock that cannot be taken stops it: why, and the items left.
+fn in_short_holds<I: Iterator>(memory: &Path, items: I, mut each: impl FnMut(I::Item)) -> Result<(), (String, std::iter::Peekable<I>)> {
+    let mut items = items.peekable();
+    while items.peek().is_some() {
+        let running = match exchange_lock(memory, true) {
+            Ok(running) => running,
+            Err(e) => return Err((e, items)),
+        };
+        let held = std::time::Instant::now();
+        while let Some(item) = items.next() {
+            each(item);
+            if held.elapsed() >= SHORT_HOLD {
+                break;
+            }
+        }
+        drop(running);
+        if items.peek().is_some() {
+            std::thread::sleep(PUT_BACK_FREE);
+        }
+    }
+    Ok(())
+}
+
+/// The longest one hold of the exchanges' lock does work that grows with a
+/// count of files (`in_short_holds`): placing notes put back, taking a
+/// device's files out. The copies beside drafts keep the same bound
+/// (`sioul_core::draftcopies`, `HOLD_AT_MOST`).
+const SHORT_HOLD: std::time::Duration = std::time::Duration::from_millis(200);
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: how long each file done under the lock in short holds
+    /// takes more on this thread, for slow storage (Windows' scans, a
+    /// phone's shared storage). Never in a build of the programs.
+    pub(crate) static SLOW_UNDER_LOCK: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// Each file done under the lock in short holds, as slow as a test asks (`SLOW_UNDER_LOCK`); nothing in a build.
+fn slow_under_lock() {
+    #[cfg(test)]
+    std::thread::sleep(SLOW_UNDER_LOCK.with(std::cell::Cell::get));
 }
 
 /// What "Put them back" did (`put_back_withheld`): how many came back, of
@@ -7143,11 +7207,13 @@ pub struct PutBack {
     pub held: usize,
 }
 
-/// How many held files are put back under one hold of the exchanges' lock,
-/// at most, and for how long at most it is held: then it is left free a
-/// while (`PUT_BACK_FREE`), for whatever exchange waits for it, a dose's
-/// first. Until 18 October 2026 the put back took it again at once, and a
-/// dose's exchange waited up to 14 s for it on a computer.
+/// How many held files are opened at once, outside the exchanges' lock, at
+/// most, and for how long at most (`PUT_BACK_HOLD`); they are then placed
+/// under it in short holds (`in_short_holds`), the lock left free a while
+/// between two (`PUT_BACK_FREE`), for whatever exchange waits for it, a
+/// dose's first. Until 18 October 2026 the put back took it again at once,
+/// and a dose's exchange waited up to 14 s for it on a computer; until 20
+/// October 2026 it placed a whole batch in one hold, 1.1 s on CI's Windows job.
 const PUT_BACK_BATCH: usize = 200;
 const PUT_BACK_HOLD: std::time::Duration = std::time::Duration::from_millis(250);
 const PUT_BACK_FREE: std::time::Duration = std::time::Duration::from_millis(25);
@@ -7711,11 +7777,9 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     }
     // The size of each of its small files before they go, the entry and note too (they may go later, `small_go`).
     let small_seen: BTreeMap<String, String> = device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| content_hash(&path).map(|h| (place, h))).collect();
-    for path in &paths {
-        let _ = std::fs::remove_file(path);
-    }
+    let mut going = paths;
     for name in names {
-        let _ = std::fs::remove_file(folder.join("blobs").join(&name));
+        going.push(folder.join("blobs").join(&name));
         state.sealed.theirs.remove(&name);
         state.taken.insert(name, now_ms);
     }
@@ -7728,6 +7792,18 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     *floor = (*floor).max(files.last_round);
     state.save(memory)?;
     state.keep(memory);
+    drop(_running);
+    // Then its files go, a short hold at a time (`in_short_holds`), its
+    // rounds oldest first: thousands of them never keep a dose's exchange
+    // waiting. An exchange between two holds reads the memory written above:
+    // none of its rounds below that floor is read, what is left of its
+    // rounds and small files it takes out itself (`Memory::removed_devices`),
+    // its sealed files are taken (`Memory::taken`).
+    in_short_holds(memory, going.into_iter(), |path| {
+        slow_under_lock();
+        let _ = std::fs::remove_file(path);
+    })
+    .map_err(|(e, _)| e)?;
     Ok(files)
 }
 
