@@ -4560,22 +4560,29 @@ pub fn draft_copies_kept_before_sharing(memory: &Path) -> Vec<PathBuf> {
 /// copy while it is replaced (nor seals and sends the zeros written over the
 /// old one after). A device that has never shared (no `share/` folder beside
 /// `memory`) runs no exchange: a guard that holds nothing, no folder made.
-pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn std::any::Any>> + '_ {
+pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn sioul_core::draftcopies::Held>> + '_ {
     move || {
         if !memory.parent().is_some_and(Path::exists) {
             return sioul_core::draftcopies::unshared();
         }
-        exchange_lock(memory, true).ok().flatten().map(|file| Box::new(HandedOff(memory.to_path_buf(), Some(file))) as Box<dyn std::any::Any>)
+        exchange_lock(memory, true).ok().flatten().map(|file| Box::new(HandedOff(memory.to_path_buf(), Some(file))) as Box<dyn sioul_core::draftcopies::Held>)
     }
 }
 
 /// The lock held for a batch of the copies beside drafts, handed to an
-/// exchange waiting in this process when let go (`hand_off`).
+/// exchange waiting in this process when let go (`hand_off`), let go at once
+/// when none waits here; it ends after its copy once one does (`waiting_here`).
 struct HandedOff(PathBuf, Option<std::fs::File>);
+
+impl sioul_core::draftcopies::Held for HandedOff {
+    fn wanted(&self) -> bool {
+        waiting_here(&self.0)
+    }
+}
 
 impl Drop for HandedOff {
     fn drop(&mut self) {
-        hand_off(&self.0, self.1.take());
+        hand_off(&self.0, self.1.take(), std::time::Duration::ZERO);
     }
 }
 
@@ -7304,7 +7311,7 @@ fn in_short_holds<I: Iterator>(memory: &Path, items: I, mut each: impl FnMut(I::
         }
         // Handed to an exchange waiting, before it is taken again (`hand_off`).
         if items.peek().is_some() {
-            hand_off(memory, running);
+            hand_off(memory, running, PUT_BACK_FREE);
         } else {
             drop(running);
         }
@@ -7503,11 +7510,15 @@ const HAND_OFF_MOST: std::time::Duration = std::time::Duration::from_secs(1);
 /// holder takes it again only once that one has taken it, or a second has
 /// passed, so that a waiter slow to wake (a loaded machine, a busy phone)
 /// never loses the hand to it again and again (CI's macOS job of 20 October
-/// 2026: two holds back to back, 0.41 s). With none waiting here, a moment
-/// (`PUT_BACK_FREE`): a waiter in another process (the command line, a
-/// phone's background service) gets that moment alone, as before, since a
-/// file's lock keeps no queue.
-pub(crate) fn hand_off(memory: &Path, running: Option<std::fs::File>) {
+/// 2026: two holds back to back, 0.41 s). It stops waiting too as soon as
+/// fewer wait than when it let go: a waiter that gave up, or that lost the
+/// lock to another process, never keeps it a second (review of part 4, D-1a).
+/// With none waiting here, a moment (`free`: `PUT_BACK_FREE` between short
+/// holds; none for the copies beside drafts, which let go `LET_GO` between
+/// their batches and nothing after the last, D-1b): a waiter in another
+/// process (the command line, a phone's background service) gets that moment
+/// alone, as before, since a file's lock keeps no queue.
+pub(crate) fn hand_off(memory: &Path, running: Option<std::fs::File>, free: std::time::Duration) {
     let path = memory.with_file_name("exchange.lock");
     let (waiting, taken) = WAITERS.lock().ok().and_then(|all| all.get(&path).copied()).unwrap_or((0, 0));
     drop(running);
@@ -7516,11 +7527,11 @@ pub(crate) fn hand_off(memory: &Path, running: Option<std::fs::File>) {
         released.insert(path.clone(), std::time::Instant::now());
     }
     if waiting == 0 {
-        std::thread::sleep(PUT_BACK_FREE);
+        std::thread::sleep(free);
         return;
     }
     let since = std::time::Instant::now();
-    while since.elapsed() < HAND_OFF_MOST && WAITERS.lock().ok().and_then(|all| all.get(&path).map(|c| c.1)).unwrap_or(taken) == taken {
+    while since.elapsed() < HAND_OFF_MOST && WAITERS.lock().ok().and_then(|all| all.get(&path).copied()).is_some_and(|(now_waiting, now_taken)| now_taken == taken && now_waiting >= waiting) {
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
 }
@@ -8087,7 +8098,7 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
         if tries >= REMOVAL_PLANS {
             return Err("share-busy".into());
         }
-        hand_off(memory, running);
+        hand_off(memory, running, PUT_BACK_FREE);
     };
     // Kept in this process, once the lock is let go: an exchange that wrote the memory since
     // leaves files this one never takes for its own (`Memory::kept`).

@@ -55,10 +55,21 @@ use std::time::{Duration, Instant};
 /// when what it returns is dropped (`sioul_sync::share::exchange_lock`); None
 /// when it cannot be taken: the copies wait for the next look. A device that
 /// has never shared gives a guard that holds nothing ([`unshared`]).
-pub type Hold<'a> = &'a dyn Fn() -> Option<Box<dyn std::any::Any>>;
+pub type Hold<'a> = &'a dyn Fn() -> Option<Box<dyn Held>>;
+
+/// A hold of the exchanges' lock, as a [`Hold`] gives it: let go when dropped.
+pub trait Held {
+    /// Whether an exchange waits for the lock now (a dose's alarm): the hold
+    /// then ends after the copy it places (review of part 4, D-1b).
+    fn wanted(&self) -> bool {
+        false
+    }
+}
+
+impl Held for () {}
 
 /// The guard of a device that has never shared: nothing to hold.
-pub fn unshared() -> Option<Box<dyn std::any::Any>> {
+pub fn unshared() -> Option<Box<dyn Held>> {
     Some(Box::new(()))
 }
 
@@ -322,7 +333,7 @@ pub fn seal_beside(drafts: &Path, certs: &Certs, find: &mut dyn FnMut(&str) -> V
             if !drafts.join(format!("{}.toml", copy_id(&path).unwrap_or_default())).exists() && std::fs::remove_file(&path).is_ok() {
                 out.orphans += 1;
             }
-            if started.elapsed() >= HOLD_AT_MOST {
+            if started.elapsed() >= HOLD_AT_MOST || held.wanted() {
                 break;
             }
         }
@@ -422,7 +433,7 @@ impl Batch<'_> {
                     Ok(None) => {}
                     Err(_) => out.failed += 1,
                 }
-                if started.elapsed() >= HOLD_AT_MOST {
+                if started.elapsed() >= HOLD_AT_MOST || held.wanted() {
                     break;
                 }
             }
@@ -716,6 +727,7 @@ mod tests {
             bytes: Vec<u8>,
             armed: std::rc::Rc<std::cell::Cell<bool>>,
         }
+        impl Held for Swap {}
         impl Drop for Swap {
             fn drop(&mut self) {
                 if self.armed.replace(false) {
@@ -732,7 +744,7 @@ mod tests {
         draft_with(&base, "a1", true);
         let second = CLEAR.replace("page four", "page five");
         let armed = std::rc::Rc::new(std::cell::Cell::new(true));
-        let hold = || -> Option<Box<dyn std::any::Any>> { Some(Box::new(Swap { path: path.clone(), bytes: second.clone().into_bytes(), armed: armed.clone() })) };
+        let hold = || -> Option<Box<dyn Held>> { Some(Box::new(Swap { path: path.clone(), bytes: second.clone().into_bytes(), armed: armed.clone() })) };
         let mut judged = Judged::default();
         assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &hold).copies, 1);
         assert!(String::from_utf8_lossy(&std::fs::read(&path).unwrap()).contains("page five"), "the other version took its place");
@@ -777,7 +789,7 @@ mod tests {
         day_old("gone");
         day_old("kept");
         draft_with(&base, "kept", true);
-        let refused = || -> Option<Box<dyn std::any::Any>> { None };
+        let refused = || -> Option<Box<dyn Held>> { None };
         assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &refused), Sealed::default());
         assert!(base.join("gone.eml").exists(), "without the lock: left");
         assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut Judged::default(), &unshared), Sealed { orphans: 1, ..Sealed::default() });
@@ -793,13 +805,14 @@ mod tests {
         draft_with(&base, "a1", true);
         let keys = keys_of(&pgp::stand_in_key("Noa <noa@example.org>").unwrap());
         let mut judged = Judged::default();
-        let refused = || -> Option<Box<dyn std::any::Any>> { None };
+        let refused = || -> Option<Box<dyn Held>> { None };
         assert_eq!(seal_beside(&base, &Certs::of(keys.clone()), &mut |_| Vec::new(), &mut judged, &refused), Sealed { failed: 1, ..Sealed::default() });
         assert_eq!(std::fs::read_to_string(base.join("a1.eml")).unwrap(), CLEAR);
         assert_eq!(std::fs::read_dir(&base).unwrap().count(), 2, "the copy and its draft alone");
         // Each placement happens while the lock is held, and the lock is given back between holds.
         let holding = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         struct Guard(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+        impl Held for Guard {}
         impl Drop for Guard {
             fn drop(&mut self) {
                 self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
@@ -807,7 +820,7 @@ mod tests {
         }
         let counted = {
             let holding = holding.clone();
-            move || -> Option<Box<dyn std::any::Any>> {
+            move || -> Option<Box<dyn Held>> {
                 assert_eq!(holding.fetch_add(1, std::sync::atomic::Ordering::SeqCst), 0, "one hold at a time");
                 Some(Box::new(Guard(holding.clone())))
             }

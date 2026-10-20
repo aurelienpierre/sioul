@@ -1131,6 +1131,50 @@ fn put_back_never_keeps_a_slow_waking_dose_waiting() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// Review of part 4, D-1a: a waiter counted when the holder lets go, that
+/// then gives up (an exchange that does not wait past its second, an error),
+/// or loses the lock to another process, never keeps the holder waiting the
+/// whole second (`HAND_OFF_MOST`): it stops once fewer wait.
+#[test]
+fn a_waiter_that_gives_up_never_keeps_the_holder_a_second() {
+    let base = scratch("gc-hand-off-gives-up");
+    let memory = base.join("state/share/memory.json");
+    let held = exchange_lock(&memory, true).unwrap();
+    let waiter = Waiting::start(&memory.with_file_name("exchange.lock"));
+    let gives_up = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        drop(waiter);
+    });
+    let let_go = std::time::Instant::now();
+    hand_off(&memory, held, PUT_BACK_FREE);
+    let waited = let_go.elapsed();
+    gives_up.join().unwrap();
+    assert!(waited < std::time::Duration::from_millis(400), "the holder waited {waited:?} for a waiter that gave up after 50 ms");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Review of part 4, D-1b: the copies beside drafts let their hold go at
+/// once when no exchange waits here (they let go `LET_GO` between batches,
+/// nothing after the last), and say when one waits, so that their hold ends
+/// after the copy it places.
+#[test]
+fn the_drafts_copies_hold_lets_go_at_once_and_ends_for_a_waiter() {
+    let base = scratch("gc-copies-hold");
+    let desk = Computer::new(&base, "desk");
+    std::fs::create_dir_all(desk.memory.parent().unwrap()).unwrap();
+    let hold = replacements_hold(&desk.memory);
+    let held = hold().expect("the lock, free");
+    assert!(!held.wanted(), "none waits");
+    let waiter = Waiting::start(&desk.memory.with_file_name("exchange.lock"));
+    assert!(held.wanted(), "an exchange of this process waits: the hold ends after its copy");
+    drop(waiter);
+    let let_go = std::time::Instant::now();
+    drop(held);
+    let took = let_go.elapsed();
+    assert!(took < std::time::Duration::from_millis(15), "let go in {took:?}, none waiting");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// "Remove its files" for a device with many: its memory written in one
 /// hold, then its files taken out a fifth of a second at a time, each 10 ms
 /// slower here (`SLOW_UNDER_LOCK`): a dose's exchange waits a third of a
