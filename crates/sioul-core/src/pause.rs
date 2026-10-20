@@ -392,9 +392,13 @@ pub fn moved_today(overrides: &Overrides, evening: &Evening, now: &Zoned, moves:
 
 // ---------------------------------------------------------------- the emergency pause
 
-/// The pause starts at `now` (Unix seconds): it asks nothing (P6).
-pub fn start_pause(overrides: &mut Overrides, now: i64) {
+/// The pause starts at `now` (Unix seconds): it asks nothing (P6). `saw`:
+/// the latest press of do-not-disturb's switch known here (milliseconds; 0
+/// none), so that the pause ends a Reachable it knew of, whatever the clocks
+/// (`everywhere::now`).
+pub fn start_pause(overrides: &mut Overrides, now: i64, saw: i64) {
     overrides.paused_since = Some(now);
+    overrides.pause_saw = (saw > 0).then_some(saw);
 }
 
 /// What coming back changes (P23–P24): the rest of today lighter (`lighter`),
@@ -432,6 +436,7 @@ pub fn lighten(overrides: &mut Overrides, date: Date) {
 pub fn forget(overrides: &mut Overrides) {
     overrides.paused_since = None;
     overrides.paused_ended = None;
+    overrides.pause_saw = None;
 }
 
 /// Today's share of its room and heavy steps (the plan's `today_percent`,
@@ -895,7 +900,7 @@ mod tests {
     fn the_pause_moves_work_to_later_days_never_into_the_evening() {
         // Paused from 14:00 to 16:30 on Monday: no extension, the rest of the day lighter.
         let mut o = Overrides::default();
-        start_pause(&mut o, stamp("2026-10-05T14:00"));
+        start_pause(&mut o, stamp("2026-10-05T14:00"), 0);
         let back = at("2026-10-05T16:30");
         end_pause(&mut o, &back, After::Lighter, None, None);
         assert!(o.paused_from().is_none());
@@ -917,12 +922,12 @@ mod tests {
         assert_eq!(today_level(&o, back.date().tomorrow().unwrap(), crate::today::Weather::Clear), (60, 1));
         assert_eq!(today_level(&o, back.date().tomorrow().unwrap(), crate::today::Weather::Fog), (30, 0), "never heavier than the weather said");
         let mut later = o.clone();
-        start_pause(&mut later, stamp("2026-10-08T10:00"));
+        start_pause(&mut later, stamp("2026-10-08T10:00"), 0);
         end_pause(&mut later, &at("2026-10-08T10:20"), After::AsIs, None, None);
         assert!(later.lighter.is_empty(), "{:?}", later.lighter);
         // "Rest": the day closed, as "Done for today"; the Porch resting until the next admin hours.
         let mut rest = Overrides::default();
-        start_pause(&mut rest, stamp("2026-10-05T10:00"));
+        start_pause(&mut rest, stamp("2026-10-05T10:00"), 0);
         end_pause(&mut rest, &at("2026-10-05T10:30"), After::Rest, Some(stamp("2026-10-06T09:00")), Some(stamp("2026-10-05T14:00")));
         let noon = at("2026-10-05T12:00");
         assert_eq!(mode(&week(), &[], &rest, &health(&noon), &noon).reason, Reason::DoneForTheDay);
@@ -937,7 +942,7 @@ mod tests {
         // As the sharing carries quiet.toml, key by key: a pause pressed on one
         // device reads paused on the other; ended there, ended here.
         let mut here = Overrides::default();
-        start_pause(&mut here, 1_759_390_000);
+        start_pause(&mut here, 1_759_390_000, 0);
         start_free(&mut here, 1_759_380_000);
         here.free_ended = Some(1_759_385_000);
         here.free_day = Some("2026-10-02".parse().unwrap());

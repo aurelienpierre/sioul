@@ -45,45 +45,40 @@ fn here_id() -> String {
     sioul_sync::share::Here::load(&sioul_core::config::state_dir()).id
 }
 
-/// What the reasons' sources say now.
+/// What the reasons' sources say now (`rules::sources_at`, as every reader builds them).
 fn sources(overrides: &Overrides, blocks: &sioul_core::quiet::Blocks, now: &Zoned) -> Sources {
-    let stamp = now.timestamp().as_second();
-    let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, blocks, now.time_zone())));
-    let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
-    let focus = sioul_core::timelog::running().and_then(|r| rules::focus(&r, stamp));
-    Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since }
+    rules::sources_at(overrides, blocks, now)
 }
 
-/// The devices gone from the sharing by a sealed fact (they left, you forgot
-/// them, another replaces them), as this device last found them
-/// (`note_gone`): their presses and release stamps are passed over (part 3
-/// of "What reaches you"). This device's own file, ids only, never shared.
-fn gone_path() -> std::path::PathBuf {
-    crate::share::memory_path().with_file_name("gone-devices.json")
+/// When the devices gone were last noted (milliseconds; `note_gone`).
+static GONE_NOTED: Mutex<i64> = Mutex::new(0);
+
+/// A device forgotten, or its files removed, here: the devices gone noted
+/// again at the next exchange, not an hour later (review of part 3, I1).
+pub(crate) fn gone_soon() {
+    if let Ok(mut last) = GONE_NOTED.lock() {
+        *last = 0;
+    }
 }
 
-fn gone_devices() -> std::collections::BTreeSet<String> {
-    std::fs::read(gone_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
-}
-
-/// At the window's exchanges, at most once an hour: the devices the sharing
-/// has gone by a sealed fact written down (`sioul_sync::share::asking`), for
-/// the switch's reading. Never on a dose's path: the window's own exchanges only.
+/// At the window's exchanges, at most once an hour (and at the one after a
+/// device was forgotten here: `gone_soon`): the devices the sharing has gone
+/// by a sealed fact written down (`sioul_sync::share::asking`), for the
+/// switch's reading. Never on a dose's path: the window's own exchanges only.
 pub(crate) fn note_gone(folder: &std::path::Path, key: &[u8; 32], here: &str) {
-    static LAST: Mutex<i64> = Mutex::new(0);
     let now = jiff::Timestamp::now().as_millisecond();
     {
-        let Ok(mut last) = LAST.lock() else { return };
+        let Ok(mut last) = GONE_NOTED.lock() else { return };
         if now - *last < 3_600_000 {
             return;
         }
         *last = now;
     }
     let (_, gone) = sioul_sync::share::asking(folder, key, &crate::share::memory_path(), here, now);
-    if gone != gone_devices()
+    if gone != rules::gone_devices()
         && let Ok(text) = serde_json::to_vec(&gone)
     {
-        let path = gone_path();
+        let path = rules::gone_path();
         let fresh = path.with_extension(format!("json.{}", std::process::id()));
         if std::fs::write(&fresh, text).and_then(|()| std::fs::rename(&fresh, &path)).is_err() {
             let _ = std::fs::remove_file(&fresh);
@@ -91,10 +86,9 @@ pub(crate) fn note_gone(folder: &std::path::Path, key: &[u8; 32], here: &str) {
     }
 }
 
-/// The switch as this device reads it: the devices gone from the sharing passed over.
+/// The switch as this device reads it (`rules::read_switch`): the devices gone from the sharing read as As usual.
 fn switch_here(here: &str) -> Switch {
-    let gone = gone_devices();
-    Switch::load(&Switch::default_path()).counted(here, &|id| !gone.contains(id))
+    rules::read_switch(here)
 }
 
 /// Health's nights, naps and meals: as the window has them; in the background
@@ -227,31 +221,80 @@ pub(crate) fn now() -> Now {
     Look::now().state
 }
 
-/// Reachable as last read, and when (`reachable`); forgotten at a press here.
-static REACHABLE_KEPT: Mutex<Option<(Instant, Option<rules::Reach>)>> = Mutex::new(None);
+/// One file as a reading kept was read from: when it was last changed, its
+/// size, and on Unix its inode (each of these files is written beside and
+/// renamed: a new one at each change, even within the clock's tick).
+type FileSeen = Option<(std::time::SystemTime, u64, u64)>;
+
+fn seen(path: &std::path::Path) -> FileSeen {
+    let meta = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+    #[cfg(not(unix))]
+    let inode = 0;
+    Some((meta.modified().ok()?, meta.len(), inode))
+}
+
+/// What Reachable's reading is made of beside the time: the switch, the
+/// pauses, the devices gone from the sharing, Health's nights.
+fn reach_inputs() -> Vec<FileSeen> {
+    [Switch::default_path(), Overrides::default_path(), rules::gone_path(), sioul_core::health::Health::default_path(), sioul_core::needs::Days::default_path()].iter().map(|path| seen(path)).collect()
+}
+
+/// Reachable as last read, with what it was read from (`reach_inputs`);
+/// forgotten at a press here.
+static REACHABLE_KEPT: Mutex<Option<(Vec<FileSeen>, Option<rules::Reach>)>> = Mutex::new(None);
+
+/// Tests only: the tests that write the shared files of this device's state
+/// (the switch, the pauses, the listener's ledger and choices), one at a time.
+#[cfg(test)]
+pub(crate) static FILES: Mutex<()> = Mutex::new(());
+
+/// Tests only: those files taken away, for a test to start from none.
+#[cfg(test)]
+pub(crate) fn files_cleared() {
+    for path in [Switch::default_path(), Overrides::default_path(), rules::gone_path(), sioul_core::appnotes::Ledger::default_path(), sioul_core::appnotes::Choices::default_path()] {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Ok(mut kept) = REACHABLE_KEPT.lock() {
+        *kept = None;
+    }
+}
 
 /// Reachable now, on every device alike (part 3 of "What reaches you"):
-/// since, until when, from which device. Read again at most every five
-/// seconds: asked at every notification.
+/// since, until when, from which device. Asked at every notification: read
+/// again whenever one of its files changed or its end passed, never kept by
+/// time alone, so that a press brought from another device counts at once
+/// (review of part 3, F4).
 pub(crate) fn reachable() -> Option<rules::Reach> {
+    let inputs = reach_inputs();
+    let stamp = jiff::Timestamp::now().as_second();
     if let Ok(kept) = REACHABLE_KEPT.lock()
-        && let Some((at, reach)) = kept.as_ref()
-        && at.elapsed() < Duration::from_secs(5)
+        && let Some((read_from, reach)) = kept.as_ref()
+        && *read_from == inputs
+        && reach.as_ref().is_none_or(|r| r.until.is_none_or(|until| stamp < until))
     {
         return reach.clone();
     }
     let reach = now().reachable;
     if let Ok(mut kept) = REACHABLE_KEPT.lock() {
-        *kept = Some((Instant::now(), reach.clone()));
+        *kept = Some((inputs, reach.clone()));
     }
     reach
 }
 
-/// What the phone is asked to let through, held before then (milliseconds):
-/// the latest Reachable press while it holds, or "Let what your phone holds
-/// through" pressed on a device; 0 none (`rules::Switch::release_stamp`).
-pub(crate) fn release_stamp() -> i64 {
-    switch_here(&here_id()).release_stamp()
+/// What the phone is asked to let through, by the device that asks
+/// (`rules::Switch::release_stamps`): each device's "Let what your phone
+/// holds through", and the Reachable press that holds.
+pub(crate) fn release_stamps() -> Vec<(String, i64)> {
+    switch_here(&here_id()).release_stamps()
+}
+
+/// The latest press of the switch known here (milliseconds): what a pause
+/// pressed now knew of (`pause::start_pause`), so that it ends that
+/// Reachable whatever the clocks (review of part 3, L2).
+pub(crate) fn latest_press() -> i64 {
+    switch_here(&here_id()).latest_known(None)
 }
 
 /// Whether the switch or a focus session holds do-not-disturb now: a layer
@@ -275,13 +318,6 @@ pub(crate) fn holds_others() -> bool {
     holds
 }
 
-/// While do-not-disturb holds from its switch or a focus session (a layer
-/// of the matrix of what reaches you): when it ends, when that is known
-/// (none: until turned off, or a session open-ended); none otherwise.
-pub(crate) fn gate() -> Option<Option<i64>> {
-    gated().map(|g| g.until)
-}
-
 /// Do-not-disturb holding from its switch or a focus session (`gated`):
 /// when it ends, when that is known, and which of the two holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,10 +327,17 @@ pub(crate) struct Gated {
     pub(crate) switch: bool,
 }
 
-/// The same as `gate`, with which of them holds: for the listener's line in
-/// the phone's log ("dnd (focus session)").
+/// While do-not-disturb holds from its switch or a focus session (a layer
+/// of the matrix of what reaches you): when it ends, when that is known
+/// (none: until turned off, or a session open-ended), and which of the two
+/// holds (the listener's line in the phone's log: "dnd (focus session)");
+/// none otherwise.
 pub(crate) fn gated() -> Option<Gated> {
-    let state = now();
+    gated_of(&now())
+}
+
+/// The same, of a reading already made (`now`).
+pub(crate) fn gated_of(state: &Now) -> Option<Gated> {
     let gates: Vec<&sioul_core::everywhere::Held> = state.holds.iter().filter(|h| matches!(h.why, Why::Focus | Why::Manual)).collect();
     let until = if gates.iter().any(|h| h.until.is_none()) { None } else { gates.iter().filter_map(|h| h.until).max() };
     (!gates.is_empty()).then_some(Gated { until, focus: gates.iter().any(|h| h.why == Why::Focus), switch: gates.iter().any(|h| h.why == Why::Manual) })
@@ -504,7 +547,8 @@ fn reachable_ends(now: &Zoned) -> (i64, i64, bool) {
     let stamp = now.timestamp().as_second();
     let (night, waking) = night_and_waking(now);
     let mode = crate::hours::mode_at(now);
-    let hours = mode.until.as_ref().map(|u| u.timestamp().as_second()).filter(|u| *u > stamp && waking.is_none());
+    // The hours' end, never past the night's start: Reachable's latest end (F2).
+    let hours = mode.until.as_ref().map(|u| u.timestamp().as_second()).filter(|u| *u > stamp && waking.is_none()).map(|u| night.map_or(u, |night| u.min(night)));
     (hours.unwrap_or(0), waking.or(night).unwrap_or(0), waking.is_some())
 }
 
@@ -521,8 +565,9 @@ pub(crate) fn choose(mut sioul: Pin<&mut Sioul>, state: &str, length: &str) {
     let stamp = now.timestamp().as_second();
     let (state, until, open) = match rules::State::read(state) {
         Some(rules::State::Reachable) => {
-            // Never during a pause (decision 9): the pause's button ends it, and it is not offered then.
-            if Look::now().state.has(Why::Paused) {
+            // Never during a pause (decision 9), by the pause itself, whatever do-not-disturb's
+            // settings say of pauses (review of part 3, F6): the pause's button ends it.
+            if Look::now().mode.paused() {
                 sioul.as_mut().set_status(QString::from(&tr().text("reach-not-in-pause", None)));
                 return;
             }
@@ -765,13 +810,17 @@ fn moment_of(look: &Look) -> serde_json::Value {
         };
         serde_json::json!({ "until": until, "until_at": r.until.unwrap_or(0), "open": r.open, "line": line, "from": name_of(&look.switch, &r.from) })
     });
+    let capped: Vec<bool> = [30, 60, 120].iter().map(|minutes| night_end > 0 && stamp + minutes * 60 > night_end).collect();
     let base = serde_json::json!({
         "button": look.config.dnd.button,
         "end_time": end.map(|e| when(e, now)).unwrap_or_default(),
         "end_at": end.unwrap_or(0),
         "state": if state.reachable.is_some() { "reachable" } else if state.on() { "dnd" } else { "usual" },
         "reachable": reach.unwrap_or(serde_json::Value::Null),
-        "paused": state.has(Why::Paused),
+        // The pause itself, whatever do-not-disturb's settings say of pauses (F6).
+        "paused": look.mode.paused(),
+        // Each of the three minute lengths that meets Reachable's latest end, said so (F2).
+        "reach_capped": capped,
         "reach_hours": hours_end,
         "reach_hours_time": if hours_end > 0 { when(hours_end, now) } else { String::new() },
         "reach_tonight": night_end,
@@ -1117,7 +1166,7 @@ mod tests {
     fn the_signature_follows_what_is_asked() {
         let look = |paused: bool, manual: bool| {
             let config = Config::default();
-            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into(), via: String::new(), state: rules::State::Dnd, open: false });
+            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into(), via: String::new(), state: rules::State::Dnd, open: false, held_off: 0, gone: false });
             let sources = Sources { paused: paused.then_some(1), ..Sources::default() };
             let state = rules::now(&config.dnd, &sources, press.as_ref(), 100);
             let now = Zoned::now();
@@ -1146,13 +1195,14 @@ mod tests {
             let config = Config::default();
             let now = Zoned::now();
             let stamp = now.timestamp().as_second();
-            let sources = Sources { paused: paused.then_some(stamp - 60), pause_pressed: paused.then_some(stamp - 60), ..Sources::default() };
+            let overrides = Overrides { paused_since: paused.then_some(stamp - 60), ..Overrides::default() };
+            let sources = rules::sources_at(&overrides, &sioul_core::quiet::Blocks::default(), &now);
             let state = rules::now(&config.dnd, &sources, press.as_ref(), stamp);
-            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &Overrides::default(), &sioul_core::quiet::Blocks::default(), &now);
-            Look { config, overrides: Overrides::default(), switch: Switch::default(), state, mode, now }
+            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &now);
+            Look { config, overrides, switch: Switch::default(), state, mode, now }
         };
         let at = jiff::Timestamp::now().as_millisecond();
-        let reach = rules::Press { at: at - 1_000, on: false, until: at + 3_600_000, from: "x".into(), via: String::new(), state: rules::State::Reachable, open: false };
+        let reach = rules::Press { at: at - 1_000, on: false, until: at + 3_600_000, from: "x".into(), via: String::new(), state: rules::State::Reachable, open: false, held_off: 0, gone: false };
         let said = moment_of(&look(Some(reach.clone()), false));
         assert_eq!((said["state"].as_str(), said["paused"].as_bool()), (Some("reachable"), Some(false)), "{said}");
         let line = said["reachable"]["line"].as_str().unwrap_or_default();
@@ -1170,6 +1220,84 @@ mod tests {
         // During a pause: no Reachable, and the moment says paused (the menu offers none of its lengths).
         let paused = moment_of(&look(Some(reach), true));
         assert!(paused["reachable"].is_null() && paused["paused"] == true, "{paused}");
+    }
+
+    fn device(pressed: i64, state: rules::State, until: i64, seen: i64) -> rules::Device {
+        rules::Device { kind: "computer".into(), pressed, on: state == rules::State::Dnd, mode: state.id().into(), until, seen, at: pressed, ..rules::Device::default() }
+    }
+
+    fn switch_saved(devices: &[(&str, rules::Device)]) {
+        let switch = Switch { device: devices.iter().map(|(id, d)| (id.to_string(), d.clone())).collect(), ..Switch::default() };
+        switch.save(&Switch::default_path()).unwrap();
+    }
+
+    /// Review of part 3, F1 and F7, in the files: the phone's Do not disturb
+    /// until turned off three days ago, the old laptop's As usual two days
+    /// ago having seen it, the old laptop gone from the sharing: off, in the
+    /// window and in the files' reading (`sioul remind --watch`, `sioul
+    /// watch`) alike; a gone device's own Do not disturb holds in neither; a
+    /// pause pressed after Reachable ends it in the files' reading too, so
+    /// that the focus session begun before holds again there.
+    #[test]
+    fn every_reading_reads_a_gone_device_and_a_pause_alike() {
+        let _files = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        files_cleared();
+        const DAY: i64 = 86_400_000;
+        let ms = jiff::Timestamp::now().as_millisecond();
+        std::fs::create_dir_all(rules::gone_path().parent().unwrap()).unwrap();
+        std::fs::write(rules::gone_path(), r#"["old-laptop"]"#).unwrap();
+        switch_saved(&[("phone-1", device(ms - 3 * DAY, rules::State::Dnd, 0, 0)), ("old-laptop", device(ms - 2 * DAY, rules::State::Usual, 0, ms - 3 * DAY))]);
+        let mut config = Config::default();
+        config.dnd.focus = true;
+        assert!(!now().on(), "the window: the Do not disturb it ended does not come back");
+        assert!(!sioul_core::attention::dnd_from_files(&config, ms / 1000), "the files' reading too");
+        switch_saved(&[("old-laptop", device(ms - 60_000, rules::State::Dnd, 0, 0))]);
+        assert!(!now().on() && !sioul_core::attention::dnd_from_files(&config, ms / 1000), "a gone device's Do not disturb holds nowhere");
+        // A focus session since an hour; Reachable for an hour ten minutes ago; a pause from five to two minutes ago.
+        let _ = std::fs::remove_file(rules::gone_path());
+        let running = sioul_core::timelog::Running { task: String::new(), start: ms / 1000 - 3600, planned: 120, paused_at: None, paused: 0 };
+        sioul_core::timelog::keep_running_in(&sioul_core::timelog::folder(), Some(&running)).unwrap();
+        switch_saved(&[("laptop-1", device(ms - 600_000, rules::State::Reachable, ms + 3_000_000, 0))]);
+        assert!(!sioul_core::attention::dnd_from_files(&config, ms / 1000), "Reachable holds the session off");
+        let overrides = Overrides { paused_since: Some(ms / 1000 - 300), paused_ended: Some(ms / 1000 - 120), ..Overrides::default() };
+        overrides.save(&Overrides::default_path()).unwrap();
+        assert!(sioul_core::attention::dnd_from_files(&config, ms / 1000), "the pause ended Reachable: the session holds again there too");
+        assert!(now().reachable.is_none());
+        sioul_core::timelog::keep_running_in(&sioul_core::timelog::folder(), None).unwrap();
+        files_cleared();
+    }
+
+    /// Review of part 3, F4: Reachable read anew as soon as its files
+    /// change, never kept by time alone: As usual pressed elsewhere counts
+    /// at once.
+    #[test]
+    fn reachable_is_read_anew_when_the_switch_changes() {
+        let _files = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        files_cleared();
+        let ms = jiff::Timestamp::now().as_millisecond();
+        switch_saved(&[("laptop-1", device(ms - 5_000, rules::State::Reachable, ms + 3_600_000, 0))]);
+        assert!(reachable().is_some());
+        switch_saved(&[("laptop-1", device(ms - 1_000, rules::State::Usual, 0, ms - 5_000))]);
+        assert!(reachable().is_none(), "As usual came: read at once");
+        files_cleared();
+    }
+
+    /// Review of part 3, F6: with "[dnd] pauses = false" a pause adds no
+    /// do-not-disturb reason, yet the moment says paused (the menu then
+    /// offers none of Reachable's lengths, nor the computer's release), by
+    /// the pause itself.
+    #[test]
+    fn the_moment_says_a_pause_whatever_do_not_disturb_says_of_pauses() {
+        let mut config = Config::default();
+        config.dnd.pauses = false;
+        let now = Zoned::now();
+        let stamp = now.timestamp().as_second();
+        let overrides = Overrides { paused_since: Some(stamp - 300), ..Overrides::default() };
+        let state = rules::now(&config.dnd, &rules::sources_at(&overrides, &sioul_core::quiet::Blocks::default(), &now), None, stamp);
+        assert!(!state.has(Why::Paused));
+        let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::default(), &now);
+        let look = Look { config, overrides, switch: Switch::default(), state, mode, now };
+        assert_eq!(moment_of(&look)["paused"], true);
     }
 
     #[test]

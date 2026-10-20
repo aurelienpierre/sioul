@@ -33,7 +33,7 @@ Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time
 
 Calls from numbers nobody knows (in none of your address books, Sioul's or the phone's) and from hidden numbers are the call screening's, apart from do-not-disturb: neither do-not-disturb nor any state of yours switches it off. On the phone, Settings ▸ This phone ▸ Calls ▸ **Call screening**:
 
-- **Screen calls from numbers nobody knows**: on, at all hours as usual. Off, such numbers ring when your contacts may.
+- **Screen calls from numbers nobody knows**: on, at all hours as usual. Off, such numbers ring when your contacts may: while you are [Reachable](hours.md#work-now), at every hour.
 - **When**: at all hours, or only outside your work and admin hours.
 - **Numbers not in your contacts** and **Hidden numbers**: to your voicemail, ringing in your work and admin hours (a hospital's switchboard often calls from a hidden number), or ringing. Until you change one of the screening's settings, they follow what your Calls rows of numbers not in your contacts and hidden numbers said; the first setting you change fixes both, and no preset of What reaches you changes them.
 - **Automated callers** (since 2023, a machine may show only a number from the roots ARCEP keeps for machines), **numbers that cannot be a caller's** (France's numbering plan forbids numbers beginning 08 9 as a caller ID) and **numbers your network could not verify**: to your voicemail at all hours, a second call too, even while you expect a call; or each as other numbers nobody knows.

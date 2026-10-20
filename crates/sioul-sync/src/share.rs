@@ -6448,11 +6448,13 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     let (store, path) = locate(stores, file).filter(|(store, _)| store.part == part).ok_or_else(|| format!("{file}: not shared"))?;
     let root = crate::history::root(memory);
     let kept = crate::history::version(&root, part, file, stamp).ok_or_else(|| format!("{file}: {stamp}: not kept"))?;
-    let _running = exchange_lock(memory, true)?;
-    if store.folder && !writable_in(store, &path, vault.map(|(folder, _)| folder), memory) {
-        return Err(format!("{}: not written there", path.display()));
-    }
+    let not_there = || format!("{}: not written there", path.display());
     if let (crate::history::Kept::Copy(version), Shape::Toml(_) | Shape::Lines) = (&kept, store.shape) {
+        // A file of entries (settings, lists, records): small, put back entry by entry under the lock.
+        let _running = exchange_lock(memory, true)?;
+        if store.folder && !writable_in(store, &path, vault.map(|(folder, _)| folder), memory) {
+            return Err(not_there());
+        }
         let (old, now) = entries_then_and_now(store, version, &path)?;
         let back: Vec<(&str, Option<&str>)> = old.iter().filter(|(entry, value)| now.get(*entry) != Some(*value)).map(|(entry, value)| (entry.as_str(), Some(value.as_str()))).collect();
         if back.is_empty() {
@@ -6461,15 +6463,11 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         return write_entries(store, &path, &back, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-    if let Some(parent) = path.parent() {
-        private_dirs(parent).map_err(fail)?;
-    }
-    let temporary = temporary(&path);
-    let brought = match kept {
-        crate::history::Kept::Copy(version) => copy_private(&version, &temporary).map_err(fail),
+    let bring = |to: &Path| match &kept {
+        crate::history::Kept::Copy(version) => copy_private(version, to).map_err(fail),
         crate::history::Kept::Sealed { hash, .. } => {
             let (folder, key) = vault.ok_or_else(|| format!("{file}: kept in the sharing folder, which is not set here"))?;
-            crate::blobs::get(folder, key, &hash, &temporary).map_err(|fault| match fault {
+            crate::blobs::get(folder, key, hash, to).map_err(|fault| match fault {
                 crate::blobs::Fault::Missing => format!("share-missing:{file}"),
                 crate::blobs::Fault::Broken => format!("share-damaged:{file}"),
                 crate::blobs::Fault::Room => format!("share-no-room:{file}"),
@@ -6477,21 +6475,59 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             })
         }
     };
-    let put = || {
-        brought?;
-        if path.exists() {
-            crate::history::keep(&root, part, file, &path, now_ms)?;
-        }
-        // Dated now, wherever the copy took its time from: a change made here, which the others take.
-        let _ = set_time(&temporary, std::time::SystemTime::now());
-        std::fs::rename(&temporary, &path).map_err(fail)
-    };
-    // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
-    let done = if matches!(store.shape, Shape::Files) && !sioul_core::filelock::has_lock(&path) { put() } else { sioul_core::filelock::with_lock(&path, put) };
-    if done.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+    // A whole file: its version opened beside its place outside the exchanges' lock (a
+    // large note's takes a second here, more on a phone, and a dose's exchange waits for
+    // the lock), in the deepest of its folders that is there, never in one made now (L-1),
+    // dated now while it waits (an exchange's sweep leaves a leftover alone its first
+    // hour); the lock is taken only to keep the file as it is, date it and put it in
+    // place (review of part 3, J2, as `put_back_withheld` does since L-a).
+    let name = path.file_name().ok_or_else(not_there)?;
+    let there = path.ancestors().skip(1).find(|dir| dir.is_dir()).filter(|dir| path.parent() == Some(*dir) || dir.starts_with(&store.path)).ok_or_else(not_there)?;
+    let opened = temporary(&there.join(name));
+    if let Err(e) = bring(&opened) {
+        let _ = std::fs::remove_file(&opened);
+        return Err(e);
     }
-    done
+    let _ = set_time(&opened, std::time::SystemTime::now());
+    let placed = (|| {
+        let _running = exchange_lock(memory, true)?;
+        // A last look, under the lock.
+        if store.folder && !writable_in(store, &path, vault.map(|(folder, _)| folder), memory) {
+            return Err(not_there());
+        }
+        let parent = path.parent().ok_or_else(not_there)?;
+        private_dirs(parent).map_err(fail)?;
+        // Into its own folder: a rename on one disk; across disks (one mounted below), opened there again.
+        let beside = if opened.parent() == Some(parent) {
+            opened.clone()
+        } else {
+            let beside = temporary(&path);
+            if std::fs::rename(&opened, &beside).is_err() {
+                let _ = std::fs::remove_file(&opened);
+                if let Err(e) = bring(&beside) {
+                    let _ = std::fs::remove_file(&beside);
+                    return Err(e);
+                }
+            }
+            beside
+        };
+        let put = || {
+            if path.exists() {
+                crate::history::keep(&root, part, file, &path, now_ms)?;
+            }
+            // Dated now, wherever the copy took its time from: a change made here, which the others take.
+            let _ = set_time(&beside, std::time::SystemTime::now());
+            std::fs::rename(&beside, &path).map_err(fail)
+        };
+        // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
+        let done = if matches!(store.shape, Shape::Files) && !sioul_core::filelock::has_lock(&path) { put() } else { sioul_core::filelock::with_lock(&path, put) };
+        if done.is_err() {
+            let _ = std::fs::remove_file(&beside);
+        }
+        done
+    })();
+    let _ = std::fs::remove_file(&opened);
+    placed
 }
 
 /// For a file sealed apart, the content a change made here replaces: its hash as last known ("" new).
@@ -7768,15 +7804,25 @@ pub fn device_files(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str
 /// unless another device's records carry them (texts restored on a new
 /// phone). A device that counts here is refused ("share-device-counts").
 pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], device: &str, now_ms: i64) -> Result<DeviceFiles, String> {
-    let _running = exchange_lock(memory, true)?;
-    let mut state = Memory::load_all(memory, computer);
     let sharing = Sharing { folder, computer, key, memory, files: false, hurry: None };
-    let Some((files, paths, names, later)) = plan_removal(&sharing, stores, &state, device, now_ms) else { return Err("share-device-unknown".into()) };
+    // The removal planned outside the exchanges' lock (it reads every entry of the devices,
+    // each round of the device and the sealed names, and hashes its small files: it grows
+    // with them; review of part 3, J1), then kept under the lock while the memory it was
+    // planned from is the memory there; planned again there when an exchange wrote it meanwhile.
+    // The size of each of its small files before they go, the entry and note too (they may go later, `small_go`).
+    let small_seen = || -> BTreeMap<String, String> { device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| content_hash(&path).map(|h| (place, h))).collect() };
+    let read_from = (stamp_at(memory), stamp_at(&sealed_path(memory)));
+    let mut state = Memory::load_all(memory, computer);
+    let mut planned = (plan_removal(&sharing, stores, &state, device, now_ms), small_seen());
+    let _running = exchange_lock(memory, true)?;
+    if (stamp_at(memory), stamp_at(&sealed_path(memory))) != read_from || read_from.0.is_none() {
+        state = Memory::load_all(memory, computer);
+        planned = (plan_removal(&sharing, stores, &state, device, now_ms), small_seen());
+    }
+    let (Some((files, paths, names, later)), small_seen) = planned else { return Err("share-device-unknown".into()) };
     if files.counts {
         return Err("share-device-counts".into());
     }
-    // The size of each of its small files before they go, the entry and note too (they may go later, `small_go`).
-    let small_seen: BTreeMap<String, String> = device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| content_hash(&path).map(|h| (place, h))).collect();
     let mut going = paths;
     for name in names {
         going.push(folder.join("blobs").join(&name));

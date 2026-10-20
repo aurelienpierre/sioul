@@ -123,6 +123,8 @@ fn inputs(config: &Config, now: &Zoned) -> Inputs {
         config.known_senders_path(),
         People::default_path(),
         Switch::default_path(),
+        // The devices gone from the sharing: read as As usual in the switch (F1).
+        sioul_core::everywhere::gone_path(),
         Overrides::default_path(),
         sioul_core::health::Health::default_path(),
         sioul_core::needs::Days::default_path(),
@@ -167,6 +169,9 @@ pub(crate) fn refresh(now: bool) {
         return;
     }
     let switch = carry();
+    // What it is made of, read once carrying wrote the switch and before reading it: a
+    // change after this is a change the next refresh sees (F4).
+    let made_of = inputs(&config, &at);
     let table = make(&config, &switch, &at);
     // The numbers called lately, kept only the days they count (none, the setting off).
     if let Err(e) = rules::prune_called(&path(rules::CALLED), at.timestamp().as_millisecond(), table.screening.as_ref().map_or(0, |s| s.called_days)) {
@@ -178,9 +183,9 @@ pub(crate) fn refresh(now: bool) {
         eprintln!("sioul: calls: {e}");
         return;
     }
-    // After carrying, which may have written the switch's file.
+    // As read after carrying, which may have written the switch's file, and before making it.
     if let Ok(mut made) = MADE.lock() {
-        *made = Some((inputs(&config, &at), stamp, content));
+        *made = Some((made_of, stamp, content));
     }
 }
 
@@ -272,8 +277,12 @@ pub(crate) fn unknown_rings(config: &Config, hours: bool) -> bool {
 /// written again at each change, `everywhere::apply`).
 fn layers() -> rules::Layers {
     let since = jiff::Timestamp::now().as_second();
-    let reachable = crate::everywhere::reachable().map(|r| (r.since, r.until));
-    rules::Layers { slots: crate::hours::slots().slots, dnd: crate::everywhere::gate().map(|until| (since, until)), reachable }
+    // Read now, once, both layers alike: never a reading kept by time, since the table
+    // made of it is kept until its inputs change (review of part 3, F4).
+    let state = crate::everywhere::now();
+    let dnd = crate::everywhere::gated_of(&state).map(|g| (since, g.until));
+    let reachable = state.reachable.map(|r| (r.since, r.until));
+    rules::Layers { slots: crate::hours::slots().slots, dnd, reachable }
 }
 
 // ---------------------------------------------------------------- Expecting a call
@@ -886,6 +895,25 @@ mod tests {
         assert_eq!(state(), serde_json::Value::Null);
         assert!(!screens_here());
         assert!(!path(rules::TABLE).exists());
+    }
+
+    /// Review of part 3, F4: the calls' table's layers read the switch anew
+    /// each time: Do not disturb pressed on the laptop while its Reachable
+    /// lasted is the layer at once, Reachable gone from it, so that the
+    /// people you know never ring under it from a reading kept.
+    #[test]
+    fn the_table_s_layers_read_the_switch_anew() {
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let ms = jiff::Timestamp::now().as_millisecond();
+        let device = |pressed: i64, state: switches::State, until: i64, seen: i64| switches::Device { kind: "computer".into(), pressed, on: state == switches::State::Dnd, mode: state.id().into(), until, seen, at: pressed, ..switches::Device::default() };
+        let save = |d: switches::Device| Switch { device: [("laptop-1".to_string(), d)].into_iter().collect(), ..Switch::default() }.save(&Switch::default_path()).unwrap();
+        save(device(ms - 60_000, switches::State::Reachable, ms + 3_600_000, 0));
+        assert!(crate::everywhere::reachable().is_some() && layers().reachable.is_some());
+        save(device(ms - 1_000, switches::State::Dnd, 0, ms - 60_000));
+        let now = layers();
+        assert!(now.reachable.is_none() && now.dnd.is_some(), "{now:?}");
+        crate::everywhere::files_cleared();
     }
 
     /// A device lists every phone's calls while `[porch] calls` says so (the

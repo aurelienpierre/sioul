@@ -20,11 +20,14 @@
 //!   quieter state wins (Do not disturb, then As usual, then Reachable); one
 //!   more press settles it. A Reachable press writes `on = false`, so that an
 //!   older Sioul reads do-not-disturb off.
-//! - **Reachable**: while it lasts, neither a focus session, nor the night,
-//!   nor Free time turns do-not-disturb on; a pause pressed after it ends it,
-//!   and it holds no pause off. Its press releases what the phone holds, as
+//! - **Reachable**: while it lasts, never past the night's start (waking, at
+//!   night: `reachable_end`), neither a focus session, nor the night, nor
+//!   Free time turns do-not-disturb on; at its end, what an As usual before
+//!   it held off stays off (`held_off`); a pause pressed after it, or that
+//!   knew of it, ends it, and it holds no pause off. A device gone from the
+//!   sharing reads as As usual (`Switch::counted`). Its press releases what the phone holds, as
 //!   "Let what your phone holds through" pressed on a computer does (a
-//!   device's `release` stamp: `Switch::release_stamp`).
+//!   device's `release` stamp, by device: `Switch::release_stamps`).
 //! - **The list**, "Who may reach you during do-not-disturb"
 //!   (`config/dnd-people.toml`): names, numbers and addresses, kept in the
 //!   sharing itself, since the address books of two devices may not be in step.
@@ -55,6 +58,16 @@ pub const FOCUS_GRACE: i64 = 30 * 60;
 pub const FOCUS_OPEN: i64 = 180 * 60;
 /// Other devices heard from within this many days count for "on every device".
 pub const LIVE_DAYS: i64 = 7;
+/// Reachable never lasts more than this after it was pressed (seconds),
+/// whatever its press says: the longest any of its lengths takes, a press by
+/// day "until tonight" (review of part 3, F2).
+pub const REACHABLE_MOST: i64 = 24 * 3600;
+/// A stamp further ahead of this device's clock than this (milliseconds) is
+/// not followed by its hybrid clock (`Switch::next_stamp`).
+pub const CLOCK_AHEAD_MS: i64 = 24 * 3600 * 1000;
+/// The devices gone from the sharing as this device last found them, beside
+/// the sharing's memory (`share/`): ids only, never shared (`gone_devices`).
+pub const GONE_FILE: &str = "gone-devices.json";
 /// A computer whose news is this old (seconds), its table saying it is
 /// silenced, is waiting for its news: its Sioul may have stopped without a
 /// word (a crash), and its system's do-not-disturb (Plasma's) ended with it. A
@@ -239,9 +252,20 @@ pub struct Device {
     pub open: bool,
     /// "Let what your phone holds through", pressed on this device
     /// (milliseconds, hybrid clock); 0 never: the phone lets through what it
-    /// held before it, once (`Switch::release_stamp`).
+    /// held before it, once (`Switch::release_stamps`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub release: i64,
+    /// A Reachable press: the As usual (or the switch's off) it found holding
+    /// when pressed, by that press's stamp (milliseconds; 0 none): once
+    /// Reachable is over, a reason begun before it stays held off, as it was
+    /// under that As usual (review of part 3, F8). An older press has none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub held_off: i64,
+    /// Read so here only, never written: a device gone from the sharing
+    /// (`Switch::counted`), whose last press ends what came before it and
+    /// holds nothing.
+    #[serde(skip)]
+    pub gone: bool,
     /// What a later version writes here, kept as it is: written back unchanged.
     #[serde(flatten)]
     pub other: toml::Table,
@@ -293,6 +317,11 @@ pub struct Press {
     pub state: State,
     /// Reachable until you turn it off: `until` is its latest end.
     pub open: bool,
+    /// Reachable's: the As usual it found holding (`Device::held_off`).
+    pub held_off: i64,
+    /// A device gone from the sharing pressed it: read as As usual, it ends
+    /// what came before it, and holds off, releases and brings back nothing.
+    pub gone: bool,
 }
 
 impl Switch {
@@ -323,39 +352,74 @@ impl Switch {
         let presses: Vec<(&String, &Device)> = self.device.iter().filter(|(_, d)| d.pressed > 0).collect();
         let (from, last) = presses.iter().max_by_key(|(id, d)| (d.pressed, (*id).clone()))?;
         let mut winner = (*from, *last);
-        // A quieter press this one did not know of, close before it: a tie, the quieter wins.
-        let tied = presses.iter().filter(|(id, d)| *id != *from && d.state() > last.state() && last.pressed - d.pressed <= MARGIN_MS && last.seen < d.pressed).max_by_key(|(id, d)| (d.state(), d.pressed, (*id).clone()));
+        // A quieter press this one did not know of, close before it: a tie, the quieter wins;
+        // never one that a later press knew of and overrode (review of part 3, L1).
+        let overridden = |d: &Device| presses.iter().any(|(_, later)| later.pressed > d.pressed && later.seen >= d.pressed);
+        let tied = presses
+            .iter()
+            .filter(|(id, d)| *id != *from && d.state() > last.state() && last.pressed.saturating_sub(d.pressed) <= MARGIN_MS && last.seen < d.pressed && !overridden(d))
+            .max_by_key(|(id, d)| (d.state(), d.pressed, (*id).clone()));
         if let Some((id, d)) = tied {
             winner = (*id, *d);
         }
         let d = winner.1;
         let state = d.state();
-        Some(Press { at: d.pressed, on: state == State::Dnd, until: d.until, from: winner.0.clone(), via: d.via.clone(), state, open: state == State::Reachable && d.open })
+        let reachable = state == State::Reachable;
+        Some(Press { at: d.pressed, on: state == State::Dnd, until: d.until, from: winner.0.clone(), via: d.via.clone(), state, open: reachable && d.open, held_off: if reachable { d.held_off } else { 0 }, gone: d.gone })
     }
 
-    /// The tables of the devices that count only (`counts`, by id; this
-    /// device's always): a device gone from the sharing (it left, you forgot
-    /// it, another replaces it) is passed over, its last press and its
-    /// release stamp with it.
+    /// The switch as this device reads it, the devices that count (`counts`,
+    /// by id; this device's always) as they are; a device gone from the
+    /// sharing (it left, you forgot it, another replaces it) read as an As
+    /// usual at its last press, and nothing more: it still ends what came
+    /// before it, so that a do-not-disturb it ended never comes back (review
+    /// of part 3, F1), and it holds off, releases and brings back nothing,
+    /// nor is it a device that follows (no table time).
     pub fn counted(&self, here: &str, counts: &dyn Fn(&str) -> bool) -> Switch {
-        Switch { device: self.device.iter().filter(|(id, _)| id.as_str() == here || counts(id)).map(|(id, d)| (id.clone(), d.clone())).collect(), other: self.other.clone() }
+        let device = self
+            .device
+            .iter()
+            .map(|(id, d)| {
+                if id.as_str() == here || counts(id) {
+                    (id.clone(), d.clone())
+                } else {
+                    (id.clone(), Device { pressed: d.pressed, seen: d.seen, mode: State::Usual.id().to_string(), gone: true, ..Device::default() })
+                }
+            })
+            .collect();
+        Switch { device, other: self.other.clone() }
     }
 
-    /// What the phone is asked to let through, held before then (milliseconds,
-    /// the pressing device's clock): the latest Reachable press, while it is
-    /// the press that holds, or "Let what your phone holds through" pressed on
-    /// any device; 0 none. The phone applies each stamp once, a stamp ahead of
-    /// its clock read as its own now.
-    pub fn release_stamp(&self) -> i64 {
-        let reachable = self.latest().filter(|p| p.state == State::Reachable).map_or(0, |p| p.at);
-        self.device.values().map(|d| d.release).max().unwrap_or(0).max(reachable)
+    /// What the phone is asked to let through, held before then, by the
+    /// device that asks (milliseconds, that device's hybrid clock): each
+    /// device's "Let what your phone holds through", and the Reachable press
+    /// that is the press that holds. The phone applies each device's stamps
+    /// once, apart: a stamp from one device, however far ahead, never stands
+    /// in the way of another's (review of part 3, F3).
+    pub fn release_stamps(&self) -> Vec<(String, i64)> {
+        let mut out: BTreeMap<String, i64> = self.device.iter().filter(|(_, d)| d.release > 0 && !d.gone).map(|(id, d)| (id.clone(), d.release)).collect();
+        if let Some(p) = self.latest().filter(|p| p.state == State::Reachable && !p.gone) {
+            let stamp = out.entry(p.from).or_default();
+            *stamp = (*stamp).max(p.at);
+        }
+        out.into_iter().collect()
+    }
+
+    /// The stamp of a press or a release made here at `now_ms`: after every
+    /// press and every release known (a hybrid clock), but a stamp more than
+    /// `CLOCK_AHEAD_MS` ahead of this clock (a clock gone wrong, a garbled
+    /// table, `i64::MAX`), which never drags this one along (review of part
+    /// 3, F3). Never overflows.
+    pub fn next_stamp(&self, now_ms: i64) -> i64 {
+        let bound = now_ms.saturating_add(CLOCK_AHEAD_MS);
+        let known = self.device.values().flat_map(|d| [d.pressed, d.release]).filter(|stamp| *stamp <= bound).max().unwrap_or(0);
+        now_ms.max(known.saturating_add(1))
     }
 
     /// "Let what your phone holds through", pressed here: a stamp after every
     /// press and release known (a hybrid clock). Returns it.
     pub fn release(&mut self, here: &str, now_ms: i64) -> i64 {
-        let known = self.device.values().map(|d| d.pressed.max(d.release)).max().unwrap_or(0);
-        let stamp = now_ms.max(known + 1);
+        let stamp = self.next_stamp(now_ms);
         let own = self.device.entry(here.to_string()).or_default();
         own.release = stamp;
         own.at = own.at.max(stamp);
@@ -384,9 +448,20 @@ impl Switch {
     /// "until you turn it off", `until` then its latest end. A Reachable press
     /// writes `on = false`: an older Sioul reads do-not-disturb off.
     pub fn press_state(&mut self, here: &str, state: State, until: i64, open: bool, now_ms: i64, via: &str) -> i64 {
-        let stamp = now_ms.max(self.latest_known(None) + 1);
+        // After every press and every release known, so that a release seen never shadows this press (F3).
+        let stamp = self.next_stamp(now_ms);
         let seen = self.latest_known(Some(here));
+        // Reachable carries the As usual it found holding, or the one the Reachable it follows carried (F8).
+        let held_off = match self.latest() {
+            Some(p) if state == State::Reachable && !p.gone => match p.state {
+                State::Usual => p.at,
+                State::Reachable => p.held_off,
+                State::Dnd => 0,
+            },
+            _ => 0,
+        };
         let own = self.device.entry(here.to_string()).or_default();
+        own.held_off = held_off;
         own.pressed = stamp;
         own.on = state == State::Dnd;
         own.mode = state.id().to_string();
@@ -450,6 +525,53 @@ pub struct Sources {
     /// When the pause was last pressed, on or over (Unix seconds): a pause
     /// pressed after Reachable ends it.
     pub pause_pressed: Option<i64>,
+    /// The latest press of the switch the device that pressed the pause knew
+    /// of then (milliseconds, `Overrides::pause_saw`): a pause that knew of
+    /// Reachable ends it, whatever its clock says (review of part 3, L2).
+    pub pause_saw: Option<i64>,
+    /// The nights as Health keeps them around now, from winding down to
+    /// waking (Unix seconds), naps aside: Reachable's latest end (`reachable_end`).
+    pub nights: Vec<(i64, i64)>,
+}
+
+/// What the reasons' sources say at `now`, from the pauses' overrides and
+/// Health's blocks: every reader of the switch builds them so (the window,
+/// the listener, the calls' table, `sioul remind --watch`, `sioul watch`,
+/// the MCP), a pause ending Reachable in all of them (review of part 3, F7).
+pub fn sources_at(overrides: &crate::quiet::Overrides, blocks: &crate::quiet::Blocks, now: &jiff::Zoned) -> Sources {
+    let stamp = now.timestamp().as_second();
+    let free = overrides.free_from().map(|since| (since, crate::pause::free_until(since, blocks, now.time_zone())));
+    let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
+    let focus = crate::timelog::running().and_then(|r| focus(&r, stamp));
+    let nights = blocks.kept.iter().filter(|k| k.kind == "sleep").map(|k| (k.start, k.end)).collect();
+    Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since, pause_saw: overrides.pause_saw, nights }
+}
+
+/// The same from the files alone, Health's blocks without the day's events:
+/// for what runs without the window (`attention::dnd_from_files`, the MCP).
+pub fn sources_from_files(now: &jiff::Zoned) -> Sources {
+    sources_at(&crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path()), &crate::quiet::Blocks::read(now, &[]), now)
+}
+
+/// The devices gone from the sharing by a sealed fact (they left, you forgot
+/// them, another replaces them), as this device's window last found them:
+/// beside the sharing's memory, ids only, never shared.
+pub fn gone_path() -> PathBuf {
+    state_dir().join("share").join(GONE_FILE)
+}
+
+pub fn gone_devices() -> std::collections::BTreeSet<String> {
+    std::fs::read(gone_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
+}
+
+/// The switch as every reader on this device reads it: the file, the devices
+/// gone from the sharing read as `Switch::counted` says (`here`: this
+/// device's id, kept as it is; "" where it is not known, the gone being
+/// others always). The window, the listener, the calls' table, `sioul
+/// remind --watch`, `sioul watch` and the MCP read it so (F1, F7).
+pub fn read_switch(here: &str) -> Switch {
+    let gone = gone_devices();
+    Switch::load(&Switch::default_path()).counted(here, &|id| !gone.contains(id))
 }
 
 /// A focus session as do-not-disturb reads it: counting (not paused), from
@@ -573,18 +695,28 @@ pub fn held_by_system(now: &Now, press: Option<&Press>, here: &str) -> bool {
 /// after a reason began holds that reason off until it ends; the pause first,
 /// then Free time (never with the pause), sleep, focus, the switch.
 pub fn now(settings: &DndSettings, sources: &Sources, press: Option<&Press>, now: i64) -> Now {
-    // Reachable, while it lasts: never during a pause, and ended by a pause pressed after it.
-    let reachable = press.filter(|p| p.state == State::Reachable).filter(|p| p.until <= 0 || now < p.until / 1000).filter(|p| sources.paused.is_none() && sources.pause_pressed.is_none_or(|at| at.saturating_mul(1000) < p.at)).map(|p| Reach {
-        since: p.at / 1000,
-        until: (p.until > 0).then_some(p.until / 1000),
-        from: p.from.clone(),
-        open: p.open,
+    // Reachable, while it lasts, never past its latest end (F2): never during a pause, and
+    // ended by a pause pressed after it, or that knew of it whatever its clock (L2).
+    let reachable = press.filter(|p| p.state == State::Reachable && !p.gone).and_then(|p| {
+        let end = reachable_end(p.at / 1000, (p.until > 0).then_some(p.until / 1000), &sources.nights);
+        let paused_after = sources.pause_pressed.is_some_and(|at| at.saturating_mul(1000) >= p.at) || sources.pause_saw.is_some_and(|saw| saw >= p.at);
+        (now < end && sources.paused.is_none() && !paused_after).then(|| Reach { since: p.at / 1000, until: Some(end), from: p.from.clone(), open: p.open })
     });
-    // Pressed off after it began (As usual, or the switch's off): held off. A press
-    // "on" never holds a reason off; Reachable holds the times off only while it
-    // lasts (below), so that once it ends, what still holds turns on again, the
-    // pause never held off.
-    let pressed_off_after = |since: i64| press.is_some_and(|p| !p.on && p.state != State::Reachable && p.at > since.saturating_mul(1000));
+    // Pressed off after it began (As usual, or the switch's off): held off until it
+    // ends. A press "on" never holds a reason off; Reachable holds the times off while
+    // it lasts (below), then what the As usual it found held off (`held_off`, F8): what
+    // still holds and was not held off turns on again. A gone device's holds nothing.
+    let pressed_off_after = |since: i64| {
+        press.is_some_and(|p| {
+            let off = match p.state {
+                _ if p.gone => 0,
+                State::Reachable => p.held_off,
+                State::Usual => p.at,
+                State::Dnd => 0,
+            };
+            off > since.saturating_mul(1000)
+        })
+    };
     let mut holds = Vec::new();
     let mut add = |why: Why, since: i64, until: Option<i64>| {
         // While Reachable lasts, neither Free time, nor the night, nor a focus session turns do-not-disturb on.
@@ -642,13 +774,28 @@ pub enum Length {
 /// "until you turn it off" last until waking. None when it cannot end: no
 /// night known, or an end already past.
 pub fn reachable_until(length: Length, now: i64, hours_end: Option<i64>, night: Option<i64>, waking: Option<i64>) -> Option<(i64, bool)> {
+    // Its latest end, whatever its length (F2): the night's start by day, waking at night.
+    let latest = waking.or(night);
     let end = match (length, waking) {
-        (Length::Minutes(minutes), _) => Some(now + minutes.max(1) * 60),
+        (Length::Minutes(minutes), _) => Some(now.saturating_add(minutes.max(1).saturating_mul(60))),
         (Length::HoursEnd, _) => hours_end,
         (Length::Tonight | Length::Off, Some(waking)) => Some(waking),
         (Length::Tonight | Length::Off, None) => night,
     }?;
+    let end = latest.map_or(end, |latest| end.min(latest));
     (end > now).then_some((end, length == Length::Off))
+}
+
+/// When Reachable pressed at `at` ends at the latest (Unix seconds),
+/// whatever its press says, as every reader reads it (decision 8; review of
+/// part 3, F2): its own end (`until`; none: an older, a later or a garbled
+/// press), and never past the first night's start after it when pressed by
+/// day, the waking of the night it was pressed in when pressed at night
+/// (`nights`, as Health keeps them), nor `REACHABLE_MOST` after it.
+pub fn reachable_end(at: i64, until: Option<i64>, nights: &[(i64, i64)]) -> i64 {
+    let night = nights.iter().find(|(start, end)| *start <= at && at < *end).map(|(_, end)| *end).or_else(|| nights.iter().map(|(start, _)| *start).filter(|start| *start > at).min());
+    let most = at.saturating_add(REACHABLE_MOST);
+    [until, night].into_iter().flatten().fold(most, i64::min)
 }
 
 // ---------------------------------------------------------------- where it holds
@@ -1090,7 +1237,7 @@ mod tests {
     }
 
     fn reachable(at_s: i64, until_s: i64) -> Press {
-        Press { at: at_s * 1000, on: false, until: until_s * 1000, from: "phone".into(), via: String::new(), state: State::Reachable, open: false }
+        Press { at: at_s * 1000, on: false, until: until_s * 1000, from: "phone".into(), via: String::new(), state: State::Reachable, open: false, held_off: 0, gone: false }
     }
 
     /// Part 3 of "What reaches you" (decisions 6 to 12): presses on two and
@@ -1198,33 +1345,200 @@ mod tests {
         assert_eq!(reachable_until(Length::HoursEnd, now_s, Some(now_s - 1), Some(night), None), None);
     }
 
-    /// The release asked of the phone: a Reachable press while it is the one
-    /// that holds, or "Let what your phone holds through" on a computer,
-    /// stamped after every press and release known; a device gone from the
-    /// sharing is passed over, its press and its release with it.
+    /// The release asked of the phone, by device: a Reachable press while it
+    /// is the one that holds, or "Let what your phone holds through" on a
+    /// computer, stamped after every press and release known; a device gone
+    /// from the sharing releases nothing.
     #[test]
-    fn releases_and_devices_gone_are_passed_over() {
+    fn releases_are_asked_by_device_and_the_gone_release_nothing() {
         let mut s = switch(&[("phone", pressed(1_000_000, State::Usual, 0))]);
-        assert_eq!(s.release_stamp(), 0);
+        assert!(s.release_stamps().is_empty());
         let stamp = s.release("desk", 900_000);
-        assert_eq!((stamp, s.release_stamp()), (1_000_001, 1_000_001), "after every press known, whatever the clock");
+        assert_eq!((stamp, s.release_stamps()), (1_000_001, vec![("desk".to_string(), 1_000_001)]), "after every press known, whatever the clock");
         s.press_state("laptop", State::Reachable, 9_000_000, false, 2_000_000, "");
-        assert_eq!(s.release_stamp(), 2_000_000);
+        assert_eq!(s.release_stamps(), vec![("desk".to_string(), 1_000_001), ("laptop".to_string(), 2_000_000)]);
         // A quieter press unseen within the minute holds: no release from the Reachable one.
         s.device.insert("phone".into(), pressed(1_970_000, State::Dnd, 0));
-        assert_eq!((s.latest().unwrap().state, s.release_stamp()), (State::Dnd, 1_000_001));
-        // The desk gone from the sharing: its release passed over; the laptop gone: its press too.
-        let counted = s.counted("phone", &|id| id != "desk");
-        assert_eq!(counted.release_stamp(), 0);
-        let without_laptop = s.counted("phone", &|id| id != "laptop");
-        assert_eq!(without_laptop.latest().unwrap().from, "phone");
+        assert_eq!((s.latest().unwrap().state, s.release_stamps()), (State::Dnd, vec![("desk".to_string(), 1_000_001)]));
+        // The desk gone from the sharing: its release passed over.
+        assert!(s.counted("phone", &|id| id != "desk").release_stamps().is_empty());
         assert!(s.counted("phone", &|_| false).device.contains_key("phone"), "this device always");
+    }
+
+    /// Review of part 3, F1: the phone pressed Do not disturb until turned
+    /// off three days ago; the old laptop pressed As usual two days ago,
+    /// having seen it. The old laptop gone from the sharing (forgotten,
+    /// replaced, left), its press still ends the phone's: As usual, read as
+    /// such, never the Do not disturb nobody chose now. A gone device's
+    /// Reachable or Do not disturb is As usual too, holds nothing off, and
+    /// is no device that follows.
+    #[test]
+    fn a_gone_device_s_press_still_ends_what_came_before_it() {
+        const DAY: i64 = 86_400_000;
+        let t = 1_790_000_000_000;
+        let settings = DndSettings { focus: true, ..DndSettings::default() };
+        let s = switch(&[("phone", pressed(t - 3 * DAY, State::Dnd, 0)), ("old-laptop", pressed(t - 2 * DAY, State::Usual, t - 3 * DAY))]);
+        let gone = s.counted("phone", &|id| id != "old-laptop");
+        let latest = gone.latest().unwrap();
+        assert_eq!((latest.from.as_str(), latest.state, latest.gone), ("old-laptop", State::Usual, true));
+        assert!(!now(&settings, &Sources::default(), Some(&latest), t / 1000).on(), "no Do not disturb back");
+        // Its last press was Reachable, or Do not disturb, a minute ago: As usual, nothing held off nor released.
+        for state in [State::Reachable, State::Dnd] {
+            let mut late = switch(&[("phone", pressed(t - 3 * DAY, State::Usual, 0)), ("old-laptop", Device { until: t + DAY, release: t, at: t, ..pressed(t - MARGIN_MS, state, t - 3 * DAY) })]);
+            late.device.get_mut("old-laptop").unwrap().open = true;
+            let read = late.counted("phone", &|id| id != "old-laptop");
+            let p = read.latest().unwrap();
+            let focus = Sources { focus: Some((t / 1000 - 3600, t / 1000 + 3600)), ..Sources::default() };
+            let held = now(&settings, &focus, Some(&p), t / 1000);
+            assert!(held.reachable.is_none() && held.has(Why::Focus) && !held.has(Why::Manual), "{state:?}: {held:?}");
+            assert!(read.release_stamps().is_empty());
+            assert!(others(&read, "phone", &[], t / 1000, t, &|_| true).is_empty(), "no device that follows");
+        }
+    }
+
+    /// Review of part 3, F2: Reachable never lasts past the night's start
+    /// when pressed by day, nor past waking at night, nor a day after it was
+    /// pressed, whatever its press says (a length of two hours 45 minutes
+    /// before the night; a press with no end; one a year ahead).
+    #[test]
+    fn reachable_never_outlives_its_latest_end() {
+        let settings = DndSettings { sleep: true, focus: true, ..DndSettings::default() };
+        let night = (90_000, 90_000 + 8 * 3600);
+        let nights = vec![night, (night.0 + 86_400, night.1 + 86_400)];
+        // Two hours, 45 minutes before the night: until the night's start, said so by its end.
+        let at = night.0 - 45 * 60;
+        assert_eq!(reachable_until(Length::Minutes(120), at, None, Some(night.0), None), Some((night.0, false)));
+        // At night, two hours half an hour before waking: until waking.
+        assert_eq!(reachable_until(Length::Minutes(120), night.1 - 1800, None, Some(night.0 + 86_400), Some(night.1)), Some((night.1, false)));
+        // A press written before the cap, for two hours: the night's do-not-disturb holds at its start.
+        let older = reachable(at, at + 7200);
+        let asleep = Sources { sleep: Some(night), nights: nights.clone(), ..Sources::default() };
+        let held = now(&settings, &asleep, Some(&older), night.0 + 1800);
+        assert!(held.reachable.is_none() && held.has(Why::Sleep), "{held:?}");
+        assert_eq!(now(&settings, &Sources { nights: nights.clone(), ..Sources::default() }, Some(&older), at + 60).reachable.and_then(|r| r.until), Some(night.0), "its end said as the night's start");
+        // No end (a later or garbled press): the night's start; with no night known, a day.
+        let open = reachable(at, 0);
+        assert!(now(&settings, &asleep, Some(&open), night.0 + 60).reachable.is_none());
+        assert!(now(&settings, &Sources::default(), Some(&open), at + REACHABLE_MOST - 1).reachable.is_some());
+        assert!(now(&settings, &Sources::default(), Some(&open), at + REACHABLE_MOST).reachable.is_none());
+        // A year ahead: ten nights on, asleep, do-not-disturb holds.
+        let far = reachable(at, at + 365 * 86_400);
+        let tenth = (night.0 + 10 * 86_400, night.1 + 10 * 86_400);
+        let held = now(&settings, &Sources { sleep: Some(tenth), nights: vec![tenth], ..Sources::default() }, Some(&far), tenth.0 + 60);
+        assert!(held.reachable.is_none() && held.on(), "{held:?}");
+        assert_eq!(reachable_end(at, Some(i64::MAX), &[]), at + REACHABLE_MOST, "never overflows");
+        assert_eq!(reachable_end(i64::MAX - 10, None, &[]), i64::MAX);
+    }
+
+    /// Review of part 3, F8: Reachable's end goes back to what held before
+    /// it was pressed. As usual pressed during a focus session (or at night)
+    /// held it off; Reachable pressed after, on the same device or another,
+    /// carries that hold-off, so that once Reachable is over the session (or
+    /// the night) stays held off until it ends. Without an As usual before,
+    /// a reason begun before Reachable holds again at its end (choice 1).
+    #[test]
+    fn reachable_s_end_keeps_what_as_usual_held_off() {
+        let t = 1_790_000_000_000;
+        const MIN: i64 = 60_000;
+        let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
+        let focus = Sources { focus: Some((t / 1000, t / 1000 + 4 * 3600)), ..Sources::default() };
+        for other in ["phone", "desk"] {
+            let mut s = switch(&[("phone", pressed(t + 30 * MIN, State::Usual, 0))]);
+            let at = |s: &Switch, m: i64| now(&settings, &focus, s.latest().as_ref(), (t + m * MIN) / 1000);
+            assert!(!at(&s, 45).on());
+            s.press_state(other, State::Reachable, t + 90 * MIN, false, t + 60 * MIN, "");
+            assert_eq!(s.device[other].held_off, t + 30 * MIN);
+            let during = at(&s, 75);
+            assert!(!during.on() && during.reachable.is_some());
+            assert!(!at(&s, 95).on(), "Reachable over, on {other}: the session stays held off");
+            // Reachable pressed again, its length changed: the hold-off carried on.
+            s.press_state(other, State::Reachable, t + 120 * MIN, false, t + 100 * MIN, "");
+            assert_eq!(s.device[other].held_off, t + 30 * MIN);
+        }
+        // At night: As usual at 23:00, Reachable 23:30 to 00:00: the night stays held off.
+        let night = Sources { sleep: Some((t / 1000 - 1800, t / 1000 + 8 * 3600)), nights: vec![(t / 1000 - 1800, t / 1000 + 8 * 3600)], ..Sources::default() };
+        let mut s = switch(&[("phone", pressed(t, State::Usual, 0))]);
+        s.press_state("phone", State::Reachable, t + 60 * MIN, false, t + 30 * MIN, "");
+        assert!(!now(&settings, &night, s.latest().as_ref(), (t + 65 * MIN) / 1000).on());
+        // No As usual before: the session begun before holds again at Reachable's end (choice 1).
+        let mut plain = Switch::default();
+        plain.press_state("phone", State::Reachable, t + 90 * MIN, false, t + 60 * MIN, "");
+        assert_eq!(plain.device["phone"].held_off, 0);
+        assert!(now(&settings, &focus, plain.latest().as_ref(), (t + 95 * MIN) / 1000).has(Why::Focus));
+        // After Do not disturb, nothing held off either.
+        let mut after_dnd = switch(&[("desk", pressed(t, State::Dnd, 0))]);
+        after_dnd.press_state("phone", State::Reachable, t + 90 * MIN, false, t + 60 * MIN, "");
+        assert_eq!(after_dnd.device["phone"].held_off, 0);
+    }
+
+    /// Review of part 3, F3: release stamps never block one another. A
+    /// computer ten minutes ahead releases; the phone's Reachable pressed
+    /// after it, having seen it, comes after it and releases too; another
+    /// device's, which had not seen it, is applied apart. A stamp at the end
+    /// of time (a garbled table) is passed over, said once, and never drags
+    /// the clock along: the next releases apply, nothing overflows.
+    #[test]
+    fn release_stamps_never_block_one_another() {
+        use crate::appnotes::Ledger;
+        let t = 1_790_000_000_000;
+        const MIN: i64 = 60_000;
+        let now_s = t / 1000;
+        let mut s = switch(&[("phone", pressed(t - 86_400_000, State::Usual, 0))]);
+        let ahead = s.release("laptop", t + 10 * MIN);
+        let mut ledger = Ledger::default();
+        assert!(ledger.apply_releases(&s.release_stamps(), now_s).0);
+        let pressed_at = s.press_state("phone", State::Reachable, t + 62 * MIN, false, t + 2 * MIN, "");
+        assert!(pressed_at > ahead, "the phone's press after the release it saw");
+        assert!(ledger.apply_releases(&s.release_stamps(), now_s + 120).0, "and it releases");
+        // A tablet that had not seen the laptop's release: its own Reachable, apart.
+        let mut unseen = switch(&[("tablet", Device { pressed: t + 3 * MIN, mode: State::Reachable.id().into(), until: t + 60 * MIN, ..Device::default() })]);
+        unseen.device.insert("laptop".into(), s.device["laptop"].clone());
+        assert!(ledger.apply_releases(&unseen.release_stamps(), now_s + 180).0, "never shadowed by another device's stamp");
+        // The end of time.
+        let mut odd = switch(&[("phone", pressed(t - 86_400_000, State::Usual, 0)), ("odd", Device { release: i64::MAX, ..pressed(t - 86_400_000, State::Usual, 0) })]);
+        let mut ledger = Ledger::default();
+        assert_eq!(ledger.apply_releases(&odd.release_stamps(), now_s), (false, vec!["odd".to_string()]), "passed over, said");
+        assert_eq!(ledger.apply_releases(&odd.release_stamps(), now_s + 1), (false, vec![]), "said once");
+        let desk = odd.release("desk", t + MIN);
+        assert_eq!(desk, t + MIN, "the clock never follows a stamp a day ahead");
+        assert!(ledger.apply_releases(&odd.release_stamps(), now_s + 60).0);
+        let press = odd.press_state("phone", State::Reachable, t + 62 * MIN, false, t + 2 * MIN, "");
+        assert!(press < i64::MAX && press > desk);
+        assert!(ledger.apply_releases(&odd.release_stamps(), now_s + 120).0);
+        assert_eq!(odd.next_stamp(i64::MAX), i64::MAX, "saturates");
+    }
+
+    /// Review of part 3, L1: three devices within the minute: A presses Do
+    /// not disturb, B Reachable having seen it, C As usual having seen
+    /// neither. A's press, which B overrode knowingly, never comes back: C's
+    /// As usual holds.
+    #[test]
+    fn a_press_overridden_knowingly_never_comes_back() {
+        let t = 1_790_000_000_000;
+        let s = switch(&[("A", pressed(t, State::Dnd, t - 86_400_000)), ("B", Device { until: t + 3_600_000, ..pressed(t + 10_000, State::Reachable, t) }), ("C", pressed(t + 20_000, State::Usual, t - 86_400_000))]);
+        assert_eq!(s.latest().map(|p| (p.from, p.state)), Some(("C".to_string(), State::Usual)));
+        // Without B, A and C did not know each other: the quieter, A's, as before.
+        let two = switch(&[("A", pressed(t, State::Dnd, t - 86_400_000)), ("C", pressed(t + 20_000, State::Usual, t - 86_400_000))]);
+        assert_eq!(two.latest().map(|p| p.from), Some("A".to_string()));
+    }
+
+    /// Review of part 3, L2: a pause pressed a minute after Reachable on a
+    /// device whose clock is two minutes behind, which knew of Reachable,
+    /// ends it; one that knew of no such press, its clock before it, does not.
+    #[test]
+    fn a_pause_that_knew_of_reachable_ends_it_whatever_its_clock() {
+        let settings = DndSettings::default();
+        let press = reachable(10_000, 20_000);
+        let behind = Sources { pause_pressed: Some(10_000 - 60), pause_saw: Some(press.at), ..Sources::default() };
+        assert!(now(&settings, &behind, Some(&press), 11_000).reachable.is_none());
+        let before = Sources { pause_pressed: Some(10_000 - 60), pause_saw: Some(press.at - 1), ..Sources::default() };
+        assert!(now(&settings, &before, Some(&press), 11_000).reachable.is_some());
     }
 
     #[test]
     fn until_ends_it_by_each_devices_clock() {
         let settings = DndSettings::default();
-        let press = Press { at: 1_000_000, on: true, until: 1_600_000, from: "desk".into(), via: String::new(), state: State::of(true), open: false };
+        let press = Press { at: 1_000_000, on: true, until: 1_600_000, from: "desk".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         let held = now(&settings, &Sources::default(), Some(&press), 1_500);
         assert_eq!(held.why(), Some(Why::Manual));
         assert_eq!(held.until(), Some(1_600));
@@ -1233,7 +1547,7 @@ mod tests {
 
     #[test]
     fn each_trigger_is_a_setting_and_the_pause_comes_first() {
-        let sources = Sources { paused: Some(100), free: Some((50, 900)), sleep: Some((80, 2000)), focus: Some((90, 1000)), pause_pressed: Some(100) };
+        let sources = Sources { paused: Some(100), free: Some((50, 900)), sleep: Some((80, 2000)), focus: Some((90, 1000)), pause_pressed: Some(100), ..Sources::default() };
         let none = DndSettings { pauses: false, sleep: false, focus: false, ..DndSettings::default() };
         assert!(!now(&none, &sources, None, 500).on());
         let all = DndSettings { pauses: true, sleep: true, focus: true, ..DndSettings::default() };
@@ -1256,7 +1570,7 @@ mod tests {
     fn pressed_off_after_a_reason_began_holds_it_off_until_it_ends() {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
         let focus = Sources { focus: Some((1_000, 5_000)), ..Sources::default() };
-        let off_after = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: String::new(), state: State::of(false), open: false };
+        let off_after = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: String::new(), state: State::of(false), open: false, held_off: 0, gone: false };
         assert!(!now(&settings, &focus, Some(&off_after), 3_000).on(), "the person turned it off during the session");
         // A session begun after the press holds again.
         let later = Sources { focus: Some((2_500, 6_000)), ..Sources::default() };
@@ -1272,7 +1586,7 @@ mod tests {
     #[test]
     fn mail_and_sioul_s_own_notifications_are_gated_by_the_switch_and_focus_only() {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
-        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new(), state: State::of(true), open: false };
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         assert!(now(&settings, &Sources::default(), Some(&press), 2_000).gates());
         assert!(now(&settings, &Sources { focus: Some((1_000, 9_000)), ..Sources::default() }, None, 2_000).gates());
         // Sleep and the pauses keep their own rules.
@@ -1300,7 +1614,7 @@ mod tests {
     fn the_status_says_where_it_holds() {
         let tr = Translator::new("en");
         let settings = DndSettings::default();
-        let press = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: String::new(), state: State::of(true), open: false };
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         let held = now(&settings, &Sources::default(), Some(&press), 2_000);
         let name = |id: &str| if id == "phone" { "your phone".to_string() } else { id.to_string() };
         let all = [("phone".to_string(), Follows::Silenced)];
@@ -1545,14 +1859,14 @@ mod tests {
         // A press "off" heard from the system holds off a reason begun before it, as any press.
         let settings = DndSettings { focus: true, ..DndSettings::default() };
         let focus = Sources { focus: Some((1_000, 9_000)), ..Sources::default() };
-        let off = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: VIA_SYSTEM.into(), state: State::of(false), open: false };
+        let off = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: VIA_SYSTEM.into(), state: State::of(false), open: false, held_off: 0, gone: false };
         assert!(!now(&settings, &focus, Some(&off), 3_000).on());
     }
 
     #[test]
     fn the_switch_held_by_the_system_alone_adds_no_mode() {
         let settings = DndSettings { sleep: true, focus: true, ..DndSettings::default() };
-        let heard_here = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: VIA_SYSTEM.into(), state: State::of(true), open: false };
+        let heard_here = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: VIA_SYSTEM.into(), state: State::of(true), open: false, held_off: 0, gone: false };
         let held = now(&settings, &Sources::default(), Some(&heard_here), 2_000);
         // The phone's own do-not-disturb turned the switch on: the phone adds no mode over it.
         assert!(held_by_system(&held, Some(&heard_here), "phone"));
@@ -1631,7 +1945,7 @@ mod tests {
         let heard = vec![("laptop".to_string(), now_s - 600)];
         let followed = others(&read, "phone", &heard, now_s, since, &|_| true);
         assert_eq!(followed, vec![("laptop".to_string(), Follows::Closed)]);
-        let press = Press { at: since + 1, on: true, until: 0, from: "phone".into(), via: String::new(), state: State::of(true), open: false };
+        let press = Press { at: since + 1, on: true, until: 0, from: "phone".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         let held = now(&DndSettings::default(), &Sources::default(), Some(&press), now_s);
         let name = |id: &str| id.to_string();
         let said_ = said(&held, at(true, ""), &followed, "", &name, &tr);
@@ -1660,7 +1974,7 @@ mod tests {
     #[test]
     fn a_device_turned_off_by_hand_says_so() {
         let tr = Translator::new("en");
-        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new(), state: State::of(true), open: false };
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new(), state: State::of(true), open: false, held_off: 0, gone: false };
         let held = now(&DndSettings::default(), &Sources::default(), Some(&press), 2_000);
         let name = |id: &str| id.to_string();
         let here = Here { silenced: false, line: "You turned do-not-disturb off on this phone.", turned_off: true };

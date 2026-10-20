@@ -134,10 +134,12 @@ Item {
         // while it lasts, the button says until when and a click goes back to As usual; never during a pause.
         function test_reachable_is_pressed_and_said() {
             mock.chosen = []
-            const off = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30" } } })
+            const off = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30", reach_capped: [false, false, true] } } })
             let menu = menuOf(off)
             tryVerify(() => menu.opened)
             const texts = shownTexts(menu)
+            // Two hours meet the night's start: said with it (review of part 3, F2).
+            verify(texts.indexOf("reach-for-120-latest(22:30)") >= 0 && texts.indexOf("reach-for-120") < 0, texts)
             verify(texts.indexOf("reach-for-60") >= 0 && texts.indexOf("reach-until-time(17:00)") >= 0 && texts.indexOf("reach-until-tonight(22:30)") >= 0 && texts.indexOf("reach-until-off(22:30)") >= 0, texts)
             verify(texts.indexOf("reach-let-through") >= 0, "a computer lets what the phone holds through: " + texts)
             for (let i = 0; i < menu.count; ++i) {
@@ -164,6 +166,7 @@ Item {
             menu = menuOf(paused)
             tryVerify(() => menu.opened)
             verify(shownTexts(menu).every(t => t.indexOf("reach-for") < 0 && t.indexOf("reach-until") < 0), "never offered during a pause")
+            verify(shownTexts(menu).indexOf("reach-let-through") < 0, "nor the computer's release (review of part 3, F5)")
             menu.close()
         }
 

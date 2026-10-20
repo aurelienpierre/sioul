@@ -2059,12 +2059,15 @@ impl Slots {
 /// Whether do-not-disturb holds now from its switch or a focus session, as
 /// the shared files say (`everywhere`): its layer, for what runs without the
 /// window (`sioul remind --watch`, `sioul watch`, a phone's alarms and listener).
+/// The switch and the reasons read as the window reads them: the devices
+/// gone from the sharing as As usual (`everywhere::read_switch`), the pause,
+/// Free time, the nights and focus (`everywhere::sources_from_files`), so that
+/// a pause ends Reachable here too (review of part 3, F7).
 pub fn dnd_from_files(config: &Config, now: i64) -> bool {
-    use crate::everywhere::{Sources, Switch};
-    let switch = Switch::load(&Switch::default_path());
-    let focus = crate::timelog::running().and_then(|r| crate::everywhere::focus(&r, now));
-    let sources = Sources { focus, ..Sources::default() };
-    crate::everywhere::now(&config.dnd, &sources, switch.latest().as_ref(), now).gates()
+    use crate::everywhere;
+    let zoned = jiff::Timestamp::from_second(now).map_or_else(|_| jiff::Zoned::now(), |t| t.to_zoned(jiff::tz::TimeZone::system()));
+    let sources = everywhere::sources_from_files(&zoned);
+    everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), now).gates()
 }
 
 // ---------------------------------------------------------------- words

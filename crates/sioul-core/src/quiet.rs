@@ -157,6 +157,12 @@ pub struct Overrides {
     pub paused_since: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_ended: Option<i64>,
+    /// The latest press of do-not-disturb's switch the device knew of as it
+    /// pressed the pause (milliseconds, the switch's hybrid clock): the pause
+    /// ends a Reachable it knew of, even from a clock behind (review of part
+    /// 3 of "What reaches you", L2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause_saw: Option<i64>,
     /// Days held lighter after a pause: the bad-day level.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lighter: Vec<Date>,

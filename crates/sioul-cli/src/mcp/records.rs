@@ -328,7 +328,7 @@ pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {
 pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
     use sioul_core::attention::{self, Attention, Row};
     use sioul_core::reach::Channel;
-    use sioul_core::everywhere::{self, Sources, Switch, Why};
+    use sioul_core::everywhere::{self, Why};
     use sioul_core::quiet::{self, Overrides, Reason};
     let config = &s.config;
     let now = Zoned::now();
@@ -365,11 +365,9 @@ pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
         _ => mode.time.id(),
     };
     // Do-not-disturb, on every device: why it holds, until when.
-    let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, &blocks, now.time_zone())));
-    let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
-    let focus = timelog::running().and_then(|r| everywhere::focus(&r, stamp));
-    let sources = Sources { paused: overrides.paused_from(), free, sleep, focus, pause_pressed: overrides.paused_since };
-    let dnd = everywhere::now(&config.dnd, &sources, Switch::load(&Switch::default_path()).latest().as_ref(), stamp);
+    // As the window reads them: the devices gone from the sharing as As usual, the pause ending Reachable (F1, F7).
+    let sources = everywhere::sources_at(&overrides, &blocks, &now);
+    let dnd = everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), stamp);
     let dnd_until = dnd.until().map(instant).unwrap_or_default();
     // What reaches the person now, row by row of the matrix of what reaches them.
     let matrix = Attention::of(config);
