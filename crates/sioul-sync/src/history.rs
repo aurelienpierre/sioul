@@ -109,12 +109,93 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
     let target = dir.join(new_stamp(&dir, now_ms));
     // Copied under a hidden name, yours alone, then renamed: never half a version.
     let temporary = crate::share::temporary(&target);
+    slow_copy();
     crate::share::copy_private(path, &temporary).and_then(|()| std::fs::rename(&temporary, &target)).map_err(|e| {
         let _ = std::fs::remove_file(&temporary);
         format!("{}: {e}", target.display())
     })?;
     prune_file(&dir, now_ms, false);
     Ok(())
+}
+
+/// A file as it stands, to tell whether it changed: its size, its time and,
+/// on Unix, its inode (a file written anew and renamed into place is another).
+fn standing(path: &Path) -> Option<(u64, Option<std::time::SystemTime>, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    #[cfg(unix)]
+    let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+    #[cfg(not(unix))]
+    let inode = 0;
+    Some((meta.len(), meta.modified().ok(), inode))
+}
+
+/// A copy of a file as it is now, made ahead of the exchanges' lock (Earlier
+/// versions ▸ Put back, `share::put_back`): under a hidden name in its folder
+/// of versions, yours alone, dated now while it waits (an exchange's sweep
+/// leaves a leftover alone its first hour), its writing handle closed there
+/// (on Windows, where its close has the antivirus read it whole: job A).
+/// Kept as a version under the lock by a rename alone, once the file is
+/// seen as it was copied (`Prepared::keep`); taken away otherwise.
+pub struct Prepared {
+    dir: PathBuf,
+    temporary: PathBuf,
+    path: PathBuf,
+    copied: Option<(u64, Option<std::time::SystemTime>, u64)>,
+}
+
+/// The copy `Prepared` holds, of `path` as it is now. Refused as `keep`
+/// refuses: no room for it.
+pub fn prepare(root: &Path, part: &str, file: &str, path: &Path) -> Result<Prepared, String> {
+    let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
+    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    if !crate::disk::fits(root, size) {
+        return Err(format!("share-no-room:{file}"));
+    }
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let copied = standing(path);
+    let temporary = crate::share::temporary(&dir.join("prepared"));
+    slow_copy();
+    if let Err(e) = crate::share::copy_private(path, &temporary) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(format!("{}: {e}", temporary.display()));
+    }
+    let _ = crate::share::set_time(&temporary, std::time::SystemTime::now());
+    Ok(Prepared { dir, temporary, path: path.to_path_buf(), copied })
+}
+
+impl Prepared {
+    /// Kept as the file's version at `now_ms` by a rename, when the file is
+    /// still as it was copied: whether it was (else the caller keeps the file
+    /// as it is now, `keep`). Under the exchanges' lock.
+    pub fn keep(self, now_ms: i64) -> bool {
+        if self.copied.is_none() || standing(&self.path) != self.copied {
+            return false;
+        }
+        let target = self.dir.join(new_stamp(&self.dir, now_ms));
+        if std::fs::rename(&self.temporary, &target).is_err() {
+            return false;
+        }
+        prune_file(&self.dir, now_ms, false);
+        true
+    }
+}
+
+impl Drop for Prepared {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.temporary);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: how long each copy into the history takes more on this
+    /// thread (`keep`, `prepare`), for slow storage. Never in a build of the programs.
+    pub(crate) static SLOW_COPY: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+fn slow_copy() {
+    #[cfg(test)]
+    std::thread::sleep(SLOW_COPY.with(std::cell::Cell::get));
 }
 
 /// A file another device's change takes out, moved here as it is: nothing

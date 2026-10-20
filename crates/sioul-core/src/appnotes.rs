@@ -1328,7 +1328,9 @@ pub struct Ledger {
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub released_through: i64,
     /// Stamps passed over, more than `RELEASE_AHEAD` ahead of this phone's
-    /// clock, by device: said once in the log.
+    /// clock when first met, by device: said once in the log, and never
+    /// applied later, when the phone's clock comes within a day of them
+    /// (review of part 3, R-2).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ahead: BTreeMap<String, i64>,
 }
@@ -1348,7 +1350,8 @@ impl Ledger {
         let (mut applied, mut ahead) = (false, Vec::new());
         for (device, stamp) in stamps {
             let done = self.released_by.get(device).copied().unwrap_or(0).max(self.released);
-            if *stamp <= done {
+            // Passed over once for being too far ahead: for good, never applied a day later (R-2).
+            if *stamp <= done || self.ahead.get(device) == Some(stamp) {
                 continue;
             }
             if stamp / 1000 > now.saturating_add(RELEASE_AHEAD) {
@@ -2234,6 +2237,22 @@ mod tests {
         let night = at("2026-10-06T23:30[Europe/Paris]");
         let over = Ask { reachable: Some(night.timestamp().as_second() - 60), ..ask(&night, &clock, None, None) };
         assert!(decide(&sms, Some(Who::Neutral), false, &choices, &over).until.is_some(), "at night, after Reachable, a contact's text waits");
+    }
+
+    /// Re-check of part 3, R-2: a release stamped two days ahead is passed
+    /// over, said once, and never applied a day later, when the phone's
+    /// clock has come within a day of it.
+    #[test]
+    fn a_release_passed_over_as_ahead_is_passed_over_for_good() {
+        let now = 1_790_000_000;
+        let stamps = vec![("odd".to_string(), (now + 2 * 86_400) * 1000)];
+        let mut ledger = Ledger::default();
+        assert_eq!(ledger.apply_releases(&stamps, now), (false, vec!["odd".to_string()]));
+        let later = now + 86_400 + 60;
+        assert_eq!(ledger.apply_releases(&stamps, later), (false, vec![]), "never applied later");
+        assert_eq!(ledger.released_through, 0);
+        // Its next release, of another stamp, as any.
+        assert!(ledger.apply_releases(&[("odd".to_string(), later * 1000)], later).0);
     }
 
     /// Review of part 3, L3: under Reachable, a conversation you set "with

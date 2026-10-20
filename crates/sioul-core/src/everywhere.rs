@@ -62,9 +62,15 @@ pub const LIVE_DAYS: i64 = 7;
 /// whatever its press says: the longest any of its lengths takes, a press by
 /// day "until tonight" (review of part 3, F2).
 pub const REACHABLE_MOST: i64 = 24 * 3600;
-/// A stamp further ahead of this device's clock than this (milliseconds) is
-/// not followed by its hybrid clock (`Switch::next_stamp`).
+/// A press stamped further ahead of this device's clock than this
+/// (milliseconds) is not followed by its hybrid clock (`Switch::next_stamp`),
+/// and reads as not pressed yet (`read_switch`): a garbled stamp, or a clock a
+/// year ahead, never wins for ever (review of part 3, R-8). A clock a few
+/// hours wrong (a time zone set wrong) still works with the others.
 pub const CLOCK_AHEAD_MS: i64 = 24 * 3600 * 1000;
+/// A release stamped further ahead than this (milliseconds) is not followed
+/// by the hybrid clock (R-3): a release asks nothing of the presses' order.
+pub const RELEASE_FOLLOWED_MS: i64 = 3600 * 1000;
 /// The devices gone from the sharing as this device last found them, beside
 /// the sharing's memory (`share/`): ids only, never shared (`gone_devices`).
 pub const GONE_FILE: &str = "gone-devices.json";
@@ -371,7 +377,8 @@ impl Switch {
     /// The switch as this device reads it, the devices that count (`counts`,
     /// by id; this device's always) as they are; a device gone from the
     /// sharing (it left, you forgot it, another replaces it) read as an As
-    /// usual at its last press, and nothing more: it still ends what came
+    /// usual at its last press, and its Expecting a call as "Screen calls
+    /// again" at its own, nothing more: it still ends what came
     /// before it, so that a do-not-disturb it ended never comes back (review
     /// of part 3, F1), and it holds off, releases and brings back nothing,
     /// nor is it a device that follows (no table time).
@@ -383,7 +390,14 @@ impl Switch {
                 if id.as_str() == here || counts(id) {
                     (id.clone(), d.clone())
                 } else {
-                    (id.clone(), Device { pressed: d.pressed, seen: d.seen, mode: State::Usual.id().to_string(), gone: true, ..Device::default() })
+                    let mut read = Device { pressed: d.pressed, seen: d.seen, mode: State::Usual.id().to_string(), gone: true, ..Device::default() };
+                    // Its Expecting a call too: "Screen calls again" at its stamp, which ends what
+                    // came before it and opens nothing; nor does it screen calls (review of part 3, R-1).
+                    let calls = crate::calls::part_of(d);
+                    if calls.pressed > 0 {
+                        crate::calls::set_part(&mut read, crate::calls::DevicePart { pressed: calls.pressed, ..crate::calls::DevicePart::default() });
+                    }
+                    (id.clone(), read)
                 }
             })
             .collect();
@@ -406,13 +420,17 @@ impl Switch {
     }
 
     /// The stamp of a press or a release made here at `now_ms`: after every
-    /// press and every release known (a hybrid clock), but a stamp more than
-    /// `CLOCK_AHEAD_MS` ahead of this clock (a clock gone wrong, a garbled
-    /// table, `i64::MAX`), which never drags this one along (review of part
-    /// 3, F3). Never overflows.
+    /// press known within `CLOCK_AHEAD_MS` of this clock and every release
+    /// known within `RELEASE_FOLLOWED_MS` (a hybrid clock): a release from a
+    /// clock far ahead never drags the presses along, which would then hold
+    /// off for hours what begins meanwhile (review of part 3, F3 and R-3); a
+    /// press a day ahead or more (a clock gone wrong, a garbled table,
+    /// `i64::MAX`) is not followed either. Never overflows.
     pub fn next_stamp(&self, now_ms: i64) -> i64 {
-        let bound = now_ms.saturating_add(CLOCK_AHEAD_MS);
-        let known = self.device.values().flat_map(|d| [d.pressed, d.release]).filter(|stamp| *stamp <= bound).max().unwrap_or(0);
+        let (presses, releases) = (now_ms.saturating_add(CLOCK_AHEAD_MS), now_ms.saturating_add(RELEASE_FOLLOWED_MS));
+        let pressed = self.device.values().map(|d| d.pressed).filter(|stamp| *stamp <= presses);
+        let released = self.device.values().map(|d| d.release).filter(|stamp| *stamp <= releases);
+        let known = pressed.chain(released).max().unwrap_or(0);
         now_ms.max(known.saturating_add(1))
     }
 
@@ -451,15 +469,9 @@ impl Switch {
         // After every press and every release known, so that a release seen never shadows this press (F3).
         let stamp = self.next_stamp(now_ms);
         let seen = self.latest_known(Some(here));
-        // Reachable carries the As usual it found holding, or the one the Reachable it follows carried (F8).
-        let held_off = match self.latest() {
-            Some(p) if state == State::Reachable && !p.gone => match p.state {
-                State::Usual => p.at,
-                State::Reachable => p.held_off,
-                State::Dnd => 0,
-            },
-            _ => 0,
-        };
+        // Reachable carries the As usual it found holding, or the one the Reachable it follows carried (F8);
+        // the caller may read it from the readers' reading instead (`held_off_of`, R-5).
+        let held_off = held_off_of(self.latest().as_ref(), state);
         let own = self.device.entry(here.to_string()).or_default();
         own.held_off = held_off;
         own.pressed = stamp;
@@ -476,6 +488,21 @@ impl Switch {
     /// Written whole, beside it then put in place: never half a file.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
+    }
+}
+
+/// What a press of `state` carries of the press that held before it
+/// (`Device::held_off`): for Reachable, the As usual it found (its stamp), or
+/// the one the Reachable it follows carried; else nothing. A gone device's
+/// As usual holds nothing off, so it gives nothing (review of part 3, R-5).
+pub fn held_off_of(before: Option<&Press>, state: State) -> i64 {
+    match before {
+        Some(p) if state == State::Reachable && !p.gone => match p.state {
+            State::Usual => p.at,
+            State::Reachable => p.held_off,
+            State::Dnd => 0,
+        },
+        _ => 0,
     }
 }
 
@@ -571,7 +598,33 @@ pub fn gone_devices() -> std::collections::BTreeSet<String> {
 /// remind --watch`, `sioul watch` and the MCP read it so (F1, F7).
 pub fn read_switch(here: &str) -> Switch {
     let gone = gone_devices();
-    Switch::load(&Switch::default_path()).counted(here, &|id| !gone.contains(id))
+    Switch::load(&Switch::default_path()).counted(here, &|id| !gone.contains(id)).as_of(now_ms())
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+impl Switch {
+    /// The switch as read at `now_ms` on this device: a press stamped more
+    /// than `CLOCK_AHEAD_MS` ahead of this clock (a garbled stamp, a clock a
+    /// year ahead) reads as not pressed yet, so that it never wins for ever
+    /// (review of part 3, R-8); its Expecting a call too.
+    pub fn as_of(mut self, now_ms: i64) -> Switch {
+        let bound = now_ms.saturating_add(CLOCK_AHEAD_MS);
+        for d in self.device.values_mut() {
+            if d.pressed > bound {
+                d.pressed = 0;
+            }
+            let mut calls = crate::calls::part_of(d);
+            if calls.pressed > bound {
+                calls.pressed = 0;
+                calls.on = false;
+                crate::calls::set_part(d, calls);
+            }
+        }
+        self
+    }
 }
 
 /// A focus session as do-not-disturb reads it: counting (not paused), from
@@ -1533,6 +1586,79 @@ mod tests {
         assert!(now(&settings, &behind, Some(&press), 11_000).reachable.is_none());
         let before = Sources { pause_pressed: Some(10_000 - 60), pause_saw: Some(press.at - 1), ..Sources::default() };
         assert!(now(&settings, &before, Some(&press), 11_000).reachable.is_some());
+    }
+
+    /// Re-check of part 3, R-1: a gone device's Expecting a call reads as
+    /// "Screen calls again" at its stamp. The phone expected a call until
+    /// turned off; the old laptop, since gone, said screen again: ended, as
+    /// before it went. The old laptop expected a call until turned off, then
+    /// went: nothing expected. A gone phone screens nothing.
+    #[test]
+    fn a_gone_device_s_expecting_a_call_opens_nothing() {
+        const DAY: i64 = 86_400_000;
+        let t = 1_790_000_000_000;
+        let gone = |id: &str| id != "old-laptop";
+        let mut raw = switch(&[("phone", pressed(t - 3 * DAY, State::Usual, 0)), ("old-laptop", pressed(t - 2 * DAY, State::Usual, 0))]);
+        crate::calls::press(&mut raw, "phone", true, 0, t - 3 * DAY);
+        crate::calls::press(&mut raw, "old-laptop", false, 0, t - 2 * DAY);
+        let read = crate::calls::through_of(&raw.counted("phone", &gone)).unwrap();
+        assert!(!read.holds(t), "its screen again still ends the phone's: {read:?}");
+        let mut other = switch(&[("phone", pressed(t - 3 * DAY, State::Usual, 0))]);
+        crate::calls::press(&mut other, "old-laptop", true, 0, t - 2 * DAY);
+        assert!(crate::calls::through_of(&other.counted("phone", &gone)).is_none_or(|e| !e.holds(t)), "nothing expected");
+        let mut screening = switch(&[("old-laptop", pressed(t - 2 * DAY, State::Usual, 0))]);
+        crate::calls::set_screens(&mut screening, "old-laptop", true);
+        assert!(crate::calls::screens_anywhere(&screening) && !crate::calls::screens_anywhere(&screening.counted("phone", &gone)));
+    }
+
+    /// Re-check of part 3, R-3: a release from a clock 23 hours ahead never
+    /// drags the presses along: As usual pressed now is stamped now, and a
+    /// focus session begun an hour later, or tonight, holds; a release within
+    /// the hour is followed, a press within the day too.
+    #[test]
+    fn a_release_far_ahead_never_drags_the_presses() {
+        let t = 1_790_000_000_000;
+        let mut s = switch(&[("phone", pressed(t - 86_400_000, State::Usual, 0))]);
+        s.release("odd", t + 23 * 3_600_000);
+        let usual = s.press_state("phone", State::Usual, 0, false, t, "");
+        assert_eq!(usual, t);
+        let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
+        let later = Sources { focus: Some((t / 1000 + 3600, t / 1000 + 4 * 3600)), ..Sources::default() };
+        assert!(now(&settings, &later, s.latest().as_ref(), t / 1000 + 7200).on(), "the session begun an hour later holds");
+        let night = Sources { sleep: Some((t / 1000 + 10 * 3600, t / 1000 + 18 * 3600)), ..Sources::default() };
+        assert!(now(&settings, &night, s.latest().as_ref(), t / 1000 + 11 * 3600).on(), "tonight holds");
+        let mut near = switch(&[("laptop", Device { release: t + 30 * 60_000, ..pressed(t - 86_400_000, State::Usual, 0) })]);
+        assert_eq!(near.press_state("phone", State::Usual, 0, false, t, ""), t + 30 * 60_000 + 1, "a release within the hour: after it");
+        let mut ahead = switch(&[("laptop", pressed(t + 5 * 3_600_000, State::Dnd, 0))]);
+        assert_eq!(ahead.press_state("phone", State::Usual, 0, false, t, ""), t + 5 * 3_600_000 + 1, "a press hours ahead (a time zone set wrong): after it");
+    }
+
+    /// Re-check of part 3, R-8: a press stamped more than a day ahead of
+    /// this clock (a garbled stamp, a clock a year ahead) reads as not pressed
+    /// yet, so that it never wins for ever; its Expecting a call too.
+    #[test]
+    fn a_press_far_ahead_never_wins_for_ever() {
+        let t = 1_790_000_000_000;
+        let mut s = switch(&[("phone", pressed(t - 86_400_000, State::Dnd, 0)), ("odd", pressed(t + 365 * 86_400_000, State::Usual, 0))]);
+        crate::calls::press(&mut s, "odd", true, 0, t + 365 * 86_400_000);
+        assert_eq!(s.latest().map(|p| p.from), Some("odd".to_string()), "as the file says");
+        let read = s.clone().as_of(t);
+        assert_eq!(read.latest().map(|p| (p.from, p.state)), Some(("phone".to_string(), State::Dnd)));
+        assert!(crate::calls::through_of(&read).is_none());
+        // A day on, a press made then by the phone comes after the phone's own.
+        let mut later = switch(&[("odd", pressed(i64::MAX, State::Dnd, 0))]);
+        assert!(later.clone().as_of(t).latest().is_none());
+        assert_eq!(later.press_state("phone", State::Usual, 0, false, t, ""), t);
+    }
+
+    /// Re-check of part 3, R-5: a gone device's As usual holds nothing off,
+    /// so a Reachable pressed after it carries nothing of it.
+    #[test]
+    fn a_gone_device_s_as_usual_gives_reachable_nothing_to_carry() {
+        let t = 1_790_000_000_000;
+        let raw = switch(&[("old-laptop", pressed(t, State::Usual, 0))]);
+        assert_eq!(held_off_of(raw.latest().as_ref(), State::Reachable), t, "as the file says");
+        assert_eq!(held_off_of(raw.counted("phone", &|id| id != "old-laptop").latest().as_ref(), State::Reachable), 0);
     }
 
     #[test]

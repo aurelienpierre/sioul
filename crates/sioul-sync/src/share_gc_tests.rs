@@ -1134,12 +1134,14 @@ fn removing_a_device_s_many_files_never_keeps_a_dose_waiting() {
     let _ = std::fs::remove_dir_all(&o.base);
 }
 
-/// J1 (review of part 3): "Remove its files" for a device with a
+/// J1 and R-6 (review of part 3): "Remove its files" for a device with a
 /// thousand five hundred notes plans what goes outside the exchanges' lock
 /// (every entry read, each round, each sealed name looked at, its small
-/// files hashed), then holds the lock only to write the memory, and to take
+/// files hashed) and writes the memory as it will be there too, then holds
+/// the lock only to put the memory's files in place, by renames, and to take
 /// the files out a fifth of a second at a time: a dose's exchange waits a
-/// quarter of a second at most, the plan's time whatever.
+/// quarter of a second at most, whatever the plan's time or the memory's
+/// writing takes (here 600 ms a file, `SLOW_MEMORY_WRITE`).
 #[test]
 fn removing_a_device_plans_outside_the_lock() {
     let o = old_one("gc-remove-plan");
@@ -1163,13 +1165,129 @@ fn removing_a_device_plans_outside_the_lock() {
     assert_eq!(said.sealed, 1_502);
     let removing = {
         let (folder, key, memory, id, old, now) = (o.folder.clone(), o.key, o.desk.memory.clone(), o.desk.id.clone(), o.old.id.clone(), o.now + 2 * MINUTE);
-        std::thread::spawn(move || remove_device_files(&folder, &key, &memory, &id, &stores, &old, now))
+        std::thread::spawn(move || {
+            // Each file of the memory written 600 ms slower, as Windows' antivirus reads it at its close
+            // (CI's Windows job of 20 October 2026: a dose waited 0.79 s behind the memory written under the lock).
+            SLOW_MEMORY_WRITE.with(|slow| slow.set(std::time::Duration::from_millis(600)));
+            remove_device_files(&folder, &key, &memory, &id, &stores, &old, now)
+        })
     };
     let (longest, taken) = waits_beside(&o.desk.memory, &removing, std::time::Duration::from_millis(5));
     assert_eq!(removing.join().unwrap(), Ok(said));
-    println!("removal of 1,502 sealed files: the plan {plan:?}, a dose's exchange waited {longest:?} at most, {taken} times");
+    println!("removal of 1,502 sealed files, its memory written 600 ms slower a file: the plan {plan:?}, a dose's exchange waited {longest:?} at most, {taken} times");
     assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most (the plan {plan:?})");
     let _ = std::fs::remove_dir_all(&o.base);
+}
+
+/// Re-check of part 3, R-6: "Remove its files" plans again outside the lock
+/// when an exchange wrote the memory meanwhile, never under it: each plan
+/// 300 ms slower here (`AFTER_PLAN`), the first one met by a memory written
+/// anew, a dose's exchange waits a quarter of a second at most; and an
+/// exchange writing it each time makes it say busy, nothing taken out.
+#[test]
+fn removing_a_device_plans_again_outside_the_lock() {
+    let o = old_one("gc-remove-replan");
+    crate::devices::change(&crate::devices::own_path(&o.old.roots.state), Some((&o.folder, &o.key)), |e| {
+        e.close(o.now / 1000);
+        e.left = true;
+    })
+    .unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now, &o.dn);
+    let stores = stores_with(&o.desk, &o.dn, false);
+    let said = device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, o.now + MINUTE).unwrap();
+    // The memory written anew, as an exchange writes it: another file, the same words.
+    let rewrite = |memory: &Path| {
+        let bytes = std::fs::read(memory).unwrap();
+        let beside = memory.with_extension("rewritten");
+        std::fs::write(&beside, bytes).unwrap();
+        std::fs::rename(&beside, memory).unwrap();
+    };
+    let remove = |rewrites: usize| {
+        let (folder, key, memory, id, old, now, stores) = (o.folder.clone(), o.key, o.desk.memory.clone(), o.desk.id.clone(), o.old.id.clone(), o.now + MINUTE, stores.clone());
+        std::thread::spawn(move || {
+            let mut left = rewrites;
+            let beside = memory.clone();
+            AFTER_PLAN.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    if left > 0 {
+                        left -= 1;
+                        rewrite(&beside);
+                    }
+                }));
+            });
+            remove_device_files(&folder, &key, &memory, &id, &stores, &old, now)
+        })
+    };
+    let busy = remove(usize::MAX);
+    let (longest, _) = waits_beside(&o.desk.memory, &busy, std::time::Duration::from_millis(20));
+    assert_eq!(busy.join().unwrap(), Err("share-busy".to_string()));
+    assert!(longest < std::time::Duration::from_millis(250), "{longest:?}");
+    assert!(rounds(&o.folder).get(&o.old.id).is_some_and(|r| !r.is_empty()), "nothing taken out");
+    let once = remove(1);
+    let (longest, taken) = waits_beside(&o.desk.memory, &once, std::time::Duration::from_millis(20));
+    assert_eq!(once.join().unwrap(), Ok(said));
+    println!("a removal planned again outside the lock, each plan 300 ms: a dose's exchange waited {longest:?} at most, {taken} times");
+    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most");
+    assert!(rounds(&o.folder).get(&o.old.id).is_none_or(|r| r.is_empty()));
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
+/// Re-check of part 3, R-7: an earlier version put back over a large note
+/// keeps the note as it is among its versions by a copy made outside the
+/// lock, a rename alone under it: a 24 MB and a 64 MB note, measured, then
+/// each copy into the history 400 ms slower (`history::SLOW_COPY`), a dose's
+/// exchange waits a quarter of a second at most; the note as it was kept.
+#[test]
+fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
+    for megabytes in [24, 64] {
+        let base = scratch(&format!("gc-history-over-large-{megabytes}"));
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        let dn = base.join("desk-notes");
+        put(&dn, "today.md", b"# Today\n");
+        let words = |mut seed: u64| -> Vec<u8> {
+            (0..megabytes * 1024 * 1024)
+                .map(|_| {
+                    seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                    b'a' + ((seed >> 33) % 26) as u8
+                })
+                .collect()
+        };
+        let (first, second) = (words(0x5eed), words(0xbeef));
+        put(&dn, "big.md", &first);
+        with_notes(&desk, &folder, &key, NOW, &dn);
+        let (hash, size) = crate::blobs::hash_file(&dn.join("big.md")).unwrap();
+        let root = crate::history::root(&desk.memory);
+        crate::history::keep_sealed(&root, "notes", "files/notes/big.md", &hash, size, NOW + MINUTE).unwrap();
+        std::fs::write(dn.join("big.md"), &second).unwrap();
+        let sealed = crate::history::versions(&root, "notes", "files/notes/big.md").into_iter().find(|v| v.sealed.is_some()).unwrap().stamp;
+        let (stores, memory) = (stores_with(&desk, &dn, false), desk.memory.clone());
+        let put_back_beside = |stamp: String, slow: u64, at: i64| {
+            let (folder, inside, stores) = (folder.clone(), memory.clone(), stores.clone());
+            let putting = std::thread::spawn(move || {
+                crate::history::SLOW_COPY.with(|s| s.set(std::time::Duration::from_millis(slow)));
+                put_back(&inside, Some((&folder, &key)), &stores, "notes", "files/notes/big.md", &stamp, at)
+            });
+            let (longest, _) = waits_beside(&memory, &putting, std::time::Duration::from_millis(5));
+            assert_eq!(putting.join().unwrap(), Ok(()));
+            longest
+        };
+        // The sealed version over the second note, measured: the second note kept, as a copy.
+        let measured = put_back_beside(sealed, 0, NOW + 2 * MINUTE);
+        assert_eq!(std::fs::read(dn.join("big.md")).unwrap(), first);
+        let copy = crate::history::versions(&root, "notes", "files/notes/big.md").into_iter().find(|v| v.sealed.is_none()).expect("the second note kept");
+        assert_eq!(copy.size, second.len() as u64);
+        // That copy put back over the first note, each copy into the history slow.
+        let slowed = put_back_beside(copy.stamp, 400, NOW + 3 * MINUTE);
+        assert_eq!(std::fs::read(dn.join("big.md")).unwrap(), second);
+        assert!(crate::history::versions(&root, "notes", "files/notes/big.md").iter().filter(|v| v.sealed.is_none()).count() == 2, "the first note kept too");
+        assert!(std::fs::read_dir(&dn).unwrap().filter_map(Result::ok).all(|e| !is_leftover(&e.file_name().to_string_lossy())), "nothing left beside");
+        println!("a {megabytes} MB version over a {megabytes} MB note: a dose's exchange waited {measured:?} at most; each copy 400 ms slower: {slowed:?}");
+        assert!(slowed < std::time::Duration::from_millis(250), "a dose's exchange waited {slowed:?} at most");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 /// J2 (review of part 3): an earlier version of a large note put back

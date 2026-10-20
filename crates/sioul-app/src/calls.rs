@@ -168,10 +168,13 @@ pub(crate) fn refresh(now: bool) {
     if !now && there && fresh {
         return;
     }
-    let switch = carry();
+    carry();
     // What it is made of, read once carrying wrote the switch and before reading it: a
     // change after this is a change the next refresh sees (F4).
     let made_of = inputs(&config, &at);
+    // The switch as every reader reads it: a gone device's Expecting a call read as "Screen
+    // calls again" at its stamp, which opens nothing (review of part 3, R-1).
+    let switch = switches::read_switch(&here_id());
     let table = make(&config, &switch, &at);
     // The numbers called lately, kept only the days they count (none, the setting off).
     if let Err(e) = rules::prune_called(&path(rules::CALLED), at.timestamp().as_millisecond(), table.screening.as_ref().map_or(0, |s| s.called_days)) {
@@ -191,12 +194,13 @@ pub(crate) fn refresh(now: bool) {
 
 /// This phone's press on its notification (Java's file) carried into the
 /// shared switch once, and whether it screens calls said there, for your
-/// other devices: their window offers Expecting a call then.
-fn carry() -> Switch {
+/// other devices: their window offers Expecting a call then. The file is
+/// written as it is; it is read as every reader reads it (`read_switch`).
+fn carry() {
     let path = Switch::default_path();
     let here = here_id();
     if !cfg!(target_os = "android") || here.is_empty() {
-        return Switch::load(&path);
+        return;
     }
     let local: Option<Through> = rules::read_json(&rules::folder().join(rules::THROUGH_HERE));
     let screens = screens_here();
@@ -208,10 +212,9 @@ fn carry() -> Switch {
         }
         changed
     });
-    result.unwrap_or_else(|e| {
+    if let Err(e) = result {
         eprintln!("sioul: calls: {e}");
-        Switch::load(&path)
-    })
+    }
 }
 
 /// This device's own table in the switch's file, its kind and name set.
@@ -322,7 +325,8 @@ pub(crate) fn press(on: bool, minutes: i32) -> Result<(), String> {
 /// The status line's part (main.qml, CallsApplet.qml): {shown (a phone of
 /// yours screens calls), through, line, until_at}.
 pub(crate) fn moment() -> serde_json::Value {
-    let switch = Switch::load(&Switch::default_path());
+    // As every reader reads it (R-1): a gone phone screens nothing, a gone device expects no call.
+    let switch = switches::read_switch(&here_id());
     let shown = screens_here() || rules::screens_anywhere(&switch);
     if !shown {
         return json!({ "shown": false, "through": false, "line": "", "until_at": 0 });
@@ -914,6 +918,63 @@ mod tests {
         let now = layers();
         assert!(now.reachable.is_none() && now.dnd.is_some(), "{now:?}");
         crate::everywhere::files_cleared();
+    }
+
+    /// Re-check of part 3, R-1, end to end as on a phone (`SIOUL_CALLS`: this
+    /// computer writes the calls' table as a phone does), in a process of its
+    /// own with folders of its own (`gone_expecting_a_call_in_the_table`): a
+    /// forgotten laptop's Expecting a call until turned off opens nothing,
+    /// in the table nor in the status line; its "Screen calls again" still
+    /// ends the phone's.
+    #[test]
+    fn a_gone_device_never_opens_the_screening() {
+        let folders = std::env::temp_dir().join(format!("sioul-calls-gone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folders);
+        for dir in ["config", "data", "state", "cache"] {
+            std::fs::create_dir_all(folders.join(dir)).unwrap();
+        }
+        let ran = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "calls::tests::gone_expecting_a_call_in_the_table", "--ignored", "--test-threads=1"])
+            .env("SIOUL_CALLS", "1")
+            .env("XDG_CONFIG_HOME", folders.join("config"))
+            .env("XDG_DATA_HOME", folders.join("data"))
+            .env("XDG_STATE_HOME", folders.join("state"))
+            .env("XDG_CACHE_HOME", folders.join("cache"))
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&ran.stdout).to_string() + &String::from_utf8_lossy(&ran.stderr);
+        let _ = std::fs::remove_dir_all(&folders);
+        assert!(ran.status.success() && said.contains("1 passed"), "{said}");
+    }
+
+    /// The case itself, run by `a_gone_device_never_opens_the_screening` alone.
+    #[test]
+    #[ignore]
+    fn gone_expecting_a_call_in_the_table() {
+        assert!(phone(), "SIOUL_CALLS");
+        const DAY: i64 = 86_400_000;
+        let ms = jiff::Timestamp::now().as_millisecond();
+        std::fs::create_dir_all(switches::gone_path().parent().unwrap()).unwrap();
+        std::fs::write(switches::gone_path(), r#"["old-laptop"]"#).unwrap();
+        // A phone of yours screens calls; the old laptop expected a call until turned off, then was forgotten.
+        let mut switch = Switch::default();
+        rules::set_screens(&mut switch, "phone-1", true);
+        rules::press(&mut switch, "old-laptop", true, 0, ms - 2 * DAY);
+        switch.save(&Switch::default_path()).unwrap();
+        refresh(true);
+        let table: rules::Table = rules::read_json(&path(rules::TABLE)).unwrap();
+        assert!(table.expecting.is_none_or(|e| !e.holds(ms)), "{:?}", table.expecting);
+        assert_eq!(moment()["through"], false);
+        // The other way: the phone expected a call until turned off, the old laptop said screen again.
+        let mut switch = Switch::default();
+        rules::set_screens(&mut switch, "phone-1", true);
+        rules::press(&mut switch, "phone-1", true, 0, ms - 3 * DAY);
+        rules::press(&mut switch, "old-laptop", false, 0, ms - 2 * DAY);
+        switch.save(&Switch::default_path()).unwrap();
+        refresh(true);
+        let table: rules::Table = rules::read_json(&path(rules::TABLE)).unwrap();
+        assert!(table.expecting.is_none_or(|e| !e.holds(ms)), "{:?}", table.expecting);
+        assert_eq!(moment()["through"], false);
     }
 
     /// A device lists every phone's calls while `[porch] calls` says so (the
