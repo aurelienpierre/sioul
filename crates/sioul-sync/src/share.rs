@@ -2824,6 +2824,16 @@ impl Memory {
     /// line, and `memory.json`, written at every exchange and read by the
     /// doses' knowing, stays small.
     fn save(&mut self, path: &Path) -> Result<(), String> {
+        self.prepare_save(path)?.commit()
+    }
+
+    /// What `save` writes, written ahead under hidden names, synced and
+    /// closed (on Windows, the antivirus reads a file written whole at its
+    /// close), each file only when it changed: put in place by renames alone
+    /// (`SavePrepared::commit`), which is all "Remove its files" does under
+    /// the exchanges' lock, however large the memory (review of part 3, R-6;
+    /// CI's Windows job of 20 October 2026: 0.79 s under the lock).
+    fn prepare_save(&mut self, path: &Path) -> Result<SavePrepared, String> {
         let apart = |key: &String| key.starts_with(FILES) || calls_store(key);
         let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
         (self.sealed.entries, self.entries) = (sealed, kept);
@@ -2832,17 +2842,34 @@ impl Memory {
         let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.pending).into_iter().partition(|(key, _)| apart(key));
         (self.sealed.pending, self.pending) = (sealed, kept);
         self.sealed.computer = self.computer.clone();
-        let write = |path: &Path, text: String| {
-            if std::fs::read(path).is_ok_and(|old| old == text.as_bytes()) {
+        let mut prepared = SavePrepared { renames: Vec::new() };
+        let mut write = |target: PathBuf, text: &[u8]| -> Result<(), String> {
+            if std::fs::read(&target).is_ok_and(|old| old == text) {
                 return Ok(());
             }
-            write_synced(path, text.as_bytes())
+            let fail = |e: std::io::Error| format!("{}: {e}", target.display());
+            if let Some(parent) = target.parent() {
+                private_dirs(parent).map_err(fail)?;
+            }
+            let temporary = temporary(&target);
+            let written = (|| {
+                let mut file = new_private(&temporary)?;
+                file.write_all(text)?;
+                file.sync_all()
+            })();
+            if let Err(e) = written {
+                let _ = std::fs::remove_file(&temporary);
+                return Err(fail(e));
+            }
+            slow_memory_write();
+            prepared.renames.push((temporary, target));
+            Ok(())
         };
-        write(&sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?)?;
+        write(sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?.as_bytes())?;
         let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
-        write(path, text.clone())?;
+        write(path.to_path_buf(), text.as_bytes())?;
         self.saved = text.into_bytes();
-        Ok(())
+        Ok(prepared)
     }
 
     /// Kept in this process once saved, for the next exchange or send to take
@@ -2924,6 +2951,46 @@ struct Kept {
     text: Vec<u8>,
     own: Option<FileStamp>,
     sealed: Option<FileStamp>,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: how long each file of the memory written takes more on
+    /// this thread, as the antivirus' read at its close on Windows. Never in a build.
+    pub(crate) static SLOW_MEMORY_WRITE: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+fn slow_memory_write() {
+    #[cfg(test)]
+    std::thread::sleep(SLOW_MEMORY_WRITE.with(std::cell::Cell::get));
+}
+
+/// The memory's files written ahead (`Memory::prepare_save`): hidden, synced
+/// and closed, each beside the file it replaces; taken away unless put in
+/// place.
+struct SavePrepared {
+    renames: Vec<(PathBuf, PathBuf)>,
+}
+
+impl SavePrepared {
+    /// Each put in place, `files.json` first, by a rename alone.
+    fn commit(mut self) -> Result<(), String> {
+        for (temporary, target) in std::mem::take(&mut self.renames) {
+            if let Err(e) = std::fs::rename(&temporary, &target) {
+                let _ = std::fs::remove_file(&temporary);
+                return Err(format!("{}: {e}", target.display()));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for SavePrepared {
+    fn drop(&mut self) {
+        for (temporary, _) in &self.renames {
+            let _ = std::fs::remove_file(temporary);
+        }
+    }
 }
 
 /// The memories kept in this process, by the path of their `memory.json`.
@@ -6489,6 +6556,19 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         return Err(e);
     }
     let _ = set_time(&opened, std::time::SystemTime::now());
+    // The file as it is now copied into its versions ahead of the lock too, closed there, so that
+    // under the lock it is kept by a rename alone, while it is as it was copied (review of part 3, R-7).
+    let prepared = if path.exists() {
+        match crate::history::prepare(&root, part, file, &path) {
+            Ok(prepared) => Some(prepared),
+            Err(e) => {
+                let _ = std::fs::remove_file(&opened);
+                return Err(e);
+            }
+        }
+    } else {
+        None
+    };
     let placed = (|| {
         let _running = exchange_lock(memory, true)?;
         // A last look, under the lock.
@@ -6512,7 +6592,9 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             beside
         };
         let put = || {
-            if path.exists() {
+            // Kept by its copy made ahead; copied now only when the file changed meanwhile, or came.
+            let kept_ahead = prepared.is_some_and(|prepared| prepared.keep(now_ms));
+            if path.exists() && !kept_ahead {
                 crate::history::keep(&root, part, file, &path, now_ms)?;
             }
             // Dated now, wherever the copy took its time from: a change made here, which the others take.
@@ -7211,6 +7293,27 @@ fn in_short_holds<I: Iterator>(memory: &Path, items: I, mut each: impl FnMut(I::
     Ok(())
 }
 
+/// How many times "Remove its files" plans what goes outside the lock, an
+/// exchange having written the memory meanwhile each time, before it says busy.
+const REMOVAL_PLANS: u32 = 5;
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: what runs on this thread after each plan of a removal (a
+    /// slow plan, an exchange writing the memory meanwhile). Never in a build.
+    pub(crate) static AFTER_PLAN: std::cell::RefCell<Option<Box<dyn FnMut()>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// After each plan of a removal, what a test asks (`AFTER_PLAN`); nothing in a build.
+fn after_plan() {
+    #[cfg(test)]
+    AFTER_PLAN.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().as_mut() {
+            hook();
+        }
+    });
+}
+
 /// The longest one hold of the exchanges' lock does work that grows with a
 /// count of files (`in_short_holds`): placing notes put back, taking a
 /// device's files out. The copies beside drafts keep the same bound
@@ -7811,34 +7914,52 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     // planned from is the memory there; planned again there when an exchange wrote it meanwhile.
     // The size of each of its small files before they go, the entry and note too (they may go later, `small_go`).
     let small_seen = || -> BTreeMap<String, String> { device_small_places(folder, device, true, true).into_iter().filter_map(|(path, place)| content_hash(&path).map(|h| (place, h))).collect() };
-    let read_from = (stamp_at(memory), stamp_at(&sealed_path(memory)));
-    let mut state = Memory::load_all(memory, computer);
-    let mut planned = (plan_removal(&sharing, stores, &state, device, now_ms), small_seen());
-    let _running = exchange_lock(memory, true)?;
-    if (stamp_at(memory), stamp_at(&sealed_path(memory))) != read_from || read_from.0.is_none() {
-        state = Memory::load_all(memory, computer);
-        planned = (plan_removal(&sharing, stores, &state, device, now_ms), small_seen());
-    }
-    let (Some((files, paths, names, later)), small_seen) = planned else { return Err("share-device-unknown".into()) };
-    if files.counts {
-        return Err("share-device-counts".into());
-    }
-    let mut going = paths;
-    for name in names {
-        going.push(folder.join("blobs").join(&name));
-        state.sealed.theirs.remove(&name);
-        state.taken.insert(name, now_ms);
-    }
-    // Those sealed or used again lately: swept in time, from now (`sweep_theirs`).
-    for name in later {
-        state.sealed.theirs.insert(name, (device.to_string(), now_ms));
-    }
-    state.removed_devices.insert(device.to_string(), RemovedDevice { at: now_ms, last: files.last_round, last_size: files.last_size, entry: files.entry_goes, notes: files.notes_go, small: BTreeMap::new(), small_seen });
-    let floor = state.departed.entry(device.to_string()).or_default();
-    *floor = (*floor).max(files.last_round);
-    state.save(memory)?;
+    // Planned, and the memory written as it will be, outside the lock; under it, only a look
+    // at the memory's stamps and two renames, so that nothing there grows with the device's
+    // files or the memory's size (review of part 3, R-6). An exchange having written the memory
+    // meanwhile, all of it is done again outside the lock, a few times, then said busy.
+    let mut tries = 0;
+    let (files, going, state) = loop {
+        let read_from = (stamp_at(memory), stamp_at(&sealed_path(memory)));
+        let mut state = Memory::load_all(memory, computer);
+        let planned = plan_removal(&sharing, stores, &state, device, now_ms);
+        let small_seen = small_seen();
+        after_plan();
+        let Some((files, paths, names, later)) = planned else { return Err("share-device-unknown".into()) };
+        if files.counts {
+            return Err("share-device-counts".into());
+        }
+        let mut going = paths;
+        for name in names {
+            going.push(folder.join("blobs").join(&name));
+            state.sealed.theirs.remove(&name);
+            state.taken.insert(name, now_ms);
+        }
+        // Those sealed or used again lately: swept in time, from now (`sweep_theirs`).
+        for name in later {
+            state.sealed.theirs.insert(name, (device.to_string(), now_ms));
+        }
+        state.removed_devices.insert(device.to_string(), RemovedDevice { at: now_ms, last: files.last_round, last_size: files.last_size, entry: files.entry_goes, notes: files.notes_go, small: BTreeMap::new(), small_seen });
+        let floor = state.departed.entry(device.to_string()).or_default();
+        *floor = (*floor).max(files.last_round);
+        let prepared = state.prepare_save(memory)?;
+        let running = exchange_lock(memory, true)?;
+        if (stamp_at(memory), stamp_at(&sealed_path(memory))) == read_from {
+            prepared.commit()?;
+            drop(running);
+            break (files, going, state);
+        }
+        drop(running);
+        drop(prepared);
+        tries += 1;
+        if tries >= REMOVAL_PLANS {
+            return Err("share-busy".into());
+        }
+        std::thread::sleep(PUT_BACK_FREE);
+    };
+    // Kept in this process, once the lock is let go: an exchange that wrote the memory since
+    // leaves files this one never takes for its own (`Memory::kept`).
     state.keep(memory);
-    drop(_running);
     // Then its files go, a short hold at a time (`in_short_holds`), its
     // rounds oldest first: thousands of them never keep a dose's exchange
     // waiting. An exchange between two holds reads the memory written above:

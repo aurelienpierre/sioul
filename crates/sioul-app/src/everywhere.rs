@@ -619,9 +619,13 @@ pub(crate) fn press_state(state: rules::State, until: Option<i64>, open: bool) -
     }
     let here = here_id();
     let now = jiff::Timestamp::now().as_millisecond();
+    // What it carries of the press before it, as the readers read that press (a gone device's As usual
+    // holds nothing off), never as the file says it (review of part 3, R-5).
+    let held_off = rules::held_off_of(switch_here(&here).latest().as_ref(), state);
     rules::change_own(&Switch::default_path(), &here, |switch| {
         switch.press_state(&here, state, until.map_or(0, |u| u.saturating_mul(1000)), open, now, "");
         let own = switch.device.entry(here.clone()).or_default();
+        own.held_off = held_off;
         own.kind = crate::devices::kind().to_string();
         own.name = if own.kind == "phone" { String::new() } else { crate::devices::name() };
         true
@@ -1264,6 +1268,22 @@ mod tests {
         assert!(sioul_core::attention::dnd_from_files(&config, ms / 1000), "the pause ended Reachable: the session holds again there too");
         assert!(now().reachable.is_none());
         sioul_core::timelog::keep_running_in(&sioul_core::timelog::folder(), None).unwrap();
+        files_cleared();
+    }
+
+    /// Re-check of part 3, R-5: Reachable pressed after a gone device's As
+    /// usual carries nothing of it, as the readers read that As usual.
+    #[test]
+    fn reachable_pressed_after_a_gone_device_s_as_usual_carries_nothing() {
+        let _files = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        files_cleared();
+        let ms = jiff::Timestamp::now().as_millisecond();
+        std::fs::create_dir_all(rules::gone_path().parent().unwrap()).unwrap();
+        std::fs::write(rules::gone_path(), r#"["old-laptop"]"#).unwrap();
+        switch_saved(&[("old-laptop", device(ms - 600_000, rules::State::Usual, 0, 0))]);
+        press_state(rules::State::Reachable, Some(ms / 1000 + 3600), false).unwrap();
+        let switch = Switch::load(&Switch::default_path());
+        assert_eq!(switch.device[&here_id()].held_off, 0);
         files_cleared();
     }
 
