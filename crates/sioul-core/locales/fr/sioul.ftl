@@ -4971,6 +4971,7 @@ attention-level-now-always = Tout de suite, quoi que dise leur liste
 attention-level-never-codes = Sur le Porche seulement
 attention-level-never-mail = Dans sa file, sans notification
 attention-level-later-calls = Messagerie, listé plus tard
+attention-level-quiet-messages = Dans le volet des notifications, sans son
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = Tout de suite
 attention-source-gathered = Aux heures de regroupement
@@ -5498,6 +5499,11 @@ attention-sheet-line-layer-messages-never = { $layer ->
     [both] Pendant votre temps pour vous et « Ne pas déranger »
    *[other] Pendant « Ne pas déranger »
 }, ses messages sont retenus.
+attention-sheet-line-layer-messages-quiet = { $layer ->
+    [slot] Pendant votre temps pour vous
+    [both] Pendant votre temps pour vous et « Ne pas déranger »
+   *[other] Pendant « Ne pas déranger »
+}, ses messages arrivent sans son tant que votre téléphone est en silence, et attendent sinon.
 attention-always-line-layer-mail-quiet = { $layer ->
     [slot] Pendant votre temps pour vous
     [both] Pendant votre temps pour vous et « Ne pas déranger »
@@ -5613,6 +5619,10 @@ attention-card-quiet = { $n ->
 attention-card-layer-quiet = { $n ->
     [one] { $what } s’affiche sans notification, quand son moment le laisse venir.
    *[other] { $what } s’affichent sans notification, quand leur moment les laisse venir.
+}
+attention-card-shade = { $n ->
+    [one] { $what } arrive sans son tant que votre téléphone est en silence, et attend sinon.
+   *[other] { $what } arrivent sans son tant que votre téléphone est en silence, et attendent sinon.
 }
 attention-card-event = { $n ->
     [one] { $what } arrive tout de suite si son événement tombe dans ce moment, et attend sinon.

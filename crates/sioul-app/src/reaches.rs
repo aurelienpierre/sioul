@@ -407,6 +407,11 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
         for (what, plural) in subjects_words(&mail_never, &mut said) {
             lines.push(text_with("attention-card-never-mail", &what, plural, &[]));
         }
+        // Texts in the shade without a sound (◑, decision 13): said apart from mail shown.
+        let (shade, rest): (Vec<Subject>, Vec<Subject>) = rest.into_iter().partition(|s| rank == 3 && matches!(s, Subject::People(Channel::Messages, _)));
+        for (what, plural) in subjects_words(&shade, &mut said) {
+            lines.push(text_with("attention-card-shade", &what, plural, &[]));
+        }
         for (what, plural) in subjects_words(&rest, &mut said) {
             lines.push(match rank {
                 0 if layer => text_with("attention-card-as-usual", &what, plural, &[]),
@@ -682,9 +687,11 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
         for person in matrix_persons(channel) {
             match attention.person(channel, person, false, now) {
                 Level::Now => add(0, Subject::People(channel, person)),
+                // A text in the shade without a sound (◑, decision 13).
+                Level::Quiet if channel == Channel::Messages => add(3, Subject::People(channel, person)),
                 Level::Quiet => add(2, Subject::People(channel, person)),
                 Level::Never => {}
-                _ => add(3, Subject::People(channel, person)),
+                _ => add(5, Subject::People(channel, person)),
             }
         }
     }
@@ -694,7 +701,7 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
             Level::Now | Level::Event => add(0, Subject::Own(kind)),
             Level::Gathered => add(1, Subject::Own(kind)),
             Level::Never => {}
-            _ => add(3, Subject::Own(kind)),
+            _ => add(5, Subject::Own(kind)),
         }
     }
     groups.sort_by_key(|(rank, _)| *rank);
@@ -706,6 +713,7 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
                 0 => text_with("attention-card-now", &what, plural, &[]),
                 1 => text_with("attention-card-gathered", &what, plural, &[("times", gathered_times(&config))]),
                 2 => text_with("attention-card-quiet", &what, plural, &[]),
+                3 => text_with("attention-card-shade", &what, plural, &[]),
                 _ => text_with("attention-now-wait", &what, plural, &[]),
             });
         }
@@ -793,7 +801,7 @@ fn channel_line(attention: &Attention, channel: Channel, person: Person, always:
     let row = Row::People(channel, if always || person == Person::Always { Person::Always } else { person });
     let held = |layer: Column| match attention.cell(row, layer) {
         Level::Through | Level::Now | Level::As => None,
-        Level::Quiet if channel != Channel::Mail => Some(Level::Later),
+        Level::Quiet if channel == Channel::Calls => Some(Level::Later),
         other => Some(other),
     };
     let layers: Vec<(&str, Level)> = match (held(Column::Slot), held(Column::Dnd)) {
@@ -1212,7 +1220,11 @@ mod tests {
         // A phone screening calls: the calls' rows, voicemail, and the system's line.
         let phone = Reach { phone: true, calls: true, messages: true, screens: true, ..Reach::default() };
         let leisure = card_lines(&usual, &config, Column::Leisure, phone);
-        has(&leisure, "Mail from your safe senders and calls and messages from your safe and neutral senders come at once.");
+        // Groups at once in leisure too (decision 14 of 18 October 2026).
+        has(&leisure, "Mail from your safe senders, calls from your safe and neutral senders and messages from your safe and neutral senders and groups come at once.");
+        // Under do-not-disturb, their texts in the shade without a sound (decision 13); calls to voicemail.
+        let dnd = card_lines(&usual, &config, Column::Dnd, phone);
+        has(&dnd, "Messages from your safe and neutral senders and groups come without a sound while your phone is silenced, and wait otherwise.");
         assert!(leisure.iter().any(|l| l.starts_with("Calls from") && l.contains("voicemail")), "{leisure:#?}");
         assert_eq!(system_line(&usual, &config, Column::Leisure, phone), "The phone is not silenced.");
         let pause = system_line(&usual, &config, Column::Pause, phone);

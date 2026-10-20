@@ -67,7 +67,9 @@ pub fn unshared() -> Option<Box<dyn std::any::Any>> {
 /// review of 18 October 2026, L-3). Only renames happen then: each copy's
 /// new bytes are written before, its old bytes overwritten after.
 const HOLD_AT_MOST: Duration = Duration::from_millis(200);
-/// How long the lock is let go between two holds, for an exchange that waits.
+/// How long the lock is let go between two holds, for an exchange that waits,
+/// beside the hold's own hand-off to one waiting in this process (the guard
+/// `sioul_sync::share::replacements_hold` gives waits for it to take the lock).
 const LET_GO: Duration = Duration::from_millis(20);
 /// The copies prepared at once, their new bytes beside them on the disk.
 const BATCH_FILES: usize = 32;

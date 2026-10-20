@@ -52,7 +52,7 @@ Two more switches have a line each under the cards: **Expecting a call**, in the
 | Mark | In words | What happens |
 |---|---|---|
 | ● | **At once** | It comes now: shown, told, let through, it rings. On a layer: the layer changes nothing. |
-| ◑ | **Shown, not told** | It is in Sioul if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. |
+| ◑ | **Shown, not told** | It is in Sioul if you look (the Porch); nothing tells you. It is told when a time comes in which it is told. For a text under do-not-disturb, **in the shade, without a sound**: it reaches your phone's notifications silently while the phone is silenced, and waits otherwise. |
 | ◐ | **When its event falls then** | An event's alarms and Sioul's reminder before it: at once when the event falls in this time; else later. |
 | ◎ | **At the gathered times** | It comes at the next gathered time: 09:00, 13:00 and 18:00 unless you set others. |
 | ○ | **Later** | It waits out of sight, and comes when a time it may come in begins: mail off the Porch, a message held, a call sent to voicemail and listed then. |
@@ -135,7 +135,7 @@ As Sioul does now:
 
 Calls from numbers not in your contacts and from hidden numbers left this grid on 19 October 2026: the call screening decides them, apart ([Calls](calls.md#the-call-screening)).
 
-Messages go as calls, but strangers' and groups' messages come at once in work and admin time. A mail app's notification on a phone follows the Mail grid, and is held where mail would be shown, not told: a phone cannot show what it holds. A call that goes to voicemail is listed on the Porch when its caller may reach you, or in work and admin time for a row that never rings ([Calls](calls.md#afterwards-on-the-porch)).
+Messages go as calls, but strangers' messages come at once in work and admin time, and groups' at once in work, admin, leisure and meals; under do-not-disturb, the texts of your safe people, your contacts and groups come in the shade, without a sound (◑), while their calls go to voicemail. A mail app's notification on a phone follows the Mail grid, and is held where mail would be shown, not told: a phone cannot show what it holds. A call that goes to voicemail is listed on the Porch when its caller may reach you, or in work and admin time for a row that never rings ([Calls](calls.md#afterwards-on-the-porch)).
 
 **Mail's own switches**, above its grid:
 

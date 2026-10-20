@@ -4953,6 +4953,7 @@ attention-level-now-always = At once, whatever their list
 attention-level-never-codes = On the Porch only
 attention-level-never-mail = In its lane, never told
 attention-level-later-calls = Voicemail, listed later
+attention-level-quiet-messages = In the shade, without a sound
 # A source's own row (an app's, a conversation's, on a phone): the values its cells take.
 attention-source-now = At once
 attention-source-gathered = At the gathered times
@@ -5480,6 +5481,11 @@ attention-sheet-line-layer-messages-never = { $layer ->
     [both] During time for you and under do-not-disturb
    *[other] Under do-not-disturb
 }, their messages are held.
+attention-sheet-line-layer-messages-quiet = { $layer ->
+    [slot] During time for you
+    [both] During time for you and under do-not-disturb
+   *[other] Under do-not-disturb
+}, their messages come without a sound while your phone is silenced, and wait otherwise.
 attention-always-line-layer-mail-quiet = { $layer ->
     [slot] During time for you
     [both] During time for you and under do-not-disturb
@@ -5594,6 +5600,10 @@ attention-card-quiet = { $n ->
 attention-card-layer-quiet = { $n ->
     [one] { $what } is shown without a notification, when its time lets it come.
    *[other] { $what } are shown without a notification, when their time lets them come.
+}
+attention-card-shade = { $n ->
+    [one] { $what } comes without a sound while your phone is silenced, and waits otherwise.
+   *[other] { $what } come without a sound while your phone is silenced, and wait otherwise.
 }
 attention-card-event = { $n ->
     [one] { $what } comes at once when its event falls in this time, and waits otherwise.

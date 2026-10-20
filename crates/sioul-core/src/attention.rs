@@ -481,12 +481,17 @@ pub fn usual(row: Row, column: Column) -> Level {
             Slot | Dnd => Quiet,
             _ => Later,
         },
+        // Under do-not-disturb, the texts of your safe people, your contacts and
+        // groups come in the shade without a sound (◑), their calls to
+        // voicemail (decisions 13 and 14 of 18 October 2026).
+        Row::People(Channel::Messages, Person::Safe | Person::Neutral | Person::Groups) if column == Dnd => Quiet,
         Row::People(Channel::Calls | Channel::Messages, Person::Safe) => if matches!(column, Sleep | Pause | Dnd) { Later } else { Now },
         // People in your address books: at work and in your admin, and in your
         // leisure and meals too (a friend's text on a weekend is not held until
-        // Monday); held while you sleep, pause or take free time.
-        Row::People(Channel::Calls | Channel::Messages, Person::Neutral) => if matches!(column, Work | Admin | Leisure | Meals | Slot) { Now } else { Later },
-        Row::People(Channel::Calls | Channel::Messages, Person::Hidden | Person::Groups) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
+        // Monday); held while you sleep, pause or take free time. A group of
+        // friends or family writing on a Saturday too (decision 14).
+        Row::People(Channel::Calls | Channel::Messages, Person::Neutral) | Row::People(Channel::Messages, Person::Groups) => if matches!(column, Work | Admin | Leisure | Meals | Slot) { Now } else { Later },
+        Row::People(Channel::Calls, Person::Hidden) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
         Row::People(Channel::Messages, Person::Stranger) => if matches!(column, Work | Admin | Slot) { Now } else { Later },
         Row::People(Channel::Calls | Channel::Messages, Person::Restricted) => if matches!(column, Work | Slot) { Now } else { Later },
         Row::People(Channel::Calls, Person::Stranger) => if column == Slot { Now } else { Later },
@@ -516,6 +521,8 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
         Row::People(_, Person::Always) if layer => &[Now, Through, As],
         Row::People(_, Person::Always) => &[Now, As],
         Row::People(Channel::Mail, _) => &[Now, Quiet, Later, Never],
+        // A text in the shade without a sound, under do-not-disturb alone: Android silences it then.
+        Row::People(Channel::Messages, _) if column == Column::Dnd => &[Now, Quiet, Later],
         Row::People(_, _) => &[Now, Later],
         Row::Own(kind) => match kind {
             Kind::Codes => &[Now, Never],
@@ -640,6 +647,12 @@ pub struct Now {
     /// for; numbers nobody knows stay the call screening's, a conversation set
     /// to never stays held, and Sioul's own rows are read as they are.
     pub reachable: bool,
+    /// The phone's own do-not-disturb silences what comes now (Android's
+    /// filter, Sioul's mode or yours): a message whose cell says ◑, in the
+    /// shade without a sound, is let through then, and held otherwise, so that
+    /// nothing rings where the cell says silent (decision 13 of 18 October
+    /// 2026). Never on a computer, which holds no message.
+    pub silenced: bool,
     pub holds: Holds,
 }
 
@@ -665,7 +678,7 @@ impl Now {
             }
         };
         let end = if mode.paused() { i64::MAX } else { mode.until.as_ref().map_or(i64::MAX, |u| u.timestamp().as_second()) };
-        Now { times, time: mode.time, week: mode.week, slot: false, dnd: false, nothing: false, span: (i64::MIN, end), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
+        Now { times, time: mode.time, week: mode.week, slot: false, dnd: false, nothing: false, span: (i64::MIN, end), gathering: false, realtime: false, through: false, reachable: false, silenced: false, holds: Holds::default() }
     }
 
     /// From a clock's moment (`reach::Clock`, ahead: the calls' frames, other
@@ -687,7 +700,7 @@ impl Now {
                 _ => vec![Column::Leisure],
             }
         };
-        Now { times, time: moment.time, week: moment.week, slot: false, dnd: false, nothing: moment.free && moment.nothing, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
+        Now { times, time: moment.time, week: moment.week, slot: false, dnd: false, nothing: moment.free && moment.nothing, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, silenced: false, holds: Holds::default() }
     }
 
     /// One time alone, no layer: for what has no hours (tests, a grid's card).
@@ -700,7 +713,7 @@ impl Now {
             _ => Time::Leisure,
         };
         let week = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-        Now { times: vec![column], time, week, slot: false, dnd: false, nothing: false, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, holds: Holds::default() }
+        Now { times: vec![column], time, week, slot: false, dnd: false, nothing: false, span: (i64::MIN, i64::MAX), gathering: false, realtime: false, through: false, reachable: false, silenced: false, holds: Holds::default() }
     }
 
     /// The same moment with its two layers: a slot of time for you, do-not-disturb.
@@ -1369,9 +1382,11 @@ impl Attention {
         if now.reachable && level != Level::Never && !(via == Channel::Calls && screened(Row::People(Channel::Calls, person))) {
             level = Level::Now;
         }
-        // A phone cannot show what it holds: shown, not told, is held.
+        // ◑, in the shade without a sound: let through while the phone silences it (Android's
+        // filter, Sioul's mode or yours), held otherwise, so that nothing rings where the cell
+        // says silent (decision 13). A phone cannot show what it holds: a message never stays ◑.
         if level == Level::Quiet {
-            level = Level::Later;
+            level = if now.silenced && via != Channel::Calls { Level::Now } else { Level::Later };
         }
         let mut step = if chosen { Step::Chosen } else { Step::Matrix };
         if !chosen && !now.reachable && level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
@@ -1551,7 +1566,12 @@ impl Preset {
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
                 (Row::People(Channel::Calls, Person::Neutral), &[Admin, Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
+                (Row::People(Channel::Messages, Person::Groups), &[Leisure, Meals], Later),
                 (Row::People(Channel::Messages, Person::Safe), &[Free], Later),
+                // Under do-not-disturb, every text held, as before the shade (decision 13).
+                (Row::People(Channel::Messages, Person::Safe), &[Dnd], Later),
+                (Row::People(Channel::Messages, Person::Neutral), &[Dnd], Later),
+                (Row::People(Channel::Messages, Person::Groups), &[Dnd], Later),
                 (Row::Own(Kind::Dates), &[Leisure, Meals], Later),
                 (Row::Own(Kind::SitesLive), &[Leisure, Meals], Later),
             ],
@@ -2165,6 +2185,7 @@ pub fn level_label(tr: &Translator, row: Row, level: Level) -> String {
         (Row::People(_, Person::Always), Level::Now) => Some("attention-level-now-always"),
         (Row::People(Channel::Mail, _), Level::Never) => Some("attention-level-never-mail"),
         (Row::People(Channel::Calls, _), Level::Later) => Some("attention-level-later-calls"),
+        (Row::People(Channel::Messages, _), Level::Quiet) => Some("attention-level-quiet-messages"),
         _ => None,
     };
     tr.text(own.unwrap_or(&format!("attention-level-{}", level.id())), None)
@@ -2427,11 +2448,11 @@ mod tests {
             ("calls.hidden", "●●○○○○○●○"),
             ("calls.blocked", "–––––––––"),
             ("messages.always", "●●●●●●●●●"),
-            ("messages.safe", "●●●●○○●●○"),
-            ("messages.neutral", "●●●●○○○●○"),
+            ("messages.safe", "●●●●○○●●◑"),
+            ("messages.neutral", "●●●●○○○●◑"),
             ("messages.restricted", "●○○○○○○●○"),
             ("messages.stranger", "●●○○○○○●○"),
-            ("messages.groups", "●●○○○○○●○"),
+            ("messages.groups", "●●●●○○○●◑"),
             ("messages.blocked", "–––––––––"),
             ("codes", "●●●●●●●●●"),
             ("doses", "●●●●●●●●●"),
@@ -3097,6 +3118,67 @@ mod tests {
         assert!(!old.at(&at(60)));
         assert_eq!(Slots::load(&dir.join("none.toml")), Slots::default());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Decision 13 of 18 October 2026: under do-not-disturb, the texts of
+    /// your safe people, your contacts and groups (◑) come while the phone is
+    /// silenced (Sioul's mode or yours), without a sound, and wait otherwise;
+    /// at night they wait whatever; calls stay voicemail; the phone's modes
+    /// still let them ring no more than before. Decision 14: groups at once in
+    /// leisure and meals.
+    #[test]
+    fn texts_in_the_shade_come_while_the_phone_is_silenced() {
+        let a = Attention::usual();
+        let message = |person: Who, group: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: person, group, always: false }), now).level;
+        let mut dnd = Now::time(Column::Work).layers(false, true);
+        for (who, group) in [(Who::Safe, false), (Who::Neutral, false), (Who::Neutral, true)] {
+            assert_eq!(message(who, group, &dnd), Level::Later, "{who:?} {group}: not silenced, it waits");
+        }
+        dnd.silenced = true;
+        for (who, group) in [(Who::Safe, false), (Who::Neutral, false), (Who::Neutral, true)] {
+            assert_eq!(message(who, group, &dnd), Level::Now, "{who:?} {group}: silenced, it comes without a sound");
+        }
+        assert_eq!(message(Who::Restricted, false, &dnd), Level::Later, "restricted: held under do-not-disturb, as before");
+        let mut night = Now::time(Column::Sleep).layers(false, true);
+        night.silenced = true;
+        assert_eq!(message(Who::Neutral, false, &night), Level::Later, "at night, whatever");
+        let call = a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), always: false, emergency: false, repeat: false }), &dnd);
+        assert!(!call.told, "a call under do-not-disturb: voicemail");
+        // The phone's mode under do-not-disturb lets no more texts ring than before: the starred at most.
+        let silence = a.silence_at(&Now::time(Column::Work).layers(false, true), Phone::default());
+        assert!(!matches!(silence.messages, Senders::Anyone | Senders::Contacts), "{silence:?}");
+        // Groups in leisure and meals.
+        for column in [Column::Leisure, Column::Meals] {
+            assert_eq!(message(Who::Neutral, true, &Now::time(column)), Level::Now, "{column:?}");
+        }
+        // ◑ a choice for texts under do-not-disturb alone.
+        assert!(choices(Row::People(Channel::Messages, Person::Stranger), Column::Dnd).contains(&Level::Quiet));
+        assert!(!choices(Row::People(Channel::Messages, Person::Neutral), Column::Sleep).contains(&Level::Quiet));
+        assert!(!choices(Row::People(Channel::Calls, Person::Neutral), Column::Dnd).contains(&Level::Quiet));
+        let tr = Translator::new("en");
+        assert_eq!(level_label(&tr, Row::People(Channel::Messages, Person::Neutral), Level::Quiet), "In the shade, without a sound");
+    }
+
+    /// The presets checked against the new defaults: Quieter holds at least
+    /// as much as the usual everywhere, Reachable lets at least as much
+    /// through, cell by cell (As and Through, Always through's, aside).
+    #[test]
+    fn the_presets_go_their_own_way_only() {
+        let usual = Attention::usual();
+        let (quieter, reachable) = (Preset::Quieter.matrix(), Preset::Reachable.matrix());
+        for row in Row::ALL {
+            for column in Column::ALL {
+                let u = usual.cell(row, column);
+                if matches!(u, Level::As | Level::Through) {
+                    continue;
+                }
+                assert!(quieter.cell(row, column) >= u, "Quieter lets more through at {} {column:?}", row.id());
+                assert!(reachable.cell(row, column) <= u, "Reachable holds more at {} {column:?}", row.id());
+            }
+        }
+        // What the new defaults let through, Quieter holds: groups in leisure, texts under do-not-disturb.
+        assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Groups), Column::Leisure), Level::Later);
+        assert_eq!(quieter.cell(Row::People(Channel::Messages, Person::Neutral), Column::Dnd), Level::Later);
     }
 
     #[test]

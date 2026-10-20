@@ -480,6 +480,8 @@ public final class AppNotes extends NotificationListenerService
     public void onInterruptionFilterChanged(int interruptionFilter)
     {
         DndReceiver.forward(getApplicationContext());
+        // The texts held in the shade without a sound (◑) come once the phone is silenced, and wait otherwise.
+        worker.post(() -> review("filter"));
     }
 
     /** Unbound: the access taken back, or Android stopping the listener. */
@@ -600,7 +602,9 @@ public final class AppNotes extends NotificationListenerService
                 for (StatusBarNotification sbn : held)
                     keys.put(sbn.getKey());
             DoseAlarms.load(getApplicationContext());
-            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).toString());
+            // Whether the phone's do-not-disturb silences now: a text whose cell says ◑ comes then, without a sound.
+            boolean silenced = getCurrentInterruptionFilter() > NotificationListenerService.INTERRUPTION_FILTER_ALL;
+            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).toString());
             if (answer == null || answer.isEmpty() || "null".equals(answer)) {
                 Log.w(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.");
                 return;

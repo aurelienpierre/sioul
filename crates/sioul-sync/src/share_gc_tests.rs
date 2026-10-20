@@ -1093,6 +1093,44 @@ fn put_back_on_slow_storage_never_keeps_a_dose_waiting() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// CI's macOS job of 20 October 2026 (D-1): a dose's exchange slow to wake
+/// lost the hand to the put back twice in a row, 0.41 s. Here it takes the
+/// lock only 50 ms after it is let go (`SLOW_WAKE`, longer than the moment
+/// the holder let it go before taking it again, which then won every
+/// hand-off). The holder now waits for it to take the lock (`hand_off`):
+/// each placement 10 ms slower, a dose's exchange waits a third of a second
+/// at most.
+#[test]
+fn put_back_never_keeps_a_slow_waking_dose_waiting() {
+    let base = scratch("gc-put-back-slow-wake");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..120 {
+        put(&dn, &format!("bulk/{n:03}.md"), format!("# note {n} of a bulk\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    std::fs::remove_dir_all(dn.join("bulk")).unwrap();
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + MINUTE, &dn).withheld.map(|w| w[0].count), Some(120));
+    let (stores, memory, id) = (stores_with(&desk, &dn, false), desk.memory.clone(), desk.id.clone());
+    let putting = {
+        let (folder, memory, id) = (folder.clone(), memory.clone(), id.clone());
+        std::thread::spawn(move || {
+            SLOW_UNDER_LOCK.with(|slow| slow.set(std::time::Duration::from_millis(10)));
+            put_back_withheld(&folder, &key, &memory, &id, &stores, "files/notes/")
+        })
+    };
+    SLOW_WAKE.with(|slow| slow.set(std::time::Duration::from_millis(50)));
+    let (longest, taken) = waits_beside(&memory, &putting, std::time::Duration::from_millis(30));
+    SLOW_WAKE.with(|slow| slow.set(std::time::Duration::ZERO));
+    assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 120, held: 120 }));
+    println!("put back of 120 notes at 10 ms each, a dose slow to wake: it waited {longest:?} at most, {taken} times");
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// "Remove its files" for a device with many: its memory written in one
 /// hold, then its files taken out a fifth of a second at a time, each 10 ms
 /// slower here (`SLOW_UNDER_LOCK`): a dose's exchange waits a third of a
@@ -1674,6 +1712,34 @@ fn an_estimate_removes_nothing() {
     assert!(left.exists(), "an estimate looks, and removes nothing");
     with_notes(&desk, &folder, &key, NOW, &dn);
     assert!(!left.exists(), "an exchange sweeps it, an hour old");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// C-4 (check of a23cf0c, 20 October 2026): a crash between the memory's
+/// writing ahead (`Memory::prepare_save`) and its renames leaves hidden
+/// files of the memory's size beside it, in `state/share/`, which nothing
+/// swept. An exchange sweeps them once an hour old, never a fresh one (it
+/// may be another exchange's, about to take its place).
+#[test]
+fn a_crash_s_memory_written_ahead_is_swept_once_an_hour_old() {
+    let base = scratch("gc-memory-ahead");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    let (old, sealed_old, fresh) = (temporary(&desk.memory), temporary(&sealed_path(&desk.memory)), temporary(&desk.memory));
+    for path in [&old, &sealed_old, &fresh] {
+        std::fs::write(path, vec![b'{'; 64 * 1024]).unwrap();
+    }
+    for path in [&old, &sealed_old] {
+        std::fs::File::options().write(true).open(path).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 3600)).unwrap();
+    }
+    with_notes(&desk, &folder, &key, NOW + MINUTE, &dn);
+    assert!(!old.exists() && !sealed_old.exists(), "an hour old: the next exchange sweeps them");
+    assert!(fresh.exists(), "a fresh one stays");
+    assert!(desk.memory.is_file() && sealed_path(&desk.memory).is_file(), "the memory itself stays");
     let _ = std::fs::remove_dir_all(&base);
 }
 
