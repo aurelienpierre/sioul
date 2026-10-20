@@ -209,7 +209,8 @@ fn decide(json: &str) -> String {
     let hash = appnotes::key_hash(&posted.key);
     // A conversation you answered from a computer in the last twenty minutes, or a number
     // texted from one, by the SMS app: at once, but in a pause (`replies`).
-    let answered = !live.clock.mode(&now).paused()
+    let paused = live.clock.mode(&now).paused();
+    let answered = !paused
         && match &kind {
             Kind::People(talk) => {
                 talk.conversation.as_ref().is_some_and(|c| crate::replies::answered_lately(&c.key))
@@ -226,8 +227,12 @@ fn decide(json: &str) -> String {
             decision = decision.answered();
         }
         // Back from a release you asked (Reachable, or "Let what your phone holds through"): held
-        // before it, it comes now, once; never the blocked nor a conversation set to never.
-        if returning && let Some(held) = ledger.held.get(&hash) {
+        // before it, it comes now, once; never the blocked nor a conversation set to never, and
+        // never during a pause, when everything Sioul shows is held (review of part 3, F5).
+        if returning
+            && !paused
+            && let Some(held) = ledger.held.get(&hash)
+        {
             decision = decision.released(held, &ledger);
         }
         // Back at its time and held again within minutes: not again and again.
@@ -313,11 +318,12 @@ fn review(json: &str) -> String {
     let reachable = reachable_until();
     // A release asked since the last one applied (Reachable pressed on any device, or "Let what your phone
     // holds through" on a computer): what was held before it comes now, once (part 3).
-    let release = crate::everywhere::release_stamp();
+    // Never during a pause: the stamps wait for its end, then apply once (F5).
+    let releases = crate::everywhere::release_stamps();
     let path = Ledger::default_path();
-    let (again, counted) = sioul_core::filelock::with_lock(&path, || {
+    let (again, counted, ahead) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
-        ledger.apply_release(release, stamp);
+        let (_, ahead) = if paused { (false, Vec::new()) } else { ledger.apply_releases(&releases, stamp) };
         let present: std::collections::BTreeSet<String> = keys.iter().map(|k| appnotes::key_hash(k)).collect();
         ledger.held.retain(|hash, held| present.contains(hash) || stamp - held.since < 60);
         let mut again = Vec::new();
@@ -332,10 +338,20 @@ fn review(json: &str) -> String {
                 decided = decided.answered();
             }
             // Held before the release: comes now (snoozed again for a second, never cancelled:
-            // a reply from a computer still finds it), every kind, but what is held for good.
-            decided = decided.released(&held, &ledger);
+            // a reply from a computer still finds it), every kind, but what is held for good;
+            // never during a pause.
+            if !paused {
+                decided = decided.released(&held, &ledger);
+            }
             let until = decided.until.unwrap_or(stamp);
             counted.push(Counted { why: decided.why, ..Counted::held(&held, until) });
+            // Held for good now (its conversation set to never since): kept so, so that the log never
+            // counts it as waiting for a time (review of part 3, I8).
+            if decided.why == Why::Never
+                && let Some(kept) = ledger.held.get_mut(&hash)
+            {
+                kept.kind = "never".to_string();
+            }
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
                     kept.until = until;
@@ -347,11 +363,15 @@ fn review(json: &str) -> String {
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        (again, counted)
+        (again, counted, ahead.len())
     });
     let event = if reason.is_empty() { "review".to_string() } else { format!("review ({reason})") };
     let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
-    let line = log_line(&event, &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now);
+    let mut line = log_line(&event, &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now);
+    // A device's release stamp more than a day ahead of this phone's clock: passed over, said once (F3).
+    if ahead > 0 {
+        line.push_str(&format!(" A release asked from {ahead} device(s) more than a day ahead of this phone's clock: passed over."));
+    }
     json!({ "snooze": again, "line": line }).to_string()
 }
 
@@ -808,6 +828,51 @@ fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review of part 3, F5: no release during a pause, when everything
+    /// Sioul shows is held. Reachable pressed on the laptop seven minutes ago,
+    /// heard by the phone only now, five minutes into a pause: its review
+    /// lets nothing through, nor does a notification back at its time; the
+    /// pause over, the next review lets through, once, what was held before
+    /// the press.
+    #[test]
+    fn no_release_during_a_pause_it_waits_for_its_end() {
+        const PEOPLE: &str = "0|com.google.android.apps.messaging|2|sms|10001";
+        const SHOP_KEY: &str = "0|com.shop.example|1|null|10500";
+        const SHOP: &str = r#"{"key":"0|com.shop.example|1|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"offers","title":"-30 % sur les chaussures","text":"Jusqu'à dimanche seulement","alerted":true}"#;
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
+        let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0 };
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.apps.messaging", "people", "messages", "neutral", stamp - 3600, stamp + 7200));
+        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", stamp - 1800, stamp + 7200));
+        ledger.save(&Ledger::default_path()).unwrap();
+        let mut overrides = sioul_core::quiet::Overrides { paused_since: Some(stamp - 300), ..Default::default() };
+        overrides.save(&sioul_core::quiet::Overrides::default_path()).unwrap();
+        let laptop = sioul_core::everywhere::Device { kind: "computer".into(), pressed: ms - 420_000, mode: "reachable".into(), until: ms + 3_600_000, at: ms - 420_000, ..Default::default() };
+        sioul_core::everywhere::Switch { device: [("laptop-1".to_string(), laptop)].into_iter().collect(), ..Default::default() }.save(&sioul_core::everywhere::Switch::default_path()).unwrap();
+        let released = |answer: &str| -> Vec<String> {
+            let v: serde_json::Value = serde_json::from_str(answer).unwrap();
+            v["snooze"].as_array().unwrap().iter().filter(|s| s["ms"].as_i64() == Some(1000)).map(|s| s["key"].as_str().unwrap().to_string()).collect()
+        };
+        let all = json!({ "snoozed": [PEOPLE, SHOP_KEY], "reason": "files" }).to_string();
+        assert!(released(&review(&all)).is_empty(), "nothing let through during the pause");
+        assert!(Ledger::load(&Ledger::default_path()).released_by.is_empty(), "the stamp waits");
+        // The shop's notification back at its time during the pause: held, never "released".
+        let mut ledger = Ledger::load(&Ledger::default_path());
+        ledger.held.get_mut(&appnotes::key_hash(SHOP_KEY)).unwrap().until = stamp;
+        ledger.save(&Ledger::default_path()).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&decide(SHOP)).unwrap();
+        assert_ne!(back["why"], "released", "{back}");
+        // The pause over: what was held before the press comes, once, the shop's too, though
+        // it came back and was held again meanwhile (it was first held before the press).
+        overrides.paused_ended = Some(stamp);
+        overrides.save(&sioul_core::quiet::Overrides::default_path()).unwrap();
+        assert_eq!(released(&review(&all)), vec![PEOPLE.to_string(), SHOP_KEY.to_string()]);
+        assert!(released(&review(&all)).is_empty(), "once");
+        crate::everywhere::files_cleared();
+    }
 
     #[test]
     fn choices_set_from_the_tab() {

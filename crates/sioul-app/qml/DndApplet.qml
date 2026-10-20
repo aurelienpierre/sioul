@@ -191,9 +191,11 @@ LineButton {
 
                 delegate: MenuItem {
                     required property string modelData
+                    required property int index
 
                     objectName: "reach-" + modelData
-                    text: applet.sioul.text("reach-for-" + modelData)
+                    // Past the night's start (or waking), said with its latest end.
+                    text: applet.dnd.reach_capped !== undefined && applet.dnd.reach_capped[index] === true ? applet.theme.plain(applet.sioul.textWith("reach-for-" + modelData + "-latest", "time", applet.dnd.reach_tonight_time || "")) : applet.sioul.text("reach-for-" + modelData)
                     onTriggered: applet.sioul.reachChoose("reachable", modelData)
                 }
             }
@@ -218,10 +220,11 @@ LineButton {
                 text: applet.theme.plain(applet.sioul.textWith("reach-until-off", "time", applet.dnd.reach_tonight_time || ""))
                 onTriggered: applet.sioul.reachChoose("reachable", "off")
             }
-            // On a computer: what the phone holds let through, without saying what it holds (3.3).
+            // On a computer: what the phone holds let through, without saying what it holds (3.3);
+            // not during a pause, when everything stays held.
             MenuItem {
                 objectName: "reach-let-through"
-                visible: !applet.android
+                visible: !applet.android && applet.dnd.paused !== true
                 height: visible ? implicitHeight : 0
                 text: applet.sioul.text("reach-let-through")
                 onTriggered: applet.sioul.letPhoneThrough()

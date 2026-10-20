@@ -734,6 +734,11 @@ impl Ask<'_> {
         self.now.timestamp().as_second()
     }
 
+    /// Reachable holds now (`reachable`).
+    fn reachable_now(&self) -> bool {
+        self.reachable.is_some_and(|until| self.stamp() < until)
+    }
+
     /// Do-not-disturb's switch or a focus session holding at `at`.
     fn gated(&self, at: &Zoned) -> bool {
         self.gate.as_ref().is_some_and(|g| at.timestamp().as_second() < g.until.unwrap_or(self.stamp() + GATE_RECHECK))
@@ -1078,6 +1083,13 @@ fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) 
     }
 }
 
+/// A conversation you set "with the automatons": at their gathered times;
+/// at once while Reachable lasts, as everyone not blocked comes then (review
+/// of part 3, L3); one set to never stays held.
+fn conversation_gathered(ask: &Ask) -> Decision {
+    if ask.reachable_now() { Decision::through(Why::Allowed) } else { gathered(ask) }
+}
+
 /// Whether a notification comes now, or until when it waits.
 /// `who`: the sender as the address books and lists judge them (`named` for
 /// a name), none when nobody knows them; `listed`: the Always through list
@@ -1087,6 +1099,7 @@ pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, as
     match route(kind, who, listed, choices) {
         Route::Through(why) => Decision::through(why),
         Route::AtOnce => at_once(ask),
+        Route::Gathered(Gathering::Conversation) => conversation_gathered(ask),
         Route::Gathered(_) => gathered(ask),
         Route::ForGood => Decision::held(ask.stamp() + FOR_GOOD, Why::Never),
         Route::Person { talk, who, group, conversation: true, .. } => always(talk, who, group, ask),
@@ -1209,9 +1222,22 @@ pub struct Held {
     pub area: Option<Area>,
     pub since: i64,
     pub until: i64,
+    /// When it was first held (Unix seconds), held again on its return
+    /// since (`since` is the latest hold): what a release lets through is
+    /// what was held before it, however often it came back held meanwhile, a
+    /// pause first (review of part 3, F5). 0: held once (`since`).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub first: i64,
     /// Held again on its return so many times.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub again: u32,
+}
+
+impl Held {
+    /// When it was first held (Unix seconds): `first`, else `since`.
+    pub fn first_held(&self) -> i64 {
+        if self.first > 0 { self.first } else { self.since }
+    }
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -1285,35 +1311,63 @@ pub struct Ledger {
     /// When the listener last heard from Android (Unix seconds): the access works.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub heard: i64,
-    /// The latest release applied (milliseconds, as the switch stamped it:
-    /// `everywhere::Switch::release_stamp`): each stamp applied once (part 3
-    /// of "What reaches you").
+    /// The latest release applied before releases were kept by device (the
+    /// build of 20 October 2026): every device's stamps up to it count as
+    /// applied. Never written again.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub released: i64,
-    /// What that release let through: what was held at or before then (Unix
+    /// The latest release applied, by the device that asked it
+    /// (milliseconds, its stamp: `everywhere::Switch::release_stamps`): each
+    /// device's stamps applied once, apart, so that one far ahead never
+    /// stands in the way of another's (review of part 3, F3).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub released_by: BTreeMap<String, i64>,
+    /// What the releases let through: what was held at or before then (Unix
     /// seconds, this phone's clock; a stamp ahead of it read as its own now
     /// when applied, never releasing what is held after).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub released_through: i64,
+    /// Stamps passed over, more than `RELEASE_AHEAD` ahead of this phone's
+    /// clock, by device: said once in the log.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ahead: BTreeMap<String, i64>,
 }
 
+/// A release stamp further ahead of this phone's clock than this (seconds)
+/// is a clock gone wrong or a garbled table: passed over, said once.
+pub const RELEASE_AHEAD: i64 = 24 * 3600;
+
 impl Ledger {
-    /// A release asked (`stamp`, milliseconds, the pressing device's clock),
-    /// applied at `now` (Unix seconds) once: whether it is new. What was held
-    /// at or before its time, or before `now` for a stamp ahead of this
-    /// phone's clock, then comes back (`released_before`).
-    pub fn apply_release(&mut self, stamp: i64, now: i64) -> bool {
-        if stamp <= self.released {
-            return false;
+    /// The releases asked (`stamps`, by device, milliseconds, each device's
+    /// clock), applied at `now` (Unix seconds), each device's once: whether
+    /// one is new, and the devices whose stamp is passed over now, too far
+    /// ahead (said once). What was held at or before a stamp's time, or
+    /// before `now` for a stamp ahead of this phone's clock, then comes back
+    /// (`released_before`). Never during a pause: the caller waits (F5).
+    pub fn apply_releases(&mut self, stamps: &[(String, i64)], now: i64) -> (bool, Vec<String>) {
+        let (mut applied, mut ahead) = (false, Vec::new());
+        for (device, stamp) in stamps {
+            let done = self.released_by.get(device).copied().unwrap_or(0).max(self.released);
+            if *stamp <= done {
+                continue;
+            }
+            if stamp / 1000 > now.saturating_add(RELEASE_AHEAD) {
+                if self.ahead.get(device) != Some(stamp) {
+                    self.ahead.insert(device.clone(), *stamp);
+                    ahead.push(device.clone());
+                }
+                continue;
+            }
+            self.released_by.insert(device.clone(), *stamp);
+            self.released_through = self.released_through.max((stamp / 1000).min(now));
+            applied = true;
         }
-        self.released = stamp;
-        self.released_through = (stamp / 1000).min(now);
-        true
+        (applied, ahead)
     }
 
-    /// Whether a notification held now was held at or before the last release applied.
+    /// Whether a notification held now was first held at or before the last release applied.
     pub fn released_before(&self, held: &Held) -> bool {
-        self.released_through > 0 && held.since <= self.released_through
+        self.released_through > 0 && held.first_held() <= self.released_through
     }
 
     pub fn default_path() -> PathBuf {
@@ -1378,7 +1432,8 @@ impl Ledger {
         let group = matches!(kind, Kind::People(t) if t.conversation.as_ref().is_some_and(|c| c.group));
         let admitted = admitted && !group;
         let again = self.held.get(&hash).map_or(0, |h| h.again);
-        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, again });
+        let first = self.held.get(&hash).map_or(0, Held::first_held);
+        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, first, again });
     }
 
     /// A held notification Android brought back and that comes now: no
@@ -1442,7 +1497,7 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
             Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.group, ask),
-            Through::Gathered => return gathered(ask),
+            Through::Gathered => return conversation_gathered(ask),
             Through::Never => return Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
             Through::Usual => {}
         }
@@ -2181,26 +2236,57 @@ mod tests {
         assert!(decide(&sms, Some(Who::Neutral), false, &choices, &over).until.is_some(), "at night, after Reachable, a contact's text waits");
     }
 
+    /// Review of part 3, L3: under Reachable, a conversation you set "with
+    /// the automatons" comes at once, as everyone not blocked does; one set
+    /// to never stays held; Reachable over, it waits for its gathered time.
+    #[test]
+    fn under_reachable_a_conversation_gathered_comes_at_once() {
+        let clock = TestClock::new();
+        let mut choices = Choices::default();
+        let talk = classify(&posted(WHATSAPP_GROUP), &choices);
+        let key = match &talk {
+            Kind::People(t) => t.conversation.as_ref().unwrap().key.clone(),
+            _ => unreachable!(),
+        };
+        choices.conversation.insert(key.clone(), TalkChoice { through: Through::Gathered, ..TalkChoice::default() });
+        let evening = at("2026-10-06T20:00[Europe/Paris]");
+        let until = evening.timestamp().as_second() + 3600;
+        let reach = Ask { reachable: Some(until), ..ask(&evening, &clock, None, None) };
+        assert_eq!(decide(&talk, Some(Who::Neutral), false, &choices, &reach), Decision::through(Why::Allowed));
+        let held = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: true, conversation: key.clone(), site: String::new(), area: None, since: until - 7200, until: until + 7200, first: 0, again: 0 };
+        assert_eq!(again(&held, &choices, &reach).until, None, "looked at again under Reachable: at once");
+        let usual = ask(&evening, &clock, None, None);
+        assert!(decide(&talk, Some(Who::Neutral), false, &choices, &usual).until.is_some(), "as usual: its gathered time");
+        choices.conversation.insert(key, TalkChoice { through: Through::Never, ..TalkChoice::default() });
+        assert_eq!(decide(&talk, Some(Who::Neutral), false, &choices, &reach).why, Why::Never, "set to never: held");
+    }
+
     /// Part 3, the release (3.3 of the proposal): each stamp applied once;
     /// what was held at or before it comes back, not what is held after; a
     /// stamp ahead of the phone's clock read as the phone's now.
     #[test]
     fn a_release_lets_through_what_was_held_before_it_once() {
-        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, again: 0 };
+        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, first: 0, again: 0 };
         let mut ledger = Ledger::default();
         assert!(!ledger.released_before(&held(1_000)), "no release yet");
-        assert!(ledger.apply_release(2_000_000, 5_000));
+        let one = |stamp: i64| vec![("desk".to_string(), stamp)];
+        assert!(ledger.apply_releases(&one(2_000_000), 5_000).0);
         assert!(ledger.released_before(&held(1_000)) && ledger.released_before(&held(2_000)));
         assert!(!ledger.released_before(&held(2_001)), "held after the press: not released");
-        assert!(!ledger.apply_release(2_000_000, 6_000), "the same stamp, applied once");
-        assert!(!ledger.apply_release(1_000_000, 6_000), "an older stamp: passed over");
+        assert!(!ledger.apply_releases(&one(2_000_000), 6_000).0, "the same stamp, applied once");
+        assert!(!ledger.apply_releases(&one(1_000_000), 6_000).0, "an older stamp: passed over");
         // A computer's clock ahead of the phone's: what the phone holds after its own now stays held.
-        assert!(ledger.apply_release(9_000_000, 3_000 + 4_000));
+        assert!(ledger.apply_releases(&one(9_000_000), 3_000 + 4_000).0);
         assert_eq!(ledger.released_through, 7_000);
         assert!(!ledger.released_before(&held(7_001)));
         // Kept across a restart.
         let back: Ledger = toml::from_str(&toml::to_string(&ledger).unwrap()).unwrap();
-        assert_eq!((back.released, back.released_through), (9_000_000, 7_000));
+        assert_eq!((back.released_by.get("desk").copied(), back.released_through), (Some(9_000_000), 7_000));
+        // A ledger of the build that kept one stamp for all: every device's stamps up to it applied already.
+        let older: Ledger = toml::from_str("released = 9000000\nreleased_through = 7000\n").unwrap();
+        let mut older = older;
+        assert!(!older.apply_releases(&[("phone".to_string(), 8_000_000)], 7_500).0);
+        assert!(older.apply_releases(&[("phone".to_string(), 9_500_000)], 9_600).0);
         // What a release lets through: what waited, every kind, held before it; never what is held for good;
         // an automaton held after it keeps its gathered time; what comes already, as it is.
         let before = held(6_000);

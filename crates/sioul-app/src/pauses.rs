@@ -204,7 +204,7 @@ pub(crate) fn press(mut sioul: Pin<&mut Sioul>) {
             overrides.free_ended = Some(stamp);
         }
         pause::keep_usual_end(&mut overrides, now.date());
-        pause::start_pause(&mut overrides, stamp);
+        pause::start_pause(&mut overrides, stamp, crate::everywhere::latest_press());
         if !save(&mut sioul, &overrides) {
             return;
         }

@@ -138,7 +138,8 @@ fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
 /// notes and papers wait for the next) is done, and run without holding the
 /// window's exchanges back, a dose's alarm first: for work that takes the
 /// exchanges' lock itself, a short hold at a time (`share::remove_device_files`),
-/// between which a dose's exchange goes. Under `quietly`, a dose's alarm
+/// between which a dose's exchange goes, or only to put in place what it
+/// opened outside it (`share::put_back`). Under `quietly`, a dose's alarm
 /// waited for the whole of it.
 fn after_exchange<T>(work: impl FnOnce() -> T) -> T {
     use std::sync::atomic::Ordering;
@@ -900,7 +901,10 @@ pub(crate) fn remove_device_files(id: &str) -> String {
         return marked;
     }
     after_exchange(|| match share::remove_device_files(&folder, &key, &memory_path(), &here.id, &stores, id, now_ms()) {
-        Ok(_) => String::new(),
+        Ok(_) => {
+            crate::everywhere::gone_soon();
+            String::new()
+        }
         Err(e) => problem_text(&e),
     })
 }
@@ -1065,7 +1069,9 @@ pub(crate) fn put_back(part: &str, file: &str, stamp: &str) -> String {
     let vault = sealed.as_ref().map(|(folder, key)| (folder.as_path(), key));
     // Every part, those switched off too: put back here only.
     let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
-    quietly(|| share::put_back(&memory_path(), vault, &stores, part, file, stamp, jiff::Timestamp::now().as_millisecond()).err().map(|e| problem_text(&e)).unwrap_or_default())
+    // Begun once the exchange running is done, never holding a dose's alarm back: the version is opened
+    // outside the exchanges' lock, taken only to put it in place (review of part 3, J2).
+    after_exchange(|| share::put_back(&memory_path(), vault, &stores, part, file, stamp, jiff::Timestamp::now().as_millisecond()).err().map(|e| problem_text(&e)).unwrap_or_default())
 }
 
 /// The store a file of the records is in, by name ("files/notes/", "config/config.toml"): for the pages to read again.
@@ -1173,6 +1179,7 @@ pub(crate) fn forget_device(id: &str) {
     {
         eprintln!("sioul: sharing: {e}");
     }
+    crate::everywhere::gone_soon();
 }
 
 /// Whether the doses' part is held here, met in a newer format than this
