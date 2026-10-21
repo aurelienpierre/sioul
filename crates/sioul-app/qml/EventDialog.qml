@@ -23,6 +23,10 @@ Dialog {
     // The event's file; empty for a new one.
     property string key: ""
     property var calendars: []
+    // The calendar of the event opened ("account/id"), its name, and whether it stays on this device alone.
+    property string currentCalendar: ""
+    property string calendarName: ""
+    property string hereOnly: ""
     property bool moreShown: false
     property string problem: ""
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
@@ -79,6 +83,9 @@ Dialog {
             endTime.text = e.all_day ? "10:00" : e.end.slice(11, 16)
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
+            dialog.currentCalendar = found.calendar || ""
+            dialog.calendarName = found.calendar_name || ""
+            dialog.hereOnly = found.here_only || ""
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
             dialog.remind = e.remind || ""
@@ -97,6 +104,9 @@ Dialog {
             endTime.text = dialog.pad(Math.min(hour + 1, 23)) + ":" + (hour === 23 ? "59" : "00")
             repeat.currentIndex = 0
             calendar.currentIndex = 0
+            dialog.currentCalendar = ""
+            dialog.calendarName = ""
+            dialog.hereOnly = ""
             dialog.around = { before: 0, after: 0 }
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.remind = ""
@@ -135,7 +145,9 @@ Dialog {
     }
 
     function save() {
-        const where = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
+        // An event of a calendar not offered (read only) stays where it is.
+        const offered = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
+        const where = dialog.key !== "" && dialog.calendars.findIndex(c => c.id === dialog.currentCalendar) < 0 ? dialog.currentCalendar : offered
         const problem = dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
         if (problem) {
             dialog.problem = problem
@@ -351,17 +363,40 @@ Dialog {
                     values: dialog.demands
                     onEdited: (name, value) => dialog.rate(name, value)
                 }
+                // Its calendar, said, and another chosen: a new event's, or an event moved there
+                // (21 October 2026), on the phone too.
                 Label {
-                    visible: dialog.calendars.length > 1 && dialog.key === ""
+                    visible: dialog.calendars.length > 1 || dialog.calendarName !== ""
                     text: dialog.sioul.text("event-calendar")
                     color: dialog.theme.muted
                 }
                 PlainComboBox {
                     id: calendar
 
-                    visible: dialog.calendars.length > 1 && dialog.key === ""
+                    objectName: "event-calendar"
+                    visible: dialog.calendars.length > 1 && (dialog.key === "" || dialog.calendars.some(c => c.id === dialog.currentCalendar))
                     Layout.fillWidth: true
                     model: dialog.calendars.map(c => dialog.theme.plain(c.name))
+                    Accessible.name: dialog.sioul.text("event-calendar")
+                }
+                Label {
+                    objectName: "event-calendar-name"
+                    visible: dialog.calendarName !== "" && !calendar.visible
+                    Layout.fillWidth: true
+                    text: dialog.theme.plain(dialog.sioul.textWith("event-calendar-in", "name", dialog.calendarName))
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    objectName: "event-here-only"
+                    visible: dialog.hereOnly !== ""
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    text: dialog.hereOnly
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: dialog.theme.muted
                 }
             }
         }

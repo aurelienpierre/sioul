@@ -95,8 +95,11 @@ On Android, Sioul syncs your calendars itself and keeps its own copy of them: yo
 
 The ⚙ at the top of the page:
 
-- **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays.
+- **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
+- **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
 - **The day starts at**: the hour the day and week views open on.
+
+**An event's calendar**: its editor says which calendar it is in, and **Calendar** moves it to another you can write to, of any account, on a phone too: written there first, then taken out of the first, never twice and never lost, even when Sioul stops in between; your server gets both at the next sync. An event filed by mistake in a calendar of this device's own reaches your other devices once moved to your server's. A calendar of this device's own that your sharing does not carry stays here: its events' editor says "Only on this computer" (or phone), which is why such an event shows on one device and not the other. A server's calendar is on every device that has its account.
 
 ## Where events live
 
@@ -121,7 +124,7 @@ Moving an event to another calendar, changing one occurrence's title or place (i
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot send invitations, move an event to another calendar, import or export `.ics` files, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
+**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot send invitations, import or export `.ics` files, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
 
 As of October 2026, from each app's own documentation.
 

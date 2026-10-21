@@ -418,6 +418,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         }
         "agenda" => {
             b.collections(config, "calendars", crate::vdir::Kind::Calendars, "VEVENT");
+            // Where a new event goes, chosen here (until then the first that takes events).
+            let writable: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
+                .into_iter()
+                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
+                .collect();
+            let s = b.push("agenda.calendar", "agenda-calendar", Kind::Choice, SettingValue::Text(config.agenda.calendar.clone().unwrap_or_default()));
+            s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-agenda-calendar-first", None) }).chain(writable).collect();
             let s = b.push("agenda.day_start", "day-start", Kind::Int, int(config.agenda.day_start, 7));
             Builder::range(s, 0.0, 12.0, 1.0, "h");
         }
@@ -1266,6 +1274,33 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Where new events go, in Settings ▸ Agenda (21 October 2026): written
+    /// there, read by `agenda::default_calendar_of`; a read-only calendar is
+    /// never where they go.
+    #[test]
+    fn new_events_go_where_the_agenda_says() {
+        let account = "agenda-default";
+        crate::vdir::prepare(crate::vdir::Kind::Calendars, account, "personnel", "Personnel", None).unwrap();
+        crate::vdir::prepare(crate::vdir::Kind::Calendars, account, "birthdays", "Birthdays", None).unwrap();
+        let path = crate::vdir::state_path(account, crate::vdir::Kind::Calendars, "birthdays");
+        let mut state = crate::vdir::State::load(&path);
+        state.read_only = true;
+        state.save(&path).unwrap();
+        let config = Config::default();
+        let tr = Translator::new("en");
+        let rows = for_view("agenda", &config, &tr, &[], None);
+        let choice = rows.iter().find(|s| s.key == "agenda.calendar").expect("the setting");
+        assert!(choice.choices.iter().any(|c| c.value == SettingValue::Text(format!("{account}/personnel"))));
+        assert!(!choice.choices.iter().any(|c| c.value == SettingValue::Text(format!("{account}/birthdays"))), "read only: not offered");
+        let file = std::env::temp_dir().join(format!("sioul-agenda-default-{}.toml", std::process::id()));
+        apply(&file, &config, "agenda.calendar", &SettingValue::Text(format!("{account}/personnel"))).unwrap();
+        assert_eq!(Config::load(&file).unwrap().agenda.calendar.as_deref(), Some(format!("{account}/personnel").as_str()));
+        assert_eq!(crate::agenda::default_calendar_of(Some(&format!("{account}/personnel"))).map(|c| c.id).as_deref(), Some("personnel"));
+        assert!(crate::agenda::default_calendar_of(Some(&format!("{account}/birthdays"))).is_some_and(|c| c.id != "birthdays"));
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_dir_all(crate::vdir::Kind::Calendars.root().join(account));
+    }
 
     /// A work or school Microsoft account's shield has no AI to allow, said
     /// in one sentence; a personal one's keeps its switch. Agents' switch for

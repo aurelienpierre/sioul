@@ -98,6 +98,14 @@ pub(crate) fn collection_of(path: &Path) -> Option<Collection> {
     [Kind::Contacts, Kind::Calendars].into_iter().flat_map(vdir::collections).find(|c| c.dir == dir)
 }
 
+/// Whether a calendar stays on this device alone (21 October 2026): this
+/// device's own (`vdir::LOCAL`) while the sharing does not carry them (no
+/// sharing set up, or its part "lists" off here). A server's calendar is on
+/// every device that has its account.
+pub(crate) fn here_only(calendar: &Collection) -> bool {
+    calendar.account == vdir::LOCAL && !(crate::share::configured() && crate::share::shares("lists"))
+}
+
 /// A file inside Sioul's address books and calendars, never elsewhere: no
 /// "..", which `starts_with` would let through ("contacts/../../.bashrc").
 pub(crate) fn ours(key: &str) -> Option<PathBuf> {
@@ -352,9 +360,12 @@ struct CalendarChoice {
 /// The calendars an event can go into.
 pub(crate) fn calendars() -> String {
     let config = load_config();
-    let mut writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only).collect();
-    // The one made for time blocks last: a new event goes elsewhere first (docs/tasks.md, "Pinned to a time").
-    writable.sort_by_key(|c| c.id == sioul_core::blocks::CALENDAR);
+    // Those that take events: a task list is the task views' (21 October 2026).
+    let mut writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
+    // The one made for time blocks last: a new event goes elsewhere first (docs/tasks.md, "Pinned to a time");
+    // the one chosen in Settings ▸ Agenda first.
+    let default = agenda::default_calendar().map(|c| format!("{}/{}", c.account, c.id));
+    writable.sort_by_key(|c| (default.as_deref() != Some(format!("{}/{}", c.account, c.id).as_str()), c.id == sioul_core::blocks::CALENDAR));
     let choices: Vec<CalendarChoice> = writable.into_iter().map(|c| CalendarChoice { id: format!("{}/{}", c.account, c.id), name: c.label(&config, tr()), color: c.color }).collect();
     json(&choices)
 }
@@ -363,6 +374,10 @@ pub(crate) fn calendars() -> String {
 struct EventView {
     edit: EventEdit,
     calendar: String,
+    /// Its calendar's name and place, for the editor to say it.
+    calendar_name: String,
+    /// "Only on this computer", when its calendar stays here alone; else "".
+    here_only: String,
     read_only: bool,
 }
 
@@ -398,13 +413,34 @@ pub(crate) fn set_overlap_aside(key: &str) -> String {
     aside.save(&path).err().unwrap_or_default()
 }
 
-/// An event as its form shows it.
+/// An event as its form shows it: the calendar it belongs to, by name too,
+/// and whether that calendar stays on this device alone.
 pub(crate) fn event(key: &str) -> String {
     let Some(path) = ours(key) else { return String::new() };
     let Some(calendar) = collection_of(&path) else { return String::new() };
+    let config = load_config();
+    let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
     agenda::edit_of(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), read_only: calendar.read_only }))
+        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only }))
         .unwrap_or_default()
+}
+
+/// An event's file moved to another calendar (its editor, 21 October 2026),
+/// of any account, this device's own to a server's above all, so that an
+/// event filed there by mistake reaches your other devices: noted, written
+/// there, taken out here (`vdir::move_item`, a step cut short finished at the
+/// next look), never twice, never lost. The sync sends both: the new item
+/// there, the deletion here. Its new path.
+pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, String> {
+    if path.parent() == Some(to.dir.as_path()) {
+        return Ok(path.to_path_buf());
+    }
+    if to.read_only || !to.holds("VEVENT") {
+        return Err(tr().text("dav-no-calendar", None));
+    }
+    let moved = agenda::new_path(to);
+    vdir::move_item(path, &moved)?;
+    Ok(moved)
 }
 
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
@@ -452,6 +488,15 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     vdir::write_item(&path, &text)?;
     if let Some(account) = account_of(&path) {
         nudge(shared, &account);
+    }
+    // Another calendar chosen for an event already there: moved, its account told too.
+    if ours(key).is_some()
+        && let Some(target) = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar)
+        && path.parent() != Some(target.dir.as_path())
+        && collection_of(&path).is_some_and(|from| !from.read_only)
+    {
+        move_event_file(&path, &target)?;
+        nudge(shared, &target.account);
     }
     if let Some(task) = renamed {
         let _ = crate::work::retitle(qt, shared, &task, edit.title.trim());
@@ -782,6 +827,38 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
 mod tests {
     use super::*;
 
+    /// An event moved to another calendar (21 October 2026): written there,
+    /// taken out here, never twice, never lost; not into a read-only one. A
+    /// calendar of this device's own, the sharing not carrying it, is said
+    /// to stay here.
+    #[test]
+    fn an_event_moves_to_another_calendar_once() {
+        let account = "moves-here";
+        for (id, name) in [("from", "From"), ("to", "To"), ("shared", "Shared")] {
+            vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
+        }
+        let path = vdir::state_path(account, Kind::Calendars, "shared");
+        let mut state = vdir::State::load(&path);
+        state.read_only = true;
+        state.save(&path).unwrap();
+        let find = |id: &str| vdir::collections(Kind::Calendars).into_iter().find(|c| c.account == account && c.id == id).unwrap();
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:move-1\r\nDTSTART:20261022T090000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let event = find("from").dir.join("e.ics");
+        std::fs::write(&event, text).unwrap();
+        assert!(move_event_file(&event, &find("shared")).is_err(), "never into a read-only calendar");
+        assert!(event.exists());
+        let moved = move_event_file(&event, &find("to")).unwrap();
+        assert!(!event.exists() && std::fs::read_to_string(&moved).unwrap() == text, "there, the same, and no longer here");
+        assert_eq!(find("to").items().len() + find("from").items().len(), 1, "never twice");
+        assert_eq!(move_event_file(&moved, &find("to")).unwrap(), moved, "already there: nothing done");
+        vdir::prepare(Kind::Calendars, vdir::LOCAL, "moves-mine", "Mine", None).unwrap();
+        let mine = vdir::collections(Kind::Calendars).into_iter().find(|c| c.id == "moves-mine").unwrap();
+        assert!(here_only(&mine), "this device's own, no sharing set up in a test: here only");
+        assert!(!here_only(&find("to")), "a server's: on every device with its account");
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
+        let _ = std::fs::remove_dir_all(&mine.dir);
+    }
+
     /// The phone's calendars of 21 October 2026: an account's status says how
     /// many collections were found and how many synced, and what went wrong
     /// with some, never a partial state in silence.
@@ -823,6 +900,9 @@ mod tests {
         let offered: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&calendars()).unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).filter(|id| id.starts_with(account)).collect();
         assert!(offered.contains(&format!("{account}/empty")) && offered.contains(&format!("{account}/full")), "{offered:?}");
         assert!(!offered.contains(&format!("{account}/shared")), "read only: not offered");
+        vdir::create(Kind::Calendars, account, "Errands", None, &["VTODO"]).unwrap();
+        let offered: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&calendars()).unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
+        assert!(!offered.iter().any(|n| n.starts_with("Errands")), "a task list is never offered for an event: {offered:?}");
         let rows = sioul_core::settings::for_view("agenda", &load_config(), tr(), &[], None);
         let named = rows.iter().find(|s| s.key == "collections" && matches!(&s.value, sioul_core::config::SettingValue::Named(n) if n.iter().any(|v| v.id.contains(account)))).map(|s| match &s.value {
             sioul_core::config::SettingValue::Named(n) => n.clone(),

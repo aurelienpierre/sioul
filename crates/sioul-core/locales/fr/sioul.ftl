@@ -6034,3 +6034,11 @@ reach-card-let-then = Les laisser passer à ce moment-là
 reach-card-let-then-done = Désormais, leurs messages et leurs appels arrivent tout de suite à ce moment-là ({ $time }).
 reach-card-let-then-done-talk = Désormais, les messages de cette conversation arrivent tout de suite à ce moment-là ({ $time }).
 reach-card-let-it-done = Elle arrive au prochain regard du téléphone.
+
+# Les agendas sur chaque appareil (21 octobre 2026) : Paramètres ▸ Agenda, l’agenda d’un événement.
+set-agenda-calendar = Les nouveaux événements vont dans
+set-agenda-calendar-help = L’agenda où va un nouvel événement ; l’éditeur de l’événement peut en choisir un autre, et déplacer un événement plus tard.
+set-agenda-calendar-first = Le premier agenda qui prend des événements
+event-calendar-in = Dans { $name }
+event-calendar-here-computer = Seulement sur cet ordinateur : un agenda propre à cet appareil, que votre partage ne transporte pas.
+event-calendar-here-phone = Seulement sur ce téléphone : un agenda propre à cet appareil, que votre partage ne transporte pas.
