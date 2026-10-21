@@ -130,17 +130,24 @@ impl Builder<'_> {
         &mut self.out[last]
     }
 
-    /// The collections of a kind that can be written, to rename or delete,
-    /// named "account/id"; none, no setting.
+    /// The collections of a kind, to rename or delete, named "account/id":
+    /// every one, empty ones too; a read-only one listed, fixed, its row
+    /// saying why (never offered for a new item: 21 October 2026); none, no setting.
     fn collections(&mut self, config: &Config, id: &str, kind: crate::vdir::Kind, holding: &str) {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            .filter(|c| !c.read_only && (holding.is_empty() || c.holds(holding)))
+            .filter(|c| holding.is_empty() || c.holds(holding))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars and address books change on its own pages only.
-                locked: if provider_of_collection(config.account(&c.account), &c) == Provider::Google { self.tr.text("google-fixed-collection", None) } else { String::new() },
+                locked: if c.read_only {
+                    self.tr.text("collection-read-only", None)
+                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google {
+                    self.tr.text("google-fixed-collection", None)
+                } else {
+                    String::new()
+                },
                 detail: { let place = c.place(config); if place.is_empty() { self.tr.text("collection-here", None) } else { place } },
                 label: c.name,
             })

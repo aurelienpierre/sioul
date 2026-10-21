@@ -144,6 +144,29 @@ pub fn set_account_off(account: &str, off: bool) {
     }
 }
 
+/// The marks of switched-off accounts made to follow the configuration, on
+/// this device: the mark is this device's own, while the configuration
+/// travels; an account switched on again elsewhere (or here before, in a
+/// window that died) kept its mark here, and its calendars and address
+/// books, synced all the same, never showed (the phone of 21 October 2026).
+/// `on`: the accounts switched on; `off`: those switched off. Whether any mark changed.
+pub fn follow_switches(on: &[String], off: &[String]) -> bool {
+    let mut changed = false;
+    for kind in [Kind::Contacts, Kind::Calendars] {
+        for (accounts, wanted) in [(on, false), (off, true)] {
+            for account in accounts.iter().filter(|a| one_folder(a)) {
+                let dir = kind.root().join(account);
+                let marked = dir.join(OFF).exists();
+                if marked != wanted && (wanted || marked) && dir.is_dir() {
+                    set_account_off(account, wanted);
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed
+}
+
 /// Every collection kept here, those deleted and not yet gone from the server included.
 pub fn every_collection(kind: Kind) -> Vec<Collection> {
     let mut found = Vec::new();
@@ -381,6 +404,28 @@ pub fn new_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The phone of 21 October 2026: an account switched off once, then on
+    /// again on another device, kept its mark here, and its calendars,
+    /// synced all the same, never showed. The marks follow the configuration.
+    #[test]
+    fn an_account_on_again_elsewhere_shows_its_calendars_here() {
+        let account = "marked-elsewhere";
+        prepare(Kind::Calendars, account, "work", "Work", None).unwrap();
+        prepare(Kind::Calendars, account, "family", "Family", None).unwrap();
+        let shown = || collections(Kind::Calendars).into_iter().filter(|c| c.account == account).count();
+        assert_eq!(shown(), 2);
+        set_account_off(account, true);
+        assert_eq!(shown(), 0, "off here");
+        // Switched on again on another device: the configuration says on, the mark stays.
+        assert!(follow_switches(&[account.to_string()], &[]), "the mark follows");
+        assert_eq!(shown(), 2, "every calendar shown again");
+        assert!(!follow_switches(&[account.to_string()], &[]), "nothing more to change");
+        // Switched off elsewhere: its folders leave the pages here too.
+        assert!(follow_switches(&[], &[account.to_string()]));
+        assert_eq!(shown(), 0);
+        set_account_off(account, false);
+    }
 
     #[test]
     fn folder_names_hold_everywhere() {
