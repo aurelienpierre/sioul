@@ -129,6 +129,12 @@ pub(crate) fn start_dav_watchers(qt: &QtThread, shared: &Arc<Shared>) -> usize {
     let config = load_config();
     let accounts: Vec<Account> = config.accounts.iter().filter(|a| a.is_dav()).cloned().collect();
     let count = accounts.len();
+    // The switched-off marks, this device's own, made to follow the configuration, which travels.
+    let ids = |list: &[Account]| list.iter().filter(|a| a.kind == sioul_core::config::AccountKind::Dav).map(|a| a.id.clone()).collect::<Vec<_>>();
+    if vdir::follow_switches(&ids(&config.accounts), &ids(&config.accounts_off)) {
+        eprintln!("calendars: an account switched on or off on another device: its calendars follow here");
+        show_pim(qt, shared);
+    }
     // The phone's log: whether this device has any to sync, never which (21 October 2026).
     let off = config.accounts_off.iter().filter(|a| a.is_dav()).count();
     let unread = config.every_account().filter(|a| a.kind == sioul_core::config::AccountKind::Dav && a.host.is_none()).count();
@@ -188,9 +194,12 @@ fn watchers_line(on: usize, off: usize, unread: usize) -> String {
 fn sync_line(result: &Result<dav::Report, SyncError>) -> String {
     match result {
         Ok(r) => format!(
-            "calendars: {} found, {} synced; address books: {} found, {} synced; first problem: {}",
+            "calendars: {} found ({} read only, {} for tasks only), {} synced, {} new or renamed; address books: {} found, {} synced; first problem: {}",
             r.calendars_listed,
+            r.calendars_read_only,
+            r.calendars_without_events,
             r.calendars_synced,
+            r.registered,
             r.listed - r.calendars_listed,
             r.collections.saturating_sub(r.calendars_synced),
             r.problems.first().map_or("none", SyncError::code)
@@ -226,7 +235,12 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     // changed nothing every quarter of an hour costs nothing (a phone's battery).
     let changed = match result {
         Ok(report) => {
-            let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty();
+            // A sync of an account switched on: its calendars show here, whatever an old mark says.
+            if vdir::follow_switches(std::slice::from_ref(&account.id), &[]) {
+                eprintln!("calendars: an account's calendars were marked off here, though it is on: shown again");
+            }
+            // Collections new here, renamed or recoloured count too: the lists are read again.
+            let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty() || report.registered > 0;
             // Yours kept among the earlier versions, which the window lists and puts back, on a phone too.
             if !report.conflicts.is_empty() {
                 tell(qt, shared, tr().text("dav-conflict", None));
@@ -789,7 +803,36 @@ mod tests {
     fn the_log_says_counts_and_codes_only() {
         let report = dav::Report { listed: 5, collections: 3, calendars_listed: 3, calendars_synced: 2, problems: vec![SyncError::Server("PROPFIND https://dav.example.org/cal/secret/: 500".into())], ..dav::Report::default() };
         let line = sync_line(&Ok(report));
-        assert_eq!(line, "calendars: 3 found, 2 synced; address books: 2 found, 1 synced; first problem: sync-error-server");
+        assert_eq!(line, "calendars: 3 found (0 read only, 0 for tasks only), 2 synced, 0 new or renamed; address books: 2 found, 1 synced; first problem: sync-error-server");
+    }
+
+    /// 21 October 2026: a calendar that holds no event yet is offered for a
+    /// new event like the others, and listed in Settings; only a read-only
+    /// one stays out of the chooser, listed there fixed, its row saying why.
+    #[test]
+    fn an_empty_calendar_is_offered_and_a_read_only_one_says_why() {
+        let account = "offered-here";
+        for (id, name) in [("full", "Full"), ("empty", "Empty"), ("shared", "Shared")] {
+            vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
+        }
+        std::fs::write(Kind::Calendars.root().join(account).join("full").join("x.ics"), "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n").unwrap();
+        let path = vdir::state_path(account, Kind::Calendars, "shared");
+        let mut state = vdir::State::load(&path);
+        state.read_only = true;
+        state.save(&path).unwrap();
+        let offered: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&calendars()).unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).filter(|id| id.starts_with(account)).collect();
+        assert!(offered.contains(&format!("{account}/empty")) && offered.contains(&format!("{account}/full")), "{offered:?}");
+        assert!(!offered.contains(&format!("{account}/shared")), "read only: not offered");
+        let rows = sioul_core::settings::for_view("agenda", &load_config(), tr(), &[], None);
+        let named = rows.iter().find(|s| s.key == "collections" && matches!(&s.value, sioul_core::config::SettingValue::Named(n) if n.iter().any(|v| v.id.contains(account)))).map(|s| match &s.value {
+            sioul_core::config::SettingValue::Named(n) => n.clone(),
+            _ => Vec::new(),
+        });
+        let named = named.expect("the calendars' setting");
+        let shared = named.iter().find(|v| v.id.ends_with(&format!("{account}/shared"))).expect("the read-only one listed");
+        assert_eq!(shared.locked, tr().text("collection-read-only", None));
+        assert!(named.iter().any(|v| v.id.ends_with(&format!("{account}/empty")) && v.locked.is_empty()));
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let stopped = sync_line(&Err(SyncError::NoPassword));
         assert!(stopped.starts_with("calendars: the account's sync stopped: ") && stopped.contains("waits"), "{stopped}");
         assert!(!stopped.contains("example"));

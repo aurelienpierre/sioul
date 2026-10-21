@@ -3863,6 +3863,7 @@ folder-new-button = New folder
 folder-new-title = New folder in { $account }
 folder-new-make = Make it
 collection-here = on this device only
+collection-read-only = Read only: shared with you without the right to write, so never offered for a new event or task.
 health-move = Time to move
 health-move-body = Stand up, stretch, look far away for a minute.
 site-presets = Usual sites

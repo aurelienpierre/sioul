@@ -657,6 +657,13 @@ pub struct Report {
     /// Of them, the calendars: listed, and synced whole (the phone's log).
     pub calendars_listed: usize,
     pub calendars_synced: usize,
+    /// Of the calendars listed, those read only, and those that keep no event
+    /// (tasks only): neither is offered for a new event (the phone's log).
+    pub calendars_read_only: usize,
+    pub calendars_without_events: usize,
+    /// Collections made here this time, or whose name or colour changed: the
+    /// pages read them again, even with no item come yet.
+    pub registered: usize,
     /// What went wrong with some of them (a collection refused, cut, timed
     /// out), the first first: the others synced all the same. An error of the
     /// whole account (its homes refused) is the sync's own `Err`.
@@ -736,8 +743,9 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             listed.iter_mut().filter(|l| l.kind == Kind::Calendars && l.components.is_empty()).for_each(|l| l.components = vec!["VEVENT".into()]);
         }
         forget_gone(&account.id, kind, &listed);
-        if let Err(e) = register(&account.id, &listed) {
-            report.problems.push(e);
+        match register(&account.id, &listed) {
+            Ok(made) => report.registered += made,
+            Err(e) => report.problems.push(e),
         }
         report.listed += listed.len();
         let synced_before = report.collections;
@@ -759,6 +767,8 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         if kind == Kind::Calendars {
             report.calendars_listed = listed.len();
             report.calendars_synced = report.collections - synced_before;
+            report.calendars_read_only = listed.iter().filter(|l| l.read_only).count();
+            report.calendars_without_events = listed.iter().filter(|l| !l.components.is_empty() && !l.components.iter().any(|c| c.eq_ignore_ascii_case("VEVENT"))).count();
         }
     }
     // Google's task lists, over Google Tasks.
@@ -783,10 +793,17 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
 /// Every listed collection made here, at once and in one pass: its folder,
 /// its name and colour (`vdir::prepare`), its state (address, read-only,
 /// components), empty until pulled. The first one that cannot be written is
-/// returned, the others made all the same.
-fn register(account: &str, listed: &[Listed]) -> Result<(), SyncError> {
+/// returned, the others made all the same; else how many are new here, or
+/// renamed or recoloured (the pages read them again).
+fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
     let mut failed = None;
+    let mut changed = 0;
     for collection in listed {
+        let dir = collection.kind.root().join(account).join(&collection.id);
+        let read = |name: &str| std::fs::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string());
+        if read("displayname").as_deref() != Some(collection.name.trim()) || read("color") != collection.color.as_ref().map(|c| c.trim().to_string()) {
+            changed += 1;
+        }
         let made = vdir::prepare(collection.kind, account, &collection.id, &collection.name, collection.color.as_deref()).map_err(|e| SyncError::Disk(e.to_string())).and_then(|_| {
             let path = vdir::state_path(account, collection.kind, &collection.id);
             let mut state = State::load(&path);
@@ -799,7 +816,7 @@ fn register(account: &str, listed: &[Listed]) -> Result<(), SyncError> {
             failed.get_or_insert(e);
         }
     }
-    failed.map_or(Ok(()), Err)
+    failed.map_or(Ok(changed), Err)
 }
 
 /// Syncs an account now, then every `every` until stopped (see
@@ -2266,7 +2283,8 @@ mod tests {
         // Each of early's batches slow: its turn ends after one, the others have theirs.
         dav.fault(|r: &stand_in::Request| (r.method == "REPORT" && r.path == "/cal/early/" && r.body.contains("multiget")).then_some(Fault::Late(Duration::from_millis(200))));
         let report = sync_with(&client(), &account).unwrap();
-        assert_eq!((report.listed, report.collections), (3, 3), "{report:?}");
+        assert_eq!((report.listed, report.collections, report.registered), (3, 3, 3), "{report:?}");
+        assert_eq!(sync_with(&client(), &account).unwrap().registered, 0, "made already: nothing new for the pages");
         let mine: Vec<_> = vdir::collections(Kind::Calendars).into_iter().filter(|c| c.account == "listed-first").collect();
         assert_eq!(mine.len(), 3, "{mine:?}");
         for name in ["early", "later-a", "later-b"] {

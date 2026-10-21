@@ -3881,6 +3881,7 @@ folder-new-button = Nouveau dossier
 folder-new-title = Nouveau dossier dans { $account }
 folder-new-make = Le créer
 collection-here = sur cet appareil seulement
+collection-read-only = En lecture seule : partagé avec vous sans le droit d’écrire, donc jamais proposé pour un nouvel événement ni une nouvelle tâche.
 health-move = Un moment pour bouger
 health-move-body = Levez-vous, étirez-vous, regardez au loin une minute.
 site-presets = Sites courants
