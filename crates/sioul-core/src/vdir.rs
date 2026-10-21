@@ -167,6 +167,102 @@ pub fn follow_switches(on: &[String], off: &[String]) -> bool {
     changed
 }
 
+/// Items being moved from one collection to another (an event to another
+/// calendar: `move_item`), each `from` → `to` written before the move and
+/// taken out after it, so that a move cut short (a crash, Android stopping
+/// Sioul) is finished at the next look (`finish_moves`): never twice, never lost.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Moves {
+    #[serde(default, rename = "move")]
+    moves: Vec<Move>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct Move {
+    from: PathBuf,
+    to: PathBuf,
+}
+
+fn moves_path() -> PathBuf {
+    crate::config::state_dir().join("dav").join("moves.toml")
+}
+
+fn moves_load() -> Moves {
+    std::fs::read_to_string(moves_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn moves_save(moves: &Moves) -> Result<(), String> {
+    let path = moves_path();
+    if moves.moves.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    crate::filelock::replace(&path, toml::to_string(moves).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: the step after which a move stops, as a crash would (1: the
+    /// move noted, 2: written there, 3: taken out here). Never in a build.
+    static CRASH_AFTER: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether a move stops here, as a crash would (tests only).
+fn crashed(step: u8) -> bool {
+    #[cfg(test)]
+    if CRASH_AFTER.with(std::cell::Cell::get) == step {
+        return true;
+    }
+    let _ = step;
+    false
+}
+
+/// An item moved to another collection's folder as `to` (21 October 2026):
+/// noted first, then written there, then taken out here, then the note
+/// gone; a step cut short is finished by `finish_moves`. Its sync sends the
+/// new item and the deletion, whatever their accounts (this device's own
+/// calendar to a server's: the event reaches your other devices).
+pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
+    finish_moves();
+    let mut moves = moves_load();
+    moves.moves.push(Move { from: from.to_path_buf(), to: to.to_path_buf() });
+    moves_save(&moves)?;
+    if crashed(1) {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
+    write_item(to, &text)?;
+    if crashed(2) {
+        return Ok(());
+    }
+    std::fs::remove_file(from).map_err(|e| e.to_string())?;
+    if crashed(3) {
+        return Ok(());
+    }
+    finish_moves();
+    Ok(())
+}
+
+/// Every move cut short, finished: the item there and still here, taken out
+/// here (written whole before the note said so); not there, the move
+/// forgotten, the item kept here; gone from here, the move done. Called
+/// before each move and each sync of contacts and calendars.
+pub fn finish_moves() {
+    let moves = moves_load();
+    if moves.moves.is_empty() {
+        return;
+    }
+    for m in &moves.moves {
+        if m.to.exists() && m.from.exists() {
+            let _ = std::fs::remove_file(&m.from);
+        }
+    }
+    let _ = moves_save(&Moves::default());
+}
+
 /// Every collection kept here, those deleted and not yet gone from the server included.
 pub fn every_collection(kind: Kind) -> Vec<Collection> {
     let mut found = Vec::new();
@@ -404,6 +500,36 @@ pub fn new_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An event moved to another calendar (21 October 2026), cut short after
+    /// each step as a crash would cut it: the next look finishes it, never
+    /// twice, never lost.
+    #[test]
+    fn a_move_cut_at_each_step_ends_once() {
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:moved-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        for step in 0..=3u8 {
+            let account = format!("moves-{step}");
+            let from = prepare(Kind::Calendars, LOCAL, &format!("from-{step}"), "From", None).unwrap();
+            let to = prepare(Kind::Calendars, &account, "to", "To", None).unwrap();
+            let (source, target) = (from.join("e.ics"), to.join("e.ics"));
+            std::fs::write(&source, text).unwrap();
+            CRASH_AFTER.with(|c| c.set(step));
+            move_item(&source, &target).unwrap();
+            CRASH_AFTER.with(|c| c.set(0));
+            finish_moves();
+            let (here, there) = (source.exists(), target.exists());
+            match step {
+                // Noted only: kept here, nothing there.
+                1 => assert!(here && !there, "step {step}"),
+                // Written there, then the crash: taken out here at the next look.
+                _ => assert!(!here && there && std::fs::read_to_string(&target).unwrap() == text, "step {step}"),
+            }
+            assert!(here != there, "step {step}: never twice, never lost");
+            assert!(!moves_path().exists(), "step {step}: nothing left to finish");
+            let _ = std::fs::remove_dir_all(&from);
+            let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&account));
+        }
+    }
 
     /// The phone of 21 October 2026: an account switched off once, then on
     /// again on another device, kept its mark here, and its calendars,

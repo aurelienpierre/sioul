@@ -712,6 +712,8 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         homes.save(&account.id)?;
     }
     client.keep_to(&homes);
+    // An item's move to another calendar cut short (a crash): finished before anything is sent.
+    vdir::finish_moves();
     let mut report = Report::default();
     // A home refused for good (its login, its certificate): the account's error, said at the end.
     let mut account_error: Option<SyncError> = None;

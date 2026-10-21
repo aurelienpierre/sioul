@@ -1178,10 +1178,21 @@ pub fn event_refs() -> Vec<EventRef> {
         .collect()
 }
 
-/// Where a new event goes: the first calendar that can be written to and takes
-/// events, the one made for time blocks last (`blocks::CALENDAR`).
+/// Where a new event goes: the calendar chosen in Settings ▸ Agenda
+/// (`agenda.calendar`), while it can be written to and is shown here; else
+/// the first calendar that can be written to and takes events, the one made
+/// for time blocks last (`blocks::CALENDAR`).
 pub fn default_calendar() -> Option<Collection> {
+    let chosen = crate::config::Config::load(&crate::config::default_path()).ok().and_then(|c| c.agenda.calendar).filter(|c| !c.trim().is_empty());
+    default_calendar_of(chosen.as_deref())
+}
+
+/// `default_calendar`, the choice given.
+pub fn default_calendar_of(chosen: Option<&str>) -> Option<Collection> {
     let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
+    if let Some(found) = chosen.and_then(|id| writable.iter().find(|c| format!("{}/{}", c.account, c.id) == id)) {
+        return Some(found.clone());
+    }
     writable.iter().find(|c| c.id != crate::blocks::CALENDAR).or(writable.first()).cloned()
 }
 

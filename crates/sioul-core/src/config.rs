@@ -528,6 +528,10 @@ pub struct AgendaSettings {
     /// The hour the day planning opens on.
     #[serde(default)]
     pub day_start: Option<u32>,
+    /// Where a new event goes ("account/id"), Settings ▸ Agenda; unset: the
+    /// first calendar that takes events, as before (`agenda::default_calendar`).
+    #[serde(default)]
+    pub calendar: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

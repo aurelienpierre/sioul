@@ -6009,3 +6009,11 @@ reach-card-let-then = Let them through then
 reach-card-let-then-done = From now on their messages and calls come at once at this time ({ $time }).
 reach-card-let-then-done-talk = From now on this conversation's messages come at once at this time ({ $time }).
 reach-card-let-it-done = It comes at the phone's next look.
+
+# Calendars on every device (21 October 2026): Settings ▸ Agenda, the event's calendar.
+set-agenda-calendar = New events go into
+set-agenda-calendar-help = The calendar a new event is put in; the event's editor can choose another, and move an event later.
+set-agenda-calendar-first = The first calendar that takes events
+event-calendar-in = In { $name }
+event-calendar-here-computer = Only on this computer: a calendar of this device's own, which your sharing does not carry.
+event-calendar-here-phone = Only on this phone: a calendar of this device's own, which your sharing does not carry.
