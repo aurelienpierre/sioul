@@ -201,7 +201,9 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
     let shows = |line: &Line| {
         let always = line.always || (!line.key.is_empty() && people.admits_number(&line.key, region));
         let who = who_now(&senders, &line.key);
-        rules::reaches_now(&attention, line, who, always, &moment) || (who != Some(Who::Blocked) && answered.holds(line))
+        // Their own rows by their number, as the phone reads them (decision 16).
+        let persons = if line.key.is_empty() { Vec::new() } else { senders.person_rows(std::slice::from_ref(&line.key), &[]) };
+        rules::reaches_now(&attention, line, who, always, &persons, &moment) || (who != Some(Who::Blocked) && answered.holds(line))
     };
     let name_of = |key: &str| {
         let judged = senders.judge_number(key);

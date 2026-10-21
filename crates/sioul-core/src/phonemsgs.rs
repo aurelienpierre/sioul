@@ -645,12 +645,14 @@ pub fn trim_others(root: &Path, here: &str, now_ms: i64) -> Result<usize, String
 /// the phone, are read over them. A row that lets them through at no time
 /// shows them in work and admin time, as the calls' list does: no message is
 /// never listed. `who`: as this device's lists judge their number now, else
-/// as the phone judged them.
-pub fn reaches_now(attention: &Attention, line: &Line, who: Option<Who>, always: bool, now: &attention::Now) -> bool {
+/// as the phone judged them. `persons`: the sender's own rows (decision 16;
+/// `porch::Senders::person_rows` of their number), read after the
+/// conversation's and before the app's, as on the phone.
+pub fn reaches_now(attention: &Attention, line: &Line, who: Option<Who>, always: bool, persons: &[String], now: &attention::Now) -> bool {
     if line.code {
         return true;
     }
-    let sources = attention::source_rows(&line.app, &line.talk);
+    let sources = attention::source_rows_with(&line.app, &line.talk, persons);
     if matches!(line.who.as_str(), "automaton" | "at-once") {
         let kind = if line.who == "at-once" { attention::Kind::AppAtOnce } else { attention::Kind::AppAutomatons };
         return matches!(attention.decide(&Event::own(kind).from_sources(sources), now).level, Level::Now | Level::Quiet | Level::Gathered);
@@ -1152,18 +1154,18 @@ mod tests {
         let attention = Attention::usual();
         let line = |who: &str| Line { at: NOW, id: "x".into(), app: "foundation.e.message".into(), kind: "text".into(), who: who.into(), text: "Bonjour".into(), shows: NOW, ..Line::default() };
         let at = |column: Column| attention::Now::time(column);
-        assert!(!reaches_now(&attention, &line("stranger"), None, false, &at(Column::Leisure)));
-        assert!(!reaches_now(&attention, &line("stranger"), None, false, &at(Column::Sleep)));
-        assert!(reaches_now(&attention, &line("stranger"), None, false, &at(Column::Work)));
-        assert!(reaches_now(&attention, &line("safe"), None, false, &at(Column::Leisure)));
-        assert!(!reaches_now(&attention, &line("safe"), None, false, &at(Column::Sleep)));
-        assert!(reaches_now(&attention, &line("stranger"), None, true, &at(Column::Sleep)), "Always through");
-        assert!(reaches_now(&attention, &line("automaton"), None, false, &at(Column::Work)));
-        assert!(!reaches_now(&attention, &line("automaton"), None, false, &at(Column::Sleep)));
+        assert!(!reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Leisure)));
+        assert!(!reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Sleep)));
+        assert!(reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Work)));
+        assert!(reaches_now(&attention, &line("safe"), None, false, &[], &at(Column::Leisure)));
+        assert!(!reaches_now(&attention, &line("safe"), None, false, &[], &at(Column::Sleep)));
+        assert!(reaches_now(&attention, &line("stranger"), None, true, &[], &at(Column::Sleep)), "Always through");
+        assert!(reaches_now(&attention, &line("automaton"), None, false, &[], &at(Column::Work)));
+        assert!(!reaches_now(&attention, &line("automaton"), None, false, &[], &at(Column::Sleep)));
         // This device's lists now: blocked here since, never.
-        assert!(!reaches_now(&attention, &line("safe"), Some(Who::Blocked), false, &at(Column::Work)));
+        assert!(!reaches_now(&attention, &line("safe"), Some(Who::Blocked), false, &[], &at(Column::Work)));
         // A code's line: whatever the time.
-        assert!(reaches_now(&attention, &Line { code: true, ..line("") }, None, false, &at(Column::Sleep)));
+        assert!(reaches_now(&attention, &Line { code: true, ..line("") }, None, false, &[], &at(Column::Sleep)));
     }
 
     #[test]

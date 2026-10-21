@@ -45,9 +45,12 @@ Item {
         property bool realtime: false
         property var through: []
         property var calls: ({ shown: false, through: false, line: "" })
+        property var talks: []
+        property var talked: []
+        function reachTalk(verb, key) { mock.talked = mock.talked.concat([[verb, key]]); return "" }
         function setRealtimeMode(on) { mock.realtime = on }
         function callsThrough(on, minutes) { mock.through = mock.through.concat([[on, minutes]]) }
-        function reachCard() { return JSON.stringify({ now: ["Work and admin until 17:00.", "The people you know reach you at once."], held: "", realtime: mock.realtime, screening: mock.calls.shown ? "Numbers nobody knows go to your voicemail, at all hours." : "", calls: mock.calls }) }
+        function reachCard() { return JSON.stringify({ now: ["Work and admin until 17:00.", "The people you know reach you at once."], held: "", talks: mock.talks, realtime: mock.realtime, screening: mock.calls.shown ? "Numbers nobody knows go to your voicemail, at all hours." : "", calls: mock.calls }) }
         function setup() {
             const s = { here: { on: true, line: "Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.", lines: ["dnd-setup-plasma-mail"], consent: "", offers: [{ key: "plasma", label: "Plasma's notification settings" }] }, gnome: false, people: mock.people, problem: "", said: "", android: mock.android }
             if (mock.android) {
@@ -229,6 +232,23 @@ Item {
             compare(mock.through[mock.through.length - 1][0], false, "screened again")
             button.cardLoader.item.close()
             mock.calls = { shown: false, through: false, line: "" }
+        }
+
+        // The held conversations by their titles (on the phone; part 6): each let through now, or then.
+        function test_held_conversations_are_let_through() {
+            mock.talked = []
+            mock.talks = [{ key: "talk-1", title: "Noa", app: "Signal" }, { key: "talk-2", title: "Family", app: "Messages" }]
+            const button = createTemporaryObject(buttonComponent, root)
+            const card = cardOf(button)
+            const now = find(card.contentItem, "talk-now-0")
+            const then = find(card.contentItem, "talk-then-1")
+            verify(now !== null && then !== null)
+            verify(now.Accessible.name.indexOf("Noa") >= 0, now.Accessible.name)
+            mouseClick(now)
+            mouseClick(then)
+            compare(JSON.stringify(mock.talked), JSON.stringify([["now", "talk-1"], ["then", "talk-2"]]))
+            card.close()
+            mock.talks = []
         }
 
         // Every control named for screen readers; nothing past the card's edge, however narrow.

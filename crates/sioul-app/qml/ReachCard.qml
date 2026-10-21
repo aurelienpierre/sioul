@@ -10,7 +10,9 @@
 // 2. the three states side by side, Reachable, As usual, Do not disturb:
 //    choosing Reachable or Do not disturb shows its lengths, in rows that
 //    wrap; As usual applies at once;
-// 3. what the phone holds, by app, with Let them through now; on a
+// 3. what the phone holds, by app, with Let them through now, then its
+//    held conversations by their titles, each with Let it through now and
+//    Let them through then (part 6; the titles never leave the phone); on a
 //    computer, Let what your phone holds through, without saying what;
 // 4. Mail every minute (Real time);
 // 5. the call screening, under its own heading, while a phone of yours
@@ -314,6 +316,70 @@ Popup {
                 onClicked: {
                     card.sioul.letPhoneThrough()
                     card.read()
+                }
+            }
+
+            // The held conversations by their titles, on the phone alone (part 6): each let through now, or
+            // at this time from now on (the person's own row when a card or a number knows them, else the
+            // conversation's). Their titles never leave the phone.
+            Label {
+                visible: (card.view.talks || []).length > 0
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                text: card.sioul.text("reach-card-held-title")
+                font.weight: Font.DemiBold
+                wrapMode: Text.Wrap
+                color: card.theme.text
+                Accessible.role: Accessible.Heading
+            }
+            Repeater {
+                model: card.view.talks || []
+
+                delegate: ColumnLayout {
+                    id: talk
+
+                    required property var modelData
+                    required property int index
+
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: talk.modelData.title + (talk.modelData.app !== "" && talk.modelData.app !== talk.modelData.title ? " · " + talk.modelData.app : "")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: card.theme.text
+                    }
+                    Flow {
+                        id: talkFlow
+
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Button {
+                            objectName: "talk-now-" + talk.index
+                            width: Math.min(implicitWidth, talkFlow.width)
+                            flat: true
+                            text: card.theme.plain(card.sioul.text("reach-card-let-it-now"))
+                            Accessible.name: card.theme.plain(card.sioul.text("reach-card-let-it-now")) + ", " + card.theme.plain(talk.modelData.title)
+                            onClicked: {
+                                card.sioul.reachTalk("now", talk.modelData.key)
+                                card.read()
+                            }
+                        }
+                        Button {
+                            objectName: "talk-then-" + talk.index
+                            width: Math.min(implicitWidth, talkFlow.width)
+                            flat: true
+                            text: card.theme.plain(card.sioul.text("reach-card-let-then"))
+                            Accessible.name: card.theme.plain(card.sioul.text("reach-card-let-then")) + ", " + card.theme.plain(talk.modelData.title)
+                            onClicked: {
+                                card.sioul.reachTalk("then", talk.modelData.key)
+                                card.read()
+                            }
+                        }
+                    }
                 }
             }
 

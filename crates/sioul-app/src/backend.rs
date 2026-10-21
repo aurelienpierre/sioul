@@ -1676,6 +1676,11 @@ pub mod qobject {
         #[qinvokable]
         fn reach_card(self: &Sioul) -> QString;
 
+        /// A held conversation in that card, on the phone (`verb`: "now", let it
+        /// through now; "then", let them through at this time from now on): what to say.
+        #[qinvokable]
+        fn reach_talk(self: Pin<&mut Sioul>, verb: &QString, key: &QString) -> QString;
+
         /// A row of the matrix changed (`row`: "mail.safe", "codes"; `words`: its
         /// words whole, a JSON list; `shown`: its words as the row showed them,
         /// so that only the cells changed are set): what went wrong, else "".
@@ -5579,6 +5584,19 @@ impl qobject::Sioul {
 
     fn reaches_view(&self) -> QString {
         QString::from(&crate::reaches::view(self.shared().realtime.load(Ordering::Relaxed)))
+    }
+
+    fn reach_talk(mut self: Pin<&mut Self>, verb: &QString, key: &QString) -> QString {
+        let key = key.to_string();
+        let said = match verb.to_string().as_str() {
+            "now" => crate::appnotes::release_talk(&key),
+            "then" => crate::appnotes::let_talk_then(&key),
+            _ => String::new(),
+        };
+        if !said.is_empty() {
+            self.as_mut().set_status(QString::from(&said));
+        }
+        QString::from(&said)
     }
 
     fn reach_card(&self) -> QString {

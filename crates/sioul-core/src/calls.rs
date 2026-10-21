@@ -168,6 +168,11 @@ pub struct Table {
     /// The call screening (version 2): what becomes of numbers nobody knows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screening: Option<screening::TablePart>,
+    /// A person's own row (decision 16 of 18 October 2026), by each number it
+    /// covers: its row in the frames ("own-0", "own-1"…), read before their
+    /// list's. No name: rows by number. An older Java reads their list's row.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub own: BTreeMap<String, String>,
     pub frames: Vec<Frame>,
     pub repeat_minutes: i64,
     pub emergency_hours: i64,
@@ -303,6 +308,21 @@ fn column_of(now: &attention::Now) -> &'static str {
 /// (`ROWS`): the clock's own frames (`reach::Clock::frames`), cut where a
 /// layer begins or ends; two in a row that say the same are one.
 pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zoned, until: &Zoned) -> Vec<Frame> {
+    frames_with(attention, clock, layers, from, until, &[])
+}
+
+/// A person's own row in the calls' table: its name in the frames ("own-0"),
+/// its row in the matrix (`attention::person_row`), and who their list makes them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnRow {
+    pub row: String,
+    pub id: String,
+    pub who: Who,
+}
+
+/// `frames`, with a row for each person's own row too (`own`): whether their
+/// call rings then, their row read over their list's (`Attention::decide`).
+pub fn frames_with(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zoned, until: &Zoned, own: &[OwnRow]) -> Vec<Frame> {
     let mut out: Vec<Frame> = Vec::new();
     for f in clock.frames(from, until) {
         let mut cuts = vec![f.start, f.end];
@@ -317,13 +337,17 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
             let mut now = attention::Now::of_moment(&f.moment).layers(slot, dnd);
             now.reachable = layers.reachable.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
             let hours = now.times.iter().any(|c| matches!(c, attention::Column::Work | attention::Column::Admin));
-            let ring: BTreeMap<String, bool> = ROWS
+            let mut ring: BTreeMap<String, bool> = ROWS
                 .iter()
                 .map(|row| {
                     let (person, always) = person_of(row);
                     (row.to_string(), attention.person(Channel::Calls, person, always, &now) == Level::Now)
                 })
                 .collect();
+            for o in own {
+                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(vec![o.id.clone()]);
+                ring.insert(o.row.clone(), attention.decide(&call, &now).level == Level::Now);
+            }
             let column = column_of(&now).to_string();
             let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
             match out.last_mut() {
@@ -356,6 +380,8 @@ pub struct Made {
     pub prefixes: Vec<(String, String)>,
     /// The Always through list's numbers, as rows of their own (`always_numbers`): after `numbers`, they win.
     pub always: Vec<(String, String)>,
+    /// A person's own row by each of its numbers ("own-0"; `frames_with`); none on Always through, none blocked.
+    pub own: Vec<(String, String)>,
     /// Expecting a call, the latest press of your devices.
     pub expecting: Option<Through>,
     /// The screening and the numbers it needs (`screening::TablePart::of`);
@@ -382,6 +408,8 @@ pub fn table(made: Made) -> Table {
     let mut prefixes: Vec<Prefix> = made.prefixes.iter().filter_map(|(p, who)| Some(Prefix { prefix: p.trim_end_matches('*').to_string(), who: who.clone() }).filter(|p| !p.prefix.is_empty() && !p.prefix.contains('*') && !p.who.is_empty() && p.who != "stranger")).collect();
     prefixes.sort_by_key(|p| std::cmp::Reverse(p.prefix.len()));
     let older = made.screening.is_none();
+    // A person's own row, for a number their list knows, neither blocked nor Always through.
+    let own: BTreeMap<String, String> = made.own.into_iter().filter(|(key, row)| !key.is_empty() && !row.is_empty() && numbers.get(key).is_some_and(|who| !who.starts_with("always-") && who != "blocked")).collect();
     Table {
         v: if older { 1 } else { VERSION },
         made: made.made,
@@ -394,6 +422,7 @@ pub fn table(made: Made) -> Table {
         through: if older { made.expecting } else { None },
         expecting: if older { None } else { made.expecting },
         screening: made.screening,
+        own,
         frames: made.frames,
         repeat_minutes: REPEAT_MINUTES,
         emergency_hours: AFTER_EMERGENCY_HOURS,
@@ -568,9 +597,11 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
     }
     let repeat = !call.hidden && call.last_call > 0 && call.now - call.last_call <= table.repeat_minutes * 60_000;
     let frame = table.frame_at(call.now);
+    // A person's own row, by this number, before their list's (from version 2, decision 16).
+    let own = if call.hidden || called { None } else { table.own.get(&key) };
     let by_frame = |frame: Option<&Frame>| match frame {
         None => decided(false, "no-frame", ""),
-        Some(frame) => match frame.ring.get(&who) {
+        Some(frame) => match own.and_then(|row| frame.ring.get(row)).or_else(|| frame.ring.get(&who)) {
             Some(rings) => decided(!rings, "matrix", &frame.column),
             None => decided(false, "no-row", &frame.column),
         },
@@ -1630,6 +1661,7 @@ mod tests {
             ],
             prefixes: vec![("+3346571*".into(), "blocked".into())],
             always: always_numbers(&people, fr(), &blocked),
+            own: Vec::new(),
             expecting: None,
             screening: None,
             frames: vec![
@@ -2053,7 +2085,7 @@ mod tests {
         assert_eq!(frames.first().unwrap().from, from.timestamp().as_millisecond());
         assert_eq!(frames.last().unwrap().until, until.timestamp().as_millisecond());
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from), "{frames:?}");
-        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), expecting: None, screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), from.date())), frames: Vec::new() }) };
+        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), own: Vec::new(), expecting: None, screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::default(), from.date())), frames: Vec::new() }) };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
         // The usual Calls matrix: safe all but sleep and the pause; neutral work, admin, leisure and meals; restricted
         // work. Numbers nobody knows and hidden numbers are the screening's: no row of theirs in a frame. Work's hours said.
@@ -2147,6 +2179,46 @@ mod tests {
         Frame { from, until, column: column.into(), hours: matches!(column, "work" | "admin"), ring: ROWS_V1.iter().map(|r| (r.to_string(), ringing.contains(r))).collect() }
     }
 
+    /// Decision 16 of 18 October 2026: a person's own row decides their
+    /// calls before their list's, by each of their numbers ("own-0"), never
+    /// for a blocked number nor one on Always through; the frames say it as
+    /// the matrix reads it (`frames_with`). No name in the table.
+    #[test]
+    fn a_person_s_own_row_rings_before_their_list() {
+        use crate::needs::{Days, Needs};
+        let config: crate::config::Config = toml::from_str(&["monday", "tuesday", "wednesday", "thursday", "friday"].iter().map(|d| format!("[[window]]\nday = \"{d}\"\nstart = \"09:00\"\nend = \"17:00\"\n\n")).collect::<String>()).unwrap();
+        let clock = Clock::new(&config, crate::quiet::Overrides::default(), Needs { meals_on: true, sleep_on: true, ..Needs::default() }, Days::default(), Vec::new());
+        let mut attention = Attention::usual();
+        let id = attention::person_row("contact:card-2");
+        attention.set_source(&id, attention::Column::Work, Level::Later).unwrap();
+        let own = [OwnRow { row: "own-0".into(), id: id.clone(), who: Who::Neutral }];
+        let frames = frames_with(&attention, &clock, &Layers::default(), &at("2026-10-05T00:00[Europe/Paris]"), &at("2026-10-06T00:00[Europe/Paris]"), &own);
+        let work = frames.iter().find(|f| f.column == "work").unwrap();
+        assert_eq!((work.ring["neutral"], work.ring["own-0"]), (true, false), "their row holds them at work, their list would ring");
+        let mut people = People::default();
+        people.add(Person { name: "Alice".into(), phones: vec!["01 99 00 00 01".into()], ..Person::default() }, fr());
+        let table = table(Made {
+            made: 0,
+            region: fr(),
+            numbers: vec![("+33199000002".into(), "neutral".into()), ("+33199000004".into(), "blocked".into()), ("+33199000001".into(), "safe".into())],
+            prefixes: Vec::new(),
+            always: always_numbers(&people, fr(), &|_| Who::Safe),
+            own: vec![("+33199000002".into(), "own-0".into()), ("+33199000004".into(), "own-0".into()), ("+33199000001".into(), "own-0".into())],
+            expecting: None,
+            screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::built_in(), "2026-10-05".parse().unwrap())),
+            frames: frames.clone(),
+        });
+        assert_eq!(table.own.keys().collect::<Vec<_>>(), ["+33199000002"], "never a blocked number, nor one on Always through");
+        let call = |number: &str| decide(Some(&table), &Incoming { number: number.into(), now: work.from + 1, ..Incoming::default() });
+        let held = call("01 99 00 00 02");
+        assert!(held.refuse && held.why == "matrix", "{held:?}");
+        assert!(call("01 99 00 00 04").refuse && call("01 99 00 00 04").why == "blocked");
+        // Their list's row in a frame that has no row of theirs (an older table).
+        let older = Table { frames: frames.iter().map(|f| Frame { ring: f.ring.iter().filter(|(k, _)| !k.starts_with("own-")).map(|(k, v)| (k.clone(), *v)).collect(), ..f.clone() }).collect(), ..table.clone() };
+        assert!(!decide(Some(&older), &Incoming { number: "01 99 00 00 02".into(), now: work.from + 1, ..Incoming::default() }).refuse);
+        assert!(!serde_json::to_string(&table).unwrap().contains("card-2"), "no card, no name in the table");
+    }
+
     #[test]
     fn the_table_says_what_java_needs_and_nothing_twice() {
         let mut people = People::default();
@@ -2157,6 +2229,7 @@ mod tests {
             numbers: vec![("+262639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
             prefixes: vec![("+33465711*".into(), "blocked".into()), ("+3346571*".into(), "safe".into()), ("+334657112*".into(), "neutral".into()), ("*".into(), "blocked".into())],
             always: always_numbers(&people, fr(), &|_| Who::Safe),
+            own: Vec::new(),
             expecting: Some(Through { pressed: 5, on: true, until: 0 }),
             screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::built_in(), "2026-10-20".parse().unwrap())),
             frames: vec![frame(0, 1_000, "work", &["safe", "neutral", "restricted", "hidden"]), frame(1_000, 2_000, "sleep", &[])],
@@ -2312,10 +2385,10 @@ mod tests {
         let hidden = &lines_en[3];
         assert!(hidden.hidden && hidden.number.is_empty() && hidden.dial.is_empty());
         assert!(lines_en[1].known);
-        assert_eq!(lines_en[1].why, "Calls from your neutral contacts go to voicemail while you slept.");
+        assert_eq!(lines_en[1].why, "Calls from your contacts go to voicemail while you slept.");
         // Someone Always through, declined (their row as their own, which held them then): said as their own row.
         let always = [held(ms("2026-10-07T06:40[Europe/Paris]"), "+262639980002", "always-neutral", "sleep")];
-        assert_eq!(lines(&always, &Seen::default(), &BTreeMap::new(), &l)[0].why, "Calls from your neutral contacts go to voicemail while you slept.");
+        assert_eq!(lines(&always, &Seen::default(), &BTreeMap::new(), &l)[0].why, "Calls from your contacts go to voicemail while you slept.");
         // Seen: gone; the others stay.
         let mut seen = Seen::default();
         seen.add(&stranger.ids, now.timestamp().as_millisecond());

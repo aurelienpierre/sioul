@@ -1237,6 +1237,12 @@ pub struct Held {
     /// Held again on its return so many times.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub again: u32,
+    /// The person's own rows it reads (`porch::Senders::person_rows`: a card's
+    /// UID, a number's key, an address; never a name), for when it is worked
+    /// out again: a row set since applies. Kept on the phone alone, as the
+    /// ledger is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub persons: Vec<String>,
 }
 
 impl Held {
@@ -1452,7 +1458,7 @@ impl Ledger {
         let admitted = admitted && !group;
         let again = self.held.get(&hash).map_or(0, |h| h.again);
         let first = self.held.get(&hash).map_or(0, Held::first_held);
-        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, first, again });
+        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, first, again, persons: Vec::new() });
     }
 
     /// A held notification Android brought back and that comes now: no
@@ -2277,7 +2283,7 @@ mod tests {
         assert_eq!(decide(&sms, Some(Who::Neutral), false, &choices, &silenced), Decision::through(Why::Allowed));
         assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &silenced), Decision::through(Why::Allowed));
         assert!(decide(&sms, Some(Who::Restricted), false, &choices, &silenced).until.is_some(), "restricted: held, as before");
-        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since: end - 3600, until: end, first: 0, again: 0 };
+        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since: end - 3600, until: end, first: 0, again: 0, persons: Vec::new() };
         assert_eq!(again(&held, &choices, &silenced).until, None, "a review, the phone silenced now: it comes");
         assert_eq!(again(&held, &choices, &loud).until, Some(end));
     }
@@ -2315,7 +2321,7 @@ mod tests {
         let until = evening.timestamp().as_second() + 3600;
         let reach = Ask { reachable: Some(until), ..ask(&evening, &clock, None, None) };
         assert_eq!(decide(&talk, Some(Who::Neutral), false, &choices, &reach), Decision::through(Why::Allowed));
-        let held = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: true, conversation: key.clone(), site: String::new(), area: None, since: until - 7200, until: until + 7200, first: 0, again: 0 };
+        let held = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: true, conversation: key.clone(), site: String::new(), area: None, since: until - 7200, until: until + 7200, first: 0, again: 0, persons: Vec::new() };
         assert_eq!(again(&held, &choices, &reach).until, None, "looked at again under Reachable: at once");
         let usual = ask(&evening, &clock, None, None);
         assert!(decide(&talk, Some(Who::Neutral), false, &choices, &usual).until.is_some(), "as usual: its gathered time");
@@ -2328,7 +2334,7 @@ mod tests {
     /// stamp ahead of the phone's clock read as the phone's now.
     #[test]
     fn a_release_lets_through_what_was_held_before_it_once() {
-        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, first: 0, again: 0 };
+        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
         assert!(!ledger.released_before(&held(1_000)), "no release yet");
         let one = |stamp: i64| vec![("desk".to_string(), stamp)];

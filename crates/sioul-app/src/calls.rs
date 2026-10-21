@@ -252,16 +252,39 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     // Always through: its people's numbers, read against who each number is; blocked beats it.
     let people = People::load(&People::default_path());
     let always = rules::always_numbers(&people, senders.region(), &|key| senders.judge_number(key).who);
+    let (own_numbers, own_rows) = own_rows(&attention, &senders);
     rules::table(rules::Made {
         made: now.timestamp().as_millisecond(),
         region: senders.region(),
         numbers: senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect(),
         prefixes: senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect(),
         always,
+        own: own_numbers,
         expecting: rules::through_of(switch),
         screening: Some(screening::TablePart::of(&Screening::of(config), numbers(), now.date())),
-        frames: rules::frames(&attention, &clock, &layers(), &from, &until),
+        frames: rules::frames_with(&attention, &clock, &layers(), &from, &until, &own_rows),
     })
+}
+
+/// The people's own rows (decision 16 of 18 October 2026), for the calls'
+/// table: each row's numbers (a card's every number) by key, with the row's
+/// name in the frames ("own-0"), and the rows; none for someone no list and
+/// no card knows (the call screening's), nor the blocked. No name: numbers
+/// and row names only.
+fn own_rows(attention: &Attention, senders: &Senders) -> (Vec<(String, String)>, Vec<rules::OwnRow>) {
+    let (mut numbers, mut rows) = (Vec::new(), Vec::new());
+    for id in attention.sources().keys().filter(|id| sioul_core::attention::is_person(id)) {
+        let who = id.strip_prefix(sioul_core::attention::PERSON_ROW).unwrap_or_default();
+        let keys = senders.numbers_of_person(who);
+        let Some(judged) = keys.first().map(|k| senders.judge_number(k).who) else { continue };
+        if matches!(judged, Who::Blocked | Who::Stranger) {
+            continue;
+        }
+        let row = format!("own-{}", rows.len());
+        numbers.extend(keys.into_iter().map(|key| (key, row.clone())));
+        rows.push(rules::OwnRow { row, id: id.clone(), who: judged });
+    }
+    (numbers, rows)
 }
 
 /// Whether the call screening lets a number nobody knows, or a hidden one,
