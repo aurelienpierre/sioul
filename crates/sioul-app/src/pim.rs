@@ -62,9 +62,8 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         let from = state.from.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
         let to = from + state.days * 86_400 + 3_600;
         let now = Zoned::now().timestamp().as_second();
-        let occurrences: Vec<agenda::Occurrence> = agenda::occurrences(from, to)
+        let occurrences: Vec<agenda::Occurrence> = agenda_items(from, to, &removed, &skipped, &crate::work::loaded(shared).tasks)
             .into_iter()
-            .filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start)))
             // What comes: an event over is the past, shown only when you go back to it.
             .filter(|o| !state.upcoming || o.end.max(o.start) > now)
             .collect();
@@ -83,6 +82,23 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
             sioul.as_mut().set_overlaps(QString::from(&clashes));
         });
     });
+}
+
+/// What every agenda shows from `from` to `to` (Unix seconds), the
+/// window's, the phone's and the home card alike (21 October 2026): the
+/// calendars' events, those whose deletion waits ("Undo") aside, a task's
+/// time block marked as the task it is, with its list (`agenda::mark_tasks`).
+pub(crate) fn agenda_items(from: i64, to: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>, tasks: &[sioul_core::tasks::Task]) -> Vec<agenda::Occurrence> {
+    let mut items = agenda_read(from, to, removed, skipped);
+    agenda::mark_tasks(&mut items, tasks);
+    items
+}
+
+/// The calendars' events from `from` to `to`, those whose deletion waits
+/// aside, before their tasks are known (`agenda_items`; the home card marks
+/// them with the tasks of its plan).
+pub(crate) fn agenda_read(from: i64, to: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> Vec<agenda::Occurrence> {
+    agenda::occurrences(from, to).into_iter().filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start))).collect()
 }
 
 /// The account a contact or event file belongs to, from its folder.
@@ -857,6 +873,28 @@ mod tests {
         assert!(!here_only(&find("to")), "a server's: on every device with its account");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&mine.dir);
+    }
+
+    /// The choosers by what a collection takes (21 October 2026): a new
+    /// event's calendars take events, a task's lists take tasks (a calendar
+    /// of events alone greyed, never offered); one taking both is in both and
+    /// says so.
+    #[test]
+    fn each_chooser_offers_what_takes_its_kind() {
+        let events = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser events", None, &["VEVENT"]).unwrap();
+        let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser both", None, &["VEVENT", "VTODO"]).unwrap();
+        let tasks = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser tasks", None, &["VTODO"]).unwrap();
+        let id = |c: &Collection| format!("{}/{}", c.account, c.id);
+        let offered: Vec<serde_json::Value> = serde_json::from_str(&calendars()).unwrap();
+        let offered_id = |c: &Collection| offered.iter().find(|o| o["id"] == id(c)).map(|o| o["name"].as_str().unwrap_or_default().to_string());
+        assert!(offered_id(&events).is_some() && offered_id(&tasks).is_none());
+        assert!(offered_id(&both).is_some_and(|name| name.contains("events and tasks") || name.contains("événements et tâches")), "{offered:?}");
+        let lists = crate::work::writable_lists();
+        let takes = |c: &Collection| lists.iter().find(|l| l.id == id(c)).map(|l| l.tasks);
+        assert_eq!((takes(&tasks), takes(&both), takes(&events)), (Some(true), Some(true), Some(false)));
+        for c in [events, both, tasks] {
+            let _ = std::fs::remove_dir_all(&c.dir);
+        }
     }
 
     /// The phone's calendars of 21 October 2026: an account's status says how

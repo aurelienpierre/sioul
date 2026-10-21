@@ -82,7 +82,7 @@ ColumnLayout {
     // The width a card gives its text: its slot among what overlaps it, less
     // its colour bar and margins (`block` below).
     function textWidthOf(event) {
-        return (planning.dayWidth - 4) / Math.max(1, event.columns) - 2 - 8
+        return (planning.dayWidth - 4) / Math.max(1, event.columns) - 2 - 8 - ((event.task || "") !== "" ? 16 : 0)
     }
 
     // The lines `text` takes at `width`, as a card's title wraps it: words to a
@@ -524,8 +524,10 @@ ColumnLayout {
                             readonly property bool taken: planning.grab !== null && planning.grab.event.key === block.modelData.key && planning.grab.event.start === block.modelData.start
                             readonly property bool away: (block.taken && drag.dragging) || (planning.landed !== null && planning.landed.event.key === block.modelData.key && planning.landed.event.start === block.modelData.start)
 
+                            // A task's time block, shown as the task it is: its mark, its list (21 October 2026).
+                            readonly property bool isTask: (block.modelData.task || "") !== ""
                             // Its text's width, the lines its title takes there, and the lines its height gives it.
-                            readonly property real textWidth: block.width - 8
+                            readonly property real textWidth: block.width - 8 - (block.isTask ? 16 : 0)
                             readonly property int lines: planning.linesOf(block.modelData.summary, block.textWidth)
                             readonly property int room: Math.max(1, Math.floor((block.height - planning.cardPadding) / planning.titleLine))
                             // Its time under the whole title, when there is a line for it: with its
@@ -535,7 +537,8 @@ ColumnLayout {
                                 if (block.height < planning.cardPadding + block.lines * planning.titleLine + planning.timeLine)
                                     return ""
                                 const when = block.modelData.when
-                                const placed = when + (block.modelData.location ? "  ·  " + block.modelData.location : "")
+                                const beside = block.isTask ? planning.sioul.textWith("agenda-task-of", "list", block.modelData.list) : block.modelData.location
+                                const placed = when + (beside ? "  ·  " + beside : "")
                                 if (timeFont.advanceWidth(placed) <= block.textWidth)
                                     return placed
                                 if (timeFont.advanceWidth(when) <= block.textWidth)
@@ -563,10 +566,20 @@ ColumnLayout {
                                 radius: 2
                                 color: block.modelData.color ? block.modelData.color : planning.theme.accent
                             }
+                            Icon {
+                                objectName: "planning-task-mark"
+                                visible: block.isTask
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 2
+                                iconName: "view-task"
+                                size: 12
+                                tip: planning.sioul.text("agenda-task-mark")
+                            }
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 6
-                                anchors.rightMargin: 2
+                                anchors.rightMargin: 2 + (block.isTask ? 16 : 0)
                                 anchors.topMargin: planning.cardPadding / 2
                                 spacing: 0
 

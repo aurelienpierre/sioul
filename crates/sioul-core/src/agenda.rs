@@ -72,6 +72,9 @@ pub struct Occurrence {
     pub demands: crate::demands::Demands,
     /// The task it is the time block of (`X-SIOUL-TASK`, `blocks`), by UID; "" for an event of its own.
     pub task: String,
+    /// That task's list, by name, once it is known here (`mark_tasks`): what
+    /// every agenda says of it, the window's, the phone's and the home card.
+    pub list: String,
     /// The turn of a repeating task that block pins (`X-SIOUL-TURN`): "2026-10-09"; "" otherwise.
     pub turn: String,
     /// Its reminder before, as it says it (`reminders::REMIND`): "" as usual,
@@ -368,6 +371,7 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
             task: text_of(component, &ICalendarProperty::Other(crate::blocks::TASK.to_string())),
             turn: text_of(component, &ICalendarProperty::Other(crate::blocks::TURN.to_string())),
             remind: remind_of(&ical, component),
+            list: String::new(),
         });
     }
     found
@@ -377,8 +381,10 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
 /// you declined marked (`declined`), by your accounts' addresses.
 pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     let zone = TimeZone::system();
+    // The calendars that take events (a task list's tasks are the task views'; its tasks show here by their time blocks).
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
         .iter()
+        .filter(|c| c.holds("VEVENT"))
         .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences(&path, calendar, from, to, &zone)).collect::<Vec<_>>())
         .collect();
     if all.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
@@ -387,6 +393,25 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     }
     all.sort_by(|a, b| (a.start, a.all_day == false, &a.summary).cmp(&(b.start, b.all_day == false, &b.summary)));
     all
+}
+
+/// Time blocks shown as the tasks they are, in every agenda alike (the
+/// window's, the phone's and the home card, 21 October 2026): a block of a
+/// task known here says its task's list; one whose task is not here (deleted,
+/// its list off) is an event of its own, as the plan reads it
+/// (`blocks::without_blocks`). Tasks themselves are never an agenda's: one
+/// shows only by its time block, an event that travels as events do.
+pub fn mark_tasks(occurrences: &mut [Occurrence], tasks: &[crate::tasks::Task]) {
+    let lists: std::collections::BTreeMap<&str, &str> = tasks.iter().map(|t| (t.uid.as_str(), t.list.as_str())).collect();
+    for o in occurrences.iter_mut() {
+        match lists.get(o.task.as_str()) {
+            Some(list) if !o.task.is_empty() => o.list = (*list).to_string(),
+            _ => {
+                o.task.clear();
+                o.list.clear();
+            }
+        }
+    }
 }
 
 /// What the event form gives back. Times are local, in your time zone.
@@ -591,13 +616,23 @@ pub fn vtimezone(zone: &TimeZone, name: &str, year: i16) -> Vec<String> {
 
 /// A new event from the form, its times in `zone` (yours), with its own UID.
 pub fn new_event(edit: &EventEdit, zone: &TimeZone) -> Result<String, String> {
+    new_event_with_uid(edit, &vdir::new_name(), zone)
+}
+
+/// A new event with the UID `uid` (`sioul tasks import`: the same key, the
+/// same event, imported again), one line.
+pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Result<String, String> {
+    let uid: String = uid.chars().filter(|c| !c.is_control()).collect();
+    if uid.trim().is_empty() {
+        return Err("UID?".into());
+    }
     let zone = zone.clone();
     let (times, tzid) = time_lines(edit, &zone)?;
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "CALSCALE:GREGORIAN".to_string()];
     if let Some(name) = &tzid {
         out.extend(vtimezone(&zone, name, Zoned::now().with_time_zone(zone.clone()).year()));
     }
-    out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{}", vdir::new_name()), format!("DTSTAMP:{}", utc(&Zoned::now()))]);
+    out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&Zoned::now()))]);
     out.extend(times);
     out.extend(content_lines(edit, Changed::ALL));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
@@ -1348,6 +1383,25 @@ pub fn stored(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The agenda reads the calendars that take events (21 October 2026): an
+    /// event slipped into a list that takes tasks only is not one of its own.
+    #[test]
+    fn the_agenda_reads_calendars_that_take_events() {
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds events", None, &["VEVENT"]).unwrap();
+        let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds both", None, &["VEVENT", "VTODO"]).unwrap();
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds list", None, &["VTODO"]).unwrap();
+        let event = |uid: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:20991023T090000Z\r\nDTEND:20991023T100000Z\r\nSUMMARY:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        for (dir, uid) in [(&calendar.dir, "in-events"), (&both.dir, "in-both"), (&list.dir, "in-list")] {
+            std::fs::write(dir.join(format!("{uid}.ics")), event(uid)).unwrap();
+        }
+        let mut read: Vec<String> = occurrences(4_096_000_000, 4_097_000_000).into_iter().map(|o| o.uid).filter(|u| u.starts_with("in-")).collect();
+        read.sort();
+        assert_eq!(read, ["in-both", "in-events"]);
+        for c in [calendar, both, list] {
+            let _ = std::fs::remove_dir_all(&c.dir);
+        }
+    }
 
     #[test]
     fn a_link_leaves_an_event() {

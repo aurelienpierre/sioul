@@ -656,7 +656,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_task",
         title: "Add a task",
-        description: "Writes one new task into a task list on this device: a new VTODO file in the list's folder, in the first list made for tasks unless `list` names one. The next sync sends it to the list's server, as for a task made in the window; nothing is sent now, nothing else changes. `due` is the date asked from outside, `start` the day it can start; `parent` makes it a step of a bigger task, `after` makes it wait for others; `links` ties it to mail, notes, contacts or projects, `source` to what it was made from.",
+        description: "Writes one new task into a task list on this device: a new VTODO file in the list's folder, in the first list made for tasks unless `list` names one. The next sync sends it to the list's server, as for a task made in the window; nothing is sent now, nothing else changes. `due` is the date asked from outside, `start` the day it can start; `parent` makes it a step of a bigger task, `after` makes it wait for others; `links` ties it to mail, notes, contacts or projects, `source` to what it was made from. A task is something to do; an appointment (somewhere, with someone, at a set time) is an event: add_event. Tasks can have a time too, so a time never decides: when the person has not said which it is, ask them.",
         writes: true,
         idempotent: false,
         open_world: false,
@@ -696,7 +696,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_event",
         title: "Add an event",
-        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes.",
+        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes. An appointment, not a task: something to do goes in add_task, even with a time; when the person has not said which it is, ask them.",
         writes: true,
         idempotent: false,
         open_world: false,

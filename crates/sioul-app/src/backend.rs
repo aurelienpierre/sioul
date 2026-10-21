@@ -433,6 +433,23 @@ pub mod qobject {
         #[qinvokable]
         fn save_event(self: Pin<&mut Sioul>, key: &QString, edit: &QString, calendar: &QString) -> QString;
 
+        /// The event form a task would become ("Make it an appointment",
+        /// `appointments`): JSON, at its block's time (`start`, `end`, Unix
+        /// seconds; 0 for none); {"error"} when it is gone.
+        #[qinvokable]
+        fn task_as_event(self: &Sioul, uid: &QString, start: f64, end: f64) -> QString;
+
+        /// A task made an appointment: the event form (JSON) saved in
+        /// `calendar`, the task and its blocks (`block`, the one opened) taken
+        /// out, never both, never neither. Returns what went wrong, else "".
+        #[qinvokable]
+        fn task_to_event(self: Pin<&mut Sioul>, uid: &QString, block: &QString, edit: &QString, calendar: &QString) -> QString;
+
+        /// An event made a task ("Make it a task"), its time its block's.
+        /// Returns what went wrong, else "".
+        #[qinvokable]
+        fn event_to_task(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
         /// An event's reminder before it, the occurrence starting at `start`,
         /// as its details say it: JSON {line, remind, writable} (docs/reminders.md).
         #[qinvokable]
@@ -4062,6 +4079,18 @@ impl qobject::Sioul {
     fn save_event(self: Pin<&mut Self>, key: &QString, edit: &QString, calendar: &QString) -> QString {
         let result = pim::save_event(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string(), &calendar.to_string());
         QString::from(&result.err().unwrap_or_default())
+    }
+
+    fn task_as_event(&self, uid: &QString, start: f64, end: f64) -> QString {
+        QString::from(&crate::appointments::form(&self.shared(), &uid.to_string(), start as i64, end as i64))
+    }
+
+    fn task_to_event(self: Pin<&mut Self>, uid: &QString, block: &QString, edit: &QString, calendar: &QString) -> QString {
+        QString::from(&crate::appointments::task_to_event(&self.qt_thread(), &self.shared(), &uid.to_string(), &block.to_string(), &edit.to_string(), &calendar.to_string()))
+    }
+
+    fn event_to_task(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&crate::appointments::event_to_task(&self.qt_thread(), &self.shared(), &key.to_string()))
     }
 
     fn event_reminder(&self, key: &QString, start: f64) -> QString {

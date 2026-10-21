@@ -138,6 +138,7 @@
 //!
 //! - [`contacts`]: contacts, one vCard per person.
 //! - [`agenda`]: calendars: events from iCalendar files, repeating ones expanded.
+//! - [`appointments`]: a task made an appointment, an appointment made a task, as the person says.
 //! - [`vdir`]: address books and calendars on disk: one folder per collection, one file per item.
 //! - [`lines`]: content lines, the text format that vCard and iCalendar share.
 //! - [`phones`]: phone numbers, compared rather than rewritten.
@@ -166,6 +167,7 @@
 
 pub mod accounts;
 pub mod agenda;
+pub mod appointments;
 pub mod appnotes;
 pub mod areas;
 pub mod attention;

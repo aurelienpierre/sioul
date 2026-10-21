@@ -86,15 +86,24 @@ impl Collection {
         if domain.is_empty() { self.account.clone() } else { domain }
     }
 
-    /// Its name and where it lives: "Agenda · example.org", "Maison · on this computer only".
+    /// Its name and where it lives: "Agenda · example.org", "Maison · on this computer only";
+    /// a calendar taking events and tasks, "Personnel · example.org · events and tasks".
     pub fn label(&self, config: &crate::config::Config, tr: &crate::i18n::Translator) -> String {
         let place = self.place(config);
-        format!("{} · {}", self.name, if place.is_empty() { tr.text("collection-here", None) } else { place })
+        let place = if place.is_empty() { tr.text("collection-here", None) } else { place };
+        // One that takes events and tasks says so, wherever it is offered (21 October 2026).
+        if self.takes_both() { format!("{} · {place} · {}", self.name, tr.text("collection-events-and-tasks", None)) } else { format!("{} · {place}", self.name) }
     }
 
     /// Whether it takes items of this kind ("VEVENT", "VTODO"): when the server says nothing, it does.
     pub fn holds(&self, component: &str) -> bool {
         self.components.is_empty() || self.components.iter().any(|c| c.eq_ignore_ascii_case(component))
+    }
+
+    /// A calendar that takes both events and tasks: it shows in the agenda
+    /// and among the task lists, and says so (`label`).
+    pub fn takes_both(&self) -> bool {
+        self.kind == Kind::Calendars && self.holds("VEVENT") && self.holds("VTODO")
     }
 }
 
@@ -181,6 +190,14 @@ struct Moves {
 struct Move {
     from: PathBuf,
     to: PathBuf,
+    /// Taken out with `from` once `to` is there (an item made another: its
+    /// task's time blocks, `replace_items`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    also: Vec<PathBuf>,
+    /// Written before `to`, taken back when `to` never came (a task's time
+    /// block, made with the task an appointment becomes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    made: Vec<PathBuf>,
 }
 
 fn moves_path() -> PathBuf {
@@ -206,7 +223,8 @@ fn moves_save(moves: &Moves) -> Result<(), String> {
 #[cfg(test)]
 thread_local! {
     /// Tests only: the step after which a move stops, as a crash would (1: the
-    /// move noted, 2: written there, 3: taken out here). Never in a build.
+    /// move noted, 2: what goes with it made, 3: written there, 4: taken out
+    /// here). Never in a build.
     static CRASH_AFTER: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
 }
 
@@ -226,20 +244,42 @@ fn crashed(step: u8) -> bool {
 /// new item and the deletion, whatever their accounts (this device's own
 /// calendar to a server's: the event reaches your other devices).
 pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
+    replace_items(&[from.to_path_buf()], &[], to, &text)
+}
+
+/// Items made another (a task made an appointment, an appointment a task,
+/// 21 October 2026): `gone` (the first, then what goes with it: a task's
+/// time blocks) replaced by `to`, written as `text`, with `made` written
+/// just before it (a time block for the task an event becomes). The same
+/// steps as a move: noted, `made` then `to` written, `gone` taken out, the
+/// note gone. Cut short before `to` is whole, `made` is taken back and
+/// `gone` kept; after, `gone` is taken out (`finish_moves`): never both,
+/// never neither.
+pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, text: &str) -> Result<(), String> {
+    let Some((from, also)) = gone.split_first() else { return Err("nothing to replace".into()) };
     finish_moves();
     let mut moves = moves_load();
-    moves.moves.push(Move { from: from.to_path_buf(), to: to.to_path_buf() });
+    moves.moves.push(Move { from: from.clone(), to: to.to_path_buf(), also: also.to_vec(), made: made.iter().map(|(p, _)| p.clone()).collect() });
     moves_save(&moves)?;
     if crashed(1) {
         return Ok(());
     }
-    let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
-    write_item(to, &text)?;
+    for (path, text) in made {
+        write_item(path, text)?;
+    }
     if crashed(2) {
         return Ok(());
     }
-    std::fs::remove_file(from).map_err(|e| e.to_string())?;
+    write_item(to, text)?;
     if crashed(3) {
+        return Ok(());
+    }
+    std::fs::remove_file(from).map_err(|e| e.to_string())?;
+    for path in also {
+        let _ = std::fs::remove_file(path);
+    }
+    if crashed(4) {
         return Ok(());
     }
     finish_moves();
@@ -247,17 +287,26 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 /// Every move cut short, finished: the item there and still here, taken out
-/// here (written whole before the note said so); not there, the move
-/// forgotten, the item kept here; gone from here, the move done. Called
-/// before each move and each sync of contacts and calendars.
+/// here (written whole before the note said so), with what goes with it; not
+/// there, the move forgotten, the item kept here and what was made for it
+/// taken back; gone from here, the move done. Called before each move and
+/// each sync of contacts and calendars.
 pub fn finish_moves() {
     let moves = moves_load();
     if moves.moves.is_empty() {
         return;
     }
     for m in &moves.moves {
-        if m.to.exists() && m.from.exists() {
-            let _ = std::fs::remove_file(&m.from);
+        if m.to.exists() {
+            for path in std::iter::once(&m.from).chain(&m.also) {
+                if path.exists() {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        } else {
+            for path in &m.made {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
     let _ = moves_save(&Moves::default());
@@ -274,7 +323,10 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
         for dir in dirs.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()) {
             let id = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let read = |name: &str| std::fs::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-            let state = State::load(&state_path(&account_id, kind, &id));
+            let mut state = State::load(&state_path(&account_id, kind, &id));
+            if kind == Kind::Calendars && account_id == LOCAL && state.components.is_empty() {
+                settle_kinds(&dir, &mut state, &state_path(&account_id, kind, &id));
+            }
             found.push(Collection {
                 kind,
                 account: account_id.clone(),
@@ -289,6 +341,27 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
     }
     found.sort_by(|a, b| (&a.account, a.name.to_lowercase()).cmp(&(&b.account, b.name.to_lowercase())));
     found
+}
+
+/// A calendar of this device's own whose kinds were never written (made
+/// before 21 October 2026 without them, when "unsaid" meant both): what it
+/// holds says them, written once with it (its state, `dav/local/`): events
+/// alone, tasks alone, or both when it holds both or nothing. A server's says
+/// its own at each sync (`supported-calendar-component-set`; unsaid, both, as
+/// RFC 4791 §5.2.3 has it).
+fn settle_kinds(dir: &Path, state: &mut State, path: &Path) {
+    let (mut events, mut tasks) = (false, false);
+    for item in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")) {
+        let text = std::fs::read_to_string(&item).unwrap_or_default().to_ascii_uppercase();
+        events |= text.contains("BEGIN:VEVENT");
+        tasks |= text.contains("BEGIN:VTODO");
+    }
+    state.components = match (events, tasks) {
+        (true, false) => vec!["VEVENT".into()],
+        (false, true) => vec!["VTODO".into()],
+        _ => vec!["VEVENT".into(), "VTODO".into()],
+    };
+    let _ = state.save(path);
 }
 
 /// A collection renamed here; the next sync tells the server.
@@ -507,7 +580,7 @@ mod tests {
     #[test]
     fn a_move_cut_at_each_step_ends_once() {
         let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:moved-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        for step in 0..=3u8 {
+        for step in 0..=4u8 {
             let account = format!("moves-{step}");
             let from = prepare(Kind::Calendars, LOCAL, &format!("from-{step}"), "From", None).unwrap();
             let to = prepare(Kind::Calendars, &account, "to", "To", None).unwrap();
@@ -520,7 +593,7 @@ mod tests {
             let (here, there) = (source.exists(), target.exists());
             match step {
                 // Noted only: kept here, nothing there.
-                1 => assert!(here && !there, "step {step}"),
+                1 | 2 => assert!(here && !there, "step {step}"),
                 // Written there, then the crash: taken out here at the next look.
                 _ => assert!(!here && there && std::fs::read_to_string(&target).unwrap() == text, "step {step}"),
             }
@@ -529,6 +602,73 @@ mod tests {
             let _ = std::fs::remove_dir_all(&from);
             let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&account));
         }
+    }
+
+    /// A task made an appointment and back (21 October 2026), cut short
+    /// after each step: the task and its block, or the event and what was
+    /// made with it, one side whole, never both, never neither.
+    #[test]
+    fn an_item_made_another_cut_at_each_step_ends_once() {
+        for step in 0..=4u8 {
+            let list = prepare(Kind::Calendars, LOCAL, &format!("kinds-list-{step}"), "List", None).unwrap();
+            let calendar = prepare(Kind::Calendars, LOCAL, &format!("kinds-calendar-{step}"), "Calendar", None).unwrap();
+            let (task, block, made, event) = (list.join("t.ics"), calendar.join("b.ics"), calendar.join("m.ics"), calendar.join("e.ics"));
+            std::fs::write(&task, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+            std::fs::write(&block, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:b\r\nX-SIOUL-TASK:t\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+            let text = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+            CRASH_AFTER.with(|c| c.set(step));
+            replace_items(&[task.clone(), block.clone()], &[(made.clone(), "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".into())], &event, text).unwrap();
+            CRASH_AFTER.with(|c| c.set(0));
+            finish_moves();
+            let before = task.exists() && block.exists() && !made.exists() && !event.exists();
+            let after = !task.exists() && !block.exists() && made.exists() && std::fs::read_to_string(&event).ok().as_deref() == Some(text);
+            match step {
+                1 | 2 => assert!(before, "step {step}: the task kept, what was made taken back"),
+                _ => assert!(after, "step {step}: the event and its block, the task gone"),
+            }
+            assert!(!moves_path().exists(), "step {step}: nothing left to finish");
+            let _ = std::fs::remove_dir_all(&list);
+            let _ = std::fs::remove_dir_all(&calendar);
+        }
+        assert!(replace_items(&[], &[], Path::new("nowhere.ics"), "").is_err());
+    }
+
+    /// What a calendar takes, events, tasks or both (21 October 2026): a
+    /// server's says it (`supported-calendar-component-set`; unsaid, both);
+    /// one of this device's own made before without it is settled once from
+    /// what it holds, and kept with it. One that takes both says so.
+    #[test]
+    fn a_calendar_says_what_it_takes() {
+        let tr = crate::i18n::Translator::new("en");
+        let config = crate::config::Config::default();
+        let made = |id: &str, item: Option<&str>| {
+            let dir = prepare(Kind::Calendars, LOCAL, id, id, None).unwrap();
+            if let Some(item) = item {
+                std::fs::write(dir.join("x.ics"), format!("BEGIN:VCALENDAR\r\nBEGIN:{item}\r\nUID:x\r\nEND:{item}\r\nEND:VCALENDAR\r\n")).unwrap();
+            }
+            dir
+        };
+        let dirs = [made("kinds-old-events", Some("VEVENT")), made("kinds-old-tasks", Some("VTODO")), made("kinds-old-empty", None)];
+        let find = |account: &str, id: &str| collections(Kind::Calendars).into_iter().find(|c| c.account == account && c.id == id).unwrap();
+        assert_eq!(find(LOCAL, "kinds-old-events").components, ["VEVENT"]);
+        assert_eq!(find(LOCAL, "kinds-old-tasks").components, ["VTODO"]);
+        let empty = find(LOCAL, "kinds-old-empty");
+        assert_eq!(empty.components, ["VEVENT", "VTODO"]);
+        assert_eq!(State::load(&state_path(LOCAL, Kind::Calendars, "kinds-old-tasks")).components, ["VTODO"], "kept with it");
+        assert!(empty.takes_both() && empty.label(&config, &tr).ends_with("events and tasks"));
+        assert!(!find(LOCAL, "kinds-old-tasks").label(&config, &tr).contains("events and tasks"));
+        // A server's says its own: unsaid, both, and nothing is written for it here.
+        prepare(Kind::Calendars, "kinds-server", "personnel", "Personnel", None).unwrap();
+        let unsaid = find("kinds-server", "personnel");
+        assert!(unsaid.components.is_empty() && unsaid.holds("VEVENT") && unsaid.holds("VTODO") && unsaid.takes_both());
+        let path = state_path("kinds-server", Kind::Calendars, "personnel");
+        State { components: vec!["VEVENT".into()], ..State::default() }.save(&path).unwrap();
+        let events = find("kinds-server", "personnel");
+        assert!(events.holds("VEVENT") && !events.holds("VTODO") && !events.takes_both());
+        for dir in dirs {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join("kinds-server"));
     }
 
     /// The phone of 21 October 2026: an account switched off once, then on

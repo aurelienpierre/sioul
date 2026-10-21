@@ -67,6 +67,11 @@ Let go, and it is saved and sent to your calendar server; **Undo** waits ten sec
 
 A task you pin to a time ([Tasks](tasks.md#pinned-to-a-time)) has its block in your calendar, "Planned tasks" unless you chose another: an event with the task's title, which follows the task's. Move it like any event, here or in another program, and the task moves with it; delete it, and the plan places the task again. Your plan counts it once, as the task.
 
+In the agenda it shows as the task it is, never as an event: the task mark where an event has its calendar's colour, and "Task · " with its list's name where an event says its place; its details offer **Open the task**. Whether something is a task or an appointment is yours to say: a task can have a time and still be a task.
+
+- **Make it an appointment**, in a task's details or its menu: the event form opens with the task's title, place and notes, at its time, in the calendar for new events (or another you choose). Saved, the event replaces the task and its time: never both, never neither, even when Sioul stops in between. A task with steps of its own stays a task.
+- **Make it a task**, on an event of your own: a task in your usual list, on its day, its length as its estimate, its time kept as the task's time when it is still to come. An invitation stays an event: others expect you there.
+
 ## Two events at once
 
 When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said.
@@ -97,6 +102,7 @@ The ⚙ at the top of the page:
 
 - **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
+- **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views open on.
 
 **An event's calendar**: its editor says which calendar it is in, and **Calendar** moves it to another you can write to, of any account, on a phone too: written there first, then taken out of the first, never twice and never lost, even when Sioul stops in between; your server gets both at the next sync. An event filed by mistake in a calendar of this device's own reaches your other devices once moved to your server's. A calendar of this device's own that your sharing does not carry stays here: its events' editor says "Only on this computer" (or phone), which is why such an event shows on one device and not the other. A server's calendar is on every device that has its account.
@@ -111,7 +117,7 @@ Google calendars are made, renamed and deleted on Google's own pages; Sioul grey
 
 ## Not there yet
 
-Moving an event to another calendar, changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here are planned. Not built either: inviting people from Sioul; importing or exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event; choosing an event's time zone. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; importing or exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event; choosing an event's time zone. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
@@ -143,7 +149,7 @@ As of October 2026, from each app's own documentation.
     | Answers invitations that come by mail | ✓ | ✓ | ✓ | ✓ | ✓ | partly²³ |
     | Sends invitations | ✗ | ✓ | ✓²⁴ | ✓ | ✓ | ✓ |
     | Moves an event by dragging, with undo | ✓ | ✓ | partly²⁵ | ?²⁶ | ✓ | partly²⁷ |
-    | Moves an event to another calendar | ✗ | ✓ | ✓ | ✓ | ✓ | ? |
+    | Moves an event to another calendar | ✓ | ✓ | ✓ | ✓ | ✓ | ? |
     | Shows your contacts' birthdays | ✗²⁸ | ✓ | ✓ | ✓ | ✗ | ? |
 
     1. **Before** and **After**, 5 minutes to 2 hours each, kept free by your plan and counted by the overlap check and the reminder.
