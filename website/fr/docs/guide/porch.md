@@ -9,7 +9,7 @@ description: "Le Porche, où les nouveaux courriels attendent dans Sioul : vé
 Le Porche est l’endroit où les nouveaux courriels de toutes vos adresses attendent que vous regardiez. Avant que rien ne s’affiche, Sioul vérifie chaque courriel, authentique ou falsifié, et le range dans une file selon qui l’a écrit et à quoi il sert : les personnes que vous connaissez, quelqu’un de nouveau en attente de votre accord, un projet, les infolettres, ce qui est mis de côté. Il ouvre aux heures que vous choisissez et reste silencieux en dehors, tandis que les codes et les liens que vous venez de demander à un site arrivent tout de suite. Rien n’est compté devant vous, et rien n’est supprimé.
 
 <figure markdown="span">
-  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et la case Temps réel ; les paiements de la semaine en une ligne ; deux cartes, pour un lien de confirmation et un code venus d’expéditeurs vérifiés, le code avec un bouton Copier et sa durée de validité ; les nouvelles d’une discussion ; puis deux files, celle d’un projet et « De personnes que vous connaissez », chacune avec ses courriels.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et ses réglages, Montrer tous les courriels maintenant en dessous ; ce qui est arrivé, en quelques phrases ; la carte pour rejoindre vos autres appareils ; une ligne sur l’argent ; le courrier papier ; deux cartes, pour un lien de confirmation et un code venus d’expéditeurs vérifiés, le code avec un bouton Copier et sa durée de validité ; les nouvelles d’une discussion.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
   <figcaption>Les codes et les liens en haut, les nouvelles des sites, puis les files.</figcaption>
 </figure>
 
@@ -185,9 +185,9 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpie
 
 ### Temps réel {#real-time}
 
-La case **Temps réel**, en haut du Porche, relève chaque dossier de chaque adresse toutes les minutes, et garde le Porche ouvert : pour un code ou un mot de passe que vous attendez. Décochez-la pour revenir au rythme habituel.
+**Le courrier chaque minute**, autrefois la case Temps réel du Porche, est dans la carte Ce qui vous joint maintenant, derrière le bouton de la ligne d’état ([Ce qui vous joint](notifications.md#the-button-and-its-card)) : chaque dossier de chaque adresse toutes les minutes, et le Porche ouvert, pour un code ou un mot de passe que vous attendez. Désactivez-le pour revenir au rythme habituel.
 
-**Montrer tous les courriels maintenant**, en haut du Porche, montre toutes les voies et toutes les adresses à toute heure, sur cet appareil seulement, jusqu’à **Terminé pour l’instant** ; il n’annonce rien. Pour être joint par tout le monde un moment, sur tous vos appareils, voir [Joignable](hours.md#work-now).
+**Montrer tous les courriels maintenant**, en haut du Porche, montre toutes les voies et toutes les adresses à toute heure, sur cet appareil seulement, jusqu’à **Terminé pour l’instant** ; il n’annonce rien. Pour être joint par tout le monde un moment, sur tous vos appareils, voir [Joignable](notifications.md#reachable).
 
 ### Une adresse publique, protégée {#a-public-address-protected}
 

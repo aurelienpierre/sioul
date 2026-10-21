@@ -9,7 +9,7 @@ description: Contacts in Sioul - names first, details folded; duplicates found a
 Contacts holds the people you deal with: their names first, their details folded until you open them. Sioul finds the same person written twice and merges the cards when you say so, with thirty days to undo each merge. It shows everyone with a postal address on one map, once you allow it. Each person is on a list, safe, neutral, restricted or blocked, or is a stranger, and that list decides when their mail, their calls and their messages reach you; a forged message cannot take their place. Your contacts stay on your own server, at Google or on this device, and Sioul reaches them only over an encrypted connection.
 
 <figure markdown="span">
-  [![The Contacts page: a search field, a button for a new contact and one for the map above a list of names, each with an address or a number under it; one contact open on the right, with their role and organisation, an e-mail address with Write, a phone number with Call, "Their mail" set to Neutral, a small map with a pin at their address, and what is tied to them: two tasks and two events.](../assets/screens/contacts.png){ loading=lazy }](../assets/screens/contacts.png "Open the picture at full size")
+  [![The Contacts page: a search field, a button for a new contact and one for the map above a list of names, each with an address or a number under it; one contact open on the right, with their role and organisation, an e-mail address with Write, a phone number with Call, "Your contacts: in your address book, on no list." and How Iris Calloway reaches you, a small map with a pin at their address, and what is tied to them: two tasks and two events.](../assets/screens/contacts.png){ loading=lazy }](../assets/screens/contacts.png "Open the picture at full size")
   <figcaption>A contact: how to reach them, where they are, and what involves them. <small>Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</small></figcaption>
 </figure>
 
@@ -33,7 +33,7 @@ A contact opens on the right:
 
 - its **categories**, small labels under its name: a click on one shows that category's list;
 - its **e-mail addresses**, each with **Write**, and its **phone numbers**, each with **Call**, which hands the number to your phone, or on a computer to the program that answers phone links;
-- **How they reach you**: who they are to you, in a sentence ("Neutral: in your address book, on no list."), and their sheet ([below](#how-they-reach-you));
+- **How they reach you**: who they are to you, in a sentence ("Your contacts: in your address book, on no list."), and their sheet ([below](#how-they-reach-you));
 - a small map with a pin at their address, once it is placed ([The map](#the-map));
 - folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in;
 - what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them; the [mail search](mail.md#searching) finds the rest of their mail.
@@ -51,7 +51,7 @@ When you write a message, addresses are completed from your contacts.
 Everyone is on one list, and the same list holds for their mail, their calls and their messages in other apps:
 
 - **Safe**: family, friends, chosen colleagues. Only you put someone there.
-- **Neutral**: anyone in your address books, until you choose otherwise.
+- **Your contacts** (once "Neutral"): anyone in your address books, until you choose otherwise.
 - **Restricted**: people you would rather hear from only at times you choose.
 - **Blocked**: never, on any channel. Their mail is set aside for good, and their calls are declined.
 - **Strangers**: everyone in none of your address books and on no list. Their first message waits on [the Porch](porch.md#the-lanes), in the screener, until you let them in.
