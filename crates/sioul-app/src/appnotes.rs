@@ -508,6 +508,7 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
         }
         match cause.own {
             Some(Own::Conversation) => why.push("its conversation's row".into()),
+            Some(Own::Person) => why.push("their own row".into()),
             Some(Own::App) => why.push("its app's row".into()),
             None => {}
         }
@@ -656,7 +657,14 @@ pub(crate) fn release_talk(key: &str) -> String {
 /// in a slot of time for you that one, during work Work and Admin together,
 /// else the time now.
 fn talk_then(held: &appnotes::Held, now: &sioul_core::attention::Now) -> (String, Vec<Column>) {
-    let id = held.persons.iter().find(|p| p.starts_with("person.contact:")).or_else(|| held.persons.iter().find(|p| p.starts_with("person.tel:"))).cloned().unwrap_or_else(|| format!("{}{}", sioul_core::attention::CONVERSATION_ROW, held.conversation));
+    // A group's, or a number nobody knows (whose calls stay the screening's): the conversation's row,
+    // never one member's (review of part 6, F5).
+    let person = if held.group {
+        None
+    } else {
+        held.persons.iter().find(|p| p.starts_with("person.contact:")).or_else(|| held.persons.iter().find(|p| p.starts_with("person.tel:")).filter(|_| !matches!(held.who.as_str(), "" | "stranger")))
+    };
+    let id = person.cloned().unwrap_or_else(|| format!("{}{}", sioul_core::attention::CONVERSATION_ROW, held.conversation));
     let columns: Vec<Column> = if now.dnd {
         vec![Column::Dnd]
     } else if now.slot {
@@ -677,7 +685,9 @@ fn talk_then(held: &appnotes::Held, now: &sioul_core::attention::Now) -> (String
 pub(crate) fn let_talk_then(key: &str) -> String {
     let path = Ledger::default_path();
     let ledger = Ledger::load(&path);
-    let Some(held) = ledger.held.values().find(|h| h.conversation == key) else { return String::new() };
+    // The newest of it still held (review of part 6, F5).
+    let stamp = jiff::Timestamp::now().as_second();
+    let Some(held) = ledger.held.values().filter(|h| h.conversation == key && h.until > stamp).max_by_key(|h| h.since) else { return String::new() };
     let (id, columns) = talk_then(held, &crate::hours::attention_now());
     let words: Vec<String> = columns.iter().map(|c| c.id().to_string()).collect();
     if let Err(e) = sioul_core::attention::apply_change(&crate::backend::config_path(), &format!("attention.{id}"), None, &sioul_core::config::SettingValue::Texts(words)) {
@@ -686,7 +696,8 @@ pub(crate) fn let_talk_then(key: &str) -> String {
     let time = columns.iter().map(|c| sioul_core::attention::column_label(tr(), *c)).collect::<Vec<_>>().join(", ");
     let mut args = sioul_core::i18n::args();
     args.set("time", time);
-    tr().text("reach-card-let-then-done", Some(&args))
+    // Their messages and calls on their own row; this conversation's messages alone on its row.
+    tr().text(if sioul_core::attention::is_person(&id) { "reach-card-let-then-done" } else { "reach-card-let-then-done-talk" }, Some(&args))
 }
 
 /// The Porch's line on other apps (`appnotes::porch_line`); "" when nothing
@@ -962,7 +973,10 @@ mod tests {
         let held = |persons: &[&str]| appnotes::Held { conversation: "talk-1".into(), persons: persons.iter().map(|p| p.to_string()).collect(), kind: "people".into(), ..Default::default() };
         let work = Now::time(Column::Work);
         assert_eq!(talk_then(&held(&["person.tel:+33199001234", "person.contact:card-1"]), &work), ("person.contact:card-1".to_string(), vec![Column::Work, Column::Admin]));
-        assert_eq!(talk_then(&held(&["person.noa@example.org", "person.tel:+33199001234"]), &Now::time(Column::Leisure)).0, "person.tel:+33199001234");
+        assert_eq!(talk_then(&appnotes::Held { who: "neutral".into(), ..held(&["person.noa@example.org", "person.tel:+33199001234"]) }, &Now::time(Column::Leisure)).0, "person.tel:+33199001234");
+        // A number nobody knows, and a group: the conversation's row, never one member's (review of part 6, F5).
+        assert_eq!(talk_then(&appnotes::Held { who: "stranger".into(), ..held(&["person.tel:+33199001234"]) }, &Now::time(Column::Leisure)).0, "conversation.talk-1");
+        assert_eq!(talk_then(&appnotes::Held { group: true, ..held(&["person.contact:card-1"]) }, &Now::time(Column::Leisure)).0, "conversation.talk-1");
         assert_eq!(talk_then(&held(&[]), &Now::time(Column::Leisure)), ("conversation.talk-1".to_string(), vec![Column::Leisure]), "no card nor number: the conversation's");
         assert_eq!(talk_then(&held(&["person.contact:card-1"]), &Now::time(Column::Work).layers(false, true)).1, vec![Column::Dnd]);
     }
@@ -1141,6 +1155,8 @@ mod tests {
         assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::App), columns: vec![Column::Work, Column::Admin], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its app's row, work + admin.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Conversation), gathered: None, columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its conversation's row, work.");
+        // A person's own row (review of part 6, F6): never "its app's row", never who.
+        assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Person), columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: their own row, work.");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Conversation), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (its conversation).");
         assert_eq!(line("held", "other apps", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::App), ..Cause::default() }, None), "Notes: held: other apps 1 until 12:00; why: gathered (its app).");
         assert_eq!(line("held", "mail", in_minutes(400), Why::Waiting, Cause { area: Some(Area::LEISURE), ..Cause::default() }, None), "Notes: held: mail 1 until 17:00; why: area (leisure).");

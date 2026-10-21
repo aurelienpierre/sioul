@@ -1135,6 +1135,8 @@ pub enum Gathering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Own {
     Conversation,
+    /// A person's own row (decision 16).
+    Person,
     App,
 }
 
@@ -1185,7 +1187,7 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
     let out = ask.attention.decide(&event, &moment);
     if out.step == attention::Step::Chosen {
         let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
-        cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else { Own::App });
+        cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else if attention::is_person(id) { Own::Person } else { Own::App });
     }
     if out.step == attention::Step::Area {
         cause.area = ask.area;
@@ -2036,6 +2038,12 @@ mod tests {
         assert_eq!(said(DISCORD_DM, Some(Who::Safe), &choices, &own), Some(Cause { own: Some(Own::App), columns: vec![C::Leisure], ..Cause::default() }));
         let own = Ask { now: &morning, sources: &server_rows, ..own };
         assert_eq!(said(DISCORD_SERVER, Some(Who::Stranger), &choices, &own), Some(Cause { own: Some(Own::Conversation), columns: vec![C::Work], ..Cause::default() }));
+        // A person's own row, between the conversation's and the app's: said as theirs (review of part 6, F6).
+        let person_rows = attention::source_rows_with("com.discord", &key(DISCORD_DM), &["person.contact:card-1".to_string()]);
+        let mut theirs = usual().clone();
+        theirs.set_source("person.contact:card-1", C::Leisure, Level::Later).unwrap();
+        let own = Ask { now: &evening, attention: &theirs, sources: &person_rows, ..own };
+        assert_eq!(said(DISCORD_DM, Some(Who::Safe), &choices, &own), Some(Cause { own: Some(Own::Person), columns: vec![C::Leisure], ..Cause::default() }));
         // Free time's "Nothing at all": your safe people wait, and it says so.
         let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
         let afternoon = at("2026-10-06T16:00[Europe/Paris]");

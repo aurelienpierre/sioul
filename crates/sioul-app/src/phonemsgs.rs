@@ -187,6 +187,19 @@ pub(crate) fn view() -> String {
     json!({ "lines": lines, "links": { "tel": tel, "sms": sms }, "texts": crate::texts::readable() }).to_string()
 }
 
+/// A phone's text's sender's own rows, as the phone read them (decision 16):
+/// by their number; by their name, as the phone's address book names people,
+/// when the app gave no number (review of part 6, F8).
+fn line_persons(senders: &Senders, line: &Line) -> Vec<String> {
+    if !line.key.is_empty() {
+        senders.person_rows(std::slice::from_ref(&line.key), &[])
+    } else if !line.name.trim().is_empty() && !line.group {
+        senders.person_rows_named(&line.name)
+    } else {
+        Vec::new()
+    }
+}
+
 fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLine> {
     let here = here_id();
     let senders = Senders::load(config);
@@ -201,8 +214,7 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
     let shows = |line: &Line| {
         let always = line.always || (!line.key.is_empty() && people.admits_number(&line.key, region));
         let who = who_now(&senders, &line.key);
-        // Their own rows by their number, as the phone reads them (decision 16).
-        let persons = if line.key.is_empty() { Vec::new() } else { senders.person_rows(std::slice::from_ref(&line.key), &[]) };
+        let persons = line_persons(&senders, line);
         rules::reaches_now(&attention, line, who, always, &persons, &moment) || (who != Some(Who::Blocked) && answered.holds(line))
     };
     let name_of = |key: &str| {
@@ -386,6 +398,20 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review of part 6, F8: a phone's text's sender's own rows, by their
+    /// number, else by their name as the phone's address book names people;
+    /// a group's, none.
+    #[test]
+    fn a_text_reads_its_sender_s_rows_by_number_or_name() {
+        use sioul_core::porch::Book;
+        let card = sioul_core::contacts::Contact { uid: "noa-1".into(), key: "/books/noa-1.vcf".into(), name: "Noa".into(), phones: vec![sioul_core::contacts::Labeled { label: String::new(), value: "+33 1 99 00 12 34".into() }], ..Default::default() };
+        let senders = Senders { contacts: std::sync::Arc::new(Book::of(&[card], None)), ..Senders::default() };
+        let line = |key: &str, name: &str, group: bool| Line { key: key.into(), name: name.into(), group, ..Line::default() };
+        assert_eq!(line_persons(&senders, &line("+33199001234", "", false)), ["person.contact:noa-1", "person.tel:+33199001234"]);
+        assert_eq!(line_persons(&senders, &line("", "Noa", false)), ["person.contact:noa-1"], "by name, the app giving no number");
+        assert!(line_persons(&senders, &line("", "Noa", true)).is_empty(), "a group's title names nobody");
+    }
 
     /// On a computer without SIOUL_PHONE_MESSAGES and no phone's log here:
     /// nothing listed, nothing written for a notification.

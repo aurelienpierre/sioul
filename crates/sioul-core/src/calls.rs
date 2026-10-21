@@ -311,13 +311,48 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
     frames_with(attention, clock, layers, from, until, &[])
 }
 
-/// A person's own row in the calls' table: its name in the frames ("own-0"),
-/// its row in the matrix (`attention::person_row`), and who their list makes them.
+/// A row of the calls' table for the people's own rows: its name in the
+/// frames ("own-0"), the own rows a number reads in their order
+/// (`porch::Senders::person_rows` of that number: its cards' first, then the
+/// number's), and who its list makes that number. Numbers that read the same
+/// rows with the same list share one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnRow {
     pub row: String,
-    pub id: String,
+    pub ids: Vec<String>,
     pub who: Who,
+}
+
+/// The people's own rows for the calls' table (decision 16; review of part 6,
+/// F2 to F4), number by number, as a text from that number reads them: each
+/// number a person's row covers (a card's every one, a `tel:` row's), judged
+/// alone (`judge_number`), the rows it reads (`person_rows`, those set), one
+/// table row per distinct rows and list. A blocked number, or one nobody
+/// knows, drops only itself. In the numbers' order: never a map's.
+pub fn own_rows(attention: &Attention, senders: &crate::porch::Senders) -> (Vec<(String, String)>, Vec<OwnRow>) {
+    let set: BTreeSet<&String> = attention.sources().keys().filter(|id| attention::is_person(id)).collect();
+    let keys: BTreeSet<String> = set.iter().flat_map(|id| senders.numbers_of_person(id.strip_prefix(attention::PERSON_ROW).unwrap_or_default())).collect();
+    let (mut numbers, mut rows): (Vec<(String, String)>, Vec<OwnRow>) = (Vec::new(), Vec::new());
+    for key in keys {
+        let who = senders.judge_number(&key).who;
+        if matches!(who, Who::Blocked | Who::Stranger) {
+            continue;
+        }
+        let ids: Vec<String> = senders.person_rows(std::slice::from_ref(&key), &[]).into_iter().filter(|id| set.contains(id)).collect();
+        if ids.is_empty() {
+            continue;
+        }
+        let row = match rows.iter().find(|r| r.ids == ids && r.who == who) {
+            Some(r) => r.row.clone(),
+            None => {
+                let row = format!("own-{}", rows.len());
+                rows.push(OwnRow { row: row.clone(), ids, who });
+                row
+            }
+        };
+        numbers.push((key, row));
+    }
+    (numbers, rows)
 }
 
 /// `frames`, with a row for each person's own row too (`own`): whether their
@@ -345,7 +380,7 @@ pub fn frames_with(attention: &Attention, clock: &Clock, layers: &Layers, from: 
                 })
                 .collect();
             for o in own {
-                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(vec![o.id.clone()]);
+                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
                 ring.insert(o.row.clone(), attention.decide(&call, &now).level == Level::Now);
             }
             let column = column_of(&now).to_string();
@@ -522,7 +557,8 @@ pub struct Incoming {
 pub struct Decision {
     pub refuse: bool,
     /// "outgoing", "no-table", "emergency", "after-emergency", "people",
-    /// "blocked", "repeat", "no-frame", "no-row", "matrix"; the screening's
+    /// "blocked", "repeat", "no-frame", "no-row", "matrix", "own" (their own
+    /// row decided, decision 16); the screening's
     /// (version 2): "screening-off", "work-hours", "impossible", "unverified",
     /// "automated", "expecting", "screening"; version 1's "through".
     pub why: &'static str,
@@ -601,8 +637,9 @@ pub fn decide(table: Option<&Table>, call: &Incoming) -> Decision {
     let own = if call.hidden || called { None } else { table.own.get(&key) };
     let by_frame = |frame: Option<&Frame>| match frame {
         None => decided(false, "no-frame", ""),
-        Some(frame) => match own.and_then(|row| frame.ring.get(row)).or_else(|| frame.ring.get(&who)) {
-            Some(rings) => decided(!rings, "matrix", &frame.column),
+        // Decided by their own row: "own", for the Porch's sentence (review of part 6, F7).
+        Some(frame) => match own.and_then(|row| frame.ring.get(row).map(|r| (r, "own"))).or_else(|| frame.ring.get(&who).map(|r| (r, "matrix"))) {
+            Some((rings, why)) => decided(!rings, why, &frame.column),
             None => decided(false, "no-row", &frame.column),
         },
     };
@@ -1403,6 +1440,8 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
     let why = match (first.why.as_str(), row) {
         // A number you called lately, declined as your contacts were then (the screening declining it too).
         ("matrix", _) if first.called => tr.text("calls-why-called", Some(&why_args)),
+        // Their own times held them, never their list (review of part 6, F7).
+        ("own", _) => tr.text("calls-why-own", Some(&why_args)),
         // The screening's own (a table of version 2): what it is, never the time.
         ("automated" | "impossible" | "unverified", _) => tr.text(&format!("calls-why-{}", first.why), None),
         ("screening", "hidden") => tr.text("calls-why-screening-hidden", None),
@@ -2191,10 +2230,15 @@ mod tests {
         let mut attention = Attention::usual();
         let id = attention::person_row("contact:card-2");
         attention.set_source(&id, attention::Column::Work, Level::Later).unwrap();
-        let own = [OwnRow { row: "own-0".into(), id: id.clone(), who: Who::Neutral }];
+        let own = [OwnRow { row: "own-0".into(), ids: vec![id.clone()], who: Who::Neutral }];
         let frames = frames_with(&attention, &clock, &Layers::default(), &at("2026-10-05T00:00[Europe/Paris]"), &at("2026-10-06T00:00[Europe/Paris]"), &own);
         let work = frames.iter().find(|f| f.column == "work").unwrap();
         assert_eq!((work.ring["neutral"], work.ring["own-0"]), (true, false), "their row holds them at work, their list would ring");
+        // Reachable over the work morning: they ring, their own row as their list (review of part 6, F1).
+        let morning = (at("2026-10-05T09:00[Europe/Paris]").timestamp().as_second(), Some(at("2026-10-05T12:00[Europe/Paris]").timestamp().as_second()));
+        let reachable = frames_with(&attention, &clock, &Layers { reachable: Some(morning), ..Layers::default() }, &at("2026-10-05T00:00[Europe/Paris]"), &at("2026-10-06T00:00[Europe/Paris]"), &own);
+        let lifted = reachable.iter().find(|f| f.column == "reachable").unwrap();
+        assert!(lifted.ring["own-0"] && lifted.ring["neutral"], "{lifted:?}");
         let mut people = People::default();
         people.add(Person { name: "Alice".into(), phones: vec!["01 99 00 00 01".into()], ..Person::default() }, fr());
         let table = table(Made {
@@ -2211,12 +2255,44 @@ mod tests {
         assert_eq!(table.own.keys().collect::<Vec<_>>(), ["+33199000002"], "never a blocked number, nor one on Always through");
         let call = |number: &str| decide(Some(&table), &Incoming { number: number.into(), now: work.from + 1, ..Incoming::default() });
         let held = call("01 99 00 00 02");
-        assert!(held.refuse && held.why == "matrix", "{held:?}");
+        assert!(held.refuse && held.why == "own", "{held:?}");
         assert!(call("01 99 00 00 04").refuse && call("01 99 00 00 04").why == "blocked");
         // Their list's row in a frame that has no row of theirs (an older table).
         let older = Table { frames: frames.iter().map(|f| Frame { ring: f.ring.iter().filter(|(k, _)| !k.starts_with("own-")).map(|(k, v)| (k.clone(), *v)).collect(), ..f.clone() }).collect(), ..table.clone() };
         assert!(!decide(Some(&older), &Incoming { number: "01 99 00 00 02".into(), now: work.from + 1, ..Incoming::default() }).refuse);
         assert!(!serde_json::to_string(&table).unwrap().contains("card-2"), "no card, no name in the table");
+    }
+
+    /// Review of part 6, F2 to F4: the table's own rows number by number, as
+    /// a text from that number reads them: a card's numbers each judged by
+    /// their own list; a blocked one dropping only itself; two cards, or a
+    /// card and a number's row, on one number read in the listener's order;
+    /// the same table whatever the order things were read in.
+    #[test]
+    fn the_own_rows_are_made_number_by_number() {
+        use crate::porch::{Book, SenderList, Senders};
+        let card = |uid: &str, phones: &[&str]| crate::contacts::Contact { uid: uid.into(), key: format!("/books/{uid}.vcf"), name: uid.into(), phones: phones.iter().map(|p| crate::contacts::Labeled { label: String::new(), value: p.to_string() }).collect(), ..Default::default() };
+        let contacts = vec![card("a", &["01 99 00 00 21", "01 99 00 00 22", "01 99 00 00 23"]), card("b", &["01 99 00 00 23"]), card("c", &["01 99 00 00 24"])];
+        let senders = Senders {
+            safe: SenderList::parse("tel:+33199000021"),
+            restricted: SenderList::parse("tel:+33199000022"),
+            blocked: SenderList::parse("tel:+33199000024"),
+            contacts: std::sync::Arc::new(Book::of(&contacts, fr())),
+            ..Senders::default()
+        };
+        let mut attention = Attention::usual();
+        for id in ["person.contact:a", "person.contact:b", "person.contact:c", "person.tel:+33199000023"] {
+            attention.set_source(id, attention::Column::Work, Level::Later).unwrap();
+        }
+        let (numbers, rows) = own_rows(&attention, &senders);
+        let row_of = |key: &str| numbers.iter().find(|(k, _)| k == key).map(|(_, r)| rows.iter().find(|o| &o.row == r).unwrap().clone());
+        let safe = row_of("+33199000021").unwrap();
+        let restricted = row_of("+33199000022").unwrap();
+        assert_eq!((safe.who, restricted.who), (Who::Safe, Who::Restricted), "each number by its own list");
+        assert_ne!(safe.row, restricted.row);
+        assert_eq!(row_of("+33199000023").unwrap().ids, ["person.contact:a", "person.contact:b", "person.tel:+33199000023"], "the listener's order: the cards', then the number's");
+        assert!(row_of("+33199000024").is_none(), "a blocked number drops itself alone");
+        assert_eq!(own_rows(&attention, &senders), (numbers, rows), "the same table each time");
     }
 
     #[test]
@@ -2833,7 +2909,7 @@ mod tests {
                 "calls-phone-yours", "calls-phone-other", "calls-phone-named", "calls-phone-this", "calls-again-rang", "calls-history-title", "calls-history-when", "calls-history-head", "calls-history-line", "calls-history-declined", "calls-history-rang", "calls-history-declined-on", "calls-history-rang-on",
                 "calls-rang-repeat", "calls-rang-through", "calls-rang-emergency", "calls-rang-after-emergency", "calls-rang-undecided",
                 "calls-rang-expecting", "calls-rang-screening-off", "calls-rang-work-hours", "calls-rang-screening", "calls-history-called", "calls-history-unverified",
-                "calls-why-automated", "calls-why-impossible", "calls-why-unverified", "calls-why-screening-stranger", "calls-why-screening-hidden", "calls-why-called",
+                "calls-why-automated", "calls-why-impossible", "calls-why-unverified", "calls-why-screening-stranger", "calls-why-screening-hidden", "calls-why-called", "calls-why-own",
             ]
             .iter()
             .map(|k| k.to_string())

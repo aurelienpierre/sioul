@@ -738,7 +738,10 @@ impl Book {
 
     /// The numbers of one card, by their keys.
     pub fn numbers_of_card(&self, index: usize) -> Vec<String> {
-        self.by_number.iter().filter(|(_, cards)| cards.contains(&index)).map(|(key, _)| key.clone()).collect()
+        // Sorted: never a map's order (review of part 6, F2).
+        let mut keys: Vec<String> = self.by_number.iter().filter(|(_, cards)| cards.contains(&index)).map(|(key, _)| key.clone()).collect();
+        keys.sort();
+        keys
     }
 
     /// How many cards.
