@@ -661,6 +661,41 @@ fn spam_line(config: &Config) -> String {
 /// The moment now, in sentences: the time and until when, the layers on top
 /// of it, then what comes at once, what is shown without a word, what waits
 /// (`Attention::person` and `level`: what the matrix decides now).
+/// The card "What reaches you now" (the status line's button, ReachCard.qml;
+/// the proposal's 3.5 and 3.6): what now is and what comes at once, in two
+/// sentences; on a phone, what it holds, by app, never by conversation; the
+/// call screening in a sentence while a phone of yours screens calls, and
+/// Expecting a call (`calls::moment`); Mail every minute (Real time).
+pub(crate) fn now_card(realtime: bool) -> String {
+    let attention = crate::hours::attention();
+    let now = crate::hours::attention_now();
+    let mut said = now_sentences(&attention, &now, reach());
+    said.truncate(2);
+    let held = if cfg!(target_os = "android") { crate::appnotes::porch_line() } else { String::new() };
+    let calls = crate::calls::moment();
+    let screening = if calls["shown"] == true { screening_line(&load_config()) } else { String::new() };
+    json!({ "now": said, "held": held, "realtime": realtime, "screening": screening, "calls": calls }).to_string()
+}
+
+/// The call screening in a sentence, as `[screening]` says it (`Screening::of`).
+fn screening_line(config: &Config) -> String {
+    use sioul_core::screening::{Hours, Rule, Screening};
+    let screening = Screening::of(config);
+    if !screening.on {
+        return text("reach-card-screening-off");
+    }
+    let when = text(match screening.hours {
+        Hours::Always => "reach-card-screening-always",
+        Hours::OutsideWork => "reach-card-screening-outside-work",
+    });
+    let id = match screening.unknown {
+        Rule::Voicemail => "reach-card-screening-voicemail",
+        Rule::Work => "reach-card-screening-work",
+        Rule::Ring => "reach-card-screening-ring",
+    };
+    say(id, &[("when", when)])
+}
+
 fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> {
     let mode = crate::hours::mode_now();
     let column = column_now(now);
@@ -1087,6 +1122,28 @@ pub(crate) fn person_change(key: &str, addresses: &str, verb: &str, value: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card's call screening in a sentence, for each rule and both hours, in both languages.
+    #[test]
+    fn the_card_says_the_call_screening() {
+        for language in ["en", "fr"] {
+            speak(language);
+            for (words, has) in [
+                ("", "voicemail"),
+                ("[screening]\nunknown = \"work\"\n", "work"),
+                ("[screening]\nunknown = \"ring\"\nhours = \"outside-work\"\n", "ring"),
+                ("[screening]\non = false\n", "off"),
+            ] {
+                let config: Config = toml::from_str(words).unwrap();
+                let line = screening_line(&config);
+                said_well(&line, language);
+                assert!(!line.contains("reach-card"), "{language} {has}: {line}");
+            }
+            let at_all_hours: Config = toml::from_str("").unwrap();
+            let outside: Config = toml::from_str("[screening]\nhours = \"outside-work\"\n").unwrap();
+            assert_ne!(screening_line(&at_all_hours), screening_line(&outside), "{language}: the hours said");
+        }
+    }
 
     /// This thread speaks `language` from now on.
     fn speak(language: &str) {

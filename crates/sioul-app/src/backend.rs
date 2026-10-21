@@ -1671,6 +1671,11 @@ pub mod qobject {
         #[qinvokable]
         fn reaches_view(self: &Sioul) -> QString;
 
+        /// The card "What reaches you now", as JSON (`reaches::now_card`): now in two
+        /// sentences, what the phone holds, the call screening, Mail every minute.
+        #[qinvokable]
+        fn reach_card(self: &Sioul) -> QString;
+
         /// A row of the matrix changed (`row`: "mail.safe", "codes"; `words`: its
         /// words whole, a JSON list; `shown`: its words as the row showed them,
         /// so that only the cells changed are set): what went wrong, else "".
@@ -5576,6 +5581,10 @@ impl qobject::Sioul {
         QString::from(&crate::reaches::view(self.shared().realtime.load(Ordering::Relaxed)))
     }
 
+    fn reach_card(&self) -> QString {
+        QString::from(&crate::reaches::now_card(self.shared().realtime.load(Ordering::Relaxed)))
+    }
+
     fn reaches_set(self: Pin<&mut Self>, row: &QString, words: &QString, shown: &QString) -> QString {
         let problem = crate::reaches::set_row(&row.to_string(), &words.to_string(), &shown.to_string());
         if problem.is_empty() {
@@ -5948,8 +5957,9 @@ impl qobject::Sioul {
         // "bitwarden-wait" the unlock dialog waiting for Bitwarden, then its answer (no account
         // set: no server asked), "tray" the window hidden as to the tray and brought back,
         // "notes-shared" a note changed on another device while shown, read then typed in
-        // (docs/database.md, "Notes"), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft"].contains(&steps.as_str()) && offline()) {
+        // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
+        // its card, each state pressed and back to As usual (docs/do-not-disturb.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

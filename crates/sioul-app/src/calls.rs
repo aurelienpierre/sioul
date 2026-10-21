@@ -322,7 +322,7 @@ pub(crate) fn press(on: bool, minutes: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// The status line's part (main.qml, CallsApplet.qml): {shown (a phone of
+/// The status line's part (main.qml, ReachCard.qml): {shown (a phone of
 /// yours screens calls), through, line, until_at}.
 pub(crate) fn moment() -> serde_json::Value {
     // As every reader reads it (R-1): a gone phone screens nothing, a gone device expects no call.
