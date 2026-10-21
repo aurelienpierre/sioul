@@ -5,7 +5,8 @@
 // "Undo" for ten seconds after anything is moved, deleted or sent; what now
 // is (quiet time, work kept late) and, behind a click, the way back, never
 // suggested; the work day or the day offered to close at its time; the keys;
-// do-not-disturb, the sounds and the weather; at its end, Free time and
+// what reaches you now (Reachable, As usual, Do not disturb, the card
+// behind it), the sounds and the weather; at its end, Free time and
 // Pause, always in the same place. On a computer, it is the window's title
 // bar, at the top (TitleBar.qml); on a phone, it is at the bottom. Narrow (a
 // phone, a window as narrow), every button is its icon alone (LineButton.qml),
@@ -47,6 +48,7 @@ Item {
     readonly property string sentence: line.sioul.undoLine !== "" ? line.sioul.undoLine : line.sioul.status !== "" ? line.sioul.status : !line.compact ? "" : line.offer.kind !== "" ? line.offer.line : line.moment.line
     // For the documentation's pictures (main.qml's grabber).
     readonly property alias weatherApplet: weatherApplet
+    readonly property alias reachButton: reachButton
     // The moment's menu (made the first time), for the window's pictures.
     readonly property alias modeMenu: modeMenu
 
@@ -215,20 +217,17 @@ Item {
             Layout.minimumWidth: 0
             Layout.maximumWidth: implicitWidth
         }
-        // Do-not-disturb on every device (DndApplet.qml): its switch, apart
+        // What reaches you now (ReachButton.qml): Reachable, As usual or Do not
+        // disturb, and the card behind it (the call screening there too), apart
         // from the pauses' buttons at the line's end.
-        DndApplet {
+        ReachButton {
+            id: reachButton
+
             sioul: line.sioul
             theme: line.theme
             moment: line.moment
             compact: line.compact
-        }
-        // Every call let through on your phone, while one screens them (CallsApplet.qml).
-        CallsApplet {
-            sioul: line.sioul
-            theme: line.theme
-            moment: line.moment
-            compact: line.compact
+            below: line.atTop
         }
         // Sounds to focus or to rest by, never on by themselves.
         SoundsApplet {

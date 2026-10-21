@@ -291,7 +291,8 @@ Item {
                 width: list.availableWidth
                 spacing: page.theme.gap
 
-                // Where the Porch stands, in a line; real time; its settings.
+                // Where the Porch stands, in a line; its settings. Real time went to the card
+                // What reaches you now, as Mail every minute (part 5).
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
@@ -303,32 +304,6 @@ Item {
                         elide: Text.ElideRight
                         color: page.theme.muted
                     }
-                    CheckBox {
-                        id: realtime
-
-                        text: page.sioul.text("ui-realtime")
-                        checked: page.sioul.realtime
-                        ToolTip.visible: hovered
-                        ToolTip.text: page.sioul.text("ui-realtime-help")
-                        ToolTip.delay: 400
-                        onToggled: {
-                            page.sioul.setRealtimeMode(checked)
-                            realtime.checked = Qt.binding(() => page.sioul.realtime)
-                        }
-                    }
-                    // "Show all mail now" (decision 12): a look at every lane and address, at
-                    // any hour, on this device alone, which tells nothing ("Work now" went:
-                    // Reachable and "Work until tonight" have its two jobs, part 3).
-                    Button {
-                        objectName: "show-all-mail"
-                        visible: page.view.open === true && page.view.all !== true
-                        flat: true
-                        text: page.sioul.text("ui-show-all-mail")
-                        ToolTip.visible: hovered
-                        ToolTip.text: page.sioul.text("ui-show-all-mail-help")
-                        ToolTip.delay: 400
-                        onClicked: page.sioul.openAnyway()
-                    }
                     SettingsButton {
                         id: settingsButton
 
@@ -336,6 +311,23 @@ Item {
                         theme: page.theme
                         view: "porch"
                     }
+                }
+                // "Show all mail now" (decision 12): a look at every lane and address, at
+                // any hour, on this device alone, which tells nothing ("Work now" went:
+                // Reachable and "Work until tonight" have its two jobs, part 3). Under the
+                // first row, which it widened past a phone's edge in French (part 5).
+                Button {
+                    objectName: "show-all-mail"
+                    visible: page.view.open === true && page.view.all !== true
+                    Layout.maximumWidth: parent.width
+                    flat: true
+                    text: page.sioul.text("ui-show-all-mail")
+                    Accessible.name: page.sioul.text("ui-show-all-mail")
+                    Accessible.description: page.sioul.text("ui-show-all-mail-help")
+                    ToolTip.visible: hovered
+                    ToolTip.text: page.sioul.text("ui-show-all-mail-help")
+                    ToolTip.delay: 400
+                    onClicked: page.sioul.openAnyway()
                 }
 
                 // Opened: what came, in a few sentences, before the cards (docs/design.md, "Opening").

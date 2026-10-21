@@ -4,8 +4,8 @@
 // Sioul in the system tray, on a desktop (main.qml): a click shows the window
 // or hides it, Sioul going on behind it (reminders, medicines, mail at its
 // hours, the sharing); its menu shows or hides the window, closes the work
-// day or the whole day on its sheet in the window (docs/reviews.md), or
-// quits. On macOS it is in the menu bar. On Windows the end of work's notice
+// day or the whole day on its sheet in the window (docs/reviews.md), sets
+// Reachable for an hour, As usual or Do not disturb for an hour, or quits. On macOS it is in the menu bar. On Windows the end of work's notice
 // and the night's come as its messages, and a click on one opens what it
 // offers (main.qml's `onTrayNotice`). Without
 // a tray (`available` false: GNOME without its extension, a bare window
@@ -40,6 +40,42 @@ Platform.SystemTrayIcon {
         Platform.MenuItem {
             text: tray.window.visible ? tray.sioul.text("tray-hide") : tray.sioul.text("tray-show")
             onTriggered: tray.window.toggleShown()
+        }
+        Platform.MenuSeparator {}
+        // The three states (part 5 of "What reaches you"), the one now ticked:
+        // Reachable for an hour (never during a pause), As usual, Do not disturb for an hour.
+        Platform.MenuItem {
+            objectName: "trayReachable"
+            readonly property var dnd: tray.window.moment && tray.window.moment.dnd ? tray.window.moment.dnd : ({})
+
+            visible: dnd.paused !== true
+            checkable: true
+            checked: dnd.on !== true && dnd.state === "reachable"
+            text: tray.sioul.text("reach-for-60")
+            onTriggered: tray.sioul.reachChoose("reachable", "60")
+        }
+        Platform.MenuItem {
+            objectName: "trayUsual"
+            readonly property var dnd: tray.window.moment && tray.window.moment.dnd ? tray.window.moment.dnd : ({})
+
+            checkable: true
+            checked: dnd.on !== true && dnd.state !== "reachable"
+            text: tray.sioul.text("reach-usual")
+            onTriggered: {
+                if (dnd.on === true)
+                    tray.sioul.dndToggle(false, 0)
+                else if (dnd.state === "reachable")
+                    tray.sioul.reachChoose("usual", "")
+            }
+        }
+        Platform.MenuItem {
+            objectName: "trayDnd"
+            readonly property var dnd: tray.window.moment && tray.window.moment.dnd ? tray.window.moment.dnd : ({})
+
+            checkable: true
+            checked: dnd.on === true
+            text: tray.sioul.text("reach-menu-dnd")
+            onTriggered: tray.sioul.dndToggle(true, 60)
         }
         Platform.MenuSeparator {}
         // At any hour, as the places' two buttons: each on its sheet, the window brought back.

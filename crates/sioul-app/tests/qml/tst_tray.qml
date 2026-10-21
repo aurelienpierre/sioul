@@ -23,6 +23,8 @@ TestCase {
 
         property bool visible: true
         property var asked: []
+        // The status line's moment, its `dnd` part (everywhere.rs's `moment`).
+        property var moment: ({ dnd: { on: false, state: "usual", paused: false } })
 
         function reviewFromTray(kind) {
             shownWindow.asked = shownWindow.asked.concat(["review " + kind])
@@ -42,8 +44,16 @@ TestCase {
     QtObject {
         id: words
 
+        property var pressed: []
+
         function text(id) {
             return id
+        }
+        function reachChoose(state, length) {
+            words.pressed = words.pressed.concat([state + " " + length])
+        }
+        function dndToggle(on, minutes) {
+            words.pressed = words.pressed.concat(["dnd " + on + " " + minutes])
         }
     }
 
@@ -76,10 +86,29 @@ TestCase {
     }
 
     function test_the_menu_stays_short() {
-        // The window, the two closings, Quit: four entries, two separators.
+        // The window, the three states, the two closings, Quit: seven entries, three separators.
         const entries = tray.menu.items.filter(item => !item.separator)
-        compare(entries.map(item => item.text), ["tray-hide", "review-close-work", "review-close-night", "tray-quit"])
-        compare(tray.menu.items.length, 6)
+        compare(entries.map(item => item.text), ["tray-hide", "reach-for-60", "reach-usual", "reach-menu-dnd", "review-close-work", "review-close-night", "tray-quit"])
+        compare(tray.menu.items.length, 10)
+    }
+
+    // The three states (part 5 of "What reaches you"): the one now ticked, each pressed; no Reachable in a pause.
+    function test_the_menu_offers_the_three_states() {
+        words.pressed = []
+        verify(root.entry("trayUsual").checked && !root.entry("trayReachable").checked && !root.entry("trayDnd").checked)
+        root.entry("trayReachable").triggered()
+        root.entry("trayDnd").triggered()
+        compare(words.pressed, ["reachable 60", "dnd true 60"])
+        shownWindow.moment = { dnd: { on: true, state: "dnd", paused: true } }
+        verify(root.entry("trayDnd").checked && !root.entry("trayUsual").checked)
+        verify(!root.entry("trayReachable").visible, "never during a pause")
+        root.entry("trayUsual").triggered()
+        compare(words.pressed[words.pressed.length - 1], "dnd false 0", "as usual: do-not-disturb off")
+        shownWindow.moment = { dnd: { on: false, state: "reachable", paused: false } }
+        verify(root.entry("trayReachable").checked)
+        root.entry("trayUsual").triggered()
+        compare(words.pressed[words.pressed.length - 1], "usual ", "as usual: Reachable ended")
+        shownWindow.moment = { dnd: { on: false, state: "usual", paused: false } }
     }
 
     function test_a_message_clicked_goes_to_the_window() {

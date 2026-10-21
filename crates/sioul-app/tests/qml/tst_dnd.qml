@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Do-not-disturb's switch in the status line (DndApplet.qml), and its
+// The status line's button of what reaches you and its card (ReachButton.qml,
+// ReachCard.qml; do-not-disturb's switch until part 5), and do-not-disturb's
 // settings (DndSetup.qml), each part where the window shows it: "device"
 // (What reaches you ▸ Do not disturb), "list" (What reaches you ▸ Exceptions,
 // the Always through list) and "phone" (This phone). On a stand-in for Sioul:
@@ -41,6 +42,12 @@ Item {
         function dndToggle(on, minutes) { mock.toggles = mock.toggles.concat([[on, minutes]]) }
         function reachChoose(state, length) { mock.chosen = mock.chosen.concat([[state, length]]) }
         function letPhoneThrough() { mock.letThrough += 1 }
+        property bool realtime: false
+        property var through: []
+        property var calls: ({ shown: false, through: false, line: "" })
+        function setRealtimeMode(on) { mock.realtime = on }
+        function callsThrough(on, minutes) { mock.through = mock.through.concat([[on, minutes]]) }
+        function reachCard() { return JSON.stringify({ now: ["Work and admin until 17:00.", "The people you know reach you at once."], held: "", realtime: mock.realtime, screening: mock.calls.shown ? "Numbers nobody knows go to your voicemail, at all hours." : "", calls: mock.calls }) }
         function setup() {
             const s = { here: { on: true, line: "Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.", lines: ["dnd-setup-plasma-mail"], consent: "", offers: [{ key: "plasma", label: "Plasma's notification settings" }] }, gnome: false, people: mock.people, problem: "", said: "", android: mock.android }
             if (mock.android) {
@@ -59,12 +66,12 @@ Item {
     }
 
     Component {
-        id: appletComponent
+        id: buttonComponent
 
-        DndApplet {
+        ReachButton {
             sioul: mock
             theme: testTheme
-            moment: ({ dnd: { on: false, button: true, line: "", why_line: "", details: [], manual: false, end_time: "17:00" } })
+            moment: ({ dnd: { on: false, line: "", why_line: "", details: [], end_time: "17:00", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30", reach_capped: [false, false, true] } })
         }
     }
     Component {
@@ -78,126 +85,171 @@ Item {
     }
 
     TestCase {
-        name: "DndApplet"
+        name: "ReachButton"
         when: windowShown
 
-        function test_off_turns_on_until_turned_off() {
-            mock.toggles = []
-            const applet = createTemporaryObject(appletComponent, root)
-            verify(applet.visible)
-            compare(applet.icon.name, "notification-inactive")
-            compare(applet.display, AbstractButton.IconOnly, "off: its icon alone")
-            mouseClick(applet)
-            compare(mock.toggles.length, 1)
-            compare(mock.toggles[0][0], true)
-            compare(mock.toggles[0][1], 0)
+        readonly property var usualDnd: ({ on: false, line: "", why_line: "", details: [], end_time: "17:00", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30", reach_capped: [false, false, true] })
+
+        function cardOf(button) {
+            button.openCard()
+            const card = button.cardLoader.item
+            tryVerify(() => card.opened)
+            // Laid out: its parts placed after the frame that shows them.
+            waitForRendering(card.contentItem)
+            wait(50)
+            return card
         }
 
-        function test_on_says_where_and_turns_off() {
-            mock.toggles = []
-            const applet = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: true, button: true, line: "Do not disturb, on every device, until 15:00.", why_line: "Turned on from your phone.", details: ["Here: silenced.", "On your phone: silenced."], manual: true, end_time: "17:00" } } })
-            compare(applet.icon.name, "notification-disabled")
-            compare(applet.display, AbstractButton.TextBesideIcon)
-            compare(applet.text, "Do not disturb, on every device, until 15:00.")
-            verify(applet.tip.indexOf("Turned on from your phone.") >= 0, applet.tip)
-            mouseClick(applet)
-            compare(mock.toggles[0][0], false, "a click on: off, on every device")
+        function find(item, name) {
+            if (item.objectName === name)
+                return item
+            const kids = item.children || []
+            for (let i = 0; i < kids.length; ++i) {
+                const found = find(kids[i], name)
+                if (found)
+                    return found
+            }
+            if (item.contentItem && item.contentItem !== item) {
+                const found = find(item.contentItem, name)
+                if (found)
+                    return found
+            }
+            return null
         }
 
-        function test_hidden_switch_shows_while_on() {
-            const hidden = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: false, line: "", why_line: "", details: [], end_time: "" } } })
-            verify(!hidden.visible)
-            const held = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: true, button: false, line: "Do not disturb, here only.", why_line: "While you focus on a task.", details: [], end_time: "" } } })
-            verify(held.visible, "held on by focus: shown")
-        }
-
-        function menuOf(applet) {
-            applet.openMenu()
-            let menu = null
-            for (let i = 0; i < applet.children.length; ++i)
-                if (applet.children[i].item)
-                    menu = applet.children[i].item
-            return menu
-        }
-
-        function shownTexts(menu) {
+        function menuTexts(menu) {
             const texts = []
             for (let i = 0; i < menu.count; ++i) {
                 const item = menu.itemAt(i)
                 if (item && item.visible && item.text)
-                    texts.push(item.text)
+                    texts.push(item.objectName)
             }
             return texts
         }
 
-        // Part 3 of "What reaches you": Reachable pressed for a while from the menu, its ends as known;
-        // while it lasts, the button says until when and a click goes back to As usual; never during a pause.
-        function test_reachable_is_pressed_and_said() {
+        // Its icon says the state; its name for screen readers, the state and its end; a click opens the card.
+        function test_the_button_says_the_state() {
+            const usual = createTemporaryObject(buttonComponent, root)
+            verify(usual.visible)
+            compare(usual.icon.name, "notification-inactive")
+            compare(usual.display, AbstractButton.IconOnly, "as usual: its icon alone")
+            compare(usual.Accessible.name, "reach-button-name(reach-usual)")
+            mouseClick(usual)
+            tryVerify(() => usual.cardLoader.item !== null && usual.cardLoader.item.opened, 2000, "a click opens the card")
+            usual.cardLoader.item.close()
+            const dnd = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { on: true, state: "dnd", line: "Do not disturb, on every device, until 15:00." }) } })
+            compare(dnd.icon.name, "notification-disabled")
+            compare(dnd.display, AbstractButton.TextBesideIcon)
+            compare(dnd.text, "Do not disturb, on every device, until 15:00.")
+            verify(dnd.switchedOn, "the accent")
+            const reachable = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { state: "reachable", reachable: { line: "Reachable until 17:00.", until: "17:00" } }) } })
+            compare(reachable.icon.name, "notification-active")
+            compare(reachable.text, "Reachable until 17:00.")
+            compare(reachable.Accessible.name, "reach-button-name(Reachable until 17:00.)")
+        }
+
+        // The three states side by side; Reachable and Do not disturb show their lengths, As usual applies at once.
+        function test_the_card_presses_each_state() {
             mock.chosen = []
-            const off = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30", reach_capped: [false, false, true] } } })
-            let menu = menuOf(off)
+            mock.toggles = []
+            const button = createTemporaryObject(buttonComponent, root)
+            const card = cardOf(button)
+            verify(find(card.contentItem, "state-usual").highlighted, "as usual now")
+            mouseClick(find(card.contentItem, "state-reachable"))
+            wait(50)
+            const labels = card.lengths("reachable").map(l => l.label)
+            verify(labels.indexOf("reach-len-until(17:00)") >= 0 && labels.indexOf("reach-len-tonight") >= 0 && labels.indexOf("reach-len-off") >= 0, labels)
+            compare(card.lengths("reachable")[2].name, "reach-for-120-latest(22:30)", "two hours past the night's start: said so")
+            tryVerify(() => find(card.contentItem, "length-reachable-60") !== null)
+            mouseClick(find(card.contentItem, "length-reachable-60"))
+            compare(mock.chosen[mock.chosen.length - 1][0], "reachable")
+            compare(mock.chosen[mock.chosen.length - 1][1], "60")
+            mouseClick(find(card.contentItem, "state-dnd"))
+            wait(50)
+            tryVerify(() => find(card.contentItem, "length-dnd-30") !== null)
+            mouseClick(find(card.contentItem, "length-dnd-30"))
+            compare(mock.toggles[mock.toggles.length - 1][0], true)
+            compare(mock.toggles[mock.toggles.length - 1][1], 30)
+            card.close()
+            const reachable = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { state: "reachable", reachable: { line: "Reachable until 17:00.", until: "17:00" } }) } })
+            mouseClick(find(cardOf(reachable).contentItem, "state-usual"))
+            compare(mock.chosen[mock.chosen.length - 1][0], "usual", "Reachable ended")
+            reachable.cardLoader.item.close()
+            const on = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { on: true, state: "dnd", line: "Do not disturb, here only." }) } })
+            mouseClick(find(cardOf(on).contentItem, "state-usual"))
+            compare(mock.toggles[mock.toggles.length - 1][0], false, "do-not-disturb off")
+            on.cardLoader.item.close()
+            // At night, until tonight and until turned off both end at waking: one choice.
+            const night = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { reach_hours: 0, reach_tonight_time: "07:00", reach_at_night: true }) } })
+            const asleep = cardOf(night).lengths("reachable").map(l => l.label)
+            verify(asleep.indexOf("reach-len-waking") >= 0 && asleep.indexOf("reach-len-off") < 0 && asleep.indexOf("reach-len-tonight") < 0, asleep)
+            night.cardLoader.item.close()
+        }
+
+        // During a pause: no Reachable, nothing let through.
+        function test_a_pause_offers_no_reachable() {
+            const button = createTemporaryObject(buttonComponent, root, { moment: { dnd: Object.assign({}, usualDnd, { on: true, state: "dnd", paused: true, line: "Do not disturb, here only." }) } })
+            const card = cardOf(button)
+            verify(!find(card.contentItem, "state-reachable").enabled)
+            verify(!find(card.contentItem, "let-through").visible)
+            card.close()
+            button.openMenu()
+            const menu = button.menuLoader.item
             tryVerify(() => menu.opened)
-            const texts = shownTexts(menu)
-            // Two hours meet the night's start: said with it (review of part 3, F2).
-            verify(texts.indexOf("reach-for-120-latest(22:30)") >= 0 && texts.indexOf("reach-for-120") < 0, texts)
-            verify(texts.indexOf("reach-for-60") >= 0 && texts.indexOf("reach-until-time(17:00)") >= 0 && texts.indexOf("reach-until-tonight(22:30)") >= 0 && texts.indexOf("reach-until-off(22:30)") >= 0, texts)
-            verify(texts.indexOf("reach-let-through") >= 0, "a computer lets what the phone holds through: " + texts)
-            for (let i = 0; i < menu.count; ++i) {
-                const item = menu.itemAt(i)
-                if (item && item.text === "reach-for-60")
-                    item.triggered()
-            }
-            compare(mock.chosen[0][0], "reachable")
-            compare(mock.chosen[0][1], "60")
-            menu.close()
-            const on = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "reachable", reachable: { line: "Reachable until 17:00.", until: "17:00", until_at: 61200, open: false }, paused: false, reach_hours: 0, reach_tonight: 81000, reach_tonight_time: "22:30" } } })
-            compare(on.display, AbstractButton.TextBesideIcon)
-            compare(on.text, "Reachable until 17:00.")
-            mouseClick(on)
-            compare(mock.chosen[mock.chosen.length - 1][0], "usual", "a click while Reachable: as usual")
-            // At night: until tonight and until turned off both end at waking, one choice.
-            const night = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: false, button: true, line: "", why_line: "", details: [], end_time: "", state: "usual", reachable: null, paused: false, reach_hours: 0, reach_tonight: 111600, reach_tonight_time: "07:00", reach_at_night: true } } })
-            menu = menuOf(night)
-            tryVerify(() => menu.opened)
-            const asleep = shownTexts(menu)
-            verify(asleep.indexOf("reach-until-waking(07:00)") >= 0 && asleep.every(t => t.indexOf("reach-until-off") < 0 && t.indexOf("reach-until-tonight") < 0 && t.indexOf("reach-until-time") < 0), asleep)
-            menu.close()
-            const paused = createTemporaryObject(appletComponent, root, { moment: { dnd: { on: true, button: true, line: "Do not disturb, here only.", why_line: "", details: [], end_time: "", state: "dnd", reachable: null, paused: true, reach_hours: 61200, reach_hours_time: "17:00", reach_tonight: 81000, reach_tonight_time: "22:30" } } })
-            menu = menuOf(paused)
-            tryVerify(() => menu.opened)
-            verify(shownTexts(menu).every(t => t.indexOf("reach-for") < 0 && t.indexOf("reach-until") < 0), "never offered during a pause")
-            verify(shownTexts(menu).indexOf("reach-let-through") < 0, "nor the computer's release (review of part 3, F5)")
+            const shown = menuTexts(menu)
+            verify(shown.indexOf("menu-reachable") < 0 && shown.indexOf("menu-dnd") >= 0 && shown.indexOf("menu-usual") >= 0, shown)
             menu.close()
         }
 
-        function test_its_menu_offers_how_long() {
-            mock.toggles = []
-            const applet = createTemporaryObject(appletComponent, root)
-            applet.openMenu()
-            let menu = null
-            for (let i = 0; i < applet.children.length; ++i)
-                if (applet.children[i].item)
-                    menu = applet.children[i].item
-            verify(menu !== null, "the menu made")
-            tryVerify(() => menu.opened)
-            const texts = []
-            for (let i = 0; i < menu.count; ++i) {
-                const item = menu.itemAt(i)
-                if (item && item.visible && item.text)
-                    texts.push(item.text)
+        // What the phone holds let through (a computer: without saying what), Mail every minute,
+        // the call screening apart: Expecting a call, Screen calls again.
+        function test_the_card_s_other_parts() {
+            mock.letThrough = 0
+            mock.through = []
+            mock.realtime = false
+            mock.calls = { shown: true, through: false, line: "" }
+            const button = createTemporaryObject(buttonComponent, root)
+            const card = cardOf(button)
+            compare(card.view.screening, "Numbers nobody knows go to your voicemail, at all hours.")
+            mouseClick(find(card.contentItem, "let-through"))
+            compare(mock.letThrough, 1)
+            const every = find(card.contentItem, "mail-every-minute")
+            mouseClick(every)
+            compare(mock.realtime, true, "Mail every minute on")
+            const expecting = find(card.contentItem, "expecting")
+            verify(expecting.visible)
+            mouseClick(expecting)
+            compare(mock.through[mock.through.length - 1][0], true)
+            compare(mock.through[mock.through.length - 1][1], 60)
+            card.close()
+            mock.calls = { shown: true, through: true, line: "Expecting a call until 15:00: numbers nobody knows ring." }
+            const again = find(cardOf(button).contentItem, "expecting")
+            compare(again.text, "calls-note-again")
+            mouseClick(again)
+            compare(mock.through[mock.through.length - 1][0], false, "screened again")
+            button.cardLoader.item.close()
+            mock.calls = { shown: false, through: false, line: "" }
+        }
+
+        // Every control named for screen readers; nothing past the card's edge, however narrow.
+        function test_every_control_is_named_and_fits() {
+            mock.calls = { shown: true, through: false, line: "" }
+            const button = createTemporaryObject(buttonComponent, root)
+            const card = cardOf(button)
+            mouseClick(find(card.contentItem, "state-reachable"))
+            card.width = 300
+            wait(50)
+            const names = ["state-reachable", "state-usual", "state-dnd", "length-reachable-30", "length-reachable-hours", "length-reachable-tonight", "length-reachable-off", "let-through", "mail-every-minute", "expecting"]
+            const column = card.contentItem.contentItem.children[0]
+            for (const name of names) {
+                const item = find(card.contentItem, name)
+                verify(item !== null, name)
+                verify(item.Accessible.name !== "", name + ": named")
+                const at = item.mapToItem(column, 0, 0)
+                verify(at.x >= -0.5 && at.x + item.width <= column.width + 0.5, name + ": " + at.x + " + " + item.width + " in " + column.width)
             }
-            verify(texts.indexOf("dnd-for-60") >= 0, texts)
-            verify(texts.indexOf("dnd-until-time(17:00)") >= 0, texts)
-            verify(texts.indexOf("dnd-until-off") >= 0, texts)
-            verify(texts.indexOf("dnd-turn-off") < 0, "off: no 'turn it off'")
-            for (let i = 0; i < menu.count; ++i) {
-                const item = menu.itemAt(i)
-                if (item && item.text === "dnd-for-60")
-                    item.triggered()
-            }
-            compare(mock.toggles[mock.toggles.length - 1][0], true)
-            compare(mock.toggles[mock.toggles.length - 1][1], 60)
-            menu.close()
+            card.close()
+            mock.calls = { shown: false, through: false, line: "" }
         }
     }
 

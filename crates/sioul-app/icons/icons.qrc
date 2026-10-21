@@ -197,6 +197,7 @@
     <file>sioul/22/media-playback-start.svg</file>
     <file>sioul/22/media-playback-stop.svg</file>
     <file>sioul/22/media-record.svg</file>
+    <file>sioul/22/notification-active.svg</file>
     <file>sioul/22/notification-disabled.svg</file>
     <file>sioul/22/notification-inactive.svg</file>
     <file>sioul/22/overflow-menu.svg</file>
@@ -538,6 +539,7 @@
     <file>sioul-dark/22/media-playback-start.svg</file>
     <file>sioul-dark/22/media-playback-stop.svg</file>
     <file>sioul-dark/22/media-record.svg</file>
+    <file>sioul-dark/22/notification-active.svg</file>
     <file>sioul-dark/22/notification-disabled.svg</file>
     <file>sioul-dark/22/notification-inactive.svg</file>
     <file>sioul-dark/22/overflow-menu.svg</file>
