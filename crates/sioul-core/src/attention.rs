@@ -1392,7 +1392,8 @@ impl Attention {
         }
         // Their own row, set (someone you know, not on Always through, who has none: the proposal's
         // 3.7); numbers nobody knows and hidden numbers stay the call screening's.
-        let own = if always || matches!(person, Person::Stranger | Person::Hidden) {
+        // Reachable: the people you know ring, their own row as their list (review of part 6, F1).
+        let own = if always || now.reachable || matches!(person, Person::Stranger | Person::Hidden) {
             Vec::new()
         } else {
             self.source_cells(&event.sources.iter().filter(|id| is_person(id)).cloned().collect::<Vec<_>>())
@@ -3244,6 +3245,11 @@ mod tests {
         // Their calls: held at work, at once in leisure (the list's usual otherwise).
         let call = |rows: &Attention, who: Option<Who>, now: &Now| rows.decide(&Event::of(Source::Call { who, always: false, emergency: false, repeat: false }).from_sources(vec![person.clone()]), now).told;
         assert!(!call(&rows, Some(Who::Neutral), &work), "held at work by their row");
+        // Reachable: the people you know ring, their own row as their list, as their texts come (review of part 6, F1).
+        let mut reachable = Now::time(Column::Work);
+        reachable.reachable = true;
+        assert!(call(&rows, Some(Who::Neutral), &reachable), "Reachable lifts their row for calls");
+        assert_eq!(text(&rows, Who::Neutral, false, vec![person.clone()], &reachable), Level::Now, "and for texts");
         assert!(call(&rows, Some(Who::Neutral), &Now::time(Column::Leisure)));
         assert!(!call(&rows, Some(Who::Stranger), &Now::time(Column::Leisure)), "a number nobody knows: the screening's");
         // In the shade under do-not-disturb: a text without a sound while silenced, a call to voicemail.

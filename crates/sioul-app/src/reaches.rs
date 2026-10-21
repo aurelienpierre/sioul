@@ -969,7 +969,13 @@ impl Someone {
     /// nothing of theirs is known. Never a name.
     fn row_id(&self) -> Option<String> {
         if let Some(uid) = self.card.as_ref().map(|c| c.uid.trim().to_string()).filter(|u| !u.is_empty()) {
-            return Some(attention::person_row(&format!("contact:{uid}"))).filter(|id| attention::is_person(id));
+            let id = attention::person_row(&format!("contact:{uid}"));
+            if attention::is_person(&id) {
+                return Some(id);
+            }
+            // A UID no row can name (spaces in it): their card's first number (review of part 6, F9).
+            let number = self.card.as_ref().and_then(|c| c.phones.iter().map(|p| sioul_core::phones::key(&p.value, region())).find(|k| sioul_core::phones::is_whole(k)));
+            return number.map(|key| attention::person_row(&format!("tel:{key}"))).filter(|id| attention::is_person(id));
         }
         let first = self.addresses.first()?;
         let who = match first.strip_prefix(sioul_core::porch::TEL) {
@@ -1196,6 +1202,9 @@ mod tests {
         // Written whole, as every language reads it (a national number reads by the language's country).
         assert_eq!(Someone { card: None, addresses: vec!["tel:+33 1 99 00 12 34".into()] }.row_id().as_deref(), Some("person.tel:+33199001234"));
         assert_eq!(Someone { card: None, addresses: vec!["noa@example.org".into()] }.row_id().as_deref(), Some("person.noa@example.org"));
+        // A UID with a space: their card's first number (review of part 6, F9).
+        let spaced = sioul_core::contacts::Contact { uid: "card 10".into(), phones: vec![sioul_core::contacts::Labeled { label: String::new(), value: "+33 1 99 00 12 35".into() }], ..Default::default() };
+        assert_eq!(Someone { card: Some(spaced), addresses: Vec::new() }.row_id().as_deref(), Some("person.tel:+33199001235"));
         let attention = Attention::usual();
         let times = own_times(&attention, &someone, false, Who::Neutral);
         let cells = times["cells"].as_array().unwrap();

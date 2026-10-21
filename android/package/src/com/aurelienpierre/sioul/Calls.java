@@ -811,7 +811,7 @@ final class Calls
         if (!"stranger".equals(who) && !"hidden".equals(who)) {
             // Their own row, by this number, before their list's (decision 16; calls.rs's `own`).
             String own = hidden || decision.called ? null : table.own.get(key);
-            byFrame(decision, frame, own != null && !own.isEmpty() && frame != null && frame.ring.containsKey(own) ? own : who);
+            byFrame(decision, frame, who, own == null || own.isEmpty() ? null : own);
             if (!(decision.called && decision.refuse && expecting))
                 return decision;
             if (screening.on && "voicemail".equals(screening.unverified) && "failed".equals(verified))
@@ -856,9 +856,21 @@ final class Calls
     /** Who rings now, as the frame for now says; past the frames, nothing to decide from. */
     private static Decision byFrame(Decision decision, Frame frame, String who)
     {
+        return byFrame(decision, frame, who, null);
+    }
+
+    /**
+     * As above, a person's own row (`own`, "own-0") read first when the frame
+     * has it: then "own", for the Porch's sentence (calls.rs's `decide`; review of part 6, F7).
+     */
+    private static Decision byFrame(Decision decision, Frame frame, String who, String own)
+    {
         if (frame == null)
             return said(decision, false, "no-frame");
         decision.column = frame.column;
+        Boolean mine = own == null ? null : frame.ring.get(own);
+        if (mine != null)
+            return said(decision, !mine, "own");
         Boolean rings = frame.ring.get(who);
         if (rings == null)
             return said(decision, false, "no-row");

@@ -310,8 +310,16 @@ public final class DecideCheck
             f.ring.put("own-0", false);
         t.frames.get(2).ring.put("neutral", false);
         t.frames.get(2).ring.put("own-0", true);
-        expect("v2 own row at work", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "10:00"), 0, null, 0, none), true, "matrix");
-        expect("v2 own row in leisure", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "18:00"), 0, null, 0, none), false, "matrix");
+        expect("v2 own row at work", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "10:00"), 0, null, 0, none), true, "own");
+        expect("v2 own row in leisure", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "18:00"), 0, null, 0, none), false, "own");
+        // Reachable over a work morning (review of part 6, F1): Rust writes the frame's own row as ringing, Java rings.
+        Calls.Frame reachableFrame = t.frames.get(1);
+        String column = reachableFrame.column;
+        reachableFrame.column = "reachable";
+        reachableFrame.ring.put("own-0", true);
+        expect("v2 own row, Reachable", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "10:00"), 0, null, 0, none), false, "own");
+        reachableFrame.ring.put("own-0", false);
+        reachableFrame.column = column;
         expect("v2 own row, blocked", Calls.decideFor(t, "01 99 00 00 04", false, ms(day, "18:00"), 0, null, 0, none), true, "blocked");
         for (Calls.Frame f : t.frames)
             f.ring.remove("own-0");
