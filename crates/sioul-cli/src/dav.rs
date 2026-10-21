@@ -239,6 +239,10 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
             &[("account", account.id.clone()), ("sent", report.sent.to_string()), ("received", report.received.to_string()), ("removed", report.removed.to_string())]
         )
     );
+    // Some collections failed, the others synced (a calendar shared with you refusing your login…).
+    for problem in &report.problems {
+        eprintln!("{}", crate::plain_lines(&problem.sentence(&s.tr, &account.id)));
+    }
     for conflict in &report.conflicts {
         println!("{}", s.say("dav-conflict", &[("path", crate::one_line(&conflict.display().to_string()))]));
     }

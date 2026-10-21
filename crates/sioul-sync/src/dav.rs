@@ -650,7 +650,14 @@ pub struct Report {
     pub removed: usize,
     /// Changed on both sides: the server's kept, yours set aside.
     pub conflicts: Vec<PathBuf>,
+    /// Collections synced whole this time (calendars and address books).
     pub collections: usize,
+    /// Collections the server listed, each made here at once, empty until pulled.
+    pub listed: usize,
+    /// What went wrong with some of them (a collection refused, cut, timed
+    /// out), the first first: the others synced all the same. An error of the
+    /// whole account (its homes refused) is the sync's own `Err`.
+    pub problems: Vec<SyncError>,
     /// Invitations answered on another device first, and otherwise: each
     /// one's title, and the answer the server holds and this device now keeps
     /// ("ACCEPTED", "TENTATIVE", "DECLINED"), yours replaced by it (`adopt`).
@@ -666,13 +673,22 @@ pub fn client_for(account: &Account) -> Result<Client, SyncError> {
     Ok(Client::new(login, &crate::secret::password(account)?))
 }
 
-/// Syncs every address book and calendar of a contacts-and-calendars account.
-/// An error in one collection (refused, cut, timed out) is said at the end,
-/// the first one, the others synced all the same; a lasting one (a refused
-/// password, a certificate) stops the sync at once.
+/// Syncs every calendar and address book of a contacts-and-calendars account
+/// (the calendars whole first: they never wait for contacts). Every collection the
+/// server lists is made here at once, its folder, name, colour and state,
+/// before any is pulled, so that each is listed, can be written to and is
+/// reached even before its first pull ends (the phone's calendars of 21
+/// October 2026). Then they are pulled in turns, a slice of time each
+/// (`SLICE`), until all are whole: no big first calendar keeps the others
+/// waiting. An error in one collection, a lasting one too (a calendar shared
+/// with you refusing your login), ends that one alone, said in the report;
+/// only the homes refused end the account (`Err`).
 pub fn sync(account: &Account) -> Result<Report, SyncError> {
     sync_with(&client_for(account)?, account)
 }
+
+/// The time one collection is pulled in a turn before the others have theirs.
+const SLICE: Duration = if cfg!(test) { Duration::from_millis(150) } else { Duration::from_secs(20) };
 
 fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
     let login = account.login().ok_or(SyncError::NoServer)?;
@@ -687,18 +703,28 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
     }
     client.keep_to(&homes);
     let mut report = Report::default();
-    let mut refused = None;
-    for (kind, home) in [(Kind::Contacts, &homes.contacts), (Kind::Calendars, &homes.calendars)] {
+    // A home refused for good (its login, its certificate): the account's error, said at the end.
+    let mut account_error: Option<SyncError> = None;
+    // Calendars whole first, then contacts: an address book, however big or broken, never holds a calendar back.
+    for (kind, home) in [(Kind::Calendars, &homes.calendars), (Kind::Contacts, &homes.contacts)] {
         let Some(home) = home else { continue };
         // Google makes, renames and deletes no calendar or address book from here.
         if !client.is_google() {
-            go_on(&mut refused, send_changes(client, &account.id, kind))?;
-            go_on(&mut refused, create_pending(client, &account.id, kind, home))?;
+            if let Err(e) = send_changes(client, &account.id, kind) {
+                report.problems.push(e);
+            }
+            if let Err(e) = create_pending(client, &account.id, kind, home) {
+                report.problems.push(e);
+            }
         }
         let mut listed = match collections(client, kind, home) {
             Ok(listed) => listed,
+            Err(e) if e.is_lasting() => {
+                account_error.get_or_insert(e);
+                continue;
+            }
             Err(e) => {
-                go_on(&mut refused, Err(e))?;
+                report.problems.push(e);
                 continue;
             }
         };
@@ -707,11 +733,24 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             listed.iter_mut().filter(|l| l.kind == Kind::Calendars && l.components.is_empty()).for_each(|l| l.components = vec!["VEVENT".into()]);
         }
         forget_gone(&account.id, kind, &listed);
-        for collection in &listed {
-            match sync_collection(client, &account.id, collection, &mut report) {
-                Ok(()) => report.collections += 1,
-                Err(e) => go_on(&mut refused, Err(e))?,
+        if let Err(e) = register(&account.id, &listed) {
+            report.problems.push(e);
+        }
+        report.listed += listed.len();
+        // In turns, a slice of time each, until each is whole or failed.
+        let mut pending: Vec<&Listed> = listed.iter().collect();
+        let mut first = true;
+        while !pending.is_empty() {
+            let mut again = Vec::new();
+            for collection in pending {
+                match sync_part(client, &account.id, collection, &mut report, first, Some(Instant::now() + SLICE)) {
+                    Ok(true) => report.collections += 1,
+                    Ok(false) => again.push(collection),
+                    Err(e) => report.problems.push(e),
+                }
             }
+            pending = again;
+            first = false;
         }
     }
     // Google's task lists, over Google Tasks.
@@ -722,11 +761,37 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
                 report.received += tasks.received;
                 report.removed += tasks.removed;
                 report.collections += tasks.collections;
+                report.listed += tasks.collections;
             }
-            Err(e) => go_on(&mut refused, Err(e))?,
+            Err(e) if e.is_lasting() && report.listed == 0 => {
+                account_error.get_or_insert(e);
+            }
+            Err(e) => report.problems.push(e),
         }
     }
-    refused.map_or(Ok(report), Err)
+    account_error.map_or(Ok(report), Err)
+}
+
+/// Every listed collection made here, at once and in one pass: its folder,
+/// its name and colour (`vdir::prepare`), its state (address, read-only,
+/// components), empty until pulled. The first one that cannot be written is
+/// returned, the others made all the same.
+fn register(account: &str, listed: &[Listed]) -> Result<(), SyncError> {
+    let mut failed = None;
+    for collection in listed {
+        let made = vdir::prepare(collection.kind, account, &collection.id, &collection.name, collection.color.as_deref()).map_err(|e| SyncError::Disk(e.to_string())).and_then(|_| {
+            let path = vdir::state_path(account, collection.kind, &collection.id);
+            let mut state = State::load(&path);
+            state.url = collection.url.clone();
+            state.read_only = collection.read_only;
+            state.components = collection.components.clone();
+            state.save(&path).map_err(SyncError::Disk)
+        });
+        if let Err(e) = made {
+            failed.get_or_insert(e);
+        }
+    }
+    failed.map_or(Ok(()), Err)
 }
 
 /// Syncs an account now, then every `every` until stopped (see
@@ -921,10 +986,18 @@ fn file_name(href: &str, extension: &str, taken: &BTreeSet<String>) -> String {
     name
 }
 
-/// One collection: what changed here goes first, then what changed there. Its
-/// state follows every answer and is kept whatever happens: what was sent or
-/// brought before an error is known at the next sync, never sent twice.
+/// One collection, whole: what changed here goes first, then what changed
+/// there. Its state follows every answer and is kept whatever happens: what
+/// was sent or brought before an error is known at the next sync, never sent twice.
+#[cfg(test)]
 fn sync_collection(client: &Client, account: &str, listed: &Listed, report: &mut Report) -> Result<(), SyncError> {
+    sync_part(client, account, listed, report, true, None).map(|_| ())
+}
+
+/// One collection's turn (`sync_with`): on its first (`first`), what changed
+/// here is sent; then what changed there is brought until `until`, batch by
+/// batch. Whether it is whole now: else the next turn goes on from there.
+fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Report, first: bool, until: Option<Instant>) -> Result<bool, SyncError> {
     let kind = listed.kind;
     let dir = vdir::prepare(kind, account, &listed.id, &listed.name, listed.color.as_deref()).map_err(|e| SyncError::Disk(e.to_string()))?;
     let state_path = vdir::state_path(account, kind, &listed.id);
@@ -932,23 +1005,25 @@ fn sync_collection(client: &Client, account: &str, listed: &Listed, report: &mut
     state.url = listed.url.clone();
     state.read_only = listed.read_only;
     state.components = listed.components.clone();
-    let synced = both_ways(client, &dir, listed, &mut state, &state_path, report);
+    let synced = both_ways(client, &dir, listed, &mut state, &state_path, report, first, until);
     state.save(&state_path).map_err(SyncError::Disk)?;
     synced
 }
 
-/// What changed here, sent; then, unless nothing changed on either side, what
-/// changed there, brought. The ctag is kept once both went through; what the
-/// server refused of an item is said once the rest is done.
-fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report) -> Result<(), SyncError> {
+/// What changed here, sent (on a collection's first turn); then, unless
+/// nothing changed on either side, what changed there, brought until `until`.
+/// The ctag is kept once both went through whole; what the server refused of
+/// an item is said once the rest is done. Whether it is whole.
+#[allow(clippy::too_many_arguments)]
+fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report, first: bool, until: Option<Instant>) -> Result<bool, SyncError> {
     let mut refetch: BTreeSet<String> = BTreeSet::new();
-    let refused = if listed.read_only { None } else { push(client, listed.kind, dir, listed, state, &mut refetch, report)? };
+    let refused = if listed.read_only || !first { None } else { push(client, listed.kind, dir, listed, state, &mut refetch, report)? };
     let unchanged = state.ctag.is_some() && state.ctag == listed.ctag && refetch.is_empty() && refused.is_none();
-    if !unchanged {
-        pull(client, dir, listed, state, state_path, &refetch, report)?;
+    if !unchanged && !pull(client, dir, listed, state, state_path, &refetch, report, until)? {
+        return Ok(false);
     }
     state.ctag = listed.ctag.clone();
-    refused.map_or(Ok(()), Err)
+    refused.map_or(Ok(true), Err)
 }
 
 fn has_local_changes(dir: &Path, kind: Kind, state: &State) -> bool {
@@ -1311,7 +1386,10 @@ fn same_text(mine: &[u8], theirs: &str) -> bool {
 /// Brings what changed there: by sync token, else by comparing ETags. The
 /// state is kept after each batch, so a pull cut short loses one batch at
 /// most; the sync token moves once everything came.
-fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, refetch: &BTreeSet<String>, report: &mut Report) -> Result<(), SyncError> {
+/// Brought until `until` at most (a turn among the account's collections):
+/// whether all came, else the next turn goes on from what was kept.
+#[allow(clippy::too_many_arguments)]
+fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, refetch: &BTreeSet<String>, report: &mut Report, until: Option<Instant>) -> Result<bool, SyncError> {
     let key = |href: &str| path_key(&absolute(&listed.url, href));
     let by_href: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (key(&item.href), i)).collect();
     let (changed, gone, token) = match state.sync_token.clone().and_then(|token| changes_since(client, &listed.url, &token).ok().flatten()) {
@@ -1368,9 +1446,13 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
         // Kept as it goes: cut short, the next sync goes on from here.
         state.save(state_path).map_err(SyncError::Disk)?;
         at += batch.len();
+        // Its turn over: the others have theirs, then it goes on (no sync token kept before all came).
+        if at < hrefs.len() && until.is_some_and(|until| Instant::now() >= until) {
+            return Ok(false);
+        }
     }
     state.sync_token = token.or_else(|| listed.sync_token.clone());
-    Ok(())
+    Ok(true)
 }
 
 /// RFC 6578: what changed since `token`: (changed with their ETags, gone, the new token).
@@ -2079,13 +2161,13 @@ mod tests {
         Homes { calendars: Some(home.clone()), contacts: None }.save(&account.id).unwrap();
         dav.put("mine", "new.ics", &event("new", "New here"));
         dav.name_elsewhere(&there);
-        let result = sync_with(&client(), &account);
-        assert!(matches!(&result, Err(SyncError::Elsewhere(url)) if url.starts_with(&there)), "{result:?}");
+        let report = sync_with(&client(), &account).unwrap();
+        assert!(matches!(report.problems.first(), Some(SyncError::Elsewhere(url)) if url.starts_with(&there)), "{report:?}");
         assert!(folder("kept-to", "mine").join("new.ics").exists());
         assert!(dav.seen().iter().any(|s| s.starts_with("REPORT /cal/only-there/")), "{:?}", dav.seen());
         assert!(elsewhere.seen.lock().unwrap().is_empty(), "{:?}", elsewhere.seen.lock().unwrap());
         // Said in words, with the address.
-        let said = result.unwrap_err().sentence(&sioul_core::i18n::Translator::new("en"), "Calendars");
+        let said = report.problems[0].sentence(&sioul_core::i18n::Translator::new("en"), "Calendars");
         assert!(said.starts_with("Calendars: the server named an address on another server") && said.contains(&there), "{said}");
         // Its own server's addresses go through, whatever their spelling.
         let kept = client();
@@ -2143,14 +2225,126 @@ mod tests {
         Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
         dav.put("b", "new.ics", &event("new", "New in b"));
         dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/a/", Fault::Status(500)));
-        let result = sync_with(&client(), &account);
-        assert!(matches!(&result, Err(SyncError::Server(e)) if e.contains("/cal/a/")), "{result:?}");
+        let report = sync_with(&client(), &account).unwrap();
+        assert!(matches!(report.problems.first(), Some(SyncError::Server(e)) if e.contains("/cal/a/")), "{report:?}");
+        assert_eq!((report.listed, report.collections), (2, 1));
         assert!(folder("bad-one", "b").join("new.ics").exists());
         dav.put("b", "newer.ics", &event("newer", "Newer in b"));
         dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/a/", Fault::Drop));
-        assert!(matches!(sync_with(&client(), &account), Err(SyncError::Network(_))));
+        assert!(matches!(sync_with(&client(), &account).unwrap().problems.first(), Some(SyncError::Network(_))));
         assert!(folder("bad-one", "b").join("newer.ics").exists());
         assert_eq!(sync_with(&client(), &account).unwrap().collections, 2);
+    }
+
+    /// (Each test's calendars named apart: a batch's pace is kept by the
+    /// calendar's path, in this process, `PACE`; the big one first in the
+    /// server's order, which is the names'.)
+    ///
+    /// The phone's calendars of 21 October 2026: every calendar the server
+    /// lists is made here (its folder, name and state) before any is pulled,
+    /// so that each is listed, can be written to and is reached even while
+    /// a big first one's pull is cut; and the big one has turns, never
+    /// keeping the others waiting.
+    #[test]
+    fn every_listed_calendar_exists_before_any_is_pulled() {
+        let account = account("listed-first");
+        let (dav, home) = Dav::start(&["early", "later-a", "later-b"]);
+        Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
+        for n in 0..300 {
+            dav.put("early", &format!("e{n}.ics"), &event(&format!("uid-{n}"), &format!("Event {n}")));
+        }
+        dav.put("later-a", "x.ics", &event("x", "In a"));
+        dav.put("later-b", "y.ics", &event("y", "In b"));
+        // Each of early's batches slow: its turn ends after one, the others have theirs.
+        dav.fault(|r: &stand_in::Request| (r.method == "REPORT" && r.path == "/cal/early/" && r.body.contains("multiget")).then_some(Fault::Late(Duration::from_millis(200))));
+        let report = sync_with(&client(), &account).unwrap();
+        assert_eq!((report.listed, report.collections), (3, 3), "{report:?}");
+        let mine: Vec<_> = vdir::collections(Kind::Calendars).into_iter().filter(|c| c.account == "listed-first").collect();
+        assert_eq!(mine.len(), 3, "{mine:?}");
+        for name in ["early", "later-a", "later-b"] {
+            assert!(vdir::state_path("listed-first", Kind::Calendars, name).exists(), "{name}: its state");
+        }
+        assert_eq!(local_files(&folder("listed-first", "early"), Kind::Calendars).len(), 300);
+        let seen = dav.seen();
+        let first_a = seen.iter().position(|s| s.starts_with("REPORT /cal/later-a/")).unwrap();
+        let last_big = seen.iter().rposition(|s| s.starts_with("REPORT /cal/early/")).unwrap();
+        assert!(first_a < last_big, "a waited for early's whole pull: {seen:?}");
+    }
+
+    /// A first pull cut short (Android killed Sioul, the line dropped): the
+    /// later calendars are there already, and the next sync loses nothing.
+    #[test]
+    fn a_killed_first_pull_does_not_hide_the_others() {
+        let account = account("killed-first");
+        let (dav, home) = Dav::start(&["first", "second", "third"]);
+        Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
+        for n in 0..120 {
+            dav.put("first", &format!("e{n}.ics"), &event(&format!("uid-{n}"), &format!("Event {n}")));
+        }
+        dav.put("third", "y.ics", &event("y", "In b"));
+        // Cut at first's first batch, as a process killed then would be: nothing after it ran. At
+        // that moment, second and third are made already, before any pull (the root of the bug).
+        let made_before = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seen_made = Arc::clone(&made_before);
+        dav.fault(move |r: &stand_in::Request| {
+            if r.method == "REPORT" && r.path == "/cal/first/" && r.body.contains("multiget") && !seen_made.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let made = ["second", "third"].iter().all(|name| folder("killed-first", name).join("displayname").exists()) && vdir::state_path("killed-first", Kind::Calendars, "third").exists();
+                seen_made.store(made, std::sync::atomic::Ordering::SeqCst);
+                return Some(Fault::Drop);
+            }
+            None
+        });
+        let report = sync_with(&client(), &account).unwrap();
+        assert!(matches!(report.problems.first(), Some(SyncError::Network(_))), "{report:?}");
+        assert!(["first", "second", "third"].iter().all(|name| folder("killed-first", name).is_dir()), "every calendar made before the cut");
+        assert!(made_before.load(std::sync::atomic::Ordering::SeqCst), "second and third were made before first's first pull");
+        assert!(folder("killed-first", "third").join("y.ics").exists());
+        let report = sync_with(&client(), &account).unwrap();
+        assert!(report.problems.is_empty() && report.collections == 3, "{report:?}");
+        assert_eq!(local_files(&folder("killed-first", "first"), Kind::Calendars).len(), 120);
+        assert!(puts(&dav).is_empty(), "nothing sent back: {:?}", dav.seen());
+    }
+
+    /// A lasting error on one calendar (a calendar shared with you refusing
+    /// your login): that one alone fails, said with the counts; the others
+    /// sync, and the account is not stopped.
+    #[test]
+    fn a_lasting_error_on_one_calendar_keeps_the_others() {
+        let account = account("lasting-one");
+        let (dav, home) = Dav::start(&["a", "b", "c"]);
+        Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
+        dav.put("a", "x.ics", &event("x", "In a"));
+        dav.put("c", "z.ics", &event("z", "In c"));
+        dav.fault(|r: &stand_in::Request| (r.path.starts_with("/cal/b/")).then_some(Fault::Status(401)));
+        let report = sync_with(&client(), &account).unwrap();
+        assert_eq!((report.listed, report.collections), (3, 2), "{report:?}");
+        assert!(matches!(report.problems.as_slice(), [SyncError::Login(_)]), "{report:?}");
+        assert!(folder("lasting-one", "a").join("x.ics").exists() && folder("lasting-one", "c").join("z.ics").exists());
+        assert!(folder("lasting-one", "b").is_dir(), "listed, made, to be pulled once it answers");
+    }
+
+    /// Calendars never wait for contacts: an address book failing first, or
+    /// its home refusing the login, and the calendars sync all the same.
+    #[test]
+    fn calendars_do_not_wait_for_contacts() {
+        let account = account("contacts-first");
+        let (dav, home) = Dav::start(&["a"]);
+        let books = home.replace("/cal/", "/book/");
+        Homes { calendars: Some(home), contacts: Some(books) }.save(&account.id).unwrap();
+        dav.put("a", "x.ics", &event("x", "In a"));
+        dav.fault(nth(1, |r| r.path.starts_with("/book/"), Fault::Status(500)));
+        let report = sync_with(&client(), &account).unwrap();
+        assert!(folder("contacts-first", "a").join("x.ics").exists(), "{report:?}");
+        assert!(!report.problems.is_empty(), "the book's failure said");
+        dav.put("a", "y.ics", &event("y", "Again in a"));
+        dav.fault(|r: &stand_in::Request| r.path.starts_with("/book/").then_some(Fault::Status(401)));
+        let result = sync_with(&client(), &account);
+        assert!(matches!(result, Err(SyncError::Login(_))), "the contacts' home refused: the account's error, {result:?}");
+        assert!(folder("contacts-first", "a").join("y.ics").exists(), "the calendars synced first all the same");
+        let seen = dav.seen();
+        let book = seen.iter().position(|s| s.contains("/book/")).unwrap();
+        let calendar = seen.iter().position(|s| s.contains("/cal/a/")).unwrap();
+        assert!(calendar < book, "calendars first: {seen:?}");
     }
 
     thread_local! {
