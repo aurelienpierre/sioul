@@ -157,10 +157,22 @@ pub(crate) fn start_dav_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Ac
     });
 }
 
+/// An account's status after a sync that listed its collections: how many
+/// were found and how many synced whole, at what time; with what went wrong
+/// with some of them, the first (the phone's calendars of 21 October 2026:
+/// a partial state is never silent).
+fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) {
+    let (found, synced) = (report.listed.to_string(), report.collections.to_string());
+    match report.problems.first() {
+        None => (say("dav-synced-counts", &[("time", time.to_string()), ("found", found), ("synced", synced)]), false),
+        Some(e) => (say("dav-synced-partial", &[("found", found), ("synced", synced), ("problem", e.sentence(tr(), account))]), true),
+    }
+}
+
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
     let (line, problem) = match &result {
-        Ok(_) => (say("dav-synced-at", &[("time", Zoned::now().strftime("%H:%M").to_string())]), false),
+        Ok(report) => status_of(report, &account.id, &Zoned::now().strftime("%H:%M").to_string()),
         Err(e) => (e.sentence(tr(), &account.id), true),
     };
     if let Ok(mut statuses) = shared.statuses.lock() {
@@ -707,4 +719,23 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
         });
         show(&qt, &shared);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The phone's calendars of 21 October 2026: an account's status says how
+    /// many collections were found and how many synced, and what went wrong
+    /// with some, never a partial state in silence.
+    #[test]
+    fn the_status_says_found_and_synced() {
+        let whole = dav::Report { listed: 3, collections: 3, ..dav::Report::default() };
+        let (line, problem) = status_of(&whole, "Murena", "09:30");
+        assert!(!problem && line.contains("09:30") && line.contains('3'), "{line}");
+        let partial = dav::Report { listed: 3, collections: 1, problems: vec![SyncError::Login("401".into())], ..dav::Report::default() };
+        let (line, problem) = status_of(&partial, "Murena", "09:30");
+        assert!(problem && line.contains('1') && line.contains('3') && line.len() > 30, "{line}");
+        assert!(!line.contains("dav-") && !line.contains('{'), "{line}");
+    }
 }
