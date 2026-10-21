@@ -654,6 +654,9 @@ pub struct Report {
     pub collections: usize,
     /// Collections the server listed, each made here at once, empty until pulled.
     pub listed: usize,
+    /// Of them, the calendars: listed, and synced whole (the phone's log).
+    pub calendars_listed: usize,
+    pub calendars_synced: usize,
     /// What went wrong with some of them (a collection refused, cut, timed
     /// out), the first first: the others synced all the same. An error of the
     /// whole account (its homes refused) is the sync's own `Err`.
@@ -737,6 +740,7 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             report.problems.push(e);
         }
         report.listed += listed.len();
+        let synced_before = report.collections;
         // In turns, a slice of time each, until each is whole or failed.
         let mut pending: Vec<&Listed> = listed.iter().collect();
         let mut first = true;
@@ -751,6 +755,10 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             }
             pending = again;
             first = false;
+        }
+        if kind == Kind::Calendars {
+            report.calendars_listed = listed.len();
+            report.calendars_synced = report.collections - synced_before;
         }
     }
     // Google's task lists, over Google Tasks.
