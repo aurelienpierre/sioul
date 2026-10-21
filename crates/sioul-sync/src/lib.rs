@@ -307,6 +307,12 @@ pub enum SyncError {
 
 impl SyncError {
     /// The message that says it ("sync-error-network").
+    /// What went wrong, as a code and never its detail (no address, no
+    /// name): for the phone's log ("sync-error-login").
+    pub fn code(&self) -> &'static str {
+        self.message_id()
+    }
+
     fn message_id(&self) -> &'static str {
         match self {
             SyncError::BadAddress => "sync-error-address",

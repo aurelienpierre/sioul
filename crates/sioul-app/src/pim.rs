@@ -126,8 +126,13 @@ pub(crate) fn start_dav_watchers(qt: &QtThread, shared: &Arc<Shared>) -> usize {
     if crate::backend::offline() {
         return 0;
     }
-    let accounts: Vec<Account> = load_config().accounts.into_iter().filter(Account::is_dav).collect();
+    let config = load_config();
+    let accounts: Vec<Account> = config.accounts.iter().filter(|a| a.is_dav()).cloned().collect();
     let count = accounts.len();
+    // The phone's log: whether this device has any to sync, never which (21 October 2026).
+    let off = config.accounts_off.iter().filter(|a| a.is_dav()).count();
+    let unread = config.every_account().filter(|a| a.kind == sioul_core::config::AccountKind::Dav && a.host.is_none()).count();
+    eprintln!("{}", watchers_line(count, off, unread));
     for account in accounts {
         start_dav_watcher(qt, shared, account);
     }
@@ -147,6 +152,10 @@ pub(crate) fn start_dav_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Ac
     }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
+        // What this device has for it, in yes or no: its homes found here, its password kept here.
+        let homes = !dav::Homes::load(&account.id).is_empty();
+        let password = account.auth.as_deref() == Some("google") || sioul_sync::secret::password(&account).is_ok();
+        eprintln!("calendars: an account's sync starts (its homes {} here, its password {} here)", if homes { "known" } else { "not known yet" }, if password { "kept" } else { "not kept" });
         // After a lasting error (a refused password) it waits for a nudge, never ends.
         dav::watch(&account, &control, DAV_PAUSE, |result| reported(&qt, &shared, &account, result));
         if let Ok(mut watchers) = shared.dav_watchers.lock()
@@ -155,6 +164,39 @@ pub(crate) fn start_dav_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Ac
             watchers.remove(&account.id);
         }
     });
+}
+
+/// The phone's log at the start of the syncs: how many contacts-and-calendars
+/// accounts this device has, switched on and off, and those it cannot sync
+/// (no server named); never which.
+fn watchers_line(on: usize, off: usize, unread: usize) -> String {
+    let mut line = format!("calendars: {on} contacts-and-calendars account(s) here, synced while the window is open");
+    if off > 0 {
+        line.push_str(&format!("; {off} switched off"));
+    }
+    if unread > 0 {
+        line.push_str(&format!("; {unread} without a server, not synced"));
+    }
+    if on == 0 {
+        line.push_str("; the calendars shown are this device's own and those your other devices share (none of a server's)");
+    }
+    line
+}
+
+/// The phone's log after each sync of an account (21 October 2026): counts
+/// only, and what went wrong as a code; never a name, an address or a calendar's.
+fn sync_line(result: &Result<dav::Report, SyncError>) -> String {
+    match result {
+        Ok(r) => format!(
+            "calendars: {} found, {} synced; address books: {} found, {} synced; first problem: {}",
+            r.calendars_listed,
+            r.calendars_synced,
+            r.listed - r.calendars_listed,
+            r.collections.saturating_sub(r.calendars_synced),
+            r.problems.first().map_or("none", SyncError::code)
+        ),
+        Err(e) => format!("calendars: the account's sync stopped: {}{}", e.code(), if e.is_lasting() { "; it waits for a change (a password given, Sync now) before trying again" } else { "; tried again at the next sync" }),
+    }
 }
 
 /// An account's status after a sync that listed its collections: how many
@@ -171,6 +213,7 @@ fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) 
 
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
+    eprintln!("{}", sync_line(&result));
     let (line, problem) = match &result {
         Ok(report) => status_of(report, &account.id, &Zoned::now().strftime("%H:%M").to_string()),
         Err(e) => (e.sentence(tr(), &account.id), true),
@@ -737,5 +780,20 @@ mod tests {
         let (line, problem) = status_of(&partial, "Murena", "09:30");
         assert!(problem && line.contains('1') && line.contains('3') && line.len() > 30, "{line}");
         assert!(!line.contains("dav-") && !line.contains('{'), "{line}");
+    }
+
+    /// The phone's log: one line per sync, counts and a code, never a name
+    /// nor an address; and one at the start, saying whether there is any
+    /// account to sync at all.
+    #[test]
+    fn the_log_says_counts_and_codes_only() {
+        let report = dav::Report { listed: 5, collections: 3, calendars_listed: 3, calendars_synced: 2, problems: vec![SyncError::Server("PROPFIND https://dav.example.org/cal/secret/: 500".into())], ..dav::Report::default() };
+        let line = sync_line(&Ok(report));
+        assert_eq!(line, "calendars: 3 found, 2 synced; address books: 2 found, 1 synced; first problem: sync-error-server");
+        let stopped = sync_line(&Err(SyncError::NoPassword));
+        assert!(stopped.starts_with("calendars: the account's sync stopped: ") && stopped.contains("waits"), "{stopped}");
+        assert!(!stopped.contains("example"));
+        assert!(watchers_line(0, 0, 0).contains("0 contacts-and-calendars account(s) here") && watchers_line(0, 0, 0).contains("none of a server's"));
+        assert!(watchers_line(1, 1, 0).contains("1 switched off"));
     }
 }
