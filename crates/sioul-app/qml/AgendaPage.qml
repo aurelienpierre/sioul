@@ -81,6 +81,8 @@ Item {
     readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
+    // The one opened is a task's time block: shown as the task it is.
+    readonly property bool openedTask: page.opened !== null && (page.opened.task || "") !== ""
     // When the open event is reminded, and its own choice (docs/reminders.md): {line, remind, writable}.
     property var reminder: ({})
     readonly property var reminds: page.reminder.writable ? JSON.parse(page.sioul.reminderChoices(page.reminder.remind || "") || "[]") : []
@@ -217,6 +219,26 @@ Item {
     // A new event made from something else: a message, a task.
     function makeFrom(text, note, link) {
         eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))
+    }
+
+    // An event of your own that could be a task instead: not a task's time
+    // already, not an invitation (others expect you there), not read only.
+    function canBeTask(event) {
+        return event !== null && (event.task || "") === "" && !event.read_only && event.organizer === "" && event.attendees.length === 0
+    }
+
+    // A task made an appointment (the event form, its block's time, then
+    // saved), or an appointment made a task, at once (21 October 2026).
+    function changeKind(event) {
+        if ((event.task || "") !== "") {
+            eventDialog.now().makeFromTask(event.task, event.key, event.start, event.end)
+            return
+        }
+        const problem = page.sioul.eventToTask(event.key)
+        if (problem === "")
+            page.opened = null
+        else
+            page.sioul.status = problem
     }
 
     // An event by its file, from a link: its details, as from the agenda;
@@ -442,6 +464,7 @@ Item {
                             compact: page.narrow
                             event: modelData
                             theme: page.theme
+                            sioul: page.sioul
                             selected: page.opened !== null && page.opened.key === modelData.key && page.opened.start === modelData.start
                             onOpen: page.opened = modelData
                             onMenu: {
@@ -530,19 +553,30 @@ Item {
                                 Repeater {
                                     model: cell.modelData.events.slice(0, 3)
 
-                                    delegate: Label {
+                                    delegate: RowLayout {
                                         id: monthEvent
 
                                         required property var modelData
 
                                         Layout.fillWidth: true
-                                        text: monthEvent.modelData.summary
-                                        textFormat: Text.PlainText
-                                        elide: Text.ElideRight
-                                        font.pixelSize: 12
-                                        font.strikeout: monthEvent.modelData.cancelled
-                                        color: page.theme.text
+                                        spacing: 3
 
+                                        // A task's time: the task mark (21 October 2026).
+                                        Icon {
+                                            visible: monthEvent.modelData.task !== ""
+                                            iconName: "view-task"
+                                            size: 12
+                                            tip: page.sioul.text("agenda-task-mark")
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: monthEvent.modelData.summary
+                                            textFormat: Text.PlainText
+                                            elide: Text.ElideRight
+                                            font.pixelSize: 12
+                                            font.strikeout: monthEvent.modelData.cancelled
+                                            color: page.theme.text
+                                        }
                                         TapHandler {
                                             onTapped: page.opened = monthEvent.modelData
                                         }
@@ -604,13 +638,22 @@ Item {
                     spacing: 6
 
                     Rectangle {
+                        visible: !page.openedTask
                         Layout.preferredWidth: 10
                         Layout.preferredHeight: 10
                         radius: 5
                         color: page.opened && page.opened.color ? page.opened.color : page.theme.accent
                     }
+                    // A task's time block says the task it is, and its list (21 October 2026).
+                    Icon {
+                        visible: page.openedTask
+                        iconName: "view-task"
+                        size: 16
+                        tip: page.sioul.text("agenda-task-mark")
+                    }
                     Label {
-                        text: page.opened ? page.opened.calendar + (page.opened.recurring ? "  ·  " + page.sioul.text("agenda-repeats") : "") : ""
+                        objectName: "agenda-opened-kind"
+                        text: !page.opened ? "" : (page.openedTask ? page.sioul.textWith("agenda-task-of", "list", page.opened.list) : page.opened.calendar) + (page.opened.recurring ? "  ·  " + page.sioul.text("agenda-repeats") : "")
                         textFormat: Text.PlainText
                         color: page.theme.muted
                     }
@@ -678,6 +721,14 @@ Item {
                         font.pixelSize: 13
                     }
                 }
+                // Which it is, a task or an appointment, is yours to say (21 October 2026).
+                Button {
+                    objectName: "agenda-change-kind"
+                    visible: page.opened !== null && (page.openedTask || page.canBeTask(page.opened))
+                    flat: true
+                    text: page.openedTask ? page.sioul.text("agenda-make-appointment") : page.sioul.text("agenda-make-task")
+                    onClicked: page.changeKind(page.opened)
+                }
                 // What it is tied to, and what can be made from it.
                 RelatedList {
                     Layout.fillWidth: true
@@ -716,6 +767,12 @@ Item {
                             deleteChoice.now().open()
                         }
                     }
+                    Button {
+                        visible: page.openedTask
+                        flat: true
+                        text: page.sioul.text("agenda-open-task")
+                        onClicked: page.window.openTask(page.opened.task)
+                    }
                     Item {
                         Layout.fillWidth: true
                     }
@@ -753,6 +810,14 @@ Item {
                     enabled: page.menuTarget !== null && !page.menuTarget.read_only
                     text: page.sioul.text("ui-delete")
                     onTriggered: deleteChoice.now().open()
+                }
+                MenuItem {
+                    readonly property bool task: page.menuTarget !== null && (page.menuTarget.task || "") !== ""
+
+                    visible: task || page.canBeTask(page.menuTarget)
+                    height: visible ? implicitHeight : 0
+                    text: task ? page.sioul.text("agenda-make-appointment") : page.sioul.text("agenda-make-task")
+                    onTriggered: page.changeKind(page.menuTarget)
                 }
                 MenuSeparator {}
                 AddMenu {

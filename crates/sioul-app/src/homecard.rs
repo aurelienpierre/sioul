@@ -848,16 +848,21 @@ fn agenda_day(tr: &Translator, day: Date, today: Date, zone: &jiff::tz::TimeZone
 /// cancelled ones left out, nearest first; each under its day (Java's), in
 /// its calendar's colour. Details off, none named: "An event", its time.
 /// None without a calendar.
-fn agenda_lines(m: &Moment, input: &AgendaInput) -> Option<AgendaLines> {
+/// A task's time block shows as the task it is, as in the agenda: its time,
+/// then "Task · " and its list (21 October 2026; `agenda::mark_tasks`, with
+/// `tasks`, the plan's).
+fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task]) -> Option<AgendaLines> {
     if !input.calendars {
         return None;
     }
+    let mut marked = input.events.clone();
+    sioul_core::agenda::mark_tasks(&mut marked, tasks);
     let zone = m.now.time_zone().clone();
     let today = m.now.date();
     let now = m.now.timestamp().as_second();
     let end = today.checked_add(Span::new().days(HORIZON_DAYS + 1)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(i64::MAX, |z| z.timestamp().as_second());
     // An instant event still takes its minute.
-    let mut coming: Vec<&Occurrence> = input.events.iter().filter(|e| !e.cancelled && e.end.max(e.start + 60) > now && e.start < end).collect();
+    let mut coming: Vec<&Occurrence> = marked.iter().filter(|e| !e.cancelled && e.end.max(e.start + 60) > now && e.start < end).collect();
     // Nearest first, a day's whole-day events before its times (Java's days only go forward).
     coming.sort_by(|a, b| (a.start, !a.all_day, &a.summary).cmp(&(b.start, !b.all_day, &b.summary)));
     let events = coming
@@ -866,11 +871,15 @@ fn agenda_lines(m: &Moment, input: &AgendaInput) -> Option<AgendaLines> {
         .map(|e| Event {
             key: e.key.clone(),
             title: match e.summary.trim() {
+                _ if !m.details && !e.task.is_empty() => m.tr.text("home-card-task-plain", None),
                 _ if !m.details => m.tr.text("home-card-event-plain", None),
                 "" => m.tr.text("agenda-untitled", None),
                 title => title.to_string(),
             },
-            time: event_time(m.tr, e, &zone),
+            time: match event_time(m.tr, e, &zone) {
+                time if e.task.is_empty() => time,
+                time => [time, said(m.tr, "agenda-task-of", &[("list", e.list.clone())])].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" · "),
+            },
             all_day: e.all_day,
             start: e.start * 1000,
             end: e.end.max(e.start + 60) * 1000,
@@ -1092,7 +1101,7 @@ fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput
         today: today_lines(m, &more.weather, end),
         frames,
         mail,
-        agenda: agenda.and_then(|a| agenda_lines(m, a)),
+        agenda: agenda.and_then(|a| agenda_lines(m, a, plan.map(|p| p.loaded.tasks.as_slice()).unwrap_or_default())),
         codes: porch.map(|p| codes(m, p)).unwrap_or_default(),
         doses: dose_lines(m.tr, doses, m.details),
         reminders: reminders.into_iter().map(|(line, _)| line).collect(),
@@ -1216,10 +1225,8 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
     let midnight = now.date().to_zoned(now.time_zone().clone()).ok()?.timestamp().as_second();
     let reach = midnight + (HORIZON_DAYS + 1) * 86_400 + 3_600;
     let (removed, skipped) = HIDDEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_default();
-    let events = sioul_core::agenda::occurrences(midnight, reach)
-        .into_iter()
-        .filter(|e| !removed.contains(std::path::Path::new(&e.key)) && !skipped.contains(&(PathBuf::from(&e.key), e.start)))
-        .collect();
+    // As every agenda reads them (`pim::agenda_read`); their tasks marked with the plan's (`agenda_lines`).
+    let events = crate::pim::agenda_read(midnight, reach, &removed, &skipped);
     let calendars = !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path()).keys;
     let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
@@ -1699,6 +1706,59 @@ mod tests {
             })
             .collect();
         AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: BTreeSet::new() }
+    }
+
+    /// The owner's dated task of 21 October 2026 showed in the computer's
+    /// agenda and not in the phone's nor on the home card. The window's agenda
+    /// and the phone's are one page; it and the card read the same items
+    /// (`pim::agenda_read`), mark the same tasks (`agenda::mark_tasks`), and
+    /// none reads a task list's own tasks, nor an event slipped into a list
+    /// that takes tasks only: a task shows by its time block, as a task.
+    #[test]
+    fn every_agenda_reads_the_same_items() {
+        use sioul_core::vdir::{self, Kind};
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let tomorrow = now.date().tomorrow().unwrap();
+        let utc = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let event = |uid: &str, hour: i8, more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{uid}\r\n{more}END:VEVENT\r\nEND:VCALENDAR\r\n", utc(hour), utc(hour + 1));
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds agenda", None, &["VEVENT"]).unwrap();
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds tasks", None, &["VTODO"]).unwrap();
+        std::fs::write(calendar.dir.join("dentist.ics"), event("dentist", 9, "")).unwrap();
+        std::fs::write(calendar.dir.join("block.ics"), event("block", 11, "X-SIOUL-TASK:t-agenda\r\n")).unwrap();
+        std::fs::write(calendar.dir.join("orphan.ics"), event("orphan", 13, "X-SIOUL-TASK:gone\r\n")).unwrap();
+        std::fs::write(list.dir.join("stray.ics"), event("stray", 15, "")).unwrap();
+        std::fs::write(list.dir.join("task.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:t-agenda\r\nSUMMARY:Call\r\nDTSTART:{}\r\nEND:VTODO\r\nEND:VCALENDAR\r\n", utc(16))).unwrap();
+        let tasks = sioul_core::tasks::all(&zone);
+        assert!(tasks.iter().any(|t| t.uid == "t-agenda" && t.list == "Kinds tasks"));
+        let ours = |key: &str| std::path::Path::new(key).starts_with(&calendar.dir) || std::path::Path::new(key).starts_with(&list.dir);
+
+        // The window's and the phone's agenda (`pim::show_pim`).
+        let midnight = now.date().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let reach = midnight + (HORIZON_DAYS + 1) * 86_400 + 3_600;
+        let none = (BTreeSet::new(), BTreeSet::new());
+        let items = crate::pim::agenda_items(midnight, reach, &none.0, &none.1, &tasks);
+        let page = sioul_core::view::agenda(&items, now.date(), HORIZON_DAYS + 1, &Translator::new("en"), &zone);
+        let mut window: Vec<(String, String, String)> = page.days.iter().flat_map(|d| d.events.iter()).filter(|e| ours(&e.key)).map(|e| (e.summary.clone(), e.task.clone(), e.list.clone())).collect();
+        window.sort();
+        assert_eq!(window, [("block".to_string(), "t-agenda".to_string(), "Kinds tasks".to_string()), ("dentist".into(), String::new(), String::new()), ("orphan".into(), String::new(), String::new())]);
+
+        // The home card, from the same read.
+        let config = config();
+        let tr = Translator::new("en");
+        let blocks = blocks(&now);
+        let overrides = Overrides::default();
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: BTreeSet::new() };
+        let card = agenda_lines(&moment, &input, &tasks).unwrap();
+        let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
+        home.sort();
+        assert_eq!(home, ["block", "dentist", "orphan"], "the same items");
+        let block = card.events.iter().find(|e| e.title == "block").unwrap();
+        assert!(block.time.ends_with("Task · Kinds tasks"), "marked as a task, with its list: {}", block.time);
+        assert!(!card.events.iter().find(|e| e.title == "orphan").unwrap().time.contains("Task"), "a block of a task not here is an event");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_dir_all(&list.dir);
     }
 
     /// A dentist tomorrow, a whole day on Monday next week, a trip over three days, a call that was cancelled.

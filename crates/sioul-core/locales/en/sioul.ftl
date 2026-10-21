@@ -6017,3 +6017,22 @@ set-agenda-calendar-first = The first calendar that takes events
 event-calendar-in = In { $name }
 event-calendar-here-computer = Only on this computer: a calendar of this device's own, which your sharing does not carry.
 event-calendar-here-phone = Only on this phone: a calendar of this device's own, which your sharing does not carry.
+
+# A task or an appointment, as you say (21 October 2026): made one from the other in the agenda; the import asks.
+agenda-make-appointment = Make it an appointment
+agenda-make-task = Make it a task
+agenda-task-of = Task · { $list }
+agenda-task-mark = A task, not an event
+agenda-open-task = Open the task
+appointment-made = Now an appointment, in { $calendar }.
+appointment-has-steps = This task has steps of its own: it stays a task.
+task-made-from-event = Now a task, in { $list }.
+task-made-already = This is a task's time already.
+task-from-invitation = An invitation stays an event: others expect you there.
+task-from-odd-repeat = Its repeat cannot be a task's: it stays an event.
+import-task-or-event = “{ $task }” has “{ $field }”, which only an appointment has. If it is an appointment, put it under [[event]]; if it is a task, take “{ $field }” out.
+import-both-kinds = “{ $key }” is both a [[task]] and an [[event]]: it is one or the other.
+import-unknown-field = “{ $task }”: “{ $field }” is not read, and left out.
+import-event-start = “{ $key }”: its start “{ $start }” is neither a day (2026-10-23) nor a time (2026-10-23T14:00).
+home-card-task-plain = A task
+collection-events-and-tasks = events and tasks

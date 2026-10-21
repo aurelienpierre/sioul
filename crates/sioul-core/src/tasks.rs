@@ -1134,6 +1134,20 @@ pub fn new_path(list: &Collection) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// The task views read the lists that take tasks (21 October 2026): a
+    /// calendar of events alone is never one; one taking both is.
+    #[test]
+    fn the_task_views_read_lists_that_take_tasks() {
+        let events = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds only events", None, &["VEVENT"]).unwrap();
+        let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds events and tasks", None, &["VEVENT", "VTODO"]).unwrap();
+        let tasks = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds only tasks", None, &["VTODO"]).unwrap();
+        let found: Vec<String> = lists().into_iter().map(|c| c.id).collect();
+        assert!(!found.contains(&events.id) && found.contains(&both.id) && found.contains(&tasks.id), "{found:?}");
+        for c in [events, both, tasks] {
+            let _ = std::fs::remove_dir_all(&c.dir);
+        }
+    }
+
     #[test]
     fn a_kind_is_a_concept() {
         let zone = TimeZone::UTC;

@@ -374,6 +374,15 @@ pub fn place_for(chosen: &str, list_account: &str, calendars: &[Collection], mak
     }
 }
 
+/// Whether a time block kept on this device alone (`block`, its calendar)
+/// goes to its task's server (21 October 2026): the task's list is a server's
+/// (`list_account`), so the task reaches your other devices while its time,
+/// here alone, would not, and the agendas would differ. Unless you chose that
+/// calendar for blocks (Tasks ⚙, `chosen`, "account/id").
+pub fn kept_back(block: &Collection, list_account: &str, chosen: &str) -> bool {
+    block.account == vdir::LOCAL && !list_account.is_empty() && list_account != vdir::LOCAL && chosen != format!("{}/{}", block.account, block.id)
+}
+
 /// The calendar for blocks made on `account` ("local": this device only),
 /// named `name` in your language; the next sync makes it on the server.
 pub fn make_calendar(account: &str, name: &str) -> Result<Collection, String> {
@@ -404,6 +413,19 @@ pub fn given_times<'a>(tasks: &'a [Task], today: Date, zone: &TimeZone) -> Vec<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The owner's dated task of 21 October 2026 showed in the computer's
+    /// agenda and not on the phone: its block was in a calendar of the
+    /// computer's own. A block of a task in a server's list goes there.
+    #[test]
+    fn a_block_kept_here_alone_goes_where_its_task_goes() {
+        let calendar = |account: &str, id: &str| Collection { kind: Kind::Calendars, account: account.into(), id: id.into(), dir: std::path::PathBuf::new(), name: String::new(), color: None, read_only: false, components: Vec::new() };
+        let here = calendar(vdir::LOCAL, CALENDAR);
+        assert!(kept_back(&here, "murena", ""), "a server's list: its block goes there");
+        assert!(!kept_back(&here, vdir::LOCAL, ""), "a list kept here: its block stays here too");
+        assert!(!kept_back(&here, "murena", "local/planned-tasks"), "chosen in Tasks ⚙: it stays");
+        assert!(!kept_back(&calendar("murena", CALENDAR), "murena", ""), "on the server already");
+    }
 
     fn paris() -> TimeZone {
         TimeZone::get("Europe/Paris").unwrap()

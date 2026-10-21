@@ -1478,6 +1478,11 @@ pub struct AgendaEvent {
     /// Side by side with what overlaps it: its column among `columns`.
     pub column: u32,
     pub columns: u32,
+    /// The task it is the time block of, by UID (`blocks`), known here; ""
+    /// for an event of its own. Shown as a task, never as an event (`agenda::mark_tasks`).
+    pub task: String,
+    /// That task's list, by name: what the agenda says instead of a calendar.
+    pub list: String,
 }
 
 /// Places a day's timed events side by side where they overlap
@@ -1540,6 +1545,8 @@ pub fn agenda(occurrences: &[crate::agenda::Occurrence], from: jiff::civil::Date
                 to_minute: i32::try_from((o.end.min(end) - start) / 60).unwrap_or(1440),
                 column: 0,
                 columns: 1,
+                task: o.task.clone(),
+                list: o.list.clone(),
             })
             .collect();
         lay_out(&mut events);
@@ -1767,6 +1774,23 @@ host = "imap.example.com"
         assert_eq!(login("home").as_deref(), Some("noa@example.com"));
     }
 
+    /// The owner's appointment of 21 October 2026 was a task whose time
+    /// block looked like an event: a block of a task known here says its task
+    /// and its list; one whose task is gone is an event of its own.
+    #[test]
+    fn a_task_in_the_agenda_shows_as_a_task() {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let day: jiff::civil::Date = "2026-10-23".parse().unwrap();
+        let start = day.at(14, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let occurrence = |key: &str, task: &str| crate::agenda::Occurrence { key: key.into(), summary: key.into(), start, end: start + 3600, calendar: "Planned tasks".into(), task: task.into(), ..Default::default() };
+        let mut occurrences = [occurrence("block", "t1"), occurrence("orphan", "gone"), occurrence("event", "")];
+        let tasks = [crate::tasks::Task { uid: "t1".into(), list: "Plan".into(), ..Default::default() }];
+        crate::agenda::mark_tasks(&mut occurrences, &tasks);
+        let shown = agenda(&occurrences, day, 1, &Translator::new("en"), &zone);
+        let rows: Vec<(&str, &str, &str)> = shown.days[0].events.iter().map(|e| (e.key.as_str(), e.task.as_str(), e.list.as_str())).collect();
+        assert_eq!(rows, [("block", "t1", "Plan"), ("orphan", "", ""), ("event", "", "")]);
+    }
+
     #[test]
     fn overlapping_events_sit_side_by_side() {
         let event = |from: i32, to: i32| AgendaEvent {
@@ -1791,6 +1815,8 @@ host = "imap.example.com"
             to_minute: to,
             column: 9,
             columns: 9,
+            task: String::new(),
+            list: String::new(),
         };
         // 9:00–10:00 and 9:30–11:00 overlap; 10:00–10:30 takes the first column again; 14:00 is alone.
         let mut day = vec![event(540, 600), event(570, 660), event(600, 630), event(840, 900)];

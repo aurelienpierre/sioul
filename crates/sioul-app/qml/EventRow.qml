@@ -2,7 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // One event in a day: its calendar's colour, its time, its title and place.
-// A cancelled one is struck through; a tentative one is in grey.
+// A cancelled one is struck through; a tentative one is in grey. A task's
+// time block shows as the task it is (21 October 2026): the task mark, and
+// its list's name where an event says its place.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -13,6 +15,9 @@ ItemDelegate {
 
     required property var event
     required property var theme
+    // For the words of a task's row.
+    property var sioul: null
+    readonly property bool isTask: (row.event.task || "") !== "" && row.sioul !== null
     property bool compact: false
     property bool selected: false
 
@@ -51,10 +56,18 @@ ItemDelegate {
             spacing: 6
 
             Rectangle {
+                visible: !row.isTask
                 Layout.preferredWidth: 8
                 Layout.preferredHeight: 8
                 radius: 4
                 color: row.event.color ? row.event.color : row.theme.accent
+            }
+            Icon {
+                objectName: "event-row-task"
+                visible: row.isTask
+                iconName: "view-task"
+                size: 14
+                tip: row.isTask ? row.sioul.text("agenda-task-mark") : ""
             }
             Label {
                 Layout.preferredWidth: row.compact ? -1 : 110
@@ -74,9 +87,9 @@ ItemDelegate {
             color: row.event.tentative ? row.theme.muted : row.theme.text
         }
         Label {
-            visible: !row.compact && row.event.location !== ""
+            visible: !row.compact && (row.isTask || row.event.location !== "")
             Layout.maximumWidth: 220
-            text: row.event.location
+            text: row.isTask ? row.sioul.textWith("agenda-task-of", "list", row.event.list) : row.event.location
             textFormat: Text.PlainText
             elide: Text.ElideRight
             color: row.theme.muted

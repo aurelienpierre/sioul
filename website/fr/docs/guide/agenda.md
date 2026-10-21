@@ -67,6 +67,11 @@ Lâchez-le : il est enregistré et envoyé à votre serveur d’agenda ; **A
 
 Une tâche que vous fixez à une heure ([Tâches](tasks.md#pinned-to-a-time)) a son créneau dans votre agenda, « Tâches planifiées » sauf si vous en avez choisi un autre : un événement au titre de la tâche, qui suit le sien. Déplacez-le comme tout événement, ici ou dans un autre programme, et la tâche se déplace avec lui ; supprimez-le, et le plan replace la tâche. Votre plan le compte une fois, comme la tâche.
 
+Dans l’agenda, il se montre comme la tâche qu’il est, jamais comme un événement : la marque des tâches là où un événement a la couleur de son agenda, et « Tâche · » avec le nom de sa liste là où un événement dit son lieu ; ses détails proposent **Ouvrir la tâche**. Qu’une chose soit une tâche ou un rendez-vous, c’est à vous de le dire : une tâche peut avoir une heure et rester une tâche.
+
+- **En faire un rendez-vous**, dans les détails d’une tâche ou son menu : le formulaire d’événement s’ouvre avec le titre, le lieu et les notes de la tâche, à son heure, dans l’agenda des nouveaux événements (ou un autre que vous choisissez). Enregistré, l’événement remplace la tâche et son créneau : jamais les deux, jamais aucun, même si Sioul s’arrête entre-temps. Une tâche qui a ses propres étapes reste une tâche.
+- **En faire une tâche**, sur un événement à vous : une tâche dans votre liste habituelle, à son jour, sa durée pour estimation, son heure gardée comme celle de la tâche quand elle est encore à venir. Une invitation reste un événement : d’autres vous y attendent.
+
 ## Deux événements en même temps {#two-events-at-once}
 
 Quand deux événements se chevauchent, le temps d’y aller et d’en revenir compté, Sioul le dit : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit.
@@ -97,6 +102,7 @@ Le ⚙ en haut de la page :
 
 - **Agendas** : renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste. Celui que vous pouvez seulement lire le dit, et n’est jamais proposé pour un nouvel événement.
 - **Les nouveaux événements vont dans** : l’agenda où va un nouvel événement ; tant que vous ne choisissez pas, le premier qui prend des événements.
+- **Ce que prend un agenda** : des événements, des tâches ou les deux, comme le dit votre serveur. L’agenda montre ceux qui prennent des événements, la page Tâches les listes qui prennent des tâches ; un agenda qui prend les deux est dans les deux, et dit « événements et tâches » partout où il est proposé.
 - **La journée commence à** : l’heure sur laquelle s’ouvrent les vues du jour et de la semaine.
 
 **L’agenda d’un événement** : son éditeur dit dans quel agenda il est, et **Agenda** le déplace vers un autre où vous pouvez écrire, de n’importe quel compte, sur un téléphone aussi : écrit d’abord là-bas, puis retiré du premier, jamais en double et jamais perdu, même si Sioul s’arrête entre les deux ; votre serveur reçoit les deux à la synchronisation suivante. Un événement rangé par erreur dans un agenda propre à cet appareil rejoint vos autres appareils une fois déplacé dans celui de votre serveur. Un agenda propre à cet appareil que votre partage ne transporte pas reste ici : l’éditeur de ses événements dit « Seulement sur cet ordinateur » (ou téléphone), et c’est pourquoi un tel événement s’affiche sur un appareil et pas sur l’autre. Un agenda d’un serveur est sur chaque appareil qui a son compte.
@@ -111,7 +117,7 @@ Les agendas Google se créent, se renomment et se suppriment sur les pages de Go
 
 ## Pas encore là {#not-there-yet}
 
-Déplacer un événement vers un autre agenda, changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; importer ou exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement ; choisir le fuseau horaire d’un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
+Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda, sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; importer ou exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement ; choisir le fuseau horaire d’un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
 
 ## Pour aller plus loin {#going-further}
 
@@ -143,7 +149,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Répond aux invitations qui arrivent par courriel | ✓ | ✓ | ✓ | ✓ | ✓ | en partie²³ |
     | Envoie des invitations | ✗ | ✓ | ✓²⁴ | ✓ | ✓ | ✓ |
     | Déplace un événement en le faisant glisser, avec annulation | ✓ | ✓ | en partie²⁵ | ?²⁶ | ✓ | en partie²⁷ |
-    | Déplace un événement vers un autre agenda | ✗ | ✓ | ✓ | ✓ | ✓ | ? |
+    | Déplace un événement vers un autre agenda | ✓ | ✓ | ✓ | ✓ | ✓ | ? |
     | Montre les anniversaires de vos contacts | ✗²⁸ | ✓ | ✓ | ✓ | ✗ | ? |
 
     1. **Avant** et **Après**, de 5 minutes à 2 heures chacun, gardés libres par votre plan et comptés par la recherche de chevauchements et par le rappel.

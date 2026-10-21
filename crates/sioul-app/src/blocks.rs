@@ -130,7 +130,7 @@ fn when(start: i64, end: i64) -> String {
 
 /// The calendar a task's blocks go into, made when it is the calendar for
 /// blocks and not there yet (`blocks::place_for`).
-fn calendar_for(task: &Task) -> Result<Collection, String> {
+pub(crate) fn calendar_for(task: &Task) -> Result<Collection, String> {
     let config = load_config();
     let chosen = config.tasks.blocks.clone().unwrap_or_default();
     let account = task.list_id.split('/').next().unwrap_or("").to_string();
@@ -398,6 +398,33 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
             (_, None) => false,
         };
         wrote |= done;
+    }
+    // A block kept on this device alone for a task whose list travels: moved
+    // to that list's account, so that every device's agenda shows the task's
+    // time, as it shows the task (21 October 2026; `blocks::kept_back`).
+    let chosen = load_config().tasks.blocks.unwrap_or_default();
+    let stamp = now.timestamp().as_second();
+    let mut seen = BTreeSet::new();
+    for block in found.iter().filter(|b| b.end > stamp && !b.recurring) {
+        let Some(task) = tasks.iter().find(|t| t.uid == block.task && t.status.is_open() && !t.read_only) else { continue };
+        let path = PathBuf::from(&block.key);
+        if !seen.insert(path.clone()) || !path.is_file() {
+            continue;
+        }
+        let Some(calendar) = pim::collection_of(&path) else { continue };
+        if !blocks::kept_back(&calendar, task.list_id.split('/').next().unwrap_or(""), &chosen) {
+            continue;
+        }
+        let Ok(to) = calendar_for(task) else { continue };
+        let Some(name) = path.file_name() else { continue };
+        let target = to.dir.join(name);
+        if to.account == vdir::LOCAL || to.dir == calendar.dir || target.exists() {
+            continue;
+        }
+        if vdir::move_item(&path, &target).is_ok() {
+            pim::nudge(shared, &to.account);
+            wrote = true;
+        }
     }
     wrote
 }

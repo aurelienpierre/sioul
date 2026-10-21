@@ -474,7 +474,42 @@ struct Plan_ {
     contacts: Vec<ImportContact>,
     #[serde(default, rename = "draft")]
     drafts: Vec<ImportDraft>,
+    /// Where new appointments go: "account/id" (else the agenda's usual calendar).
+    #[serde(default)]
+    calendar: Option<String>,
+    /// Appointments: events, said so by the file (21 October 2026). Which an
+    /// item is, a task or an appointment, is the file's to say, never guessed
+    /// from its times.
+    #[serde(default, rename = "event")]
+    events: Vec<ImportEvent>,
 }
+
+/// An appointment: an event in a calendar, never a task.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportEvent {
+    key: String,
+    title: String,
+    /// "2026-10-23T14:00" (your time zone), or a day for a whole-day one.
+    start: String,
+    /// The same form; unsaid, an hour after a time, the same day for a day.
+    #[serde(default)]
+    end: String,
+    #[serde(default)]
+    location: String,
+    #[serde(default)]
+    notes: String,
+    /// "daily", "weekly", "monthly", "yearly".
+    #[serde(default)]
+    repeat: String,
+    /// Its calendar, "account/id"; else the file's, else the agenda's usual.
+    #[serde(default)]
+    calendar: Option<String>,
+}
+
+/// What a task in an import never has, an appointment does: met in a
+/// `[[task]]`, the import asks which it is instead of guessing.
+const ONLY_EVENTS: &[&str] = &["end", "all_day", "calendar", "attendees", "organizer"];
 
 #[derive(Debug, Default, Deserialize)]
 struct ImportTask {
@@ -521,6 +556,9 @@ struct ImportTask {
     /// The day it was done ("2026-10-01"): done, on that day.
     #[serde(default)]
     done: String,
+    /// What else the entry says: never read as a task's, said (`ONLY_EVENTS`: asked).
+    #[serde(flatten)]
+    other: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -571,10 +609,23 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
     let plan: Plan_ = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
     // A new task's or contact's file is named by its UID: none may lead out of
     // its folder ("../../.bashrc"), whoever wrote the file (an agent, a script).
-    for key in plan.tasks.iter().map(|t| &t.key).chain(plan.contacts.iter().map(|c| &c.key)) {
+    for key in plan.tasks.iter().map(|t| &t.key).chain(plan.contacts.iter().map(|c| &c.key)).chain(plan.events.iter().map(|e| &e.key)) {
         let uid = uid_of(&plan.prefix, key);
         if uid.is_empty() || uid.contains(['/', '\\']) || (cfg!(windows) && uid.contains(':')) {
             return Err(s.say("import-bad-key", &[("key", key.clone())]));
+        }
+    }
+    // A task or an appointment: the file says which, or is asked.
+    for task in &plan.tasks {
+        if plan.events.iter().any(|e| e.key == task.key) {
+            return Err(s.say("import-both-kinds", &[("key", task.key.clone())]));
+        }
+        let kind_says_event = task.other.get("kind").and_then(|v| v.as_str()).is_some_and(|k| matches!(k.to_ascii_lowercase().as_str(), "event" | "appointment"));
+        if let Some(field) = task.other.keys().find(|k| ONLY_EVENTS.contains(&k.as_str())).cloned().or(kind_says_event.then(|| "kind".to_string())) {
+            return Err(s.say("import-task-or-event", &[("task", task.key.clone()), ("field", field)]));
+        }
+        for field in task.other.keys() {
+            eprintln!("{}", s.say("import-unknown-field", &[("task", task.key.clone()), ("field", field.clone())]));
         }
     }
     let zone = TimeZone::system();
@@ -731,6 +782,10 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         written.insert(uid, path);
     }
 
+    // Appointments: events; one imported before as a task becomes the event,
+    // the task and its blocks taken out with it (`vdir::replace_items`).
+    lists_touched.extend(import_events(s, &plan, &existing, dry_run, &zone)?);
+
     // Waiting with a gap: written in the one that comes first (RFC 9253 §4).
     for task in &plan.tasks {
         let successor = uid_of(&plan.prefix, &task.key);
@@ -755,6 +810,97 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         }
     }
     Ok(())
+}
+
+/// The file of the event with this UID, in any calendar.
+fn event_file(uid: &str) -> Option<PathBuf> {
+    let wanted = format!("UID:{uid}");
+    vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| {
+        std::fs::read_to_string(p).is_ok_and(|t| {
+            let lines = sioul_core::lines::unfold(&t);
+            lines.iter().any(|l| l == "BEGIN:VEVENT") && lines.iter().any(|l| l.trim_end() == wanted)
+        })
+    })
+}
+
+/// The time blocks of the task `uid` that can be changed (`blocks::TASK`).
+fn blocks_of(uid: &str) -> Vec<PathBuf> {
+    vdir::collections(Kind::Calendars)
+        .into_iter()
+        .filter(|c| !c.read_only)
+        .flat_map(|c| c.items())
+        .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| sioul_core::lines::unfold(&t).iter().any(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK && sioul_core::lines::value(l).trim() == uid)))
+        .collect()
+}
+
+/// The file's appointments written: new ones in their calendar, known ones
+/// changed line by line, one imported before as a task made the event (the
+/// task and its blocks taken out, never both, never neither). The calendars
+/// touched, "account/id".
+fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zone: &TimeZone) -> Result<BTreeSet<String>, String> {
+    let mut touched = BTreeSet::new();
+    for event in &plan.events {
+        let uid = uid_of(&plan.prefix, &event.key);
+        let all_day = !event.start.contains('T');
+        let bad_start = || s.say("import-event-start", &[("key", event.key.clone()), ("start", event.start.clone())]);
+        let end = if !event.end.is_empty() {
+            event.end.clone()
+        } else if all_day {
+            event.start.clone()
+        } else {
+            let start: jiff::civil::DateTime = event.start.parse().map_err(|_| bad_start())?;
+            start.checked_add(jiff::Span::new().hours(1)).map_err(|_| bad_start())?.strftime("%Y-%m-%dT%H:%M").to_string()
+        };
+        let edit = sioul_core::agenda::EventEdit { title: event.title.clone(), location: event.location.clone(), notes: event.notes.clone(), start: event.start.clone(), end, all_day, repeat: event.repeat.clone(), ..Default::default() };
+        let wanted = event.calendar.clone().or_else(|| plan.calendar.clone()).unwrap_or_default();
+        let calendar = || {
+            vdir::collections(Kind::Calendars)
+                .into_iter()
+                .find(|c| !c.read_only && c.holds("VEVENT") && format!("{}/{}", c.account, c.id) == wanted)
+                .or_else(sioul_core::agenda::default_calendar)
+                .ok_or_else(|| s.tr.text("dav-no-calendar", None))
+        };
+        let as_task = existing.iter().find(|t| t.uid == uid);
+        match (event_file(&uid), as_task) {
+            (Some(path), _) => {
+                let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let text = sioul_core::agenda::apply(&current, &edit, zone)?;
+                if text != current {
+                    println!("~ {}", one_line(&event.title));
+                    if !dry_run {
+                        vdir::write_item(&path, &text)?;
+                    }
+                }
+                touched.extend(path.strip_prefix(Kind::Calendars.root()).ok().and_then(|p| p.components().next()).map(|a| format!("{}/", a.as_os_str().to_string_lossy())));
+            }
+            (None, Some(task)) => {
+                if task.read_only {
+                    return Err(s.tr.text("task-read-only", None));
+                }
+                let calendar = calendar()?;
+                let text = sioul_core::agenda::new_event_with_uid(&edit, &uid, zone)?;
+                println!("→ {}", one_line(&event.title));
+                if !dry_run {
+                    let gone: Vec<PathBuf> = std::iter::once(PathBuf::from(&task.key)).chain(blocks_of(&uid)).collect();
+                    for path in &gone {
+                        touched.extend(path.strip_prefix(Kind::Calendars.root()).ok().and_then(|p| p.components().next()).map(|a| format!("{}/", a.as_os_str().to_string_lossy())));
+                    }
+                    vdir::replace_items(&gone, &[], &calendar.dir.join(format!("{uid}.ics")), &text)?;
+                }
+                touched.insert(format!("{}/{}", calendar.account, calendar.id));
+            }
+            (None, None) => {
+                let calendar = calendar()?;
+                let text = sioul_core::agenda::new_event_with_uid(&edit, &uid, zone)?;
+                println!("+ {}", one_line(&event.title));
+                if !dry_run {
+                    vdir::write_item(&calendar.dir.join(format!("{uid}.ics")), &text)?;
+                }
+                touched.insert(format!("{}/{}", calendar.account, calendar.id));
+            }
+        }
+    }
+    Ok(touched)
 }
 
 pub(crate) fn focus(s: &Session, command: FocusCommand) -> Result<(), String> {
@@ -842,5 +988,57 @@ mod tests {
         // `projects`, and `cases` as files written before the one name say it.
         let plan: Plan_ = toml::from_str("[[task]]\nkey = \"a\"\ntitle = \"A\"\nprojects = [\"taxes\"]\n\n[[task]]\nkey = \"b\"\ntitle = \"B\"\ncases = [\"housing\"]\n").unwrap();
         assert_eq!(plan.tasks.iter().map(|t| t.projects.clone()).collect::<Vec<_>>(), [vec!["taxes".to_string()], vec!["housing".to_string()]]);
+    }
+
+    /// The owner's appointment of 21 October 2026 had been imported as a task.
+    /// A `[[task]]` with what only an appointment has is asked about, never
+    /// guessed; the same key under `[[event]]` makes the event, the task and
+    /// its block taken out, once; imported again, nothing changes.
+    #[test]
+    fn an_appointment_in_a_plan_file_is_an_event_said_so() {
+        let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds plan", None, &["VTODO"]).unwrap();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds personal", None, &["VEVENT"]).unwrap();
+        let head = format!("list = \"local/{}\"\ncalendar = \"local/{}\"\nprefix = \"kinds-\"\n\n", list.id, calendar.id);
+        let file = sioul_core::config::state_dir().join("kinds-import.toml");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let run = |body: &str| {
+            std::fs::write(&file, format!("{head}{body}")).unwrap();
+            import(&s, &file, true, false)
+        };
+        let files = |c: &Collection| c.items();
+
+        // An end is an appointment's: asked, nothing written.
+        let asked = run("[[task]]\nkey = \"dentist\"\ntitle = \"Dentist\"\nstart = \"2099-10-23T14:00\"\nend = \"2099-10-23T15:00\"\n").unwrap_err();
+        assert!(asked.contains("dentist") && asked.contains("[[event]]"), "{asked}");
+        let kind = run("[[task]]\nkey = \"dentist\"\ntitle = \"Dentist\"\nkind = \"appointment\"\n").unwrap_err();
+        assert!(kind.contains("[[event]]"), "{kind}");
+        assert!(files(&list).is_empty() && files(&calendar).is_empty());
+
+        // As it was imported before: a task with a time, and its block.
+        run("[[task]]\nkey = \"dentist\"\ntitle = \"Dentist\"\nstart = \"2099-10-23T14:00\"\n").unwrap();
+        assert_eq!(files(&list).len(), 1);
+        std::fs::write(calendar.dir.join("block.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:block\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\nSUMMARY:Dentist\r\nX-SIOUL-TASK:kinds-dentist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let both = run("[[task]]\nkey = \"dentist\"\ntitle = \"Dentist\"\n\n[[event]]\nkey = \"dentist\"\ntitle = \"Dentist\"\nstart = \"2099-10-23T14:00\"\n").unwrap_err();
+        assert!(both.contains("dentist"), "{both}");
+
+        // Said an appointment: the event, the task and its block gone.
+        let appointment = "[[event]]\nkey = \"dentist\"\ntitle = \"Dentist\"\nstart = \"2099-10-23T14:00\"\nlocation = \"1 Example Street\"\n";
+        run(appointment).unwrap();
+        assert!(files(&list).is_empty(), "the task gone");
+        let events = files(&calendar);
+        assert_eq!(events.len(), 1, "one event, the block gone: {events:?}");
+        let text = std::fs::read_to_string(&events[0]).unwrap();
+        assert!(text.contains("UID:kinds-dentist") && text.contains("BEGIN:VEVENT") && text.contains("LOCATION:1 Example Street") && !text.contains("X-SIOUL-TASK"), "{text}");
+        let edit = sioul_core::agenda::edit_of(&events[0]).unwrap();
+        assert_eq!((edit.start.as_str(), edit.end.as_str()), ("2099-10-23T14:00", "2099-10-23T15:00"), "an hour without an end");
+
+        // Imported again: the same event, unchanged.
+        run(appointment).unwrap();
+        assert_eq!(files(&calendar), events);
+        assert_eq!(std::fs::read_to_string(&events[0]).unwrap(), text);
+        let _ = std::fs::remove_dir_all(&list.dir);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_file(&file);
     }
 }

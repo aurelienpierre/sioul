@@ -22,6 +22,10 @@ Dialog {
     required property var theme
     // The event's file; empty for a new one.
     property string key: ""
+    // A task being made an appointment ("Make it an appointment", 21 October
+    // 2026): its UID, and the file of the time block it was opened from.
+    property string taskUid: ""
+    property string taskBlock: ""
     property var calendars: []
     // The calendar of the event opened ("account/id"), its name, and whether it stays on this device alone.
     property string currentCalendar: ""
@@ -65,6 +69,8 @@ Dialog {
     // Opens on an event, or on a new one on `day` ("2026-10-05"), at `hour` or the next full hour.
     function edit(key, day, hour) {
         dialog.key = key
+        dialog.taskUid = ""
+        dialog.taskBlock = ""
         dialog.problem = ""
         dialog.links = []
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
@@ -126,6 +132,31 @@ Dialog {
         dialog.moreShown = note !== ""
     }
 
+    // A task made an appointment: the form a new event's, filled from the task
+    // at its block's time (`start`, `end`), in the calendar for new events or
+    // another chosen; saved, the event replaces the task (`appointments`).
+    function makeFromTask(uid, block, start, end) {
+        const made = JSON.parse(dialog.sioul.taskAsEvent(uid, start, end) || "{}")
+        if (made.error) {
+            dialog.sioul.status = made.error
+            return
+        }
+        dialog.edit("", made.start.slice(0, 10))
+        dialog.taskUid = uid
+        dialog.taskBlock = block
+        title.text = made.title
+        place.text = made.location
+        notes.text = made.notes
+        startDay.date = made.start.slice(0, 10)
+        startTime.text = made.start.slice(11, 16)
+        endDay.date = made.end.slice(0, 10)
+        endTime.text = made.end.slice(11, 16)
+        repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(made.repeat))
+        dialog.around = Object.assign({ before: 0, after: 0 }, made.margins)
+        dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, made.demands)
+        dialog.moreShown = made.notes !== "" || made.repeat !== ""
+    }
+
     // For the window's pictures: the costs and the gain in view.
     function showRatings() {
         dialog.moreShown = true
@@ -148,7 +179,7 @@ Dialog {
         // An event of a calendar not offered (read only) stays where it is.
         const offered = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
         const where = dialog.key !== "" && dialog.calendars.findIndex(c => c.id === dialog.currentCalendar) < 0 ? dialog.currentCalendar : offered
-        const problem = dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
+        const problem = dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
         if (problem) {
             dialog.problem = problem
             return
@@ -186,7 +217,7 @@ Dialog {
     width: Math.min(Math.ceil(Math.max(70 * body.averageCharacterWidth, tiles.naturalWidth)) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? parent.width : 800) - 2 * dialog.theme.gap)
     // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
     height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
-    title: dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
+    title: dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
 
     FontMetrics {
         id: body

@@ -225,14 +225,14 @@ impl Desk {
 }
 
 #[derive(Serialize)]
-struct ListChoice {
-    id: String,
+pub(crate) struct ListChoice {
+    pub(crate) id: String,
     name: String,
     color: Option<String>,
     /// Waits to be created on the server.
     pending: bool,
     /// It keeps tasks; a calendar that does not is shown, greyed, with why.
-    tasks: bool,
+    pub(crate) tasks: bool,
 }
 
 #[derive(Serialize)]
@@ -370,7 +370,7 @@ pub(crate) fn remove_routine(id: &str) -> String {
 }
 
 /// The lists a task can go into.
-fn writable_lists() -> Vec<ListChoice> {
+pub(crate) fn writable_lists() -> Vec<ListChoice> {
     let config = load_config();
     let choice = |c: Collection, tasks: bool| ListChoice { pending: vdir::State::load(&c.state_path()).pending, id: format!("{}/{}", c.account, c.id), name: c.label(&config, tr()), color: c.color, tasks };
     let mut lists: Vec<ListChoice> = tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| choice(c, true)).collect();
@@ -692,7 +692,7 @@ fn write(qt: &QtThread, shared: &Arc<Shared>, path: &Path, text: &str) -> Result
 
 /// The list a new task goes into: the one chosen ("account/id"), else the
 /// usual one (Tasks ⚙, "New tasks go into"), else the first made for tasks.
-fn target_list(id: &str) -> Result<Collection, String> {
+pub(crate) fn target_list(id: &str) -> Result<Collection, String> {
     let lists: Vec<Collection> = tasks::lists().into_iter().filter(|c| !c.read_only).collect();
     let usual = load_config().tasks.list.clone().unwrap_or_default();
     let named = |wanted: &str| lists.iter().find(|c| !wanted.is_empty() && format!("{}/{}", c.account, c.id) == wanted).cloned();

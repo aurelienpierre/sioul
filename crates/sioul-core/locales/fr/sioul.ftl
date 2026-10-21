@@ -6042,3 +6042,22 @@ set-agenda-calendar-first = Le premier agenda qui prend des événements
 event-calendar-in = Dans { $name }
 event-calendar-here-computer = Seulement sur cet ordinateur : un agenda propre à cet appareil, que votre partage ne transporte pas.
 event-calendar-here-phone = Seulement sur ce téléphone : un agenda propre à cet appareil, que votre partage ne transporte pas.
+
+# A task or an appointment, as you say (21 October 2026): made one from the other in the agenda; the import asks.
+agenda-make-appointment = En faire un rendez-vous
+agenda-make-task = En faire une tâche
+agenda-task-of = Tâche · { $list }
+agenda-task-mark = Une tâche, pas un événement
+agenda-open-task = Ouvrir la tâche
+appointment-made = C’est maintenant un rendez-vous, dans { $calendar }.
+appointment-has-steps = Cette tâche a ses propres étapes : elle reste une tâche.
+task-made-from-event = C’est maintenant une tâche, dans { $list }.
+task-made-already = C’est déjà le temps d’une tâche.
+task-from-invitation = Une invitation reste un événement : d’autres vous y attendent.
+task-from-odd-repeat = Sa répétition ne peut pas être celle d’une tâche : il reste un événement.
+import-task-or-event = « { $task } » a « { $field } », que seul un rendez-vous a. Si c’est un rendez-vous, mettez-le sous [[event]] ; si c’est une tâche, retirez « { $field } ».
+import-both-kinds = « { $key } » est à la fois une [[task]] et un [[event]] : c’est l’un ou l’autre.
+import-unknown-field = « { $task } » : « { $field } » n’est pas lu, et laissé de côté.
+import-event-start = « { $key } » : son début « { $start } » n’est ni un jour (2026-10-23) ni une heure (2026-10-23T14:00).
+home-card-task-plain = Une tâche
+collection-events-and-tasks = événements et tâches

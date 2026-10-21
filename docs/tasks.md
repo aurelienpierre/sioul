@@ -152,7 +152,23 @@ links = [{ uri = "mid:abc@example.org", rel = "via" }]
 contacts = ["office"]
 drafts = ["ask"]
 done = "2026-10-01"        # already done, on that day
+
+[[event]]                  # an appointment: an event, never a task
+key = "dentist"
+title = "Dentist"
+start = "2026-10-23T14:00" # a time, or a day for a whole day
+end = "2026-10-23T14:45"   # unsaid: an hour after a time
+location = "1 rue de l'Exemple, 75001 Paris"
+calendar = "account/personal"  # else the file's `calendar`, else Settings ▸ Agenda's
 ```
+
+**A task or an appointment is the file's to say, never guessed from its times** (21 October 2026): a task can start at a time and still be a task. An appointment is an `[[event]]`. A `[[task]]` with what only an appointment has (`end`, `all_day`, `calendar`, `attendees`, `organizer`, or `kind = "appointment"`) stops the import and asks which it is; any other field a task does not read is said, and left out. A key moved from `[[task]]` to `[[event]]` makes the event, with the same UID, and takes the task out with its time blocks, in one step of the move journal (`vdir::replace_items`: never both, never neither). A key in both stops the import. The MCP's `add_task` and `add_event` say the same to agents: ask the person when they did not say which.
+
+### A task or an appointment, in the agenda
+A task shows in the agenda only through its time block ("Pinned to a time"). It shows as the task it is (21 October 2026): the task mark (Breeze's `view-task`) where an event has its calendar's colour, "Task · <its list>" where an event says its place or calendar, in the list, the week and the month; its details offer "Open the task". A block whose task is not here (deleted, its list off) is an event of its own, as the plan reads it. Every agenda reads the same items, the window's, the phone's (one page) and the home card (`pim::agenda_read`, `agenda::mark_tasks`; `homecard::tests::every_agenda_reads_the_same_items`), and only the calendars that take events ([database.md](database.md), "What a calendar takes"): a task list's own tasks are the task views'. A block kept in a calendar of this device's own for a task whose list is a server's goes to that list's account, to the calendar for blocks there, at the next re-plan (`blocks::kept_back`): until 21 October 2026 such a block showed the task's time on one device only.
+
+- **"Make it an appointment"**, on a task's block (its details or its menu): the event form opens with the task's title, place, notes, repeat, margins and costs, at the block's time (else the task's own time for its estimate, or an hour; else 9:00 on its day, to set), in the calendar Settings ▸ Agenda names for new events, or another chosen there. Saved, the event is written and the task taken out with its blocks to come and the block it was opened from (`appointments`). A task with steps of its own stays a task.
+- **"Make it a task"**, on an event of your own: a task in the usual list, its day its day to start, its length its estimate; its time, still to come and not repeating, becomes its block. An invitation stays an event (others expect you there), and so does a repeat a task cannot say (every other Tuesday).
 
 ## From the research, built and next
 | Idea | Where it stands |
