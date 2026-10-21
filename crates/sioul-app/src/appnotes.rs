@@ -178,9 +178,20 @@ fn decide(json: &str) -> String {
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
     let gate = gate();
+    let senders = Senders::load(&config);
     let (who, admitted) = match &kind {
-        Kind::People(talk) => who_of(&talk.sender, &Senders::load(&config), &People::load(&People::default_path()), &config),
+        Kind::People(talk) => who_of(&talk.sender, &senders, &People::load(&People::default_path()), &config),
         _ => (None, false),
+    };
+    // The person's own rows it reads, after its conversation's and before its app's (decision 16):
+    // by the card's UID, each number's key, each address; by name only as the phone's address book names.
+    let persons = match &kind {
+        Kind::People(talk) => match &talk.sender {
+            Sender::Known { numbers, emails, .. } => senders.person_rows(numbers, emails),
+            Sender::Named { name, book: true } => senders.person_rows_named(name),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
     };
     // A text from a number nobody knows, from a root ARCEP keeps for machines: an automaton's, gathered
     // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise);
@@ -203,7 +214,7 @@ fn decide(json: &str) -> String {
         Kind::People(talk) => talk.conversation.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
         _ => String::new(),
     };
-    let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
+    let sources = sioul_core::attention::source_rows_with(&posted.package, &conversation, &persons);
     let reachable = reachable_until();
     // Android silences it now (Sioul's mode or yours): a text whose cell says ◑ comes, without a sound (decision 13).
     let silenced = posted.intercepted;
@@ -260,6 +271,9 @@ fn decide(json: &str) -> String {
             released = Some(counted);
         }
         ledger.note(&posted, &kind, who, admitted, area, &decision, stamp);
+        if let Some(held) = ledger.held.get_mut(&hash) {
+            held.persons = persons.clone();
+        }
         if machine && decision.why == Why::Gathered
             && let Some(app) = ledger.apps.get_mut(&posted.package)
         {
@@ -325,6 +339,7 @@ fn review(json: &str) -> String {
     // holds through" on a computer): what was held before it comes now, once (part 3).
     // Never during a pause: the stamps wait for its end, then apply once (F5).
     let releases = crate::everywhere::release_stamps();
+    let talks = released_talks();
     let path = Ledger::default_path();
     let (again, counted, ahead) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
@@ -336,7 +351,7 @@ fn review(json: &str) -> String {
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
-            let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
+            let sources = sioul_core::attention::source_rows_with(&held.app, &held.conversation, &held.persons);
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
             let mut decided = appnotes::again(&held, &choices, &ask);
             if !paused && crate::replies::answered_lately(&held.conversation) {
@@ -347,6 +362,10 @@ fn review(json: &str) -> String {
             // never during a pause.
             if !paused {
                 decided = decided.released(&held, &ledger);
+                // Its conversation let through now from the card (`release_talk`): what was held before then.
+                if decided.until.is_some() && decided.why != Why::Never && talks.get(&held.conversation).is_some_and(|at| held.first_held() <= *at) {
+                    decided = Decision::through(Why::Released);
+                }
             }
             let until = decided.until.unwrap_or(stamp);
             counted.push(Counted { why: decided.why, ..Counted::held(&held, until) });
@@ -570,6 +589,105 @@ pub unsafe extern "C" fn sioul_appnotes_review(json: *const c_char) -> *mut c_ch
 }
 
 // ---------------------------------------------------------------- the window
+
+/// The conversations let through now from the card (`release_talk`), by
+/// their hashed key, with when (Unix seconds): this phone's own file, never
+/// shared, holding no title; the listener reviews when it changes.
+const TALKS_FILE: &str = "app-notes-talks.toml";
+
+fn talks_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join(TALKS_FILE)
+}
+
+fn released_talks() -> std::collections::BTreeMap<String, i64> {
+    std::fs::read_to_string(talks_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// The conversations the phone holds now, for the card (ReachCard.qml): {key,
+/// title, app} each, the soonest first. Their titles come from the phone's
+/// own ledger and go to its window alone: never shared, never on a computer
+/// (decision 16; none there, where nothing is held).
+pub(crate) fn held_talks() -> Vec<Value> {
+    if !cfg!(target_os = "android") {
+        return Vec::new();
+    }
+    let path = Ledger::default_path();
+    if !path.exists() {
+        return Vec::new();
+    }
+    let ledger = Ledger::load(&path);
+    let now = jiff::Timestamp::now().as_second();
+    let mut held: Vec<&appnotes::Held> = ledger.held.values().filter(|h| h.kind == "people" && !h.conversation.is_empty() && h.until > now).collect();
+    held.sort_by_key(|h| h.until);
+    let mut out: Vec<Value> = Vec::new();
+    for h in held {
+        if out.iter().any(|t| t["key"] == h.conversation.as_str()) {
+            continue;
+        }
+        let title = ledger.conversations.get(&h.conversation).map(|c| c.title.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|t| !t.is_empty()).unwrap_or_else(|| h.label.clone());
+        out.push(json!({ "key": h.conversation, "title": title, "app": h.label }));
+    }
+    out
+}
+
+/// "Let it through now" on a held conversation (the card): what is held of
+/// it comes at the listener's next review, which this file's change brings.
+pub(crate) fn release_talk(key: &str) -> String {
+    let now = jiff::Timestamp::now().as_second();
+    let mut talks = released_talks();
+    talks.retain(|_, at| now - *at < 2 * 86_400);
+    talks.insert(key.to_string(), now);
+    let path = talks_path();
+    let written = toml::to_string(&talks).map_err(|e| e.to_string()).and_then(|text| {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
+    });
+    match written {
+        Ok(()) => tr().text("reach-card-let-it-done", None),
+        Err(e) => e,
+    }
+}
+
+/// Which row and which cells "Let them through then" sets for a held
+/// conversation (`let_talk_then`): the person's own row by their card, else
+/// by their number, else the conversation's; under do-not-disturb that layer,
+/// in a slot of time for you that one, during work Work and Admin together,
+/// else the time now.
+fn talk_then(held: &appnotes::Held, now: &sioul_core::attention::Now) -> (String, Vec<Column>) {
+    let id = held.persons.iter().find(|p| p.starts_with("person.contact:")).or_else(|| held.persons.iter().find(|p| p.starts_with("person.tel:"))).cloned().unwrap_or_else(|| format!("{}{}", sioul_core::attention::CONVERSATION_ROW, held.conversation));
+    let columns: Vec<Column> = if now.dnd {
+        vec![Column::Dnd]
+    } else if now.slot {
+        vec![Column::Slot]
+    } else if now.times.iter().any(|c| matches!(c, Column::Work | Column::Admin)) {
+        vec![Column::Work, Column::Admin]
+    } else {
+        now.times.clone()
+    };
+    (id, columns)
+}
+
+/// "Let them through then" on a held conversation (the card; the proposal's
+/// 3.7): the cell of what holds it now set to at once, on the person's own
+/// row when a card or a number knows them (their card's first), else on the
+/// conversation's: under do-not-disturb, that layer; during work, Work and
+/// Admin together; else the time now. Said in a sentence.
+pub(crate) fn let_talk_then(key: &str) -> String {
+    let path = Ledger::default_path();
+    let ledger = Ledger::load(&path);
+    let Some(held) = ledger.held.values().find(|h| h.conversation == key) else { return String::new() };
+    let (id, columns) = talk_then(held, &crate::hours::attention_now());
+    let words: Vec<String> = columns.iter().map(|c| c.id().to_string()).collect();
+    if let Err(e) = sioul_core::attention::apply_change(&crate::backend::config_path(), &format!("attention.{id}"), None, &sioul_core::config::SettingValue::Texts(words)) {
+        return e;
+    }
+    let time = columns.iter().map(|c| sioul_core::attention::column_label(tr(), *c)).collect::<Vec<_>>().join(", ");
+    let mut args = sioul_core::i18n::args();
+    args.set("time", time);
+    tr().text("reach-card-let-then-done", Some(&args))
+}
 
 /// The Porch's line on other apps (`appnotes::porch_line`); "" when nothing
 /// waits nor came back lately, and on a computer (no listener there).
@@ -834,6 +952,21 @@ fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
 mod tests {
     use super::*;
 
+    /// Decision 16 (the proposal's 3.7): "Let them through then" sets the
+    /// person's own row by their card, else their number, else the
+    /// conversation's, at what holds the text now: do-not-disturb; work and
+    /// admin together; the time.
+    #[test]
+    fn let_them_through_then_sets_the_cell_of_what_held_it() {
+        use sioul_core::attention::Now;
+        let held = |persons: &[&str]| appnotes::Held { conversation: "talk-1".into(), persons: persons.iter().map(|p| p.to_string()).collect(), kind: "people".into(), ..Default::default() };
+        let work = Now::time(Column::Work);
+        assert_eq!(talk_then(&held(&["person.tel:+33199001234", "person.contact:card-1"]), &work), ("person.contact:card-1".to_string(), vec![Column::Work, Column::Admin]));
+        assert_eq!(talk_then(&held(&["person.noa@example.org", "person.tel:+33199001234"]), &Now::time(Column::Leisure)).0, "person.tel:+33199001234");
+        assert_eq!(talk_then(&held(&[]), &Now::time(Column::Leisure)), ("conversation.talk-1".to_string(), vec![Column::Leisure]), "no card nor number: the conversation's");
+        assert_eq!(talk_then(&held(&["person.contact:card-1"]), &Now::time(Column::Work).layers(false, true)).1, vec![Column::Dnd]);
+    }
+
     /// Review of part 3, F5: no release during a pause, when everything
     /// Sioul shows is held. Reachable pressed on the laptop seven minutes ago,
     /// heard by the phone only now, five minutes into a pause: its review
@@ -848,7 +981,7 @@ mod tests {
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
         let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
-        let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0 };
+        let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
         ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.apps.messaging", "people", "messages", "neutral", stamp - 3600, stamp + 7200));
         ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", stamp - 1800, stamp + 7200));

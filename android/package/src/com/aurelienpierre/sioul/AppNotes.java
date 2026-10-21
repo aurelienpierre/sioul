@@ -101,6 +101,8 @@ public final class AppNotes extends NotificationListenerService
     private static final String[] WATCHED = {
         "quiet.toml", "do-not-disturb.toml", "dnd-people.toml", "running.toml", "config.toml", "app-notes.toml", "health.toml", "health-days.toml",
         "safe-senders.txt", "neutral-senders.txt", "restricted-senders.txt", "blocked-senders.txt", "slots.toml",
+        // A conversation let through now from the card (Rust's appnotes.rs, `release_talk`).
+        "app-notes-talks.toml",
     };
 
     /** Bound by Android, the access given: notifications are decided and held only then. */

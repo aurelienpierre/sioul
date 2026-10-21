@@ -188,20 +188,21 @@ enum Subject {
     Own(Kind),
 }
 
-/// Who, in words: "your safe and neutral senders and strangers"; everyone;
+/// Who, in words: "your safe senders, your contacts and strangers"; everyone;
 /// everyone else (`rest`: the others were said before in the same card).
 fn who_words(persons: &[Person], everyone: bool, rest: bool) -> String {
     if everyone {
         return text(if rest { "attention-who-everyone-else" } else { "attention-who-everyone" });
     }
-    let known: Vec<String> = persons.iter().filter(|p| matches!(p, Person::Safe | Person::Neutral | Person::Restricted)).map(|p| text(&format!("attention-who-kind-{}", p.id()))).collect();
+    // "Neutral" said as "your contacts" (decision 17), apart from the kinds of senders.
+    let known: Vec<String> = persons.iter().filter(|p| matches!(p, Person::Safe | Person::Restricted)).map(|p| text(&format!("attention-who-kind-{}", p.id()))).collect();
     let mut items = Vec::new();
     if !known.is_empty() {
         let mut args = sioul_core::i18n::args();
         args.set("kinds", listed(&known, false));
         items.push(tr().text("attention-who-senders", Some(&args)));
     }
-    for person in persons.iter().filter(|p| matches!(p, Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
+    for person in persons.iter().filter(|p| matches!(p, Person::Neutral | Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
         items.push(text(&format!("attention-who-{}", person.id())));
     }
     listed(&items, false)
@@ -674,7 +675,9 @@ pub(crate) fn now_card(realtime: bool) -> String {
     let held = if cfg!(target_os = "android") { crate::appnotes::porch_line() } else { String::new() };
     let calls = crate::calls::moment();
     let screening = if calls["shown"] == true { screening_line(&load_config()) } else { String::new() };
-    json!({ "now": said, "held": held, "realtime": realtime, "screening": screening, "calls": calls }).to_string()
+    // The conversations the phone holds, by their titles: on the phone alone, never sent elsewhere.
+    let talks = crate::appnotes::held_talks();
+    json!({ "now": said, "held": held, "talks": talks, "realtime": realtime, "screening": screening, "calls": calls }).to_string()
 }
 
 /// The call screening in a sentence, as `[screening]` says it (`Screening::of`).
@@ -961,6 +964,21 @@ impl Someone {
         out
     }
 
+    /// Their own row's id (decision 16): their card's (`person.contact:<UID>`),
+    /// else their number's (`person.tel:<key>`) or their address's; none when
+    /// nothing of theirs is known. Never a name.
+    fn row_id(&self) -> Option<String> {
+        if let Some(uid) = self.card.as_ref().map(|c| c.uid.trim().to_string()).filter(|u| !u.is_empty()) {
+            return Some(attention::person_row(&format!("contact:{uid}"))).filter(|id| attention::is_person(id));
+        }
+        let first = self.addresses.first()?;
+        let who = match first.strip_prefix(sioul_core::porch::TEL) {
+            Some(number) => format!("tel:{}", sioul_core::phones::key(number, region())),
+            None => first.clone(),
+        };
+        Some(attention::person_row(&who)).filter(|id| attention::is_person(id) && id != attention::PERSON_ROW && !id.ends_with("tel:"))
+    }
+
     /// Their entry on the Always through list, when they are on it.
     fn always(&self, config: &Config) -> Option<String> {
         let people = People::load(&People::default_path());
@@ -994,6 +1012,35 @@ impl Someone {
             }
         }
     }
+}
+
+/// Their own times on their sheet (decision 16): {title, help, shown, note,
+/// cells [{column, label, level, choices [{value, label}]}]}; none to set for
+/// someone on Always through, nor for someone known by nothing here.
+fn own_times(attention: &Attention, someone: &Someone, always: bool, who: Who) -> Value {
+    let id = someone.row_id();
+    let note = if always { text("attention-sheet-times-always") } else if id.is_none() { text("attention-sheet-times-none") } else { String::new() };
+    let set = id.as_deref().and_then(|id| attention.source(id));
+    let label = |level: Level| match level {
+        Level::Now => text("attention-level-now"),
+        Level::Later => text("attention-person-held"),
+        Level::Quiet => text("attention-level-quiet-messages"),
+        _ => text("attention-level-as"),
+    };
+    let cells: Vec<Value> = if always || id.is_none() || who == Who::Blocked {
+        Vec::new()
+    } else {
+        Column::ALL
+            .iter()
+            .enumerate()
+            .map(|(index, column)| {
+                let level = set.map_or(Level::As, |cells| cells[index]);
+                let choices: Vec<Value> = attention::person_choices(*column).iter().map(|l| json!({ "value": l.id(), "label": label(*l) })).collect();
+                json!({ "column": column.id(), "label": attention::column_label(tr(), *column), "level": level.id(), "choices": choices })
+            })
+            .collect()
+    };
+    json!({ "title": text("attention-sheet-times"), "help": text("attention-sheet-times-help"), "shown": !cells.is_empty(), "note": note, "cells": cells })
 }
 
 /// A person's sheet, as JSON (PersonSheet.qml): {title, name, who, said,
@@ -1043,6 +1090,7 @@ fn person_with(someone: &Someone, note: String) -> String {
         "always": always,
         "always_help": text(if who == Who::Blocked { "attention-sheet-always-blocked" } else if always { "attention-sheet-always-help" } else { "attention-sheet-always-off-help" }),
         "lines": lines,
+        "times": own_times(&attention, someone, always, who),
         "note": note,
         // Their calls of the month, from every phone sharing its own, rang or declined.
         "calls_title": text("calls-history-title"),
@@ -1113,6 +1161,18 @@ pub(crate) fn person_change(key: &str, addresses: &str, verb: &str, value: &str)
                 said.push(say("attention-sheet-off-always", &[("name", someone.name())]));
             }
         }
+        // A cell of their own row ({"column", "level"}: now, later, quiet under do-not-disturb, as).
+        "times" => match (someone.row_id(), someone.always(&config).is_some()) {
+            (Some(id), false) => {
+                let asked: Value = serde_json::from_str(value).unwrap_or(Value::Null);
+                let word = format!("{}:{}", asked["column"].as_str().unwrap_or_default(), asked["level"].as_str().unwrap_or_default());
+                if let Err(e) = attention::apply_change(&config_path(), &format!("attention.{id}"), None, &SettingValue::Texts(vec![word])) {
+                    said.push(e);
+                }
+            }
+            (_, true) => said.push(text("attention-sheet-times-always")),
+            (None, _) => said.push(text("attention-sheet-times-none")),
+        },
         _ => {}
     }
     let line: Vec<String> = said.into_iter().filter(|s| !s.is_empty()).collect();
@@ -1122,6 +1182,41 @@ pub(crate) fn person_change(key: &str, addresses: &str, verb: &str, value: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Decision 16 of 18 October 2026: a person's own times on their sheet,
+    /// a cell each (in the shade under do-not-disturb alone), their row by
+    /// their card's UID, else their number; none on Always through; written
+    /// with no name.
+    #[test]
+    fn a_sheet_sets_their_own_times_with_no_name() {
+        speak("en");
+        let card = sioul_core::contacts::Contact { uid: "card-9".into(), key: "/books/card-9.vcf".into(), name: "Noa Example".into(), ..Default::default() };
+        let someone = Someone { card: Some(card), addresses: Vec::new() };
+        assert_eq!(someone.row_id().as_deref(), Some("person.contact:card-9"));
+        // Written whole, as every language reads it (a national number reads by the language's country).
+        assert_eq!(Someone { card: None, addresses: vec!["tel:+33 1 99 00 12 34".into()] }.row_id().as_deref(), Some("person.tel:+33199001234"));
+        assert_eq!(Someone { card: None, addresses: vec!["noa@example.org".into()] }.row_id().as_deref(), Some("person.noa@example.org"));
+        let attention = Attention::usual();
+        let times = own_times(&attention, &someone, false, Who::Neutral);
+        let cells = times["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 9);
+        assert!(cells.iter().all(|c| c["level"] == "as"), "{cells:?}");
+        let offered = |column: &str| cells.iter().find(|c| c["column"] == column).unwrap()["choices"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(offered("work"), ["now", "later", "as"]);
+        assert_eq!(offered("dnd"), ["now", "quiet", "later", "as"]);
+        assert_eq!(own_times(&attention, &someone, true, Who::Neutral)["shown"], false, "Always through: no row of their own");
+        // Written as the sheet writes it: their row by its id, no name.
+        let id = someone.row_id().unwrap();
+        let dir = std::env::temp_dir().join(format!("sioul-own-times-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        attention::apply_change(&path, &format!("attention.{id}"), None, &SettingValue::Texts(vec!["work:later".into()])).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("person.contact:card-9") && written.contains("work:later") && !written.contains("Noa"), "{written}");
+        let read = Attention::of(&Config::load(&path).unwrap());
+        assert_eq!(own_times(&read, &someone, false, Who::Neutral)["cells"][0]["level"], "later");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The card's call screening in a sentence, for each rule and both hours, in both languages.
     #[test]
@@ -1278,10 +1373,10 @@ mod tests {
         let phone = Reach { phone: true, calls: true, messages: true, screens: true, ..Reach::default() };
         let leisure = card_lines(&usual, &config, Column::Leisure, phone);
         // Groups at once in leisure too (decision 14 of 18 October 2026).
-        has(&leisure, "Mail from your safe senders, calls from your safe and neutral senders and messages from your safe and neutral senders and groups come at once.");
+        has(&leisure, "Mail from your safe senders, calls from your safe senders and your contacts and messages from your safe senders, your contacts and groups come at once.");
         // Under do-not-disturb, their texts in the shade without a sound (decision 13); calls to voicemail.
         let dnd = card_lines(&usual, &config, Column::Dnd, phone);
-        has(&dnd, "Messages from your safe and neutral senders and groups come without a sound while your phone is silenced, and wait otherwise.");
+        has(&dnd, "Messages from your safe senders, your contacts and groups come without a sound while your phone is silenced, and wait otherwise.");
         assert!(leisure.iter().any(|l| l.starts_with("Calls from") && l.contains("voicemail")), "{leisure:#?}");
         assert_eq!(system_line(&usual, &config, Column::Leisure, phone), "The phone is not silenced.");
         let pause = system_line(&usual, &config, Column::Pause, phone);

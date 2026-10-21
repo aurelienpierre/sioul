@@ -736,6 +736,11 @@ impl Book {
         self.by_number.keys().map(String::as_str)
     }
 
+    /// The numbers of one card, by their keys.
+    pub fn numbers_of_card(&self, index: usize) -> Vec<String> {
+        self.by_number.iter().filter(|(_, cards)| cards.contains(&index)).map(|(key, _)| key.clone()).collect()
+    }
+
     /// How many cards.
     pub fn len(&self) -> usize {
         self.cards.len()
@@ -996,6 +1001,44 @@ impl Senders {
     pub fn judge_card(&self, id: &str) -> Option<Judged> {
         let index = [self.contacts.find(id)?];
         self.by_card(&index).or_else(|| self.by_category(&index)).or_else(|| self.by_book(&index))
+    }
+
+    /// A person's own rows a sender may have (`attention::person_row`), the
+    /// card's first: each card holding one of these numbers or addresses
+    /// (`contact:<UID>`), then each number (`tel:<key>`), then each address.
+    /// Ids only, never a name (decision 16 of 18 October 2026).
+    pub fn person_rows(&self, numbers: &[String], addresses: &[String]) -> Vec<String> {
+        let region = self.region();
+        let keys: Vec<String> = numbers.iter().filter_map(|n| number_key(n, region)).filter(|k| !k.contains('*')).collect();
+        let addresses: Vec<String> = addresses.iter().map(|a| a.trim().strip_prefix("mailto:").unwrap_or(a.trim()).trim().to_ascii_lowercase()).filter(|a| !a.is_empty() && !a.contains(char::is_whitespace)).collect();
+        let mut cards: Vec<usize> = Vec::new();
+        for index in keys.iter().flat_map(|k| self.contacts.cards_of_number(k)).chain(addresses.iter().flat_map(|a| self.contacts.cards_of_address(a))) {
+            if !cards.contains(index) {
+                cards.push(*index);
+            }
+        }
+        let mut out: Vec<String> = cards.iter().filter_map(|i| self.contacts.card(*i)).filter(|c| !c.uid.is_empty()).map(|c| crate::attention::person_row(&format!("contact:{}", c.uid))).collect();
+        out.extend(keys.iter().map(|k| crate::attention::person_row(&format!("tel:{k}"))));
+        out.extend(addresses.iter().map(|a| crate::attention::person_row(a)));
+        out.retain(|id| crate::attention::is_person(id));
+        out.dedup();
+        out
+    }
+
+    /// A person's own rows for a sender known by name alone, as the phone's
+    /// address book names people (`appnotes::Sender::Named`, `book`): the cards of that very name.
+    pub fn person_rows_named(&self, name: &str) -> Vec<String> {
+        self.contacts.cards_named(name).iter().filter_map(|i| self.contacts.card(*i)).filter(|c| !c.uid.is_empty()).map(|c| crate::attention::person_row(&format!("contact:{}", c.uid))).filter(|id| crate::attention::is_person(id)).collect()
+    }
+
+    /// The numbers a person's own row covers, by their keys: a card's every
+    /// number (`contact:<UID>`), or the one number (`tel:<key>`); an address none.
+    pub fn numbers_of_person(&self, who: &str) -> Vec<String> {
+        let who = who.trim();
+        if let Some(uid) = who.strip_prefix("contact:") {
+            return self.contacts.find(uid).map(|i| self.contacts.numbers_of_card(i)).unwrap_or_default();
+        }
+        who.strip_prefix("tel:").and_then(|n| number_key(n, self.region())).filter(|k| !k.contains('*')).into_iter().collect()
     }
 
     /// Every whole number known, on a card or on a list, by its key, with who
@@ -1950,6 +1993,26 @@ mod tests {
             phones: phones.iter().map(|p| crate::contacts::Labeled { label: String::new(), value: p.to_string() }).collect(),
             ..contact(categories, emails)
         }
+    }
+
+    /// Decision 16 of 18 October 2026: a sender's own rows by ids alone, the
+    /// card's first, then each number, then each address; never a name; a
+    /// card's row covers all its numbers.
+    #[test]
+    fn a_person_s_own_rows_name_nobody() {
+        let france = crate::phones::region_named("FR");
+        let contacts = vec![person("noa-1", "Noa", &["noa@example.org"], &["01 99 00 12 34", "06 39 98 99 03"], &[]), person("", "Sans fiche", &[], &["02 61 91 00 05"], &[])];
+        let senders = Senders { contacts: std::sync::Arc::new(Book::of(&contacts, france)), ..Senders::default() };
+        let rows = senders.person_rows(&["+33 1 99 00 12 34".into()], &["Noa@Example.org".into()]);
+        assert_eq!(rows, ["person.contact:noa-1", "person.tel:+33199001234", "person.noa@example.org"]);
+        assert!(rows.iter().all(|r| !r.contains("Noa") && !r.contains("noa-1 ")), "{rows:?}");
+        assert_eq!(senders.person_rows(&["02 61 91 00 05".into()], &[]), ["person.tel:+33261910005"], "a card without its UID: by its number");
+        assert_eq!(senders.person_rows_named("Noa"), ["person.contact:noa-1"]);
+        let mut numbers = senders.numbers_of_person("contact:noa-1");
+        numbers.sort();
+        assert_eq!(numbers, ["+262639989903", "+33199001234"], "a card's every number");
+        assert_eq!(senders.numbers_of_person("tel:01 99 00 12 34"), ["+33199001234"]);
+        assert!(senders.numbers_of_person("noa@example.org").is_empty());
     }
 
     #[test]

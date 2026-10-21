@@ -567,6 +567,15 @@ pub fn lock(row: Row, column: Column) -> Option<&'static str> {
 /// then. Blocked senders, codes and what is never held stay as they are.
 pub const APP_ROW: &str = "app.";
 pub const CONVERSATION_ROW: &str = "conversation.";
+/// A person's own row (decision 16 of 18 October 2026; the proposal's 3.7):
+/// `person.contact:<the card's UID>` for a card, which covers all its numbers
+/// and addresses; else `person.tel:<a number's key>` or `person.<address>`.
+/// Nine cells, for their calls and their messages, each At once, Held or
+/// As their list (=), and under do-not-disturb In the shade for their texts.
+/// Read after a conversation's own row and before an app's, the blocked
+/// first; never for someone on Always through, who has no row of their own.
+/// No name is ever written: the card gives it.
+pub const PERSON_ROW: &str = "person.";
 /// A source row's word for its name, written for your other devices
 /// ("name=Discord"); never a column, so an older Sioul leaves it aside.
 pub const NAME: &str = "name=";
@@ -575,19 +584,43 @@ pub const NAME: &str = "name=";
 /// (later), as usual.
 pub const SOURCE_CHOICES: [Level; 4] = [Level::Now, Level::Gathered, Level::Later, Level::As];
 
-/// Whether an id names a source's row: `app.<package>` or `conversation.<key>`.
+/// The levels a person's own cell takes: at once, held, as their list; under
+/// do-not-disturb, in the shade too (their texts; a call then goes to voicemail).
+pub fn person_choices(column: Column) -> &'static [Level] {
+    if column == Column::Dnd { &[Level::Now, Level::Quiet, Level::Later, Level::As] } else { &[Level::Now, Level::Later, Level::As] }
+}
+
+/// Whether an id names a source's row: `app.<package>`, `conversation.<key>` or `person.<who>`.
 pub fn is_source(id: &str) -> bool {
-    [APP_ROW, CONVERSATION_ROW].iter().any(|prefix| id.strip_prefix(prefix).is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace)))
+    [APP_ROW, CONVERSATION_ROW, PERSON_ROW].iter().any(|prefix| id.strip_prefix(prefix).is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace)))
+}
+
+/// Whether an id names a person's own row.
+pub fn is_person(id: &str) -> bool {
+    id.starts_with(PERSON_ROW) && is_source(id)
+}
+
+/// A person's row id: `who` as the lists write it (`contact:<UID>`, `tel:<key>`, an address).
+pub fn person_row(who: &str) -> String {
+    format!("{PERSON_ROW}{}", who.trim())
 }
 
 /// The source rows a notification reads, the most precise first: its
 /// conversation's when it has one, then its app's.
 pub fn source_rows(package: &str, conversation: &str) -> Vec<String> {
+    source_rows_with(package, conversation, &[])
+}
+
+/// The source rows a notification reads, the most precise first: its
+/// conversation's, then the person's own rows (`persons`: their ids, the card's
+/// first), then its app's (the proposal's 3.7).
+pub fn source_rows_with(package: &str, conversation: &str, persons: &[String]) -> Vec<String> {
     let (package, conversation) = (package.trim(), conversation.trim());
     let mut rows = Vec::new();
     if !conversation.is_empty() {
         rows.push(format!("{CONVERSATION_ROW}{conversation}"));
     }
+    rows.extend(persons.iter().filter(|id| is_person(id)).cloned());
     if !package.is_empty() {
         rows.push(format!("{APP_ROW}{package}"));
     }
@@ -853,8 +886,9 @@ impl Attention {
         if !is_source(id) {
             return Err(format!("attention.{id}: no such row"));
         }
-        if !SOURCE_CHOICES.contains(&level) {
-            let offered: Vec<&str> = SOURCE_CHOICES.iter().map(|l| l.id()).collect();
+        let offered: &[Level] = if is_person(id) { person_choices(column) } else { &SOURCE_CHOICES };
+        if !offered.contains(&level) {
+            let offered: Vec<&str> = offered.iter().map(|l| l.id()).collect();
             return Err(format!("attention.{id}: {}: {}", column.id(), offered.join(", ")));
         }
         let mut cells = self.source(id).unwrap_or([Level::As; 9]);
@@ -867,10 +901,11 @@ impl Attention {
         Ok(())
     }
 
-    /// A source's name, kept beside its row ("" takes it out).
+    /// A source's name, kept beside its row ("" takes it out); never a
+    /// person's, whose card gives it (no name in the configuration).
     pub fn name_source(&mut self, id: &str, name: &str) {
         let name = name.trim();
-        if name.is_empty() {
+        if name.is_empty() || is_person(id) {
             self.names.remove(id);
         } else {
             self.names.insert(id.to_string(), name.to_string());
@@ -1223,7 +1258,7 @@ impl Attention {
         match &event.source {
             Source::Own(kind) => self.own(*kind, event, now),
             Source::Mail { who, always, lane } => self.letter(*who, *always, *lane, event, now),
-            Source::Call { who, always, emergency, repeat } => self.call(*who, *always, *emergency, *repeat, now),
+            Source::Call { who, always, emergency, repeat } => self.call(*who, *always, *emergency, *repeat, event, now),
             Source::Message { via, who, group, always } => self.message(*via, *who, *group, *always, event, now),
             Source::Site { call, live, named } => self.site(*call, *live, *named, event, now),
         }
@@ -1342,7 +1377,7 @@ impl Attention {
         out
     }
 
-    fn call(&self, who: Option<Who>, always: bool, emergency: bool, repeat: bool, now: &Now) -> Output {
+    fn call(&self, who: Option<Who>, always: bool, emergency: bool, repeat: bool, event: &Event, now: &Now) -> Output {
         let rings = |step: Step| Output { level: Level::Now, shown: true, told: true, pierce: true, step };
         if emergency {
             return rings(Step::Emergency);
@@ -1355,8 +1390,17 @@ impl Attention {
         if (now.through && matches!(person, Person::Stranger | Person::Hidden)) || (repeat && who.is_some()) {
             return rings(Step::Floor);
         }
-        let level = self.person(Channel::Calls, person, always && who.is_some(), now);
-        let mut out = Output::at(level, Step::Matrix);
+        // Their own row, set (someone you know, not on Always through, who has none: the proposal's
+        // 3.7); numbers nobody knows and hidden numbers stay the call screening's.
+        let own = if always || matches!(person, Person::Stranger | Person::Hidden) {
+            Vec::new()
+        } else {
+            self.source_cells(&event.sources.iter().filter(|id| is_person(id)).cloned().collect::<Vec<_>>())
+        };
+        let (level, chosen) = if own.is_empty() { (self.person(Channel::Calls, person, always && who.is_some(), now), false) } else { self.over(Base::Person(Channel::Calls, person, false), &own, now) };
+        // A call never rings in the shade: to voicemail.
+        let level = if level == Level::Quiet { Level::Later } else { level };
+        let mut out = Output::at(level, if chosen { Step::Chosen } else { Step::Matrix });
         out.pierce = out.told && always;
         out
     }
@@ -1366,8 +1410,10 @@ impl Attention {
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
-        // Read with its app's and conversation's own rows over the person's, when set; someone
-        // Always through stays so whatever an app's row says: only a conversation's own row changes them.
+        // Read with its conversation's, the person's own and its app's rows over the person's
+        // list, when set, in that order (the proposal's 3.7); someone Always through stays so
+        // whatever an app's row says, and has no row of their own: only a conversation's own row
+        // changes them.
         let sources = if always { self.source_cells(&event.sources.iter().filter(|id| id.starts_with(CONVERSATION_ROW)).cloned().collect::<Vec<_>>()) } else { self.source_cells(&event.sources) };
         // A missed call: as a declined call is listed, by the Calls row.
         let (mut level, chosen) = if !sources.is_empty() {
@@ -1621,11 +1667,13 @@ impl Settings {
             .iter()
             .filter(|(key, _)| is_source(key.trim()))
             .map(|(key, value)| {
-                let words = match value {
+                let words: Vec<String> = match value {
                     toml::Value::Array(list) => list.iter().filter_map(|w| w.as_str().map(str::to_string)).collect(),
                     toml::Value::String(text) => text.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect(),
                     _ => Vec::new(),
                 };
+                // A person's row names nobody: a name written there by hand is left aside.
+                let words = if is_person(key.trim()) { words.into_iter().filter(|w| !w.starts_with(NAME)).collect() } else { words };
                 (key.trim().to_string(), words)
             })
             .collect()
@@ -2375,7 +2423,7 @@ pub fn source_sentence(attention: &Attention, tr: &Translator, id: &str) -> Stri
 }
 
 /// A state with the times its mail comes or shows, for a list's choice:
-/// "Neutral: work, admin", "Safe: any time", "Blocked: never"; `one`: as
+/// "Your contacts: work, admin", "Safe: any time", "Blocked: never"; `one`: as
 /// said of one person (French says "Sûr" of a person, "Sûrs" of the list).
 pub fn list_choice(tr: &Translator, who: Who, attention: &Attention, one: bool) -> String {
     let times: Vec<Column> = if who == Who::Blocked {
@@ -3170,6 +3218,52 @@ mod tests {
         assert_eq!(level_label(&tr, Row::People(Channel::Messages, Person::Neutral), Level::Quiet), "In the shade, without a sound");
     }
 
+    /// Decision 16 of 18 October 2026 (the proposal's 3.7): a person's own
+    /// row, read in this order: the blocked never; a conversation's own row;
+    /// the person's; the app's; their list's. Someone on Always through has no
+    /// row of their own. It holds their calls too, a call never in the shade;
+    /// numbers nobody knows stay the screening's. No name is written.
+    #[test]
+    fn a_person_s_own_row_is_read_in_its_place() {
+        let mut rows = Attention::usual();
+        let person = person_row("contact:card-1");
+        rows.set_source(&person, Column::Work, Level::Later).unwrap();
+        rows.set_source(&person, Column::Leisure, Level::Now).unwrap();
+        rows.set_source("app.org.example.chat", Column::Work, Level::Now).unwrap();
+        rows.set_source("app.org.example.chat", Column::Sleep, Level::Now).unwrap();
+        let work = Now::time(Column::Work);
+        let text = |rows: &Attention, who: Who, always: bool, sources: Vec<String>, now: &Now| rows.decide(&Event::of(Source::Message { via: Channel::Messages, who, group: false, always }).from_sources(sources), now).level;
+        let with = |conversation: &str| source_rows_with("org.example.chat", conversation, std::slice::from_ref(&person));
+        assert_eq!(with("c1"), vec!["conversation.c1".to_string(), person.clone(), "app.org.example.chat".to_string()], "conversation, person, app");
+        assert_eq!(text(&rows, Who::Neutral, false, with(""), &work), Level::Later, "the person's row over the app's");
+        assert_eq!(text(&rows, Who::Neutral, false, with(""), &Now::time(Column::Sleep)), Level::Now, "the app's where the person's says nothing");
+        rows.set_source("conversation.c1", Column::Work, Level::Now).unwrap();
+        assert_eq!(text(&rows, Who::Neutral, false, with("c1"), &work), Level::Now, "the conversation's over the person's");
+        assert_eq!(text(&rows, Who::Blocked, false, with("c1"), &work), Level::Never, "the blocked first");
+        assert_eq!(text(&rows, Who::Neutral, true, with(""), &work), rows.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: true }), &work).level, "Always through: no row of their own");
+        // Their calls: held at work, at once in leisure (the list's usual otherwise).
+        let call = |rows: &Attention, who: Option<Who>, now: &Now| rows.decide(&Event::of(Source::Call { who, always: false, emergency: false, repeat: false }).from_sources(vec![person.clone()]), now).told;
+        assert!(!call(&rows, Some(Who::Neutral), &work), "held at work by their row");
+        assert!(call(&rows, Some(Who::Neutral), &Now::time(Column::Leisure)));
+        assert!(!call(&rows, Some(Who::Stranger), &Now::time(Column::Leisure)), "a number nobody knows: the screening's");
+        // In the shade under do-not-disturb: a text without a sound while silenced, a call to voicemail.
+        rows.set_source(&person, Column::Dnd, Level::Quiet).unwrap();
+        let mut dnd = Now::time(Column::Leisure).layers(false, true);
+        dnd.silenced = true;
+        assert_eq!(text(&rows, Who::Neutral, false, vec![person.clone()], &dnd), Level::Now);
+        assert!(!call(&rows, Some(Who::Neutral), &dnd));
+        assert!(rows.set_source(&person, Column::Work, Level::Quiet).is_err(), "the shade under do-not-disturb alone");
+        assert!(rows.set_source(&person, Column::Work, Level::Gathered).is_err());
+        // No name: neither set nor read.
+        rows.name_source(&person, "Jane");
+        assert_eq!(rows.source_name(&person), "");
+        assert!(rows.source_words(&person).iter().all(|w| !w.starts_with(NAME)), "{:?}", rows.source_words(&person));
+        let config: Config = toml::from_str("[attention]\n\"person.contact:card-2\" = [\"work:later\", \"name=Jane\"]\n").unwrap();
+        let read = Attention::of(&config);
+        assert_eq!(read.source_name("person.contact:card-2"), "");
+        assert_eq!(read.source("person.contact:card-2").map(|c| c[Column::Work.index()]), Some(Level::Later));
+    }
+
     /// The presets checked against the new defaults: Quieter holds at least
     /// as much as the usual everywhere, Reachable lets at least as much
     /// through, cell by cell (As and Through, Always through's, aside).
@@ -3240,7 +3334,7 @@ mod tests {
             assert!(!list_choice(&tr, Who::Neutral, &a, true).contains('{'));
         }
         assert_eq!(Translator::new("fr").text("attention-column-free", None), "Temps libre");
-        assert_eq!(list_choice(&Translator::new("en"), Who::Neutral, &Attention::usual(), false), "Neutral: work, admin");
+        assert_eq!(list_choice(&Translator::new("en"), Who::Neutral, &Attention::usual(), false), "Your contacts: work, admin");
         assert_eq!(list_choice(&Translator::new("en"), Who::Safe, &Attention::usual(), false), "Safe: any time");
     }
 

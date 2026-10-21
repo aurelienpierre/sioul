@@ -300,6 +300,23 @@ public final class DecideCheck
                 }
             }
         }
+        // A person's own row (decision 16), by their number, before their list's: held at work where
+        // neutral rings, ringing in leisure where neutral waits; the blocked stay blocked; a frame without it,
+        // their list's row (calls.rs's a_person_s_own_row_rings_before_their_list).
+        t.own.put("+33199000002", "own-0");
+        t.own.put("+33199000004", "own-0");
+        // Here every frame lets the people you know ring (the check above): their own row holds them at work, rings in leisure.
+        for (Calls.Frame f : t.frames)
+            f.ring.put("own-0", false);
+        t.frames.get(2).ring.put("neutral", false);
+        t.frames.get(2).ring.put("own-0", true);
+        expect("v2 own row at work", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "10:00"), 0, null, 0, none), true, "matrix");
+        expect("v2 own row in leisure", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "18:00"), 0, null, 0, none), false, "matrix");
+        expect("v2 own row, blocked", Calls.decideFor(t, "01 99 00 00 04", false, ms(day, "18:00"), 0, null, 0, none), true, "blocked");
+        for (Calls.Frame f : t.frames)
+            f.ring.remove("own-0");
+        expect("v2 own row, a frame without it", Calls.decideFor(t, "01 99 00 00 02", false, ms(day, "10:00"), 0, null, 0, none), false, "matrix");
+        t.own.clear();
         // Nothing to decide from: it rings, past the frames everyone but the blocked.
         expect("v2 no table", Calls.decideFor(null, automated, false, ms(day, "23:00"), 0, null, 0, none), false, "no-table");
         for (String n : new String[] { stranger, automated, "01 99 00 00 01", "" })

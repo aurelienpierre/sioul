@@ -304,6 +304,8 @@ final class Calls
         final Map<String, String> numbers = new HashMap<>();
         /** The lists' prefixes ("+3346571") and who they make a number, the longest first. */
         final List<String[]> prefixes = new ArrayList<>();
+        /** A person's own row by each number it covers ("own-0"), read before their list's (decision 16). */
+        final Map<String, String> own = new HashMap<>();
         /** Who a number in this phone's contacts is when the table does not know it. */
         String phoneContacts = "neutral";
         /** Numbers that always ring: emergency numbers and callbacks; `people`, from an older table only (the do-not-disturb list's). */
@@ -354,6 +356,13 @@ final class Calls
                 for (Iterator<String> keys = numbers.keys(); keys.hasNext();) {
                     String key = keys.next();
                     table.numbers.put(key, numbers.optString(key, ""));
+                }
+            }
+            JSONObject own = json.optJSONObject("own");
+            if (own != null) {
+                for (Iterator<String> keys = own.keys(); keys.hasNext();) {
+                    String key = keys.next();
+                    table.own.put(key, own.optString(key, ""));
                 }
             }
             JSONArray prefixes = json.optJSONArray("prefixes");
@@ -800,7 +809,9 @@ final class Calls
         // counts as your contacts do: declined by their row, only Expecting a call lets it ring, never when the network
         // could not verify it (a borrowed caller ID of a number you called; review of part 2, F3 and F8).
         if (!"stranger".equals(who) && !"hidden".equals(who)) {
-            byFrame(decision, frame, who);
+            // Their own row, by this number, before their list's (decision 16; calls.rs's `own`).
+            String own = hidden || decision.called ? null : table.own.get(key);
+            byFrame(decision, frame, own != null && !own.isEmpty() && frame != null && frame.ring.containsKey(own) ? own : who);
             if (!(decision.called && decision.refuse && expecting))
                 return decision;
             if (screening.on && "voicemail".equals(screening.unverified) && "failed".equals(verified))

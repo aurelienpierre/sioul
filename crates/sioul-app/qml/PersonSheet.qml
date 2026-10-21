@@ -25,7 +25,7 @@ Dialog {
     property string key: ""
     // A sender's addresses, a JSON array; "" for a card.
     property string addresses: ""
-    // reaches.rs's `person`: {title, name, who, said, choice, choices, own, always, always_help, lines, note, calls_title, calls, texts_title, texts}.
+    // reaches.rs's `person`: {title, name, who, said, choice, choices, own, always, always_help, lines, times, note, calls_title, calls, texts_title, texts}.
     property var shown: ({ title: "", name: "", who: "", said: "", choice: "", choices: [], own: [], always: false, always_help: "", lines: [], note: "", calls_title: "", calls: [], texts_title: "", texts: [] })
 
     // The sheet of someone: a card ("" addresses), or a sender's addresses ("" key).
@@ -153,6 +153,64 @@ Dialog {
                     wrapMode: Text.Wrap
                     lineHeight: 1.2
                     color: sheet.theme.text
+                }
+            }
+            // Their own times (decision 16): for their calls and texts, a cell each, As their list unless set.
+            Label {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                text: sheet.shown.times ? sheet.shown.times.title : ""
+                textFormat: Text.PlainText
+                font.weight: Font.DemiBold
+                wrapMode: Text.Wrap
+                color: sheet.theme.accent
+                Accessible.role: Accessible.Heading
+            }
+            Label {
+                Layout.fillWidth: true
+                text: sheet.shown.times ? (sheet.shown.times.shown ? sheet.shown.times.help : sheet.shown.times.note) : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: sheet.theme.muted
+            }
+            GridLayout {
+                objectName: "own-times"
+                visible: sheet.shown.times !== undefined && sheet.shown.times.shown === true
+                Layout.fillWidth: true
+                columns: sheet.width < 380 ? 1 : 2
+                columnSpacing: 8
+                rowSpacing: 2
+
+                Repeater {
+                    model: sheet.shown.times ? (sheet.shown.times.cells || []) : []
+
+                    delegate: RowLayout {
+                        id: cell
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.preferredWidth: 110
+                            Layout.minimumWidth: 0
+                            text: cell.modelData.label
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: sheet.theme.muted
+                        }
+                        PlainComboBox {
+                            objectName: "own-" + cell.modelData.column
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            model: cell.modelData.choices.map(c => sheet.theme.plain(c.label))
+                            currentIndex: Math.max(0, cell.modelData.choices.findIndex(c => c.value === cell.modelData.level))
+                            Accessible.name: sheet.theme.plain(cell.modelData.label)
+                            onActivated: index => sheet.change("times", JSON.stringify({ column: cell.modelData.column, level: cell.modelData.choices[index].value }))
+                        }
+                    }
                 }
             }
             Label {
