@@ -9,7 +9,7 @@ description: The Porch, where new mail waits in Sioul - checked, sorted into lan
 The Porch is where new mail from every address waits until you look. Before anything is shown, Sioul checks each message, genuine or forged, and sorts it into a lane by who wrote it and what it is for: people you know, someone new waiting in the screener, a project, newsletters, what is set aside. It opens in the hours you choose and stays quiet outside them, while the codes and links you just asked a site for come at once. Nothing is counted at you, and nothing is deleted.
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 17:00." and the Real time box; this week's payments in one line; two cards for a confirmation link and a code from verified senders, the code with a Copy button and how long it stays valid; a chat's news; then two lanes, a project's and "From people you know", each with its messages.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; what came, in a few sentences; the card to join your other devices; a line on money; paper letters; two cards for a confirmation link and a code from verified senders, the code with a Copy button and how long it stays valid; a chat's news.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
   <figcaption>Codes and links on top, the sites' news, then the lanes.</figcaption>
 </figure>
 
@@ -185,9 +185,9 @@ More in [what the research says](../dev/research.md).
 
 ### Real time {#real-time}
 
-The **Real time** box, at the top of the Porch, fetches every folder of every address each minute, and keeps the Porch open: for a code or a password you are waiting for. Untick it to go back to the usual pace.
+**Mail every minute**, once the Porch's Real time box, is in the card What reaches you now, behind the status line's button ([What reaches you](notifications.md#the-button-and-its-card)): every folder of every address each minute, and the Porch open, for a code or a password you are waiting for. Turn it off to go back to the usual pace.
 
-**Show all mail now**, at the top of the Porch, shows every lane and every address at any hour, on this device alone, until **Done for now**; it tells nothing. To be reached by everyone for a while, on every device, see [Reachable](hours.md#work-now).
+**Show all mail now**, at the top of the Porch, shows every lane and every address at any hour, on this device alone, until **Done for now**; it tells nothing. To be reached by everyone for a while, on every device, see [Reachable](notifications.md#reachable).
 
 ### A public address, protected {#a-public-address-protected}
 

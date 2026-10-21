@@ -245,7 +245,9 @@ A press on a cell opens its choices in words, the current one in bold; a fixed c
 
 **Settings ▸ This phone** (« Ce téléphone »; `PhoneSetup.qml`), on a phone: what sets it up, nothing that decides when: call screening, other apps' notification access and holding, Do Not Disturb's access and its modes, who of your Always through people is starred there, keeping in step in the background, exact alarms and Sioul's own notifications.
 
-**A person's sheet** (`PersonSheet.qml`), from a contact's card or a message's sender: "How Camille reaches you": their list and why, the list chosen for them, Always through, and a sentence per channel of what reaches you from them at each time (`reaches::person`). No times of one's own: a person has a list and Always through.
+**A person's sheet** (`PersonSheet.qml`), from a contact's card or a message's sender: "How Camille reaches you": their list and why, the list chosen for them, Always through, a sentence per channel of what reaches you from them at each time (`reaches::person`), and **Their own times** (decision 16, reversing question 21: §1.3): a cell per column for their calls and texts, As their list until set, none for someone on Always through (`reaches::own_times`, `person_change` "times").
+
+**The status line's button and its card** (part 5; the proposal's 3.5 and 3.6; `ReachButton.qml`, `ReachCard.qml`, its data `reaches::now_card`): one button, on a phone at the bottom, in a computer's title bar, its bell saying the state (crossed out under Do not disturb, with waves while Reachable), the accent for any state but As usual, its name for screen readers the state and its end. A click opens the card What reaches you now: now in two sentences, the three states side by side with their lengths, what the phone holds (on the phone, by app, then its held conversations by title with Let it through now and Let them through then: `appnotes::held_talks`, never off the phone), Mail every minute (the Porch's Real time, gone from the Porch's first row), the call screening apart with Expecting a call; a right click or a long press, Reachable for an hour, Do not disturb for an hour, As usual; the tray's menu the same three. Checked at 412 points in English and French; the guide's pictures are `reach-card.png` and `reach-card-lengths.png`, taken with the demo runner's list `reach` and `phone`.
 
 ## 9. The code
 **`sioul_core::attention`**:
@@ -288,7 +290,7 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 15. **Free time as cells**, a column in every row; Nothing at all holds the states' rows.
 16. and 17. **Spam**: what your own filter flags or moves waits in the review queue, never told; the table's defaults stay, spam and uncertain flagged ([spam-filter.md](spam-filter.md)).
 18. to 20. **The interface**: one tab, three presets, a phone showing times first ([§8](#8-the-interface)).
-21. **No times of one's own** for a person.
+21. **No times of one's own** for a person. Reversed on 18 October 2026 (decision 16): a person's own row (§1.3).
 22. **Groups** have a row of their own, as strangers until changed.
 23. **Calls after the fact**: a declined call is listed when its Calls row lets them now; a row that never rings is listed in work and admin time.
 24. **Older Sioul**: not kept in step; the older keys seed the matrix once, then go.
@@ -324,7 +326,7 @@ The design as first proposed on 7 October 2026, before it was built, kept for th
 | Let every call through | calls.rs:398-404 | a layer of calls, a floor after the blocked |
 | Settings ▸ Other apps: access, holding, the apps that rang | the window's appnotes.rs | the phone's own setup |
 | … each app, conversation and browser site | appnotes.rs:599-644 | exceptions |
-| A site's Real time, Silenced and For; the Porch's Real time box | `[[site]]`; the window's sites.rs:339-345 | exceptions; the Real time layer |
+| A site's Real time, Silenced and For; the Porch's Real time box (Mail every minute in the card What reaches you now, since part 5) | `[[site]]`; the window's sites.rs:339-345 | exceptions; the Real time layer |
 | An address's For, priority and shield | `[[account]]` | the pipeline's step on areas; the Porch's lanes |
 | An event's Remind; a block's Not today | reminders, `needs::Days` | exceptions |
 | Tasks ⚙ ▸ Time for you | the window's capacity.rs | the Time for you layer |
@@ -385,7 +387,7 @@ Each question was put with its recommendation on 7 October 2026. Every recommend
 | 18 | Where it lives? | One Settings tab, "What reaches you", and Settings ▸ This phone for a phone's setup. | As recommended. |
 | 19 | Presets? | "As Sioul does now", "Quieter", "More reachable"; no preset ever touches a lock. | As recommended. |
 | 20 | A phone? | Times first, a time's rows second, never the whole grid at 412 pixels. | As recommended. |
-| 21 | A person's own times, a row for one person? | Not now: a person has a list and Always through, enough for every case found so far. | As recommended. |
+| 21 | A person's own times, a row for one person? | Not now: a person has a list and Always through, enough for every case found so far. | As recommended; reversed on 18 October 2026 (decision 16): a person's own row, §1.3. |
 | 22 | Groups (A.2, 21)? | A row of their own in Messages, as strangers until changed. | As recommended. |
 | 23 | Calls after the fact (A.2, 17)? | Both by the Calls row. | As recommended. |
 | 24 | An older Sioul? | Write the older keys beside the new ones for two versions, then drop them. | **Not adopted**: no older key is written beside the new ones; the older keys seed the matrix once, then go, and an older Sioul is not kept in step. |

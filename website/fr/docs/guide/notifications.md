@@ -45,7 +45,7 @@ Deux **couches** s’ajoutent au moment, jamais à sa place ; du moment et d�
 - **Du temps pour vous** : un créneau que le plan du jour garde pour vous ([Les tâches](tasks.md#the-day)).
 - **Ne pas déranger**, par son interrupteur ou une séance de concentration ([plus bas](#do-not-disturb-on-every-device)). « Ne pas déranger » tenu pour une pause, le temps libre ou le sommeil ne change rien : leurs propres colonnes le disent.
 
-Deux interrupteurs de plus ont chacun une ligne sous les cartes : **J’attends un appel**, dans la ligne d’état, sur n’importe lequel de vos appareils ([Les appels](calls.md#expecting-a-call)), et le **Temps réel**, dans le menu du Porche ([Le Porche](porch.md)).
+Deux interrupteurs de plus ont chacun une ligne sous les cartes : **J’attends un appel** et **Le courrier chaque minute** (autrefois le Temps réel du Porche), tous deux dans la carte **Ce qui vous joint maintenant**, derrière le bouton de la ligne d’état ([plus bas](#the-button-and-its-card) ; [Les appels](calls.md#expecting-a-call)).
 
 ## Ce que dit chaque marque {#the-levels}
 
@@ -99,7 +99,7 @@ Le **temps libre** a un choix à lui, sur sa carte : **Rien du tout**, pas mê
 ## Par personne {#by-person}
 
 <figure markdown="span">
-  [![Ce qui vous joint, Par personne : trois boutons, Courriels, Appels et Messages, le premier choisi ; Me dire les nouveaux courriels et Avec les infolettres ; une phrase sur ce que retient votre filtre à indésirables ; puis une grille, les lignes de haut en bas (Passent toujours, Sûrs, Neutres, Restreints, Inconnus, Bloqués) et neuf colonnes en travers (Travail, Démarches, Loisirs, Repas, Sommeil, En pause, Temps libre, Du temps pour vous, Ne pas déranger), une marque dans chaque case, la ligne des bloqués grisée ; en dessous, la légende en mots, puis qui est sur quelle liste.](../assets/screens/fr/attention-person-mail.png){ loading=lazy }](../assets/screens/fr/attention-person-mail.png "Ouvrir l’image en grand")
+  [![Ce qui vous joint, Par personne : trois boutons, Courriels, Appels et Messages, le premier choisi ; Me dire les nouveaux courriels et Avec les infolettres ; une phrase sur ce que retient votre filtre à indésirables ; puis une grille, les lignes de haut en bas (Passent toujours, Sûrs, Vos contacts, Restreints, Inconnus, Bloqués) et neuf colonnes en travers (Travail, Démarches, Loisirs, Repas, Sommeil, En pause, Temps libre, Du temps pour vous, Ne pas déranger), une marque dans chaque case, la ligne des bloqués grisée ; en dessous, la légende en mots, puis qui est sur quelle liste.](../assets/screens/fr/attention-person-mail.png){ loading=lazy }](../assets/screens/fr/attention-person-mail.png "Ouvrir l’image en grand")
   <figcaption>Par personne : chaque liste de personnes, à chaque moment.</figcaption>
 </figure>
 
@@ -109,7 +109,7 @@ Les courriels, les appels et les messages des autres applications suivent qui a 
 
 - **Passent toujours** : les personnes de votre liste Passent toujours ([plus bas](#always-through)). ★ tout de suite quoi que dise leur propre liste ; = comme leur propre liste.
 - **Sûrs** : les amis, les collègues et la famille que vous choisissez. Vous seul y mettez quelqu’un.
-- **Neutres** : toute personne de vos carnets d’adresses, ou laissée entrer depuis le filtre, tant que vous n’en décidez pas autrement.
+- **Vos contacts** (« Neutres » dans les versions plus anciennes, et dans les fichiers) : toute personne de vos carnets d’adresses, ou laissée entrer depuis le filtre, tant que vous n’en décidez pas autrement.
 - **Restreints** : ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont les courriels pèsent.
 - **Inconnus** : dans aucun de vos carnets d’adresses, et sur aucune liste ; et les courriels que rien ne prouve être les leurs. Leurs appels relèvent du filtrage des appels, à part ([Les appels](calls.md#the-call-screening)).
 - **Numéros masqués** (appels) : un appel qui ne montre aucun numéro, quelqu’un qui cache le sien ou le standard d’un hôpital. Le filtrage des appels en décide aussi ; d’habitude, ils sonnent pendant le travail et les démarches.
@@ -122,7 +122,7 @@ Comme Sioul le fait maintenant :
 |---|---|---|---|---|---|---|---|---|---|
 | Passent toujours | ★ | ★ | ★ | ★ | ◑ | ◑ | ★ | ★ | ★ |
 | Sûrs | ● | ● | ● | ● | ◑ | ◑ | ◑ | ◑ | ◑ |
-| Neutres | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
+| Vos contacts | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 | Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 | Inconnus | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 
@@ -130,7 +130,7 @@ Comme Sioul le fait maintenant :
 |---|---|---|---|---|---|---|---|---|---|
 | Passent toujours | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Sûrs | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutres | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
+| Vos contacts | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restreints | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 
 Les appels des numéros absents de vos contacts et des numéros masqués ont quitté cette grille le 19 octobre 2026 : le filtrage des appels en décide, à part ([Les appels](calls.md#the-call-screening)).
@@ -148,8 +148,8 @@ Les messages vont comme les appels, mais les messages des inconnus arrivent tout
 
 Sous la grille :
 
-- **Quatre listes** : Sûrs, Neutres, Restreints et Bloqués. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `*@*.example.org` pour ses sous-domaines, `+33899*` pour tous les numéros qui commencent ainsi. Personne n’est bloqué pour partager un serveur ou un domaine avec quelqu’un d’autre.
-- **Les personnes sur une liste** : chaque personne que vous avez mise sur une liste depuis sa fiche ou sa fiche « Comment … vous joint » ([plus bas](#a-persons-sheet)), chacune avec **Comme le disent ses catégories**, **Sûr**, **Neutre**, **Restreint** ou **Bloqué**. La fiche décide pour toutes ses adresses et tous ses numéros, ceux ajoutés plus tard aussi.
+- **Quatre listes** : Sûrs, Vos contacts, Restreints et Bloqués. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `*@*.example.org` pour ses sous-domaines, `+33899*` pour tous les numéros qui commencent ainsi. Personne n’est bloqué pour partager un serveur ou un domaine avec quelqu’un d’autre.
+- **Les personnes sur une liste** : chaque personne que vous avez mise sur une liste depuis sa fiche ou sa fiche « Comment … vous joint » ([plus bas](#a-persons-sheet)), chacune avec **Comme le disent ses catégories**, **Sûr**, **Vos contacts**, **Restreint** ou **Bloqué**. La fiche décide pour toutes ses adresses et tous ses numéros, ceux ajoutés plus tard aussi.
 - **Les catégories de vos contacts** : une ligne pour chaque catégorie qu’emploient vos contacts (Amis, Famille, Clients…), avec **Aucune liste** ou l’une des quatre. Chaque personne dont la fiche est dans la catégorie la prend, à chacune de ses adresses et chacun de ses numéros. Rien ne va sur une liste tout seul, famille et amis compris.
 
 **De la personne à la liste** : le choix propre à une personne vient d’abord (son adresse ou son numéro, puis sa fiche), puis les catégories de sa fiche, puis un domaine ou le début d’un numéro ; puis, neutre : toute personne de vos carnets d’adresses, et toute personne que vous laissez entrer depuis le filtre ; tous les autres sont des inconnus. Ainsi un ami peut être neutre alors que la catégorie Amis est sûre. Quand un même niveau donne deux réponses (une personne dans deux catégories sur deux listes), le blocage l’emporte, puis restreint, puis neutre, puis sûr.
@@ -273,6 +273,32 @@ Votre téléphone peut montrer à vos ordinateurs les messages qu’apportent se
 - **Le rappel propre à un événement** : **Rappel**, dans son formulaire et ses détails, comme d’habitude, pas pour celui-ci, ou tant de minutes avant ([L’agenda](agenda.md#reminders)).
 - **Un repas, une sieste, la nuit, un jour** : chacun peut se passer de ses avis, pour un jour ou pour de bon, sur la page [Santé](health.md#meals-rest-and-sleep).
 
+## Le bouton et sa carte {#the-button-and-its-card}
+
+<figure markdown="span">
+  [![La carte Ce qui vous joint maintenant, sur un téléphone de 412 points de large : son titre ; « Maintenant : travail, jusqu’à 17:00. » ; « Les courriels de tout le monde arrivent tout de suite. » ; trois boutons côte à côte, Joignable, Comme d’habitude (l’état actuel, dans la couleur d’accent) et Ne pas déranger ; Laisser passer ce que retient votre téléphone ; l’interrupteur Le courrier chaque minute.](../assets/screens/fr/reach-card.png){ loading=lazy }](../assets/screens/fr/reach-card.png "Ouvrir l’image en grand")
+  <figcaption>Ce qui vous joint maintenant : l’état, et comment le changer.</figcaption>
+</figure>
+
+Un bouton dans la ligne d’état dit ce qui vous joint maintenant : en bas sur un téléphone, dans la barre de titre sur un ordinateur. Sa cloche est simple **Comme d’habitude**, barrée sous **Ne pas déranger**, avec des ondes tant que vous êtes **Joignable** ; tout état autre que Comme d’habitude est dans la couleur d’accent, et là où il y a la place il dit jusqu’à quand (« Joignable jusqu’à 18:00. »). Les lecteurs d’écran entendent l’état et sa fin. Un clic, ou un appui, ouvre la carte **Ce qui vous joint maintenant** :
+
+1. **Maintenant**, en deux phrases : à quoi sert le moment et jusqu’à quand, et ce qui arrive tout de suite.
+2. **Joignable**, **Comme d’habitude** et **Ne pas déranger**, côte à côte. **Comme d’habitude** s’applique tout de suite. Joignable ou Ne pas déranger montre d’abord ses durées : **30 min**, **1 h**, **2 h**, **Jusqu’à 17:00** (les heures où vous êtes), **Jusqu’à ce soir** (la nuit, **Jusqu’à mon réveil**), **Jusqu’à ce que je l’arrête** ; Ne pas déranger aussi **Jusqu’à 17:00** quand le moment où vous êtes a une fin.
+3. **Ce que retient votre téléphone**, sur le téléphone, par application : « Notifications retenues jusqu’à 12:00 : Signal et Messages. », avec **Les laisser passer maintenant** ; puis les conversations qu’il retient, par leur titre, chacune avec **La laisser passer maintenant** et **Les laisser passer à ce moment-là** ([Leurs propres heures](#their-own-times)). Leurs titres ne quittent jamais le téléphone. Sur un ordinateur, **Laisser passer ce que retient votre téléphone**, sans dire ce qu’il retient.
+4. **Le courrier chaque minute** : chaque dossier de chaque adresse, toutes les minutes, et le Porche ouvert, pour un code ou un mot de passe que vous attendez.
+5. **Filtrage des appels**, à part, tant qu’un de vos téléphones filtre les appels : sa règle en une phrase (« Les numéros que personne ne connaît vont sur votre messagerie, à toute heure. »), **J’attends un appel, 1 h** (ou **Filtrer à nouveau**), et sur le téléphone **Réglages du filtrage des appels…**. Son interrupteur reste dans Paramètres ▸ Ce téléphone, pour qu’une carte souvent ouverte ne coupe jamais la protection contre les indésirables.
+
+Un clic droit, ou un appui long, sur le bouton ouvre un court menu : **Joignable pendant une heure**, **Ne pas déranger pendant une heure**, **Comme d’habitude**. Sur un ordinateur, le menu de la zone de notification a les trois mêmes, l’état actuel coché.
+
+### Joignable {#reachable}
+
+<figure markdown="span">
+  [![Les durées de la carte, une fois Joignable choisi : Combien de temps, puis 30 min, 1 h, 2 h, Jusqu’à 17:00, Jusqu’à ce soir et Jusqu’à ce que je l’arrête, sur des rangées qui passent à la ligne.](../assets/screens/fr/reach-card-lengths.png){ loading=lazy }](../assets/screens/fr/reach-card-lengths.png "Ouvrir l’image en grand")
+  <figcaption>Joignable, et pour combien de temps.</figcaption>
+</figure>
+
+Tant qu’il dure, sur chacun de vos appareils qui a cette version de Sioul, tous ceux qui écrivent et ne sont pas bloqués, et les personnes que vous connaissez qui appellent, vous joignent tout de suite, leurs propres heures comprises ([plus bas](#their-own-times)) ; une conversation que vous avez réglée sur jamais reste retenue. Le Porche s’ouvre avec toutes les files et toutes les adresses, dit les nouveaux courriels et relève le courrier chaque minute ; ce que retient votre téléphone revient à l’appui. Ni une séance de concentration, ni la nuit, ni le temps libre n’activent « Ne pas déranger » pendant ce temps. Les numéros que personne ne connaît restent au filtrage des appels ([Les appels](calls.md#the-call-screening)). Quelle que soit la durée choisie, il finit au plus tard au début de la nuit (appuyé la nuit, à votre réveil), et la carte le dit quand une durée l’atteint. **Comme d’habitude** y met fin, une pause aussi ; il n’est pas proposé pendant une pause. Deux appareils appuyés à moins d’une minute, sans se connaître : le plus calme l’emporte (Ne pas déranger, puis Comme d’habitude, puis Joignable).
+
 ## Ne pas déranger sur tous vos appareils {#do-not-disturb-on-every-device}
 
 <figure markdown="span">
@@ -284,20 +310,13 @@ Votre téléphone peut montrer à vos ordinateurs les messages qu’apportent se
 
 ### L’interrupteur {#the-switch}
 
-Dans la ligne d’état, avant les sons. Un clic l’active jusqu’à ce que vous le désactiviez ; un nouveau clic le désactive, sur tous vos appareils, quoi qui l’ait activé. Un clic droit, ou un appui long, ouvre son menu :
-
-- pourquoi il tient, et une ligne pour chaque appareil ;
-- **Le désactiver, sur tous vos appareils** ;
-- **Pendant 30 minutes**, **Pendant une heure**, **Pendant deux heures** ;
-- **Jusqu’à 17:00** : jusqu’à la fin des heures où vous êtes ;
-- **Jusqu’à ce que je le désactive** ;
-- **Réglages de « Ne pas déranger »…** : Ce qui vous joint ▸ Ne pas déranger.
+Ne pas déranger est l’un des trois états du bouton ([plus haut](#the-button-and-its-card)) : dans sa carte, **Ne pas déranger**, puis **30 min**, **1 h**, **2 h**, **Jusqu’à 17:00** (jusqu’à la fin du moment où vous êtes) ou **Jusqu’à ce que je l’arrête** ; ou **Ne pas déranger pendant une heure** dans le menu du bouton. **Comme d’habitude** le désactive, sur tous vos appareils, quoi qui l’ait activé ; s’il tient pour une séance de concentration ou une nuit, celle-ci reste écartée jusqu’à sa fin. La carte dit pourquoi il tient (« Pendant que vous vous concentrez sur une tâche. »), et **Remettre cet appareil en silence** quand vous avez désactivé le mode propre à cet appareil sans que Sioul puisse l’entendre.
 
 ### Ce qui l’active {#what-turns-it-on-by-itself}
 
 Dans Ce qui vous joint ▸ **Ne pas déranger** :
 
-- **L’interrupteur dans la ligne d’état** (activé) : décoché, l’interrupteur est caché, sauf si quelque chose tient « Ne pas déranger » activé ; le reste vaut toujours.
+- **L’interrupteur dans la ligne d’état** (activé) : gardé de l’interrupteur d’avant la version 0.0.7 ; le bouton de ce qui vous joint s’affiche quoi qu’il dise.
 - **Pendant que je me concentre sur une tâche** (désactivé) : tant qu’une séance de concentration compte ([Les tâches](tasks.md#starting-and-stopping)), jusqu’à une demi-heure après le temps choisi, trois heures pour une séance sans durée : une séance oubliée ne vous rend jamais injoignable longtemps.
 - **Pendant les pauses** (activé) : le temps libre et la pause mettent aussi vos appareils en silence ([Les pauses](pauses.md)). Décoché, elles ne retiennent que les notifications de Sioul.
 - **Pendant mon sommeil** (désactivé) : du coucher au réveil, et pendant les siestes ([La santé](health.md#meals-rest-and-sleep)).
@@ -346,7 +365,7 @@ Chaque appareil active un mode « Ne pas déranger » à lui pour les trois 
 
 ### Ce que dit la ligne d’état {#what-the-status-line-says}
 
-Tant que « Ne pas déranger » tient, l’interrupteur dit où, et jusqu’à quand une fois que chaque raison qui le tient a une fin (la limite d’une séance de concentration n’est jamais dite) :
+Tant que « Ne pas déranger » tient, le bouton dit où, et jusqu’à quand une fois que chaque raison qui le tient a une fin (la limite d’une séance de concentration n’est jamais dite) :
 
 - « Ne pas déranger, sur tous vos appareils, jusqu’à 15:00. » : chaque autre appareil entendu la semaine passée le tient, son système en silence, et celui-ci aussi.
 - « Ne pas déranger ici ; les nouvelles de vos autres appareils arrivent. » : les autres n’ont pas donné de nouvelles depuis qu’il a commencé.
@@ -355,25 +374,27 @@ Tant que « Ne pas déranger » tient, l’interrupteur dit où, et jusqu’
 - « Ne pas déranger : cet appareil ne retient que les notifications de Sioul. » : le système de cet appareil ne peut pas être mis en silence (Windows, un bureau sans moyen, un téléphone sans l’accès). Avec « sur vos autres appareils » quand d’autres sont en silence.
 - « Ne pas déranger sur vos autres appareils ; vous l’avez désactivé ici. » : vous avez désactivé le mode propre à cet appareil quand Sioul ne pouvait pas l’entendre, ou désactivé le mode de Sioul dans les paramètres d’Android. **Remettre cet appareil en silence**, dans son menu, le remet en silence.
 
-Désactivé, l’infobulle de l’interrupteur nomme la dernière désactivation faite dans les réglages d’un appareil (« Désactivé sur votre téléphone à 14:02, hors de Sioul. »), et dit ce que le mode propre à un appareil y retient encore (« Le mode Ne pas déranger de ce téléphone reste activé : désactivez-le dans ses paramètres rapides. »).
-
-Son menu dit pourquoi (« Activé depuis votre téléphone. », « Pendant que vous vous concentrez sur une tâche. ») et comment chaque appareil suit : « Ici : en silence. », « Sur votre téléphone : en attente de ses nouvelles. », « Sur laptop : Sioul est fermé. », « Sur laptop : un Sioul plus ancien, qui ne peut pas suivre avant sa mise à jour. » Un ordinateur où Sioul a été quitté est fermé jusqu’à ce que Sioul y redémarre ; un ordinateur dont on n’a pas de nouvelles depuis une demi-heure (Sioul arrêté sans un mot) est en attente de ses nouvelles. Un appareil avec un Sioul plus ancien ne suit pas ; ses propres pauses le mettent toujours en silence. Sur un téléphone, la carte de l’écran d’accueil montre la ligne aussi, tant que « Ne pas déranger » est activé par son interrupteur ou une séance de concentration.
+Sa carte dit pourquoi (« Activé depuis votre téléphone. », « Pendant que vous vous concentrez sur une tâche. »). Un ordinateur où Sioul a été quitté est fermé jusqu’à ce que Sioul y redémarre ; un ordinateur dont on n’a pas de nouvelles depuis une demi-heure (Sioul arrêté sans un mot) est en attente de ses nouvelles. Un appareil avec un Sioul plus ancien ne suit pas ; ses propres pauses le mettent toujours en silence. Sur un téléphone, la carte de l’écran d’accueil montre la ligne aussi, tant que « Ne pas déranger » est activé par son interrupteur ou une séance de concentration.
 
 ## La fiche d’une personne {#a-persons-sheet}
 
 <figure markdown="span">
-  [![Comment Dr Elena Varga vous joint : « Sûr : son propre choix. » ; Sa liste, Sûr ; Passe toujours, coché, avec ce que cela fait ; puis Ce qui vous joint de sa part : « Ses courriels arrivent tout de suite pendant le travail, les démarches, les loisirs, les repas et le temps libre. Ils s’affichent dans Sioul sans notification pendant le sommeil et une pause. Aucune de ses adresses n’est connue. », « Ses appels sonnent à tout moment. Cela vaut dès qu’un de vos téléphones filtre les appels. », « Ses messages arrivent tout de suite à tout moment. » ; puis Fermer.](../assets/screens/fr/attention-sheet.png){ loading=lazy }](../assets/screens/fr/attention-sheet.png "Ouvrir l’image en grand")
+  [![Comment Dr Elena Varga vous joint : « Sûr : son propre choix. » ; Sa liste, Sûr ; Passe toujours, coché, avec ce que cela fait ; puis Ce qui vous joint de sa part : « Ses courriels arrivent tout de suite pendant le travail, les démarches, les loisirs, les repas et le temps libre. Ils s’affichent dans Sioul sans notification pendant le sommeil et une pause. Aucune de ses adresses n’est connue. », « Ses appels sonnent à tout moment. Cela vaut dès qu’un de vos téléphones filtre les appels. », « Ses messages arrivent tout de suite à tout moment. » ; puis Leurs propres heures : « Sur votre liste des personnes qui passent toujours, elles n’ont pas d’heures à elles : retirez-les-en pour en régler. » ; SMS avec cette personne… ; puis Fermer.](../assets/screens/fr/attention-sheet.png){ loading=lazy }](../assets/screens/fr/attention-sheet.png "Ouvrir l’image en grand")
   <figcaption>Comment quelqu’un vous joint, depuis sa fiche.</figcaption>
 </figure>
 
 Depuis la fiche d’un contact dans [Les contacts](contacts.md), **Comment … vous joint** ; depuis un message, dans son menu (⋮), **Comment cette personne vous joint…** :
 
-- **Qui elle est pour vous, et pourquoi** : « Sûr, comme le dit la catégorie Amis. », « Neutre : dans votre carnet d’adresses, sur aucune liste. »
-- **Sa liste** : **Comme le disent ses catégories**, **Sûr**, **Neutre**, **Restreint** ou **Bloqué**, pour toutes ses adresses et tous ses numéros. Une adresse ou un numéro à elle qui a sa propre liste est dit en dessous : il passe d’abord.
+- **Qui elle est pour vous, et pourquoi** : « Sûr, comme le dit la catégorie Amis. », « Vos contacts : dans votre carnet d’adresses, sur aucune liste. »
+- **Sa liste** : **Comme le disent ses catégories**, **Sûr**, **Vos contacts**, **Restreint** ou **Bloqué**, pour toutes ses adresses et tous ses numéros. Une adresse ou un numéro à elle qui a sa propre liste est dit en dessous : il passe d’abord.
 - **Passe toujours** : coché ou non. Le blocage et Passe toujours s’excluent : choisir l’un la retire de l’autre, et la fiche le dit.
 - **Ce qui vous joint de sa part** : une phrase par canal, d’après sa ligne, à chaque moment : « Ses appels sonnent pendant le travail, les démarches, les loisirs, les repas et le temps libre. Ils vont sur la messagerie pendant le sommeil et une pause, et Sioul les liste plus tard sur le Porche. Pendant « Ne pas déranger », ses appels vont sur la messagerie. » Ce qui manque est dit aussi : « Aucun de ses numéros n’est connu : ses appels ne peuvent pas être reconnus. »
 
-Une personne a une liste et Passe toujours ; pas de moments à elle. Pour donner plus à une personne, mettez-la dans Passent toujours ; pour lui donner moins, une liste.
+### Leurs propres heures {#their-own-times}
+
+Sous **Leurs propres heures**, une case pour chaque moment et chaque couche, pour ses appels et ses messages sur tous vos appareils : **Tout de suite**, **Retenus**, ou **Comme leur liste** (par défaut) ; pendant « Ne pas déranger », **Dans le volet des notifications, sans son** aussi, pour ses messages (un appel va alors sur la messagerie). Une case réglée ici l’emporte sur sa liste, après le choix propre à une conversation et avant celui d’une application ; les bloqués ne passent jamais, et ses courriels suivent sa liste. Une personne qui passe toujours n’a pas d’heures à elle : la fiche le dit. Aucun nom n’est écrit dans vos réglages : sa fiche le donne (`person.contact:<son UID>`, sinon son numéro ou son adresse).
+
+Sur le téléphone, dans la carte Ce qui vous joint maintenant, **Les laisser passer à ce moment-là** sur une conversation retenue règle la case de ce qui la retient maintenant : pendant « Ne pas déranger », cette couche ; pendant le travail, travail et démarches ensemble ; sinon le moment où vous êtes. Elle règle les propres heures de la personne quand une fiche ou un numéro la connaît, sinon la ligne propre à la conversation (un groupe, quelqu’un que personne ne connaît). **La laisser passer maintenant** fait venir tout de suite les notifications retenues de cette conversation, cette fois seulement.
 
 ## Ce qui n’est jamais notifié {#what-never-notifies}
 

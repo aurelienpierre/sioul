@@ -98,7 +98,7 @@ A mail link (`mailto:`) and what another application shares become a draft whose
 - **The Porch's rows** are not dragged: the Porch has no folders beside it and is about deciding one message at a time; an open message's ⋮ has **Move to…**.
 - **Folders kept here or on the server only**: right click on a folder, "Keep a copy here". A folder left on the server only shows muted, its copy here removed and where its sync stopped forgotten, so keeping it again brings it back whole (`skip_folders` in the account). The inbox is always kept. "New folder…" (under "More folders") makes one on the server (`CREATE`); "Delete this empty folder" takes one of yours off the server (`DELETE`), only when the server says it holds no message (`STATUS MESSAGES`), never a folder with a purpose (inbox, Sent, Drafts, trash, junk, archive).
 - **Conversations** (Mail ⚙, "By conversation"): messages tied by Message-ID, In-Reply-To and References (never by subject alone), the newest of the folder first with the size of the conversation; unfolded, the others, oldest first, your answers from Sent among them (`threads.rs`).
-- **Real time**: the checkbox on the Porch and in Mail fetches every folder of every address each minute, and opens the Porch, until unticked.
+- **Real time**: the checkbox in Mail, and **Mail every minute** in the card What reaches you now behind the status line's button (the Porch's box until part 5 of "What reaches you"), fetches every folder of every address each minute, and opens the Porch, until unticked.
 
 ### Searching
 **Why** (7 October 2026): a feature for when it is needed, which not everybody needs nor needs often, so nothing of it shows until asked; and its main use is sorting an inbox into folders by hand, hence dragging messages onto folders.

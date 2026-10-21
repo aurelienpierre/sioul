@@ -45,7 +45,7 @@ Two **layers** hold on top of the time, never instead of it; of the time and a l
 - **Time for you**: a slot of today's plan kept for you ([Tasks](tasks.md#the-day)).
 - **Do not disturb**, from its switch or a focus session ([below](#do-not-disturb-on-every-device)). Do-not-disturb held for a pause, Free time or sleep changes nothing: their own columns say it.
 
-Two more switches have a line each under the cards: **Expecting a call**, in the status line on any of your devices ([Calls](calls.md#expecting-a-call)), and **Real time**, in the Porch's menu ([The Porch](porch.md)).
+Two more switches have a line each under the cards: **Expecting a call** and **Mail every minute** (once the Porch's Real time), both in the card **What reaches you now**, behind the status line's button ([below](#the-button-and-its-card); [Calls](calls.md#expecting-a-call)).
 
 ## What each mark says {#the-levels}
 
@@ -99,7 +99,7 @@ Calls from numbers nobody knows and hidden numbers are in none of these rows: th
 ## By person {#by-person}
 
 <figure markdown="span">
-  [![What reaches you, By person: three buttons, Mail, Calls and Messages, Mail chosen; Tell me of new mail and Include newsletters; a sentence on what your own spam filter holds; then a grid, the rows down (Always through, Safe, Neutral, Restricted, Strangers, Blocked) and nine columns across (Work, Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you, Do not disturb), a mark in each cell, the blocked row greyed; under it the legend in words, then who is on which list.](../assets/screens/attention-person-mail.png){ loading=lazy }](../assets/screens/attention-person-mail.png "Open the picture at full size")
+  [![What reaches you, By person: three buttons, Mail, Calls and Messages, Mail chosen; Tell me of new mail and Include newsletters; a sentence on what your own spam filter holds; then a grid, the rows down (Always through, Safe, Your contacts, Restricted, Strangers, Blocked) and nine columns across (Work, Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you, Do not disturb), a mark in each cell, the blocked row greyed; under it the legend in words, then who is on which list.](../assets/screens/attention-person-mail.png){ loading=lazy }](../assets/screens/attention-person-mail.png "Open the picture at full size")
   <figcaption>By person: each list of people, at each time.</figcaption>
 </figure>
 
@@ -109,7 +109,7 @@ Mail, calls and other apps' messages follow who wrote, whatever the address or t
 
 - **Always through**: the people on your Always through list ([below](#always-through)). ★ at once whatever their own list says; = as their own list.
 - **Safe**: friends, chosen colleagues, chosen family. Only you put someone there.
-- **Neutral**: anyone in your address books, or let in from the screener, until you choose otherwise.
+- **Your contacts** ("Neutral" in older versions, and in the files): anyone in your address books, or let in from the screener, until you choose otherwise.
 - **Restricted**: those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs.
 - **Strangers**: in none of your address books, and on no list; and mail nothing proves is theirs. Their calls are the call screening's, apart ([Calls](calls.md#the-call-screening)).
 - **Hidden numbers** (calls): a call that shows no number, someone who hides theirs or a hospital's switchboard. The call screening decides them too, ringing in work and admin time as usual.
@@ -122,7 +122,7 @@ As Sioul does now:
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ◑ | ◑ | ★ | ★ | ★ |
 | Safe | ● | ● | ● | ● | ◑ | ◑ | ◑ | ◑ | ◑ |
-| Neutral | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
+| Your contacts | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 | Strangers | ● | ● | ○ | ○ | ○ | ○ | ○ | ◑ | ◑ |
 
@@ -130,7 +130,7 @@ As Sioul does now:
 |---|---|---|---|---|---|---|---|---|---|
 | Always through | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ | ★ |
 | Safe | ● | ● | ● | ● | ○ | ○ | ● | ● | ○ |
-| Neutral | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
+| Your contacts | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
 | Restricted | ● | ○ | ○ | ○ | ○ | ○ | ○ | ● | ○ |
 
 Calls from numbers not in your contacts and from hidden numbers left this grid on 19 October 2026: the call screening decides them, apart ([Calls](calls.md#the-call-screening)).
@@ -148,8 +148,8 @@ Messages go as calls, but strangers' messages come at once in work and admin tim
 
 Under the grid:
 
-- **Four lists**: Safe, Neutral, Restricted and Blocked. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
-- **People on a list**: everyone you placed on a list from their card or their sheet ([below](#a-persons-sheet)), each with **As their categories say**, **Safe**, **Neutral**, **Restricted** or **Blocked**. The card decides for all its addresses and numbers, those added later too.
+- **Four lists**: Safe, Your contacts, Restricted and Blocked. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
+- **People on a list**: everyone you placed on a list from their card or their sheet ([below](#a-persons-sheet)), each with **As their categories say**, **Safe**, **Your contacts**, **Restricted** or **Blocked**. The card decides for all its addresses and numbers, those added later too.
 - **Your contacts' categories**: one row for each category your contacts use (Friends, Family, Clients…), with **No list** or one of the four. Everyone whose card is in the category takes it, at each of their addresses and numbers. Nothing goes on a list by itself, family and friends included.
 
 **From the person to the list**: a person's own choice comes first (their address or number, then their card), then the categories on their card, then a domain or the start of a number; then, neutral: anyone in your address books, and anyone you let in from the screener; everyone else is a stranger. So one friend can be neutral while the category Friends is safe. When one level gives two answers (a person in two categories on two lists), blocked wins, then restricted, then neutral, then safe.
@@ -273,6 +273,32 @@ Your phone can show your computers the messages its notifications bring, texts f
 - **An event's own reminder**: **Remind**, in its form and its details, as usual, not this one, or minutes before ([Agenda](agenda.md#reminders)).
 - **A meal, a nap, the night, one day**: each can go without its notices, for one day or for good, on the [Health](health.md#meals-rest-and-sleep) page.
 
+## The button and its card {#the-button-and-its-card}
+
+<figure markdown="span">
+  [![The card What reaches you now, on a phone 412 points wide: its title; "Now: work, until 17:00."; "Mail from everyone comes at once."; three buttons side by side, Reachable, As usual (the state now, in the accent) and Do not disturb; Let what your phone holds through; the switch Mail every minute.](../assets/screens/reach-card.png){ loading=lazy }](../assets/screens/reach-card.png "Open the picture at full size")
+  <figcaption>What reaches you now: the state, and how to change it.</figcaption>
+</figure>
+
+One button in the status line says what reaches you now: at the bottom on a phone, in the title bar on a computer. Its bell is plain **As usual**, crossed out under **Do not disturb**, with waves while **Reachable**; any state but As usual is in the accent, and where there is room it says until when ("Reachable until 18:00."). Screen readers hear the state and its end. A click, or a tap, opens the card **What reaches you now**:
+
+1. **Now**, in two sentences: what the time is for and until when, and what comes at once.
+2. **Reachable**, **As usual** and **Do not disturb**, side by side. **As usual** applies at once. Reachable or Do not disturb shows its lengths first: **30 min**, **1 h**, **2 h**, **Until 17:00** (the hours you are in), **Until tonight** (at night, **Until I wake**), **Until I turn it off**; Do not disturb also **Until 17:00** when the time you are in has an end.
+3. **What your phone holds**, on the phone, by app: "Notifications held until 12:00: Signal and Messages.", with **Let them through now**; then the conversations it holds, by their titles, each with **Let it through now** and **Let them through then** ([A person's own times](#their-own-times)). Their titles never leave the phone. On a computer, **Let what your phone holds through**, without saying what it holds.
+4. **Mail every minute**: every folder of every address, each minute, and the Porch open, for a code or a password you are waiting for.
+5. **Call screening**, apart, while a phone of yours screens calls: its rule in a sentence ("Numbers nobody knows go to your voicemail, at all hours."), **Expecting a call, 1 h** (or **Screen calls again**), and on the phone **Call screening settings…**. Its on/off switch stays in Settings ▸ This phone, so that a card you open often never turns spam protection off.
+
+A right click, or a long press, on the button opens a short menu: **Reachable for an hour**, **Do not disturb for an hour**, **As usual**. On a computer, the tray's menu has the same three, the state now ticked.
+
+### Reachable {#reachable}
+
+<figure markdown="span">
+  [![The card's lengths, once Reachable is chosen: How long, then 30 min, 1 h, 2 h, Until 17:00, Until tonight and Until I turn it off, in rows that wrap.](../assets/screens/reach-card-lengths.png){ loading=lazy }](../assets/screens/reach-card-lengths.png "Open the picture at full size")
+  <figcaption>Reachable, and how long.</figcaption>
+</figure>
+
+While it lasts, on each of your devices that has this version of Sioul, everyone not blocked who writes, and the people you know who call, reach you at once, their own times included ([below](#their-own-times)); a conversation you set to never stays held. The Porch opens with every lane and address, tells new mail and looks for mail every minute; what your phone holds comes back at the press. Neither a focus session, nor the night, nor Free time turns do-not-disturb on meanwhile. Numbers nobody knows stay with the call screening ([Calls](calls.md#the-call-screening)). Whichever length you choose ends at the latest at the night's start (pressed at night, when you wake), and the card says so when a length meets it. **As usual** ends it, and so does a pause; it is not offered during one. Two devices pressed within a minute, neither knowing of the other: the quieter wins (Do not disturb, then As usual, then Reachable).
+
 ## Do not disturb on every device {#do-not-disturb-on-every-device}
 
 <figure markdown="span">
@@ -284,20 +310,13 @@ Do-not-disturb is one switch for all your devices: turned on or off on one, it h
 
 ### The switch {#the-switch}
 
-In the status line, before the sounds. A click turns it on until you turn it off; a click again turns it off, on every device, whatever turned it on. A right click, or a long press, opens its menu:
-
-- why it holds, and a line for each device;
-- **Turn it off, on every device**;
-- **For 30 minutes**, **For an hour**, **For two hours**;
-- **Until 17:00**: until the hours you are in end;
-- **Until I turn it off**;
-- **Do-not-disturb settings…**: What reaches you ▸ Do not disturb.
+Do not disturb is one of the button's three states ([above](#the-button-and-its-card)): in its card, **Do not disturb**, then **30 min**, **1 h**, **2 h**, **Until 17:00** (until the time you are in ends) or **Until I turn it off**; or **Do not disturb for an hour** in the button's menu. **As usual** turns it off, on every device, whatever turned it on; while it holds for a focus session or a night, that one stays off until it ends. The card says why it holds ("While you focus on a task."), and **Silence this device again** when you turned this device's own do-not-disturb off while Sioul could not hear it.
 
 ### What turns it on {#what-turns-it-on-by-itself}
 
 In What reaches you ▸ **Do not disturb**:
 
-- **The switch in the status line** (on): unticked, the switch is hidden, unless something holds do-not-disturb on; the rest still holds.
+- **The switch in the status line** (on): kept from the switch before version 0.0.7; the button of what reaches you shows whatever it says.
 - **While I focus on a task** (off): while a focus session counts ([Tasks](tasks.md#starting-and-stopping)), until half an hour past the time you chose, three hours for a session without one: a session left running never keeps you unreachable for long.
 - **During the pauses** (on): Free time and the pause silence your devices too ([Pauses](pauses.md)). Unticked, they hold Sioul's own notifications only.
 - **While I sleep** (off): from winding down to waking, and during naps ([Health](health.md#meals-rest-and-sleep)).
@@ -346,7 +365,7 @@ Do-not-disturb is yours, not a device's: each device's own do-not-disturb and Si
 
 ### What the status line says {#what-the-status-line-says}
 
-While do-not-disturb holds, the switch says where, and until when once every reason that holds has an end (a focus session's limit is never said):
+While do-not-disturb holds, the button says where, and until when once every reason that holds has an end (a focus session's limit is never said):
 
 - "Do not disturb, on every device, until 15:00.": every other device heard from in the last week holds it, its system silenced, and this one too.
 - "Do not disturb here; your other devices' news is on its way.": the others have not been heard from since it began.
@@ -355,25 +374,27 @@ While do-not-disturb holds, the switch says where, and until when once every rea
 - "Do not disturb: this device keeps only Sioul's own notifications back.": this device's system cannot be silenced (Windows, a desktop without a way, a phone without the access). With "on your other devices" when others are silenced.
 - "Do not disturb on your other devices; you turned it off here.": you turned this device's own do-not-disturb off while Sioul could not hear it, or turned Sioul's mode off in Android's settings. **Silence this device again**, in its menu, silences it again.
 
-Off, the switch's tip names the last "off" made in a device's own settings ("Turned off on your phone at 14:02, outside Sioul."), and says what a device's own do-not-disturb still holds there ("This phone's own do-not-disturb stays on: turn it off in its quick settings.").
-
-Its menu says why ("Turned on from your phone.", "While you focus on a task.") and how each device follows: "Here: silenced.", "On your phone: waiting for its news.", "On laptop: Sioul is closed.", "On laptop: an older Sioul, which cannot follow until it is updated." A computer where Sioul quit is closed until Sioul starts there again; one not heard from for half an hour (Sioul stopped without a word) is waiting for its news. A device with an older Sioul does not follow; its own pauses still silence it. On a phone, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a focus session.
+Its card says why ("Turned on from your phone.", "While you focus on a task."). A computer where Sioul quit is closed until Sioul starts there again; one not heard from for half an hour (Sioul stopped without a word) is waiting for its news. A device with an older Sioul does not follow; its own pauses still silence it. On a phone, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a focus session.
 
 ## A person's sheet {#a-persons-sheet}
 
 <figure markdown="span">
-  [![How Dr Elena Varga reaches you: "Safe: their own choice."; Their list, Safe; Always through, ticked, with what it does; then What reaches you from them: "Their mail comes at once during work, admin, leisure, meals and free time. It is shown in Sioul without a notification during sleep and a pause. No address of theirs is known.", "Their calls ring at any time. This holds once a phone of yours screens calls.", "Their messages come at once at any time."; then Close.](../assets/screens/attention-sheet.png){ loading=lazy }](../assets/screens/attention-sheet.png "Open the picture at full size")
+  [![How Dr Elena Varga reaches you: "Safe: their own choice."; Their list, Safe; Always through, ticked, with what it does; then What reaches you from them: "Their mail comes at once during work, admin, leisure, meals and free time. It is shown in Sioul without a notification during sleep and a pause. No address of theirs is known.", "Their calls ring at any time. This holds once a phone of yours screens calls.", "Their messages come at once at any time."; then Their own times: "On your Always through list, they have no times of their own: take them off it to set some."; Texts with them…; then Close.](../assets/screens/attention-sheet.png){ loading=lazy }](../assets/screens/attention-sheet.png "Open the picture at full size")
   <figcaption>How someone reaches you, from their card.</figcaption>
 </figure>
 
 From a contact's card in [Contacts](contacts.md), **How … reaches you**; from a message, in its menu (⋮), **How they reach you…**:
 
-- **Who they are to you, and why**: "Safe, as the category Friends says.", "Neutral: in your address book, on no list."
-- **Their list**: **As their categories say**, **Safe**, **Neutral**, **Restricted** or **Blocked**, for all their addresses and numbers. An address or a number of theirs with a list of its own is said under it: it comes first.
+- **Who they are to you, and why**: "Safe, as the category Friends says.", "Your contacts: in your address book, on no list."
+- **Their list**: **As their categories say**, **Safe**, **Your contacts**, **Restricted** or **Blocked**, for all their addresses and numbers. An address or a number of theirs with a list of its own is said under it: it comes first.
 - **Always through**: on or off. Blocked and Always through exclude each other: choosing one takes them off the other, and the sheet says so.
 - **What reaches you from them**: a sentence per channel, from their row, at each time: "Their calls ring during work, admin, leisure, meals and free time. They go to voicemail during sleep and a pause. Under do-not-disturb, their calls go to voicemail." What is missing is said too: "No number of theirs is known: their calls cannot be told apart."
 
-A person has a list and Always through; no times of their own. To give one person more, put them on Always through; to give them less, a list.
+### Their own times {#their-own-times}
+
+Under **Their own times**, a cell for each time and each layer, for their calls and their texts on every device: **At once**, **Held**, or **As their list** (the default); under do-not-disturb, **In the shade, without a sound** too, for their texts (a call then goes to voicemail). A cell set here wins over their list, after a conversation's own choice and before an app's; the blocked never come, and their mail follows their list. Someone on Always through has no times of their own: the sheet says so. No name is written in your settings: their card gives it (`person.contact:<its UID>`, else their number or their address).
+
+On the phone, in the card What reaches you now, **Let them through then** on a held conversation sets the cell of what holds it now: under do-not-disturb, that layer; during work, work and admin together; else the time you are in. It sets their own times when a card or a number knows them, else the conversation's own row (a group, someone nobody knows). **Let it through now** lets that conversation's held notifications come at once, this time only.
 
 ## What never notifies {#what-never-notifies}
 

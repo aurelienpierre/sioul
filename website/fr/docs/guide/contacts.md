@@ -9,7 +9,7 @@ description: Les contacts dans Sioul – les noms d’abord, les détails repli�
 Les contacts réunissent les personnes à qui vous avez affaire : leur nom d’abord, leurs détails repliés jusqu’à ce que vous les ouvriez. Sioul trouve la même personne écrite deux fois et fusionne les fiches quand vous le dites, avec trente jours pour annuler chaque fusion. Il montre sur une seule carte toutes les personnes qui ont une adresse postale, une fois que vous l’avez permis. Chaque personne est sur une liste, sûre, neutre, restreinte ou bloquée, ou bien c’est une inconnue, et cette liste décide quand ses courriels, ses appels et ses messages vous joignent ; un courriel falsifié ne peut pas prendre sa place. Vos contacts restent sur votre propre serveur, chez Google ou sur cet appareil, et Sioul ne les joint que par une connexion chiffrée.
 
 <figure markdown="span">
-  [![La page Contacts : un champ de recherche, un bouton pour un nouveau contact et un pour la carte au-dessus d’une liste de noms, chacun avec une adresse ou un numéro dessous ; un contact ouvert à droite, avec sa fonction et son organisation, une adresse électronique avec Écrire, un numéro de téléphone avec Appeler, « Son courrier » réglé sur Neutre, une petite carte avec une épingle à son adresse, et ce qui lui est lié : deux tâches et deux événements.](../assets/screens/fr/contacts.png){ loading=lazy }](../assets/screens/fr/contacts.png "Ouvrir l’image en grand")
+  [![La page Contacts : un champ de recherche, un bouton pour un nouveau contact et un pour la carte au-dessus d’une liste de noms, chacun avec une adresse ou un numéro dessous ; un contact ouvert à droite, avec sa fonction et son organisation, une adresse électronique avec Écrire, un numéro de téléphone avec Appeler, « Vos contacts : dans votre carnet d’adresses, sur aucune liste. » et Comment Iris Calvet vous joint, une petite carte avec une épingle à son adresse, et ce qui lui est lié : deux tâches et deux événements.](../assets/screens/fr/contacts.png){ loading=lazy }](../assets/screens/fr/contacts.png "Ouvrir l’image en grand")
   <figcaption>Un contact : comment le joindre, où il est, et ce qui le concerne. <small>Carte © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> et ses contributeurs.</small></figcaption>
 </figure>
 
@@ -33,7 +33,7 @@ Un contact s’ouvre à droite :
 
 - ses **catégories**, de petites étiquettes sous son nom : un clic sur l’une d’elles montre la liste de cette catégorie ;
 - ses **adresses électroniques**, chacune avec **Écrire**, et ses **numéros de téléphone**, chacun avec **Appeler**, qui donne le numéro à votre téléphone, ou sur un ordinateur au programme qui répond aux liens de téléphone ;
-- **Comment cette personne vous joint** : qui elle est pour vous, en une phrase (« Neutre : dans votre carnet d’adresses, sur aucune liste. »), et sa fiche ([plus bas](#how-they-reach-you)) ;
+- **Comment cette personne vous joint** : qui elle est pour vous, en une phrase (« Vos contacts : dans votre carnet d’adresses, sur aucune liste. »), et sa fiche ([plus bas](#how-they-reach-you)) ;
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée ([La carte](#the-map)) ;
 - replié sous **Plus** : ses adresses postales, son organisation et sa fonction, son anniversaire, ses notes, ses sites web, et le carnet d’adresses où se trouve la fiche ;
 - **Lié à cela** : les tâches qui la nomment, les événements où elle est invitée, les notes qui la mentionnent, et ce que vous lui avez lié à la main. Un courriel s’y montre quand vous le lui avez lié ; la [recherche des courriels](mail.md#searching) trouve le reste de ses courriels.
@@ -51,7 +51,7 @@ Quand vous écrivez un courriel, les adresses se complètent depuis vos contacts
 Chaque personne est sur une liste, et la même liste vaut pour ses courriels, ses appels et ses messages dans les autres applications :
 
 - **Sûrs** : la famille, les amis, les collègues que vous choisissez. Vous seul y mettez quelqu’un.
-- **Neutres** : toute personne de vos carnets d’adresses, tant que vous n’en décidez pas autrement.
+- **Vos contacts** (autrefois « Neutres ») : toute personne de vos carnets d’adresses, tant que vous n’en décidez pas autrement.
 - **Restreints** : les personnes dont vous préférez n’avoir des nouvelles qu’aux moments que vous choisissez.
 - **Bloqués** : jamais, sur aucun canal. Leurs courriels sont mis de côté pour de bon, et leurs appels sont refusés.
 - **Inconnus** : toutes les personnes qui ne sont dans aucun de vos carnets d’adresses ni sur aucune liste. Leur premier courriel attend sur [le Porche](porch.md#the-lanes), dans le filtre des nouveaux expéditeurs, jusqu’à ce que vous les laissiez entrer.
