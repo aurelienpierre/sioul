@@ -37,6 +37,9 @@ Dialog {
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+    // The choices, with the event's own when another program wrote one not
+    // among them: what it keeps always shows, never as "unsaid" (22 October 2026).
+    readonly property var marginChoices: dialog.marginMinutes.concat([dialog.around.before, dialog.around.after].filter(m => m > 0 && dialog.marginMinutes.indexOf(m) < 0)).sort((a, b) => a - b).filter((m, i, all) => all.indexOf(m) === i)
     // Minutes before and after; the four costs and the gain, 0 to 10 or unsaid (null).
     property var around: ({ before: 0, after: 0 })
     property var demands: ({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null })
@@ -154,7 +157,7 @@ Dialog {
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(made.repeat))
         dialog.around = Object.assign({ before: 0, after: 0 }, made.margins)
         dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, made.demands)
-        dialog.moreShown = made.notes !== "" || made.repeat !== ""
+        dialog.moreShown = made.notes !== "" || made.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
     }
 
     // For the window's pictures: the costs and the gain in view.
@@ -394,9 +397,10 @@ Dialog {
                 }
                 PlainComboBox {
                     Layout.fillWidth: true
-                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
-                    currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
-                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginMinutes[index] })
+                    objectName: "event-before"
+                    model: dialog.marginChoices.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
+                    currentIndex: Math.max(0, dialog.marginChoices.indexOf(dialog.around.before))
+                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginChoices[index] })
                 }
                 Label {
                     Layout.maximumWidth: 160
@@ -406,9 +410,10 @@ Dialog {
                 }
                 PlainComboBox {
                     Layout.fillWidth: true
-                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
-                    currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
-                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
+                    objectName: "event-after"
+                    model: dialog.marginChoices.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.theme.plain(dialog.minutesText(m)))
+                    currentIndex: Math.max(0, dialog.marginChoices.indexOf(dialog.around.after))
+                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginChoices[index] })
                 }
                 // Its reminder: as usual (Settings ▸ Reminders and notifications),
                 // not this one, or so long before it and its time to get there.

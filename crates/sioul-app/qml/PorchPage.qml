@@ -632,8 +632,8 @@ Item {
 
                                 Label {
                                     Layout.fillWidth: true
-                                    // Not at once: too close to go from one to the other, said so (22 October 2026).
-                                    text: page.sioul.textArgs(overlap.modelData.gap >= 0 ? "overlap-today-tight" : "overlap-today", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + "–" + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + "–" + overlap.modelData.second.to + ")", gap: overlap.modelData.gap, needed: overlap.modelData.needed }))
+                                    // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
+                                    text: page.sioul.textArgs(overlap.modelData.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + "–" + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + "–" + overlap.modelData.second.to + ")", gap: overlap.modelData.gap, needed: overlap.modelData.needed, source: overlap.modelData.source }))
                                     textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     color: page.theme.text

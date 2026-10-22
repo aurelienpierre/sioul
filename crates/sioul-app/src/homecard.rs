@@ -605,7 +605,7 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
     let now = m.now.timestamp().as_second();
     let day_of = |at: i64| Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
     let tomorrow = m.now.date().tomorrow().ok();
-    sioul_core::overlaps::overlaps(&input.events)
+    sioul_core::overlaps::overlaps(&input.events, m.config.agenda.between())
         .into_iter()
         .filter(|o| !input.aside.contains(&o.key) && o.first.end.max(o.second.end) > now)
         .filter_map(|o| {
@@ -615,13 +615,12 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
             }
             let from = day.to_zoned(zone.clone()).ok()?;
             let title = |e: &Occurrence| if e.summary.trim().is_empty() { m.tr.text("agenda-untitled", None) } else { e.summary.trim().to_string() };
-            // Not at once: too close to go from one to the other, said so (22 October 2026).
-            let tight = o.gap >= 0;
-            let line = match (m.details, tight) {
-                (true, false) => said(m.tr, "home-card-overlap", &[("first", title(&o.first)), ("second", title(&o.second))]),
-                (true, true) => said(m.tr, "home-card-overlap-tight", &[("first", title(&o.first)), ("second", title(&o.second)), ("gap", o.gap.to_string()), ("needed", o.needed.to_string())]),
-                (false, false) => m.tr.text("home-card-overlap-plain", None),
-                (false, true) => m.tr.text("home-card-overlap-tight-plain", None),
+            // At once only when their times overlap; else closer than the time you keep (22 October 2026).
+            let line = match (m.details, o.at_once()) {
+                (true, true) => said(m.tr, "home-card-overlap", &[("first", title(&o.first)), ("second", title(&o.second))]),
+                (true, false) => said(m.tr, "home-card-overlap-close", &[("first", title(&o.first)), ("second", title(&o.second)), ("gap", o.gap.to_string()), ("needed", o.needed.to_string())]),
+                (false, true) => m.tr.text("home-card-overlap-plain", None),
+                (false, false) => m.tr.text("home-card-overlap-close-plain", None),
             };
             Some(Timed { line, from: ms(&from), until: o.first.end.max(o.second.end) * 1000 })
         })

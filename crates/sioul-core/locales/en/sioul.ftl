@@ -3325,7 +3325,7 @@ task-rest-offer = After something heavy, something that gives back:
 task-mode-day = The day
 day-all-day = All day: { $what }
 day-margin = Around: { $what }
-overlap-today = Today, two events at once: { $first } and { $second }. The time to get there and back counts.
+overlap-today = Today, two events at once: { $first } and { $second }.
 overlap-day = { $day }, two events at once: { $first } and { $second }.
 overlap-open = Open “{ $title }”
 overlap-set-aside = Don’t mention it again
@@ -6037,8 +6037,15 @@ import-event-start = “{ $key }”: its start “{ $start }” is neither a day
 home-card-task-plain = A task
 collection-events-and-tasks = events and tasks
 
-# Two events too close to go from one to the other (22 October 2026): the way between counted once.
-overlap-today-tight = Today, { $first } and { $second }: { $gap } min between them, { $needed } min to go from one to the other.
-overlap-day-tight = { $day }, { $first } and { $second }: { $gap } min between them, { $needed } min to go from one to the other.
-home-card-overlap-tight = Today, { $first } then { $second }: { $gap } min between them, { $needed } min needed.
-home-card-overlap-tight-plain = Today, two events too close together.
+
+# The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
+set-agenda-between = Time kept between two events
+set-agenda-between-help = Closer than this, two events are said to be too close. 0: none, as at first. Each event's own Before and After also count, the longest of them, never added.
+overlap-today-close = Today, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
+overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
+overlap-source-after = kept after the first (its After)
+overlap-source-before = kept before the second (its Before)
+overlap-source-setting = kept between two events (Settings ▸ Agenda)
+home-card-overlap-close = Today, { $first } then { $second }: { $gap } min between them, less than the { $needed } min you keep.
+home-card-overlap-close-plain = Today, two events closer than the time you keep between them.
+agenda-kept = Kept before it: { $before } min; after it: { $after } min (this event’s own Before and After, in its form).

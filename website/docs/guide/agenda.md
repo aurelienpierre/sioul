@@ -74,7 +74,7 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 
 ## Two events at once
 
-When two events overlap, or follow each other too closely to go from one to the other, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said. The way between two events is counted once: the longer of the time kept after the first (coming back) and before the second (getting there), never both added; when they are only too close, the line says how many minutes are between them and how many the way takes.
+When two events overlap, Sioul says so, and when they follow each other closer than a time you set, it says they are too close: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said. Two events overlap only when their times do. No time is ever put between them unless you set it: an event's own **Before** and **After** (in its form, and said in its details), or **Time kept between two events** in the Agenda settings, 0 at first; the longest counts, never added. Too close, the line says the minutes between them, the time you set and where you set it.
 
 ## Your day around your events {#your-day-around-your-events}
 
@@ -102,6 +102,7 @@ The ⚙ at the top of the page:
 
 - **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
+- **Time kept between two events**: 0 at first. Closer than this, two events are said to be too close, never to overlap.
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views open on.
 

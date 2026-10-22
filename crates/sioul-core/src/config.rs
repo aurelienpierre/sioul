@@ -532,6 +532,17 @@ pub struct AgendaSettings {
     /// first calendar that takes events, as before (`agenda::default_calendar`).
     #[serde(default)]
     pub calendar: Option<String>,
+    /// Minutes you keep between two events, Settings ▸ Agenda (22 October
+    /// 2026): closer, they are said too close (`overlaps`); unset, none.
+    #[serde(default)]
+    pub between: Option<u32>,
+}
+
+impl AgendaSettings {
+    /// The time kept between two events: yours, else none.
+    pub fn between(&self) -> u32 {
+        self.between.unwrap_or(0).min(24 * 60)
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
