@@ -386,9 +386,10 @@ pub fn kept_back(block: &Collection, list_account: &str, chosen: &str) -> bool {
 /// The calendar for blocks made on `account` ("local": this device only),
 /// named `name` in your language; the next sync makes it on the server.
 pub fn make_calendar(account: &str, name: &str) -> Result<Collection, String> {
-    let dir = vdir::prepare(Kind::Calendars, account, CALENDAR, name, None).map_err(|e| e.to_string())?;
+    // Its state first: a folder never shows without what it takes (`vdir::create`).
     let state = vdir::State { pending: account != vdir::LOCAL, components: vec!["VEVENT".to_string()], ..vdir::State::default() };
     state.save(&vdir::state_path(account, Kind::Calendars, CALENDAR))?;
+    let dir = vdir::prepare(Kind::Calendars, account, CALENDAR, name, None).map_err(|e| e.to_string())?;
     Ok(Collection { kind: Kind::Calendars, account: account.to_string(), id: CALENDAR.to_string(), dir, name: name.to_string(), color: None, read_only: false, components: state.components })
 }
 

@@ -74,7 +74,7 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 
 ## Two events at once
 
-When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said.
+When two events overlap, or follow each other too closely to go from one to the other, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said. The way between two events is counted once: the longer of the time kept after the first (coming back) and before the second (getting there), never both added; when they are only too close, the line says how many minutes are between them and how many the way takes.
 
 ## Your day around your events {#your-day-around-your-events}
 

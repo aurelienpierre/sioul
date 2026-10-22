@@ -316,7 +316,9 @@ Item {
                             text: {
                                 const one = e => e.title + " (" + e.from + "–" + e.to + ")"
                                 const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
-                                return page.sioul.textArgs("overlap-day", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second) }))
+                                // Not at once: too close to go from one to the other, said so (22 October 2026).
+                                const tight = clash.modelData.gap >= 0
+                                return page.sioul.textArgs(tight ? "overlap-day-tight" : "overlap-day", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second), gap: clash.modelData.gap, needed: clash.modelData.needed }))
                             }
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap

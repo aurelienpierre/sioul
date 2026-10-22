@@ -6061,3 +6061,9 @@ import-unknown-field = « { $task } » : « { $field } » n’est pas 
 import-event-start = « { $key } » : son début « { $start } » n’est ni un jour (2026-10-23) ni une heure (2026-10-23T14:00).
 home-card-task-plain = Une tâche
 collection-events-and-tasks = événements et tâches
+
+# Two events too close to go from one to the other (22 October 2026): the way between counted once.
+overlap-today-tight = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, { $needed } min pour aller de l’un à l’autre.
+overlap-day-tight = { $day }, { $first } et { $second } : { $gap } min entre les deux, { $needed } min pour aller de l’un à l’autre.
+home-card-overlap-tight = Aujourd’hui, { $first } puis { $second } : { $gap } min entre les deux, { $needed } min nécessaires.
+home-card-overlap-tight-plain = Aujourd’hui, deux événements trop rapprochés.

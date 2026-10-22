@@ -74,7 +74,7 @@ Dans l’agenda, il se montre comme la tâche qu’il est, jamais comme un évé
 
 ## Deux événements en même temps {#two-events-at-once}
 
-Quand deux événements se chevauchent, le temps d’y aller et d’en revenir compté, Sioul le dit : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit.
+Quand deux événements se chevauchent, ou se suivent de trop près pour aller de l’un à l’autre, Sioul le dit : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit. Le chemin entre deux événements compte une fois : le plus long du temps gardé après le premier (le retour) et avant le second (l’aller), jamais les deux ajoutés ; quand ils sont seulement trop proches, la ligne dit combien de minutes les séparent et combien le chemin en demande.
 
 ## Votre journée autour de vos événements {#your-day-around-your-events}
 
