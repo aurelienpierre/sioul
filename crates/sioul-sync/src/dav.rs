@@ -1149,6 +1149,12 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
         if matches!(answer.status, 400 | 403 | 409 | 412)
             && let Some(theirs) = same_uid_there(client, kind, listed, &href, &text, &answer.body)?
         {
+            // An item moved or made another here is never replaced by its old
+            // copy still there: said, and tried again (F6).
+            if vdir::moved_here(&path) {
+                refused.get_or_insert(SyncError::Server(format!("PUT {href}: {}: its old copy is still there", answer.status)));
+                continue;
+            }
             state.items.push(adopt(dir, listed, &file, &text, theirs, report)?);
             continue;
         }
@@ -1291,10 +1297,16 @@ fn send_known(client: &Client, kind: Kind, dir: &Path, listed: &Listed, item: &I
         Ok(metadata) => metadata,
         // Deleted here: deleted there, unless it changed there meanwhile.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Moved or made another here: its old copy goes only once the new
+            // one is on its server (the review of 22 October 2026, F6).
+            if vdir::deletion_waits_for(&path).is_some() {
+                return Ok(Sent::Kept);
+            }
             let answer = client.send("DELETE", &url, &[("If-Match", &item.etag)], None)?;
             return Ok(match answer.status {
                 200..=299 | 404 => {
                     report.sent += 1;
+                    vdir::deletion_done(&path);
                     Sent::Deleted
                 }
                 412 => {
@@ -2373,6 +2385,38 @@ mod tests {
         let book = seen.iter().position(|s| s.contains("/book/")).unwrap();
         let calendar = seen.iter().position(|s| s.contains("/cal/a/")).unwrap();
         assert!(calendar < book, "calendars first: {seen:?}");
+    }
+
+    /// An event moved to another calendar of the same server: the new copy is
+    /// sent first, and the old one deleted only once the server took it. A
+    /// refused PUT leaves the old one there, on every device (the review of 22
+    /// October 2026, F6).
+    #[test]
+    fn a_moved_event_is_deleted_there_only_once_its_new_copy_is() {
+        let account = account("moved-later");
+        let (dav, home) = Dav::start(&["a", "b"]);
+        Homes { calendars: Some(home.clone()), contacts: None }.save(&account.id).unwrap();
+        dav.put("a", "x.ics", &event("x", "Dentist"));
+        sync_with(&client(), &account).unwrap();
+        let (from, to) = (folder("moved-later", "a").join("x.ics"), folder("moved-later", "b").join("x-moved.ics"));
+        assert!(from.exists());
+        vdir::move_item(&from, &to).unwrap();
+        let refusing = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let refuse = Arc::clone(&refusing);
+        dav.fault(move |r: &stand_in::Request| (r.method == "PUT" && r.path.starts_with("/cal/b/") && refuse.load(std::sync::atomic::Ordering::Relaxed)).then_some(Fault::Status(403)));
+        let _ = sync_with(&client(), &account);
+        assert!(dav.items("a").contains_key("x.ics"), "the old copy stays while the new one is refused: {:?}", dav.seen());
+        assert!(dav.items("b").is_empty());
+        refusing.store(false, std::sync::atomic::Ordering::Relaxed);
+        for _ in 0..2 {
+            sync_with(&client(), &account).unwrap();
+        }
+        assert!(dav.items("a").is_empty(), "then the old one goes: {:?}", dav.seen());
+        assert_eq!(dav.items("b").len(), 1);
+        let seen = dav.seen();
+        let put = seen.iter().position(|s| s.starts_with("PUT /cal/b/") && s.ends_with(" 201")).unwrap();
+        let delete = seen.iter().position(|s| s.starts_with("DELETE /cal/a/")).unwrap();
+        assert!(put < delete, "the new copy first: {seen:?}");
     }
 
     thread_local! {

@@ -18,7 +18,7 @@
 //!   taken out, in the same one step. An invitation stays an event: others
 //!   expect you there.
 
-use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
+use crate::backend::{QtThread, Shared, load_config, say, tell, tr};
 use crate::{pim, work};
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
@@ -28,7 +28,7 @@ use sioul_core::vdir::{self, Kind};
 use sioul_core::{appointments, blocks, lines, tasks};
 use sioul_core::tasks::Task;
 use sioul_core::vdir::Collection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Whether an event's text is the time block of the task `uid` (any task when `uid` is "").
@@ -63,10 +63,57 @@ pub(crate) fn form(shared: &Shared, uid: &str, start: i64, end: i64) -> String {
     match work::find_task(shared, uid) {
         Ok(task) => {
             let time = appointments::time_of(&task, (end > start && start > 0).then_some((start, end)), &zone);
-            json(&appointments::event_of(&task, time, Zoned::now().date(), &zone))
+            let mut form = serde_json::to_value(appointments::event_of(&task, time, Zoned::now().date(), &zone)).unwrap_or_default();
+            // What it cannot keep, said before it is saved (F5).
+            let waiting = waiting_for(&work::loaded(shared).tasks, uid);
+            form["losses"] = serde_json::Value::String(lost_sentence("appointment-not-kept", &appointments::task_losses(&task), waiting));
+            form.to_string()
         }
         Err(error) => serde_json::json!({ "error": error }).to_string(),
     }
+}
+
+/// How many open tasks wait for `uid`: they stop waiting once it is an appointment.
+fn waiting_for(tasks: &[Task], uid: &str) -> usize {
+    tasks.iter().filter(|t| t.uid != uid && t.status.is_open() && t.relations.iter().any(|r| r.uid == uid && r.kind != "PARENT" && r.kind != "CHILD")).count()
+}
+
+/// "Not kept as an appointment: the date asked, its tags." (`intro` the
+/// sentence's id), or "" when everything goes along.
+fn lost_sentence(intro: &str, lost: &[&str], waiting: usize) -> String {
+    let mut words: Vec<String> = lost.iter().map(|id| tr().text(&format!("conversion-lost-{id}"), None)).collect();
+    if waiting > 0 {
+        words.push(say("conversion-lost-waiting", &[("n", waiting.to_string())]));
+    }
+    if words.is_empty() { String::new() } else { say(intro, &[("what", words.join(", "))]) }
+}
+
+/// What an event cannot keep as a task, in a sentence; "" when everything goes along (F5).
+pub(crate) fn task_losses(key: &str) -> String {
+    pim::ours(key).and_then(|p| std::fs::read_to_string(p).ok()).map_or_else(String::new, |text| lost_sentence("task-not-kept", &appointments::event_losses(&text), 0))
+}
+
+/// The UID a calendar item's file holds.
+fn uid_in(path: &Path) -> String {
+    std::fs::read_to_string(path).ok().and_then(|t| lines::unfold(&t).iter().find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string())).unwrap_or_default()
+}
+
+/// The other tasks that named `old` now name `new` (an appointment when
+/// `became_event`, which nothing waits for any more): their files written,
+/// returned (F5).
+fn retie(tasks: &[Task], old: &str, new: &str, became_event: bool) -> Vec<PathBuf> {
+    let now = Zoned::now();
+    let mut written = Vec::new();
+    for task in tasks.iter().filter(|t| t.uid != old && !t.read_only) {
+        let path = PathBuf::from(&task.key);
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        if let Some(changed) = appointments::retarget(&text, old, new, became_event, &now)
+            && vdir::write_item(&path, &changed).is_ok()
+        {
+            written.push(path);
+        }
+    }
+    written
 }
 
 /// A task made an appointment: the event form `edit` (JSON) written in
@@ -74,10 +121,12 @@ pub(crate) fn form(shared: &Shared, uid: &str, start: i64, end: i64) -> String {
 /// with its time blocks to come and `block`, the block it was opened from.
 /// Returns what went wrong, else "".
 pub(crate) fn task_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, block: &str, edit: &str, calendar: &str) -> String {
-    let made = work::find_task(shared, uid).and_then(|task| make_event(&task, &work::loaded(shared).tasks, block, edit, calendar));
+    let loaded = work::loaded(shared);
+    let made = work::find_task(shared, uid).and_then(|task| make_event(&task, &loaded.tasks, block, edit, calendar));
     match made {
         Ok((gone, made, name)) => {
-            nudge_all(shared, &[gone, vec![made]].concat());
+            let retied = retie(&loaded.tasks, uid, &uid_in(&made), true);
+            nudge_all(shared, &[gone, vec![made], retied].concat());
             tell(qt, shared, say("appointment-made", &[("calendar", name)]));
             shown_again(qt, shared);
             String::new()
@@ -93,6 +142,10 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
     let uid = task.uid.as_str();
     if task.read_only {
         return Err(tr().text("task-read-only", None));
+    }
+    // Done, it is the record of work done: it stays a task (F5).
+    if task.status == tasks::Status::Completed {
+        return Err(tr().text("task-done-stays", None));
     }
     // Its steps would lose the task they belong to.
     if others.iter().any(|t| t.status.is_open() && t.parent() == Some(uid)) {
@@ -128,9 +181,11 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
 /// block's when still to come and not repeating, then the event taken out.
 /// Returns what went wrong, else "".
 pub(crate) fn event_to_task(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
+    let old = pim::ours(key).map(|p| uid_in(&p)).unwrap_or_default();
     match work::target_list("").and_then(|list| make_task(key, &list)) {
         Ok((gone, made, list)) => {
-            nudge_all(shared, &[vec![gone], made].concat());
+            let retied = if old.is_empty() { Vec::new() } else { retie(&work::loaded(shared).tasks, &old, &uid_in(&made[0]), false) };
+            nudge_all(shared, &[vec![gone], made, retied].concat());
             tell(qt, shared, say("task-made-from-event", &[("list", list)]));
             shown_again(qt, shared);
             String::new()
@@ -163,7 +218,9 @@ fn make_task(key: &str, list: &Collection) -> Result<(PathBuf, Vec<PathBuf>, Str
     {
         return Err(tr().text("task-from-odd-repeat", None));
     }
-    let edit = appointments::task_of(&event);
+    let mut edit = appointments::task_of(&event);
+    // What the event was tied to, the task is (F5).
+    edit.links = unfolded.iter().filter(|l| lines::name(l) == "LINK").map(|l| tasks::link_of(l)).filter(|l| !blocks::is_block_link(l)).collect();
     let now = Zoned::now();
     let uid = vdir::new_name();
     let mut task_text = tasks::new_task(&edit, &uid, &zone, &now)?;
@@ -233,15 +290,30 @@ mod tests {
         assert!(make_event(&task, &[task.clone(), step], block_path.to_str().unwrap(), &edit, &calendar).is_err());
         assert!(task_path.exists() && block_path.exists());
 
+        // Done, it stays a task: the record of work done (F5).
+        let done = Task { status: tasks::Status::Completed, ..task.clone() };
+        assert!(make_event(&done, std::slice::from_ref(&done), block_path.to_str().unwrap(), &edit, &calendar).is_err());
+        // A task that waits for it, and links it: its links follow, its wait goes (F5).
+        let waiting_path = list.dir.join("w-kinds.ics");
+        std::fs::write(&waiting_path, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:w-kinds\r\nSUMMARY:Pay\r\nRELATED-TO;RELTYPE=DEPENDS-ON:t-kinds\r\nLINK;LINKREL=related;VALUE=URI:sioul:task/t-kinds\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+        let waiting = tasks::read(&waiting_path, &list, &zone).unwrap();
+        assert_eq!(waiting_for(std::slice::from_ref(&waiting), "t-kinds"), 1);
         let (gone, made, _) = make_event(&task, std::slice::from_ref(&task), block_path.to_str().unwrap(), &edit, &calendar).unwrap();
+        assert_eq!(retie(std::slice::from_ref(&waiting), "t-kinds", &uid_in(&made), true), [waiting_path.clone()]);
+        let retied = std::fs::read_to_string(&waiting_path).unwrap();
+        assert!(!retied.contains("RELATED-TO") && retied.contains(&format!("sioul:event/{}", uid_in(&made))), "{retied}");
+        std::fs::remove_file(&waiting_path).unwrap();
         assert_eq!(gone, [task_path.clone(), block_path.clone()]);
         assert!(!task_path.exists() && !block_path.exists(), "the task and its block gone");
         let event = std::fs::read_to_string(&made).unwrap();
         assert!(event.contains("BEGIN:VEVENT") && event.contains("SUMMARY:Dentist") && event.contains("LOCATION:1 Example Street") && !event.contains("X-SIOUL-TASK"), "{event}");
         assert_eq!(holding(account, "Dentist"), [made.clone()], "one file: the appointment");
 
-        // Back: a task in the list, an hour, its time its block's.
+        // Back: a task in the list, an hour, its time its block's; its links with it.
+        let linked = std::fs::read_to_string(&made).unwrap().replace("END:VEVENT", "LINK;LINKREL=via;VALUE=URI:mid:letter@example.org\r\nEND:VEVENT");
+        std::fs::write(&made, linked).unwrap();
         let (gone, written, _) = make_task(made.to_str().unwrap(), &list).unwrap();
+        assert!(std::fs::read_to_string(&written[0]).unwrap().contains("mid:letter@example.org"), "the event's links go along");
         assert_eq!(gone, made);
         assert!(!made.exists(), "the event gone");
         let task_text = std::fs::read_to_string(&written[0]).unwrap();

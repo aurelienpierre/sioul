@@ -6049,3 +6049,23 @@ overlap-source-setting = kept between two events (Settings ▸ Agenda)
 home-card-overlap-close = Today, { $first } then { $second }: { $gap } min between them, less than the { $needed } min you keep.
 home-card-overlap-close-plain = Today, two events closer than the time you keep between them.
 agenda-kept = Kept before it: { $before } min; after it: { $after } min (this event’s own Before and After, in its form).
+
+# A meeting with others stays in its calendar (22 October 2026): moved, its server would cancel it for them, then invite them again.
+event-move-with-others = A meeting with others stays in its calendar: moving it would cancel it for them, then invite them again.
+
+# What one kind cannot keep, said before a conversion (22 October 2026, F5).
+appointment-not-kept = Not kept as an appointment: { $what }.
+task-not-kept = Not kept as a task: { $what }.
+conversion-lost-due = the date asked
+conversion-lost-priority = its order among equals
+conversion-lost-tags = its tags
+conversion-lost-contacts = the people tied to it
+conversion-lost-kind = its kind
+conversion-lost-projects = its projects
+conversion-lost-remind = its own reminder
+conversion-lost-alarms = its alarms
+conversion-lost-waiting = { $n ->
+    [one] a task waiting for it stops waiting
+   *[other] { $n } tasks waiting for it stop waiting
+}
+task-done-stays = A task done stays a task: it is the record of work done.

@@ -1718,8 +1718,8 @@ mod tests {
     /// agenda and not in the phone's nor on the home card. The window's agenda
     /// and the phone's are one page; it and the card read the same items
     /// (`pim::agenda_read`), mark the same tasks (`agenda::mark_tasks`), and
-    /// none reads a task list's own tasks, nor an event slipped into a list
-    /// that takes tasks only: a task shows by its time block, as a task.
+    /// none reads a task list's own tasks: a task shows by its time block, as
+    /// a task. An event slipped into a list shows in all three (F3).
     #[test]
     fn every_agenda_reads_the_same_items() {
         use sioul_core::vdir::{self, Kind};
@@ -1747,7 +1747,7 @@ mod tests {
         let page = sioul_core::view::agenda(&items, now.date(), HORIZON_DAYS + 1, &Translator::new("en"), &zone);
         let mut window: Vec<(String, String, String)> = page.days.iter().flat_map(|d| d.events.iter()).filter(|e| ours(&e.key)).map(|e| (e.summary.clone(), e.task.clone(), e.list.clone())).collect();
         window.sort();
-        assert_eq!(window, [("block".to_string(), "t-agenda".to_string(), "Kinds tasks".to_string()), ("dentist".into(), String::new(), String::new()), ("orphan".into(), String::new(), String::new())]);
+        assert_eq!(window, [("block".to_string(), "t-agenda".to_string(), "Kinds tasks".to_string()), ("dentist".into(), String::new(), String::new()), ("orphan".into(), String::new(), String::new()), ("stray".into(), String::new(), String::new())]);
 
         // The home card, from the same read.
         let config = config();
@@ -1759,7 +1759,7 @@ mod tests {
         let card = agenda_lines(&moment, &input, &tasks).unwrap();
         let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
         home.sort();
-        assert_eq!(home, ["block", "dentist", "orphan"], "the same items");
+        assert_eq!(home, ["block", "dentist", "orphan", "stray"], "the same items");
         let block = card.events.iter().find(|e| e.title == "block").unwrap();
         assert!(block.time.ends_with("Task · Kinds tasks"), "marked as a task, with its list: {}", block.time);
         assert!(!card.events.iter().find(|e| e.title == "orphan").unwrap().time.contains("Task"), "a block of a task not here is an event");

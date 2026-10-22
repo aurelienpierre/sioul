@@ -493,15 +493,16 @@ struct ImportEvent {
     /// "2026-10-23T14:00" (your time zone), or a day for a whole-day one.
     start: String,
     /// The same form; unsaid, an hour after a time, the same day for a day.
+    /// Unsaid on an event imported before: what it holds stays (F4).
     #[serde(default)]
-    end: String,
+    end: Option<String>,
     #[serde(default)]
-    location: String,
+    location: Option<String>,
     #[serde(default)]
-    notes: String,
+    notes: Option<String>,
     /// "daily", "weekly", "monthly", "yearly".
     #[serde(default)]
-    repeat: String,
+    repeat: Option<String>,
     /// Its calendar, "account/id"; else the file's, else the agenda's usual.
     #[serde(default)]
     calendar: Option<String>,
@@ -843,15 +844,35 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
         let uid = uid_of(&plan.prefix, &event.key);
         let all_day = !event.start.contains('T');
         let bad_start = || s.say("import-event-start", &[("key", event.key.clone()), ("start", event.start.clone())]);
-        let end = if !event.end.is_empty() {
-            event.end.clone()
-        } else if all_day {
-            event.start.clone()
-        } else {
-            let start: jiff::civil::DateTime = event.start.parse().map_err(|_| bad_start())?;
-            start.checked_add(jiff::Span::new().hours(1)).map_err(|_| bad_start())?.strftime("%Y-%m-%dT%H:%M").to_string()
+        let found = event_file(&uid);
+        // An event imported before: what it holds is the start, the file's
+        // lines over it, its margins, costs and reminder kept (the review of 22 October 2026, F4).
+        let before = found.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| sioul_core::agenda::edit_of_text(&t, zone));
+        let end = match (&event.end, &before) {
+            (Some(end), _) if !end.is_empty() => end.clone(),
+            // Unsaid on one known: its length kept, from its new start.
+            (_, Some(b)) if !all_day && b.start.contains('T') && b.end.contains('T') => {
+                let (start, was, was_end): (jiff::civil::DateTime, jiff::civil::DateTime, jiff::civil::DateTime) =
+                    (event.start.parse().map_err(|_| bad_start())?, b.start.parse().map_err(|_| bad_start())?, b.end.parse().map_err(|_| bad_start())?);
+                let length = was_end.since(was).map_err(|_| bad_start())?;
+                start.checked_add(length).map_err(|_| bad_start())?.strftime("%Y-%m-%dT%H:%M").to_string()
+            }
+            _ if all_day => event.start.clone(),
+            _ => {
+                let start: jiff::civil::DateTime = event.start.parse().map_err(|_| bad_start())?;
+                start.checked_add(jiff::Span::new().hours(1)).map_err(|_| bad_start())?.strftime("%Y-%m-%dT%H:%M").to_string()
+            }
         };
-        let edit = sioul_core::agenda::EventEdit { title: event.title.clone(), location: event.location.clone(), notes: event.notes.clone(), start: event.start.clone(), end, all_day, repeat: event.repeat.clone(), ..Default::default() };
+        let mut edit = before.clone().unwrap_or_default();
+        edit.title = event.title.clone();
+        edit.start = event.start.clone();
+        edit.end = end;
+        edit.all_day = all_day;
+        for (field, given) in [(&mut edit.location, &event.location), (&mut edit.notes, &event.notes), (&mut edit.repeat, &event.repeat)] {
+            if let Some(given) = given {
+                *field = given.clone();
+            }
+        }
         let wanted = event.calendar.clone().or_else(|| plan.calendar.clone()).unwrap_or_default();
         let calendar = || {
             vdir::collections(Kind::Calendars)
@@ -861,7 +882,7 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
                 .ok_or_else(|| s.tr.text("dav-no-calendar", None))
         };
         let as_task = existing.iter().find(|t| t.uid == uid);
-        match (event_file(&uid), as_task) {
+        match (found, as_task) {
             (Some(path), _) => {
                 let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
                 let text = sioul_core::agenda::apply(&current, &edit, zone)?;
@@ -1037,6 +1058,16 @@ mod tests {
         run(appointment).unwrap();
         assert_eq!(files(&calendar), events);
         assert_eq!(std::fs::read_to_string(&events[0]).unwrap(), text);
+        // Its margins, costs and reminder, set in the window, stay through a re-import that moves it (F4).
+        let kept = text.replace("END:VEVENT", "X-SIOUL-BEFORE:20\r\nX-SIOUL-AFTER:15\r\nX-SIOUL-COST:ANXIETY=7\r\nX-SIOUL-REMIND:30\r\nEND:VEVENT");
+        std::fs::write(&events[0], &kept).unwrap();
+        run(&appointment.replace("2099-10-23T14:00", "2099-10-23T16:00")).unwrap();
+        let moved = std::fs::read_to_string(&events[0]).unwrap();
+        for line in ["X-SIOUL-BEFORE:20", "X-SIOUL-AFTER:15", "ANXIETY=7", "X-SIOUL-REMIND:30", "LOCATION:1 Example Street"] {
+            assert!(moved.contains(line), "{line} kept: {moved}");
+        }
+        let edit = sioul_core::agenda::edit_of(&events[0]).unwrap();
+        assert_eq!((edit.start.as_str(), edit.end.as_str()), ("2099-10-23T16:00", "2099-10-23T17:00"), "moved, its length kept");
         let _ = std::fs::remove_dir_all(&list.dir);
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_file(&file);

@@ -445,6 +445,10 @@ pub mod qobject {
         #[qinvokable]
         fn task_to_event(self: Pin<&mut Sioul>, uid: &QString, block: &QString, edit: &QString, calendar: &QString) -> QString;
 
+        /// What an event cannot keep as a task, in a sentence; "" when everything goes along.
+        #[qinvokable]
+        fn event_to_task_losses(self: &Sioul, key: &QString) -> QString;
+
         /// An event made a task ("Make it a task"), its time its block's.
         /// Returns what went wrong, else "".
         #[qinvokable]
@@ -4087,6 +4091,10 @@ impl qobject::Sioul {
 
     fn task_to_event(self: Pin<&mut Self>, uid: &QString, block: &QString, edit: &QString, calendar: &QString) -> QString {
         QString::from(&crate::appointments::task_to_event(&self.qt_thread(), &self.shared(), &uid.to_string(), &block.to_string(), &edit.to_string(), &calendar.to_string()))
+    }
+
+    fn event_to_task_losses(&self, key: &QString) -> QString {
+        QString::from(&crate::appointments::task_losses(&key.to_string()))
     }
 
     fn event_to_task(self: Pin<&mut Self>, key: &QString) -> QString {

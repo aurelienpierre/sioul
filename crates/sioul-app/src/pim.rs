@@ -395,6 +395,8 @@ struct EventView {
     /// "Only on this computer", when its calendar stays here alone; else "".
     here_only: String,
     read_only: bool,
+    /// Why it stays in its calendar, said in the editor: a meeting with others (`with_others`); else "".
+    stays: String,
 }
 
 /// Two events at once in the next `days` days, or closer than a time you set
@@ -439,8 +441,9 @@ pub(crate) fn event(key: &str) -> String {
     let Some(calendar) = collection_of(&path) else { return String::new() };
     let config = load_config();
     let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
+    let stays = if std::fs::read_to_string(&path).is_ok_and(|t| with_others(&t)) { tr().text("event-move-with-others", None) } else { String::new() };
     agenda::edit_of(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only }))
+        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, stays }))
         .unwrap_or_default()
 }
 
@@ -454,12 +457,24 @@ pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, S
     if path.parent() == Some(to.dir.as_path()) {
         return Ok(path.to_path_buf());
     }
+    // A meeting with others is never moved: its server would cancel it (or
+    // decline it) for them from the old calendar, then invite them again
+    // (the review of 22 October 2026, F2).
+    if std::fs::read_to_string(path).is_ok_and(|t| with_others(&t)) {
+        return Err(tr().text("event-move-with-others", None));
+    }
     if to.read_only || !to.holds("VEVENT") {
         return Err(tr().text("dav-no-calendar", None));
     }
     let moved = agenda::new_path(to);
     vdir::move_item(path, &moved)?;
     Ok(moved)
+}
+
+/// Whether an event's text names an organizer or guests: a meeting with
+/// others, which a server's scheduling answers for (RFC 6638), mail to them included.
+pub(crate) fn with_others(text: &str) -> bool {
+    sioul_core::lines::unfold(text).iter().any(|l| matches!(sioul_core::lines::name(l).as_str(), "ORGANIZER" | "ATTENDEE"))
 }
 
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
@@ -480,6 +495,8 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
 /// What saving the event form wrote: its file at last, the accounts to tell,
 /// the task of a time block renamed, and its title.
 struct SavedEvent {
+    // Where it is at last: what the tests look at.
+    #[cfg_attr(not(test), allow(dead_code))]
     path: PathBuf,
     accounts: Vec<String>,
     renamed: Option<String>,
@@ -505,6 +522,11 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
     let (path, text) = match ours(key) {
         Some(path) => {
             let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            // Another calendar chosen for a meeting with others: nothing written (F2).
+            let elsewhere = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar).is_some_and(|c| path.parent() != Some(c.dir.as_path()));
+            if elsewhere && with_others(&current) {
+                return Err(tr().text("event-move-with-others", None));
+            }
             let task = sioul_core::lines::unfold(&current).iter().find(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK).map(|l| sioul_core::lines::value(l).trim().to_string());
             if let Some(task) = task.filter(|t| !t.is_empty())
                 && agenda::edit_of_text(&current, &zone).is_some_and(|before| before.title.trim() != edit.title.trim())
@@ -895,6 +917,28 @@ mod tests {
         assert!(!here_only(&find("to")), "a server's: on every device with its account");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&mine.dir);
+    }
+
+    /// A meeting with others is never moved to another calendar: its server
+    /// would cancel it for them, then invite them again (the review of 22
+    /// October 2026, F2). Nothing is written; the editor says why.
+    #[test]
+    fn a_meeting_with_others_stays_in_its_calendar() {
+        let account = "with-others";
+        let from = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT"]).unwrap();
+        let to = vdir::create(Kind::Calendars, vdir::LOCAL, "With others mine", None, &["VEVENT"]).unwrap();
+        let path = from.dir.join("meeting.ics");
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\nSUMMARY:Meeting\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(&path, text).unwrap();
+        assert!(move_event_file(&path, &to).is_err());
+        let form = serde_json::to_string(&agenda::edit_of(&path).unwrap()).unwrap();
+        assert!(write_event(path.to_str().unwrap(), &form, &format!("{}/{}", to.account, to.id)).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text, "nothing written, nothing moved");
+        assert!(to.items().is_empty());
+        let shown: serde_json::Value = serde_json::from_str(&event(path.to_str().unwrap())).unwrap();
+        assert!(!shown["stays"].as_str().unwrap_or_default().is_empty(), "the editor says why");
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
+        let _ = std::fs::remove_dir_all(&to.dir);
     }
 
     /// The choosers by what a collection takes (21 October 2026): a new

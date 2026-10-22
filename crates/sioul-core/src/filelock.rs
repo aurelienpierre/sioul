@@ -18,11 +18,28 @@ pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-    let written = std::fs::write(&temporary, bytes).and_then(|()| std::fs::rename(&temporary, path));
+    let written = std::fs::write(&temporary, bytes).and_then(|()| rename_over(&temporary, path));
     if written.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
     written
+}
+
+/// `from` renamed over `to`. On Windows a file another thread or program has
+/// open for a moment (a reader of the same state) refuses to be replaced:
+/// tried again a few times, for a tenth of a second at most (CI's Windows job
+/// of 22 October 2026: a calendar's kinds lost so).
+fn rename_over(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut tries = 0;
+    loop {
+        match std::fs::rename(from, to) {
+            Err(e) if cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied && tries < 20 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            done => return done,
+        }
+    }
 }
 
 /// `bytes` in place of `path`'s content, what it held overwritten where the

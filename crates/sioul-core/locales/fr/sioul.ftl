@@ -6074,3 +6074,23 @@ overlap-source-setting = gardées entre deux événements (Paramètres ▸ Agend
 home-card-overlap-close = Aujourd’hui, { $first } puis { $second } : { $gap } min entre les deux, moins que les { $needed } min que vous gardez.
 home-card-overlap-close-plain = Aujourd’hui, deux événements plus proches que le temps que vous gardez entre eux.
 agenda-kept = Gardé avant : { $before } min ; après : { $after } min (l’Avant et l’Après de cet événement, dans son formulaire).
+
+# A meeting with others stays in its calendar (22 October 2026): moved, its server would cancel it for them, then invite them again.
+event-move-with-others = Une réunion avec d’autres reste dans son agenda : la déplacer l’annulerait pour eux, puis les inviterait de nouveau.
+
+# What one kind cannot keep, said before a conversion (22 October 2026, F5).
+appointment-not-kept = Non gardé dans un rendez-vous : { $what }.
+task-not-kept = Non gardé dans une tâche : { $what }.
+conversion-lost-due = la date demandée
+conversion-lost-priority = son ordre parmi ses égales
+conversion-lost-tags = ses étiquettes
+conversion-lost-contacts = les personnes qui y sont liées
+conversion-lost-kind = son type
+conversion-lost-projects = ses projets
+conversion-lost-remind = son propre rappel
+conversion-lost-alarms = ses alarmes
+conversion-lost-waiting = { $n ->
+    [one] une tâche qui l’attend cesse de l’attendre
+   *[other] { $n } tâches qui l’attendent cessent de l’attendre
+}
+task-done-stays = Une tâche faite reste une tâche : c’est la trace du travail fait.
