@@ -258,12 +258,19 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
 /// never neither.
 pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, text: &str) -> Result<(), String> {
     let Some((from, also)) = gone.split_first() else { return Err("nothing to replace".into()) };
-    // One move at a time in this program: a sync finishing moves meanwhile
-    // never takes back what one under way has made (22 October 2026).
-    let _moving = MOVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // One move at a time, in this program and between programs (the window,
+    // `sioul`, a sync): another finishing moves meanwhile never takes back
+    // what one under way has made, nor clears its note (22 October 2026; the
+    // Windows run of `an_item_made_another_cut_at_each_step_ends_once`,
+    // whose journal another test finished in between).
+    crate::filelock::with_lock(&moves_path(), || replace_locked(from, also, made, to, text))
+}
+
+/// `replace_items`, the journal's lock held.
+fn replace_locked(from: &Path, also: &[PathBuf], made: &[(PathBuf, String)], to: &Path, text: &str) -> Result<(), String> {
     finish_moves_now();
     let mut moves = moves_load();
-    moves.moves.push(Move { from: from.clone(), to: to.to_path_buf(), also: also.to_vec(), made: made.iter().map(|(p, _)| p.clone()).collect() });
+    moves.moves.push(Move { from: from.to_path_buf(), to: to.to_path_buf(), also: also.to_vec(), made: made.iter().map(|(p, _)| p.clone()).collect() });
     moves_save(&moves)?;
     if crashed(1) {
         return Ok(());
@@ -289,20 +296,16 @@ pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, te
     Ok(())
 }
 
-/// Held while a move runs or moves are finished (`replace_items`, `finish_moves`).
-static MOVING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 /// Every move cut short, finished: the item there and still here, taken out
 /// here (written whole before the note said so), with what goes with it; not
 /// there, the move forgotten, the item kept here and what was made for it
 /// taken back; gone from here, the move done. Called before each move and
 /// each sync of contacts and calendars.
 pub fn finish_moves() {
-    let _moving = MOVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    finish_moves_now();
+    crate::filelock::with_lock(&moves_path(), finish_moves_now);
 }
 
-/// `finish_moves`, `MOVING` held.
+/// `finish_moves`, the journal's lock held.
 fn finish_moves_now() {
     let moves = moves_load();
     if moves.moves.is_empty() {
@@ -688,6 +691,42 @@ mod tests {
             let _ = std::fs::remove_dir_all(dir);
         }
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join("kinds-server"));
+    }
+
+    /// Moves made side by side while another finishes moves in a loop (a
+    /// sync, the window): each ends once, its block kept (22 October 2026: on
+    /// Windows, another test's finishing took a block back between its
+    /// writing and its event's).
+    #[test]
+    fn moves_side_by_side_each_end_once() {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finishing = {
+            let stop = std::sync::Arc::clone(&stop);
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    finish_moves();
+                }
+            })
+        };
+        let workers: Vec<_> = (0..4)
+            .map(|n| {
+                std::thread::spawn(move || {
+                    let dir = prepare(Kind::Calendars, LOCAL, &format!("side-by-side-{n}"), "Side", None).unwrap();
+                    for i in 0..25 {
+                        let (task, block, event) = (dir.join(format!("t{i}.ics")), dir.join(format!("b{i}.ics")), dir.join(format!("e{i}.ics")));
+                        std::fs::write(&task, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+                        replace_items(std::slice::from_ref(&task), &[(block.clone(), "block".into())], &event, "event").unwrap();
+                        assert!(!task.exists() && block.exists() && event.exists(), "worker {n}, move {i}");
+                    }
+                    let _ = std::fs::remove_dir_all(&dir);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        finishing.join().unwrap();
     }
 
     /// A calendar made while another thread looks at the calendars (a sync,

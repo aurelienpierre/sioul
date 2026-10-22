@@ -164,6 +164,28 @@ pub fn prepare(root: &Path, part: &str, file: &str, path: &Path) -> Result<Prepa
 }
 
 impl Prepared {
+    /// What changed in the file since it was copied, said ("its time
+    /// 1761…→1761…"); None while it is as it was copied. Looked at under the
+    /// exchanges' lock: changed, it is copied again outside it (`share::put_back`).
+    pub fn changed(&self) -> Option<String> {
+        let now = standing(&self.path);
+        if now == self.copied && now.is_some() {
+            return None;
+        }
+        let (Some((size, time, inode)), Some((was_size, was_time, was_inode))) = (now, self.copied) else { return Some("gone or unreadable".into()) };
+        let mut said = Vec::new();
+        if size != was_size {
+            said.push(format!("its size {was_size}→{size}"));
+        }
+        if time != was_time {
+            said.push(format!("its time {was_time:?}→{time:?}"));
+        }
+        if inode != was_inode {
+            said.push(format!("its inode {was_inode}→{inode}"));
+        }
+        Some(said.join(", "))
+    }
+
     /// Kept as the file's version at `now_ms` by a rename, when the file is
     /// still as it was copied: whether it was (else the caller keeps the file
     /// as it is now, `keep`). Under the exchanges' lock.
@@ -184,6 +206,21 @@ impl Drop for Prepared {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.temporary);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: each copy into the history made under the exchanges' lock
+    /// on this thread, with why (`share::put_back`), so that a test says why
+    /// rather than how long a dose waited.
+    pub(crate) static UNDER_LOCK: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A copy made under the exchanges' lock, and why (tests only: counted).
+pub(crate) fn copied_under_lock(why: &str) {
+    #[cfg(test)]
+    UNDER_LOCK.with(|all| all.borrow_mut().push(why.to_string()));
+    let _ = why;
 }
 
 #[cfg(test)]

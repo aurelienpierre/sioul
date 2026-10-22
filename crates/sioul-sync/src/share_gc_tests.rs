@@ -1350,10 +1350,14 @@ fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
             let (folder, inside, stores) = (folder.clone(), memory.clone(), stores.clone());
             let putting = std::thread::spawn(move || {
                 crate::history::SLOW_COPY.with(|s| s.set(std::time::Duration::from_millis(slow)));
-                put_back(&inside, Some((&folder, &key)), &stores, "notes", "files/notes/big.md", &stamp, at)
+                let done = put_back(&inside, Some((&folder, &key)), &stores, "notes", "files/notes/big.md", &stamp, at);
+                (done, crate::history::UNDER_LOCK.with(|all| all.take()))
             });
             let (longest, _) = waits_beside(&memory, &putting, std::time::Duration::from_millis(5));
-            assert_eq!(putting.join().unwrap(), Ok(()));
+            let (done, under_lock) = putting.join().unwrap();
+            assert_eq!(done, Ok(()));
+            // Why, rather than how long a dose waited (22 October 2026: CI's Linux job, 0.49 s).
+            assert!(under_lock.is_empty(), "copied under the lock: {under_lock:?}");
             longest
         };
         // The sealed version over the second note, measured: the second note kept, as a copy.
@@ -1370,6 +1374,52 @@ fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
         assert!(slowed < std::time::Duration::from_millis(250), "a dose's exchange waited {slowed:?} at most");
         let _ = std::fs::remove_dir_all(&base);
     }
+}
+
+/// A note written by another program between the copy a put back makes
+/// ahead of the lock and the lock: copied again outside it, never under it,
+/// and the note as it was then is the one kept (22 October 2026).
+#[test]
+fn a_note_written_meanwhile_is_copied_again_outside_the_lock() {
+    let base = scratch("gc-history-written-meanwhile");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "today.md", b"# Today\n");
+    put(&dn, "note.md", b"# The first\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    let root = crate::history::root(&desk.memory);
+    crate::history::keep(&root, "notes", "files/notes/note.md", &dn.join("note.md"), NOW + MINUTE).unwrap();
+    std::fs::write(dn.join("note.md"), b"# The second\n").unwrap();
+    let first = crate::history::versions(&root, "notes", "files/notes/note.md").into_iter().find(|v| v.sealed.is_none()).unwrap().stamp;
+    let stores = stores_with(&desk, &dn, false);
+    let (note, memory) = (dn.join("note.md"), desk.memory.clone());
+    let putting = std::thread::spawn(move || {
+        let mut left = 2;
+        crate::share::AFTER_PREPARE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                if left > 0 {
+                    left -= 1;
+                    let other = note.with_extension("other");
+                    std::fs::write(&other, format!("# Written elsewhere, {left} left\n")).unwrap();
+                    std::fs::rename(&other, &note).unwrap();
+                }
+            }));
+        });
+        let done = put_back(&memory, Some((&folder, &key)), &stores, "notes", "files/notes/note.md", &first, NOW + 2 * MINUTE);
+        (done, crate::history::UNDER_LOCK.with(|all| all.take()))
+    });
+    let (done, under_lock) = putting.join().unwrap();
+    assert_eq!(done, Ok(()));
+    assert!(under_lock.is_empty(), "copied under the lock: {under_lock:?}");
+    assert_eq!(std::fs::read(dn.join("note.md")).unwrap(), b"# The first\n");
+    let kept: Vec<Vec<u8>> = crate::history::versions(&root, "notes", "files/notes/note.md").into_iter().filter(|v| v.sealed.is_none()).filter_map(|v| crate::history::version(&root, "notes", "files/notes/note.md", &v.stamp)).filter_map(|k| match k {
+        crate::history::Kept::Copy(path) => std::fs::read(path).ok(),
+        _ => None,
+    }).collect();
+    assert!(kept.contains(&b"# Written elsewhere, 0 left\n".to_vec()), "the note as it was when put back over is kept");
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// J2 (review of part 3): an earlier version of a large note put back

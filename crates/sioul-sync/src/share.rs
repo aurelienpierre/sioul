@@ -6580,19 +6580,45 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     let _ = set_time(&opened, std::time::SystemTime::now());
     // The file as it is now copied into its versions ahead of the lock too, closed there, so that
     // under the lock it is kept by a rename alone, while it is as it was copied (review of part 3, R-7).
-    let prepared = if path.exists() {
-        match crate::history::prepare(&root, part, file, &path) {
-            Ok(prepared) => Some(prepared),
-            Err(e) => {
-                let _ = std::fs::remove_file(&opened);
-                return Err(e);
-            }
-        }
-    } else {
-        None
+    let prepare = || {
+        let prepared = if path.exists() { crate::history::prepare(&root, part, file, &path).map(Some) } else { Ok(None) };
+        after_prepare();
+        prepared
     };
-    let placed = (|| {
-        let _running = exchange_lock(memory, true)?;
+    let mut prepared = match prepare() {
+        Ok(prepared) => prepared,
+        Err(e) => {
+            let _ = std::fs::remove_file(&opened);
+            return Err(e);
+        }
+    };
+    // The file changed between its copy and the lock (another program wrote
+    // it): copied again outside the lock, a few times, never under it
+    // (22 October 2026: CI's Linux job waited 0.49 s for a 64 MB copy made under it).
+    let mut again = 0;
+    let placed = loop {
+        let changed = |prepared: &Option<crate::history::Prepared>| prepared.as_ref().and_then(crate::history::Prepared::changed);
+        let looked = (|| {
+            let running = exchange_lock(memory, true)?;
+            if again < PREPARE_AGAIN && changed(&prepared).is_some() {
+                return Ok(None);
+            }
+            Ok(Some(running))
+        })();
+        let running = match looked {
+            Ok(Some(running)) => running,
+            Ok(None) => {
+                again += 1;
+                prepared = match prepare() {
+                    Ok(prepared) => prepared,
+                    Err(e) => break Err(e),
+                };
+                continue;
+            }
+            Err(e) => break Err(e),
+        };
+        break (|| {
+        let _running = running;
         // A last look, under the lock.
         if store.folder && !writable_in(store, &path, vault.map(|(folder, _)| folder), memory) {
             return Err(not_there());
@@ -6613,10 +6639,15 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             }
             beside
         };
-        let put = || {
-            // Kept by its copy made ahead; copied now only when the file changed meanwhile, or came.
-            let kept_ahead = prepared.is_some_and(|prepared| prepared.keep(now_ms));
+        let mut put = || {
+            // Kept by its copy made ahead; copied now only when the file came, or changed again and again.
+            let why = match &prepared {
+                Some(prepared) => prepared.changed().unwrap_or_else(|| "its copy could not be renamed".into()),
+                None => "it came meanwhile".into(),
+            };
+            let kept_ahead = prepared.take().is_some_and(|prepared| prepared.keep(now_ms));
             if path.exists() && !kept_ahead {
+                crate::history::copied_under_lock(&why);
                 crate::history::keep(&root, part, file, &path, now_ms)?;
             }
             // Dated now, wherever the copy took its time from: a change made here, which the others take.
@@ -6629,10 +6660,15 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             let _ = std::fs::remove_file(&beside);
         }
         done
-    })();
+        })();
+    };
     let _ = std::fs::remove_file(&opened);
     placed
 }
+
+/// How many times a file changed between its copy and the exchanges' lock
+/// is copied again outside it before it is copied under it (`put_back`).
+const PREPARE_AGAIN: usize = 3;
 
 /// For a file sealed apart, the content a change made here replaces: its hash as last known ("" new).
 fn base_of(memory: &Memory, key: &str) -> String {
@@ -7328,6 +7364,23 @@ thread_local! {
     /// Tests only: what runs on this thread after each plan of a removal (a
     /// slow plan, an exchange writing the memory meanwhile). Never in a build.
     pub(crate) static AFTER_PLAN: std::cell::RefCell<Option<Box<dyn FnMut()>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: what runs on this thread after each copy a put back makes
+    /// ahead of the lock (the file written meanwhile). Never in a build.
+    pub(crate) static AFTER_PREPARE: std::cell::RefCell<Option<Box<dyn FnMut()>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// After each copy made ahead of the lock, what a test asks (`AFTER_PREPARE`); nothing in a build.
+fn after_prepare() {
+    #[cfg(test)]
+    AFTER_PREPARE.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().as_mut() {
+            hook();
+        }
+    });
 }
 
 /// After each plan of a removal, what a test asks (`AFTER_PLAN`); nothing in a build.
