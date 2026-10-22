@@ -81,6 +81,8 @@ Item {
     readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
+    // The event being made a task, asked about first.
+    property string converting: ""
     // The one opened is a task's time block: shown as the task it is.
     readonly property bool openedTask: page.opened !== null && (page.opened.task || "") !== ""
     // When the open event is reminded, and its own choice (docs/reminders.md): {line, remind, writable}.
@@ -234,7 +236,18 @@ Item {
             eventDialog.now().makeFromTask(event.task, event.key, event.start, event.end)
             return
         }
-        const problem = page.sioul.eventToTask(event.key)
+        // What it cannot keep as a task, asked first (F5, 22 October 2026).
+        const losses = page.sioul.eventToTaskLosses(event.key)
+        if (losses !== "") {
+            page.converting = event.key
+            convertChoice.now().ask(event.summary, losses, page.sioul.text("agenda-make-task"))
+            return
+        }
+        page.toTask(event.key)
+    }
+
+    function toTask(key) {
+        const problem = page.sioul.eventToTask(key)
         if (problem === "")
             page.opened = null
         else
@@ -894,6 +907,18 @@ Item {
                         onClicked: deleteChoiceForm.close()
                     }
                 }
+            }
+        }
+    }
+
+    Later {
+        id: convertChoice
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onConfirmed: page.toTask(page.converting)
             }
         }
     }

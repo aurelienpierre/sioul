@@ -26,11 +26,15 @@ Dialog {
     // 2026): its UID, and the file of the time block it was opened from.
     property string taskUid: ""
     property string taskBlock: ""
+    // What the task cannot keep as an appointment, said before Save (F5); else "".
+    property string losses: ""
     property var calendars: []
     // The calendar of the event opened ("account/id"), its name, and whether it stays on this device alone.
     property string currentCalendar: ""
     property string calendarName: ""
     property string hereOnly: ""
+    // Why it stays in its calendar: a meeting with others (F2, 22 October 2026); else "".
+    property string stays: ""
     property bool moreShown: false
     property string problem: ""
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
@@ -74,6 +78,7 @@ Dialog {
         dialog.key = key
         dialog.taskUid = ""
         dialog.taskBlock = ""
+        dialog.losses = ""
         dialog.problem = ""
         dialog.links = []
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
@@ -95,6 +100,7 @@ Dialog {
             dialog.currentCalendar = found.calendar || ""
             dialog.calendarName = found.calendar_name || ""
             dialog.hereOnly = found.here_only || ""
+            dialog.stays = found.stays || ""
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
             dialog.remind = e.remind || ""
@@ -116,6 +122,7 @@ Dialog {
             dialog.currentCalendar = ""
             dialog.calendarName = ""
             dialog.hereOnly = ""
+            dialog.stays = ""
             dialog.around = { before: 0, after: 0 }
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.remind = ""
@@ -147,6 +154,7 @@ Dialog {
         dialog.edit("", made.start.slice(0, 10))
         dialog.taskUid = uid
         dialog.taskBlock = block
+        dialog.losses = made.losses || ""
         title.text = made.title
         place.text = made.location
         notes.text = made.notes
@@ -239,6 +247,15 @@ Dialog {
             width: scroll.availableWidth
             spacing: 10
 
+            Label {
+                objectName: "event-losses"
+                visible: dialog.losses !== ""
+                Layout.fillWidth: true
+                text: dialog.losses
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
             TextField {
                 id: title
 
@@ -322,7 +339,7 @@ Dialog {
                     id: calendar
 
                     objectName: "event-calendar"
-                    visible: dialog.calendars.length > 1 && (dialog.key === "" || dialog.calendars.some(c => c.id === dialog.currentCalendar))
+                    visible: dialog.calendars.length > 1 && dialog.stays === "" && (dialog.key === "" || dialog.calendars.some(c => c.id === dialog.currentCalendar))
                     Layout.fillWidth: true
                     model: dialog.calendars.map(c => dialog.theme.plain(c.name))
                     Accessible.name: dialog.sioul.text("event-calendar")
@@ -334,6 +351,17 @@ Dialog {
                     text: dialog.theme.plain(dialog.sioul.textWith("event-calendar-in", "name", dialog.calendarName))
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
+                }
+                Label {
+                    objectName: "event-stays"
+                    visible: dialog.stays !== ""
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    text: dialog.stays
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: dialog.theme.muted
                 }
                 Label {
                     objectName: "event-here-only"

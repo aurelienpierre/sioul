@@ -40,6 +40,7 @@ Item {
             "/calendars/murena/personnel/dentist.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks" },
             "/calendars/local/personal/walk.ics": { calendar: "local/personal", calendar_name: "Personal · on this device only" },
             "/calendars/murena/birthdays/ana.ics": { calendar: "murena/birthdays", calendar_name: "Birthdays · example.org" },
+            "/calendars/murena/personnel/meeting.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks", stays: "A meeting with others stays in its calendar." },
             "/calendars/murena/personnel/kept.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks", margins: { before: 25, after: 60 } }
         })
 
@@ -61,6 +62,7 @@ Item {
                 calendar: found.calendar,
                 calendar_name: found.calendar_name,
                 here_only: "",
+                stays: found.stays || "",
                 read_only: false
             })
         }
@@ -176,6 +178,17 @@ Item {
             dialog.save()
             compare(mock.saved.edit.margins.before, 25)
             compare(mock.saved.edit.margins.after, 60)
+        }
+
+        // A meeting with others: no chooser, why said, and it stays (F2, 22 October 2026).
+        function test_a_meeting_with_others_says_why_it_stays() {
+            dialog.edit("/calendars/murena/personnel/meeting.ics", "")
+            tryCompare(dialog, "opened", true)
+            verify(!chooser().visible)
+            const why = find(dialog.contentItem, "event-stays")
+            verify(why.visible && why.text.indexOf("stays") >= 0)
+            dialog.save()
+            compare(mock.saved.calendar, "murena/personnel")
         }
 
         // A new event goes into the calendar chosen, the first by default.

@@ -1384,8 +1384,9 @@ pub fn stored(text: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The agenda reads the calendars that take events (21 October 2026): an
-    /// event slipped into a list that takes tasks only is not one of its own.
+    /// The agenda reads the calendars that take events (21 October 2026),
+    /// and an event slipped into a list said to take tasks only shows too:
+    /// what a folder holds counts, nothing is hidden (F3, 22 October 2026).
     #[test]
     fn the_agenda_reads_calendars_that_take_events() {
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds events", None, &["VEVENT"]).unwrap();
@@ -1397,7 +1398,10 @@ mod tests {
         }
         let mut read: Vec<String> = occurrences(4_096_000_000, 4_097_000_000).into_iter().map(|o| o.uid).filter(|u| u.starts_with("in-")).collect();
         read.sort();
-        assert_eq!(read, ["in-both", "in-events"]);
+        assert_eq!(read, ["in-both", "in-events", "in-list"]);
+        let empty_list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds empty list", None, &["VTODO"]).unwrap();
+        assert!(!vdir::collections(Kind::Calendars).into_iter().any(|c| c.id == empty_list.id && c.holds("VEVENT")), "a list holding no event takes none");
+        let _ = std::fs::remove_dir_all(&empty_list.dir);
         for c in [calendar, both, list] {
             let _ = std::fs::remove_dir_all(&c.dir);
         }

@@ -94,6 +94,77 @@ pub fn task_of(event: &EventEdit) -> TaskEdit {
     }
 }
 
+/// What a task holds that an appointment cannot, by word ids
+/// (`appointment-lost-*`): said before it becomes one (the review of 22
+/// October 2026, F5). Its title, place, notes, repeat, margins, costs and
+/// links go along.
+pub fn task_losses(task: &Task) -> Vec<&'static str> {
+    let mut lost = Vec::new();
+    for (has, word) in [
+        (!task.due.is_empty(), "due"),
+        (task.priority > 0, "priority"),
+        (!task.categories.is_empty(), "tags"),
+        (!task.contacts.is_empty(), "contacts"),
+        (!task.kind.is_empty(), "kind"),
+        (!task.projects.is_empty(), "projects"),
+    ] {
+        if has {
+            lost.push(word);
+        }
+    }
+    lost
+}
+
+/// What an event holds that a task cannot, by word ids: its own reminder,
+/// its alarms. Its title, place, notes, repeat, margins, costs, length and
+/// links go along.
+pub fn event_losses(text: &str) -> Vec<&'static str> {
+    let source = crate::lines::unfold(text);
+    let mut lost = Vec::new();
+    if source.iter().any(|l| crate::lines::name(l) == crate::reminders::REMIND) {
+        lost.push("remind");
+    }
+    if source.iter().any(|l| crate::lines::name(l) == "BEGIN" && crate::lines::value(l).trim().eq_ignore_ascii_case("VALARM")) {
+        lost.push("alarms");
+    }
+    lost
+}
+
+/// Another task's text once the thing it names by `old` became `new`, an
+/// appointment (`became_event`) or a task: its links to it named again; its
+/// waits and ties of steps on it dropped when it became an appointment,
+/// which nothing waits for. None when it names nothing of it.
+pub fn retarget(text: &str, old: &str, new: &str, became_event: bool, now: &Zoned) -> Option<String> {
+    use crate::tasks::{link_line, link_of};
+    let olds = [format!("uid:{old}"), crate::links::task_uri(old), crate::links::event_uri(old)];
+    let names_it = |l: &str| match crate::lines::name(l).as_str() {
+        "LINK" => olds.contains(&link_of(l).uri),
+        "RELATED-TO" => crate::lines::value(l).trim() == old,
+        _ => false,
+    };
+    let source = crate::lines::unfold(text);
+    let hits: Vec<&String> = source.iter().filter(|l| names_it(l)).collect();
+    if hits.is_empty() {
+        return None;
+    }
+    let added: Vec<String> = hits
+        .iter()
+        .filter_map(|l| {
+            if crate::lines::name(l) == "LINK" {
+                let link = link_of(l);
+                let uri = if link.uri.starts_with("uid:") { format!("uid:{new}") } else if became_event { crate::links::event_uri(new) } else { crate::links::task_uri(new) };
+                Some(link_line(&crate::tasks::Link { uri, ..link }))
+            } else if became_event {
+                None
+            } else {
+                let value = crate::lines::value(l);
+                Some(format!("{}{new}", &l[..l.len() - value.len()]))
+            }
+        })
+        .collect();
+    crate::tasks::replace_lines(text, |l| names_it(l), added, now).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +195,24 @@ mod tests {
         let asked = event_of(&dated, None, today, &zone());
         assert_eq!((asked.start.as_str(), asked.end.as_str()), ("2026-10-24T09:00", "2026-10-24T10:00"));
         assert_eq!(event_of(&Task::default(), None, today, &zone()).start, "2026-10-21T09:00");
+    }
+
+    /// What one kind holds that the other cannot is said; another task's ties
+    /// follow the new UID, its waits dropped when it became an appointment (F5).
+    #[test]
+    fn what_cannot_go_along_is_said_and_ties_follow() {
+        let task = Task { due: "2026-10-30".into(), priority: 2, categories: vec!["admin".into()], ..Task::default() };
+        assert_eq!(task_losses(&task), ["due", "priority", "tags"]);
+        assert!(task_losses(&Task::default()).is_empty());
+        let event = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nX-SIOUL-REMIND:30\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(event_losses(event), ["remind", "alarms"]);
+        let now: Zoned = "2026-10-22T12:00[Europe/Paris]".parse().unwrap();
+        let other = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:other\r\nRELATED-TO;RELTYPE=DEPENDS-ON:old\r\nLINK;LINKREL=related;VALUE=URI:sioul:task/old\r\nLINK;LINKREL=related;VALUE=UID:old\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        let as_event = retarget(other, "old", "new", true, &now).unwrap();
+        assert!(!as_event.contains("RELATED-TO") && as_event.contains("sioul:event/new") && as_event.contains("VALUE=UID:new") && !as_event.contains("old\r\n"), "{as_event}");
+        let as_task = retarget(other, "old", "new", false, &now).unwrap();
+        assert!(as_task.contains("RELATED-TO;RELTYPE=DEPENDS-ON:new") && as_task.contains("sioul:task/new"), "{as_task}");
+        assert!(retarget(other, "nobody", "new", true, &now).is_none());
     }
 
     /// An appointment made a task: its day to start, its length as its estimate.

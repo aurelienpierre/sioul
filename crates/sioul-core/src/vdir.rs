@@ -244,8 +244,12 @@ fn crashed(step: u8) -> bool {
 /// new item and the deletion, whatever their accounts (this device's own
 /// calendar to a server's: the event reaches your other devices).
 pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
-    let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
-    replace_items(&[from.to_path_buf()], &[], to, &text)
+    // Read under the journal's lock, never before it: a sync writing it in
+    // between is moved as it wrote it (the review of 22 October 2026, F8).
+    crate::filelock::with_lock(&moves_path(), || {
+        let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
+        replace_locked(from, &[], &[], to, &text)
+    })
 }
 
 /// Items made another (a task made an appointment, an appointment a task,
@@ -285,8 +289,13 @@ fn replace_locked(from: &Path, also: &[PathBuf], made: &[(PathBuf, String)], to:
     if crashed(3) {
         return Ok(());
     }
-    std::fs::remove_file(from).map_err(|e| e.to_string())?;
-    for path in also {
+    // The old one taken out, unless the new one took its place: the same
+    // collection, the same name (a plan's task become its event, the review
+    // of 22 October 2026, F1: both were lost).
+    if from != to {
+        std::fs::remove_file(from).map_err(|e| e.to_string())?;
+    }
+    for path in also.iter().filter(|p| p.as_path() != to) {
         let _ = std::fs::remove_file(path);
     }
     if crashed(4) {
@@ -313,10 +322,13 @@ fn finish_moves_now() {
     }
     for m in &moves.moves {
         if m.to.exists() {
-            for path in std::iter::once(&m.from).chain(&m.also) {
+            // Never the item made, when it took the old one's place (one collection, one name: F1).
+            for path in std::iter::once(&m.from).chain(&m.also).filter(|p| **p != m.to) {
                 if path.exists() {
                     let _ = std::fs::remove_file(path);
                 }
+                // Its deletion on its server waits for the new item to be there (F6).
+                note_moved(path, &m.to);
             }
         } else {
             for path in &m.made {
@@ -325,6 +337,89 @@ fn finish_moves_now() {
         }
     }
     let _ = moves_save(&Moves::default());
+}
+
+/// Items moved or made another here, whose old copy's deletion on its
+/// server waits until the new one is there (the review of 22 October 2026,
+/// F6: a refused PUT after the DELETE lost the event on every other device).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Moved {
+    #[serde(default, rename = "moved")]
+    moved: Vec<MovedItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct MovedItem {
+    old: PathBuf,
+    new: PathBuf,
+}
+
+fn moved_path() -> PathBuf {
+    crate::config::state_dir().join("dav").join("moved.toml")
+}
+
+fn moved_change<T>(f: impl FnOnce(&mut Moved) -> T) -> T {
+    let path = moved_path();
+    crate::filelock::with_lock(&path, || {
+        let mut moved: Moved = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let before = moved.moved.clone();
+        let out = f(&mut moved);
+        if moved.moved != before {
+            if moved.moved.is_empty() {
+                let _ = std::fs::remove_file(&path);
+            } else if let Ok(text) = toml::to_string(&moved) {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = crate::filelock::replace(&path, text.as_bytes());
+            }
+        }
+        out
+    })
+}
+
+fn note_moved(old: &Path, new: &Path) {
+    moved_change(|m| {
+        m.moved.retain(|i| i.old != old);
+        m.moved.push(MovedItem { old: old.to_path_buf(), new: new.to_path_buf() });
+    });
+}
+
+/// The new item an old one's deletion on its server waits for, while the
+/// new one is not there yet (`dav`: its PUT first, then the DELETE): None
+/// once it is, or when nothing waits.
+pub fn deletion_waits_for(old: &Path) -> Option<PathBuf> {
+    let new = moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone()))?;
+    (!new_is_there(old, &new)).then_some(new)
+}
+
+/// Whether the new item of a move is on its server, or needs not be: gone
+/// since, kept on this device alone, or in the old one's own collection.
+fn new_is_there(old: &Path, new: &Path) -> bool {
+    if !new.exists() || new.parent() == old.parent() {
+        return true;
+    }
+    let found = [Kind::Calendars, Kind::Contacts].into_iter().find_map(|kind| {
+        let rest = new.strip_prefix(kind.root()).ok()?;
+        let mut parts = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string());
+        Some((kind, parts.next()?, parts.next()?, parts.next()?))
+    });
+    let Some((kind, account, id, file)) = found else { return true };
+    if account == LOCAL {
+        return true;
+    }
+    State::load(&state_path(&account, kind, &id)).items.iter().any(|i| i.file == file && (!i.etag.is_empty() || !i.hash.is_empty()))
+}
+
+/// The old copy's deletion done on its server: nothing waits for it any more.
+pub fn deletion_done(old: &Path) {
+    moved_change(|m| m.moved.retain(|i| i.old != old));
+}
+
+/// Whether `new` is an item moved or made here whose old copy may still be
+/// on its server: never replaced by what the server holds under its UID.
+pub fn moved_here(new: &Path) -> bool {
+    moved_change(|m| m.moved.iter().any(|i| i.new == new))
 }
 
 /// Every collection kept here, those deleted and not yet gone from the server included.
@@ -342,6 +437,16 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
             if kind == Kind::Calendars && account_id == LOCAL && state.components.is_empty() {
                 settle_kinds(&dir, &mut state, &state_path(&account_id, kind, &id));
             }
+            // What it holds counts too, at each read: a task that came into a
+            // calendar said to take events alone (another device's, an older
+            // Sioul's, an import) is never hidden (the review of 22 October 2026, F3).
+            if kind == Kind::Calendars && !state.components.is_empty() {
+                for held in kinds_held(&dir) {
+                    if !state.components.iter().any(|c| c.eq_ignore_ascii_case(held)) {
+                        state.components.push(held.to_string());
+                    }
+                }
+            }
             found.push(Collection {
                 kind,
                 account: account_id.clone(),
@@ -356,6 +461,31 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
     }
     found.sort_by(|a, b| (&a.account, a.name.to_lowercase()).cmp(&(&b.account, b.name.to_lowercase())));
     found
+}
+
+/// The kinds a calendar's folder holds ("VEVENT", "VTODO"), read again only
+/// when its list of files changed (its time and count), else as last read.
+fn kinds_held(dir: &Path) -> Vec<&'static str> {
+    static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, usize, Vec<&'static str>)>>> = std::sync::Mutex::new(None);
+    let items: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
+    let time = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+    let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let known = seen.get_or_insert_with(Default::default);
+    if let Some((t, n, held)) = known.get(dir)
+        && *t == time
+        && *n == items.len()
+    {
+        return held.clone();
+    }
+    let (mut events, mut tasks) = (false, false);
+    for item in &items {
+        let text = std::fs::read_to_string(item).unwrap_or_default().to_ascii_uppercase();
+        events |= text.contains("BEGIN:VEVENT");
+        tasks |= text.contains("BEGIN:VTODO");
+    }
+    let held: Vec<&'static str> = [(events, "VEVENT"), (tasks, "VTODO")].into_iter().filter(|(h, _)| *h).map(|(_, k)| k).collect();
+    known.insert(dir.to_path_buf(), (time, items.len(), held.clone()));
+    held
 }
 
 /// A calendar of this device's own whose kinds were never written (made
@@ -620,10 +750,15 @@ mod tests {
                 _ => assert!(!here && there && std::fs::read_to_string(&target).unwrap() == text, "step {step}"),
             }
             assert!(here != there, "step {step}: never twice, never lost");
-            assert!(!moves_path().exists(), "step {step}: nothing left to finish");
+            assert!(!noted(&source), "step {step}: nothing left to finish");
             let _ = std::fs::remove_dir_all(&from);
             let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&account));
         }
+    }
+
+    /// Whether the journal still notes a move from `path` (another test's own may be under way).
+    fn noted(path: &Path) -> bool {
+        crate::filelock::with_lock(&moves_path(), || moves_load().moves.iter().any(|m| m.from == path))
     }
 
     /// A task made an appointment and back (21 October 2026), cut short
@@ -648,7 +783,7 @@ mod tests {
                 1 | 2 => assert!(before, "step {step}: the task kept, what was made taken back"),
                 _ => assert!(after, "step {step}: the event and its block, the task gone"),
             }
-            assert!(!moves_path().exists(), "step {step}: nothing left to finish");
+            assert!(!noted(&task), "step {step}: nothing left to finish");
             let _ = std::fs::remove_dir_all(&list);
             let _ = std::fs::remove_dir_all(&calendar);
         }
@@ -663,11 +798,22 @@ mod tests {
     fn a_calendar_says_what_it_takes() {
         let tr = crate::i18n::Translator::new("en");
         let config = crate::config::Config::default();
+        // Each folder made whole beside, then put in place: a look from another
+        // test meanwhile never sees it before its item (CI's Windows job of 22
+        // October 2026 settled one while it was still empty).
         let made = |id: &str, item: Option<&str>| {
-            let dir = prepare(Kind::Calendars, LOCAL, id, id, None).unwrap();
+            let staged = Kind::Calendars.root().parent().unwrap().join(format!("staged-{id}"));
+            let _ = std::fs::remove_dir_all(&staged);
+            std::fs::create_dir_all(&staged).unwrap();
+            std::fs::write(staged.join("displayname"), id).unwrap();
             if let Some(item) = item {
-                std::fs::write(dir.join("x.ics"), format!("BEGIN:VCALENDAR\r\nBEGIN:{item}\r\nUID:x\r\nEND:{item}\r\nEND:VCALENDAR\r\n")).unwrap();
+                std::fs::write(staged.join("x.ics"), format!("BEGIN:VCALENDAR\r\nBEGIN:{item}\r\nUID:x\r\nEND:{item}\r\nEND:VCALENDAR\r\n")).unwrap();
             }
+            let dir = Kind::Calendars.root().join(LOCAL).join(id);
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::remove_file(state_path(LOCAL, Kind::Calendars, id));
+            std::fs::create_dir_all(dir.parent().unwrap()).unwrap();
+            std::fs::rename(&staged, &dir).unwrap();
             dir
         };
         let dirs = [made("kinds-old-events", Some("VEVENT")), made("kinds-old-tasks", Some("VTODO")), made("kinds-old-empty", None)];
@@ -691,6 +837,29 @@ mod tests {
             let _ = std::fs::remove_dir_all(dir);
         }
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join("kinds-server"));
+    }
+
+    /// A task become an event in a calendar taking both, under the same
+    /// name (a plan's key, 22 October 2026, F1): the event stays, whether the
+    /// move ends or is cut short at any step.
+    #[test]
+    fn an_item_made_another_in_its_own_place_stays() {
+        for step in 0..=4u8 {
+            let dir = prepare(Kind::Calendars, LOCAL, &format!("same-place-{step}"), "Both", None).unwrap();
+            let path = dir.join("plan-x.ics");
+            std::fs::write(&path, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:plan-x\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+            let event = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:plan-x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+            CRASH_AFTER.with(|c| c.set(step));
+            replace_items(std::slice::from_ref(&path), &[], &path, event).unwrap();
+            CRASH_AFTER.with(|c| c.set(0));
+            finish_moves();
+            let now = std::fs::read_to_string(&path).unwrap_or_default();
+            match step {
+                1 | 2 => assert!(now.contains("VTODO"), "step {step}: cut before the event: the task kept"),
+                _ => assert_eq!(now, event, "step {step}: the event kept"),
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     /// Moves made side by side while another finishes moves in a loop (a
@@ -727,6 +896,27 @@ mod tests {
         }
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         finishing.join().unwrap();
+    }
+
+    /// A task that came into a calendar said to take events alone (another
+    /// device's files arriving, an older Sioul, an import) is never hidden:
+    /// what a folder holds counts at each read (the review of 22 October
+    /// 2026, F3). Saved kinds are not changed by it.
+    #[test]
+    fn what_a_calendar_holds_always_shows() {
+        for (account, id) in [(LOCAL, "held-events-local"), ("held-server", "held-events")] {
+            let dir = prepare(Kind::Calendars, account, id, "Events", None).unwrap();
+            State { components: vec!["VEVENT".into()], ..State::default() }.save(&state_path(account, Kind::Calendars, id)).unwrap();
+            std::fs::write(dir.join("e.ics"), "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+            let find = || collections(Kind::Calendars).into_iter().find(|c| c.account == account && c.id == id).unwrap();
+            assert!(!find().holds("VTODO"));
+            std::fs::write(dir.join("t.ics"), "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+            assert!(find().holds("VTODO") && find().holds("VEVENT"), "{account}: the task that came shows");
+            assert!(crate::tasks::lists().iter().any(|c| c.account == account && c.id == id), "{account}: among the task lists");
+            assert_eq!(State::load(&state_path(account, Kind::Calendars, id)).components, ["VEVENT"], "what the server said stays said");
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::remove_file(state_path(account, Kind::Calendars, id));
+        }
     }
 
     /// A calendar made while another thread looks at the calendars (a sync,
