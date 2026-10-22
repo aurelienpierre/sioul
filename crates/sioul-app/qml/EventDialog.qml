@@ -300,6 +300,51 @@ Dialog {
                 placeholderText: dialog.sioul.text("event-where")
             }
 
+            // Its calendar, said, and another chosen: a new event's, or an event
+            // moved there, on the phone too. In sight, never folded under "More
+            // details": folded there, it was never found (22 October 2026).
+            GridLayout {
+                objectName: "event-calendar-row"
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 6
+
+                Label {
+                    visible: dialog.calendars.length > 1 || dialog.calendarName !== ""
+                    text: dialog.sioul.text("event-calendar")
+                    color: dialog.theme.muted
+                }
+                PlainComboBox {
+                    id: calendar
+
+                    objectName: "event-calendar"
+                    visible: dialog.calendars.length > 1 && (dialog.key === "" || dialog.calendars.some(c => c.id === dialog.currentCalendar))
+                    Layout.fillWidth: true
+                    model: dialog.calendars.map(c => dialog.theme.plain(c.name))
+                    Accessible.name: dialog.sioul.text("event-calendar")
+                }
+                Label {
+                    objectName: "event-calendar-name"
+                    visible: dialog.calendarName !== "" && !calendar.visible
+                    Layout.fillWidth: true
+                    text: dialog.theme.plain(dialog.sioul.textWith("event-calendar-in", "name", dialog.calendarName))
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    objectName: "event-here-only"
+                    visible: dialog.hereOnly !== ""
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    text: dialog.hereOnly
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: dialog.theme.muted
+                }
+            }
+
             Button {
                 flat: true
                 text: (dialog.moreShown ? "▾  " : "▸  ") + dialog.sioul.text("ui-more-details")
@@ -393,41 +438,6 @@ Dialog {
                     theme: dialog.theme
                     values: dialog.demands
                     onEdited: (name, value) => dialog.rate(name, value)
-                }
-                // Its calendar, said, and another chosen: a new event's, or an event moved there
-                // (21 October 2026), on the phone too.
-                Label {
-                    visible: dialog.calendars.length > 1 || dialog.calendarName !== ""
-                    text: dialog.sioul.text("event-calendar")
-                    color: dialog.theme.muted
-                }
-                PlainComboBox {
-                    id: calendar
-
-                    objectName: "event-calendar"
-                    visible: dialog.calendars.length > 1 && (dialog.key === "" || dialog.calendars.some(c => c.id === dialog.currentCalendar))
-                    Layout.fillWidth: true
-                    model: dialog.calendars.map(c => dialog.theme.plain(c.name))
-                    Accessible.name: dialog.sioul.text("event-calendar")
-                }
-                Label {
-                    objectName: "event-calendar-name"
-                    visible: dialog.calendarName !== "" && !calendar.visible
-                    Layout.fillWidth: true
-                    text: dialog.theme.plain(dialog.sioul.textWith("event-calendar-in", "name", dialog.calendarName))
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                }
-                Label {
-                    objectName: "event-here-only"
-                    visible: dialog.hereOnly !== ""
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    text: dialog.hereOnly
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    font.pixelSize: 12
-                    color: dialog.theme.muted
                 }
             }
         }

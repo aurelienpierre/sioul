@@ -397,9 +397,11 @@ struct EventView {
     read_only: bool,
 }
 
-/// Two events at once in the next `days` days, their margins counted, those
-/// set aside left out, as JSON: [{key, day, today, first, second}], each
-/// event {key, title, from, to} ("09:30"), for the Porch and the agenda.
+/// Two events at once in the next `days` days, or too close to go from one to
+/// the other (`overlaps::overlaps`), those set aside left out, as JSON:
+/// [{key, day, today, first, second, gap, needed}], each event {key, title,
+/// from, to} ("09:30"), `gap` and `needed` in minutes (a gap of 0 or more:
+/// they do not overlap, the way between takes longer), for the Porch and the agenda.
 pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> String {
     let now = Zoned::now();
     let zone = now.time_zone().clone();
@@ -416,7 +418,7 @@ pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>,
         .iter()
         // Over already: nothing to do about it.
         .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())
-        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second) }))
+        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed }))
         .collect();
     json(&rows)
 }
@@ -461,6 +463,32 @@ pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, S
 
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
 pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, calendar: &str) -> Result<(), String> {
+    let saved = write_event(key, edit, calendar)?;
+    for account in &saved.accounts {
+        nudge(shared, account);
+    }
+    if let Some(task) = saved.renamed {
+        let _ = crate::work::retitle(qt, shared, &task, &saved.title);
+    }
+    tell(qt, shared, tr().text("event-saved", None));
+    show_pim(qt, shared);
+    crate::work::show_work(qt, shared);
+    Ok(())
+}
+
+/// What saving the event form wrote: its file at last, the accounts to tell,
+/// the task of a time block renamed, and its title.
+struct SavedEvent {
+    path: PathBuf,
+    accounts: Vec<String>,
+    renamed: Option<String>,
+    title: String,
+}
+
+/// The event form written (`save_event`, off the window): into its file, or
+/// a new one in `calendar`; an event already there moved to `calendar` when
+/// another is chosen (`move_event_file`).
+fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, String> {
     // What a new event is made from: a message, a task (`links`).
     let links: Vec<String> = serde_json::from_str::<serde_json::Value>(edit)
         .ok()
@@ -487,7 +515,7 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
         None => {
             let target = vdir::collections(Kind::Calendars)
                 .into_iter()
-                .find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == calendar)
+                .find(|c| !c.read_only && c.holds("VEVENT") && format!("{}/{}", c.account, c.id) == calendar)
                 .or_else(agenda::default_calendar)
                 .ok_or_else(|| tr().text("dav-no-calendar", None))?;
             let text = agenda::new_event(&edit, &zone)?;
@@ -502,25 +530,18 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
         }
     };
     vdir::write_item(&path, &text)?;
-    if let Some(account) = account_of(&path) {
-        nudge(shared, &account);
-    }
+    let mut accounts: Vec<String> = account_of(&path).into_iter().collect();
+    let mut at = path.clone();
     // Another calendar chosen for an event already there: moved, its account told too.
     if ours(key).is_some()
         && let Some(target) = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar)
         && path.parent() != Some(target.dir.as_path())
         && collection_of(&path).is_some_and(|from| !from.read_only)
     {
-        move_event_file(&path, &target)?;
-        nudge(shared, &target.account);
+        at = move_event_file(&path, &target)?;
+        accounts.push(target.account.clone());
     }
-    if let Some(task) = renamed {
-        let _ = crate::work::retitle(qt, shared, &task, edit.title.trim());
-    }
-    tell(qt, shared, tr().text("event-saved", None));
-    show_pim(qt, shared);
-    crate::work::show_work(qt, shared);
-    Ok(())
+    Ok(SavedEvent { path: at, accounts, renamed, title: edit.title.trim().to_string() })
 }
 
 /// An event moved by a drag in the agenda: its occurrence starting at `start`
@@ -895,6 +916,31 @@ mod tests {
         for c in [events, both, tasks] {
             let _ = std::fs::remove_dir_all(&c.dir);
         }
+    }
+
+    /// An event in a server's "Personnel":
+    /// its form saved with a calendar of this device's own moves it there,
+    /// and back, one file each time; saved with its own calendar, it stays.
+    #[test]
+    fn a_saved_event_goes_to_the_calendar_chosen() {
+        let account = "saved-moves";
+        let personnel = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT", "VTODO"]).unwrap();
+        let mine = vdir::create(Kind::Calendars, vdir::LOCAL, "Saved moves mine", None, &["VEVENT"]).unwrap();
+        let id = |c: &Collection| format!("{}/{}", c.account, c.id);
+        let event = personnel.dir.join("dentist.ics");
+        std::fs::write(&event, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:saved-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T124000Z\r\nSUMMARY:Dentist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let form = serde_json::to_string(&agenda::edit_of(&event).unwrap()).unwrap();
+        let stays = write_event(event.to_str().unwrap(), &form, &id(&personnel)).unwrap();
+        assert_eq!(stays.path, event, "its own calendar: it stays");
+        let moved = write_event(event.to_str().unwrap(), &form, &id(&mine)).unwrap();
+        assert!(moved.path.starts_with(&mine.dir) && !event.exists(), "moved there, gone from here");
+        assert_eq!(moved.accounts, [account.to_string(), vdir::LOCAL.to_string()], "both accounts told");
+        assert_eq!(personnel.items().len() + mine.items().len(), 1, "never twice");
+        let back = write_event(moved.path.to_str().unwrap(), &form, &id(&personnel)).unwrap();
+        assert!(back.path.starts_with(&personnel.dir) && !moved.path.exists(), "and back");
+        assert!(std::fs::read_to_string(&back.path).unwrap().contains("UID:saved-1"));
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
+        let _ = std::fs::remove_dir_all(&mine.dir);
     }
 
     /// The phone's calendars of 21 October 2026: an account's status says how

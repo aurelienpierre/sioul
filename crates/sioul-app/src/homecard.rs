@@ -615,7 +615,14 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
             }
             let from = day.to_zoned(zone.clone()).ok()?;
             let title = |e: &Occurrence| if e.summary.trim().is_empty() { m.tr.text("agenda-untitled", None) } else { e.summary.trim().to_string() };
-            let line = if m.details { said(m.tr, "home-card-overlap", &[("first", title(&o.first)), ("second", title(&o.second))]) } else { m.tr.text("home-card-overlap-plain", None) };
+            // Not at once: too close to go from one to the other, said so (22 October 2026).
+            let tight = o.gap >= 0;
+            let line = match (m.details, tight) {
+                (true, false) => said(m.tr, "home-card-overlap", &[("first", title(&o.first)), ("second", title(&o.second))]),
+                (true, true) => said(m.tr, "home-card-overlap-tight", &[("first", title(&o.first)), ("second", title(&o.second)), ("gap", o.gap.to_string()), ("needed", o.needed.to_string())]),
+                (false, false) => m.tr.text("home-card-overlap-plain", None),
+                (false, true) => m.tr.text("home-card-overlap-tight-plain", None),
+            };
             Some(Timed { line, from: ms(&from), until: o.first.end.max(o.second.end) * 1000 })
         })
         .collect()

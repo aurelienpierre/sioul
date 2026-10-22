@@ -258,7 +258,10 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
 /// never neither.
 pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, text: &str) -> Result<(), String> {
     let Some((from, also)) = gone.split_first() else { return Err("nothing to replace".into()) };
-    finish_moves();
+    // One move at a time in this program: a sync finishing moves meanwhile
+    // never takes back what one under way has made (22 October 2026).
+    let _moving = MOVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    finish_moves_now();
     let mut moves = moves_load();
     moves.moves.push(Move { from: from.clone(), to: to.to_path_buf(), also: also.to_vec(), made: made.iter().map(|(p, _)| p.clone()).collect() });
     moves_save(&moves)?;
@@ -282,9 +285,12 @@ pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, te
     if crashed(4) {
         return Ok(());
     }
-    finish_moves();
+    finish_moves_now();
     Ok(())
 }
+
+/// Held while a move runs or moves are finished (`replace_items`, `finish_moves`).
+static MOVING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Every move cut short, finished: the item there and still here, taken out
 /// here (written whole before the note said so), with what goes with it; not
@@ -292,6 +298,12 @@ pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, te
 /// taken back; gone from here, the move done. Called before each move and
 /// each sync of contacts and calendars.
 pub fn finish_moves() {
+    let _moving = MOVING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    finish_moves_now();
+}
+
+/// `finish_moves`, `MOVING` held.
+fn finish_moves_now() {
     let moves = moves_load();
     if moves.moves.is_empty() {
         return;
@@ -355,6 +367,12 @@ fn settle_kinds(dir: &Path, state: &mut State, path: &Path) {
         let text = std::fs::read_to_string(&item).unwrap_or_default().to_ascii_uppercase();
         events |= text.contains("BEGIN:VEVENT");
         tasks |= text.contains("BEGIN:VTODO");
+    }
+    // Said meanwhile (a collection being made): what was said stays.
+    let now = State::load(path);
+    if !now.components.is_empty() {
+        *state = now;
+        return;
     }
     state.components = match (events, tasks) {
         (true, false) => vec!["VEVENT".into()],
@@ -451,10 +469,12 @@ pub fn create(kind: Kind, account: &str, name: &str, color: Option<&str>, compon
     let base = if base.is_empty() { "list".to_string() } else { base };
     let taken = |id: &str| kind.root().join(account).join(id).exists() || state_path(account, kind, id).exists();
     let id = std::iter::once(base.clone()).chain((2..100).map(|n| format!("{base}-{n}"))).find(|id| !taken(id)).ok_or_else(|| format!("{name}: no free name"))?;
-    let dir = prepare(kind, account, &id, name, color).map_err(|e| e.to_string())?;
-    // "local": kept here only, no server to create it on.
+    // "local": kept here only, no server to create it on. Its state first,
+    // what it takes with it: a folder never shows without them, which a
+    // look meanwhile would settle as both (`settle_kinds`; 22 October 2026).
     let state = State { pending: account != LOCAL, components: components.iter().map(|c| c.to_string()).collect(), ..State::default() };
     state.save(&state_path(account, kind, &id))?;
+    let dir = prepare(kind, account, &id, name, color).map_err(|e| e.to_string())?;
     Ok(Collection { kind, account: account.to_string(), id, dir, name: name.to_string(), color: color.map(str::to_string), read_only: false, components: state.components })
 }
 
@@ -528,9 +548,8 @@ impl State {
             std::fs::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        // A name of its own beside it: two writers at once never share one (22 October 2026).
+        crate::filelock::replace(path, text.as_bytes()).map_err(fail)
     }
 }
 
@@ -669,6 +688,31 @@ mod tests {
             let _ = std::fs::remove_dir_all(dir);
         }
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join("kinds-server"));
+    }
+
+    /// A calendar made while another thread looks at the calendars (a sync,
+    /// the window) keeps what it takes: its folder showed before its state,
+    /// and the look settled it as both (22 October 2026, found by the
+    /// choosers' test run beside others).
+    #[test]
+    fn a_calendar_made_while_others_look_keeps_what_it_takes() {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let looking = {
+            let stop = std::sync::Arc::clone(&stop);
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = collections(Kind::Calendars);
+                }
+            })
+        };
+        let made: Vec<Collection> = (0..40).map(|n| create(Kind::Calendars, LOCAL, &format!("Raced events {n}"), None, &["VEVENT"]).unwrap()).collect();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        looking.join().unwrap();
+        for c in &made {
+            assert_eq!(State::load(&c.state_path()).components, ["VEVENT"], "{}", c.id);
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
     }
 
     /// The phone of 21 October 2026: an account switched off once, then on
