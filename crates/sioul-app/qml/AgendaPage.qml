@@ -316,9 +316,8 @@ Item {
                             text: {
                                 const one = e => e.title + " (" + e.from + "–" + e.to + ")"
                                 const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
-                                // Not at once: too close to go from one to the other, said so (22 October 2026).
-                                const tight = clash.modelData.gap >= 0
-                                return page.sioul.textArgs(tight ? "overlap-day-tight" : "overlap-day", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second), gap: clash.modelData.gap, needed: clash.modelData.needed }))
+                                // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
+                                return page.sioul.textArgs(clash.modelData.at_once ? "overlap-day" : "overlap-day-close", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second), gap: clash.modelData.gap, needed: clash.modelData.needed, source: clash.modelData.source }))
                             }
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
@@ -627,6 +626,16 @@ Item {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: page.theme.text
+                }
+                // The time it keeps before and after it, its own, said: never hidden (22 October 2026).
+                Label {
+                    objectName: "agenda-opened-kept"
+                    visible: page.opened !== null && ((page.opened.before || 0) > 0 || (page.opened.after || 0) > 0)
+                    Layout.fillWidth: true
+                    text: page.opened ? page.sioul.textArgs("agenda-kept", JSON.stringify({ before: page.opened.before || 0, after: page.opened.after || 0 })) : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.muted
                 }
                 Label {
                     visible: page.opened !== null && page.opened.location !== ""

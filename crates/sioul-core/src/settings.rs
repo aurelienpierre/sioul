@@ -428,6 +428,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-agenda-calendar-first", None) }).chain(writable).collect();
             let s = b.push("agenda.day_start", "day-start", Kind::Int, int(config.agenda.day_start, 7));
             Builder::range(s, 0.0, 12.0, 1.0, "h");
+            // The only time ever kept between two events besides each event's own Before and After (22 October 2026).
+            let s = b.push("agenda.between", "agenda-between", Kind::Int, int(config.agenda.between, 0));
+            Builder::range(s, 0.0, 120.0, 5.0, "min");
         }
         "tasks" => {
             let office = config.office_hours().iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect();
@@ -1274,6 +1277,21 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The time kept between two events (22 October 2026): shown in
+    /// Settings ▸ Agenda, 0 until you set it, and only then counted.
+    #[test]
+    fn the_time_between_events_is_yours_and_shown() {
+        let config = Config::default();
+        assert_eq!(config.agenda.between(), 0, "none unless set");
+        let rows = for_view("agenda", &config, &Translator::new("en"), &[], None);
+        let row = rows.iter().find(|s| s.key == "agenda.between").expect("shown in Settings ▸ Agenda");
+        assert_eq!(row.value, SettingValue::Int(0));
+        let file = std::env::temp_dir().join(format!("sioul-agenda-between-{}.toml", std::process::id()));
+        apply(&file, &config, "agenda.between", &SettingValue::Int(30)).unwrap();
+        assert_eq!(Config::load(&file).unwrap().agenda.between(), 30);
+        let _ = std::fs::remove_file(&file);
+    }
 
     /// Where new events go, in Settings ▸ Agenda (21 October 2026): written
     /// there, read by `agenda::default_calendar_of`; a read-only calendar is

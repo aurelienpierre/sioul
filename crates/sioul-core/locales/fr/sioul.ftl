@@ -3343,7 +3343,7 @@ task-rest-offer = Après quelque chose de lourd, quelque chose qui recharge :
 task-mode-day = La journée
 day-all-day = Toute la journée : { $what }
 day-margin = Autour : { $what }
-overlap-today = Aujourd’hui, deux événements en même temps : { $first } et { $second }. Le temps d’y aller et d’en revenir compte.
+overlap-today = Aujourd’hui, deux événements en même temps : { $first } et { $second }.
 overlap-day = { $day }, deux événements en même temps : { $first } et { $second }.
 overlap-open = Ouvrir « { $title } »
 overlap-set-aside = Ne plus en parler
@@ -6062,8 +6062,15 @@ import-event-start = « { $key } » : son début « { $start } » n’
 home-card-task-plain = Une tâche
 collection-events-and-tasks = événements et tâches
 
-# Two events too close to go from one to the other (22 October 2026): the way between counted once.
-overlap-today-tight = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, { $needed } min pour aller de l’un à l’autre.
-overlap-day-tight = { $day }, { $first } et { $second } : { $gap } min entre les deux, { $needed } min pour aller de l’un à l’autre.
-home-card-overlap-tight = Aujourd’hui, { $first } puis { $second } : { $gap } min entre les deux, { $needed } min nécessaires.
-home-card-overlap-tight-plain = Aujourd’hui, deux événements trop rapprochés.
+
+# The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
+set-agenda-between = Temps gardé entre deux événements
+set-agenda-between-help = Plus proches que cela, deux événements sont dits trop proches. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
+overlap-today-close = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
+overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
+overlap-source-after = gardées après le premier (son Après)
+overlap-source-before = gardées avant le second (son Avant)
+overlap-source-setting = gardées entre deux événements (Paramètres ▸ Agenda)
+home-card-overlap-close = Aujourd’hui, { $first } puis { $second } : { $gap } min entre les deux, moins que les { $needed } min que vous gardez.
+home-card-overlap-close-plain = Aujourd’hui, deux événements plus proches que le temps que vous gardez entre eux.
+agenda-kept = Gardé avant : { $before } min ; après : { $after } min (l’Avant et l’Après de cet événement, dans son formulaire).

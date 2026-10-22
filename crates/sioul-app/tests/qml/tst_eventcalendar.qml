@@ -39,7 +39,8 @@ Item {
         property var forms: ({
             "/calendars/murena/personnel/dentist.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks" },
             "/calendars/local/personal/walk.ics": { calendar: "local/personal", calendar_name: "Personal · on this device only" },
-            "/calendars/murena/birthdays/ana.ics": { calendar: "murena/birthdays", calendar_name: "Birthdays · example.org" }
+            "/calendars/murena/birthdays/ana.ics": { calendar: "murena/birthdays", calendar_name: "Birthdays · example.org" },
+            "/calendars/murena/personnel/kept.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks", margins: { before: 25, after: 60 } }
         })
 
         function text(key) {
@@ -56,7 +57,7 @@ Item {
             if (!found)
                 return ""
             return JSON.stringify({
-                edit: { title: "Dentist", location: "", notes: "", start: "2026-10-23T13:00", end: "2026-10-23T13:40", all_day: false, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "" },
+                edit: { title: "Dentist", location: "", notes: "", start: "2026-10-23T13:00", end: "2026-10-23T13:40", all_day: false, repeat: "", margins: found.margins || { before: 0, after: 0 }, demands: {}, remind: "" },
                 calendar: found.calendar,
                 calendar_name: found.calendar_name,
                 here_only: "",
@@ -159,6 +160,22 @@ Item {
             verify(!chooser().visible)
             dialog.save()
             compare(mock.saved.calendar, "murena/birthdays")
+        }
+
+        // The time an event keeps before and after it, its own, always shows
+        // in its form, whatever another program wrote (25 min is not among the
+        // usual choices), and is saved as it is: never hidden as "unsaid".
+        function test_the_time_an_event_keeps_shows() {
+            dialog.edit("/calendars/murena/personnel/kept.ics", "")
+            tryCompare(dialog, "opened", true)
+            verify(dialog.moreShown, "unfolded: it keeps time")
+            const before = find(dialog.contentItem, "event-before")
+            const after = find(dialog.contentItem, "event-after")
+            compare(before.currentText, "25 min")
+            compare(after.currentText, "1 h")
+            dialog.save()
+            compare(mock.saved.edit.margins.before, 25)
+            compare(mock.saved.edit.margins.after, 60)
         }
 
         // A new event goes into the calendar chosen, the first by default.

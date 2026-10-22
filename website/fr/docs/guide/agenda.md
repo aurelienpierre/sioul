@@ -74,7 +74,7 @@ Dans l’agenda, il se montre comme la tâche qu’il est, jamais comme un évé
 
 ## Deux événements en même temps {#two-events-at-once}
 
-Quand deux événements se chevauchent, ou se suivent de trop près pour aller de l’un à l’autre, Sioul le dit : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit. Le chemin entre deux événements compte une fois : le plus long du temps gardé après le premier (le retour) et avant le second (l’aller), jamais les deux ajoutés ; quand ils sont seulement trop proches, la ligne dit combien de minutes les séparent et combien le chemin en demande.
+Quand deux événements se chevauchent, Sioul le dit, et quand ils se suivent de plus près qu’un temps que vous avez fixé, il dit qu’ils sont trop proches : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit. Deux événements se chevauchent seulement quand leurs heures se chevauchent. Aucun temps n’est jamais mis entre eux sans que vous l’ayez fixé : l’**Avant** et l’**Après** propres à un événement (dans son formulaire, et dits dans ses détails), ou **Temps gardé entre deux événements** dans les paramètres de l’agenda, 0 au début ; le plus long compte, jamais ajoutés. Trop proches, la ligne dit les minutes qui les séparent, le temps que vous avez fixé et où vous l’avez fixé.
 
 ## Votre journée autour de vos événements {#your-day-around-your-events}
 
@@ -102,6 +102,7 @@ Le ⚙ en haut de la page :
 
 - **Agendas** : renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste. Celui que vous pouvez seulement lire le dit, et n’est jamais proposé pour un nouvel événement.
 - **Les nouveaux événements vont dans** : l’agenda où va un nouvel événement ; tant que vous ne choisissez pas, le premier qui prend des événements.
+- **Temps gardé entre deux événements** : 0 au début. Plus proches que cela, deux événements sont dits trop proches, jamais en même temps.
 - **Ce que prend un agenda** : des événements, des tâches ou les deux, comme le dit votre serveur. L’agenda montre ceux qui prennent des événements, la page Tâches les listes qui prennent des tâches ; un agenda qui prend les deux est dans les deux, et dit « événements et tâches » partout où il est proposé.
 - **La journée commence à** : l’heure sur laquelle s’ouvrent les vues du jour et de la semaine.
 

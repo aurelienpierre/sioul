@@ -397,11 +397,11 @@ struct EventView {
     read_only: bool,
 }
 
-/// Two events at once in the next `days` days, or too close to go from one to
-/// the other (`overlaps::overlaps`), those set aside left out, as JSON:
-/// [{key, day, today, first, second, gap, needed}], each event {key, title,
-/// from, to} ("09:30"), `gap` and `needed` in minutes (a gap of 0 or more:
-/// they do not overlap, the way between takes longer), for the Porch and the agenda.
+/// Two events at once in the next `days` days, or closer than a time you set
+/// between them (`overlaps::overlaps`), those set aside left out, as JSON:
+/// [{key, day, today, first, second, gap, needed, at_once, source}], each
+/// event {key, title, from, to} ("09:30"), `gap` and `needed` in minutes,
+/// `source` where that time is set, in words, for the Porch and the agenda.
 pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> String {
     let now = Zoned::now();
     let zone = now.time_zone().clone();
@@ -414,11 +414,12 @@ pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>,
         .into_iter()
         .filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start)))
         .collect();
-    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&events)
+    let between = load_config().agenda.between();
+    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&events, between)
         .iter()
         // Over already: nothing to do about it.
         .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())
-        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed }))
+        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } }))
         .collect();
     json(&rows)
 }

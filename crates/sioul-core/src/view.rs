@@ -1483,6 +1483,11 @@ pub struct AgendaEvent {
     pub task: String,
     /// That task's list, by name: what the agenda says instead of a calendar.
     pub list: String,
+    /// Minutes it keeps before and after it, its own (`X-SIOUL-BEFORE`,
+    /// `X-SIOUL-AFTER`): said in its details, so that no time between events
+    /// is ever hidden (22 October 2026).
+    pub before: u32,
+    pub after: u32,
 }
 
 /// Places a day's timed events side by side where they overlap
@@ -1547,6 +1552,8 @@ pub fn agenda(occurrences: &[crate::agenda::Occurrence], from: jiff::civil::Date
                 columns: 1,
                 task: o.task.clone(),
                 list: o.list.clone(),
+                before: o.margins.before,
+                after: o.margins.after,
             })
             .collect();
         lay_out(&mut events);
@@ -1817,6 +1824,8 @@ host = "imap.example.com"
             columns: 9,
             task: String::new(),
             list: String::new(),
+            before: 0,
+            after: 0,
         };
         // 9:00–10:00 and 9:30–11:00 overlap; 10:00–10:30 takes the first column again; 14:00 is alone.
         let mut day = vec![event(540, 600), event(570, 660), event(600, 630), event(840, 900)];
