@@ -86,6 +86,10 @@ Version 0.0.6: Sioul is young and changes often; it is used every day. Packages 
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
+## Supporting Sioul
+
+Sioul is free, with no account, no advertising and no tracker, and stays that way. It takes years of unpaid work, and it is part of how I make a living. If it helps you, you can pay for that work: monthly on [Liberapay](https://liberapay.com/aurelienpierre/donate) (no commission), or once with [PayPal](https://www.paypal.com/donate/?hosted_button_id=TXVMH9DQZ8H68). Nothing is unlocked by it and nothing is expected: there are no tiers and no early access. [More on the support page](https://sioul.aurelienpierre.com/support.html).
+
 ## Building
 
 It needs Rust 1.89 or newer, a C++ compiler, the D-Bus development files, and, for the window, Qt 6.9 or newer with Qt Declarative, Qt WebEngine (with Qt WebChannel and Qt PDF), Qt Multimedia, Qt Positioning, Qt Location and Qt Image Formats. The packages for each system, and building on Windows and macOS: [Install](https://sioul.aurelienpierre.com/guide/install.html), and [docs/building.md](docs/building.md).

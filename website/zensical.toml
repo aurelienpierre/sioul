@@ -57,6 +57,7 @@ nav = [
     ] },
     { "Privacy policy" = "privacy.md" },
     { "Terms of use" = "terms.md" },
+    { "Support Sioul" = "support.md" },
   ] },
   { "For developers" = [
     { "Overview" = "dev/index.md" },

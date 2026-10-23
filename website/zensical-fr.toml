@@ -58,6 +58,7 @@ nav = [
     ] },
     { "Politique de confidentialité" = "privacy.md" },
     { "Conditions d’utilisation" = "terms.md" },
+    { "Soutenir Sioul" = "support.md" },
   ] },
 ]
 
