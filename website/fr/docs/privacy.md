@@ -5,7 +5,7 @@ description: "La politique de confidentialité de Sioul : Sioul fonctionne sur
 
 # Politique de confidentialité {#privacy-policy}
 
-Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/privacy.html) fait foi.
+Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://sioul.aurelienpierre.com/privacy.html) fait foi.
 
 *Dernière mise à jour le 16 octobre 2026 (2026-10-16).*
 

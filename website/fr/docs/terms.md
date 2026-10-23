@@ -5,7 +5,7 @@ description: "Les conditions d’utilisation de Sioul : un logiciel libre sous
 
 # Conditions d’utilisation {#terms-of-use}
 
-Cette page traduit les conditions d’utilisation de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/terms.html) fait foi.
+Cette page traduit les conditions d’utilisation de Sioul ; en cas de doute, la [version anglaise](https://sioul.aurelienpierre.com/terms.html) fait foi.
 
 *Dernière mise à jour le 14 octobre 2026 (2026-10-14).*
 

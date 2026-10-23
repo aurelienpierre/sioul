@@ -57,7 +57,7 @@ La CNIL le résume : en 2024, « le nombre de violations touchant plus d’u
     - Sparkasse Rhein-Nahe, « Secure E-Mail - Kundeninformation », septembre 2019 : <https://www.sparkasse-rhein-nahe.de/content/dam/myif/spk-rhein-nahe/work/dokumente/pdf/allgemein/Secure%20E-Mail%20Kundeninformation.pdf> (en allemand).
     - Niedersächsische Justiz, « Informationen zur sicheren E-Mail-Kommunikation mit der Nds. Justiz », 25 mars 2019 : <https://cert.justiz.niedersachsen.de/Informationen_externe_Partner.pdf> (en allemand).
     - Ce que le chiffrement laisse lisible : RFC 9580, OpenPGP (2024), section 13.11, <https://www.rfc-editor.org/rfc/rfc9580> (en anglais).
-    - Tout le dossier, chaque source citée, et ce que les sources ne disent pas : [Secure mailboxes and their record (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/secure-mailboxes.html).
+    - Tout le dossier, chaque source citée, et ce que les sources ne disent pas : [Secure mailboxes and their record (en anglais)](https://sioul.aurelienpierre.com/dev/research/secure-mailboxes.html).
 
 ## Ce qui est protégé par défaut {#what-is-protected}
 

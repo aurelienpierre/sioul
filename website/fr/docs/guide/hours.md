@@ -126,4 +126,4 @@ Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régl
 - Les tâches inachevées nourrissent la rumination et le mauvais sommeil (Syrek et al. 2017) ; prévoir où, quand et comment elles seront faites a augmenté le détachement le soir (Smit 2016). Aussi, clore la journée donne une place à chaque chose, et nomme la première étape.
 - L’heure avant le coucher, gardée libre de ce qui fait tourner la tête, fait partie des programmes pour le sommeil que suit la Santé (Harvey et al. 2021).
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research.html), constats 21 à 23.
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 21 à 23.

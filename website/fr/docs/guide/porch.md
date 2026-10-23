@@ -179,7 +179,7 @@ Un téléphone ne lit aucun scan : il montre les cartes faites par votre ordin
 - Les personnes interrompues travaillent plus vite, avec plus de stress et de frustration (Mark, Gudith & Klocke 2008), et une notification laissée sans réponse coûte quand même de l’attention (Stothart, Mitchum & Yehnert 2015). Rien ne surgit donc hors des heures que vous choisissez, une seule notification dit tout un lot, et rien ne bouge sous vos yeux quand les courriels arrivent.
 - On évite les informations dont on attend qu’elles fassent mal (Sweeny et al. 2010). Ce qu’est un courriel, qui l’a envoyé et à quel point c’est vérifié viennent donc avant son texte.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research.html).
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html).
 
 ## Pour aller plus loin {#going-further}
 

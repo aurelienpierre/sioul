@@ -8,7 +8,7 @@
 //!
 //! The window is made of QML pages, in `crates/sioul-app/qml/` (each one is
 //! described in the QML reference:
-//! <https://aurelienpierre.github.io/sioul/dev/qml.html>), and of this crate's
+//! <https://sioul.aurelienpierre.com/dev/qml.html>), and of this crate's
 //! Rust. CXX-Qt joins the two: [`backend`](backend/index.html) declares the
 //! QML type `Sioul`, whose properties the pages read and whose functions they
 //! call, and [`desktop`](desktop/index.html) a second one, `Desktop`, for the
@@ -37,7 +37,7 @@
 //!
 //! Names such as docs/android.md are the design notes in the repository's
 //! `docs/` folder. The website shows them too, under the same name:
-//! <https://aurelienpierre.github.io/sioul/dev/android.html>.
+//! <https://sioul.aurelienpierre.com/dev/android.html>.
 //!
 //! # Modules, by theme
 //!

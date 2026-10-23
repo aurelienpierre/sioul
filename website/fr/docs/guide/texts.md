@@ -61,4 +61,4 @@ Vos ordinateurs gardent chaque SMS et tout ce dont aurait besoin une restauratio
 
 ## Pour les lecteurs techniques {#for-technical-readers}
 
-Comment c’est construit, avec chaque règle qui empêche un SMS de partir deux fois : [les notes sur les SMS (en anglais)](https://aurelienpierre.github.io/sioul/dev/texts.html). La recherche derrière : [Texts and notifications on the computer (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/sms.html).
+Comment c’est construit, avec chaque règle qui empêche un SMS de partir deux fois : [les notes sur les SMS (en anglais)](https://sioul.aurelienpierre.com/dev/texts.html). La recherche derrière : [Texts and notifications on the computer (en anglais)](https://sioul.aurelienpierre.com/dev/research/sms.html).

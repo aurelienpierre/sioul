@@ -27,7 +27,7 @@
 #                                their warnings stop the build too)
 #   website/build.sh --api-only  the references alone, into the site built before
 #                                (the workflow runs --strict, then --strict --api-only)
-#   website/build.sh serve       build, then show it at http://localhost:8000/sioul/
+#   website/build.sh serve       build, then show it at http://localhost:8000/
 #                                while you edit (run it again after changing ../docs)
 #
 # Needs Python 3.11 or newer, and Zensical: pip install zensical==0.0.67

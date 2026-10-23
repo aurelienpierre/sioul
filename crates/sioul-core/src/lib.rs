@@ -37,7 +37,7 @@
 //!
 //! Names such as docs/porch.md are the design notes in the repository's
 //! `docs/` folder. The website shows them too, under the same name:
-//! <https://aurelienpierre.github.io/sioul/dev/porch.html>.
+//! <https://sioul.aurelienpierre.com/dev/porch.html>.
 //!
 //! # Modules, by theme
 //!

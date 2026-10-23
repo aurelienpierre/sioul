@@ -60,7 +60,7 @@ pub mod qobject {
 - **`#[qsignal]`** declares a signal. Rust emits it by calling it (`sioul.copy_requested(text)`); QML handles it as `onCopyRequested`. In this code, signals are declared in an `unsafe extern "RustQt"` block of their own, invokables in a plain one.
 - **`#[auto_cxx_name]`** gives everything its Qt name in camel case. Rust's `text_with`, `set_stopped`, `form_error` and `copy_requested` are `textWith`, `setStopped`, `formError` and `copyRequested` in QML; a property `tasks` is heard as `onTasksChanged`.
 - **`impl cxx_qt::Threading for Sioul {}`** lets other threads send work back to the object (below).
-- **`///` comments** above each item say what it does, and for a JSON text, what it holds: they are the bridge's documentation for whoever writes QML, also shown in [the API reference](https://aurelienpierre.github.io/sioul/dev/api.html), under `sioul_app::backend`.
+- **`///` comments** above each item say what it does, and for a JSON text, what it holds: they are the bridge's documentation for whoever writes QML, also shown in [the API reference](https://sioul.aurelienpierre.com/dev/api.html), under `sioul_app::backend`.
 
 The Rust side of the object is a plain struct, made with `Default` (hence the `derive`): one field per property, and what the window's threads share.
 

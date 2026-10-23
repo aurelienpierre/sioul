@@ -1,6 +1,6 @@
 # Compatibility: what Sioul needs from servers and programs
 
-What Sioul relies on in each protocol, what a server or another program must do for each feature, and how far each was tried. Read from the code at 098a9d5 (6 October 2026), for developers and server admins. The same for people using Sioul, in plain words: the guide's [Works with](https://aurelienpierre.github.io/sioul/guide/compatibility.html).
+What Sioul relies on in each protocol, what a server or another program must do for each feature, and how far each was tried. Read from the code at 098a9d5 (6 October 2026), for developers and server admins. The same for people using Sioul, in plain words: the guide's [Works with](https://sioul.aurelienpierre.com/guide/compatibility.html).
 
 Each line says how sure it is:
 - **Tested**: run against the server, program or device named; where that is recorded is in the last section.
@@ -156,7 +156,7 @@ Code and details: [github.md](github.md).
 - **Tested** against `tools/github-stand-in.py`, which refuses a mixed search as GitHub does; not against GitHub itself since the fix.
 
 ## Notes
-Code: `crates/sioul-core/src/notes.rs`; the guide: [Notes](https://aurelienpierre.github.io/sioul/guide/notes.html#the-same-folder-as-obsidian-and-nextcloud-notes).
+Code: `crates/sioul-core/src/notes.rs`; the guide: [Notes](https://sioul.aurelienpierre.com/guide/notes.html#the-same-folder-as-obsidian-and-nextcloud-notes).
 - **Obsidian**: `[[wikilinks]]` with `#heading` and `|text`, found as Obsidian finds them (the same folder first, then the shortest path, then aliases); `![[embeds]]`; Markdown links; `#tags`; front matter (title, tags, aliases); `- [ ]`; links back; deleting into the vault's `.trash`. `.obsidian`, `.trash`, `.git` and hidden folders are never read.
 - **Nextcloud Notes**: its categories are folders; its `.txt` notes (its default) and `.md` notes read and written as Markdown, each keeping its extension (`notes::kind_of_file`, `notes::text_stem`); new notes are `.md`. Sioul reads the folder Nextcloud's client syncs, not Nextcloud's Notes API.
 - **Tested** on files shaped as each writes them (`cargo test -p sioul-core notes`), not side by side with the applications.
@@ -209,7 +209,7 @@ Code: `crates/sioul-cli/src/mcp.rs`, `mcp/`; details: [mcp.md](mcp.md).
 - Anthropic's Messages API (`anthropic-version: 2023-06-01`), for an address protected against harassment, with the person's key: tested against a stand-in (`shield_ai` tests).
 
 ## Other web services
-Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org and the Web Key Directory, Mozilla's ISPDB, ClamAV's mirrors, each site's own icon: what each is told, and when: the guide's [Privacy and security](https://aurelienpierre.github.io/sioul/guide/privacy-security.html#what-leaves-your-computer-and-when).
+Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org and the Web Key Directory, Mozilla's ISPDB, ClamAV's mirrors, each site's own icon: what each is told, and when: the guide's [Privacy and security](https://sioul.aurelienpierre.com/guide/privacy-security.html#what-leaves-your-computer-and-when).
 
 ## Files other programs read
 - **Mail**: Maildir, a Maildir++ subfolder per folder (notmuch, mutt); on Windows `!` before the flags, as mbsync writes it; `:` and `!` read everywhere.

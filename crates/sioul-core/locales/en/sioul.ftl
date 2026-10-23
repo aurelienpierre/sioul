@@ -5968,7 +5968,7 @@ ui-remove-confirm-microsoft = Remove “{ $id }”? Its sign-in leaves the keyri
 microsoft-no-app = This copy of Sioul carries no Microsoft application: use an application of your own (its Application (client) ID).
 account-signed-in-again-microsoft = { $account }: signed in with Microsoft again; its mail comes again.
 spam-app-no-address = no address yet
-ui-microsoft-privacy = What Sioul does with your Microsoft mail, and what it never does: its [privacy policy](https://aurelienpierre.github.io/sioul/privacy.html#microsoft-mail) and its [terms of use](https://aurelienpierre.github.io/sioul/terms.html).
+ui-microsoft-privacy = What Sioul does with your Microsoft mail, and what it never does: its [privacy policy](https://sioul.aurelienpierre.com/privacy.html#microsoft-mail) and its [terms of use](https://sioul.aurelienpierre.com/terms.html).
 ui-at-microsoft = This address is at Microsoft (Microsoft 365, for work or school): sign in with Microsoft
 # The three states (part 3 of "What reaches you"): Reachable, As usual, Do not disturb.
 reach-usual = As usual
