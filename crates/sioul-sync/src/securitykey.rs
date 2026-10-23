@@ -916,8 +916,11 @@ mod tests {
         let past = "20220101T000000";
         home.gpg(&["--faked-system-time", past, "--quick-gen-key", "Old Key <old@example.org>", "ed25519", "cert,sign", "1y"]);
         let primary = home.gpg(&["--with-colons", "--list-secret-keys", "old@example.org"]).lines().find(|l| l.starts_with("fpr:")).unwrap().split(':').nth(9).unwrap().to_string();
-        home.gpg(&["--faked-system-time", past, "--quick-add-key", &primary, "cv25519", "encr", "1y"]);
-        home.gpg(&["--faked-system-time", past, "--quick-add-key", &primary, "ed25519", "auth", "1y"]);
+        // Each subkey a minute after the key it binds to: at the same faked second, a
+        // primary key made a second late (a slow first run) makes GnuPG refuse the
+        // subkey as made before it ("Time conflict", once in forty runs, 23 October 2026).
+        home.gpg(&["--faked-system-time", "20220101T000100", "--quick-add-key", &primary, "cv25519", "encr", "1y"]);
+        home.gpg(&["--faked-system-time", "20220101T000200", "--quick-add-key", &primary, "ed25519", "auth", "1y"]);
         // A usual renewal: the primary key renewed, then "*", which leaves expired subkeys as they are.
         home.gpg(&["--quick-set-expire", &primary, "2y"]);
         home.gpg(&["--quick-set-expire", &primary, "2y", "*"]);

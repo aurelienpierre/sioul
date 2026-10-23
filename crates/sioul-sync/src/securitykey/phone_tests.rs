@@ -300,6 +300,8 @@ struct StandIn {
     lose_after: Mutex<Option<usize>>,
     /// Every command sent, its first four bytes (never a PIN).
     headers: Mutex<Vec<[u8; 4]>>,
+    /// A hostile card: every answer says more bytes wait (61FF), without end.
+    endless: Mutex<bool>,
     wanted: Mutex<Vec<bool>>,
 }
 
@@ -313,6 +315,7 @@ impl StandIn {
             plugged: Mutex::new(Reach::None),
             lose_after: Mutex::new(None),
             headers: Mutex::new(Vec::new()),
+            endless: Mutex::new(false),
             wanted: Mutex::new(Vec::new()),
         }))
     }
@@ -352,6 +355,9 @@ impl Link for StandIn {
         }
         assert!(command.len() <= self.held.lock().unwrap().map_or(0, |h| h.max_transceive), "more than the phone carries: {} bytes", command.len());
         self.headers.lock().unwrap().push([command[0], command[1], command[2], command[3]]);
+        if *self.endless.lock().unwrap() && command[1] != 0xA4 {
+            return Ok([vec![0xAA; 255], vec![0x61, 0xFF]].concat());
+        }
         Ok(self.card.lock().unwrap().as_mut().map(|card| card.answer(command)).unwrap_or_else(|| vec![0x6F, 0x00]))
     }
 
@@ -558,6 +564,21 @@ fn what_goes_wrong_over_nfc_is_said() {
     *link.held.lock().unwrap() = None;
     assert_eq!(PhoneReaders::new(link).present(), Ok(Vec::new()));
     assert_eq!(sign(&PhoneReaders::new(link), &cert, PIN), Err(CardError::Absent));
+}
+
+/// Review of 23 October 2026, F5: a card that answers "more bytes wait"
+/// without end is let go after a bounded number of exchanges, said as no
+/// OpenPGP card, never read until the key leaves.
+#[test]
+fn a_card_that_never_ends_its_answer_is_let_go() {
+    let (card, _) = ed25519_key(Touch::Off);
+    let link = StandIn::holding(ApduCard::new(card), SHORT);
+    *link.endless.lock().unwrap() = true;
+    let readers = PhoneReaders::new(link);
+    assert_eq!(core::cards(&readers), Err(CardError::NotOpenPgp));
+    let sent = link.headers.lock().unwrap().len();
+    assert!(sent <= MOST_EXCHANGES + 2, "{sent} exchanges");
+    assert!(sent >= MOST_EXCHANGES / 2, "{sent} exchanges: the cap was reached, not something else");
 }
 
 /// Plugged into the USB-C port: the same visit, PIN first, but the key's

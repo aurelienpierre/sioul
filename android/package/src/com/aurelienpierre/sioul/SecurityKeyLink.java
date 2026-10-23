@@ -4,6 +4,7 @@
 package com.aurelienpierre.sioul;
 
 import android.app.Activity;
+import android.app.Application;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -102,8 +103,19 @@ public final class SecurityKeyLink {
     private static String busy;
     /** Android's USB service, once a key was wanted: what is plugged in now. */
     private static UsbManager usb;
-    /** The receiver of plugging, unplugging and Android's answer, while a key is wanted. */
+    /** The receiver of plugging, unplugging and Android's answer, while a key is wanted and Sioul is in front. */
     private static BroadcastReceiver usbReceiver;
+    /** A key Android was asked for and has not answered yet: its dialog is in front. */
+    private static String pending;
+    /** Sioul's activity going to the background or coming back, heard once a key was wanted. */
+    private static Application.ActivityLifecycleCallbacks lifecycle;
+    /**
+     * Before Android 13 a receiver registered in code is exported: only a
+     * sender that holds this permission (signature level: Sioul itself, for
+     * Android's answer, and the system, for plugging and unplugging) reaches
+     * it, so that no other app can play Android's answer or a key unplugged.
+     */
+    static final String BROADCASTS = "com.aurelienpierre.sioul.permission.SECURITY_KEY_BROADCAST";
 
     private SecurityKeyLink() {}
 
@@ -318,8 +330,9 @@ public final class SecurityKeyLink {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 activity.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             else
-                activity.registerReceiver(usbReceiver, filter);
+                activity.registerReceiver(usbReceiver, filter, BROADCASTS, null);
         }
+        follow(activity);
         // What was refused or asked for a key no longer plugged in is forgotten: plugged in again, it is asked again.
         Set<String> there = manager.getDeviceList().keySet();
         synchronized (lock) {
@@ -338,10 +351,15 @@ public final class SecurityKeyLink {
             return;
         String action = intent.getAction();
         if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+            // Believed only when Android no longer lists it.
+            if (manager.getDeviceList().containsKey(device.getDeviceName()))
+                return;
             boolean ours;
             synchronized (lock) {
                 asked.remove(device.getDeviceName());
                 refused.remove(device.getDeviceName());
+                if (device.getDeviceName().equals(pending))
+                    pending = null;
                 if (device.getDeviceName().equals(busy))
                     busy = null;
                 ours = plugged != null && plugged.getDeviceName().equals(device.getDeviceName());
@@ -354,7 +372,14 @@ public final class SecurityKeyLink {
         } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
             consider(activity, manager, device);
         } else if (PERMISSION.equals(action)) {
-            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+            // An answer about a key Sioul asked for, alone.
+            synchronized (lock) {
+                if (!asked.contains(device.getDeviceName()))
+                    return;
+                if (device.getDeviceName().equals(pending))
+                    pending = null;
+            }
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && manager.hasPermission(device)) {
                 open(manager, device);
             } else {
                 synchronized (lock) {
@@ -386,6 +411,7 @@ public final class SecurityKeyLink {
         synchronized (lock) {
             if (!asked.add(device.getDeviceName()))
                 return;
+            pending = device.getDeviceName();
         }
         Intent answer = new Intent(PERMISSION).setPackage(activity.getPackageName());
         int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
@@ -416,7 +442,12 @@ public final class SecurityKeyLink {
         UsbInterface face = cardInterface(device);
         if (face == null)
             return;
-        UsbDeviceConnection opened = manager.openDevice(device);
+        UsbDeviceConnection opened;
+        try {
+            opened = manager.openDevice(device);
+        } catch (SecurityException e) {
+            return;
+        }
         if (opened == null || !opened.claimInterface(face, true)) {
             if (opened != null)
                 opened.close();
@@ -438,6 +469,15 @@ public final class SecurityKeyLink {
             public int receive(byte[] into, int timeoutMs) {
                 return opened.bulkTransfer(in, into, into.length, timeoutMs);
             }
+
+            @Override
+            public boolean present() {
+                synchronized (lock) {
+                    if (unplugged || connection != opened)
+                        return false;
+                }
+                return manager.getDeviceList().containsKey(device.getDeviceName());
+            }
         }, out.getMaxPacketSize());
         synchronized (lock) {
             plugged = device;
@@ -451,6 +491,55 @@ public final class SecurityKeyLink {
         told();
     }
 
+    /**
+     * Sioul in the background while a key is wanted: the key plugged in let
+     * go and the receiver unregistered, so that other apps have it meanwhile,
+     * unless Android's own dialog (its question for the key) is what came in
+     * front; back in front, looked for again (asked no more: Android's answer
+     * stands until it is unplugged). Reader mode Android ends and brings back
+     * itself.
+     */
+    private static void follow(Activity activity) {
+        if (lifecycle != null)
+            return;
+        lifecycle = new Application.ActivityLifecycleCallbacks() {
+            @Override
+            public void onActivityPaused(Activity paused) {
+                boolean asking;
+                synchronized (lock) {
+                    asking = pending != null;
+                }
+                if (paused == reading && !asking)
+                    unplug(paused);
+            }
+
+            @Override
+            public void onActivityResumed(Activity resumed) {
+                if (resumed == reading)
+                    listen(resumed);
+            }
+
+            @Override
+            public void onActivityCreated(Activity created, Bundle state) {}
+
+            @Override
+            public void onActivityStarted(Activity started) {}
+
+            @Override
+            public void onActivityStopped(Activity stopped) {}
+
+            @Override
+            public void onActivitySaveInstanceState(Activity saved, Bundle state) {}
+
+            @Override
+            public void onActivityDestroyed(Activity destroyed) {
+                if (destroyed == reading)
+                    reading = null;
+            }
+        };
+        activity.getApplication().registerActivityLifecycleCallbacks(lifecycle);
+    }
+
     /** No longer asked: the key plugged in powered off, its interface given back, and Android's receiver let go. */
     private static void unplug(Activity activity) {
         Ccid messages;
@@ -458,6 +547,10 @@ public final class SecurityKeyLink {
             messages = powered && !unplugged ? ccid : null;
             // Held by another app: looked at again the next time a key is wanted.
             busy = null;
+            // Android's answer, if it comes now, is not heard: asked again next time.
+            if (pending != null)
+                asked.remove(pending);
+            pending = null;
         }
         if (messages != null) {
             // On Android's main thread: the power off is one short message; a key gone fails at once.

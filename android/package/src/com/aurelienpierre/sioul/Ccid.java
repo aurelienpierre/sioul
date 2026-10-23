@@ -21,8 +21,10 @@ import java.util.Arrays;
  * when a message fills its last packet exactly, so that the key knows it
  * ended.</li>
  * <li><b>A key waiting for a touch</b> says so with a time extension (status
- * 0x80): Sioul reads again, as long as {@link #WAIT_MS} at most, while the
- * band asks for the touch; any other failure is said as a code, never
+ * 0x80), or stays silent: Sioul reads again, as long as {@link #WAIT_MS} at
+ * most (a YubiKey waits 15 seconds for a touch), while the band asks for the
+ * touch, so that no touch setting breaks the operation; a key unplugged
+ * meanwhile fails at once. Any other failure is said as a code, never
  * bytes.</li>
  * <li><b>Nothing kept</b>: each message's buffer is wiped once sent or
  * read.</li>
@@ -34,8 +36,11 @@ final class Ccid {
         /** Sends {@code length} bytes from {@code offset}: how many went, or a negative number. */
         int send(byte[] data, int offset, int length, int timeoutMs);
 
-        /** Receives one transfer into {@code into}: how many came, or a negative number. */
+        /** Receives one transfer into {@code into}: how many came, or a negative number (nothing within the time, or a failure). */
         int receive(byte[] into, int timeoutMs);
+
+        /** Whether the key is still plugged in. */
+        boolean present();
     }
 
     /** The key's answer that said nothing sensible, or a failure of its own: a code, never its bytes. */
@@ -49,8 +54,8 @@ final class Ccid {
 
     /** One bulk transfer at most. */
     static final int TRANSFER_MS = 1000;
-    /** How long a key may keep Sioul waiting for a touch: a YubiKey gives up after 15 seconds. */
-    static final int WAIT_MS = 20000;
+    /** How long a key may keep Sioul waiting for an answer, a touch included: a YubiKey gives up waiting for one after 15 seconds; ten more as a margin. */
+    static final int WAIT_MS = 25000;
     /** A message's header. */
     static final int HEADER = 10;
     /** The longest answer read: an extended APDU's, with room. */
@@ -112,7 +117,7 @@ final class Ccid {
         }
         long until = System.nanoTime() + WAIT_MS * 1_000_000L;
         while (true) {
-            byte[] answer = receive();
+            byte[] answer = receive(until);
             try {
                 if (answer[0] != expected)
                     throw new Failure("CCID answer of type " + (answer[0] & 0xFF));
@@ -150,7 +155,7 @@ final class Ccid {
     }
 
     /** One whole message from the key, its header first. */
-    private byte[] receive() throws IOException {
+    private byte[] receive(long until) throws IOException {
         byte[] buffer = new byte[Math.max(packet, 4096)];
         byte[] whole = new byte[0];
         try {
@@ -158,8 +163,15 @@ final class Ccid {
             int empty = 0;
             while (total < 0 || whole.length < total) {
                 int got = pipe.receive(buffer, TRANSFER_MS);
-                if (got < 0)
-                    throw new Failure("USB: nothing came");
+                // Nothing within a transfer's time: a key waiting for a touch may
+                // stay silent; read again until the deadline, unless it is gone.
+                if (got < 0) {
+                    if (!pipe.present())
+                        throw new Failure("USB: the key is gone");
+                    if (System.nanoTime() > until)
+                        throw new Failure("USB: nothing came");
+                    continue;
+                }
                 // A zero-length packet ends an answer that filled its last packet: the
                 // one before this, read whole already. Within an answer, it cuts it short.
                 if (got == 0) {

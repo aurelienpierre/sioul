@@ -105,6 +105,14 @@ public final class SecurityKeyCheck
         expect("stop() lets the key plugged in go", body(link, "private static void stop(").contains("unplug(activity)"));
         expect("unplugged mid-way: a key gone", body(link, "private static byte[] exchange(").contains("throw new TagLostException()"));
         expect("a key plugged in comes before one held", body(link, "static int[] held(").indexOf("ccid != null") < body(link, "static int[] held(").indexOf("held != null"));
+        // Review of 23 October 2026: F6, F8.
+        expect("before Android 13, the receiver reached only with Sioul's signature permission", listen.contains("registerReceiver(usbReceiver, filter, BROADCASTS, null)") && manifest.contains("android:name=\"com.aurelienpierre.sioul.permission.SECURITY_KEY_BROADCAST\" android:protectionLevel=\"signature\"") && link.contains("BROADCASTS = \"com.aurelienpierre.sioul.permission.SECURITY_KEY_BROADCAST\""));
+        expect("a key unplugged believed only when Android no longer lists it", heard.indexOf("getDeviceList().containsKey(device.getDeviceName())") >= 0 && heard.indexOf("getDeviceList().containsKey") < heard.indexOf("unplugged = true"));
+        expect("Android's answer heard only for a key Sioul asked for, and checked", heard.contains("if (!asked.contains(device.getDeviceName()))") && heard.contains("manager.hasPermission(device)"));
+        String follow = body(link, "private static void follow(");
+        expect("in the background, the key let go and the receiver unregistered, unless Android's dialog is in front", follow.contains("onActivityPaused") && follow.contains("if (paused == reading && !asking)") && follow.contains("unplug(paused)"));
+        expect("back in front, looked for again", follow.contains("if (resumed == reading)") && follow.contains("listen(resumed)"));
+        expect("a question left unanswered at the end is asked again next time", unplug.contains("asked.remove(pending)"));
         String ccid = read(sources.resolve("Ccid.java"));
         for (String word : new String[] { "Log.", "System.out", "System.err", "printStackTrace", "Arrays.toString" })
             expect("Ccid never " + word, !ccid.contains(word));

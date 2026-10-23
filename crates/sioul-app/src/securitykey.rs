@@ -35,6 +35,8 @@ static PIN: Mutex<PinMemory> = Mutex::new(PinMemory::new());
 static WATCHING: AtomicBool = AtomicBool::new(false);
 /// The bands waiting for the key to be plugged in, by their context, until "Not now".
 static WAITING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+/// The bands told that their key has one PIN try left: the PIN typed next there is sent (review of 23 October 2026, F1).
+static LAST_TRY: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// What the setup read from the key, for "Look for it" and "Import a file…".
 static SETUP: Mutex<Option<CardInfo>> = Mutex::new(None);
 /// The window, told when the PIN is held or forgotten: Accounts offers "Forget the PIN now" then.
@@ -44,6 +46,8 @@ static WINDOW: Mutex<Option<QtThread>> = Mutex::new(None);
 const LOOK_EVERY: Duration = Duration::from_millis(1500);
 /// How long a band waits for its key before it stops looking.
 const WAIT_AT_MOST: Duration = Duration::from_secs(5 * 60);
+/// How long a PIN typed waits for its key: then forgotten, asked again (review of 23 October 2026, F2).
+const PIN_WAITS_AT_MOST: Duration = Duration::from_secs(60);
 /// The band of the setup, in Accounts ▸ Encryption.
 const SETUP_BAND: &str = "setup";
 
@@ -198,6 +202,7 @@ fn sentence_in(way: &Way, error: &CardError, purpose: Purpose, words: &Translato
             CardError::Removed => return words.text(if sign { "seckey-moved-away-sign" } else { "seckey-moved-away" }, None),
             CardError::TouchMissed if !way.cable => return words.text("seckey-nfc-touch", None),
             CardError::Blocked | CardError::WrongPin { left: 0 } => return words.text("seckey-blocked-phone", None),
+            CardError::LastTry => return words.text("seckey-last-try-phone", None),
             _ => {}
         }
     }
@@ -234,7 +239,30 @@ fn waiting_action(way: &Way) -> &'static str {
 /// 44 most often, then Enter), not a PIN: never given to the key, which would
 /// count it as a wrong PIN.
 fn typed_by_the_key(typed: &str) -> bool {
-    (32..=64).contains(&typed.len()) && typed.bytes().all(|b| b"cbdefghijklnrtuv".contains(&b))
+    // In capitals too: Caps Lock, or a key set to type with Shift (review of 23 October 2026, F7).
+    (32..=64).contains(&typed.len()) && typed.bytes().all(|b| b"cbdefghijklnrtuv".contains(&b.to_ascii_lowercase()))
+}
+
+/// The PIN as typed, taken into Sequoia's protected memory, and the plain
+/// copy wiped (review of 23 October 2026, F3); empty, none. The copies QML and
+/// Qt made before (the field's text, the QString) are theirs: QML's string is
+/// emptied at once, the QString freed by Qt, neither can be overwritten.
+fn take_pin(mut typed: String) -> Option<Password> {
+    let pin = (!typed.is_empty()).then(|| Password::from(typed.as_str()));
+    // SAFETY: zeros keep the string valid UTF-8.
+    let bytes = unsafe { typed.as_mut_vec() };
+    for byte in bytes.iter_mut() {
+        // SAFETY: a byte of the string's own buffer, written through a volatile
+        // pointer so that the write is not dropped as dead.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    typed.clear();
+    pin
+}
+
+/// Whether a PIN typed has waited for its key as long as it may.
+fn pin_waited_too_long(typed: bool, waited: Duration) -> bool {
+    typed && waited > PIN_WAITS_AT_MOST
 }
 
 /// The band asks for the PIN again, saying the key typed a code.
@@ -460,7 +488,21 @@ fn keep_taken(ident: &str, pin: &Password, access: &CardAccess, info: &CardInfo)
 
 /// What a failure does to the band, and to a PIN held that the key refused.
 /// A key not plugged in is waited for instead ([`wait_for`]).
+/// A key with one PIN try left takes the PIN only once the band said so and
+/// it was typed again; a PIN held, which the key took before, goes.
+fn confirm_last_try(access: &CardAccess, context: &str, typed: bool) {
+    let told = LAST_TRY.lock().is_ok_and(|mut told| told.remove(context));
+    if told || !typed {
+        access.allow_last_try();
+    }
+}
+
 fn failed(qt: &QtThread, context: &str, error: CardError, purpose: Purpose, typed: bool) {
+    if error == CardError::LastTry
+        && let Ok(mut told) = LAST_TRY.lock()
+    {
+        told.insert(context.to_string());
+    }
     if matches!(error, CardError::WrongPin { .. } | CardError::Blocked) && !typed {
         // The PIN held is refused: never given again.
         if let Ok(mut memory) = PIN.lock() {
@@ -489,9 +531,10 @@ fn know_window(qt: &QtThread) {
 pub(crate) fn sign_and_send(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: String) {
     know_window(qt);
     if typed_by_the_key(&typed) {
+        take_pin(typed);
         return not_a_pin(qt, id);
     }
-    let typed = (!typed.is_empty()).then(|| Password::from(typed));
+    let typed = take_pin(typed);
     let (qt, shared, id) = (qt.clone(), Arc::clone(shared), id.to_string());
     std::thread::spawn(move || sign_now(&qt, &shared, &id, typed));
 }
@@ -542,6 +585,7 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
     let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(slot));
     let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
+    confirm_last_try(&access, id, typed.is_some());
     match sioul_sync::send::build_draft(&account, &draft, tr(), Some(&access)) {
         Ok(outgoing) => {
             remember(&ident, pin.clone(), access.reader(), &info);
@@ -581,6 +625,7 @@ fn open_quote_now(qt: &QtThread, shared: &Arc<Shared>, draft: &Draft, ident: &st
     let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(info.decrypt.as_ref()));
     let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
+    confirm_last_try(&access, id, typed.is_some());
     let passphrase = |fingerprint: &pgp::Fingerprint| sioul_sync::secret::pgp_passphrase(&fingerprint.to_hex());
     let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global()).with_card(&access);
     let raw = crate::crypto::copy_of(draft);
@@ -632,9 +677,10 @@ fn touch_line(slot: Option<&securitykey::SlotInfo>) -> String {
 pub(crate) fn open_message(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: String) {
     know_window(qt);
     if typed_by_the_key(&typed) {
+        take_pin(typed);
         return not_a_pin(qt, key);
     }
-    let typed = (!typed.is_empty()).then(|| Password::from(typed));
+    let typed = take_pin(typed);
     let (qt, shared, key) = (qt.clone(), Arc::clone(shared), key.to_string());
     std::thread::spawn(move || open_now(&qt, &shared, &key, typed));
 }
@@ -662,6 +708,7 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
     let (touch_qt, context, line) = (qt.clone(), key.to_string(), touch_line(info.decrypt.as_ref()));
     let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
+    confirm_last_try(&access, key, typed.is_some());
     let passphrase = |fingerprint: &pgp::Fingerprint| sioul_sync::secret::pgp_passphrase(&fingerprint.to_hex());
     let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global()).with_card(&access);
     match pgp::open(&raw, &Keys::load(), &unlock) {
@@ -707,6 +754,14 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
                     waiting.remove(&context);
                 }
                 return problem_line(&qt, &context, waiting_line(purpose), "retry");
+            }
+            // A PIN typed waits a minute for its key at most: forgotten, asked again.
+            if pin_waited_too_long(typed.is_some(), since.elapsed()) {
+                if let Ok(mut waiting) = WAITING.lock() {
+                    waiting.remove(&context);
+                }
+                drop(typed);
+                return tell_band(&qt, &context, Band { state: "pin", line: tr().text("seckey-pin-dropped", None), ..Band::default() });
             }
             // Held to a phone: the work goes on at once, in this one tap (never read on its own first).
             if taps() {
@@ -760,6 +815,9 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
 pub(crate) fn not_now(context: &str) {
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.remove(context);
+    }
+    if let Ok(mut told) = LAST_TRY.lock() {
+        told.remove(context);
     }
     if taps() {
         readers().want(false);
@@ -1422,8 +1480,53 @@ mod tests {
         // A YubiKey's OTP: 12 letters of its public id, 32 of the code, in modhex.
         assert!(typed_by_the_key("ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlgf"));
         assert!(typed_by_the_key(&"c".repeat(32)) && typed_by_the_key(&"v".repeat(64)));
-        for pin in ["123456", "12345678", "correct horse", "cbdefghijk", "Ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlgf", &"c".repeat(31), &"c".repeat(65), "ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlga"] {
+        // In capitals too (Caps Lock, Shift): review of 23 October 2026, F7.
+        assert!(typed_by_the_key("CCCCCCJLKGJHVBTNEDKDFIRICJGTILHKBHUELKLJDLGF"));
+        assert!(typed_by_the_key("Ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlgf"));
+        for pin in ["123456", "12345678", "correct horse", "cbdefghijk", "CBDEFGHIJK", &"c".repeat(31), &"c".repeat(65), "ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlga", "CCCCCCJLKGJHVBTNEDKDFIRICJGTILHKBHUELKLJDLGA"] {
             assert!(!typed_by_the_key(pin), "{pin}");
+        }
+    }
+
+    /// Review of 23 October 2026, F1: a band told that its key has one try
+    /// left sends the PIN typed next there, once; a PIN typed elsewhere, or
+    /// before the band said so, is not sent; a PIN held (taken before) is.
+    /// F2: a PIN typed waits a minute for its key at most. F3: the plain copy
+    /// of the PIN typed is wiped once taken.
+    #[test]
+    fn the_last_try_is_sent_only_once_said_and_a_waiting_pin_is_dropped() {
+        let readers = SoftReaders::with(Vec::new());
+        let pin = Password::from("123456");
+        let first = CardAccess::new(&readers, &pin, &|| {});
+        confirm_last_try(&first, "draft-f1", true);
+        assert!(!first.last_try_allowed(), "typed, not told: not sent with one try left");
+        LAST_TRY.lock().unwrap().insert("draft-f1".to_string());
+        let other = CardAccess::new(&readers, &pin, &|| {});
+        confirm_last_try(&other, "draft-other", true);
+        assert!(!other.last_try_allowed(), "another band's word does not count");
+        let again = CardAccess::new(&readers, &pin, &|| {});
+        confirm_last_try(&again, "draft-f1", true);
+        assert!(again.last_try_allowed(), "told, typed again: sent");
+        let after = CardAccess::new(&readers, &pin, &|| {});
+        confirm_last_try(&after, "draft-f1", true);
+        assert!(!after.last_try_allowed(), "once only");
+        let held = CardAccess::new(&readers, &pin, &|| {});
+        confirm_last_try(&held, "draft-f1", false);
+        assert!(held.last_try_allowed(), "a PIN held, which the key took before");
+        assert!(!pin_waited_too_long(true, Duration::from_secs(59)));
+        assert!(pin_waited_too_long(true, Duration::from_secs(61)));
+        assert!(!pin_waited_too_long(false, Duration::from_secs(3600)), "no PIN typed: the band waits on");
+        assert!(take_pin(String::new()).is_none());
+        let taken = take_pin("123456".to_string()).unwrap();
+        taken.map(|protected| assert_eq!(&protected[..], b"123456"));
+        for lang in ["en", "fr"] {
+            let words = Translator::new(lang);
+            let phone = Way { taps: true, ..Way::default() };
+            assert_eq!(sentence_in(&phone, &CardError::LastTry, Purpose::Sign, &words), words.text("seckey-last-try-phone", None));
+            assert_eq!(sentence_in(&Way::default(), &CardError::LastTry, Purpose::Sign, &words), words.text("seckey-last-try", None));
+            for id in ["seckey-last-try", "seckey-last-try-phone", "seckey-pin-dropped"] {
+                assert!(!words.text(id, None).contains("seckey-"), "{lang} {id}");
+            }
         }
     }
 

@@ -38,6 +38,7 @@ public final class CcidCheck
         final List<byte[]> answers = new ArrayList<>();
         final List<byte[]> handed = new ArrayList<>();
         boolean gone;
+        int receives;
 
         @Override
         public int send(byte[] data, int offset, int length, int timeoutMs)
@@ -53,12 +54,22 @@ public final class CcidCheck
         @Override
         public int receive(byte[] into, int timeoutMs)
         {
+            receives++;
             if (gone || answers.isEmpty())
                 return -1;
             byte[] next = answers.remove(0);
+            // A transfer's time without a word: the key waits, for a touch.
+            if (next == null)
+                return -1;
             int length = Math.min(into.length, next.length);
             System.arraycopy(next, 0, into, 0, length);
             return length;
+        }
+
+        @Override
+        public boolean present()
+        {
+            return !gone;
         }
     }
 
@@ -142,6 +153,18 @@ public final class CcidCheck
         said = ccid.transmit(new byte[] { 0x00, 0x2A, (byte) 0x9E, (byte) 0x9A, 0x01, 0x07 });
         expect("time extensions waited through, the answer read", Arrays.equals(said, new byte[] { 1, 2, (byte) 0x90, 0x00 }));
 
+        // A key silent while it waits for a touch, a second per transfer, then its answer (review of 23 October 2026, F9).
+        reader = new Reader();
+        ccid = new Ccid(reader, 64);
+        for (int i = 0; i < 4; i++)
+            reader.answers.add(null);
+        reader.answers.add(answer(0x80, 0, 0x80, 1, new byte[0]));
+        reader.answers.add(null);
+        reader.answers.add(answer(0x80, 0, 0, 0, new byte[] { 3, (byte) 0x90, 0x00 }));
+        said = ccid.transmit(new byte[] { 0x00, 0x2A, (byte) 0x80, (byte) 0x86, 0x01, 0x00 });
+        expect("silent transfers waited through within the touch's time", Arrays.equals(said, new byte[] { 3, (byte) 0x90, 0x00 }));
+        expect("the touch's wait covers a YubiKey's 15 seconds, with a margin", Ccid.WAIT_MS >= 20000);
+
         // What goes wrong: an answer to another message, a reader's failure, a key unplugged.
         String[] cases = { "another message", "a failure", "unplugged", "another type" };
         for (String which : cases) {
@@ -167,6 +190,8 @@ public final class CcidCheck
                 failure = e.getMessage();
             }
             expect(which + ": said as a failure", failure != null);
+            if (which.equals("unplugged"))
+                expect("unplugged: said at once, not after the touch's wait", reader.receives <= 1);
             expect(which + ": the failure says no byte of the command", failure == null || !failure.contains("123456") && !failure.contains("49"));
         }
 
