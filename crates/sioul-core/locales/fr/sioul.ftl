@@ -6119,3 +6119,16 @@ conversion-lost-waiting = { $n ->
    *[other] { $n } tâches qui l’attendent cessent de l’attendre
 }
 task-done-stays = Une tâche faite reste une tâche : c’est la trace du travail fait.
+
+# A text not read yet, on the Porch: one notice, opening it in Texts (23 October 2026).
+texts-notice = { $time }, un SMS de { $who } : « { $first } »
+texts-notice-many = { $time }, { $count } SMS de { $who }, le dernier : « { $first } »
+
+# A conversation deleted in Sioul (23 October 2026): Sioul is not the phone's SMS app.
+texts-unread = { $count ->
+    [one] 1 nouveau
+   *[other] { $count } nouveaux
+}
+texts-delete = Supprimer…
+texts-delete-action = Supprimer de Sioul
+texts-delete-said = Ses SMS jusqu’à maintenant quittent Sioul sur tous vos appareils : vos ordinateurs et la copie de votre téléphone dans Sioul. L’application de SMS de votre téléphone les garde, car elle seule peut les y supprimer. Un SMS qui arrive plus tard s’affiche de nouveau.

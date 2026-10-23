@@ -464,6 +464,8 @@ pub const TEXTS_LOG: &str = "data/texts/log/";
 pub const TEXTS_SEND: &str = "data/texts/send/";
 /// Each phone's word on each text it was asked to send.
 pub const TEXTS_OUTCOME: &str = "data/texts/outcome/";
+/// Each device's marks on conversations: read, hidden (deleted in Sioul).
+pub const TEXTS_MARKS: &str = "data/texts/marks/";
 /// Where the texts keep their files in the records: as the calls', remembered
 /// beside the notes, never kept as an earlier version nor copied aside (`calls_store`).
 const TEXTS: &str = "data/texts/";
@@ -655,6 +657,7 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder(sioul_core::texts::PART, TEXTS_LOG, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_SEND, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::SEND), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_OUTCOME, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::OUTCOME), Shape::Lines, &[]),
+        folder(sioul_core::texts::PART, TEXTS_MARKS, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::MARKS), Shape::Lines, &[]),
     ];
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its

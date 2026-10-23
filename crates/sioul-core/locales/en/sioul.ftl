@@ -6094,3 +6094,13 @@ conversion-lost-waiting = { $n ->
    *[other] { $n } tasks waiting for it stop waiting
 }
 task-done-stays = A task done stays a task: it is the record of work done.
+
+# A text not read yet, on the Porch: one notice, opening it in Texts (23 October 2026).
+texts-notice = { $time }, a text from { $who }: “{ $first }”
+texts-notice-many = { $time }, { $count } texts from { $who }, the last: “{ $first }”
+
+# A conversation deleted in Sioul (23 October 2026): Sioul is not the phone's SMS app.
+texts-unread = { $count } new
+texts-delete = Delete…
+texts-delete-action = Delete from Sioul
+texts-delete-said = Its texts until now leave Sioul on every device: your computers and your phone's copy in Sioul. Your phone's own texting app keeps them, since only it may delete them there. A text that comes later shows again.

@@ -40,6 +40,13 @@ Item {
         property var flags: ({})
         // Made up: no real person, fiction numbers only.
         property var lines: []
+        // Texts not read yet (texts.rs, `notices`): their phone notifications folded into them in Rust.
+        property var notices: []
+        property string openedTexts: ""
+        function textArgs(key, json) {
+            const a = JSON.parse(json)
+            return key + ": " + a.time + " " + a.who + " " + a.first
+        }
         readonly property var plain: [
             { ids: ["1-a"], head: "While you slept, Dr Elena Varga wrote:", said: [{ time: "23:10", from: "", text: "Could you call me back tomorrow morning?" }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false },
             { ids: ["2-b"], head: "A code came from My Bank at 11:05. It stays on your phone.", said: [], note: "", number: "", dial: "", known: false, texted: false, code: true },
@@ -83,7 +90,7 @@ Item {
             const args = JSON.parse(json)
             mock.asked = mock.asked.concat([[verb, args]])
             if (verb === "view")
-                return JSON.stringify({ lines: mock.lines.filter(l => mock.seen.indexOf(l.ids[0]) < 0), links: { tel: true, sms: true } })
+                return JSON.stringify({ lines: mock.lines.filter(l => mock.seen.indexOf(l.ids[0]) < 0), links: { tel: true, sms: true }, notices: mock.notices })
             if (verb === "seen") {
                 mock.seen = mock.seen.concat(args.ids)
                 return JSON.stringify({ said: "Marked seen.", shared: true, at: 1791446400000 })
@@ -122,6 +129,11 @@ Item {
 
         property var now: 0
         property bool compact: false
+
+        function openTexts(id) {
+            mock.openedTexts = id
+            mock.notices = []
+        }
     }
 
     Column {
@@ -170,6 +182,8 @@ Item {
         }
 
         function init() {
+            mock.notices = []
+            mock.openedTexts = ""
             mock.asked = []
             mock.seen = []
             mock.flags = {}
@@ -193,6 +207,23 @@ Item {
         }
         function popups(text) {
             return walk(root.Window.window ? root.Window.window.contentItem : root, i => i.visible && i.text === text && (i.clicked !== undefined || i.triggered !== undefined), [])
+        }
+
+        // A text the Texts page holds: one notice, opening its conversation
+        // there; opened, it is gone (23 October 2026).
+        function test_a_text_is_one_notice_opening_texts() {
+            mock.lines = []
+            mock.notices = [{ conversation: "+33465714770", who: "Dr Elena Varga", first: "Rappelez-moi.", when: "14:04", count: 1 }]
+            section.reload()
+            wait(50)
+            verify(section.visible, "shown for the notice alone")
+            const notices = walk(section, i => i.visible && i.objectName === "textNotice", [])
+            compare(notices.length, 1)
+            verify(notices[0].said.indexOf("Rappelez-moi.") >= 0)
+            mouseClick(notices[0])
+            compare(mock.openedTexts, "+33465714770")
+            wait(50)
+            compare(walk(section, i => i.visible && i.objectName === "textNotice", []).length, 0, "opened: gone")
         }
 
         function test_lines_and_their_messages() {

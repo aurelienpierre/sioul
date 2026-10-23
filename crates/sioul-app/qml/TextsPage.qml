@@ -50,6 +50,8 @@ Item {
     property string listedText: ""
     readonly property var listed: page.listedText ? JSON.parse(page.listedText) : ({ can: false, conversations: [], said: "", never: "", empty: "" })
     readonly property var rows: page.listed.conversations || []
+    // The question before a conversation is deleted, for the window's tests.
+    readonly property alias deleteAsk: deleteChoice
     // The conversation open, by its id ("+33199001234"), and texts.rs's
     // `conversation` for it: {id, title, messages, drafts, can_write, group}.
     property string openId: ""
@@ -542,7 +544,17 @@ Item {
                                 text: row.modelData.title
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
+                                // Unread until opened here (23 October 2026): its name in bold, how many said.
+                                font.weight: (row.modelData.unread || 0) > 0 ? Font.DemiBold : Font.Normal
                                 color: page.theme.text
+                            }
+                            Label {
+                                objectName: "textsUnread"
+                                visible: (row.modelData.unread || 0) > 0
+                                text: page.sioul.textWith("texts-unread", "count", String(row.modelData.unread || 0))
+                                textFormat: Text.PlainText
+                                font.pixelSize: 13
+                                color: page.theme.accent
                             }
                             Label {
                                 text: row.modelData.when
@@ -607,13 +619,26 @@ Item {
             Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.62)
             spacing: 8
 
-            Label {
+            RowLayout {
                 Layout.fillWidth: true
-                text: page.talk !== null ? page.talk.title : ""
-                textFormat: Text.PlainText
-                font.pixelSize: 17
-                elide: Text.ElideRight
-                color: page.theme.text
+                spacing: page.theme.gap
+
+                Label {
+                    Layout.fillWidth: true
+                    text: page.talk !== null ? page.talk.title : ""
+                    textFormat: Text.PlainText
+                    font.pixelSize: 17
+                    elide: Text.ElideRight
+                    color: page.theme.text
+                }
+                // Deleted in Sioul: Sioul is not the phone's SMS app, so its texts
+                // leave Sioul on every device and the phone's own app keeps them (23 October 2026).
+                Button {
+                    objectName: "textsDelete"
+                    flat: true
+                    text: page.sioul.text("texts-delete")
+                    onClicked: deleteChoice.now().ask(page.talk !== null ? page.talk.title : "", page.sioul.text("texts-delete-said"), page.sioul.text("texts-delete-action"))
+                }
             }
             Rectangle {
                 Layout.fillWidth: true
@@ -1149,6 +1174,24 @@ Item {
         onTextEdited: {
             page.query = searchField.text
             searching.restart()
+        }
+    }
+
+    Later {
+        id: deleteChoice
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onConfirmed: {
+                    const done = page.act("delete", { id: page.openId })
+                    page.close()
+                    page.reload()
+                    if (done.said)
+                        page.sioul.status = done.said
+                }
+            }
         }
     }
 }

@@ -37,7 +37,7 @@ ColumnLayout {
     // `answer` (replies.rs's `Answer`): {phone, notice, app, label, line,
     // offered, read, texts, placeholder, note, read_item, read_warning,
     // on_phone, limit, mine: [{key, time, text, said, waiting, again, texts}]}.
-    property var shown: ({ lines: [], links: { tel: false, sms: false }, texts: false })
+    property var shown: ({ lines: [], links: { tel: false, sms: false }, texts: false, notices: [] })
     property string said: ""
     // The last Seen pressed here (its time), undone within ten seconds.
     property real undoAt: 0
@@ -55,7 +55,7 @@ ColumnLayout {
 
     function reload() {
         const view = section.act("view", {}) || ({})
-        section.shown = { lines: view.lines || [], links: view.links || { tel: false, sms: false }, texts: view.texts === true }
+        section.shown = { lines: view.lines || [], links: view.links || { tel: false, sms: false }, texts: view.texts === true, notices: view.notices || [] }
     }
 
     function answered(answer) {
@@ -103,7 +103,7 @@ ColumnLayout {
     }
 
     spacing: 6
-    visible: section.shown.lines.length > 0 || undoTimer.running
+    visible: section.shown.lines.length > 0 || section.shown.notices.length > 0 || undoTimer.running
     Component.onCompleted: section.reload()
 
     Timer {
@@ -173,6 +173,36 @@ ColumnLayout {
                 }
             }
 
+            // A text the Texts page holds, not read yet: one notice, its sender and
+            // first words, opening it there (23 October 2026); the phone's
+            // notification of it is folded into it in Rust (`texts::folding`).
+            Repeater {
+                model: section.shown.notices
+
+                delegate: ItemDelegate {
+                    id: notice
+
+                    required property var modelData
+
+                    objectName: "textNotice"
+                    Layout.fillWidth: true
+                    padding: 6
+                    onClicked: {
+                        section.window.openTexts(notice.modelData.conversation)
+                        section.reload()
+                    }
+                    Accessible.name: notice.said
+
+                    readonly property string said: section.sioul.textArgs(notice.modelData.count > 1 ? "texts-notice-many" : "texts-notice", JSON.stringify({ who: notice.modelData.who, first: notice.modelData.first, time: notice.modelData.when, count: notice.modelData.count }))
+
+                    contentItem: Label {
+                        text: notice.said
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: section.theme.text
+                    }
+                }
+            }
             Repeater {
                 model: section.shown.lines
 

@@ -909,69 +909,20 @@ Item {
                     onSettingsWanted: page.openSettings(true)
                 }
 
-                // Right now: the one exception to the windows.
+                // Right now: the one exception to the windows. A card opens its
+                // message, as the Porch's other cards do (23 October 2026).
                 Repeater {
                     model: page.view.right_now
 
-                    delegate: Panel {
-                        id: codeCard
-
+                    delegate: CodeCard {
                         required property var modelData
 
                         Layout.fillWidth: true
+                        sioul: page.sioul
                         theme: page.theme
-                        accent: true
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 8
-
-                            RowLayout {
-                                spacing: 8
-
-                                Icon {
-                                    iconName: "dialog-password"
-                                }
-                                // What mail and sites say is plain text: a "<" opens no tag, loads nothing.
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: codeCard.modelData.title
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    color: page.theme.text
-                                }
-                            }
-                            RowLayout {
-                                visible: !!codeCard.modelData.code
-                                spacing: page.theme.gap
-
-                                Label {
-                                    text: codeCard.modelData.code || ""
-                                    textFormat: Text.PlainText
-                                    font.family: page.theme.mono
-                                    font.pixelSize: 30
-                                    font.letterSpacing: 3
-                                    color: page.theme.text
-                                }
-                                Button {
-                                    id: copyButton
-
-                                    property bool done: false
-
-                                    text: copyButton.done ? page.sioul.text("ui-copied") : page.sioul.text("ui-copy")
-                                    onClicked: {
-                                        page.window.copy(codeCard.modelData.code)
-                                        copyButton.done = true
-                                    }
-                                }
-                            }
-                            Label {
-                                visible: !!codeCard.modelData.validity
-                                text: codeCard.modelData.validity || ""
-                                textFormat: Text.PlainText
-                                color: page.theme.muted
-                            }
-                        }
+                        card: modelData
+                        onCopy: code => page.window.copy(code)
+                        onOpen: key => page.openMessage(key)
                     }
                 }
 
