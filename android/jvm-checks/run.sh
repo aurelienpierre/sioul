@@ -69,7 +69,14 @@
 #   manifest, NFC not required; reader mode only in SecurityKeyLink, on while
 #   a band asks, the key let go (ignored until it leaves the field) before it
 #   ends; the screen kept from captures meanwhile; nothing of an APDU logged
-#   in Java or in main.cpp's bridge, each command and answer wiped.
+#   in Java or in main.cpp's bridge, each command and answer wiped; plugged
+#   in: no USB filter, the smart card interface claimed alone, Android asked
+#   once for each plugging, the key powered off and given back.
+# - CcidCheck: Ccid.java (the key plugged in) against a stand-in reader: the
+#   messages' bytes and sequence numbers, packets and the zero-length one,
+#   answers across transfers, a key waiting for a touch (time extensions),
+#   an answer to another message, a reader's failure, a key unplugged, the
+#   messages wiped once sent.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -95,7 +102,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

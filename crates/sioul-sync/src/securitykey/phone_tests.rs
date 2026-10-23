@@ -285,12 +285,17 @@ fn digest_info(data: &[u8]) -> Option<(sioul_core::securitykey::HashAlgorithm, &
     None
 }
 
-/// A phone's NFC as a test sees it: a key held or not, what the phone
-/// carries, and the key lost after a given number of exchanges.
+/// A phone's NFC and USB-C port as a test sees them: a key held or plugged
+/// in, or not, what the phone carries, the key lost after a given number of
+/// exchanges, Android's refusal or another app holding a key plugged in.
 struct StandIn {
     card: Mutex<Option<ApduCard>>,
     state: Mutex<LinkState>,
     held: Mutex<Option<Held>>,
+    /// Whether the phone takes a key plugged in.
+    usb_host: Mutex<bool>,
+    /// A key plugged in, refused or held by another app, when none is in reach.
+    plugged: Mutex<Reach>,
     /// Exchanges left before the key leaves the field.
     lose_after: Mutex<Option<usize>>,
     /// Every command sent, its first four bytes (never a PIN).
@@ -304,6 +309,8 @@ impl StandIn {
             card: Mutex::new(Some(card)),
             state: Mutex::new(LinkState::Ready),
             held: Mutex::new(Some(held)),
+            usb_host: Mutex::new(held.via == Via::Usb),
+            plugged: Mutex::new(Reach::None),
             lose_after: Mutex::new(None),
             headers: Mutex::new(Vec::new()),
             wanted: Mutex::new(Vec::new()),
@@ -320,8 +327,15 @@ impl Link for StandIn {
         *self.state.lock().unwrap()
     }
 
-    fn held(&self) -> Option<Held> {
-        *self.held.lock().unwrap()
+    fn usb_host(&self) -> bool {
+        *self.usb_host.lock().unwrap()
+    }
+
+    fn reach(&self) -> Reach {
+        match *self.held.lock().unwrap() {
+            Some(held) => Reach::Held(held),
+            None => *self.plugged.lock().unwrap(),
+        }
     }
 
     fn transceive(&self, command: &[u8]) -> Result<Vec<u8>, LinkError> {
@@ -336,7 +350,7 @@ impl Link for StandIn {
             }
             *left -= 1;
         }
-        assert!(command.len() <= self.held().map_or(0, |h| h.max_transceive), "more than the phone carries: {} bytes", command.len());
+        assert!(command.len() <= self.held.lock().unwrap().map_or(0, |h| h.max_transceive), "more than the phone carries: {} bytes", command.len());
         self.headers.lock().unwrap().push([command[0], command[1], command[2], command[3]]);
         Ok(self.card.lock().unwrap().as_mut().map(|card| card.answer(command)).unwrap_or_else(|| vec![0x6F, 0x00]))
     }
@@ -349,9 +363,11 @@ impl Link for StandIn {
 }
 
 /// A phone as most carry: short APDUs only, 261 bytes an exchange.
-const SHORT: Held = Held { max_transceive: 261, extended: false };
+const SHORT: Held = Held { max_transceive: 261, extended: false, via: Via::Nfc };
 /// A phone that carries extended length.
-const LONG: Held = Held { max_transceive: 4096, extended: true };
+const LONG: Held = Held { max_transceive: 4096, extended: true, via: Via::Nfc };
+/// A key plugged into the USB-C port: short APDUs, as SecurityKeyLink.java gives them over CCID.
+const PLUGGED: Held = Held { max_transceive: 271, extended: false, via: Via::Usb };
 
 fn ed25519_key(touch: Touch) -> (SoftCard, sequoia_openpgp::Cert) {
     let (mut card, public) = SoftCard::generate("0006:12345678", &["Noa <noa@example.org>"], PIN).unwrap();
@@ -531,7 +547,9 @@ fn what_goes_wrong_over_nfc_is_said() {
     assert_eq!(sign(&readers, &cert, PIN), Err(CardError::NotYours));
     let (card, cert) = ed25519_key(Touch::Off);
     let link = StandIn::holding(ApduCard::new(card), SHORT);
+    // NFC off (nothing held then) on a phone that takes no key plugged in.
     *link.state.lock().unwrap() = LinkState::Off;
+    *link.held.lock().unwrap() = None;
     assert_eq!(sign(&PhoneReaders::new(link), &cert, PIN), Err(CardError::NfcOff));
     *link.state.lock().unwrap() = LinkState::NoNfc;
     assert_eq!(PhoneReaders::new(link).present(), Err(CardError::NoNfc));
@@ -540,6 +558,78 @@ fn what_goes_wrong_over_nfc_is_said() {
     *link.held.lock().unwrap() = None;
     assert_eq!(PhoneReaders::new(link).present(), Ok(Vec::new()));
     assert_eq!(sign(&PhoneReaders::new(link), &cert, PIN), Err(CardError::Absent));
+}
+
+/// Plugged into the USB-C port: the same visit, PIN first, but the key's
+/// touch asked as on a computer (the window's touch line, whatever the
+/// setting), and unplugged mid-way said as such; every touch setting goes
+/// through; its PIN's checks undone at the end.
+#[test]
+fn a_key_plugged_into_the_phone_signs_and_opens_its_touch_asked() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let (card, cert) = ed25519_cv25519_key();
+    let link = StandIn::holding(ApduCard::new(card), PLUGGED);
+    let readers = PhoneReaders::new(link);
+    assert!(readers.taps() && readers.by_cable());
+    assert_eq!(readers.reach_note(), None);
+    let pin = Password::from(PIN);
+    let touched = AtomicUsize::new(0);
+    let touch = || {
+        touched.fetch_add(1, Ordering::SeqCst);
+    };
+    let access = CardAccess::new(&readers, &pin, &touch);
+    let mut signer = CardSigner::new(&access, "0006:12345678", signing_key(&cert));
+    sequoia_openpgp::crypto::Signer::sign(&mut signer, sequoia_openpgp::types::HashAlgorithm::SHA256, &[7u8; 32]).unwrap();
+    assert_eq!(touched.load(Ordering::SeqCst), 1, "its touch asked, as on a computer");
+    assert_eq!(open(&readers, &cert, PIN).unwrap(), b"The lease, signed.");
+    assert_eq!(link.card(|c| c.verified), [false, false], "checks undone after each use");
+    for touch in [Touch::Off, Touch::On, Touch::Fixed, Touch::Cached, Touch::CachedFixed, Touch::Unknown] {
+        let (card, cert) = ed25519_key(touch);
+        assert_eq!(sign(&PhoneReaders::new(StandIn::holding(ApduCard::new(card), PLUGGED)), &cert, PIN), Ok(()), "{touch:?}");
+    }
+    // Unplugged mid-way: said as a key gone, by cable.
+    let (card, cert) = ed25519_key(Touch::Off);
+    let link = StandIn::holding(ApduCard::new(card), PLUGGED);
+    *link.lose_after.lock().unwrap() = Some(3);
+    let readers = PhoneReaders::new(link);
+    assert_eq!(sign(&readers, &cert, PIN), Err(CardError::Removed));
+    assert!(readers.by_cable(), "the words say unplugged, not moved away");
+    // Held over NFC afterwards: no longer by cable.
+    *link.held.lock().unwrap() = Some(SHORT);
+    assert!(!readers.by_cable());
+}
+
+/// The ways a phone reaches a key, said: Android's dialog refused, another
+/// app holding the key plugged in; no NFC or NFC off while a key can still
+/// be plugged in (a note for the waiting words, never a failure); neither
+/// way at all.
+#[test]
+fn how_a_phone_reaches_a_key_is_said() {
+    let (card, cert) = ed25519_key(Touch::Off);
+    let link = StandIn::holding(ApduCard::new(card), PLUGGED);
+    *link.held.lock().unwrap() = None;
+    let readers = PhoneReaders::new(link);
+    *link.plugged.lock().unwrap() = Reach::Refused;
+    assert_eq!(readers.present(), Err(CardError::UsbRefused));
+    assert_eq!(sign(&readers, &cert, PIN), Err(CardError::UsbRefused));
+    *link.plugged.lock().unwrap() = Reach::Busy;
+    assert_eq!(readers.present(), Err(CardError::UsbBusy));
+    *link.plugged.lock().unwrap() = Reach::None;
+    assert_eq!(readers.present(), Ok(Vec::new()));
+    for (state, note) in [(LinkState::NoNfc, Some(CardError::NoNfc)), (LinkState::Off, Some(CardError::NfcOff)), (LinkState::Ready, None)] {
+        *link.state.lock().unwrap() = state;
+        assert_eq!((readers.present(), readers.reach_note()), (Ok(Vec::new()), note), "{state:?} with a USB-C port");
+    }
+    *link.usb_host.lock().unwrap() = false;
+    for (state, said) in [(LinkState::NoNfc, Err(CardError::NoNfc)), (LinkState::Off, Err(CardError::NfcOff)), (LinkState::Ready, Ok(Vec::new()))] {
+        *link.state.lock().unwrap() = state;
+        assert_eq!((readers.present(), readers.reach_note()), (said, None), "{state:?} without one");
+    }
+    for error in [CardError::UsbRefused, CardError::UsbBusy] {
+        assert_eq!(error.remedy(), core::Remedy::Again);
+        let said = error.sentence(&sioul_core::i18n::Translator::new("en"), core::Purpose::Open);
+        assert!(!said.is_empty() && !said.starts_with("seckey-"), "{error:?}");
+    }
 }
 
 /// Every touch setting: over NFC the tap is the touch; a key that refuses
@@ -565,9 +655,9 @@ fn the_phones_frame_caps_what_is_sent() {
     let card = CardCaps::new(true, true, 3070, 3070, 127, 127);
     let short = limit(card, SHORT);
     assert_eq!((short.ext_support(), short.chaining_support(), short.max_cmd_bytes(), short.max_rsp_bytes()), (false, true, 255, 256));
-    let long = limit(card, Held { max_transceive: 1024, extended: true });
+    let long = limit(card, Held { max_transceive: 1024, extended: true, via: Via::Nfc });
     assert_eq!((long.ext_support(), long.max_cmd_bytes(), long.max_rsp_bytes()), (true, 1015, 1015));
-    let roomy = limit(card, Held { max_transceive: 65_279, extended: true });
+    let roomy = limit(card, Held { max_transceive: 65_279, extended: true, via: Via::Nfc });
     assert_eq!((roomy.max_cmd_bytes(), roomy.max_rsp_bytes()), (3070, 3070));
 }
 

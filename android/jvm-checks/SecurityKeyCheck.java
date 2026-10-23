@@ -23,7 +23,13 @@ import java.util.regex.Pattern;
  * Authenticator and Yubico OTP's tap work as before), reader mode only in
  * SecurityKeyLink, on while a band asks and ended after, the key let go to
  * no other app; the screen kept from captures meanwhile; nothing of an
- * APDU logged, in Java or in the bridge, each command wiped.
+ * APDU logged, in Java or in the bridge, each command wiped. Plugged in: no
+ * USB filter in the manifest, USB host not required; the smart card
+ * interface claimed alone (never the keyboard Yubico OTP types with);
+ * Android's permission asked from code, its answer for this package alone,
+ * asked again only once the key was unplugged; the key powered off and its
+ * interface given back when Sioul no longer asks; unplugged mid-way, a key
+ * gone.
  */
 public final class SecurityKeyCheck
 {
@@ -75,17 +81,45 @@ public final class SecurityKeyCheck
         for (String action : new String[] { "NDEF_DISCOVERED", "TECH_DISCOVERED", "TAG_DISCOVERED" })
             expect("no tag filter " + action + " in the manifest", !manifest.contains(action));
 
+        // Plugged in: asked from code alone, the smart card interface alone.
+        expect("USB host not required to install", manifest.contains("<uses-feature android:name=\"android.hardware.usb.host\" android:required=\"false\" />"));
+        for (String action : new String[] { "USB_DEVICE_ATTACHED", "usb_device_filter", "device_filter" })
+            expect("no USB filter " + action + " in the manifest", !manifest.contains(action));
+        String consider = body(link, "private static void consider(");
+        String open = body(link, "private static void open(");
+        String card = body(link, "static UsbInterface cardInterface(");
+        String listen = body(link, "private static void listen(");
+        String heard = body(link, "private static void heard(");
+        String unplug = body(link, "private static void unplug(");
+        String closeUsb = body(link, "private static void close() {");
+        expect("the smart card interface alone (class 0x0B, bulk in and out)", card.contains("getInterfaceClass() == UsbConstants.USB_CLASS_CSCID") && card.contains("USB_DIR_IN") && card.contains("USB_DIR_OUT"));
+        expect("one claim, of that interface", countOf(link, "claimInterface(") == 1 && open.contains("UsbInterface face = cardInterface(device)") && open.contains("claimInterface(face, true)"));
+        expect("another app holding it, said", open.contains("busy = device.getDeviceName()"));
+        expect("Android asked once for each plugging", consider.contains("if (!asked.add(device.getDeviceName()))") && consider.indexOf("refused.contains") >= 0 && countOf(link, "requestPermission(") == 1);
+        expect("its answer for this package alone, mutable from Android 12", consider.contains("setPackage(activity.getPackageName())") && consider.contains("PendingIntent.FLAG_MUTABLE"));
+        expect("the receiver not exported from Android 13", listen.contains("Context.RECEIVER_NOT_EXPORTED"));
+        expect("plugged, unplugged and the answer heard", listen.contains("ACTION_USB_DEVICE_ATTACHED") && listen.contains("ACTION_USB_DEVICE_DETACHED") && listen.contains("addAction(PERMISSION)"));
+        expect("unplugged: forgotten, asked again next time, the key gone", heard.contains("asked.remove") && heard.contains("refused.remove") && heard.contains("unplugged = true"));
+        expect("refused: kept until unplugged, said", heard.contains("refused.add(device.getDeviceName())") && heard.contains("told()"));
+        expect("no longer asked: powered off, interface given back, connection closed, receiver let go", unplug.contains("powerOff()") && unplug.contains("close()") && unplug.contains("unregisterReceiver") && closeUsb.contains("releaseInterface(face)") && closeUsb.contains("opened.close()"));
+        expect("stop() lets the key plugged in go", body(link, "private static void stop(").contains("unplug(activity)"));
+        expect("unplugged mid-way: a key gone", body(link, "private static byte[] exchange(").contains("throw new TagLostException()"));
+        expect("a key plugged in comes before one held", body(link, "static int[] held(").indexOf("ccid != null") < body(link, "static int[] held(").indexOf("held != null"));
+        String ccid = read(sources.resolve("Ccid.java"));
+        for (String word : new String[] { "Log.", "System.out", "System.err", "printStackTrace", "Arrays.toString" })
+            expect("Ccid never " + word, !ccid.contains(word));
+
         // Reader mode, and NFC itself, only in SecurityKeyLink.
         List<String> elsewhere = new ArrayList<>();
         try (DirectoryStream<Path> files = Files.newDirectoryStream(sources, "*.java")) {
             for (Path file : files) {
                 String name = file.getFileName().toString();
                 String text = read(file);
-                if (!name.equals("SecurityKeyLink.java") && (text.contains("enableReaderMode") || text.contains("enableForegroundDispatch") || text.contains("android.nfc.")))
+                if (!name.equals("SecurityKeyLink.java") && (text.contains("enableReaderMode") || text.contains("enableForegroundDispatch") || text.contains("android.nfc.") || text.contains("android.hardware.usb.")))
                     elsewhere.add(name);
             }
         }
-        expect("NFC used outside SecurityKeyLink: " + elsewhere, elsewhere.isEmpty());
+        expect("NFC or USB used outside SecurityKeyLink: " + elsewhere, elsewhere.isEmpty());
         expect("no foreground dispatch, which would take every tag", !link.contains("enableForegroundDispatch"));
         String start = body(link, "private static void start(");
         String stop = body(link, "private static void stop(");

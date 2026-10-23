@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Android: your security key held against the phone, as the phone's link
-//! for `sioul_sync::securitykey::phone` (docs/android.md, "Your security
-//! key"). Each call goes to `SecurityKeyLink.java` through android/main.cpp:
-//! NFC's reader mode while a band waits for the key and Sioul is in front
-//! (never otherwise, so that other apps, OpenKeychain or Yubico
-//! Authenticator, and Yubico OTP's tap keep working), the key's APDUs over
-//! `IsoDep`, and the key let go at the end, which Android then hands to no
-//! other app until it has left the field. Java tells when a key comes,
-//! which wakes the band that waits. The APDUs' bytes, a PIN among them, are
-//! never logged, and the copies the bridge made are wiped.
+//! Android: your security key held against the phone or plugged into its
+//! USB-C port, as the phone's link for `sioul_sync::securitykey::phone`
+//! (docs/android.md, "Your security key"). Each call goes to
+//! `SecurityKeyLink.java` through android/main.cpp: NFC's reader mode, and
+//! the USB devices heard, while a band waits for the key and Sioul is in
+//! front (never otherwise, so that other apps, OpenKeychain or Yubico
+//! Authenticator, and Yubico OTP keep working); the key's APDUs over
+//! `IsoDep`, or as CCID messages over its smart card interface alone (never
+//! its keyboard, where OTP types); the key let go at the end: Android hands
+//! a key held to no other app until it has left the field, a key plugged
+//! in is powered off and given back. Java tells when a key comes, goes or
+//! is refused, which wakes the band that waits. The APDUs' bytes, a PIN
+//! among them, are never logged, and the copies the bridge made are wiped.
 
-use sioul_sync::securitykey::phone::{Held, Link, LinkError, LinkState};
+use sioul_sync::securitykey::phone::{Held, Link, LinkError, LinkState, Reach, Via};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
@@ -35,8 +38,12 @@ pub(crate) fn start() {
 unsafe extern "C" {
     /// NFC: 0 none in this phone, 1 switched off, 2 ready.
     fn sioul_android_key_state() -> i32;
-    /// The key held now: 1 and what the phone carries, else 0.
-    fn sioul_android_key_held(max: *mut i32, extended: *mut i32) -> i32;
+    /// Whether the phone takes a key plugged in: 1 or 0.
+    fn sioul_android_key_usb() -> i32;
+    /// The key in reach: 0 none; 1 a key, what the phone carries, plugged
+    /// in or held; 2 Android refused Sioul the key plugged in; 3 another
+    /// app holds it.
+    fn sioul_android_key_held(max: *mut i32, extended: *mut i32, plugged: *mut i32) -> i32;
     /// One APDU: 0 and its answer (given back to `sioul_android_key_free`),
     /// 1 the key left the field, 2 another failure.
     fn sioul_android_key_transceive(command: *const u8, length: usize, answer: *mut *mut u8, answer_length: *mut usize) -> i32;
@@ -73,11 +80,20 @@ impl Link for AndroidLink {
         }
     }
 
-    fn held(&self) -> Option<Held> {
-        let (mut max, mut extended) = (0i32, 0i32);
-        // SAFETY: two integers for the call to write.
-        let held = unsafe { sioul_android_key_held(&raw mut max, &raw mut extended) };
-        (held == 1).then(|| Held { max_transceive: usize::try_from(max).unwrap_or(0), extended: extended == 1 })
+    fn usb_host(&self) -> bool {
+        // SAFETY: no arguments.
+        unsafe { sioul_android_key_usb() == 1 }
+    }
+
+    fn reach(&self) -> Reach {
+        let (mut max, mut extended, mut plugged) = (0i32, 0i32, 0i32);
+        // SAFETY: three integers for the call to write.
+        match unsafe { sioul_android_key_held(&raw mut max, &raw mut extended, &raw mut plugged) } {
+            1 => Reach::Held(Held { max_transceive: usize::try_from(max).unwrap_or(0), extended: extended == 1, via: if plugged == 1 { Via::Usb } else { Via::Nfc } }),
+            2 => Reach::Refused,
+            3 => Reach::Busy,
+            _ => Reach::None,
+        }
     }
 
     fn transceive(&self, command: &[u8]) -> Result<Vec<u8>, LinkError> {
@@ -94,7 +110,7 @@ impl Link for AndroidLink {
                 Ok(bytes)
             }
             1 => Err(LinkError::Lost),
-            other => Err(LinkError::Other(format!("NFC failure {other}"))),
+            other => Err(LinkError::Other(format!("NFC or USB failure {other}"))),
         }
     }
 
