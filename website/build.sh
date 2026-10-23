@@ -353,6 +353,8 @@ fi
 if [ "$api_only" = no ]; then
     zensical build --clean "$@"
     zensical build --clean -f zensical-fr.toml "$@"
+    # Zensical skips dot folders: the funding manifest's pointer is copied by hand.
+    cp -r "$here/docs/.well-known" "$here/site/.well-known"
 fi
 
 if [ "$api" = yes ]; then

@@ -12,3 +12,5 @@ Sioul's packages, built by GitHub from this version's sources. Sioul is young: k
 The command line, `sioul`, comes with each computer's package (`sioul mcp` connects an AI agent: see the guide).
 
 Guide, in English and French: https://sioul.aurelienpierre.com/ — what Sioul does, how to start, and the privacy policy. Questions and reports: https://github.com/aurelienpierre/sioul/issues
+
+Sioul is free and stays free. If it helps you, you can support its work: https://sioul.aurelienpierre.com/support.html
