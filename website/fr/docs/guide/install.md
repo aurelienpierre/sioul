@@ -147,7 +147,7 @@ Pour les téléphones 64 bits sous Android 9 ou plus récent. Sioul n’est pas 
 3. Chaque version est signée de la même clé, celle de Sioul : la suivante s’installe par-dessus, vos données gardées.
 4. **Les paramètres restreints** : depuis Android 13, Android tient certains réglages à l’écart d’une application installée depuis un fichier : l’accès aux notifications et, depuis Android 15, les autorisations des SMS. La première fois que Sioul les demande, Android peut répondre « Paramètre restreint » ; c’est seulement ensuite que les infos de l’application Sioul proposent, sous ⋮ (en haut), **Autoriser les paramètres restreints**, confirmé avec votre code ; demandez ensuite de nouveau dans Sioul. Sioul dit ces étapes, dans leur ordre, là où il les demande, dans le résultat de l’ajout et sur le Porche, avec **Infos de l’application Sioul**.
 
-Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléphone](first-steps.md#on-a-phone). Comment l’APK est construit, par GitHub ou à la main, et ce qui diffère sur Android : les [notes sur Android (en anglais)](https://aurelienpierre.github.io/sioul/dev/android.html).
+Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléphone](first-steps.md#on-a-phone). Comment l’APK est construit, par GitHub ou à la main, et ce qui diffère sur Android : les [notes sur Android (en anglais)](https://sioul.aurelienpierre.com/dev/android.html).
 
 ## Ensuite {#next}
 

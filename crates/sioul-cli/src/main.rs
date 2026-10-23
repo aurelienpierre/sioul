@@ -27,7 +27,7 @@
 //!
 //! Names such as docs/mcp.md are the design notes in the repository's `docs/`
 //! folder. The website shows them too, under the same name:
-//! <https://aurelienpierre.github.io/sioul/dev/mcp.html>.
+//! <https://sioul.aurelienpierre.com/dev/mcp.html>.
 //!
 //! # Modules
 //!

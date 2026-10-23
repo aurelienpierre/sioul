@@ -3,7 +3,7 @@
 This page follows one small, real feature of Sioul through every layer of the code, with each file and function it touches: "Where you stopped". Then it gives the checklist for adding a feature of your own. Read [Start here](start-here.md) first for the map; the guides on [Rust](rust.md), [Qt Quick and QML](qt-quick.md), [the bridge](cxx-qt.md) and [Fluent](fluent.md) explain the words used below.
 
 ## The feature
-When something interrupts you (a pause to move, a meal, the night, a timer stopped), you can leave one line on where you were. The line shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**; your other devices show it too. **New ▾ ▸ Where I stopped…** leaves one at any time. The user guide describes it in [Tasks, "Starting, and stopping"](https://aurelienpierre.github.io/sioul/guide/tasks.html#starting-and-stopping).
+When something interrupts you (a pause to move, a meal, the night, a timer stopped), you can leave one line on where you were. The line shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**; your other devices show it too. **New ▾ ▸ Where I stopped…** leaves one at any time. The user guide describes it in [Tasks, "Starting, and stopping"](https://sioul.aurelienpierre.com/guide/tasks.html#starting-and-stopping).
 
 The path, in one table:
 
@@ -194,13 +194,13 @@ The line is one of the files the sharing carries ([database.md](database.md)): `
 file("time", "state/stopped.toml", s.join("stopped.toml"), Shape::Toml(&PLAIN_RULES)),
 ```
 
-When another device leaves or clears the line, the exchange writes `stopped.toml` here (under the lock the core takes too), the pages are computed again, and the card reads itself again. The user guide's [sharing page](https://aurelienpierre.github.io/sioul/guide/sharing.html) lists it under "Time".
+When another device leaves or clears the line, the exchange writes `stopped.toml` here (under the lock the core takes too), the pages are computed again, and the card reads itself again. The user guide's [sharing page](https://sioul.aurelienpierre.com/guide/sharing.html) lists it under "Time".
 
 ## 7. The documentation
 - **The design note**: `docs/tasks.md`, in "Places", the item "Where you stopped": what it does, where you meet it, the research behind it, and where it lives in the code (`sioul_core::stopped`, `StoppedCard.qml`). Design notes say why; their names lead from the code to them and back.
 - **The user guide, in English**: `website/docs/guide/tasks.md`, "Starting, and stopping", the paragraph **Where you stopped.**; and a line each in `porch.md` (what the Porch shows), `first-steps.md` (the **New ▾** menu) and `sharing.md` (what "Time" carries).
 - **The user guide, in French**: `website/fr/docs/guide/tasks.md`, « Commencer, et s’arrêter », the paragraph **Où vous en étiez.**, and the same lines in the same pages. Each French heading keeps the English page's anchor (`## Commencer, et s’arrêter {#starting-and-stopping}`), so that a link to `tasks.md#starting-and-stopping` works in both languages.
-- **The comments**: the module's `//!`, the functions' `///`, the QML file's top comment: they make the [API reference](https://aurelienpierre.github.io/sioul/dev/api.html).
+- **The comments**: the module's `//!`, the functions' `///`, the QML file's top comment: they make the [API reference](https://sioul.aurelienpierre.com/dev/api.html).
 
 ## Adding a feature: the checklist
 1. **Say why first.** The design note it belongs to, in `docs/`: what it does, what it never does, the research or the reason behind it ([design.md](design.md)). A new note is added to the "For developers" navigation in `website/zensical.toml`.
@@ -227,4 +227,4 @@ When another device leaves or clears the line, the exchange writes `stopped.toml
     | `android/jvm-checks/run.sh` | the phone's Java against what Rust decides, and its comments (javadoc), when the Java or a rule it shares changed |
     | `tools/e2e/notifications/run.sh buttons` | a notification end to end, against a stand-in notification server (above, in "The core") |
     | `tools/final-pass.sh` | before a commit, in one go: each crate's tests in release, the programs in release, the messages, QML lint and the QML tests, the JVM checks, rustdoc; never the window, which the runner and the notification harness start |
-    | `website/build.sh --strict` | the design notes and the user guide build, without a broken link ([how this website is built](https://aurelienpierre.github.io/sioul/dev/index.html#how-this-website-is-built)) |
+    | `website/build.sh --strict` | the design notes and the user guide build, without a broken link ([how this website is built](https://sioul.aurelienpierre.com/dev/index.html#how-this-website-is-built)) |

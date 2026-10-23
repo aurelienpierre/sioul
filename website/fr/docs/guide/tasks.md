@@ -247,7 +247,7 @@ Quatre tuiles, dans le formulaire d’une tâche et dans celui d’un événemen
 - **Ce que vous avez dit avant.** Si vous avez dit comment cette tâche s’est passée les dernières fois, ou des tâches de son type ([Comment ça s’est passé ?](#how-was-it)), les tuiles non notées montrent ces valeurs en pâle, et une ligne dit d’où elles viennent. **C’est bien ça** les prend toutes ; un appui sur une tuile ne règle que celle-là. Rien de pâle n’est gardé tant que vous ne l’avez pas choisi.
 - Chaque valeur est gardée dès que vous la donnez. Dès qu’un coût est noté, **Ce que ça coûte** suit les notes, montré plutôt que choisi : *léger* quand aucun coût ne dépasse 3, *comme d’habitude* jusqu’à 6, *lourd* à partir de 7 ; *ça recharge* quand l’apport est de 5 ou plus et qu’aucun coût ne dépasse 3. C’est ainsi que le plan compte les tâches lourdes qu’un jour peut tenir ([Comment est aujourd’hui ?](#how-is-today)).
 
-Les émotions comptent quand il faut les cacher ou les porter, pas seulement quand elles sont tristes ; l’inquiétude compte l’appréhension avant et après, pas seulement pendant ; le corps et les sens comptent la station debout, le bruit, la lumière et la foule. Les questions demandent ce qui remue les émotions plutôt que de quelle émotion il s’agit, pour qui a du mal à les nommer ([ce que dit la recherche, en anglais](https://aurelienpierre.github.io/sioul/dev/research.html)).
+Les émotions comptent quand il faut les cacher ou les porter, pas seulement quand elles sont tristes ; l’inquiétude compte l’appréhension avant et après, pas seulement pendant ; le corps et les sens comptent la station debout, le bruit, la lumière et la foule. Les questions demandent ce qui remue les émotions plutôt que de quelle émotion il s’agit, pour qui a du mal à les nommer ([ce que dit la recherche, en anglais](https://sioul.aurelienpierre.com/dev/research.html)).
 
 ### Comment ça s’est passé ? {#how-was-it}
 
@@ -289,7 +289,7 @@ Le plan apprend aussi, de vos propres journées, ce que tient une journée pour 
 - **Ce qui recharge** a aussi un minimum, appris des journées que vous avez dites à peu près bien. Les moments de temps pour vous restent quoi qu’il soit, et la fin de la journée dit en mots si la journée a rechargé.
 - **En mots seulement.** Quand une règle change aujourd’hui, une ligne au-dessus de la journée dit pourquoi : « Aujourd’hui tient un peu moins : hier était trop après une journée pleine. » Jamais un nombre, un pourcentage, une jauge ni du rouge.
 
-Comment chaque règle est réglée, quels nombres viennent de la recherche et lesquels sont des suppositions encore à vérifier : [les notes de conception (en anglais)](https://aurelienpierre.github.io/sioul/dev/capacity.html).
+Comment chaque règle est réglée, quels nombres viennent de la recherche et lesquels sont des suppositions encore à vérifier : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/capacity.html).
 
 ### Routines {#routines}
 
@@ -348,7 +348,7 @@ Le ⚙ en haut de la page :
 - Certains jours, on peut moins, et il n’y a que vous pour savoir lesquels (Raymaker et al. 2020 ; Chen, Meng & Nie 2026).
 - Clore le travail en donnant une place à ce qui reste aide à le laisser le soir (Smit 2016), et une liste pour le lendemain écrite au coucher a aidé à s’endormir plus vite (Scullin et al. 2018). Une réponse par jour sur la façon dont il s’est passé est ce qu’il faut à un plan pour apprendre ce qu’une journée peut tenir, plutôt que ce que vous faites d’habitude.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research.html), constats 6 à 23.
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 6 à 23.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
@@ -556,7 +556,7 @@ Vérifiés aussi, avec au plus des étapes et sans attentes : GNOME Evolution,
 - **L’étape suivante**, parmi les tâches libres de commencer : celle qui est commencée ; puis celle dont le début au plus tard vient d’abord (sa date demandée, moins le travail qui attend derrière elle) ; puis votre ordre (`PRIORITY`) ; puis celle qui en libère le plus ; puis la plus petite.
 - **Les jours** : chaque tâche va dans le premier jour qui a de la place dans les heures de son type, après ce qu’elle attend (et son délai) ; les événements, les repas, les siestes et la nuit sont retirés d’abord, avec cinq minutes autour de chaque événement et après chaque étape. Chaque jour est rempli à 85 % de ce qu’il tient, coût par coût et en tout ; la brume garde 60 % de la place d’aujourd’hui, le brouillard 30 %.
 - **Les durées** : chaque tâche est placée avec sa durée corrigée ([Combien de temps prennent les choses](time.md#how-long-things-take)) ; chaque jour garde comme temps libre le 85e centile d’une simulation à graine de ses étapes (un effet commun à la journée, un par étape), au plus un tiers de la journée. La graine vient de la date et des tâches : chaque appareil dispose la même journée.
-- **Ce que tient une journée** est rejoué à partir de vos journées à chaque fois, jamais gardé : le même historique donne le même plan sur chaque appareil. Ses règles, et quels nombres sont des suppositions : [les notes de conception (en anglais)](https://aurelienpierre.github.io/sioul/dev/capacity.html).
+- **Ce que tient une journée** est rejoué à partir de vos journées à chaque fois, jamais gardé : le même historique donne le même plan sur chaque appareil. Ses règles, et quels nombres sont des suppositions : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/capacity.html).
 - Le plan est refait au démarrage, toutes les douze heures, à minuit, et aussitôt après tout changement dont il dépend, hors du fil de la fenêtre.
 
 ### La sécurité, précisément {#security-precisely}
@@ -582,4 +582,4 @@ sioul tasks import <file.toml> [--dry-run] [--no-sync]
 sioul focus start <task> [--minutes 25] | status | stop [--done] [--note "…"]
 ```
 
-Une tâche se nomme par son UID ou le début de son titre. `sioul tasks import` prend un plan écrit dans un fichier TOML, attentes avec délai comprises : [son format (en anglais)](https://aurelienpierre.github.io/sioul/dev/tasks.html#importing).
+Une tâche se nomme par son UID ou le début de son titre. `sioul tasks import` prend un plan écrit dans un fichier TOML, attentes avec délai comprises : [son format (en anglais)](https://sioul.aurelienpierre.com/dev/tasks.html#importing).

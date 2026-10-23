@@ -208,7 +208,7 @@ Sioul pour Android partage de la même façon, par le dossier que l’applicatio
 
 ## Pas encore là {#not-there-yet}
 
-Des tailles arrondies par paliers, et les notes des appareils scellées aussi, pour que le dossier en dise encore moins ; un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courriel, pour que d’autres programmes de courriel les voient ; les téléphones autres qu’Android. Le format est simple et documenté ([les notes de conception](https://aurelienpierre.github.io/sioul/dev/database.html), en anglais), pour qu’ils puissent venir.
+Des tailles arrondies par paliers, et les notes des appareils scellées aussi, pour que le dossier en dise encore moins ; un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courriel, pour que d’autres programmes de courriel les voient ; les téléphones autres qu’Android. Le format est simple et documenté ([les notes de conception](https://sioul.aurelienpierre.com/dev/database.html), en anglais), pour qu’ils puissent venir.
 
 ## Côté technique {#for-technical-readers}
 
@@ -221,4 +221,4 @@ Des tailles arrondies par paliers, et les notes des appareils scellées aussi, p
 - **Vers un serveur Nextcloud** : les fichiers de cet appareil seulement, chacun par un `PUT` avec `If-Match` son ETag tel que vu la dernière fois (`If-None-Match: *` là où il n’y en avait pas), `X-OC-Mtime` et `OC-Checksum: SHA1:…` ; refusé (`412`), la copie du serveur est regardée et tenue pour envoyée quand elle est la même (taille et somme de contrôle, sinon ses octets). Un fichier d’enregistrements ne part jamais plus court.
 - **La version** : la version et le commit de chaque appareil, dans son entrée scellée, et scellés dans la première ligne de chaque lot de ses enregistrements ; le serveur ne les apprend jamais.
 - **Non scellé** : la petite note de chaque appareil (quand il a échangé pour la dernière fois, jusqu’où il a lu les autres), les tailles et les heures. Les tailles arrondies par paliers ne sont pas encore faites.
-- **Le format** : [les notes de conception (en anglais)](https://aurelienpierre.github.io/sioul/dev/database.html).
+- **Le format** : [les notes de conception (en anglais)](https://sioul.aurelienpierre.com/dev/database.html).

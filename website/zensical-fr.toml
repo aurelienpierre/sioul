@@ -5,7 +5,7 @@
 # ses styles sont copiés de docs/assets/ dans fr/docs/assets/ à chaque construction.
 [project]
 site_name = "Sioul"
-site_url = "https://aurelienpierre.github.io/sioul/fr/"
+site_url = "https://sioul.aurelienpierre.com/fr/"
 docs_dir = "fr/docs"
 site_dir = "site/fr"
 site_description = "Sioul adapte les exigences du travail, des institutions et de l’argent à la personne : les courriels, les tâches et les démarches du quotidien, organisés autour de l’attention, de l’énergie, de la santé et du repos, sur vos propres appareils."
@@ -108,12 +108,12 @@ toggle.name = "Couleurs comme le système les a"
 # The guide in each language; the developers' notes are in English only.
 [[project.extra.alternate]]
 name = "English"
-link = "/sioul/"
+link = "/"
 lang = "en"
 
 [[project.extra.alternate]]
 name = "Français"
-link = "/sioul/fr/"
+link = "/fr/"
 lang = "fr"
 
 [[project.extra.social]]

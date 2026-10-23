@@ -13,7 +13,7 @@
 //! table. It reads mail through [sioul-sync](../sioul_sync/index.html); the
 //! command line (`sioul spam`) and the window ("Train now") run it. The
 //! design, its numbers and its reasons: docs/spam-filter.md, also on the
-//! website: <https://aurelienpierre.github.io/sioul/dev/spam-filter.html>.
+//! website: <https://sioul.aurelienpierre.com/dev/spam-filter.html>.
 //!
 //! Long jobs report where they stand through a callback ([`Progress`]) and
 //! stop when asked ([`Cancel`]), so the window can run them on a thread.

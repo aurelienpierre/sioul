@@ -40,7 +40,7 @@
 //!
 //! Names such as docs/database.md are the design notes in the repository's
 //! `docs/` folder. The website shows them too, under the same name:
-//! <https://aurelienpierre.github.io/sioul/dev/database.html>.
+//! <https://sioul.aurelienpierre.com/dev/database.html>.
 //!
 //! # Modules, by theme
 //!

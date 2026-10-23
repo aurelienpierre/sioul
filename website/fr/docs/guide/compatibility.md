@@ -11,7 +11,7 @@ Sioul parle des normes ouvertes : il fonctionne donc avec la plupart des serve
 - **Limite** : ce qui ne marche pas, ou moins bien, et pourquoi.
 - **Non pris en charge** : pas construit.
 
-Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque ligne, et où chaque essai est consigné : [la note de conception](https://aurelienpierre.github.io/sioul/dev/compatibility.html) (en anglais).
+Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque ligne, et où chaque essai est consigné : [la note de conception](https://sioul.aurelienpierre.com/dev/compatibility.html) (en anglais).
 
 ## En bref {#in-short}
 
@@ -81,7 +81,7 @@ Thunderbird, l’application de courriel de votre téléphone et le webmail voie
 
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
-| Se connecter | la page de Google, dans votre navigateur | ses morceaux, dans les tests | Google | pas encore essayé avec Google lui-même. Avec une clé Google à vous laissée « en test », Google met fin à chaque connexion au bout de sept jours ([la note de conception](https://aurelienpierre.github.io/sioul/dev/google.html#your-own-google-key), en anglais) |
+| Se connecter | la page de Google, dans votre navigateur | ses morceaux, dans les tests | Google | pas encore essayé avec Google lui-même. Avec une clé Google à vous laissée « en test », Google met fin à chaque connexion au bout de sept jours ([la note de conception](https://sioul.aurelienpierre.com/dev/google.html#your-own-google-key), en anglais) |
 | Les agendas | le CalDAV de Google | — | Google | aucun agenda créé, renommé ou supprimé depuis Sioul ; pas de tâches dans un agenda Google ; Google ajoute vos rappels par défaut à chaque événement, et décale les événements écrits sans fuseau horaire |
 | Les contacts | le CardDAV de Google | — | Google | Google garde l’ancienne version des vCard : les libellés, les anniversaires sans année et les champs plus récents sont perdus, ce qui est dit avant qu’un contact n’y aille ; aucun nouveau carnet d’adresses |
 | Les tâches | Google Tasks | une imitation de Google Tasks | Google Tasks | Google garde un titre, des notes, fait ou non, un jour, et un niveau d’étapes ; le reste est grisé dans le formulaire de la tâche, en disant pourquoi |

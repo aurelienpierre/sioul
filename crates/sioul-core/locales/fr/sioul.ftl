@@ -5993,7 +5993,7 @@ ui-remove-confirm-microsoft = Retirer « { $id } » ? Sa connexion quitte 
 microsoft-no-app = Cette copie de Sioul ne porte aucune application Microsoft : utilisez une application à vous (son ID d’application (client)).
 account-signed-in-again-microsoft = { $account } : reconnecté avec Microsoft ; ses courriels reviennent.
 spam-app-no-address = aucune adresse encore
-ui-microsoft-privacy = Ce que Sioul fait de vos courriels Microsoft, et ce qu’il ne fait jamais : sa [politique de confidentialité](https://aurelienpierre.github.io/sioul/fr/privacy.html#microsoft-mail) et ses [conditions d’utilisation](https://aurelienpierre.github.io/sioul/fr/terms.html).
+ui-microsoft-privacy = Ce que Sioul fait de vos courriels Microsoft, et ce qu’il ne fait jamais : sa [politique de confidentialité](https://sioul.aurelienpierre.com/fr/privacy.html#microsoft-mail) et ses [conditions d’utilisation](https://sioul.aurelienpierre.com/fr/terms.html).
 ui-at-microsoft = Cette adresse est chez Microsoft (Microsoft 365, professionnelle ou scolaire) : se connecter avec Microsoft
 # Les trois états (partie 3 de « Ce qui vous joint ») : Joignable, Comme d’habitude, Ne pas déranger.
 reach-usual = Comme d’habitude

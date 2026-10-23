@@ -34,7 +34,7 @@ FOLDERS = [APP / "qml", APP / "qml" / "android", APP / "qml-desktop"]
 NOTES = ROOT / "docs"
 OUT = ROOT / "website" / "docs" / "dev" / "qml.md"
 GITHUB = "https://github.com/aurelienpierre/sioul/blob/main"
-RUST_APP = "https://aurelienpierre.github.io/sioul/api/rust/sioul_app/backend/index.html"
+RUST_APP = "https://sioul.aurelienpierre.com/api/rust/sioul_app/backend/index.html"
 
 # The page's sections, in its order: a key, a title, what they hold.
 GROUPS = [

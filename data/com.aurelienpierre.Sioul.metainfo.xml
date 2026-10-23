@@ -37,32 +37,32 @@
 
   <launchable type="desktop-id">com.aurelienpierre.Sioul.desktop</launchable>
 
-  <url type="homepage">https://aurelienpierre.github.io/sioul/</url>
-  <url type="help">https://aurelienpierre.github.io/sioul/guide/first-steps.html</url>
+  <url type="homepage">https://sioul.aurelienpierre.com/</url>
+  <url type="help">https://sioul.aurelienpierre.com/guide/first-steps.html</url>
   <url type="bugtracker">https://github.com/aurelienpierre/sioul/issues</url>
   <url type="vcs-browser">https://github.com/aurelienpierre/sioul</url>
-  <url type="contribute">https://aurelienpierre.github.io/sioul/dev/index.html</url>
+  <url type="contribute">https://sioul.aurelienpierre.com/dev/index.html</url>
 
   <screenshots>
     <screenshot type="default">
       <caption>The Porch: codes and links first, then the new mail sorted into lanes</caption>
       <caption xml:lang="fr">Le Porche : les codes et les liens d’abord, puis les nouveaux courriels triés en files</caption>
-      <image>https://aurelienpierre.github.io/sioul/assets/screens/porch.png</image>
+      <image>https://sioul.aurelienpierre.com/assets/screens/porch.png</image>
     </screenshot>
     <screenshot>
       <caption>The day: your hours by kind, and the steps placed in them</caption>
       <caption xml:lang="fr">La journée : vos heures par type, et les étapes placées dedans</caption>
-      <image>https://aurelienpierre.github.io/sioul/assets/screens/tasks-day.png</image>
+      <image>https://sioul.aurelienpierre.com/assets/screens/tasks-day.png</image>
     </screenshot>
     <screenshot>
       <caption>A message, with who sent it and how far that is verified</caption>
       <caption xml:lang="fr">Un courriel, avec qui l’a envoyé et à quel point c’est vérifié</caption>
-      <image>https://aurelienpierre.github.io/sioul/assets/screens/mail-reader.png</image>
+      <image>https://sioul.aurelienpierre.com/assets/screens/mail-reader.png</image>
     </screenshot>
     <screenshot>
       <caption>Budgets, filled by your bank accounts</caption>
       <caption xml:lang="fr">Les budgets, remplis par vos comptes bancaires</caption>
-      <image>https://aurelienpierre.github.io/sioul/assets/screens/budgets.png</image>
+      <image>https://sioul.aurelienpierre.com/assets/screens/budgets.png</image>
     </screenshot>
   </screenshots>
 
