@@ -298,8 +298,12 @@ pub enum CardError {
     NotYours,
     /// This phone has no NFC.
     NoNfc,
-    /// NFC is switched off on this phone.
+    /// NFC is switched off on this phone, which reaches no key by USB.
     NfcOff,
+    /// Android did not let Sioul use the key plugged into the phone.
+    UsbRefused,
+    /// Another app holds the key plugged into the phone.
+    UsbBusy,
     /// The key no longer holds the keys Sioul knows: its fingerprints changed.
     OtherKeys,
     /// The key signed, but not with the key its certificate names.
@@ -348,6 +352,8 @@ impl CardError {
             CardError::NotYours => tr.text("seckey-not-yours", None),
             CardError::NoNfc => tr.text("seckey-no-nfc", None),
             CardError::NfcOff => tr.text("seckey-nfc-off", None),
+            CardError::UsbRefused => tr.text("seckey-usb-refused", None),
+            CardError::UsbBusy => tr.text("seckey-usb-busy", None),
             CardError::OtherKeys => tr.text("seckey-other-keys", None),
             CardError::BadSignature => tr.text("seckey-bad-signature", None),
             CardError::Algorithm(algorithm) => say(tr, "seckey-algorithm", &[("algorithm", algorithm.clone())]),
@@ -360,7 +366,7 @@ impl CardError {
         match self {
             CardError::Busy => Remedy::Release,
             CardError::WrongPin { left } if *left > 0 => Remedy::Pin,
-            CardError::NoService | CardError::Absent | CardError::TouchMissed | CardError::Removed | CardError::NotYours | CardError::NotOpenPgp | CardError::Other(_) => Remedy::Again,
+            CardError::NoService | CardError::Absent | CardError::TouchMissed | CardError::Removed | CardError::NotYours | CardError::NotOpenPgp | CardError::UsbRefused | CardError::UsbBusy | CardError::Other(_) => Remedy::Again,
             CardError::NfcOff => Remedy::NfcSettings,
             _ => Remedy::None,
         }
@@ -497,6 +503,18 @@ pub trait Readers: Send + Sync {
     /// A key is wanted now, or no longer: a phone reads keys (NFC's reader
     /// mode, ahead of other apps) only while Sioul asks for one, in front.
     fn want(&self, _wanted: bool) {}
+    /// Whether the key in reach now, or the last one used, came by cable (a
+    /// phone's USB-C port): its touch is asked as on a computer, and it is
+    /// unplugged rather than moved away. A computer's readers say no: their
+    /// words are the computer's.
+    fn by_cable(&self) -> bool {
+        false
+    }
+    /// How keys can come now, when one way is missing: a phone without NFC
+    /// (`NoNfc`) or with NFC off (`NfcOff`) still takes a key plugged in.
+    fn reach_note(&self) -> Option<CardError> {
+        None
+    }
 }
 
 /// A build without a way to security keys: each use says so.

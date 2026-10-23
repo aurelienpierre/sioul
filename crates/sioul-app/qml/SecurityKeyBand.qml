@@ -67,6 +67,7 @@ Rectangle {
         const pin = pinField.text
         // The PIN leaves the field at once: nothing keeps it on screen.
         pinField.text = ""
+        band.forceActiveFocus()
         band.said = { state: "working", line: band.sioul.text(band.signing ? "seckey-signing" : "seckey-opening"), tries: "", warm: false, action: "" }
         band.go(pin)
     }
@@ -107,6 +108,10 @@ Rectangle {
                 pinField.forceActiveFocus()
             else if (said.state === "done")
                 band.done()
+            else
+                // No text field keeps the focus while the key waits or works: a touch
+                // with Yubico OTP on types a code and Enter, which then lands nowhere.
+                band.forceActiveFocus()
         }
     }
 

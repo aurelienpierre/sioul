@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! A security key held against the phone (NFC), as Sioul's own backend of
-//! `openpgp-card`: Android has no smart card service, so the card's APDUs
-//! travel through a [`Link`] (the app's, over Android's `IsoDep`), and the
-//! card itself is read, given its PIN and used by the same code as on a
-//! computer ([`super::ocard`]). docs/android.md, "Your security key".
+//! A security key held against the phone (NFC) or plugged into its USB-C
+//! port, as Sioul's own backend of `openpgp-card`: Android has no smart card
+//! service, so the card's APDUs travel through a [`Link`] (the app's, over
+//! Android's `IsoDep`, or CCID over its USB host API), and the card itself
+//! is read, given its PIN and used by the same code as on a computer
+//! ([`super::ocard`]). docs/android.md, "Your security key".
 //!
-//! - **One tap.** A key is in reach only while it is held: the PIN is asked
-//!   first, from what Sioul knows of the key, then one tap reads it, checks
-//!   it is the one known, gives its PIN and signs or opens, as long as it
-//!   is held ([`PhoneReaders::taps`]).
+//! - **One visit.** The PIN is asked first, from what Sioul knows of the
+//!   key, then one visit reads it, checks it is the one known, gives its PIN
+//!   and signs or opens: one tap over NFC, while it is held; plugged in, the
+//!   same, its touch asked as on a computer ([`PhoneReaders::taps`],
+//!   [`PhoneReaders::by_cable`]).
+//! - **Either way.** A key plugged in comes first; else one held. A phone
+//!   without NFC, or with NFC off, still takes a key plugged in
+//!   ([`PhoneReaders::reach_note`]); Android's refusal to let Sioul use the
+//!   key plugged in, and another app holding it, are said as such.
 //! - **What the phone carries.** Each exchange at most what its NFC controller
 //!   takes; extended length only where the phone says it takes it
 //!   ([`limit`]): else short APDUs, which `openpgp-card` chains and whose
@@ -49,6 +55,8 @@ pub struct Held {
     pub max_transceive: usize,
     /// Whether the phone carries extended length APDUs.
     pub extended: bool,
+    /// Held against the phone, or plugged in.
+    pub via: Via,
 }
 
 /// Why an exchange failed.
@@ -60,21 +68,48 @@ pub enum LinkError {
     Other(String),
 }
 
+/// How the key in reach came.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Via {
+    /// Held against the phone.
+    #[default]
+    Nfc,
+    /// Plugged into its USB-C port.
+    Usb,
+}
+
+/// What the link reaches now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// No key.
+    None,
+    /// A key, held or plugged in.
+    Held(Held),
+    /// A key plugged in that Android did not let Sioul use (its dialog refused).
+    Refused,
+    /// A key plugged in that another app holds.
+    Busy,
+}
+
 /// What carries APDUs between Sioul and a key held to the phone: the app's,
 /// over Android's NFC; a stand-in in tests.
 pub trait Link: Send + Sync {
-    /// Whether the phone can reach a key now.
+    /// Whether the phone can reach a key held against it now (NFC).
     fn state(&self) -> LinkState;
-    /// The key held now, if any.
-    fn held(&self) -> Option<Held>;
+    /// Whether the phone takes a key plugged into its USB-C port (USB host).
+    fn usb_host(&self) -> bool;
+    /// The key in reach now: plugged in first, else held.
+    fn reach(&self) -> Reach;
     /// One APDU to the key held; its answer, status words included.
     fn transceive(&self, command: &[u8]) -> Result<Vec<u8>, LinkError>;
-    /// Waits at most `timeout` for a key to be held.
+    /// Waits at most `timeout` for a key to be held or plugged in.
     fn wait(&self, timeout: Duration);
     /// A key is wanted now, or no longer: while it is, the phone reads keys
-    /// in reader mode, ahead of other apps; no longer, the key held is let
-    /// go (Android hands it to no other app until it leaves the field) and
-    /// reader mode ends.
+    /// in reader mode, ahead of other apps, and asks Android, once for each
+    /// time it is plugged in, to let Sioul use a key plugged in; no longer,
+    /// the key held is let go (Android hands it to no other app until it
+    /// leaves the field), reader mode ends, and the key plugged in is
+    /// powered off and given back.
     fn want(&self, wanted: bool);
 }
 
@@ -93,19 +128,29 @@ pub fn link() -> Option<&'static dyn Link> {
 /// Keys held against the phone, behind `openpgp-card`.
 pub struct PhoneReaders {
     link: &'static dyn Link,
+    /// How the last key used came.
+    last: std::sync::Mutex<Via>,
 }
 
 impl PhoneReaders {
     /// Keys reached through `link`.
     pub const fn new(link: &'static dyn Link) -> PhoneReaders {
-        PhoneReaders { link }
+        PhoneReaders { link, last: std::sync::Mutex::new(Via::Nfc) }
     }
 
-    fn ready(&self) -> Result<(), CardError> {
-        match self.link.state() {
-            LinkState::NoNfc => Err(CardError::NoNfc),
-            LinkState::Off => Err(CardError::NfcOff),
-            LinkState::Ready => Ok(()),
+    /// The key in reach, or why none can be: Android refused the one
+    /// plugged in, another app holds it; no NFC (or NFC off) and no USB host.
+    fn reached(&self) -> Result<Option<Held>, CardError> {
+        match self.link.reach() {
+            Reach::Held(held) => Ok(Some(held)),
+            Reach::Refused => Err(CardError::UsbRefused),
+            Reach::Busy => Err(CardError::UsbBusy),
+            Reach::None if self.link.usb_host() => Ok(None),
+            Reach::None => match self.link.state() {
+                LinkState::NoNfc => Err(CardError::NoNfc),
+                LinkState::Off => Err(CardError::NfcOff),
+                LinkState::Ready => Ok(None),
+            },
         }
     }
 }
@@ -116,13 +161,14 @@ pub const HELD: &str = "";
 
 impl Readers for PhoneReaders {
     fn present(&self) -> Result<Vec<String>, CardError> {
-        self.ready()?;
-        Ok(self.link.held().map(|_| vec![HELD.to_string()]).unwrap_or_default())
+        Ok(self.reached()?.map(|_| vec![HELD.to_string()]).unwrap_or_default())
     }
 
     fn visit(&self, visit: &mut dyn FnMut(&mut dyn Card) -> Visit) -> Result<Visited, CardError> {
-        self.ready()?;
-        let Some(held) = self.link.held() else { return Ok(Visited::default()) };
+        let Some(held) = self.reached()? else { return Ok(Visited::default()) };
+        if let Ok(mut last) = self.last.lock() {
+            *last = held.via;
+        }
         let backend: Box<dyn CardBackend + Send + Sync> = Box::new(PhoneBackend { link: self.link, held });
         let opened = openpgp_card::Card::<Open>::new(backend).map_err(|e| match card_error(e, false) {
             CardError::Removed => CardError::Removed,
@@ -149,6 +195,24 @@ impl Readers for PhoneReaders {
 
     fn want(&self, wanted: bool) {
         self.link.want(wanted);
+    }
+
+    fn by_cable(&self) -> bool {
+        match self.link.reach() {
+            Reach::Held(held) => held.via == Via::Usb,
+            _ => self.last.lock().is_ok_and(|last| *last == Via::Usb),
+        }
+    }
+
+    fn reach_note(&self) -> Option<CardError> {
+        if !self.link.usb_host() {
+            return None;
+        }
+        match self.link.state() {
+            LinkState::NoNfc => Some(CardError::NoNfc),
+            LinkState::Off => Some(CardError::NfcOff),
+            LinkState::Ready => None,
+        }
     }
 }
 
@@ -196,7 +260,7 @@ impl CardTransaction for PhoneTransaction {
     fn transmit(&mut self, command: &[u8], _buf_size: usize) -> Result<Vec<u8>, SmartcardError> {
         self.link.transceive(command).map_err(|e| match e {
             // Said as a reader says a card taken out (`ocard::card_error`).
-            LinkError::Lost => SmartcardError::Error("RemovedCard: the key moved away from the phone".into()),
+            LinkError::Lost => SmartcardError::Error("RemovedCard: the key left the phone".into()),
             LinkError::Other(code) => SmartcardError::Error(code),
         })
     }

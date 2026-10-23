@@ -68,9 +68,10 @@ pub fn readers() -> &'static dyn Readers {
 }
 
 /// Whether this device can use a security key: a computer, through its smart
-/// card service; a phone with NFC (switched off, it says so). A phone
-/// without NFC knows your key's certificate all the same, from your
-/// computer: it encrypts to you and says what waits for the key.
+/// card service; a phone with NFC (switched off, it says so) or a USB-C port
+/// that takes a key (USB host). A phone with neither knows your key's
+/// certificate all the same, from your computer: it encrypts to you and says
+/// what waits for the key.
 pub fn usable_here() -> bool {
     #[cfg(not(target_os = "android"))]
     {
@@ -78,7 +79,7 @@ pub fn usable_here() -> bool {
     }
     #[cfg(target_os = "android")]
     {
-        phone::link().is_some_and(|link| link.state() != phone::LinkState::NoNfc)
+        phone::link().is_some_and(|link| link.state() != phone::LinkState::NoNfc || link.usb_host())
     }
 }
 

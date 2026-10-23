@@ -122,12 +122,41 @@ fn tell_band(qt: &QtThread, context: &str, band: Band) {
 }
 
 fn working(qt: &QtThread, context: &str, id: &'static str) {
-    tell_band(qt, context, Band { state: "working", line: tr().text(working_words(taps(), id), None), ..Band::default() });
+    tell_band(qt, context, Band { state: "working", line: tr().text(working_words(&way(), id), None), ..Band::default() });
 }
 
 /// Held to a phone, the key is used while it stays there: "keep holding it".
-fn working_words(taps: bool, id: &'static str) -> &'static str {
-    if taps && matches!(id, "seckey-signing" | "seckey-opening") { "seckey-holding" } else { id }
+/// Plugged in, the computer's words.
+fn working_words(way: &Way, id: &'static str) -> &'static str {
+    if way.held() && matches!(id, "seckey-signing" | "seckey-opening") { "seckey-holding" } else { id }
+}
+
+/// How the key is reached here, for the words: on a computer, plugged in; on
+/// a phone, in one visit (PIN first), held against it or plugged into its
+/// USB-C port, NFC perhaps missing or off.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Way {
+    /// One visit, PIN first: a phone.
+    taps: bool,
+    /// The key in reach, or the last one used, came by cable.
+    cable: bool,
+    /// The way missing, while a key can still be plugged in.
+    note: Option<CardError>,
+}
+
+impl Way {
+    fn of(readers: &dyn Readers) -> Way {
+        Way { taps: readers.taps(), cable: readers.by_cable(), note: readers.reach_note() }
+    }
+
+    /// Held against a phone: the tap is the touch, the key moves away.
+    fn held(&self) -> bool {
+        self.taps && !self.cable
+    }
+}
+
+fn way() -> Way {
+    Way::of(readers())
 }
 
 /// The words that say how to read your security key on this device: on a
@@ -154,18 +183,20 @@ fn taps() -> bool {
     readers().taps()
 }
 
-/// A failure in words, a phone's own where they differ: a key moved away
-/// before it finished, a touch the key would not take over NFC, a key
-/// locked (unlocked on a computer).
+/// A failure in words, a phone's own where they differ: a key moved away, or
+/// unplugged, before it finished; a touch the key would not take over NFC; a
+/// key locked (unlocked on a computer).
 fn sentence(error: &CardError, purpose: Purpose) -> String {
-    sentence_in(taps(), error, purpose, tr())
+    sentence_in(&way(), error, purpose, tr())
 }
 
-fn sentence_in(taps: bool, error: &CardError, purpose: Purpose, words: &Translator) -> String {
-    if taps {
+fn sentence_in(way: &Way, error: &CardError, purpose: Purpose, words: &Translator) -> String {
+    let sign = purpose == Purpose::Sign;
+    if way.taps {
         match error {
-            CardError::Removed => return words.text(if purpose == Purpose::Sign { "seckey-moved-away-sign" } else { "seckey-moved-away" }, None),
-            CardError::TouchMissed => return words.text("seckey-nfc-touch", None),
+            CardError::Removed if way.cable => return words.text(if sign { "seckey-unplugged-sign" } else { "seckey-unplugged" }, None),
+            CardError::Removed => return words.text(if sign { "seckey-moved-away-sign" } else { "seckey-moved-away" }, None),
+            CardError::TouchMissed if !way.cable => return words.text("seckey-nfc-touch", None),
             CardError::Blocked | CardError::WrongPin { left: 0 } => return words.text("seckey-blocked-phone", None),
             _ => {}
         }
@@ -173,13 +204,42 @@ fn sentence_in(taps: bool, error: &CardError, purpose: Purpose, words: &Translat
     error.sentence(words, purpose)
 }
 
-/// What the band says while it waits for the key: plug it in; on a phone, hold it.
+/// What the band says while it waits for the key: plug it in; on a phone,
+/// hold it or plug it in (plug it in only, without NFC or with NFC off).
 fn waiting_line(purpose: Purpose) -> String {
-    waiting_in(taps(), purpose, tr())
+    waiting_in(&way(), purpose, tr())
 }
 
-fn waiting_in(taps: bool, purpose: Purpose, words: &Translator) -> String {
-    if taps { words.text("seckey-hold", None) } else { CardError::Absent.sentence(words, purpose) }
+fn waiting_in(way: &Way, purpose: Purpose, words: &Translator) -> String {
+    if !way.taps {
+        return CardError::Absent.sentence(words, purpose);
+    }
+    words.text(
+        match way.note {
+            Some(CardError::NoNfc) => "seckey-plug-phone",
+            Some(CardError::NfcOff) => "seckey-plug-nfc-off",
+            _ => "seckey-hold",
+        },
+        None,
+    )
+}
+
+/// The waiting band's button: "Open NFC settings" while NFC is off.
+fn waiting_action(way: &Way) -> &'static str {
+    if way.taps && way.note == Some(CardError::NfcOff) { "nfc-settings" } else { "" }
+}
+
+/// What came from the PIN's field looks like a one-time password the key
+/// typed when touched (Yubico OTP: 32 to 64 letters of its modhex alphabet,
+/// 44 most often, then Enter), not a PIN: never given to the key, which would
+/// count it as a wrong PIN.
+fn typed_by_the_key(typed: &str) -> bool {
+    (32..=64).contains(&typed.len()) && typed.bytes().all(|b| b"cbdefghijklnrtuv".contains(&b))
+}
+
+/// The band asks for the PIN again, saying the key typed a code.
+fn not_a_pin(qt: &QtThread, context: &str) {
+    tell_band(qt, context, Band { state: "pin", line: tr().text("seckey-pin-otp", None), warm: true, ..Band::default() });
 }
 
 fn problem_line(qt: &QtThread, context: &str, line: String, action: &'static str) {
@@ -428,6 +488,9 @@ fn know_window(qt: &QtThread) {
 /// ten seconds of "Undo"; `typed` is the PIN typed in the band, else "".
 pub(crate) fn sign_and_send(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: String) {
     know_window(qt);
+    if typed_by_the_key(&typed) {
+        return not_a_pin(qt, id);
+    }
     let typed = (!typed.is_empty()).then(|| Password::from(typed));
     let (qt, shared, id) = (qt.clone(), Arc::clone(shared), id.to_string());
     std::thread::spawn(move || sign_now(&qt, &shared, &id, typed));
@@ -543,10 +606,11 @@ fn open_quote_now(qt: &QtThread, shared: &Arc<Shared>, draft: &Draft, ident: &st
     }
 }
 
-/// A phone: once the key has done its work, the status line says it may be taken away.
+/// A phone: once the key has done its work, the status line says it may be taken away, or unplugged.
 fn lift(qt: &QtThread, shared: &Arc<Shared>) {
-    if taps() {
-        tell(qt, shared, tr().text("seckey-done-lift", None));
+    let way = way();
+    if way.taps {
+        tell(qt, shared, tr().text(if way.cable { "seckey-done-unplug" } else { "seckey-done-lift" }, None));
     }
 }
 
@@ -555,7 +619,8 @@ fn lift(qt: &QtThread, shared: &Arc<Shared>) {
 /// touch…" when it could not be read. Held to a phone, the tap is the touch:
 /// keep holding it.
 fn touch_line(slot: Option<&securitykey::SlotInfo>) -> String {
-    if taps() {
+    // Plugged into a phone, the computer's words: the key waits for a touch.
+    if way().held() {
         return tr().text("seckey-holding", None);
     }
     slot.map_or(Touch::Unknown, |s| s.touch).words(tr()).unwrap_or_else(|| tr().text("seckey-touch-maybe", None))
@@ -566,6 +631,9 @@ fn touch_line(slot: Option<&securitykey::SlotInfo>) -> String {
 /// opens again, with its attachments and its answer, without the key.
 pub(crate) fn open_message(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: String) {
     know_window(qt);
+    if typed_by_the_key(&typed) {
+        return not_a_pin(qt, key);
+    }
     let typed = (!typed.is_empty()).then(|| Password::from(typed));
     let (qt, shared, key) = (qt.clone(), Arc::clone(shared), key.to_string());
     std::thread::spawn(move || open_now(&qt, &shared, &key, typed));
@@ -623,7 +691,7 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.insert(context.to_string());
     }
-    tell_band(qt, context, Band { state: "plug", line: waiting_line(purpose), ..Band::default() });
+    tell_band(qt, context, Band { state: "plug", line: waiting_line(purpose), action: waiting_action(&way()), ..Band::default() });
     let (qt, shared, context, ident) = (qt.clone(), Arc::clone(shared), context.to_string(), ident.to_string());
     std::thread::spawn(move || {
         let since = Instant::now();
@@ -775,7 +843,7 @@ fn held_for_setup(qt: &QtThread) -> bool {
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.insert(SETUP_BAND.to_string());
     }
-    tell_band(qt, SETUP_BAND, Band { state: "plug", line: waiting_line(Purpose::Read), ..Band::default() });
+    tell_band(qt, SETUP_BAND, Band { state: "plug", line: waiting_line(Purpose::Read), action: waiting_action(&way()), ..Band::default() });
     let since = Instant::now();
     loop {
         match readers().present() {
@@ -842,11 +910,11 @@ fn key_in(readers: &dyn Readers, ident: &str) -> Result<CardInfo, CardError> {
 /// program holds offers "Let GnuPG release it", never a dead end; one not
 /// plugged in, "Try again".
 fn setup_problem(error: &CardError, words: &Translator) -> Band {
-    setup_problem_in(taps(), error, words)
+    setup_problem_in(&way(), error, words)
 }
 
-fn setup_problem_in(taps: bool, error: &CardError, words: &Translator) -> Band {
-    Band { state: "problem", line: sentence_in(taps, error, Purpose::Read, words), warm: true, action: setup_action(error), ..Band::default() }
+fn setup_problem_in(way: &Way, error: &CardError, words: &Translator) -> Band {
+    Band { state: "problem", line: sentence_in(way, error, Purpose::Read, words), warm: true, action: setup_action(error), ..Band::default() }
 }
 
 /// The setup's button for a key that could not be read: "Let GnuPG release
@@ -1295,35 +1363,68 @@ mod tests {
         assert!(keeps_pin(&SoftReaders::with(Vec::new())));
     }
 
-    /// What a phone says: hold the key, keep holding it, a key moved away, a
-    /// touch NFC cannot give, a key locked, NFC switched off (its settings
-    /// offered); a computer's words unchanged. In both languages.
+    /// What a phone says: hold the key or plug it in, keep holding it, a key
+    /// moved away or unplugged, a touch NFC cannot give (plugged in, the
+    /// computer's), a key locked, NFC missing or off while a key can still be
+    /// plugged in (its settings offered), Android's refusal, another app
+    /// holding the key; a computer's words unchanged. In both languages.
     #[test]
-    fn a_phone_says_hold_and_what_went_wrong() {
+    fn a_phone_says_hold_or_plug_and_what_went_wrong() {
+        let computer = Way::default();
+        let held = Way { taps: true, ..Way::default() };
+        let plugged = Way { taps: true, cable: true, ..Way::default() };
         for lang in ["en", "fr"] {
             let words = Translator::new(lang);
-            assert_eq!(waiting_in(true, Purpose::Sign, &words), words.text("seckey-hold", None));
-            assert_eq!(waiting_in(false, Purpose::Sign, &words), CardError::Absent.sentence(&words, Purpose::Sign));
-            assert_eq!(sentence_in(true, &CardError::Removed, Purpose::Sign, &words), words.text("seckey-moved-away-sign", None));
-            assert_eq!(sentence_in(true, &CardError::Removed, Purpose::Open, &words), words.text("seckey-moved-away", None));
-            assert_eq!(sentence_in(true, &CardError::TouchMissed, Purpose::Sign, &words), words.text("seckey-nfc-touch", None));
-            assert_eq!(sentence_in(true, &CardError::WrongPin { left: 0 }, Purpose::Open, &words), words.text("seckey-blocked-phone", None));
-            assert_eq!(sentence_in(true, &CardError::NotYours, Purpose::Open, &words), CardError::NotYours.sentence(&words, Purpose::Open));
+            assert_eq!(waiting_in(&held, Purpose::Sign, &words), words.text("seckey-hold", None));
+            assert_eq!(waiting_in(&Way { note: Some(CardError::NoNfc), ..held.clone() }, Purpose::Sign, &words), words.text("seckey-plug-phone", None));
+            let off = Way { note: Some(CardError::NfcOff), ..held.clone() };
+            assert_eq!((waiting_in(&off, Purpose::Open, &words), waiting_action(&off)), (words.text("seckey-plug-nfc-off", None), "nfc-settings"));
+            assert_eq!((waiting_in(&computer, Purpose::Sign, &words), waiting_action(&computer)), (CardError::Absent.sentence(&words, Purpose::Sign), ""));
+            assert_eq!(waiting_action(&held), "");
+            assert_eq!(sentence_in(&held, &CardError::Removed, Purpose::Sign, &words), words.text("seckey-moved-away-sign", None));
+            assert_eq!(sentence_in(&held, &CardError::Removed, Purpose::Open, &words), words.text("seckey-moved-away", None));
+            assert_eq!(sentence_in(&plugged, &CardError::Removed, Purpose::Sign, &words), words.text("seckey-unplugged-sign", None));
+            assert_eq!(sentence_in(&plugged, &CardError::Removed, Purpose::Read, &words), words.text("seckey-unplugged", None));
+            assert_eq!(sentence_in(&held, &CardError::TouchMissed, Purpose::Sign, &words), words.text("seckey-nfc-touch", None));
+            assert_eq!(sentence_in(&plugged, &CardError::TouchMissed, Purpose::Sign, &words), CardError::TouchMissed.sentence(&words, Purpose::Sign));
+            for way in [&held, &plugged] {
+                assert_eq!(sentence_in(way, &CardError::WrongPin { left: 0 }, Purpose::Open, &words), words.text("seckey-blocked-phone", None));
+            }
+            assert_eq!(sentence_in(&held, &CardError::NotYours, Purpose::Open, &words), CardError::NotYours.sentence(&words, Purpose::Open));
+            assert_eq!(sentence_in(&plugged, &CardError::UsbRefused, Purpose::Open, &words), words.text("seckey-usb-refused", None));
+            assert_eq!(sentence_in(&plugged, &CardError::UsbBusy, Purpose::Open, &words), words.text("seckey-usb-busy", None));
             for error in [CardError::Removed, CardError::TouchMissed, CardError::Blocked] {
-                assert_eq!(sentence_in(false, &error, Purpose::Sign, &words), error.sentence(&words, Purpose::Sign));
+                assert_eq!(sentence_in(&computer, &error, Purpose::Sign, &words), error.sentence(&words, Purpose::Sign));
             }
-            for id in ["seckey-hold", "seckey-holding", "seckey-done-lift", "seckey-moved-away", "seckey-moved-away-sign", "seckey-nfc-touch", "seckey-blocked-phone", "seckey-nfc-settings"] {
-                assert!(!words.text(id, None).contains("seckey-"), "{lang} {id}");
+            for id in ["seckey-hold", "seckey-holding", "seckey-done-lift", "seckey-done-unplug", "seckey-moved-away", "seckey-moved-away-sign", "seckey-unplugged", "seckey-unplugged-sign", "seckey-nfc-touch", "seckey-blocked-phone", "seckey-nfc-settings", "seckey-plug-phone", "seckey-plug-nfc-off", "seckey-usb-refused", "seckey-usb-busy", "seckey-pin-otp"] {
+                let said = words.text(id, None);
+                assert!(!said.is_empty() && !said.contains("seckey-"), "{lang} {id}");
             }
-            let off = setup_problem_in(true, &CardError::NfcOff, &words);
+            let off = setup_problem_in(&held, &CardError::NfcOff, &words);
             assert_eq!((off.state, off.action, off.line), ("problem", "nfc-settings", words.text("seckey-nfc-off", None)));
-            assert_eq!(setup_problem_in(true, &CardError::NoNfc, &words).action, "retry");
-            assert_eq!(setup_problem_in(true, &CardError::NotYours, &words).action, "retry");
+            for error in [CardError::NoNfc, CardError::NotYours, CardError::UsbRefused, CardError::UsbBusy] {
+                assert_eq!(setup_problem_in(&plugged, &error, &words).action, "retry", "{error:?}");
+            }
         }
-        assert_eq!(working_words(true, "seckey-signing"), "seckey-holding");
-        assert_eq!(working_words(true, "seckey-opening"), "seckey-holding");
-        assert_eq!(working_words(true, "seckey-reading"), "seckey-reading");
-        assert_eq!(working_words(false, "seckey-signing"), "seckey-signing");
+        assert_eq!(working_words(&held, "seckey-signing"), "seckey-holding");
+        assert_eq!(working_words(&held, "seckey-opening"), "seckey-holding");
+        assert_eq!(working_words(&held, "seckey-reading"), "seckey-reading");
+        assert_eq!(working_words(&plugged, "seckey-signing"), "seckey-signing");
+        assert_eq!(working_words(&computer, "seckey-signing"), "seckey-signing");
+        assert_eq!(Way::of(&SoftReaders::with(Vec::new())), computer);
+    }
+
+    /// Yubico OTP left on: a touch while the PIN's field has the focus types
+    /// a one-time password and Enter. Such a code is never given to the key
+    /// as its PIN (it would cost a try); PINs, of digits or letters, are.
+    #[test]
+    fn a_code_the_key_typed_is_not_taken_for_its_pin() {
+        // A YubiKey's OTP: 12 letters of its public id, 32 of the code, in modhex.
+        assert!(typed_by_the_key("ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlgf"));
+        assert!(typed_by_the_key(&"c".repeat(32)) && typed_by_the_key(&"v".repeat(64)));
+        for pin in ["123456", "12345678", "correct horse", "cbdefghijk", "Ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlgf", &"c".repeat(31), &"c".repeat(65), "ccccccjlkgjhvbtnedkdfiricjgtilhkbhuelkljdlga"] {
+            assert!(!typed_by_the_key(pin), "{pin}");
+        }
     }
 
     /// "Read it here" says, on a phone, to hold the key against it; each of

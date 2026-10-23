@@ -728,8 +728,8 @@ extern "C" void sioul_android_mail_shortcuts(const char *json)
     threw(env);
 }
 
-// Your security key held against the phone (crates/sioul-app/src/nfc.rs,
-// SecurityKeyLink.java). Any thread, Rust's own included. Never a byte of an
+// Your security key held against the phone or plugged into its USB-C port
+// (crates/sioul-app/src/nfc.rs, SecurityKeyLink.java, Ccid.java). Any thread, Rust's own included. Never a byte of an
 // APDU written anywhere: a command's copy here is wiped once sent (Java wipes
 // its own), an answer's once copied, and the copy Rust is given is wiped
 // when it gives it back.
@@ -774,27 +774,44 @@ extern "C" void sioul_android_key_want(int wanted)
     threw(env);
 }
 
-// The key held now: 1, its longest exchange and whether it takes extended
-// length (1); else 0.
-extern "C" int sioul_android_key_held(int *max, int *extended)
+// Whether this phone takes a key plugged into its USB-C port: 1 or 0.
+extern "C" int sioul_android_key_usb()
 {
     JNIEnv *env = jni();
-    if (!env || !max || !extended)
+    const jobject context = appContext.load();
+    if (!env || !context)
+        return 0;
+    const LocalFrame frame(env);
+    const jmethodID usb = keyMethod(env, "usbHost", "(Landroid/content/Context;)Z");
+    if (!usb)
+        return 0;
+    const jboolean answer = env->CallStaticBooleanMethod(securityKeyLink, usb, context);
+    return threw(env) ? 0 : (answer ? 1 : 0);
+}
+
+// The key in reach now: 0 none; 1 a key, its longest exchange, whether it
+// takes extended length (1) and whether it is plugged in (1) or held (0);
+// 2 a key plugged in that Android refused Sioul; 3 one another app holds.
+extern "C" int sioul_android_key_held(int *max, int *extended, int *plugged)
+{
+    JNIEnv *env = jni();
+    if (!env || !max || !extended || !plugged)
         return 0;
     const LocalFrame frame(env);
     const jmethodID held = keyMethod(env, "held", "()[I");
     if (!held)
         return 0;
     const auto answer = static_cast<jintArray>(env->CallStaticObjectMethod(securityKeyLink, held));
-    if (threw(env) || !answer || env->GetArrayLength(answer) < 2)
+    if (threw(env) || !answer || env->GetArrayLength(answer) < 4)
         return 0;
-    jint values[2] = { 0, 0 };
-    env->GetIntArrayRegion(answer, 0, 2, values);
+    jint values[4] = { 0, 0, 0, 0 };
+    env->GetIntArrayRegion(answer, 0, 4, values);
     if (threw(env))
         return 0;
-    *max = values[0];
-    *extended = values[1];
-    return 1;
+    *max = values[1];
+    *extended = values[2];
+    *plugged = values[3];
+    return values[0];
 }
 
 // One APDU to the key held: 0 and its answer (malloc'd, for
