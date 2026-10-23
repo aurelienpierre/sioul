@@ -24,6 +24,7 @@ fn main() {
         "qml/GoogleMail.qml",
         "qml/MicrosoftMail.qml",
         "qml/Panel.qml",
+        "qml/CodeCard.qml",
         "qml/WrapCheckBox.qml",
         "qml/PlainComboBox.qml",
         "qml/Icon.qml",

@@ -170,7 +170,8 @@ fn column_at(clock: &Clock, at_ms: i64, now: &Zoned) -> String {
 /// {tel, sms}}; nothing on a phone (its notifications are there), nothing
 /// while the part is off here.
 pub(crate) fn view() -> String {
-    let empty = || json!({ "lines": [] }).to_string();
+    // The notices of texts not read yet, whether or not the phone's notifications come here.
+    let empty = || json!({ "lines": [], "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string();
     let root = rules::folder();
     if cfg!(target_os = "android") || !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
         return empty();
@@ -181,10 +182,34 @@ pub(crate) fn view() -> String {
         return empty();
     }
     let config = load_config();
+    // A text the Texts page holds is one item (23 October 2026): its notice,
+    // opening it there; the SMS app's notification of it is folded into it.
+    let all: Vec<Line> = match crate::texts::folding() {
+        Some(folds) => all.into_iter().filter(|l| !(l.kind == "text" && !l.group && folds(&l.key, l.at))).collect(),
+        None => all,
+    };
     let lines = porch_lines(&config, &all, &now);
     let (tel, sms) = crate::calls::link_apps();
     // texts: Text back opens the conversation in Sioul when texts are read on this computer.
-    json!({ "lines": lines, "links": { "tel": tel, "sms": sms }, "texts": crate::texts::readable() }).to_string()
+    json!({ "lines": lines, "links": { "tel": tel, "sms": sms }, "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string()
+}
+
+/// The phone's notifications of a conversation's texts seen, on every
+/// device (`keys`: its people's numbers' keys): its thread opened, or
+/// deleted, in Texts. The last week's, which is all a phone keeps.
+pub(crate) fn seen_for(keys: &[String]) {
+    let root = rules::folder();
+    if keys.is_empty() || !root.join(rules::LOG).is_dir() {
+        return;
+    }
+    let now = Zoned::now().timestamp().as_millisecond();
+    let seen = calls::read_seen(&root);
+    let ids: Vec<String> = rules::read_logs(&root, now).into_iter().filter(|l| l.kind == "text" && keys.contains(&l.key) && !seen.seen.contains(&l.id)).map(|l| l.id).collect();
+    if !ids.is_empty()
+        && let Err(e) = calls::mark_seen(&root, &here_id(), &ids, now)
+    {
+        eprintln!("sioul: phone messages: {e}");
+    }
 }
 
 /// A phone's text's sender's own rows, as the phone read them (decision 16):
@@ -420,7 +445,8 @@ mod tests {
         if phone() || rules::folder().join(rules::LOG).is_dir() {
             return;
         }
-        assert_eq!(view(), json!({ "lines": [] }).to_string());
+        // No line; the texts' notices only where texts are read here (none in a test).
+        assert_eq!(view(), json!({ "lines": [], "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string());
         assert!(history(&["+33199001234".to_string()]).is_empty());
         let posted = Posted { package: "foundation.e.message".into(), sms_app: true, ..Posted::default() };
         assert!(!note("{}", &posted, &Kind::Untouched, None, false, &Decision::through(sioul_core::appnotes::Why::Allowed)));

@@ -664,7 +664,10 @@ fn import_step(android: &dyn Android, files: &Files, seal: &Seal, vault: &Vault,
     let read = read_rows(android, files, &wanted, vault, region, &mut budget).unwrap_or_default();
     // Rows logged before and no longer listed: deleted, or re-dated by their provider.
     let gone: BTreeSet<(bool, i64)> = logged.difference(&listed).map(|r| (r.mms, r.id)).collect();
-    let written = match write_log(&files.log, seal, &read.texts) {
+    // A conversation deleted in Sioul: its texts are read (counted as logged, never read again) and never written.
+    let marks = rules::Marks::read_all(files.log.parent().and_then(Path::parent).unwrap_or(Path::new("")), seal);
+    let shown: Vec<Text> = read.texts.iter().filter(|t| !marks.hides(t)).cloned().collect();
+    let written = match write_log(&files.log, seal, &shown) {
         Ok(written) => {
             // In the log now (a row it held already, read again after a stop, too).
             let rows: Vec<rules::Row> = read.texts.iter().filter_map(Text::row).collect();
@@ -1530,6 +1533,11 @@ fn heavy_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Re
             changed = import_step(&Phone, &files, seal, vault, region, now, false);
         }
         changed |= look_again(&Phone, &files, seal, now);
+        // A conversation deleted in Sioul on a computer: its texts leave this log, every copy following.
+        match rules::drop_hidden(&files.log, &rules::Marks::read_all(&root(), seal), seal) {
+            Ok(gone) => changed |= gone > 0,
+            Err(e) => eprintln!("sioul: texts: {e}"),
+        }
         changed
     })
 }
@@ -1913,6 +1921,9 @@ struct Kept {
     texts: std::sync::Arc<Vec<Text>>,
     requests: std::sync::Arc<Vec<Request>>,
     outcomes: std::sync::Arc<Vec<Outcome>>,
+    /// Every device's marks (read, hidden), and the texts without those hidden (23 October 2026).
+    marks: rules::Marks,
+    visible: std::sync::Arc<Vec<Text>>,
 }
 
 static KEPT: Mutex<Option<Kept>> = Mutex::new(None);
@@ -1944,20 +1955,143 @@ fn records(here: &str, seal: &Seal) -> (std::sync::Arc<Vec<Text>>, std::sync::Ar
     let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let k = match kept.take() {
         Some(k) if k.here == here => kept.insert(k),
-        _ => kept.insert(Kept { here: here.to_string(), logs: rules::Logs::default(), stamp: Vec::new(), region: None, texts: std::sync::Arc::default(), requests: std::sync::Arc::default(), outcomes: std::sync::Arc::default() }),
+        _ => kept.insert(Kept {
+            here: here.to_string(),
+            logs: rules::Logs::default(),
+            stamp: Vec::new(),
+            region: None,
+            texts: std::sync::Arc::default(),
+            requests: std::sync::Arc::default(),
+            outcomes: std::sync::Arc::default(),
+            marks: rules::Marks::default(),
+            visible: std::sync::Arc::default(),
+        }),
     };
     let first = k.stamp.is_empty() && k.texts.is_empty() && k.requests.is_empty();
+    let mut texts_changed = first;
     if k.logs.refresh(&root, seal) || k.region != region.map(|r| r.code) {
         // Without their raw columns, which only the fingerprints read (`Logs`).
         k.texts = std::sync::Arc::new(k.logs.one_each(region));
         k.region = region.map(|r| r.code);
+        texts_changed = true;
     }
+    // A conversation deleted in Sioul, on any device: its texts until then are not shown here.
+    let marks = rules::Marks::read_all(&root, seal);
+    if texts_changed || marks.hidden != k.marks.hidden {
+        k.visible = if marks.hidden.is_empty() { std::sync::Arc::clone(&k.texts) } else { std::sync::Arc::new(rules::visible(&k.texts, &marks)) };
+    }
+    k.marks = marks;
     if first || k.stamp != stamp {
         k.requests = std::sync::Arc::new(rules::read_requests(&root, seal));
         k.outcomes = std::sync::Arc::new(rules::read_outcomes(&root, seal));
         k.stamp = stamp;
     }
-    (std::sync::Arc::clone(&k.texts), std::sync::Arc::clone(&k.requests), std::sync::Arc::clone(&k.outcomes))
+    let requests = if k.marks.hidden.is_empty() {
+        std::sync::Arc::clone(&k.requests)
+    } else {
+        // The texts written from here to a conversation deleted since: gone with it.
+        let hidden = &k.marks.hidden;
+        std::sync::Arc::new(k.requests.iter().filter(|r| hidden.get(&phones::key(&r.to, region)).is_none_or(|upto| r.written > *upto)).cloned().collect())
+    };
+    (std::sync::Arc::clone(&k.visible), requests, std::sync::Arc::clone(&k.outcomes))
+}
+
+/// Every device's marks, and every text with those hidden: for the Porch's
+/// folding (a notification of a text deleted since folds into nothing shown).
+fn marked(here: &str, seal: &Seal) -> (rules::Marks, std::sync::Arc<Vec<Text>>) {
+    let _ = records(here, seal);
+    let kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    kept.as_ref().map_or_else(Default::default, |k| (k.marks.clone(), std::sync::Arc::clone(&k.texts)))
+}
+
+/// The Porch's notices of texts not read yet (23 October 2026): one per
+/// conversation, its sender and the newest's first words, opening it in
+/// Texts; [] where texts are not read here.
+pub(crate) fn notices() -> Value {
+    if phone() || !readable() {
+        return json!([]);
+    }
+    let Some((here, seal, _)) = sealed() else { return json!([]) };
+    let (config, senders) = looks();
+    let now = Zoned::now();
+    let name_of = names(senders);
+    let region = sioul_core::reach::region(&config);
+    let (texts, _, _) = records(&here, &seal);
+    let (marks, _) = marked(&here, &seal);
+    let mut list: Vec<(i64, Value)> = rules::unread(&texts, &marks, now.timestamp().as_millisecond())
+        .into_iter()
+        .map(|(id, unread)| {
+            let newest = unread[0];
+            let who = newest.with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
+            let first: String = if newest.body.is_empty() { tr().text("phonemsgs-picture", None) } else { newest.body.chars().take(80).collect() };
+            (newest.at, json!({ "conversation": id, "who": who, "first": first, "when": rules::time_of_day(newest.at, &now), "count": unread.len() }))
+        })
+        .collect();
+    list.sort_by(|a, b| b.0.cmp(&a.0));
+    Value::Array(list.into_iter().map(|(_, v)| v).collect())
+}
+
+/// Whether a phone's notification of a text (its sender's key, its time) is
+/// a text the Texts page holds, or held before its conversation was
+/// deleted: folded into it, never a second item on the Porch. None where
+/// texts are not read here: every notification stays a line.
+pub(crate) fn folding() -> Option<impl Fn(&str, i64) -> bool> {
+    if phone() || !readable() {
+        return None;
+    }
+    let (here, seal, _) = sealed()?;
+    let (_, all) = marked(&here, &seal);
+    Some(move |key: &str, at_ms: i64| rules::folded_into(key, at_ms, &all).is_some())
+}
+
+/// A conversation opened in Texts: read up to its newest text, on every
+/// device, and the phone's notifications of it seen (gone from the Porch's notices).
+fn mark_read(here: &str, seal: &Seal, id: &str, texts: &[Text]) {
+    let newest = texts.iter().filter(|t| t.direction == "in" && rules::conversation_id(&t.with) == id).map(|t| t.at).max().unwrap_or(0);
+    let read = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(|k| k.marks.read.get(id).copied()).unwrap_or(0);
+    if newest > read {
+        let mark = rules::TextMark { at: now_ms(), conversation: id.to_string(), read: newest, ..rules::TextMark::default() };
+        if let Err(e) = rules::write_mark(&root(), here, &mark, seal) {
+            eprintln!("sioul: texts: {e}");
+        }
+    }
+    crate::phonemsgs::seen_for(&id.split(',').map(str::to_string).collect::<Vec<_>>());
+}
+
+/// A conversation deleted in Sioul (23 October 2026): Sioul is never the
+/// phone's SMS app (it asks no SMS role, docs/texts.md), so Android lets it
+/// delete nothing from the phone's provider. Its texts until now leave
+/// Sioul on every device (a sealed mark; the phone writes its log again
+/// without them, so every computer's copy follows); the phone's own
+/// texting app keeps them. A text that comes later starts it again.
+fn delete(id: &str) -> Value {
+    let Some((here, seal, _)) = sealed() else { return json!({ "said": tr().text("texts-page-off", None) }) };
+    let (texts, requests, _) = records(&here, &seal);
+    let region = sioul_core::reach::region(&looks().0);
+    let upto = texts
+        .iter()
+        .filter(|t| rules::conversation_id(&t.with) == id)
+        .map(|t| t.at)
+        .chain(requests.iter().filter(|r| phones::key(&r.to, region) == id).map(|r| r.written))
+        .max()
+        .unwrap_or(0)
+        .max(now_ms());
+    let mark = rules::TextMark { at: now_ms(), conversation: id.to_string(), read: upto, hidden: upto };
+    if let Err(e) = rules::write_mark(&root(), &here, &mark, &seal) {
+        return json!({ "said": e });
+    }
+    crate::phonemsgs::seen_for(&id.split(',').map(str::to_string).collect::<Vec<_>>());
+    forget_hidden_media(&here, &seal);
+    json!({ "said": "" })
+}
+
+/// The media of hidden texts gone from this device's copies, unless a text shown holds them too.
+fn forget_hidden_media(here: &str, seal: &Seal) {
+    let (marks, all) = marked(here, seal);
+    let shown: BTreeSet<&str> = all.iter().filter(|t| !marks.hides(t)).flat_map(|t| t.parts.iter().map(|p| p.hash.as_str())).collect();
+    for hash in all.iter().filter(|t| marks.hides(t)).flat_map(|t| t.parts.iter().map(|p| p.hash.as_str())).filter(|h| !h.is_empty() && !shown.contains(h)) {
+        let _ = std::fs::remove_file(media_path(hash));
+    }
 }
 
 /// The Texts page's list (TextsPage.qml): {can (the part on, a phone that
@@ -1992,6 +2126,15 @@ fn view(query: &str) -> Value {
         }
     }
     let mut rows = with_drafts(conversations, &sioul_core::textdraft::all(&seal), &v);
+    // Unread until opened here (23 October 2026).
+    let (marks, _) = marked(&here, &seal);
+    let unread = rules::unread(&texts, &marks, now.timestamp().as_millisecond());
+    if let Value::Array(list) = &mut rows {
+        for row in list.iter_mut() {
+            let id = row["id"].as_str().unwrap_or_default().to_string();
+            row["unread"] = json!(unread.get(&id).map_or(0, Vec::len));
+        }
+    }
     if !query.is_empty()
         && let Value::Array(list) = &mut rows
     {
@@ -2047,6 +2190,8 @@ fn conversation(id: &str) -> Value {
     let v = rules::Viewer { now: &now, tr: tr(), region, name_of: &name_of, phone_shared: shared, media_here: &here_media };
     let (texts, requests, outcomes) = records(&here, &seal);
     let messages = rules::messages(id, &texts, &requests, &outcomes, &v);
+    // Opened here: read, on every device, and its notices gone from the Porch.
+    mark_read(&here, &seal, id, &texts);
     let with: Vec<String> = id.split(',').map(str::to_string).collect();
     let title = with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
     // What an AI agent drafted for it: waiting for you, never sent by itself.
@@ -2610,6 +2755,12 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             }
         }
         "again" => again(&text("key")),
+        "delete" => {
+            let done = delete(&text("id"));
+            let mut tab = view("");
+            tab["said"] = done["said"].clone();
+            (tab, true)
+        }
         "parts" => match asked["media"].as_array().filter(|media| !media.is_empty()) {
             Some(media) => (parts_mms(&text("body"), media, &text("id"), &text("phone")), false),
             None => (parts(&text("body")), false),
@@ -3006,6 +3157,36 @@ mod tests {
     /// once (SMS Backup & Restore restoring a history, with a text that came
     /// after it) is read the same way; a text the outbox hid, once Android
     /// shows it. Each row once in the log, none passed.
+    /// A conversation deleted in Sioul on a computer (23 October 2026): the
+    /// phone writes its log again without its texts, never reads them back
+    /// in, and a text that comes later is read as any.
+    #[test]
+    fn a_conversation_deleted_in_sioul_leaves_the_phones_log_for_good() {
+        let bench = Bench::new("hidden");
+        let phone = Provider::default();
+        for id in 1..=3 {
+            phone.text(id, NOW - 3_600_000 + id * 60_000, "Votre code : 123456");
+        }
+        assert!(bench.step(&phone, NOW, false));
+        assert_eq!(bench.rows().len(), 3);
+        let root = bench.base.join("data/texts");
+        let mark = rules::TextMark { at: NOW, conversation: "+33465710042".into(), read: NOW, hidden: NOW };
+        rules::write_mark(&root, "computer", &mark, &bench.seal).unwrap();
+        assert_eq!(rules::drop_hidden(&bench.files.log, &rules::Marks::read_all(&root, &bench.seal), &bench.seal).unwrap(), 3);
+        assert!(bench.rows().is_empty(), "gone from the log, so from every computer's copy");
+        // The phone's provider still holds them (its own app keeps them): never read back in.
+        assert!(!bench.step(&phone, NOW + 60_000, false));
+        assert!(bench.rows().is_empty());
+        // One Android showed late, dated before the deletion: read, never written.
+        phone.text(5, NOW - 1_000, "Votre code : 654321");
+        bench.step(&phone, NOW + 90_000, false);
+        assert!(bench.rows().is_empty(), "dated before it was deleted: hidden too");
+        // A text that comes later shows again.
+        phone.text(4, NOW + 120_000, "Votre colis arrive.");
+        assert!(bench.step(&phone, NOW + 180_000, false));
+        assert_eq!(bench.rows().iter().map(|r| r.id).collect::<Vec<_>>(), [4]);
+    }
+
     #[test]
     fn a_text_that_comes_during_a_long_import_goes_first() {
         let bench = Bench::new("import");

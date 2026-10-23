@@ -69,6 +69,13 @@ pub const SEND: &str = "send";
 pub const OUTCOME: &str = "outcome";
 /// The shared stores, in that order.
 pub const STORES: [&str; 3] = [LOG, SEND, OUTCOME];
+/// Each device's marks on conversations: read up to a moment, hidden up to
+/// a moment (a conversation deleted in Sioul; 23 October 2026). Never trimmed.
+pub const MARKS: &str = "marks";
+/// A text newer than this, in, not read since: unread (older ones count as read).
+pub const UNREAD_DAYS: i64 = 7;
+/// A phone's notification and a text are one message within this time, by number (`folded_into`).
+pub const FOLD_MS: i64 = 3 * 60_000;
 /// The media of multimedia messages, each sealed at rest by its content's hash; never shared as a store (they travel as blobs).
 pub const MEDIA: &str = "media";
 /// The phone's private files, in the state folder, never shared: the ledger,
@@ -795,6 +802,105 @@ pub fn kept(texts: &[Text], media_here: &dyn Fn(&str) -> bool) -> (usize, u64) {
     let mut hashes = BTreeSet::new();
     let bytes = texts.iter().flat_map(|t| t.parts.iter()).filter(|p| p.state == "here" && !p.hash.is_empty() && media_here(&p.hash) && hashes.insert(p.hash.clone())).map(|p| p.size).sum();
     (texts.len(), bytes)
+}
+
+// ---------------------------------------------------------------- read and hidden
+
+/// A device's mark on a conversation (`MARKS`): read up to a moment (ms),
+/// or hidden up to a moment, its texts until then gone from Sioul on every
+/// device (a conversation deleted in Sioul while it is not the phone's SMS
+/// app: the phone's own app keeps them).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextMark {
+    /// When it was written (ms).
+    pub at: i64,
+    /// The conversation (`conversation_id`).
+    pub conversation: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub read: i64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub hidden: i64,
+}
+
+/// Every device's marks, by conversation: the latest moment read up to, and hidden up to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Marks {
+    pub read: BTreeMap<String, i64>,
+    pub hidden: BTreeMap<String, i64>,
+}
+
+impl Marks {
+    /// Every device's marks under `root`.
+    pub fn read_all(root: &Path, sealer: &dyn Sealer) -> Marks {
+        let mut marks = Marks::default();
+        for (_, path) in calls::device_files(&root.join(MARKS)) {
+            for m in read_file::<TextMark>(&path, sealer) {
+                marks.note(&m);
+            }
+        }
+        marks
+    }
+
+    fn note(&mut self, m: &TextMark) {
+        for (moment, by) in [(m.read, &mut self.read), (m.hidden, &mut self.hidden)] {
+            if moment > 0 {
+                let kept = by.entry(m.conversation.clone()).or_insert(0);
+                *kept = (*kept).max(moment);
+            }
+        }
+    }
+
+    /// Whether a text is hidden: its conversation deleted in Sioul after it came.
+    pub fn hides(&self, t: &Text) -> bool {
+        self.hidden.get(&conversation_id(&t.with)).is_some_and(|upto| t.at <= *upto)
+    }
+}
+
+/// A mark written in this device's own file.
+pub fn write_mark(root: &Path, device: &str, mark: &TextMark, sealer: &dyn Sealer) -> Result<usize, String> {
+    append(&own_file(root, MARKS, device), std::slice::from_ref(mark), sealer, None)
+}
+
+/// The texts without those hidden (`Marks::hides`).
+pub fn visible(texts: &[Text], marks: &Marks) -> Vec<Text> {
+    texts.iter().filter(|t| !marks.hides(t)).cloned().collect()
+}
+
+/// A conversation's unread texts: in, newer than `UNREAD_DAYS`, after its
+/// last read mark, not deleted on the phone; newest first.
+pub fn unread<'a>(texts: &'a [Text], marks: &Marks, now_ms: i64) -> BTreeMap<String, Vec<&'a Text>> {
+    let mut by: BTreeMap<String, Vec<&Text>> = BTreeMap::new();
+    for t in texts.iter().filter(|t| t.direction == "in" && t.deleted == 0 && now_ms - t.at <= UNREAD_DAYS * DAY_MS && !marks.hides(t)) {
+        let id = conversation_id(&t.with);
+        if id.is_empty() || marks.read.get(&id).is_some_and(|upto| t.at <= *upto) {
+            continue;
+        }
+        by.entry(id).or_default().push(t);
+    }
+    for list in by.values_mut() {
+        list.sort_by(|a, b| b.at.cmp(&a.at));
+    }
+    by
+}
+
+/// A phone's own log without the texts hidden on any device (`Marks`):
+/// written again by its one writer, the phone, so that every computer's
+/// copy loses them too. A line that does not open stays. How many went.
+pub fn drop_hidden(own_log: &Path, marks: &Marks, sealer: &dyn Sealer) -> Result<usize, String> {
+    if marks.hidden.is_empty() {
+        return Ok(0);
+    }
+    calls::rewrite_lines(own_log, |line| sealer.open(line.trim()).and_then(|plain| serde_json::from_str::<Text>(&plain).ok()).is_some_and(|t| marks.hides(&t)))
+}
+
+/// The conversation a phone's notification of a text is the same message
+/// as (`phonemsgs::Line`: its sender's number's key, its time): a text in
+/// from that one number within `FOLD_MS`. None: it stays a line of its own.
+pub fn folded_into(key: &str, at_ms: i64, texts: &[Text]) -> Option<String> {
+    if key.is_empty() {
+        return None;
+    }
+    texts.iter().find(|t| t.direction == "in" && t.with.len() == 1 && t.with[0] == key && (t.at - at_ms).abs() <= FOLD_MS).map(|t| conversation_id(&t.with))
 }
 
 // ---------------------------------------------------------------- each text once
@@ -1885,6 +1991,54 @@ pub const PART_KINDS: [&str; 6] = ["picture", "sound", "video", "card", "file", 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A text read once opened, on every device; a conversation deleted in
+    /// Sioul hides its texts until then, a new one shows; a phone's
+    /// notification of a text folds into it by number and time (23 October 2026).
+    #[test]
+    fn marks_read_hide_and_fold() {
+        let now = 1_792_000_000_000;
+        let text = |id: &str, with: &str, at: i64, direction: &str| Text { id: id.into(), at, direction: direction.into(), with: vec![with.into()], body: "Votre code 123".into(), ..Text::default() };
+        let texts = vec![text("sms-1@1", "+33600000001", now - 60_000, "in"), text("sms-2@2", "+33600000001", now - 30_000, "in"), text("sms-3@3", "+33600000002", now - 9 * DAY_MS, "in"), text("sms-4@4", "+33600000003", now - 10_000, "out")];
+        let none = Marks::default();
+        let unread = unread(&texts, &none, now);
+        assert_eq!(unread.keys().cloned().collect::<Vec<_>>(), ["+33600000001"], "in, recent, unread; an old one and one sent are not");
+        assert_eq!(unread["+33600000001"].iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["sms-2@2", "sms-1@1"]);
+        let mut marks = Marks::default();
+        marks.note(&TextMark { at: now, conversation: "+33600000001".into(), read: now - 30_000, ..TextMark::default() });
+        assert!(super::unread(&texts, &marks, now).is_empty(), "read once opened");
+        marks.note(&TextMark { at: now, conversation: "+33600000001".into(), hidden: now - 45_000, ..TextMark::default() });
+        assert_eq!(visible(&texts, &marks).iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["sms-2@2", "sms-3@3", "sms-4@4"], "hidden until then; a newer one shows");
+        assert_eq!(folded_into("+33600000001", now - 60_000 + 90_000, &texts).as_deref(), Some("+33600000001"), "the same number, within three minutes");
+        assert_eq!(folded_into("+33600000001", now + 10 * 60_000, &texts), None, "later: another message");
+        assert_eq!(folded_into("+33600000009", now - 60_000, &texts), None, "another number");
+    }
+
+    /// A conversation deleted in Sioul leaves the phone's own log, which
+    /// every computer's copy follows; its other texts stay (23 October 2026).
+    #[test]
+    fn a_hidden_conversation_leaves_the_phones_log() {
+        struct Plain;
+        impl Sealer for Plain {
+            fn seal(&self, plain: &str) -> String {
+                plain.to_string()
+            }
+            fn open(&self, sealed: &str) -> Option<String> {
+                Some(sealed.to_string())
+            }
+        }
+        let dir = std::env::temp_dir().join(format!("sioul-texts-hidden-{}", std::process::id()));
+        let log = dir.join("log").join("phone.jsonl");
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        let text = |id: &str, with: &str, at: i64| Text { id: id.into(), at, direction: "in".into(), with: vec![with.into()], ..Text::default() };
+        append(&log, &[text("sms-1@1", "+33600000001", 1_000), text("sms-2@2", "+33600000002", 2_000), text("sms-3@3", "+33600000001", 5_000)], &Plain, None).unwrap();
+        let mut marks = Marks::default();
+        marks.note(&TextMark { at: 4_000, conversation: "+33600000001".into(), hidden: 4_000, ..TextMark::default() });
+        assert_eq!(drop_hidden(&log, &marks, &Plain).unwrap(), 1);
+        let left: Vec<String> = read_file::<Text>(&log, &Plain).into_iter().map(|t| t.id).collect();
+        assert_eq!(left, ["sms-2@2", "sms-3@3"], "the hidden one gone, a later one and another's stay");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A stand-in for the sealer: reversible, and visibly not plain.
     struct Stand;

@@ -73,6 +73,10 @@ Item {
                 return JSON.stringify({ parts: 1, said: "" })
             if (verb === "send-mms")
                 return JSON.stringify({ said: "", shared: true })
+            if (verb === "delete") {
+                mock.conversations = mock.conversations.filter(c => c.id !== args.id)
+                return JSON.stringify({ said: "" })
+            }
             return "{}"
         }
         function message(n) {
@@ -129,6 +133,34 @@ Item {
             page.select("+33199001234")
             wait(100)
             mock.asked = []
+        }
+
+        // Unread until opened (23 October 2026): its name in bold, how many said.
+        function test_an_unread_conversation_says_so() {
+            mock.conversations = [Object.assign({}, mock.conversations[0], { unread: 2 })]
+            page.close()
+            page.reload()
+            wait(50)
+            const mark = findChild(page, "textsUnread")
+            verify(mark !== null && mark.visible)
+            compare(mark.text, "texts-unread:2")
+        }
+
+        // Deleted in Sioul, after its sentence says the phone's app keeps them (23 October 2026).
+        function test_a_conversation_is_deleted_after_its_sentence() {
+            const button = findChild(page, "textsDelete")
+            verify(button !== null && button.visible)
+            mouseClick(button)
+            wait(50)
+            const ask = page.deleteAsk.item
+            verify(ask !== null && ask.opened, "asked first")
+            compare(ask.sentence, "texts-delete-said")
+            compare(count("delete"), 0, "nothing deleted before the answer")
+            ask.confirmed()
+            wait(50)
+            compare(mock.asked.filter(a => a[0] === "delete")[0][1].id, "+33199001234")
+            compare(page.openId, "")
+            compare(page.rows.length, 0, "gone from the list")
         }
 
         // At its end: the new text comes into view, the draft stays.
