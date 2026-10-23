@@ -64,6 +64,12 @@
 #   unlocked phone; swapped titles, another order, the car extender's and the
 #   watch's; the notification by its name (Rust's `replies::notice`), gone, or
 #   another profile's.
+# - SecurityKeyCheck: your security key held against the phone, read from the
+#   sources (android.jar's NFC classes are stubs): no tag filter in the
+#   manifest, NFC not required; reader mode only in SecurityKeyLink, on while
+#   a band asks, the key let go (ignored until it leaves the field) before it
+#   ends; the screen kept from captures meanwhile; nothing of an APDU logged
+#   in Java or in main.cpp's bridge, each command and answer wiped.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -89,7 +95,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

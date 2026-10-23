@@ -294,6 +294,12 @@ pub enum CardError {
     Removed,
     /// What is plugged in holds no OpenPGP keys.
     NotOpenPgp,
+    /// A key held against the phone, but not the one Sioul knows for this.
+    NotYours,
+    /// This phone has no NFC.
+    NoNfc,
+    /// NFC is switched off on this phone.
+    NfcOff,
     /// The key no longer holds the keys Sioul knows: its fingerprints changed.
     OtherKeys,
     /// The key signed, but not with the key its certificate names.
@@ -315,6 +321,8 @@ pub enum Remedy {
     Release,
     /// The PIN asked again.
     Pin,
+    /// "Open NFC settings", then try again.
+    NfcSettings,
 }
 
 impl CardError {
@@ -337,6 +345,9 @@ impl CardError {
             CardError::TouchMissed => tr.text("seckey-touch-missed", None),
             CardError::Removed => tr.text(if purpose == Purpose::Sign { "seckey-removed-sign" } else { "seckey-removed" }, None),
             CardError::NotOpenPgp => tr.text("seckey-not-openpgp", None),
+            CardError::NotYours => tr.text("seckey-not-yours", None),
+            CardError::NoNfc => tr.text("seckey-no-nfc", None),
+            CardError::NfcOff => tr.text("seckey-nfc-off", None),
             CardError::OtherKeys => tr.text("seckey-other-keys", None),
             CardError::BadSignature => tr.text("seckey-bad-signature", None),
             CardError::Algorithm(algorithm) => say(tr, "seckey-algorithm", &[("algorithm", algorithm.clone())]),
@@ -349,7 +360,8 @@ impl CardError {
         match self {
             CardError::Busy => Remedy::Release,
             CardError::WrongPin { left } if *left > 0 => Remedy::Pin,
-            CardError::NoService | CardError::Absent | CardError::TouchMissed | CardError::Removed | CardError::Other(_) => Remedy::Again,
+            CardError::NoService | CardError::Absent | CardError::TouchMissed | CardError::Removed | CardError::NotYours | CardError::NotOpenPgp | CardError::Other(_) => Remedy::Again,
+            CardError::NfcOff => Remedy::NfcSettings,
             _ => Remedy::None,
         }
     }
@@ -471,6 +483,20 @@ pub trait Readers: Send + Sync {
     /// Opens each key present in turn, in shared mode, and gives it to `visit`
     /// until `visit` is done; each is closed afterwards, which resets it.
     fn visit(&self, visit: &mut dyn FnMut(&mut dyn Card) -> Visit) -> Result<Visited, CardError>;
+    /// Waits for the readers to change, `timeout` at most: a computer looks
+    /// again after it; a phone wakes as soon as a key is held to it.
+    fn wait_change(&self, timeout: Duration) {
+        std::thread::sleep(timeout);
+    }
+    /// Whether a key is used in one tap (a phone, over NFC): its PIN asked
+    /// first, from what Sioul knows of it, then the key read, given its PIN
+    /// and used while it is held, never read on its own beforehand.
+    fn taps(&self) -> bool {
+        false
+    }
+    /// A key is wanted now, or no longer: a phone reads keys (NFC's reader
+    /// mode, ahead of other apps) only while Sioul asks for one, in front.
+    fn want(&self, _wanted: bool) {}
 }
 
 /// A build without a way to security keys: each use says so.
@@ -527,6 +553,8 @@ pub fn with_card<R>(readers: &dyn Readers, ident: &str, work: impl FnOnce(&mut d
     match result {
         Some(result) => result,
         None if visited.busy > 0 => Err(CardError::Busy),
+        // A key held to the phone, another one: said, rather than waited for in vain.
+        None if visited.opened > 0 && readers.taps() => Err(CardError::NotYours),
         None => Err(CardError::Absent),
     }
 }
@@ -1769,12 +1797,14 @@ pub struct SoftReaders {
     pub busy: usize,
     /// The smart card service answers with this instead.
     pub failure: Option<CardError>,
+    /// Used in one tap, as a phone uses a key over NFC ([`Readers::taps`]).
+    pub taps: bool,
 }
 
 impl SoftReaders {
     /// Readers holding `cards`.
     pub fn with(cards: Vec<SoftCard>) -> SoftReaders {
-        SoftReaders { cards: Mutex::new(cards), busy: 0, failure: None }
+        SoftReaders { cards: Mutex::new(cards), busy: 0, failure: None, taps: false }
     }
 
     /// Runs `f` on the key `ident`, to see or change it between operations.
@@ -1807,6 +1837,10 @@ impl Readers for SoftReaders {
             }
         }
         Ok(visited)
+    }
+
+    fn taps(&self) -> bool {
+        self.taps
     }
 }
 
@@ -2096,6 +2130,27 @@ mod tests {
         let access = CardAccess::new(&wrong, &pin, &|| {});
         let mut decryptor = CardDecryptor::new(&access, "0006:12345678", subkey);
         assert!(crypto::Decryptor::decrypt(&mut decryptor, &sealed, None).is_err());
+    }
+
+    #[test]
+    fn another_key_held_to_the_phone_is_said_not_waited_for() {
+        let cert = primary_signs("holder@example.org");
+        let mut readers = SoftReaders::with(vec![SoftCard::new("0006:87654321", &cert, "123456")]);
+        // In a reader, another key: the one wanted may still come.
+        assert_eq!(with_card(&readers, "0006:12345678", |_, _| Ok(())), Err(CardError::Absent));
+        // Held to the phone, another key: said at once.
+        readers.taps = true;
+        assert_eq!(with_card(&readers, "0006:12345678", |_, _| Ok(())), Err(CardError::NotYours));
+        assert_eq!(CardError::NotYours.remedy(), Remedy::Again);
+        assert_eq!(CardError::NfcOff.remedy(), Remedy::NfcSettings);
+        // Nothing held: absent, not someone else's.
+        let empty = SoftReaders { taps: true, ..SoftReaders::with(vec![]) };
+        assert_eq!(with_card(&empty, "0006:12345678", |_, _| Ok(())), Err(CardError::Absent));
+        let tr = Translator::new("en");
+        for error in [CardError::NotYours, CardError::NoNfc, CardError::NfcOff] {
+            let said = error.sentence(&tr, Purpose::Open);
+            assert!(!said.is_empty() && !said.contains("seckey-"), "{error:?}");
+        }
     }
 
     #[test]

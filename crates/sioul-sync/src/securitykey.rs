@@ -27,8 +27,9 @@
 //!   sent on "Send it to keys.openpgp.org", over HTTPS, then a confirmation
 //!   asked for each address it names that is not published yet: the server
 //!   mails each a link, and publishes the address once the link is opened.
-//! - **The key itself**, on a computer: the system's smart card service,
-//!   PC/SC ([`smartcard`]). On a phone, not yet.
+//! - **The key itself**: on a computer, the system's smart card service,
+//!   PC/SC ([`smartcard`]); on a phone, a key held against it over NFC
+//!   ([`phone`]); the card's own code shared by both ([`ocard`]).
 //! - **Logs**: [`cap_logging`], as each program starts.
 
 use crate::SyncError;
@@ -41,11 +42,14 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
+pub mod ocard;
+pub mod phone;
 #[cfg(not(target_os = "android"))]
 pub mod smartcard;
 
 /// Where security keys are found: the system's smart card service on a
-/// computer; on a phone, nowhere yet (NFC and USB come later).
+/// computer; on a phone, a key held against it over NFC, through the link
+/// the app gives as it starts ([`phone::set_link`]), else nowhere.
 pub fn readers() -> &'static dyn Readers {
     #[cfg(not(target_os = "android"))]
     {
@@ -55,15 +59,27 @@ pub fn readers() -> &'static dyn Readers {
     #[cfg(target_os = "android")]
     {
         static NONE: NoReaders = NoReaders;
-        &NONE
+        static PHONE: std::sync::OnceLock<phone::PhoneReaders> = std::sync::OnceLock::new();
+        match phone::link() {
+            Some(link) => PHONE.get_or_init(|| phone::PhoneReaders::new(link)),
+            None => &NONE,
+        }
     }
 }
 
 /// Whether this device can use a security key: a computer, through its smart
-/// card service; a phone not yet (it knows your key's certificate all the
-/// same, from your computer: it encrypts to you and says what waits for the key).
-pub const fn usable_here() -> bool {
-    cfg!(not(target_os = "android"))
+/// card service; a phone with NFC (switched off, it says so). A phone
+/// without NFC knows your key's certificate all the same, from your
+/// computer: it encrypts to you and says what waits for the key.
+pub fn usable_here() -> bool {
+    #[cfg(not(target_os = "android"))]
+    {
+        true
+    }
+    #[cfg(target_os = "android")]
+    {
+        phone::link().is_some_and(|link| link.state() != phone::LinkState::NoNfc)
+    }
 }
 
 /// Caps what any crate may log at "info", whatever level it asks, as a
@@ -727,21 +743,33 @@ mod tests {
         }
     }
 
+    /// A stand-in program written at `path`, executable, never open for
+    /// writing in this process: written aside, then put in place by a child
+    /// (`install`). Written here, a test thread forking meanwhile carries its
+    /// open file into its child until that child execs, and running the
+    /// program then fails with "Text file busy" (ETXTBSY; seen once in forty
+    /// runs, 23 October 2026).
+    #[cfg(unix)]
+    pub(super) fn executable(path: &std::path::Path, text: &str) {
+        let aside = path.with_extension("text");
+        std::fs::write(&aside, text).unwrap();
+        let status = std::process::Command::new("install").arg("-m").arg("755").arg(&aside).arg(path).status().unwrap();
+        assert!(status.success(), "install {}", path.display());
+        let _ = std::fs::remove_file(&aside);
+    }
+
     #[cfg(unix)]
     #[test]
     fn gnupg_is_asked_to_let_go_with_a_stand_in() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = std::env::temp_dir().join(format!("sioul-gpgconf-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Never GnuPG's own gpgconf: a script that only says what it was asked.
         let program = dir.join("gpgconf");
-        std::fs::write(&program, format!("#!/bin/sh\necho \"$@\" > '{}'\n", dir.join("asked").display())).unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&program, &format!("#!/bin/sh\necho \"$@\" > '{}'\n", dir.join("asked").display()));
         assert_eq!(release_with(&program), Released::Done);
         assert_eq!(std::fs::read_to_string(dir.join("asked")).unwrap().trim(), "--kill scdaemon");
         let refusing = dir.join("refusing");
-        std::fs::write(&refusing, "#!/bin/sh\necho 'gpgconf: no such component' >&2\nexit 2\n").unwrap();
-        std::fs::set_permissions(&refusing, std::fs::Permissions::from_mode(0o755)).unwrap();
+        executable(&refusing, "#!/bin/sh\necho 'gpgconf: no such component' >&2\nexit 2\n");
         assert_eq!(release_with(&refusing), Released::Failed("gpgconf: no such component".into()));
         assert_eq!(release_with(&dir.join("nowhere")), Released::NoGnupg);
         let tr = Translator::new("en");
@@ -924,7 +952,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn renewing_ends_with_the_key_let_go_once() {
-        use std::os::unix::fs::PermissionsExt;
         let _alone = ON_CARD_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("sioul-gpg-standin-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -934,8 +961,7 @@ mod tests {
         let asked = dir.join("asked");
         let script = |name: &str, body: String| {
             let path = dir.join(name);
-            std::fs::write(&path, body).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            executable(&path, &body);
             path
         };
         let fail = dir.join("fail");

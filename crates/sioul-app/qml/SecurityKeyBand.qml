@@ -207,8 +207,15 @@ Rectangle {
                 highlighted: true
                 onClicked: band.release()
             }
+            // A phone whose NFC is off: Android's own switch.
             Button {
-                visible: band.said.action === "retry" || band.said.action === "release"
+                visible: band.said.action === "nfc-settings"
+                text: band.sioul.text("seckey-nfc-settings")
+                highlighted: true
+                onClicked: band.sioul.openNfcSettings()
+            }
+            Button {
+                visible: band.said.action === "retry" || band.said.action === "release" || band.said.action === "nfc-settings"
                 text: band.sioul.text("seckey-try-again")
                 onClicked: band.start()
             }

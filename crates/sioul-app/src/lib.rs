@@ -151,6 +151,8 @@ mod join;
 mod mail;
 mod mailsearch;
 mod mailnote;
+#[cfg(target_os = "android")]
+mod nfc;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).
@@ -525,6 +527,8 @@ pub extern "C" fn sioul_app_run() -> i32 {
 // SAFETY: no other symbol of the program has this name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sioul_android_init(vm: *mut std::ffi::c_void, context: *mut std::ffi::c_void) -> bool {
+    // Your security key held against the phone (NFC), through Java.
+    nfc::start();
     // SAFETY: as the caller promises.
     match unsafe { sioul_sync::android::init(vm, context) } {
         Ok(()) => true,

@@ -1257,7 +1257,7 @@ Item {
                                         font.pixelSize: 13
                                     }
                                     Flow {
-                                        visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || page.keySetup.state === "problem" || page.keySetup.state === "publish" || page.keySetup.action === "publish" || page.keySetup.action === "renew-offer"
+                                        visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || page.keySetup.state === "problem" || page.keySetup.state === "plug" || page.keySetup.state === "publish" || page.keySetup.action === "publish" || page.keySetup.action === "renew-offer"
                                         Layout.fillWidth: true
                                         spacing: 8
 
@@ -1312,9 +1312,16 @@ Item {
                                                     page.sioul.readSecurityKey()
                                             }
                                         }
+                                        // A phone whose NFC is off: Android's own switch.
+                                        Button {
+                                            visible: page.keySetup.action === "nfc-settings"
+                                            highlighted: true
+                                            text: page.sioul.text("seckey-nfc-settings")
+                                            onClicked: page.sioul.openNfcSettings()
+                                        }
                                         // A touch missed while GnuPG renewed the key: renewed again on this press.
                                         Button {
-                                            visible: page.keySetup.action === "retry" || page.keySetup.action === "release" || page.keySetup.action === "lookup" || page.keySetup.action === "renew"
+                                            visible: page.keySetup.action === "retry" || page.keySetup.action === "release" || page.keySetup.action === "lookup" || page.keySetup.action === "renew" || page.keySetup.action === "nfc-settings"
                                             text: page.sioul.text("seckey-try-again")
                                             onClicked: {
                                                 if (page.keySetup.action === "lookup")
@@ -1328,7 +1335,11 @@ Item {
                                         Button {
                                             flat: true
                                             text: page.sioul.text("seckey-not-now")
-                                            onClicked: page.keySetup = { state: "", line: "", tries: "", warm: false, action: "", fingerprint: "", ident: "", commands: [] }
+                                            onClicked: {
+                                                // A phone waiting for the key held to it stops.
+                                                page.sioul.securityKeyNotNow("setup")
+                                                page.keySetup = { state: "", line: "", tries: "", warm: false, action: "", fingerprint: "", ident: "", commands: [] }
+                                            }
                                         }
                                     }
                                     // What the buttons do, by hand, each command to copy.

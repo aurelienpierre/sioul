@@ -144,7 +144,7 @@ fn protection_with(keys: &Keys, address: &str, draft: &Draft, card_here: bool) -
     let sign_not_here = match (card_signs || shared_serves, card_here) {
         (false, _) => String::new(),
         (true, false) => tr().text("seckey-sign-not-here", None),
-        (true, true) if shared_serves => tr().text("seckey-sign-read-here", None),
+        (true, true) if shared_serves => tr().text(crate::securitykey::read_here_words("seckey-sign-read-here"), None),
         (true, true) => String::new(),
     };
     // Encrypted without a copy for you: why, said whatever it is (F14).
@@ -319,7 +319,7 @@ fn offers(keys: &Keys, addresses: &[String], card_here: bool) -> (Vec<String>, V
         }
         if keys.serving_card(address).is_some() {
             if card_here {
-                read.push(say("pgp-read-card-here", &[("address", address.clone())]));
+                read.push(say(crate::securitykey::read_here_words("pgp-read-card-here"), &[("address", address.clone())]));
             }
             continue;
         }

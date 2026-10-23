@@ -19,6 +19,7 @@
 use crate::backend::{QtThread, Shared, json, load_config, local_path, offline, say, tell, tr};
 use cxx_qt_lib::QString;
 use sioul_core::compose::{Draft, DraftKind};
+use sioul_core::i18n::Translator;
 use sioul_core::pgp::{self, Keys, Place};
 use sioul_core::securitykey::{self, CardAccess, CardError, CardInfo, KnownCard, NoReaders, Password, PinMemory, Purpose, Readers, Remedy, SoftCard, SoftReaders, Touch};
 use sioul_sync::securitykey::{Gnupg, GnupgProblem, GnupgStep, Looked, Released};
@@ -112,12 +113,73 @@ struct Band {
 }
 
 fn tell_band(qt: &QtThread, context: &str, band: Band) {
+    // A phone reads keys (NFC's reader mode, ahead of other apps) only while a band asks for one.
+    if taps() {
+        readers().want(matches!(band.state, "pin" | "plug" | "working" | "touch"));
+    }
     let (context, state) = (context.to_string(), json(&band));
     let _ = qt.queue(move |mut sioul| sioul.as_mut().security_key_changed(QString::from(&context), QString::from(&state)));
 }
 
-fn working(qt: &QtThread, context: &str, id: &str) {
-    tell_band(qt, context, Band { state: "working", line: tr().text(id, None), ..Band::default() });
+fn working(qt: &QtThread, context: &str, id: &'static str) {
+    tell_band(qt, context, Band { state: "working", line: tr().text(working_words(taps(), id), None), ..Band::default() });
+}
+
+/// Held to a phone, the key is used while it stays there: "keep holding it".
+fn working_words(taps: bool, id: &'static str) -> &'static str {
+    if taps && matches!(id, "seckey-signing" | "seckey-opening") { "seckey-holding" } else { id }
+}
+
+/// The words that say how to read your security key on this device: on a
+/// phone, held against it (`<id>-phone`); on a computer, plugged in.
+pub(crate) fn read_here_words(computer: &'static str) -> &'static str {
+    read_here_in(cfg!(target_os = "android"), computer)
+}
+
+fn read_here_in(phone: bool, computer: &'static str) -> &'static str {
+    if !phone {
+        return computer;
+    }
+    match computer {
+        "seckey-sign-read-here" => "seckey-sign-read-here-phone",
+        "seckey-source-shared-computer" => "seckey-source-shared-phone",
+        "pgp-read-card-here" => "pgp-read-card-here-phone",
+        other => other,
+    }
+}
+
+/// Whether the key is used in one tap: a phone, over NFC (its PIN asked
+/// first, never held; the key held while it works; docs/android.md).
+fn taps() -> bool {
+    readers().taps()
+}
+
+/// A failure in words, a phone's own where they differ: a key moved away
+/// before it finished, a touch the key would not take over NFC, a key
+/// locked (unlocked on a computer).
+fn sentence(error: &CardError, purpose: Purpose) -> String {
+    sentence_in(taps(), error, purpose, tr())
+}
+
+fn sentence_in(taps: bool, error: &CardError, purpose: Purpose, words: &Translator) -> String {
+    if taps {
+        match error {
+            CardError::Removed => return words.text(if purpose == Purpose::Sign { "seckey-moved-away-sign" } else { "seckey-moved-away" }, None),
+            CardError::TouchMissed => return words.text("seckey-nfc-touch", None),
+            CardError::Blocked | CardError::WrongPin { left: 0 } => return words.text("seckey-blocked-phone", None),
+            _ => {}
+        }
+    }
+    error.sentence(words, purpose)
+}
+
+/// What the band says while it waits for the key: plug it in; on a phone, hold it.
+fn waiting_line(purpose: Purpose) -> String {
+    waiting_in(taps(), purpose, tr())
+}
+
+fn waiting_in(taps: bool, purpose: Purpose, words: &Translator) -> String {
+    if taps { words.text("seckey-hold", None) } else { CardError::Absent.sentence(words, purpose) }
 }
 
 fn problem_line(qt: &QtThread, context: &str, line: String, action: &'static str) {
@@ -153,7 +215,7 @@ pub(crate) fn for_draft(id: &str) -> String {
         Some(Some(pgp::Own { place: Place::Card { .. }, .. })) if !here => cannot("seckey-sign-not-here"),
         Some(Some(pgp::Own { place: Place::Card { ident }, .. })) => json(&serde_json::json!({ "ident": ident, "label": label(&ident), "signs": true })),
         // Your security key serves the address, read on another device: it signs only where it was read.
-        Some(None) if keys.card_for(&address).is_none() && keys.serving_card(&address).is_some() => cannot(if here { "seckey-sign-read-here" } else { "seckey-sign-not-here" }),
+        Some(None) if keys.card_for(&address).is_none() && keys.serving_card(&address).is_some() => cannot(if here { read_here_words("seckey-sign-read-here") } else { "seckey-sign-not-here" }),
         // No key signs for this address now: its certificate expired, said.
         signing => match matches!(signing, Some(None)).then(|| expired_line(&keys, &address)).flatten() {
             Some(line) => json(&serde_json::json!({ "expired": line })),
@@ -214,7 +276,18 @@ fn now_unix() -> i64 {
 /// it for each signature, decision 5); with what the key says, read without
 /// its PIN. None as the PIN: the band asks for it.
 fn pin_for(ident: &str, typed: Option<&Password>, purpose: Purpose) -> Result<(CardInfo, Option<Password>), CardError> {
-    let info = securitykey::cards(readers())?.into_iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).ok_or(CardError::Absent)?;
+    pin_from(readers(), || Keys::load().all_cards().find(|c| c.ident.eq_ignore_ascii_case(ident)).cloned(), ident, typed, purpose)
+}
+
+/// `pin_for` with its readers, and what Sioul knows of the key (`known`).
+fn pin_from(readers: &dyn Readers, known: impl FnOnce() -> Option<KnownCard>, ident: &str, typed: Option<&Password>, purpose: Purpose) -> Result<(CardInfo, Option<Password>), CardError> {
+    // A phone: the PIN first, from what Sioul knows of the key, before the tap
+    // that does everything (never a read on its own); never held there.
+    if readers.taps() {
+        let known = known().ok_or(CardError::Absent)?;
+        return Ok((as_info(&known), typed.cloned()));
+    }
+    let info = securitykey::cards(readers)?.into_iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).ok_or(CardError::Absent)?;
     if info.pin_tries == 0 {
         return Err(CardError::Blocked);
     }
@@ -245,7 +318,9 @@ fn keys_changed() {
 
 /// The PIN worked: held for its quiet time, watched; what the key said, kept.
 fn remember(ident: &str, pin: Password, reader: Option<String>, info: &CardInfo) {
-    if let Ok(mut memory) = PIN.lock() {
+    if keeps_pin(readers())
+        && let Ok(mut memory) = PIN.lock()
+    {
         memory.keep(ident, pin, &reader.unwrap_or_else(|| info.reader.clone()), Instant::now());
     }
     keys_changed();
@@ -263,6 +338,12 @@ fn remember(ident: &str, pin: Password, reader: Option<String>, info: &CardInfo)
         }
     }
     watch_pin();
+}
+
+/// Whether a PIN that worked is held for its quiet time: on a computer; on a
+/// phone never, typed for each use.
+fn keeps_pin(readers: &dyn Readers) -> bool {
+    !readers.taps()
 }
 
 /// While a PIN is held: forgotten when its quiet time ends, or when its key
@@ -326,11 +407,12 @@ fn failed(qt: &QtThread, context: &str, error: CardError, purpose: Purpose, type
             memory.forget();
         }
     }
-    let line = error.sentence(tr(), purpose);
+    let line = sentence(&error, purpose);
     match error.remedy() {
         Remedy::Pin => tell_band(qt, context, Band { state: "pin", line, warm: true, ..Band::default() }),
         Remedy::Again => problem_line(qt, context, line, "retry"),
         Remedy::Release => problem_line(qt, context, line, "release"),
+        Remedy::NfcSettings => problem_line(qt, context, line, "nfc-settings"),
         Remedy::None => problem_line(qt, context, line, ""),
     }
 }
@@ -402,6 +484,7 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
             remember(&ident, pin.clone(), access.reader(), &info);
             crate::mail::send_signed(qt, shared, id, account, outgoing);
             tell_band(qt, id, Band { state: "done", ..Band::default() });
+            lift(qt, shared);
         }
         Err(BuildError::Card(CardError::Absent)) => wait_for(qt, shared, id, &ident, purpose, typed, sign_now),
         Err(BuildError::Card(error)) => {
@@ -460,10 +543,21 @@ fn open_quote_now(qt: &QtThread, shared: &Arc<Shared>, draft: &Draft, ident: &st
     }
 }
 
+/// A phone: once the key has done its work, the status line says it may be taken away.
+fn lift(qt: &QtThread, shared: &Arc<Shared>) {
+    if taps() {
+        tell(qt, shared, tr().text("seckey-done-lift", None));
+    }
+}
+
 /// What the band says when the key's slot may wait for a touch, its setting
 /// read from the key this session (`Touch::words`): "If your key asks for a
-/// touch…" when it could not be read.
+/// touch…" when it could not be read. Held to a phone, the tap is the touch:
+/// keep holding it.
 fn touch_line(slot: Option<&securitykey::SlotInfo>) -> String {
+    if taps() {
+        return tr().text("seckey-holding", None);
+    }
     slot.map_or(Touch::Unknown, |s| s.touch).words(tr()).unwrap_or_else(|| tr().text("seckey-touch-maybe", None))
 }
 
@@ -506,6 +600,7 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
         Some((Some(_), _)) => {
             remember(&ident, pin.clone(), access.reader(), &info);
             tell_band(qt, key, Band { state: "done", ..Band::default() });
+            lift(qt, shared);
         }
         _ => match access.failure() {
             Some(CardError::Absent) => wait_for(qt, shared, key, &ident, Purpose::Open, typed, open_now),
@@ -528,13 +623,14 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.insert(context.to_string());
     }
-    tell_band(qt, context, Band { state: "plug", line: CardError::Absent.sentence(tr(), purpose), ..Band::default() });
+    tell_band(qt, context, Band { state: "plug", line: waiting_line(purpose), ..Band::default() });
     let (qt, shared, context, ident) = (qt.clone(), Arc::clone(shared), context.to_string(), ident.to_string());
     std::thread::spawn(move || {
         let since = Instant::now();
         let mut seen: Option<Vec<String>> = None;
         loop {
-            std::thread::sleep(LOOK_EVERY);
+            // A phone wakes as soon as a key is held to it; a computer looks again.
+            readers().wait_change(LOOK_EVERY);
             if !WAITING.lock().is_ok_and(|w| w.contains(&context)) {
                 return;
             }
@@ -542,7 +638,25 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
                 if let Ok(mut waiting) = WAITING.lock() {
                     waiting.remove(&context);
                 }
-                return problem_line(&qt, &context, CardError::Absent.sentence(tr(), purpose), "retry");
+                return problem_line(&qt, &context, waiting_line(purpose), "retry");
+            }
+            // Held to a phone: the work goes on at once, in this one tap (never read on its own first).
+            if taps() {
+                match readers().present() {
+                    Ok(held) if held.is_empty() => continue,
+                    Ok(_) => {
+                        if let Ok(mut waiting) = WAITING.lock() {
+                            waiting.remove(&context);
+                        }
+                        return resume(&qt, &shared, &context, typed);
+                    }
+                    Err(error) => {
+                        if let Ok(mut waiting) = WAITING.lock() {
+                            waiting.remove(&context);
+                        }
+                        return failed(&qt, &context, error, purpose, typed.is_some());
+                    }
+                }
             }
             // While Sioul's own GnuPG works with a key, no look: the next turn.
             if !sioul_sync::securitykey::may_look() {
@@ -579,6 +693,15 @@ pub(crate) fn not_now(context: &str) {
     if let Ok(mut waiting) = WAITING.lock() {
         waiting.remove(context);
     }
+    if taps() {
+        readers().want(false);
+    }
+}
+
+/// "Open NFC settings": Android's own switch, on a phone.
+pub(crate) fn open_nfc_settings() {
+    #[cfg(target_os = "android")]
+    crate::nfc::open_settings();
 }
 
 /// "Let GnuPG release it", pressed: GnuPG's smart card daemon stopped.
@@ -619,11 +742,20 @@ pub(crate) fn read_for_setup(qt: &QtThread) {
     let qt = qt.clone();
     std::thread::spawn(move || {
         working(&qt, SETUP_BAND, "seckey-reading");
+        // A phone: the key is read when held to it; the band says where, and waits.
+        if taps() && !held_for_setup(&qt) {
+            return;
+        }
         match securitykey::cards(readers()) {
             Ok(found) => {
                 let known = securitykey::known_cards();
                 // A key not set up yet comes first, when several are plugged in.
                 let Some(info) = found.iter().find(|c| !known.iter().any(|k| k.ident == c.ident)).or(found.first()).cloned() else { return };
+                // Known from another device of yours, its certificate with it: read here
+                // now, kept at once (on a phone, this is how it comes to sign there).
+                if let Some((cert, check, source)) = shared_certificate(&info) {
+                    return adopt(&qt, &info, &cert, &check, &source);
+                }
                 let line = describe(&info);
                 let fingerprint = fingerprint_of(&info);
                 let commands = vec![sioul_sync::securitykey::export_command(&fingerprint)];
@@ -632,12 +764,56 @@ pub(crate) fn read_for_setup(qt: &QtThread) {
                 }
                 tell_band(&qt, SETUP_BAND, Band { state: "found", line, fingerprint, commands, ..Band::default() });
             }
-            Err(error) => {
-                let action = if error.remedy() == Remedy::Release { "release" } else { "retry" };
-                problem_line(&qt, SETUP_BAND, error.sentence(tr(), Purpose::Read), action);
-            }
+            Err(error) => tell_band(&qt, SETUP_BAND, setup_problem(&error, tr())),
         }
     });
+}
+
+/// A phone, at the setup: waits for a key held to it, the band saying so,
+/// until one comes, "Not now", or a few minutes pass; whether one came.
+fn held_for_setup(qt: &QtThread) -> bool {
+    if let Ok(mut waiting) = WAITING.lock() {
+        waiting.insert(SETUP_BAND.to_string());
+    }
+    tell_band(qt, SETUP_BAND, Band { state: "plug", line: waiting_line(Purpose::Read), ..Band::default() });
+    let since = Instant::now();
+    loop {
+        match readers().present() {
+            Ok(held) if !held.is_empty() => break,
+            Ok(_) => {}
+            Err(error) => {
+                failed(qt, SETUP_BAND, error, Purpose::Read, false);
+                break;
+            }
+        }
+        if !WAITING.lock().is_ok_and(|w| w.contains(SETUP_BAND)) {
+            return false;
+        }
+        if since.elapsed() > WAIT_AT_MOST {
+            problem_line(qt, SETUP_BAND, waiting_line(Purpose::Read), "retry");
+            break;
+        }
+        readers().wait_change(LOOK_EVERY);
+    }
+    let came = WAITING.lock().is_ok_and(|mut w| w.remove(SETUP_BAND)) && readers().present().is_ok_and(|held| !held.is_empty());
+    if came {
+        working(qt, SETUP_BAND, "seckey-holding");
+    }
+    came
+}
+
+/// The certificate your other devices made known with the key `info` (read
+/// on another computer of yours, shared), when it is the key's: what the
+/// setup keeps at once, with where it came from, rather than looking it up.
+fn shared_certificate(info: &CardInfo) -> Option<(securitykey::Certificate, securitykey::CertCheck, String)> {
+    shared_in(&Keys::load(), info)
+}
+
+fn shared_in(keys: &Keys, info: &CardInfo) -> Option<(securitykey::Certificate, securitykey::CertCheck, String)> {
+    let record = keys.shared.iter().find(|c| c.ident.eq_ignore_ascii_case(&info.ident))?;
+    let cert = keys.cert(&record.cert)?;
+    let check = securitykey::check(cert, info).ok()?;
+    Some((cert.clone(), check, record.source.clone()))
 }
 
 /// The fingerprint `gpg --export` takes for the key: its signing key's, else its decryption key's.
@@ -665,12 +841,22 @@ fn key_in(readers: &dyn Readers, ident: &str) -> Result<CardInfo, CardError> {
 /// What the setup's band says when the key could not be read: a key another
 /// program holds offers "Let GnuPG release it", never a dead end; one not
 /// plugged in, "Try again".
-fn setup_problem(error: &CardError, words: &sioul_core::i18n::Translator) -> Band {
-    let action = match error.remedy() {
+fn setup_problem(error: &CardError, words: &Translator) -> Band {
+    setup_problem_in(taps(), error, words)
+}
+
+fn setup_problem_in(taps: bool, error: &CardError, words: &Translator) -> Band {
+    Band { state: "problem", line: sentence_in(taps, error, Purpose::Read, words), warm: true, action: setup_action(error), ..Band::default() }
+}
+
+/// The setup's button for a key that could not be read: "Let GnuPG release
+/// it", "Open NFC settings", else "Try again".
+fn setup_action(error: &CardError) -> &'static str {
+    match error.remedy() {
         Remedy::Release => "release",
+        Remedy::NfcSettings => "nfc-settings",
         _ => "retry",
-    };
-    Band { state: "problem", line: error.sentence(words, Purpose::Read), warm: true, action, ..Band::default() }
+    }
 }
 
 /// What Sioul kept of a key, as the key would say it (fingerprints, no public parts).
@@ -1015,7 +1201,7 @@ pub(crate) fn known_view() -> String {
             let read_here = keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
             let source = match card.source.as_str() {
                 // Read on another computer of yours: on a computer, read it here to sign here (F18); a phone cannot yet.
-                _ if !read_here && here => tr().text("seckey-source-shared-computer", None),
+                _ if !read_here && here => tr().text(read_here_words("seckey-source-shared-computer"), None),
                 _ if !read_here => tr().text("seckey-source-shared", None),
                 "file" => say("seckey-source-file", &[("date", securitykey::full_date(tr(), card.checked))]),
                 "gnupg" => say("seckey-source-gnupg", &[("date", securitykey::full_date(tr(), card.checked))]),
@@ -1086,6 +1272,102 @@ mod tests {
         assert_eq!(forward_refused(true, &Answered::AtSend), None);
     }
 
+    /// On a phone (a key held to it, NFC): the PIN is asked first, from what
+    /// Sioul knows of the key, never from a read of its own (one tap does
+    /// everything), and never kept; on a computer, the key is read first and
+    /// the PIN kept for its quiet time.
+    #[test]
+    fn a_phone_asks_the_pin_first_and_never_keeps_it() {
+        let known = KnownCard { ident: "0006:12345678".into(), sign: "AB".repeat(20), decrypt: "CD".repeat(20), cert: "EF".repeat(20), pin_tries_full: 3, ..KnownCard::default() };
+        // Any read would fail: the phone's path reads nothing.
+        let phone = SoftReaders { taps: true, failure: Some(CardError::NoService), ..SoftReaders::with(Vec::new()) };
+        let (info, pin) = pin_from(&phone, || Some(known.clone()), "0006:12345678", None, Purpose::Sign).unwrap();
+        assert_eq!((info.ident.as_str(), info.pin_tries, pin.is_none()), ("0006:12345678", 3, true), "the band asks for the PIN");
+        assert_eq!(info.sign.map(|s| s.fingerprint), Some("AB".repeat(20)));
+        let typed = Password::from("123456");
+        let (_, pin) = pin_from(&phone, || Some(known.clone()), "0006:12345678", Some(&typed), Purpose::Open).unwrap();
+        assert!(pin.is_some(), "the PIN typed goes with the tap");
+        assert_eq!(pin_from(&phone, || None, "0006:12345678", None, Purpose::Open).map(|(i, _)| i.ident), Err(CardError::Absent), "a key not known here");
+        assert!(!keeps_pin(&phone));
+        // A computer reads the key first (here, no service), and keeps the PIN.
+        let computer = SoftReaders { failure: Some(CardError::NoService), ..SoftReaders::with(Vec::new()) };
+        assert_eq!(pin_from(&computer, || Some(known.clone()), "0006:12345678", None, Purpose::Sign).map(|(i, _)| i.ident), Err(CardError::NoService));
+        assert!(keeps_pin(&SoftReaders::with(Vec::new())));
+    }
+
+    /// What a phone says: hold the key, keep holding it, a key moved away, a
+    /// touch NFC cannot give, a key locked, NFC switched off (its settings
+    /// offered); a computer's words unchanged. In both languages.
+    #[test]
+    fn a_phone_says_hold_and_what_went_wrong() {
+        for lang in ["en", "fr"] {
+            let words = Translator::new(lang);
+            assert_eq!(waiting_in(true, Purpose::Sign, &words), words.text("seckey-hold", None));
+            assert_eq!(waiting_in(false, Purpose::Sign, &words), CardError::Absent.sentence(&words, Purpose::Sign));
+            assert_eq!(sentence_in(true, &CardError::Removed, Purpose::Sign, &words), words.text("seckey-moved-away-sign", None));
+            assert_eq!(sentence_in(true, &CardError::Removed, Purpose::Open, &words), words.text("seckey-moved-away", None));
+            assert_eq!(sentence_in(true, &CardError::TouchMissed, Purpose::Sign, &words), words.text("seckey-nfc-touch", None));
+            assert_eq!(sentence_in(true, &CardError::WrongPin { left: 0 }, Purpose::Open, &words), words.text("seckey-blocked-phone", None));
+            assert_eq!(sentence_in(true, &CardError::NotYours, Purpose::Open, &words), CardError::NotYours.sentence(&words, Purpose::Open));
+            for error in [CardError::Removed, CardError::TouchMissed, CardError::Blocked] {
+                assert_eq!(sentence_in(false, &error, Purpose::Sign, &words), error.sentence(&words, Purpose::Sign));
+            }
+            for id in ["seckey-hold", "seckey-holding", "seckey-done-lift", "seckey-moved-away", "seckey-moved-away-sign", "seckey-nfc-touch", "seckey-blocked-phone", "seckey-nfc-settings"] {
+                assert!(!words.text(id, None).contains("seckey-"), "{lang} {id}");
+            }
+            let off = setup_problem_in(true, &CardError::NfcOff, &words);
+            assert_eq!((off.state, off.action, off.line), ("problem", "nfc-settings", words.text("seckey-nfc-off", None)));
+            assert_eq!(setup_problem_in(true, &CardError::NoNfc, &words).action, "retry");
+            assert_eq!(setup_problem_in(true, &CardError::NotYours, &words).action, "retry");
+        }
+        assert_eq!(working_words(true, "seckey-signing"), "seckey-holding");
+        assert_eq!(working_words(true, "seckey-opening"), "seckey-holding");
+        assert_eq!(working_words(true, "seckey-reading"), "seckey-reading");
+        assert_eq!(working_words(false, "seckey-signing"), "seckey-signing");
+    }
+
+    /// "Read it here" says, on a phone, to hold the key against it; each of
+    /// the phone's words exists in both languages.
+    #[test]
+    fn a_phone_says_to_hold_the_key_where_a_computer_says_to_plug_it() {
+        for computer in ["seckey-sign-read-here", "seckey-source-shared-computer", "pgp-read-card-here"] {
+            assert_eq!(read_here_in(false, computer), computer);
+            let phone = read_here_in(true, computer);
+            assert_eq!(phone, format!("{computer}-phone").replace("-computer-phone", "-phone"));
+            for lang in ["en", "fr"] {
+                let said = Translator::new(lang).text(phone, None);
+                assert!(!said.is_empty() && !said.contains(phone), "{lang} {phone}");
+            }
+        }
+        assert_eq!(read_here_in(true, "seckey-other"), "seckey-other");
+    }
+
+    /// A key your other device made known, its certificate shared, is kept at
+    /// once when the phone reads it (how a phone comes to sign, F18); never a
+    /// certificate that is not the key's.
+    #[test]
+    fn a_key_known_from_another_device_is_kept_when_held_to_the_phone() {
+        let (card, bytes) = SoftCard::generate("0006:12345678", &["Jane <jane@example.org>"], "123456").unwrap();
+        let (cert, check) = securitykey::certificate_in(&bytes, &card.info).unwrap();
+        let record = KnownCard {
+            ident: card.info.ident.clone(),
+            sign: card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: check.cert.clone(),
+            source: "laptop".into(),
+            ..KnownCard::default()
+        };
+        let keys = Keys { own: vec![cert.clone()], shared: vec![record], ..Keys::default() };
+        let (kept, checked, source) = shared_in(&keys, &card.info).unwrap();
+        assert_eq!((kept.fingerprint(), checked.cert, source.as_str()), (cert.fingerprint(), check.cert.clone(), "laptop"));
+        assert!(checked.addresses.contains(&"jane@example.org".to_string()));
+        // Another key under the same number: its keys are not the certificate's.
+        let (other, _) = SoftCard::generate("0006:12345678", &["Jane <jane@example.org>"], "123456").unwrap();
+        assert!(shared_in(&keys, &other.info).is_none());
+        // Not known from another device: looked up as usual.
+        assert!(shared_in(&Keys { own: vec![cert], ..Keys::default() }, &card.info).is_none());
+    }
+
     #[test]
     fn the_holder_reads_in_the_usual_order() {
         assert_eq!(holder_name("Doe<<Jane<Marie"), "Jane Marie Doe");
@@ -1105,7 +1387,7 @@ mod tests {
     #[test]
     fn a_key_gnupg_holds_offers_to_release_it() {
         let tr = sioul_core::i18n::Translator::new("en");
-        let held = SoftReaders { cards: std::sync::Mutex::new(Vec::new()), busy: 1, failure: None };
+        let held = SoftReaders { cards: std::sync::Mutex::new(Vec::new()), busy: 1, failure: None, taps: false };
         assert_eq!(key_in(&held, "0006:12345678").map(|c| c.ident), Err(CardError::Busy));
         assert_eq!(key_in(&held, "").map(|c| c.ident), Err(CardError::Busy), "the last step of adding it, the key not read yet");
         let band = setup_problem(&CardError::Busy, &tr);
