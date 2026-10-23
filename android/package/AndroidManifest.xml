@@ -19,6 +19,9 @@
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <!-- Or plugged into its USB-C port (SecurityKeyLink.java, Ccid.java): Android asks for each key plugged in, from Sioul's code; no USB filter, so plugging the key never opens Sioul. A phone without a USB host still installs Sioul. -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <!-- Before Android 13, the receiver of a key plugged in, unplugged, and of Android's answer is reached only by senders holding this (SecurityKeyLink.BROADCASTS): Sioul itself and the system. -->
+    <permission android:name="com.aurelienpierre.sioul.permission.SECURITY_KEY_BROADCAST" android:protectionLevel="signature" />
+    <uses-permission android:name="com.aurelienpierre.sioul.permission.SECURITY_KEY_BROADCAST" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The sharing folder (and the notes) your sync app carries, read by their
          path: "All files access" from Android 11, the storage permission before. -->

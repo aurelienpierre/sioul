@@ -169,7 +169,7 @@ impl Readers for PhoneReaders {
         if let Ok(mut last) = self.last.lock() {
             *last = held.via;
         }
-        let backend: Box<dyn CardBackend + Send + Sync> = Box::new(PhoneBackend { link: self.link, held });
+        let backend: Box<dyn CardBackend + Send + Sync> = Box::new(PhoneBackend { link: self.link, held, exchanges: std::sync::atomic::AtomicUsize::new(0) });
         let opened = openpgp_card::Card::<Open>::new(backend).map_err(|e| match card_error(e, false) {
             CardError::Removed => CardError::Removed,
             // It answered, but not as an OpenPGP card: a bank card, a transport card.
@@ -237,9 +237,17 @@ pub fn limit(caps: CardCaps, held: Held) -> CardCaps {
     CardCaps::new(extended, caps.chaining_support(), command, answer, caps.pw1_max_len(), caps.pw3_max_len())
 }
 
+/// The most exchanges one visit makes: a visit takes a few dozen (an RSA
+/// key's chained ciphertext included); a card that answers "more bytes"
+/// (61xx) without end would keep `openpgp-card` reading, and growing its
+/// answer, until the key left (review of 23 October 2026, F5).
+pub const MOST_EXCHANGES: usize = 512;
+
 struct PhoneBackend {
     link: &'static dyn Link,
     held: Held,
+    /// Exchanges made in this visit.
+    exchanges: std::sync::atomic::AtomicUsize,
 }
 
 impl CardBackend for PhoneBackend {
@@ -248,16 +256,20 @@ impl CardBackend for PhoneBackend {
     }
 
     fn transaction(&mut self, _reselect: Option<&[u8]>) -> Result<Box<dyn CardTransaction + Send + Sync + '_>, SmartcardError> {
-        Ok(Box::new(PhoneTransaction { link: self.link }))
+        Ok(Box::new(PhoneTransaction { link: self.link, exchanges: &self.exchanges }))
     }
 }
 
-struct PhoneTransaction {
+struct PhoneTransaction<'a> {
     link: &'static dyn Link,
+    exchanges: &'a std::sync::atomic::AtomicUsize,
 }
 
-impl CardTransaction for PhoneTransaction {
+impl CardTransaction for PhoneTransaction<'_> {
     fn transmit(&mut self, command: &[u8], _buf_size: usize) -> Result<Vec<u8>, SmartcardError> {
+        if self.exchanges.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= MOST_EXCHANGES {
+            return Err(SmartcardError::Error(format!("more than {MOST_EXCHANGES} exchanges in one visit")));
+        }
         self.link.transceive(command).map_err(|e| match e {
             // Said as a reader says a card taken out (`ocard::card_error`).
             LinkError::Lost => SmartcardError::Error("RemovedCard: the key left the phone".into()),

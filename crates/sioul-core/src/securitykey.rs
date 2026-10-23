@@ -300,6 +300,9 @@ pub enum CardError {
     NoNfc,
     /// NFC is switched off on this phone, which reaches no key by USB.
     NfcOff,
+    /// One PIN try left, and the PIN typed not confirmed: never sent without
+    /// a word, since a wrong one would lock the key.
+    LastTry,
     /// Android did not let Sioul use the key plugged into the phone.
     UsbRefused,
     /// Another app holds the key plugged into the phone.
@@ -352,6 +355,7 @@ impl CardError {
             CardError::NotYours => tr.text("seckey-not-yours", None),
             CardError::NoNfc => tr.text("seckey-no-nfc", None),
             CardError::NfcOff => tr.text("seckey-nfc-off", None),
+            CardError::LastTry => tr.text("seckey-last-try", None),
             CardError::UsbRefused => tr.text("seckey-usb-refused", None),
             CardError::UsbBusy => tr.text("seckey-usb-busy", None),
             CardError::OtherKeys => tr.text("seckey-other-keys", None),
@@ -366,6 +370,7 @@ impl CardError {
         match self {
             CardError::Busy => Remedy::Release,
             CardError::WrongPin { left } if *left > 0 => Remedy::Pin,
+            CardError::LastTry => Remedy::Pin,
             CardError::NoService | CardError::Absent | CardError::TouchMissed | CardError::Removed | CardError::NotYours | CardError::NotOpenPgp | CardError::UsbRefused | CardError::UsbBusy | CardError::Other(_) => Remedy::Again,
             CardError::NfcOff => Remedy::NfcSettings,
             _ => Remedy::None,
@@ -592,12 +597,33 @@ pub struct CardAccess<'a> {
     reader: Mutex<Option<String>>,
     /// The key took the PIN, whatever came after.
     accepted: std::sync::atomic::AtomicBool,
+    /// The PIN may be given with one try left ([`CardAccess::allow_last_try`]).
+    last_try: std::sync::atomic::AtomicBool,
 }
 
 impl<'a> CardAccess<'a> {
     /// Access to the security keys of `readers`, with `pin`.
     pub fn new(readers: &'a dyn Readers, pin: &'a Password, touch: &'a (dyn Fn() + Sync)) -> CardAccess<'a> {
-        CardAccess { readers, pin, touch, failure: Mutex::new(None), reader: Mutex::new(None), accepted: std::sync::atomic::AtomicBool::new(false) }
+        CardAccess {
+            readers,
+            pin,
+            touch,
+            failure: Mutex::new(None),
+            reader: Mutex::new(None),
+            accepted: std::sync::atomic::AtomicBool::new(false),
+            last_try: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// The PIN may be given to a key with one try left: the person was told
+    /// and typed it again, or it is one the key took before.
+    pub fn allow_last_try(&self) {
+        self.last_try.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether the PIN may be given to a key with one try left.
+    pub fn last_try_allowed(&self) -> bool {
+        self.last_try.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// What went wrong at the last use, taken.
@@ -636,6 +662,11 @@ impl<'a> CardAccess<'a> {
             let slot = slot.ok_or(CardError::OtherKeys)?;
             if !slot.fingerprint.eq_ignore_ascii_case(&fingerprint) {
                 return Err(CardError::OtherKeys);
+            }
+            // One try left, as the key says now (another program, another
+            // device may have spent the others): never spent without a word.
+            if info.pin_tries == 1 && !self.last_try.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(CardError::LastTry);
             }
             card.verify(self.pin, mode)?;
             self.accepted.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -2065,6 +2096,35 @@ mod tests {
         assert_eq!(elsewhere.failure(), Some(CardError::Absent));
     }
 
+    /// Review of 23 October 2026, F1: a key with one PIN try left, spent
+    /// elsewhere, as the key says it now: the PIN typed is not sent until the
+    /// person, told, confirms it; then the right one works and the count is
+    /// full again. On every device: the check reads the key's live count.
+    #[test]
+    fn a_key_with_one_try_left_takes_the_pin_only_once_confirmed() {
+        let cert = primary_signs("holder@example.org");
+        for taps in [false, true] {
+            let mut card = SoftCard::new("0006:12345678", &cert, "123456");
+            card.info.pin_tries = 1;
+            let readers = SoftReaders { taps, ..SoftReaders::with(vec![card]) };
+            let public = cert.primary_key().key().clone().role_into_unspecified();
+            let right = Password::from("123456");
+            let access = CardAccess::new(&readers, &right, &|| {});
+            let mut signer = CardSigner::new(&access, "0006:12345678", public.clone());
+            assert!(signer.sign(HashAlgorithm::SHA512, &[1; 64]).is_err());
+            assert_eq!(access.failure(), Some(CardError::LastTry));
+            assert!(!access.pin_accepted());
+            assert_eq!(readers.card("0006:12345678", |c| c.info.pin_tries), Some(1), "nothing sent");
+            access.allow_last_try();
+            let signature = signer.sign(HashAlgorithm::SHA512, &[1; 64]).unwrap();
+            public.verify(&signature, HashAlgorithm::SHA512, &[1; 64]).unwrap();
+            assert_eq!(readers.card("0006:12345678", |c| c.info.pin_tries), Some(3));
+        }
+        assert_eq!(CardError::LastTry.remedy(), Remedy::Pin);
+        let tr = Translator::new("en");
+        assert!(CardError::LastTry.sentence(&tr, Purpose::Sign).to_lowercase().contains("one pin try left"));
+    }
+
     #[test]
     fn a_wrong_pin_costs_a_try_and_three_lock_the_key() {
         let cert = primary_signs("holder@example.org");
@@ -2073,10 +2133,18 @@ mod tests {
         let wrong = Password::from("000000");
         let access = CardAccess::new(&readers, &wrong, &|| {});
         let mut signer = CardSigner::new(&access, "0006:12345678", public.clone());
-        for left in [2, 1, 0] {
+        for left in [2, 1] {
             assert!(signer.sign(HashAlgorithm::SHA512, &[1; 64]).is_err());
             assert_eq!(access.failure(), Some(CardError::WrongPin { left }));
         }
+        // One try left: refused without a word to the key, its count unchanged.
+        assert!(signer.sign(HashAlgorithm::SHA512, &[1; 64]).is_err());
+        assert_eq!(access.failure(), Some(CardError::LastTry));
+        assert_eq!(readers.card("0006:12345678", |c| c.info.pin_tries), Some(1));
+        // Typed again, knowingly: sent, and the wrong one locks the key.
+        access.allow_last_try();
+        assert!(signer.sign(HashAlgorithm::SHA512, &[1; 64]).is_err());
+        assert_eq!(access.failure(), Some(CardError::WrongPin { left: 0 }));
         assert!(!access.pin_accepted());
         assert!(signer.sign(HashAlgorithm::SHA512, &[1; 64]).is_err());
         assert_eq!(access.failure(), Some(CardError::Blocked));
