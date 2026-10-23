@@ -14,6 +14,9 @@
     <!-- Mail, calendars, the weather: the Internet. The network's DNS servers,
          for the checks on senders: the network's state. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Your security key held against the phone (SecurityKeyLink.java): a normal permission, no question asked; no tag filter, so holding the key never opens Sioul. A phone without NFC still installs Sioul. -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- The sharing folder (and the notes) your sync app carries, read by their
          path: "All files access" from Android 11, the storage permission before. -->

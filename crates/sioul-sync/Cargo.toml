@@ -54,6 +54,15 @@ flate2 = "1"
 # NFC): already built for mail-auth's domain names.
 icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
+# Security keys (OpenPGP cards: a YubiKey, a Nitrokey) on every device: the
+# card protocol, the backend traits its transports implement, and the PIN as
+# the protocol takes it (securitykey/ocard.rs); the phone's transport is
+# Sioul's own (securitykey/phone.rs). Pinned: openpgp-card moved from 0.5 to
+# 0.7 in two years (docs/client.md, "Your keys on a security key").
+openpgp-card = "=0.7.0"
+card-backend = "=0.2.0"
+secrecy = "=0.10.3"
+
 # The room left on the disk, before fetching older mail.
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs"] }
@@ -63,16 +72,11 @@ rustix = { version = "1", features = ["fs"] }
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 notify-rust.workspace = true
 [target.'cfg(not(target_os = "android"))'.dependencies]
-# Security keys (OpenPGP cards: a YubiKey, a Nitrokey) through the system's
-# smart card service, PC/SC (securitykey/pcsc.rs): the card protocol, its
-# transport, PC/SC itself for its typed errors (a key held by GnuPG), and the
-# PIN as the protocol takes it. Pinned: openpgp-card moved from 0.5 to 0.7 in
-# two years (docs/client.md, "Your keys on a security key").
-openpgp-card = "=0.7.0"
-card-backend = "=0.2.0"
+# A computer reaches the key through the system's smart card service, PC/SC
+# (securitykey/smartcard.rs): its transport, and PC/SC itself for its typed
+# errors (a key held by GnuPG).
 card-backend-pcsc = "=0.5.2"
 pcsc = "=2.9.0"
-secrecy = "=0.10.3"
 
 # Each system's own keyring: the Secret Service (KWallet, GNOME Keyring), the
 # Windows Credential Manager, the macOS Keychain, Android's KeyStore.
@@ -92,6 +96,12 @@ keyring = { workspace = true, features = ["apple-native"] }
 keyring.workspace = true
 android-keyring = { version = "0.2", default-features = false, features = ["ndk-context"] }
 ndk-context = "0.1"
+
+[dev-dependencies]
+# The phone's backend tested against a stand-in card (securitykey/phone_tests.rs).
+sequoia-openpgp.workspace = true
+# X25519 lent to the stand-in card's Curve25519 key (phone_tests.rs): in the lock already (Sequoia's RustCrypto side).
+x25519-dalek = "=2.0.1"
 
 [features]
 # Accepts any server certificate when SIOUL_TEST_INSECURE_TLS is set: for tests

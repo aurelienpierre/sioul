@@ -605,6 +605,10 @@ pub mod qobject {
         #[qinvokable]
         fn security_key_not_now(self: Pin<&mut Sioul>, context: &QString);
 
+        /// "Open NFC settings", on a phone whose NFC is off.
+        #[qinvokable]
+        fn open_nfc_settings(self: Pin<&mut Sioul>);
+
         /// "Let GnuPG release it": GnuPG's smart card daemon stopped. JSON {line, done}.
         #[qinvokable]
         fn let_gnupg_release(self: Pin<&mut Sioul>) -> QString;
@@ -4294,6 +4298,10 @@ impl qobject::Sioul {
 
     fn security_key_not_now(self: Pin<&mut Self>, context: &QString) {
         securitykey::not_now(&context.to_string());
+    }
+
+    fn open_nfc_settings(self: Pin<&mut Self>) {
+        securitykey::open_nfc_settings();
     }
 
     fn let_gnupg_release(self: Pin<&mut Self>) -> QString {

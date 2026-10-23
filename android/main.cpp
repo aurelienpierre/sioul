@@ -43,7 +43,9 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
+#include <vector>
 
 extern "C" int sioul_app_run();
 extern "C" bool sioul_android_init(void *vm, void *context);
@@ -83,6 +85,8 @@ extern "C" char *sioul_appnotes_review(const char *json);
 // Replies from your computers (crates/sioul-app/src/replies.rs): the
 // listener's questions, a verb and its JSON; JSON, given back to sioul_string_free.
 extern "C" char *sioul_replies_listener(const char *verb, const char *json);
+// Your security key held against the phone (crates/sioul-app/src/nfc.rs): a key came.
+extern "C" void sioul_key_came();
 
 namespace {
 
@@ -146,6 +150,7 @@ jclass mailNotes = nullptr;
 jclass dayNotes = nullptr;
 jclass stepService = nullptr;
 jclass appNotes = nullptr;
+jclass securityKeyLink = nullptr;
 
 // This thread's JNIEnv. A thread of Rust's is attached to Java the first time,
 // and let go when it ends.
@@ -387,6 +392,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
         stepService = appClass(env, "com/aurelienpierre/sioul/StepService");
     if (!appNotes)
         appNotes = appClass(env, "com/aurelienpierre/sioul/AppNotes");
+    if (!securityKeyLink)
+        securityKeyLink = appClass(env, "com/aurelienpierre/sioul/SecurityKeyLink");
     return JNI_VERSION_1_6;
 }
 
@@ -719,6 +726,152 @@ extern "C" void sioul_android_mail_shortcuts(const char *json)
         return;
     env->CallStaticVoidMethod(mailShortcuts, set, context, javaText(env, json));
     threw(env);
+}
+
+// Your security key held against the phone (crates/sioul-app/src/nfc.rs,
+// SecurityKeyLink.java). Any thread, Rust's own included. Never a byte of an
+// APDU written anywhere: a command's copy here is wiped once sent (Java wipes
+// its own), an answer's once copied, and the copy Rust is given is wiped
+// when it gives it back.
+
+// SecurityKeyLink's static method `name`; null when it is not there.
+jmethodID keyMethod(JNIEnv *env, const char *name, const char *signature)
+{
+    if (!securityKeyLink)
+        return nullptr;
+    const jmethodID id = env->GetStaticMethodID(securityKeyLink, name, signature);
+    return threw(env) ? nullptr : id;
+}
+
+// NFC: 0 none in this phone, 1 switched off, 2 ready.
+extern "C" int sioul_android_key_state()
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context)
+        return 0;
+    const LocalFrame frame(env);
+    const jmethodID state = keyMethod(env, "state", "(Landroid/content/Context;)I");
+    if (!state)
+        return 0;
+    const jint answer = env->CallStaticIntMethod(securityKeyLink, state, context);
+    return threw(env) ? 0 : int(answer);
+}
+
+// A key wanted now (1), or no longer (0): reader mode on the window's
+// activity, which Qt gives; nothing without the window.
+extern "C" void sioul_android_key_want(int wanted)
+{
+    JNIEnv *env = jni();
+    if (!env)
+        return;
+    const LocalFrame frame(env);
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    const jmethodID want = keyMethod(env, "want", "(Landroid/content/Context;Z)V");
+    if (!activity.isValid() || !want)
+        return;
+    env->CallStaticVoidMethod(securityKeyLink, want, activity.object(), wanted ? JNI_TRUE : JNI_FALSE);
+    threw(env);
+}
+
+// The key held now: 1, its longest exchange and whether it takes extended
+// length (1); else 0.
+extern "C" int sioul_android_key_held(int *max, int *extended)
+{
+    JNIEnv *env = jni();
+    if (!env || !max || !extended)
+        return 0;
+    const LocalFrame frame(env);
+    const jmethodID held = keyMethod(env, "held", "()[I");
+    if (!held)
+        return 0;
+    const auto answer = static_cast<jintArray>(env->CallStaticObjectMethod(securityKeyLink, held));
+    if (threw(env) || !answer || env->GetArrayLength(answer) < 2)
+        return 0;
+    jint values[2] = { 0, 0 };
+    env->GetIntArrayRegion(answer, 0, 2, values);
+    if (threw(env))
+        return 0;
+    *max = values[0];
+    *extended = values[1];
+    return 1;
+}
+
+// One APDU to the key held: 0 and its answer (malloc'd, for
+// sioul_android_key_free); 1 the key left the field; 2 another failure.
+// The exception is cleared here, never described: nothing reaches the log.
+extern "C" int sioul_android_key_transceive(const uint8_t *command, size_t length, uint8_t **answer, size_t *answerLength)
+{
+    JNIEnv *env = jni();
+    if (!env || !command || !answer || !answerLength || length > 65544)
+        return 2;
+    const LocalFrame frame(env);
+    const jmethodID transceive = keyMethod(env, "transceive", "([B)[B");
+    if (!transceive)
+        return 2;
+    const jsize size = jsize(length);
+    const jbyteArray sent = env->NewByteArray(size);
+    if (!sent || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return 2;
+    }
+    env->SetByteArrayRegion(sent, 0, size, reinterpret_cast<const jbyte *>(command));
+    const auto got = static_cast<jbyteArray>(env->CallStaticObjectMethod(securityKeyLink, transceive, sent));
+    const std::vector<jbyte> blank(length, 0);
+    if (env->ExceptionCheck()) {
+        const jthrowable thrown = env->ExceptionOccurred();
+        env->ExceptionClear();
+        env->SetByteArrayRegion(sent, 0, size, blank.data());
+        const jclass lost = env->FindClass("android/nfc/TagLostException");
+        const bool gone = lost && thrown && env->IsInstanceOf(thrown, lost);
+        env->ExceptionClear();
+        return gone ? 1 : 2;
+    }
+    env->SetByteArrayRegion(sent, 0, size, blank.data());
+    if (!got)
+        return 2;
+    const jsize got_size = env->GetArrayLength(got);
+    auto *copy = static_cast<uint8_t *>(malloc(size_t(got_size > 0 ? got_size : 1)));
+    if (!copy)
+        return 2;
+    env->GetByteArrayRegion(got, 0, got_size, reinterpret_cast<jbyte *>(copy));
+    const std::vector<jbyte> wiped(size_t(got_size), 0);
+    env->SetByteArrayRegion(got, 0, got_size, wiped.data());
+    env->ExceptionClear();
+    *answer = copy;
+    *answerLength = size_t(got_size);
+    return 0;
+}
+
+// An answer of sioul_android_key_transceive, wiped, then freed.
+extern "C" void sioul_android_key_free(uint8_t *answer, size_t length)
+{
+    if (!answer)
+        return;
+    volatile uint8_t *bytes = answer;
+    for (size_t i = 0; i < length; ++i)
+        bytes[i] = 0;
+    free(answer);
+}
+
+// "Open NFC settings".
+extern "C" void sioul_android_key_settings()
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context)
+        return;
+    const LocalFrame frame(env);
+    if (const jmethodID settings = keyMethod(env, "settings", "(Landroid/content/Context;)V")) {
+        env->CallStaticVoidMethod(securityKeyLink, settings, context);
+        threw(env);
+    }
+}
+
+// SecurityKeyLink.java's side: a key came, on NFC's thread.
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_SecurityKeyLink_nativeHeld(JNIEnv *, jclass)
+{
+    sioul_key_came();
 }
 
 // ShareActivity.java's side: a request written in Sioul's drafts folder, or
