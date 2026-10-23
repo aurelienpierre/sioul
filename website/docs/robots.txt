@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sioul.aurelienpierre.com/sitemap.xml
+Sitemap: https://sioul.aurelienpierre.com/fr/sitemap.xml
