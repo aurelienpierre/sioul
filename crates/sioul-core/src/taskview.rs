@@ -425,9 +425,11 @@ fn dates_after(cx: &Context, uid: &str) -> Vec<(String, String, Date)> {
     found
 }
 
-/// Whether two steps rank alike, before their titles and ages break the tie.
+/// Whether two steps rank alike, before their titles and ages break the
+/// tie; two steps of one bigger task never do: their sequence says which.
 fn alike(a: &Planned, b: &Planned, ta: &Task, tb: &Task) -> bool {
-    a.latest_start == b.latest_start && a.unblocks == b.unblocks && ta.priority == tb.priority && a.left == b.left && ta.status == tb.status
+    let siblings = ta.parent().is_some() && ta.parent() == tb.parent();
+    !siblings && a.latest_start == b.latest_start && a.unblocks == b.unblocks && ta.priority == tb.priority && a.left == b.left && ta.status == tb.status
 }
 
 pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<String>) -> NowView {
@@ -631,8 +633,9 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
         if depth > 8 {
             return;
         }
+        // In their sequence (`tasks::in_sequence`): where each is in the plan does not reorder them.
         let mut steps: Vec<&Task> = all.iter().copied().filter(|t| t.parent() == Some(task.uid.as_str())).collect();
-        steps.sort_by_key(|t| position.get(t.uid.as_str()).copied().unwrap_or(usize::MAX));
+        steps.sort_by(|a, b| crate::tasks::in_sequence(a, b).then_with(|| position.get(a.uid.as_str()).cmp(&position.get(b.uid.as_str()))));
         for step in steps {
             outline(step, all, position, out, placed, depth + 1);
         }
@@ -884,9 +887,8 @@ fn gap_words(cx: &Context, minutes: i64) -> String {
 }
 
 pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], related: &[Related]) -> DetailView {
-    let mut steps: Vec<&Task> = cx.tasks.iter().filter(|t| t.parent() == Some(task.uid.as_str()) && t.status != Status::Cancelled).collect();
-    let order: BTreeMap<&str, usize> = cx.plan.order.iter().enumerate().map(|(i, u)| (u.as_str(), i)).collect();
-    steps.sort_by_key(|t| (!t.status.is_open(), order.get(t.uid.as_str()).copied().unwrap_or(usize::MAX)));
+    // Its steps in their sequence, those done in their place: the order you gave them (`tasks::steps_of`).
+    let steps: Vec<&Task> = crate::tasks::steps_of(cx.tasks, &task.uid).into_iter().filter(|t| t.status != Status::Cancelled).collect();
     let total: u32 = steps.iter().fold(0u32, |sum, t| sum.saturating_add(t.estimate));
     let waits_for = cx.planned(&task.uid).map(|p| p.waits_for.iter().map(|u| (u.clone(), cx.title(u), gap_words(cx, wait_gap(cx, task, u)))).collect()).unwrap_or_default();
     let frees = cx.plan.items.values().filter(|p| p.waits_for.contains(&task.uid)).map(|p| (p.uid.clone(), cx.title(&p.uid))).collect();

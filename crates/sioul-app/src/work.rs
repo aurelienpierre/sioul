@@ -756,10 +756,48 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     }
     let target = target_list(list)?;
     let uid = vdir::new_name();
-    let text = tasks::new_task(edit, &uid, &TimeZone::system(), &Zoned::now())?;
+    let (zone, now) = (TimeZone::system(), Zoned::now());
+    // A step goes after its bigger task's others, as they are on disk now: the
+    // page may not have read the one added a moment ago (`tasks::next_in_sequence`).
+    let mut edit = edit.clone();
+    if !edit.parent.is_empty() && edit.sort_order.is_none() {
+        let all = tasks::all(&zone);
+        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&all, &edit.parent), &now));
+    }
+    let text = tasks::new_task(&edit, &uid, &zone, &now)?;
     write(qt, shared, &target.dir.join(format!("{uid}.ics")), &text)?;
-    write_gaps(qt, shared, &uid, edit);
+    write_gaps(qt, shared, &uid, &edit);
     Ok(uid)
+}
+
+/// A step moved in its bigger task's sequence, before the step `before`
+/// ("": after the others), as the files are now (`tasks::reorder`): one file
+/// written when there is room, else those renumbered. Returns what went
+/// wrong, else "".
+pub(crate) fn move_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, before: &str) -> String {
+    let moved = || -> Result<(), String> {
+        let zone = TimeZone::system();
+        let all = tasks::all(&zone);
+        let gone = || tr().text("task-gone", None);
+        let parent = all.iter().find(|t| t.uid == uid).and_then(|t| t.parent()).ok_or_else(gone)?;
+        let steps = tasks::steps_of(&all, parent);
+        let writes = tasks::reorder(&steps, uid, Some(before).filter(|b| !b.is_empty())).map_err(|_| gone())?;
+        let file_of = |u: &str| steps.iter().find(|t| t.uid == u).copied();
+        if writes.iter().any(|(u, _)| file_of(u).is_none_or(|t| t.read_only)) {
+            return Err(tr().text("task-read-only", None));
+        }
+        let now = Zoned::now();
+        for (u, place) in &writes {
+            let Some(step) = file_of(u) else { continue };
+            let current = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
+            let text = tasks::set_sequence(&current, *place, &now)?;
+            if text != current {
+                write(qt, shared, Path::new(&step.key), &text)?;
+            }
+        }
+        Ok(())
+    };
+    moved().err().unwrap_or_default()
 }
 
 /// The waits the form gave a gap (`TaskEdit::wait_gaps`), written in the

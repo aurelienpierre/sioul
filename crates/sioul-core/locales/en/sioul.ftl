@@ -1327,6 +1327,8 @@ task-now-title = The next step
 task-then = After that
 task-not-found = No task matches “{ $what }”.
 task-ambiguous = Several tasks match “{ $what }”: { $titles }. Give its UID.
+task-not-a-step = “{ $title }” is not a step of a bigger task.
+task-not-a-step-of = “{ $title }” is not a step of “{ $whole }”.
 task-no-such-list = No task list “{ $list }” can take tasks (see sioul tasks lists).
 task-no-list = No task list yet: make one with sioul tasks new-list <account> <name>.
 task-no-title = A task needs a title.
@@ -1418,6 +1420,8 @@ task-show-done = Done too
 task-title = Title
 task-steps = Steps
 task-add-step = A step, in one line
+task-step-earlier = Move up
+task-step-later = Move down
 task-waits-title = Waits for
 task-waits-add = Waits for… (a task’s title)
 task-waits-remove = No longer waits for it
@@ -2428,6 +2432,7 @@ loss-contacts = the people tied to it
 loss-categories = its categories
 loss-margins = the time kept before and after it
 loss-costs = what it costs and what it gives back
+loss-order = its place among the steps
 loss-labels = the labels of its addresses and numbers
 loss-birthday-no-year = a birthday without its year
 loss-vcard4 = what only vCard 4.0 holds (gender, anniversary, relations)
@@ -6113,6 +6118,11 @@ agent-event-skipped = An AI agent left out the { $when } time of “{ $title }�
 agent-task-changed = An AI agent changed the task “{ $title }”.
 agent-task-moved = An AI agent moved the task “{ $title }” to { $list }.
 agent-task-deleted = An AI agent deleted the task “{ $title }”.
+agent-steps-added = An AI agent added { $count } { $n ->
+        [one] step
+       *[other] steps
+    } to “{ $title }”.
+agent-step-moved = An AI agent moved the step “{ $title }” among the steps of “{ $whole }”.
 agent-task-to-event = An AI agent made the task “{ $title }” an appointment, in { $calendar }.
 agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.
 event-delete-with-others = A meeting with others is never deleted here: its server would cancel or decline it for them. Answer it, or delete it in its own calendar app.

@@ -401,7 +401,7 @@ const READING: &[&str] = &[
     "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
-const WRITING: &[&str] = &["add_task", "complete_task", "add_event", "update_event", "delete_event", "update_task", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -1561,4 +1561,71 @@ fn events_and_tasks_are_changed_one_by_one() {
     }
     assert_eq!(texts(), before, "nothing written");
     let _ = std::fs::remove_file(&meeting);
+}
+
+/// Steps added in the order given, after the others, and moved in their
+/// sequence (25 October 2026): each change said for the window with Undo;
+/// a step of another task, a task that is no step, one kept from agents,
+/// refused.
+#[test]
+fn steps_are_added_and_moved_in_their_order() {
+    home();
+    let mut server = server();
+    let whole = call(&mut server, "add_task", json!({ "title": "Going to the optician" }));
+    let uid = whole["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let added = call(&mut server, "add_steps", json!({ "task": uid, "steps": ["Find the old glasses", { "title": "Check the bus times", "estimate": 10 }, "Take the bus"] }));
+    assert_eq!(added["isError"], false, "{added}");
+    let steps = |server: &mut Server| -> Vec<(String, String)> {
+        let got = call(server, "get_task", json!({ "task": uid }));
+        got["structuredContent"]["steps"].as_array().unwrap().iter().map(|s| (s["title"].as_str().unwrap().to_string(), s["uid"].as_str().unwrap().to_string())).collect()
+    };
+    let titles = |server: &mut Server| steps(server).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+    assert_eq!(titles(&mut server), ["Find the old glasses", "Check the bus times", "Take the bus"]);
+    let said = last_said();
+    assert!(said.line.contains("Going to the optician") && said.files.len() == 3, "{said:?}");
+    let files: Vec<PathBuf> = said.files.iter().map(|f| f.path.clone()).collect();
+    let read = |path: &PathBuf| sioul_core::tasks::task_of_text(&std::fs::read_to_string(path).unwrap(), &jiff::tz::TimeZone::system()).unwrap();
+    assert_eq!(read(&files[1]).estimate, 10);
+    assert!(files.iter().all(|f| read(f).parent() == Some(uid.as_str()) && read(f).sort_order.is_some()), "each a step, with its place");
+    // One more through add_task: after them.
+    let more = call(&mut server, "add_task", json!({ "title": "Pay at the counter", "parent": uid }));
+    assert_eq!(more["isError"], false, "{more}");
+    assert_eq!(titles(&mut server).last().map(String::as_str), Some("Pay at the counter"));
+    let ids: Vec<String> = steps(&mut server).into_iter().map(|(_, u)| u).collect();
+    // Moved before the first: said with Undo, the order given back.
+    let moved = call(&mut server, "move_step", json!({ "step": ids[2], "before": ids[0] }));
+    assert_eq!(moved["isError"], false, "{moved}");
+    assert!(text(&moved).contains("1. Take the bus"), "{moved}");
+    assert_eq!(titles(&mut server), ["Take the bus", "Find the old glasses", "Check the bus times", "Pay at the counter"]);
+    let said = last_said();
+    assert!(said.line.contains("Take the bus") && said.line.contains("Going to the optician"), "{said:?}");
+    assert!(said.put_back(), "Undo");
+    assert_eq!(titles(&mut server), ["Find the old glasses", "Check the bus times", "Take the bus", "Pay at the counter"]);
+    // Last, with no `before`; where it is already, nothing.
+    assert_eq!(call(&mut server, "move_step", json!({ "step": ids[0] }))["isError"], false);
+    assert_eq!(titles(&mut server).last().map(String::as_str), Some("Find the old glasses"));
+    let again = call(&mut server, "move_step", json!({ "step": ids[0] }));
+    assert_eq!(again["structuredContent"]["changed"], false, "{again}");
+    // Refused: before a step of another task, a task that is no step, a step kept from agents, steps of a kept task, steps of nothing.
+    let other = call(&mut server, "add_task", json!({ "title": "Return the library books" }))["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let elsewhere = call(&mut server, "add_steps", json!({ "task": other, "steps": ["Gather the books"] }));
+    let elsewhere = elsewhere["structuredContent"]["steps"][0]["uid"].as_str().unwrap().to_string();
+    for (tool, arguments) in [
+        ("move_step", json!({ "step": ids[1], "before": elsewhere })),
+        ("move_step", json!({ "step": uid })),
+        ("move_step", json!({ "step": "zeugma-step" })),
+        ("add_steps", json!({ "task": "zeugma-pay", "steps": ["Open the envelope"] })),
+        ("add_steps", json!({ "task": uid, "steps": [] })),
+        ("add_steps", json!({ "task": uid, "steps": ["  "] })),
+        ("add_steps", json!({ "task": uid, "steps": [{ "title": "Wait", "estimate": 0 }] })),
+        ("add_steps", json!({ "task": uid, "steps": [{ "title": "Wait", "when": "now" }] })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+        never_zeugma(&refused, tool);
+    }
+    // Taken out again: these tests share one home.
+    for task in sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().filter(|t| t.uid == uid || t.uid == other || t.parent() == Some(uid.as_str()) || t.parent() == Some(other.as_str())) {
+        let _ = std::fs::remove_file(&task.key);
+    }
 }

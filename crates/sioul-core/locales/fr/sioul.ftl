@@ -1345,6 +1345,8 @@ task-now-title = L’étape suivante
 task-then = Ensuite
 task-not-found = Aucune tâche ne correspond à « { $what } ».
 task-ambiguous = Plusieurs tâches correspondent à « { $what } » : { $titles }. Donnez son UID.
+task-not-a-step = « { $title } » n’est l’étape d’aucune tâche.
+task-not-a-step-of = « { $title } » n’est pas une étape de « { $whole } ».
 task-no-such-list = Aucune liste « { $list } » ne prend de tâches (voir sioul tasks lists).
 task-no-list = Pas encore de liste de tâches : créez-en une avec sioul tasks new-list <compte> <nom>.
 task-no-title = Une tâche a besoin d’un titre.
@@ -1436,6 +1438,8 @@ task-show-done = Faites aussi
 task-title = Titre
 task-steps = Étapes
 task-add-step = Une étape, en une ligne
+task-step-earlier = Monter
+task-step-later = Descendre
 task-waits-title = Attend
 task-waits-add = Attend… (le titre d’une tâche)
 task-waits-remove = Ne l’attend plus
@@ -2446,6 +2450,7 @@ loss-contacts = les personnes qui y sont liées
 loss-categories = ses catégories
 loss-margins = le temps gardé avant et après
 loss-costs = ce qu’elle coûte et ce qu’elle apporte
+loss-order = sa place parmi les étapes
 loss-labels = les libellés de ses adresses et numéros
 loss-birthday-no-year = un anniversaire sans son année
 loss-vcard4 = ce que seul vCard 4.0 contient (genre, date anniversaire, relations)
@@ -6141,6 +6146,11 @@ agent-event-skipped = Un agent d’IA a retiré la fois du { $when } de « { $
 agent-task-changed = Un agent d’IA a modifié la tâche « { $title } ».
 agent-task-moved = Un agent d’IA a déplacé la tâche « { $title } » dans { $list }.
 agent-task-deleted = Un agent d’IA a supprimé la tâche « { $title } ».
+agent-steps-added = Un agent d’IA a ajouté { $countf } { $n ->
+        [one] étape
+       *[other] étapes
+    } à « { $title } ».
+agent-step-moved = Un agent d’IA a déplacé l’étape « { $title } » parmi les étapes de « { $whole } ».
 agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » un rendez-vous, dans { $calendar }.
 agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.
 event-delete-with-others = Une réunion avec d’autres n’est jamais supprimée ici : son serveur l’annulerait ou la déclinerait pour eux. Répondez-y, ou supprimez-la dans son application d’agenda.

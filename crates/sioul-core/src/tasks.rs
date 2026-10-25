@@ -5,6 +5,8 @@
 //! with what ties them to the rest (RFC 9253, "iCalendar Relationships"):
 //!
 //! - **a step of a bigger task**: `RELATED-TO;RELTYPE=PARENT:<uid>`, in the step;
+//!   its place among the other steps, `X-APPLE-SORT-ORDER` (as Nextcloud Tasks,
+//!   Tasks.org and Apple Reminders write it: `SORT_ORDER`), the smaller first;
 //! - **waits for another**: `RELATED-TO;RELTYPE=DEPENDS-ON:<uid>`, in the one
 //!   that waits, as Sioul writes it. RFC 9253 §4 puts its temporal links in the
 //!   one that comes first instead (`RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<uid>`
@@ -187,6 +189,9 @@ pub struct Task {
     pub repeat: String,
     /// When it was made (CREATED, else DTSTAMP), in Unix seconds: the order among equals.
     pub created: i64,
+    /// Its place among its bigger task's steps (`SORT_ORDER`), as written;
+    /// None when unsaid: then its creation's (`Task::sequence`).
+    pub sort_order: Option<i64>,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -224,6 +229,98 @@ impl Task {
     pub fn depends_on(&self) -> impl Iterator<Item = &Relation> {
         self.relations.iter().filter(|r| r.kind == "DEPENDS-ON")
     }
+
+    /// Its place in its bigger task's sequence, the smaller first: its own
+    /// `SORT_ORDER`, else the seconds from 1 January 2001 to its creation, as
+    /// Nextcloud Tasks counts one unsaid.
+    pub fn sequence(&self) -> i64 {
+        self.sort_order.unwrap_or(self.created - APPLE_EPOCH)
+    }
+}
+
+/// A step's place among its bigger task's steps, the smaller first: a whole
+/// number, written by Nextcloud Tasks, Tasks.org ("My order") and Apple
+/// Reminders. Sioul writes it on its steps, in Nextcloud's scale (seconds
+/// since 1 January 2001), and reads it on any task.
+pub const SORT_ORDER: &str = "X-APPLE-SORT-ORDER";
+
+/// 1 January 2001, 00:00 UTC, in Unix seconds: where Nextcloud's sort order counts from.
+const APPLE_EPOCH: i64 = 978_307_200;
+
+/// The room left between two steps written one after the other: a step
+/// moved between them takes the middle, the others unchanged.
+pub const SEQUENCE_GAP: i64 = 1000;
+
+/// Two steps of one bigger task in their sequence: by `Task::sequence`, then
+/// their creation, their titles, their UIDs.
+pub fn in_sequence(a: &Task, b: &Task) -> std::cmp::Ordering {
+    (a.sequence(), a.created, a.title.to_lowercase(), &a.uid).cmp(&(b.sequence(), b.created, b.title.to_lowercase(), &b.uid))
+}
+
+/// The steps of `parent` among `tasks`, in their sequence, each once.
+pub fn steps_of<'a>(tasks: &'a [Task], parent: &str) -> Vec<&'a Task> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut steps: Vec<&Task> = tasks.iter().filter(|t| t.parent() == Some(parent) && t.uid != parent && seen.insert(t.uid.as_str())).collect();
+    steps.sort_by(|a, b| in_sequence(a, b));
+    steps
+}
+
+/// The place of a new step after `steps`, those of its bigger task: after
+/// the last of them, and never before a step made now would go in
+/// Nextcloud's scale.
+pub fn next_in_sequence<'a>(steps: impl IntoIterator<Item = &'a Task>, now: &Zoned) -> i64 {
+    let made = now.timestamp().as_second() - APPLE_EPOCH;
+    steps.into_iter().map(|t| t.sequence().saturating_add(SEQUENCE_GAP)).fold(made, i64::max)
+}
+
+/// The places to write when the step `moved` of `steps` (in their sequence,
+/// `steps_of`) goes before `before`, or after them all for None: (UID, place)
+/// for each file to change. One file when there is room between its new
+/// neighbours; else every step that needs it, renumbered `SEQUENCE_GAP`
+/// apart from the smallest place (never below 0). Nothing when it is there
+/// already. Err when either is not among `steps`.
+pub fn reorder(steps: &[&Task], moved: &str, before: Option<&str>) -> Result<Vec<(String, i64)>, String> {
+    let at_now = steps.iter().position(|t| t.uid == moved).ok_or("not among the steps")?;
+    let rest: Vec<&Task> = steps.iter().copied().filter(|t| t.uid != moved).collect();
+    let at = match before {
+        Some(uid) if uid == moved => return Ok(Vec::new()),
+        Some(uid) => rest.iter().position(|t| t.uid == uid).ok_or("not among the steps")?,
+        None => rest.len(),
+    };
+    if at == at_now {
+        return Ok(Vec::new());
+    }
+    let previous = at.checked_sub(1).map(|k| rest[k].sequence());
+    let next = rest.get(at).map(|t| t.sequence());
+    let single = match (previous, next) {
+        (Some(p), None) => p.checked_add(SEQUENCE_GAP),
+        (None, Some(n)) => n.checked_sub(SEQUENCE_GAP).filter(|v| *v >= 0),
+        (Some(p), Some(n)) => (n.saturating_sub(p) >= 2).then(|| p + (n - p) / 2),
+        (None, None) => None,
+    };
+    if let Some(value) = single {
+        return Ok(vec![(moved.to_string(), value)]);
+    }
+    let mut order = rest;
+    order.insert(at, steps[at_now]);
+    let base = steps.iter().map(|t| t.sequence()).min().unwrap_or(0).max(0);
+    Ok(order
+        .iter()
+        .enumerate()
+        .map(|(k, t)| (t, base.saturating_add(SEQUENCE_GAP.saturating_mul(k as i64))))
+        .filter(|(t, value)| t.sequence() != *value)
+        .map(|(t, value)| (t.uid.clone(), value))
+        .collect())
+}
+
+/// The task's text with its place in its bigger task's sequence set to
+/// `value`; the text as it was when it says so already.
+pub fn set_sequence(text: &str, value: i64, now: &Zoned) -> Result<String, String> {
+    let line = format!("{SORT_ORDER}:{value}");
+    if lines::unfold(text).contains(&line) {
+        return Ok(text.to_string());
+    }
+    replace_lines(text, |l| lines::name(l) == SORT_ORDER, vec![line], now)
 }
 
 fn day_of(text: &str) -> Option<Date> {
@@ -469,6 +566,8 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "REFID" => task.projects.push(lines::unescape(value.trim())),
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
+            // A whole number; another program's decimal read to the nearest.
+            SORT_ORDER => task.sort_order = value.trim().parse::<i64>().ok().or_else(|| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 9e15).map(|v| v.round() as i64)),
             "DTSTAMP" => stamp = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             _ => {}
         }
@@ -570,6 +669,11 @@ pub struct TaskEdit {
     /// from a task: its details say each wait's gap (`taskview`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wait_gaps: BTreeMap<String, i64>,
+    /// A new step's place among its bigger task's steps (`next_in_sequence`),
+    /// written by `new_task` alone; a task's place changes by `set_sequence`.
+    /// Never read from a task, never given to the window.
+    #[serde(default, skip_serializing)]
+    pub sort_order: Option<i64>,
 }
 
 impl TaskEdit {
@@ -613,6 +717,7 @@ impl TaskEdit {
             projects: task.projects.clone(),
             repeat: task.repeat.clone(),
             wait_gaps: BTreeMap::new(),
+            sort_order: None,
         }
     }
 
@@ -881,6 +986,9 @@ pub fn new_task(edit: &TaskEdit, uid: &str, zone: &TimeZone, now: &Zoned) -> Res
     if !edit.parent.is_empty() {
         out.push(relation_line("PARENT", &edit.parent, 0));
     }
+    if let Some(place) = edit.sort_order {
+        out.push(format!("{SORT_ORDER}:{place}"));
+    }
     // A wait with a gap goes in the task waited for (`TaskEdit::wait_gaps`).
     out.extend(edit.waits_for.iter().filter(|u| edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     out.extend(edit.links.iter().map(link_line));
@@ -928,8 +1036,9 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     let (mut old, mut edit) = (TaskEdit::of(&before).tidy(), edit.tidy());
     // The word as the file has it: rated costs then write their level over a stale one.
     old.energy = before.energy.clone();
-    // How it went is written by `set_felt` only, never by the form.
+    // How it went is written by `set_felt` only, never by the form; its place by `set_sequence`.
     edit.felt = old.felt;
+    edit.sort_order = None;
     if old == edit {
         return Ok(text.to_string());
     }
@@ -1466,5 +1575,98 @@ mod tests {
         let weekly = apply(&given, &TaskEdit { repeat: "weekly".into(), ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
         let next = set_status(&weekly, Status::Completed, &zone, &now()).unwrap();
         assert!(!next.contains("X-SIOUL-AT") && next.contains("STATUS:NEEDS-ACTION"), "{next}");
+    }
+
+    /// A step of a bigger task with its place, as other programs write it.
+    fn step(uid: &str, order: Option<i64>, created: i64) -> Task {
+        Task { uid: uid.into(), title: uid.into(), relations: vec![Relation { kind: "PARENT".into(), uid: "doctor".into(), gap: 0 }], sort_order: order, created, ..Task::default() }
+    }
+
+    /// The sequence read as Nextcloud Tasks and Tasks.org write it, its
+    /// default counted as Nextcloud counts it, a new step written after the
+    /// others, only that line touched when a step moves.
+    #[test]
+    fn steps_keep_their_sequence() {
+        let text = LETTER.replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
+        let task = task_of_text(&text, &paris()).unwrap();
+        assert_eq!((task.sort_order, task.sequence()), (Some(814_579_300), 814_579_300));
+        // Unsaid: the seconds from 2001 to its creation (1 October 2026, 08:00 UTC).
+        let plain = task_of_text(LETTER, &paris()).unwrap();
+        assert_eq!((plain.sort_order, plain.sequence()), (None, 1_790_841_600 - APPLE_EPOCH));
+        // A decimal another program wrote, to the nearest; words, none.
+        assert_eq!(task_of_text(&LETTER.replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:12.6"), &paris()).unwrap().sort_order, Some(13));
+        assert_eq!(task_of_text(&LETTER.replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:first"), &paris()).unwrap().sort_order, None);
+        // Moved: that line alone, the rest as it was; said already, nothing written.
+        let moved = set_sequence(&text, 814_579_900, &now()).unwrap();
+        let (before, after) = (lines::unfold(&text), lines::unfold(&moved));
+        let gone: Vec<String> = before.iter().filter(|l| !after.contains(l)).map(|l| lines::name(l)).collect();
+        assert_eq!(gone, ["DTSTAMP", SORT_ORDER], "{moved}");
+        assert!(moved.contains("X-APPLE-SORT-ORDER:814579900") && moved.contains("X-OTHER-APP:keep me") && moved.contains("BEGIN:VALARM"), "{moved}");
+        assert_eq!(set_sequence(&moved, 814_579_900, &now()).unwrap(), moved);
+        // A form saved keeps it, whatever it says of its place.
+        let edit = TaskEdit { title: "Send it".into(), sort_order: Some(5), ..TaskEdit::of(&task) };
+        assert!(apply(&text, &edit, &paris(), &now()).unwrap().contains("X-APPLE-SORT-ORDER:814579300"));
+        // A new step, with its place; a new task without one has none.
+        let made = new_task(&TaskEdit { title: "Brush teeth".into(), parent: "doctor".into(), sort_order: Some(814_580_300), ..TaskEdit::default() }, "brush", &paris(), &now()).unwrap();
+        assert_eq!(task_of_text(&made, &paris()).unwrap().sort_order, Some(814_580_300));
+        assert!(!new_task(&TaskEdit { title: "Alone".into(), ..TaskEdit::default() }, "alone", &paris(), &now()).unwrap().contains(SORT_ORDER));
+        // The window never sees it, nor gives it back.
+        assert!(!serde_json::to_string(&edit).unwrap().contains("sort_order"));
+    }
+
+    #[test]
+    fn a_new_step_goes_after_the_others() {
+        let now = now();
+        let made = now.timestamp().as_second() - APPLE_EPOCH;
+        // None yet, or older ones: where a step made now goes in Nextcloud's scale.
+        assert_eq!(next_in_sequence([], &now), made);
+        assert_eq!(next_in_sequence([&step("a", Some(10), 0)], &now), made);
+        // Placed far ahead by another program: after it.
+        assert_eq!(next_in_sequence([&step("a", Some(made + 5000), 0), &step("b", None, 0)], &now), made + 5000 + SEQUENCE_GAP);
+    }
+
+    #[test]
+    fn steps_are_listed_in_sequence() {
+        let tasks = vec![step("c", Some(300), 1), step("a", Some(100), 3), step("b", None, APPLE_EPOCH + 200), step("tie-2", Some(400), 5), step("tie-1", Some(400), 4), step("a", Some(999), 9), Task { uid: "other".into(), ..Task::default() }];
+        let uids: Vec<&str> = steps_of(&tasks, "doctor").iter().map(|t| t.uid.as_str()).collect();
+        // Unsaid: its creation's place; equal places by creation; each once.
+        assert_eq!(uids, ["a", "b", "c", "tie-1", "tie-2"]);
+    }
+
+    #[test]
+    fn a_step_moved_writes_one_file_when_it_can() {
+        let tasks = vec![step("a", Some(1000), 1), step("b", Some(2000), 2), step("c", Some(3000), 3), step("d", Some(3001), 4)];
+        let steps = steps_of(&tasks, "doctor");
+        // Between two with room: the middle, one file.
+        assert_eq!(reorder(&steps, "c", Some("b")).unwrap(), [("c".to_string(), 1500)]);
+        // Last, first: a gap past the end, before the start.
+        assert_eq!(reorder(&steps, "a", None).unwrap(), [("a".to_string(), 3001 + SEQUENCE_GAP)]);
+        assert_eq!(reorder(&steps, "d", Some("a")).unwrap(), [("d".to_string(), 0)]);
+        // Where it is already: nothing.
+        assert!(reorder(&steps, "b", Some("c")).unwrap().is_empty());
+        assert!(reorder(&steps, "d", None).unwrap().is_empty());
+        assert!(reorder(&steps, "b", Some("b")).unwrap().is_empty());
+        // Neighbours that touch: renumbered from the smallest, only those that change.
+        let moved = reorder(&steps, "a", Some("d")).unwrap();
+        assert_eq!(moved, [("b".to_string(), 1000), ("c".to_string(), 2000), ("a".to_string(), 3000), ("d".to_string(), 4000)]);
+        // Read back, in the order asked.
+        let mut after = tasks.clone();
+        for (uid, value) in &moved {
+            after.iter_mut().find(|t| &t.uid == uid).unwrap().sort_order = Some(*value);
+        }
+        assert_eq!(steps_of(&after, "doctor").iter().map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["b", "c", "a", "d"]);
+        // First, with no room below 0: renumbered, never negative.
+        let low = vec![step("x", Some(0), 1), step("y", Some(5), 2)];
+        assert_eq!(reorder(&steps_of(&low, "doctor"), "y", Some("x")).unwrap(), [("y".to_string(), 0), ("x".to_string(), SEQUENCE_GAP)]);
+        // Places unsaid, made the same second: renumbered too.
+        let same = vec![step("p", None, 50), step("q", None, 50), step("r", None, 50)];
+        let moved = reorder(&steps_of(&same, "doctor"), "r", Some("q")).unwrap();
+        let mut after = same.clone();
+        for (uid, value) in &moved {
+            after.iter_mut().find(|t| &t.uid == uid).unwrap().sort_order = Some(*value);
+        }
+        assert_eq!(steps_of(&after, "doctor").iter().map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["p", "r", "q"]);
+        // Not a step of it: said.
+        assert!(reorder(&steps, "zzz", None).is_err() && reorder(&steps, "a", Some("zzz")).is_err());
     }
 }

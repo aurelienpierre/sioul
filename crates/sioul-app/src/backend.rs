@@ -854,6 +854,11 @@ pub mod qobject {
         #[qinvokable]
         fn move_task(self: Pin<&mut Sioul>, uid: &QString, list: &QString, confirmed: bool) -> QString;
 
+        /// A step moved in its bigger task's sequence, before the step `before`
+        /// ("": after the others); returns what went wrong, else "".
+        #[qinvokable]
+        fn move_step(self: Pin<&mut Sioul>, uid: &QString, before: &QString) -> QString;
+
         /// A contact moved to another address book ("account/id"); returns {"key"},
         /// {"error"}, or {"losses"} to confirm first.
         #[qinvokable]
@@ -4825,6 +4830,10 @@ impl qobject::Sioul {
         QString::from(&work::calm_sounds(&self.shared()))
     }
 
+    fn move_step(self: Pin<&mut Self>, uid: &QString, before: &QString) -> QString {
+        QString::from(&work::move_step(&self.qt_thread(), &self.shared(), &uid.to_string(), &before.to_string()))
+    }
+
     fn move_task(self: Pin<&mut Self>, uid: &QString, list: &QString, confirmed: bool) -> QString {
         QString::from(&work::move_task(&self.qt_thread(), &self.shared(), &uid.to_string(), &list.to_string(), confirmed))
     }
@@ -6016,7 +6025,8 @@ impl qobject::Sioul {
         // "words" Settings ▸ Words, a line's lists changed and taken back (docs/words.md),
         // "health-gpg" a prescription's medicines and their takes as rows, and the security key's
         // GnuPG steps as buttons with their commands to copy (docs/health.md, docs/client.md),
-        // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "compose"
+        // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "steps" a
+        // task's steps moved in their order, its step menu and its form (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
         // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
@@ -6033,7 +6043,7 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

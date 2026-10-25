@@ -101,6 +101,7 @@ Changed line by line: what Sioul does not edit is kept byte for byte (tests: `ta
 |---|---|---|---|
 | VTODO with SUMMARY, DESCRIPTION, DTSTART, DUE, STATUS, COMPLETED, PERCENT-COMPLETE, PRIORITY, CATEGORIES, RRULE | RFC 5545 | tasks | the usual fields; `you`, `proxy`, `joy`, `someday` are categories |
 | `RELATED-TO` (RELTYPE=PARENT, or none) | RFC 5545 §3.8.4.5 | the step | a step of a bigger task; `CHILD` in the bigger task is read too |
+| `X-APPLE-SORT-ORDER` | de facto: Apple Reminders, Nextcloud Tasks (read, its default the seconds since 1 January 2001 of the task's creation), Tasks.org ("My order", read and written) | the step | its place among its bigger task's steps, the smaller first, in Nextcloud's scale; read on any task. Not checked with those programs themselves. Google Tasks keeps an order of its own (`position`), which Sioul does not write: moving steps into a Google list says so first |
 | `RELATED-TO;RELTYPE=DEPENDS-ON` | RFC 9253 | the task that waits | waiting for another task |
 | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D` | RFC 9253 §4 | the task that comes first | a wait with a gap; `NEXT` is read too |
 | `LINK;LINKREL=describedby`, `via`, `related`; `VALUE=URI` or `UID` | RFC 9253 | tasks, events | notes (`sioul:note/…`), the message (`mid:`, RFC 2392), drafts, events |

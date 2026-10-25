@@ -202,6 +202,11 @@ impl Args<'_> {
         }
     }
 
+    /// The argument as it was given (not null), for a shape of its own.
+    pub fn raw(&self, name: &str) -> Option<&Value> {
+        self.map.get(name).filter(|v| !v.is_null())
+    }
+
     /// A list of texts; one text alone is a list of one.
     pub fn list(&self, name: &str) -> Result<Vec<String>, String> {
         let wrong = || format!("“{name}” is a list of texts.");
@@ -705,6 +710,35 @@ pub const TOOLS: &[Tool] = &[
         run: write::add_task,
     },
     Tool {
+        name: "add_steps",
+        title: "Add steps to a task",
+        description: "Adds steps to one bigger task, in the order given, after the steps it has: each a task of its own in the bigger task's list (RELATED-TO PARENT), its place in the sequence written (X-APPLE-SORT-ORDER, which Nextcloud Tasks and Tasks.org read). Make steps small and concrete: one action each, starting with a verb, a few minutes each, in the order they happen; a step without an estimate counts five minutes. What to carry or to check is a list in the bigger task's notes (\"- [ ] item\"), not steps. Never invent times, addresses or prices; leave out what you do not know, and say so. Nothing else changes. The steps count at once; Sioul's window says it, with Undo; sent at the next sync.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "task": { "type": "string", "description": "The bigger task: its UID or address (best), or words of its title that match it alone." },
+                    "steps": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": items::MOST_STEPS,
+                        "description": "The steps in the order they happen: a title each, or {title, estimate}.",
+                        "items": {
+                            "anyOf": [
+                                { "type": "string", "description": "What to do, starting with a verb: \"Check the bus times\"." },
+                                { "type": "object", "properties": { "title": { "type": "string" }, "estimate": { "type": "integer", "minimum": 1, "maximum": 600, "description": "Minutes it takes." } }, "required": ["title"], "additionalProperties": false },
+                            ],
+                        },
+                    },
+                }),
+                &["task", "steps"],
+            )
+        },
+        run: items::add_steps,
+    },
+    Tool {
         name: "complete_task",
         title: "Mark a task done",
         description: "Marks one task done in its file (STATUS:COMPLETED); a repeating task moves to its next turn instead. Only that task changes; the next sync sends the change, and the person can open it again in Sioul's Tasks page. Says what finishing it frees.",
@@ -804,6 +838,24 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: items::update_task,
+    },
+    Tool {
+        name: "move_step",
+        title: "Move a step in its order",
+        description: "Moves one step of a bigger task in its sequence: before another step of the same task (`before`), else after the others. The order is soft: the plan offers the first open step in it that can be done now, and a later one stays free. Only the step's place changes (X-APPLE-SORT-ORDER): one file when there is room, else the steps renumbered. Said in Sioul's window with Undo; sent at the next sync. Gives the steps in their new order. Only when the person asked for it.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "step": { "type": "string", "description": "The step: its UID or address (best), or words of its title that match it alone." },
+                    "before": { "type": "string", "description": "The step of the same task it goes before; unsaid, it goes after them all." },
+                }),
+                &["step"],
+            )
+        },
+        run: items::move_step,
     },
     Tool {
         name: "delete_task",

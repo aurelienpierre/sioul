@@ -397,6 +397,66 @@ Panel {
         steps.focusLine()
     }
 
+    // Its steps in their order (docs/tasks.md, "Steps in order"): one dragged
+    // with a mouse in the form, the step it is dropped before ("": after
+    // them all); moved by its menu, or Alt+↑ and Alt+↓.
+    property string dragStep: ""
+    property string dropBefore: ""
+    // The step whose menu is open, by its place; the one to give the keys back to once read again.
+    property int menuStep: -1
+    property string focusStep: ""
+    readonly property bool canMoveSteps: panel.canEdit && panel.detail !== null && panel.detail.steps.length > 1
+
+    // The step a drop at this height of the window comes before: the first
+    // whose middle is below it; "" after them all.
+    function stepAt(sceneY) {
+        const list = panel.detail ? panel.detail.steps : []
+        for (let k = 0; k < stepRows.count && k < list.length; ++k) {
+            const item = stepRows.itemAt(k)
+            if (item !== null && sceneY < item.mapToItem(null, 0, item.height / 2).y)
+                return list[k].uid
+        }
+        return ""
+    }
+
+    function moveStep(uid, before) {
+        const problem = panel.sioul.moveStep(uid, before)
+        error.text = problem
+        return problem === ""
+    }
+
+    function dropStep() {
+        const moved = panel.dragStep
+        const before = panel.dropBefore
+        panel.dragStep = ""
+        panel.dropBefore = ""
+        if (moved !== "" && before !== moved)
+            panel.moveStep(moved, before)
+    }
+
+    // The menu of the step at `index` (a right click, a long press; the window's pictures).
+    function showStepMenu(index) {
+        panel.menuStep = index
+        stepMenu.now().popup()
+    }
+
+    // The steps' menu, made (the window's pictures).
+    function stepMenuItem() {
+        return stepMenu.now()
+    }
+
+    // The step at `index` one place earlier (by -1) or later (by 1).
+    function shiftStep(index, by) {
+        const list = panel.detail ? panel.detail.steps : []
+        const target = index + by
+        if (!panel.canMoveSteps || index < 0 || index >= list.length || target < 0 || target >= list.length || list[index].read_only)
+            return
+        // Earlier: before the one above it; later: before the one after the next, or last.
+        const before = by < 0 ? list[target].uid : (target + 1 < list.length ? list[target + 1].uid : "")
+        if (panel.moveStep(list[index].uid, before))
+            panel.focusStep = list[index].uid
+    }
+
     onUidChanged: {
         // The task just made from the form: the form stays as it is until the task is read.
         if (panel.uid !== "" && panel.uid === panel.madeUid) {
@@ -802,18 +862,77 @@ Panel {
                 Layout.topMargin: 6
             }
             Repeater {
+                id: stepRows
+
                 model: panel.detail ? panel.detail.steps : []
 
-                delegate: TaskRow {
-                    required property var modelData
+                delegate: Item {
+                    id: stepHolder
 
+                    required property var modelData
+                    required property int index
+
+                    objectName: "taskStep"
                     Layout.fillWidth: true
-                    task: modelData
-                    theme: panel.theme
-                    sioul: panel.sioul
-                    compact: true
-                    onOpen: uid => panel.uid = uid
-                    onTick: uid => panel.sioul.setTaskStatus(uid, modelData.status === "completed" ? "needs-action" : "completed")
+                    implicitHeight: stepRow.implicitHeight
+
+                    TaskRow {
+                        id: stepRow
+
+                        width: parent.width
+                        task: stepHolder.modelData
+                        theme: panel.theme
+                        sioul: panel.sioul
+                        compact: true
+                        opacity: panel.dragStep === stepHolder.modelData.uid ? 0.4 : 1
+                        onOpen: uid => panel.uid = uid
+                        onTick: uid => panel.sioul.setTaskStatus(uid, stepHolder.modelData.status === "completed" ? "needs-action" : "completed")
+                        onMenu: panel.showStepMenu(stepHolder.index)
+                        Keys.onPressed: event => {
+                            if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
+                                panel.shiftStep(stepHolder.index, event.key === Qt.Key_Up ? -1 : 1)
+                                event.accepted = true
+                            }
+                        }
+                        Component.onCompleted: {
+                            if (panel.focusStep === stepHolder.modelData.uid) {
+                                panel.focusStep = ""
+                                stepRow.forceActiveFocus()
+                            }
+                        }
+                    }
+                    // Where the step dragged would go: a line above the step it would come before, or under the last.
+                    Rectangle {
+                        readonly property bool last: stepHolder.index === stepRows.count - 1
+
+                        visible: panel.dragStep !== "" && panel.dragStep !== stepHolder.modelData.uid && (panel.dropBefore === stepHolder.modelData.uid || (last && panel.dropBefore === ""))
+                        y: panel.dropBefore === stepHolder.modelData.uid ? -1 : stepHolder.height - 1
+                        width: parent.width
+                        height: 2
+                        color: panel.theme.accent
+                    }
+                    // With a mouse, in the form; on a touch screen a drag scrolls, and the step's
+                    // menu (a long press) moves it.
+                    DragHandler {
+                        id: stepDrag
+
+                        target: null
+                        enabled: panel.form && panel.canMoveSteps && !stepHolder.modelData.read_only
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        xAxis.enabled: false
+                        onActiveChanged: {
+                            if (stepDrag.active) {
+                                panel.dragStep = stepHolder.modelData.uid
+                                panel.dropBefore = panel.stepAt(stepDrag.centroid.scenePosition.y)
+                            } else {
+                                panel.dropStep()
+                            }
+                        }
+                        onCentroidChanged: {
+                            if (stepDrag.active)
+                                panel.dropBefore = panel.stepAt(stepDrag.centroid.scenePosition.y)
+                        }
+                    }
                 }
             }
             // A step needs its task: on a new one, once its title is typed (going
@@ -1639,6 +1758,40 @@ Panel {
         sioul: panel.sioul
         theme: panel.theme
         onConfirmed: panel.moveTo(moveAsk.list, true)
+    }
+
+    // A step's menu (a right click, a long press), made the first time: its
+    // details, or one place earlier or later among its task's steps.
+    Later {
+        id: stepMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                id: stepActions
+
+                readonly property var step: panel.detail && panel.menuStep >= 0 && panel.menuStep < panel.detail.steps.length ? panel.detail.steps[panel.menuStep] : null
+
+                MenuItem {
+                    text: panel.sioul.text("ui-details")
+                    onTriggered: {
+                        if (stepActions.step !== null)
+                            panel.uid = stepActions.step.uid
+                    }
+                }
+                MenuItem {
+                    objectName: "stepEarlier"
+                    enabled: panel.canMoveSteps && panel.menuStep > 0
+                    text: panel.sioul.text("task-step-earlier")
+                    onTriggered: panel.shiftStep(panel.menuStep, -1)
+                }
+                MenuItem {
+                    objectName: "stepLater"
+                    enabled: panel.canMoveSteps && panel.detail !== null && panel.menuStep < panel.detail.steps.length - 1
+                    text: panel.sioul.text("task-step-later")
+                    onTriggered: panel.shiftStep(panel.menuStep, 1)
+                }
+            }
+        }
     }
 
     // A pinned task's menu, made the first time: its block in the agenda,

@@ -64,6 +64,17 @@ pub(crate) enum TasksCommand {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Moves a step in its bigger task's sequence: before another step of it,
+    /// else after them all.
+    Move {
+        step: String,
+        /// The step it goes before.
+        #[arg(long)]
+        before: Option<String>,
+        /// Write it here only; the next sync sends it.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Marks a task done (a repeating one comes back at its next turn).
     Done { task: String },
     /// Marks a task started.
@@ -215,6 +226,7 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
         TasksCommand::Timeline { project } => timeline(s, project.as_deref()),
         TasksCommand::Show { task } => show(s, &task),
         TasksCommand::Add { line, list, parent, after, no_sync } => add(s, &line.join(" "), list.as_deref(), parent.as_deref(), &after, no_sync),
+        TasksCommand::Move { step, before, no_sync } => move_step(s, &step, before.as_deref(), no_sync),
         TasksCommand::Done { task } => set_status(s, &task, Status::Completed),
         TasksCommand::Start { task } => set_status(s, &task, Status::InProcess),
         TasksCommand::NotNow { task } => not_now(s, &task),
@@ -372,6 +384,8 @@ fn add(s: &Session, line: &str, list: Option<&str>, parent: Option<&str>, after:
     }
     if let Some(parent) = parent {
         edit.parent = desk.find(s, parent)?.uid.clone();
+        // After its bigger task's other steps.
+        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&desk.loaded.tasks, &edit.parent), &Zoned::now()));
     }
     for wanted in after {
         edit.waits_for.push(desk.find(s, wanted)?.uid.clone());
@@ -396,6 +410,55 @@ fn write_task(s: &Session, task: &Task, text: &str) -> Result<(), String> {
         Some(list) => sync_list(s, &list),
         None => Ok(()),
     }
+}
+
+/// A step moved in its bigger task's sequence (`tasks::reorder`): before
+/// `before`, a step of the same task, else after them all. One file written
+/// when there is room, else those renumbered; the steps then listed in order.
+fn move_step(s: &Session, wanted: &str, before: Option<&str>, no_sync: bool) -> Result<(), String> {
+    let desk = Desk::read(s);
+    let step = desk.find(s, wanted)?;
+    let Some(parent) = step.parent() else {
+        return Err(s.say("task-not-a-step", &[("title", one_line(&step.title))]));
+    };
+    let steps = tasks::steps_of(&desk.loaded.tasks, parent);
+    let before = match before {
+        Some(wanted) => {
+            let other = desk.find(s, wanted)?;
+            if other.parent() != Some(parent) {
+                return Err(s.say("task-not-a-step-of", &[("title", one_line(&other.title)), ("whole", one_line(&desk.loaded.tasks.iter().find(|t| t.uid == parent).map_or(parent, |t| t.title.as_str())))]));
+            }
+            Some(other.uid.clone())
+        }
+        None => None,
+    };
+    let writes = tasks::reorder(&steps, &step.uid, before.as_deref())?;
+    let file_of = |uid: &str| steps.iter().find(|t| t.uid == uid).copied();
+    if writes.iter().any(|(uid, _)| file_of(uid).is_none_or(|t| t.read_only)) {
+        return Err(s.tr.text("task-read-only", None));
+    }
+    let now = Zoned::now();
+    let mut lists: BTreeSet<String> = BTreeSet::new();
+    for (uid, place) in &writes {
+        let Some(task) = file_of(uid) else { continue };
+        let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+        let text = tasks::set_sequence(&current, *place, &now)?;
+        if text != current {
+            vdir::write_item(Path::new(&task.key), &text)?;
+            lists.insert(task.list_id.clone());
+        }
+    }
+    let after = Desk::read(s);
+    for (k, step) in tasks::steps_of(&after.loaded.tasks, parent).iter().enumerate() {
+        println!("{}. {}  [{}]", k + 1, one_line(&step.title), one_line(&step.uid));
+    }
+    if no_sync {
+        return Ok(());
+    }
+    for list in tasks::lists().into_iter().filter(|c| lists.contains(&format!("{}/{}", c.account, c.id))) {
+        sync_list(s, &list)?;
+    }
+    Ok(())
 }
 
 fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
@@ -715,6 +778,8 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
     // Tasks: new ones made, known ones changed line by line; what you added since is kept.
     let mut lists_touched: BTreeSet<String> = BTreeSet::new();
     let mut written: BTreeMap<String, PathBuf> = BTreeMap::new();
+    // The place a new step of each bigger task takes next: its steps in the file's order, after those it has.
+    let mut next_place: BTreeMap<String, i64> = BTreeMap::new();
     for (position, task) in plan.tasks.iter().enumerate() {
         // New tasks are made a second apart, in the file's order: among equals, the plan keeps it.
         let made = now.checked_add(jiff::Span::new().seconds(position as i64)).unwrap_or_else(|_| now.clone());
@@ -767,7 +832,14 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
                 let text = tasks::apply(&current, &edit, &zone, &now)?;
                 (PathBuf::from(&found.key), current, text)
             }
-            None => (target.dir.join(format!("{uid}.ics")), String::new(), tasks::new_task(&edit, &uid, &zone, &made)?),
+            None => {
+                if !edit.parent.is_empty() {
+                    let place = *next_place.entry(edit.parent.clone()).or_insert_with(|| tasks::next_in_sequence(tasks::steps_of(&existing, &edit.parent), &made));
+                    edit.sort_order = Some(place);
+                    next_place.insert(edit.parent.clone(), place.saturating_add(tasks::SEQUENCE_GAP));
+                }
+                (target.dir.join(format!("{uid}.ics")), String::new(), tasks::new_task(&edit, &uid, &zone, &made)?)
+            }
         };
         let new_text = match &done_on {
             Some(at) => tasks::completed_at(&new_text, at)?,
@@ -1003,6 +1075,34 @@ pub(crate) fn notes_command(s: &Session, query: &str, path: Option<&str>) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Steps imported keep the file's order, whatever their titles; `sioul
+    /// tasks move` puts one before another; what is no step, or a step of
+    /// another task, is said.
+    #[test]
+    fn steps_imported_in_order_and_moved() {
+        let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Steps plan", None, &["VTODO"]).unwrap();
+        let file = sioul_core::config::state_dir().join("steps-import.toml");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let body = "[[task]]\nkey = \"doctor\"\ntitle = \"Going to the doctor\"\n\n[[task]]\nkey = \"teeth\"\ntitle = \"Brush teeth\"\nparent = \"doctor\"\n\n[[task]]\nkey = \"bag\"\ntitle = \"Zip the bag\"\nparent = \"doctor\"\n\n[[task]]\nkey = \"bus\"\ntitle = \"Check the bus\"\nparent = \"doctor\"\n\n[[task]]\nkey = \"other\"\ntitle = \"Return the books\"\n\n[[task]]\nkey = \"books\"\ntitle = \"Gather the books\"\nparent = \"other\"\n";
+        std::fs::write(&file, format!("list = \"local/{}\"\nprefix = \"steps-\"\n\n{body}", list.id)).unwrap();
+        import(&s, &file, true, false).unwrap();
+        let order = || tasks::steps_of(&tasks::all(&TimeZone::system()), "steps-doctor").iter().map(|t| t.title.clone()).collect::<Vec<_>>();
+        assert_eq!(order(), ["Brush teeth", "Zip the bag", "Check the bus"]);
+        move_step(&s, "steps-bus", Some("steps-teeth"), true).unwrap();
+        assert_eq!(order(), ["Check the bus", "Brush teeth", "Zip the bag"]);
+        move_step(&s, "steps-bus", None, true).unwrap();
+        assert_eq!(order(), ["Brush teeth", "Zip the bag", "Check the bus"]);
+        // Imported again: what the window moved stays where it is.
+        move_step(&s, "steps-teeth", None, true).unwrap();
+        import(&s, &file, true, false).unwrap();
+        assert_eq!(order(), ["Zip the bag", "Check the bus", "Brush teeth"]);
+        let no_step = move_step(&s, "steps-doctor", None, true).unwrap_err();
+        assert!(no_step.contains("not a step"), "{no_step}");
+        let elsewhere = move_step(&s, "steps-bag", Some("steps-books"), true).unwrap_err();
+        assert!(elsewhere.contains("Going to the doctor"), "{elsewhere}");
+    }
 
     #[test]
     fn a_plan_file_names_projects_either_way() {

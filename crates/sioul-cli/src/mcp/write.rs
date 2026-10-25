@@ -162,6 +162,8 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
         let parent = read::find_task(s, &open_tasks, &parent)?;
         edit.parent = parent.uid.clone();
         projects.extend(consent.projects_of(&links::task_uri(&parent.uid)));
+        // After the bigger task's other steps, as the window adds one.
+        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&loaded.tasks, &parent.uid), &Zoned::now()));
     }
     for wanted in args.list("after")? {
         edit.waits_for.push(read::find_task(s, &open_tasks, &wanted)?.uid.clone());

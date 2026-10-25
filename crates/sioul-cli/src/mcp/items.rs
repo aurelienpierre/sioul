@@ -286,10 +286,144 @@ fn task_json(task: &Task) -> Value {
     })
 }
 
+/// The steps of a bigger task an agent may see, in their sequence: one line
+/// each, and as data.
+fn steps_shown(desk: &Desk, parent: &str) -> (Vec<String>, Value) {
+    let steps: Vec<&Task> = tasks::steps_of(&desk.loaded.tasks, parent).into_iter().filter(|t| desk.allows(&t.uid)).collect();
+    let lines = steps.iter().enumerate().map(|(k, t)| format!("{}. {}  [{}]", k + 1, one_line(&t.title), t.uid)).collect();
+    let data = steps.iter().map(|t| json!({ "uid": t.uid, "uri": links::task_uri(&t.uid), "title": t.title, "status": task_json(t)["status"] })).collect();
+    (lines, Value::Array(data))
+}
+
 pub fn get_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let desk = Desk::read(s);
     let task = find_open_task(s, &desk, &args.needed("task")?)?;
-    Ok(Answer { text: format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid)), data: task_json(&task) })
+    // Its steps in their order, those kept from agents left out.
+    let (lines, steps) = steps_shown(&desk, &task.uid);
+    let mut data = task_json(&task);
+    data["steps"] = steps;
+    let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(lines).collect::<Vec<_>>().join("\n");
+    Ok(Answer { text, data })
+}
+
+/// The most steps one call adds: a composed task is a few small steps.
+pub const MOST_STEPS: usize = 30;
+
+/// The steps asked: a title each, or {title, estimate}, in order.
+fn steps_asked(args: &Args) -> Result<Vec<(String, u32)>, String> {
+    let wrong = || "“steps” is a list of titles, or of {title, estimate}.".to_string();
+    let items = args.raw("steps").and_then(Value::as_array).ok_or_else(wrong)?;
+    if items.is_empty() || items.len() > MOST_STEPS {
+        return Err(format!("“steps” holds 1 to {MOST_STEPS} steps."));
+    }
+    items
+        .iter()
+        .map(|item| {
+            let (title, estimate) = match item {
+                Value::String(title) => (title.as_str(), None),
+                Value::Object(fields) => {
+                    if let Some(other) = fields.keys().find(|k| !matches!(k.as_str(), "title" | "estimate")) {
+                        return Err(format!("A step takes “title” and “estimate”, not “{}”.", one_line(other)));
+                    }
+                    (fields.get("title").and_then(Value::as_str).ok_or_else(wrong)?, fields.get("estimate"))
+                }
+                _ => return Err(wrong()),
+            };
+            let title = one_line(title).trim().to_string();
+            if title.is_empty() {
+                return Err("A step has a title.".into());
+            }
+            let minutes = match estimate {
+                None | Some(Value::Null) => 0,
+                Some(value) => value.as_u64().filter(|m| (1..=600).contains(m)).ok_or("A step's “estimate” is a whole number of minutes, 1 to 600.")? as u32,
+            };
+            Ok((title, minutes))
+        })
+        .collect()
+}
+
+pub fn add_steps(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let whole = find_open_task(s, &desk, &args.needed("task")?)?;
+    may_change(&desk.consent, &links::task_uri(&whole.uid))?;
+    if !whole.status.is_open() {
+        return Err(format!("“{}” is done: steps of it would never be offered. Open it again first (update_task).", one_line(&whole.title)));
+    }
+    let asked = steps_asked(args)?;
+    // In the bigger task's list, when it can be written; else where new tasks go.
+    let list = tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == whole.list_id).or_else(tasks::default_list).ok_or_else(|| s.tr.text("task-no-list-yet", None))?;
+    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let mut place = tasks::next_in_sequence(tasks::steps_of(&desk.loaded.tasks, &whole.uid), &now);
+    let mut files = Vec::new();
+    for (title, estimate) in &asked {
+        let edit = TaskEdit { title: title.clone(), estimate: *estimate, parent: whole.uid.clone(), sort_order: Some(place), ..TaskEdit::default() };
+        place = place.saturating_add(tasks::SEQUENCE_GAP);
+        let mut path = tasks::new_path(&list);
+        while path.exists() {
+            path = tasks::new_path(&list);
+        }
+        let text = tasks::new_task(&edit, &vdir::new_name(), &zone, &now)?;
+        vdir::write_item(&path, &text)?;
+        files.push(FileChange { path, before: None, after: Some(text) });
+    }
+    let mut counted = s.tr.counted(asked.len());
+    counted.set("title", one_line(&whole.title));
+    let line = s.tr.text("agent-steps-added", Some(&counted));
+    say_in_window(line.clone(), files);
+    let after = Desk::read(s);
+    let (lines, steps) = steps_shown(&after, &whole.uid);
+    Ok(Answer { text: std::iter::once(line).chain(lines).collect::<Vec<_>>().join("\n"), data: json!({ "uri": links::task_uri(&whole.uid), "steps": steps, "sent": false }) })
+}
+
+pub fn move_step(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let step = find_open_task(s, &desk, &args.needed("step")?)?;
+    may_change(&desk.consent, &links::task_uri(&step.uid))?;
+    let Some(parent) = step.parent().map(str::to_string) else {
+        return Err(s.say("task-not-a-step", &[("title", one_line(&step.title))]));
+    };
+    let whole = desk.loaded.tasks.iter().find(|t| t.uid == parent).map_or_else(|| parent.clone(), |t| t.title.clone());
+    let before = match args.text("before")? {
+        Some(wanted) => {
+            let other = find_open_task(s, &desk, &wanted)?;
+            if other.parent() != Some(parent.as_str()) {
+                return Err(s.say("task-not-a-step-of", &[("title", one_line(&other.title)), ("whole", one_line(&whole))]));
+            }
+            Some(other.uid)
+        }
+        None => None,
+    };
+    let steps = tasks::steps_of(&desk.loaded.tasks, &parent);
+    let writes = tasks::reorder(&steps, &step.uid, before.as_deref())?;
+    let file_of = |uid: &str| steps.iter().find(|t| t.uid == uid).copied();
+    // Renumbered, every step written is one the agent may change, in a list that can be written.
+    for (uid, _) in &writes {
+        let Some(other) = file_of(uid) else { continue };
+        if other.read_only {
+            return Err(s.tr.text("task-read-only", None));
+        }
+        if !desk.allows(uid) {
+            return Err(access::kept("Another step of this task"));
+        }
+    }
+    let mut files = Vec::new();
+    for (uid, place) in &writes {
+        let Some(other) = file_of(uid) else { continue };
+        let current = std::fs::read_to_string(&other.key).map_err(|e| format!("{}: {e}", other.key))?;
+        let text = tasks::set_sequence(&current, *place, &Zoned::now())?;
+        if text != current {
+            vdir::write_item(Path::new(&other.key), &text)?;
+            files.push(FileChange::of(Path::new(&other.key), Some(current)));
+        }
+    }
+    let after = Desk::read(s);
+    let (lines, steps) = steps_shown(&after, &parent);
+    if files.is_empty() {
+        return Ok(Answer { text: std::iter::once("Nothing changed: the step is there already.".to_string()).chain(lines).collect::<Vec<_>>().join("\n"), data: json!({ "uri": links::task_uri(&step.uid), "changed": false, "steps": steps }) });
+    }
+    let line = s.say("agent-step-moved", &[("title", one_line(&step.title)), ("whole", one_line(&whole))]);
+    say_in_window(line.clone(), files);
+    Ok(Answer { text: std::iter::once(line).chain(lines).collect::<Vec<_>>().join("\n"), data: json!({ "uri": links::task_uri(&step.uid), "changed": true, "steps": steps, "sent": false }) })
 }
 
 pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {

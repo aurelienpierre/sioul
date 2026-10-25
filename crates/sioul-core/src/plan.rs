@@ -14,6 +14,16 @@
 //!   chain of work behind it); then the more important, as you ranked it
 //!   (PRIORITY); then the one that frees the most others; then the smaller
 //!   (docs/design.md, "Tasks").
+//! - **Steps in their sequence** (`tasks::in_sequence`): a bigger task's
+//!   steps come together, where the best placed of them would, in their
+//!   sequence among themselves. The sequence is soft: the first step that
+//!   can be offered now is, a later one is free all the same (a step started
+//!   first, a heavy one on a day that takes none last); a real wait is a
+//!   wait, written by you. A step without an estimate counts five minutes
+//!   (`STEP_MINUTES`), never corrected by your past ratios; short steps of
+//!   one bigger task that follow each other are laid as one run, back to
+//!   back, at their own length, with one pause after the run
+//!   (`Planned::in_run`, docs/tasks.md).
 //! - **When**: each task goes into the first days with room, in that order,
 //!   after what it waits for, never before today. A date that passed moves a
 //!   task forward; it never makes it "late". Room is your hours, each kind for
@@ -81,6 +91,10 @@ pub const PAUSE: u32 = 5;
 
 /// A step up to an hour is done in one go, never cut over two days or around a break.
 pub const WHOLE: u32 = 60;
+
+/// Minutes counted for a step of a bigger task without an estimate of its
+/// own: a step is light ("brush your teeth"), not a task's usual default.
+pub const STEP_MINUTES: u32 = 5;
 
 /// A day's hours for tasks: minutes, by the kinds of hours open then
 /// (several where windows overlap: admin hours within working hours).
@@ -462,6 +476,13 @@ pub struct Planned {
     /// Tagged optional (`words.tasks.optional`: "joy", "someday"), or a step
     /// of such a task: never proposed, never scheduled.
     pub optional: bool,
+    /// A short step of a run: short steps of one bigger task one after the
+    /// other in the plan's order, each laid at its own length (not
+    /// `SHORTEST`), back to back.
+    pub in_run: bool,
+    /// The next step of its run follows it on the same day: no pause between
+    /// them (the run's last has its pause).
+    pub run_next: bool,
 }
 
 /// Whether a task's own tags make it optional (`words.tasks.optional`, the
@@ -757,8 +778,18 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         if !graph.children[i].is_empty() && tasks[i].estimate == 0 {
             return 5;
         }
-        let own = if tasks[i].estimate > 0 { tasks[i].estimate } else { settings.default_estimate };
-        let estimate = if corrected { settings.capacity.corrected.get(&tasks[i].uid).copied().unwrap_or(own) } else { own };
+        // A step is light; and the estimates of parts sum to more than the
+        // whole's (Forsyth & Burt 2008): your past ratios, learned on whole
+        // tasks, never correct it.
+        let step = graph.parent[i].is_some();
+        let own = if tasks[i].estimate > 0 {
+            tasks[i].estimate
+        } else if step {
+            STEP_MINUTES
+        } else {
+            settings.default_estimate
+        };
+        let estimate = if corrected && !step { settings.capacity.corrected.get(&tasks[i].uid).copied().unwrap_or(own) } else { own };
         // Getting there and back, getting ready: room taken too, never a pause.
         estimate.saturating_sub(spent.get(&tasks[i].uid).copied().unwrap_or(0)).max(5) + tasks[i].margins.before + tasks[i].margins.after
     };
@@ -852,11 +883,42 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         index: i,
     };
 
+    // Each step's place among its bigger task's steps (`tasks::in_sequence`).
+    let mut place: Vec<usize> = vec![0; n];
+    for children in &graph.children {
+        let mut steps = children.clone();
+        steps.sort_by(|&a, &b| crate::tasks::in_sequence(tasks[a], tasks[b]));
+        for (k, &c) in steps.iter().enumerate() {
+            place[c] = k;
+        }
+    }
+    // A bigger task's steps together, where the best ranked of `members`
+    // among them goes; among themselves in their sequence, softly: one
+    // started first, a heavy one on a day that takes none after the others.
+    let best_of = |members: &[usize]| -> BTreeMap<usize, Rank> {
+        let mut best: BTreeMap<usize, Rank> = BTreeMap::new();
+        for &i in members {
+            let Some(p) = graph.parent[i] else { continue };
+            let r = rank(i);
+            if best.get(&p).is_none_or(|b| r < *b) {
+                best.insert(p, r);
+            }
+        }
+        best
+    };
+    let keyed = |best: &BTreeMap<usize, Rank>, i: usize| -> (Rank, (bool, bool, usize)) {
+        match graph.parent[i].and_then(|p| best.get(&p)) {
+            Some(group) => (group.clone(), (heavy[i] && settings.heavy_today == 0, tasks[i].status != Status::InProcess, place[i])),
+            None => (rank(i), (false, false, 0)),
+        }
+    };
+
     // Free to do now: nothing it waits for still open, no day ahead to wait for;
     // a step started too soon waits like the others.
     let free_now = |i: usize| waits_for[i].is_empty() && not_before[i].is_none();
     let mut ready: Vec<usize> = (0..n).filter(|&i| open[i] && open_steps[i] == 0 && free_now(i) && (column(i) == Column::Doing || (column(i) == Column::Ready && !optional[i]))).collect();
-    ready.sort_by_key(|&i| rank(i));
+    let best_ready = best_of(&ready);
+    ready.sort_by_key(|&i| keyed(&best_ready, i));
     // Streams: tasks tied by waiting or by being steps of one bigger task (union-find).
     let mut root: Vec<usize> = (0..n).collect();
     fn find(root: &mut [usize], mut i: usize) -> usize {
@@ -880,7 +942,8 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let next: Option<usize> = ready.iter().filter(not_aside).find(|&&i| !aside_streams.contains(&stream[i])).or_else(|| ready.iter().find(not_aside)).copied();
 
     // The plan's order, then the days: first days with room, after what each waits for.
-    let order = kahn(n, &order_edges, &open, rank);
+    let best_open = best_of(&(0..n).filter(|&i| open[i]).collect::<Vec<_>>());
+    let order = kahn(n, &order_edges, &open, |i| keyed(&best_open, i));
     // The days each task's office opens: its own hours, else offices' usual days.
     let office_days: Vec<[bool; 7]> = tasks
         .iter()
@@ -893,6 +956,19 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let pins: Vec<Option<&crate::blocks::Pin>> = tasks.iter().map(|t| settings.pins.get(&t.uid).filter(|_| t.status.is_open())).collect();
     // A step given a time today by a drag before blocks (`Task::at`, read still): today, whatever the room.
     let pinned: Vec<bool> = tasks.iter().enumerate().map(|(i, t)| pins[i].is_none() && t.at_on(today, &TimeZone::system()).is_some()).collect();
+    // Runs: short steps of one bigger task one after the other in the order
+    // (shorter than `SHORTEST`, without margins, not pinned to a time), laid
+    // back to back at their own length; `joins`: the next one of its run follows it.
+    let short = |i: usize| open[i] && graph.parent[i].is_some() && open_steps[i] == 0 && laid[i] < SHORTEST && tasks[i].margins.is_empty() && pins[i].is_none() && !pinned[i] && !optional[i];
+    let mut joins: Vec<Option<usize>> = vec![None; n];
+    let mut in_run = vec![false; n];
+    for pair in order.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        if short(a) && short(b) && graph.parent[a] == graph.parent[b] {
+            joins[a] = Some(b);
+            (in_run[a], in_run[b]) = (true, true);
+        }
+    }
     // A day's room for tasks, in minutes: today's by its weather.
     let room_for_tasks = |day: Date| settings.room_on(day).total() * if day == today { settings.today_percent } else { 100 } / 100;
     // The half hour kept on a day for the slot of time for you after its costliest block.
@@ -968,7 +1044,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 out.finish[i] = steps().filter_map(|&c| out.finish[c]).max().or(Some(earliest));
                 continue;
             }
-            let minutes_all = rest.unwrap_or(laid[i].max(SHORTEST));
+            let minutes_all = rest.unwrap_or(if in_run[i] { laid[i] } else { laid[i].max(SHORTEST) });
             // Given a time today by hand: today, whole, whatever the room, the budgets or what it waits for.
             if pinned[i] {
                 let room = settings.room_on(today);
@@ -1021,7 +1097,9 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                     // Room for the step and the pause after it; the day's first step may fill its
                     // hours without one (a step of an hour in an hour's window is not cut).
                     let first = kinds.iter().all(|&k| taken[k] == 0);
-                    let pause = if first { 0 } else { settings.pause };
+                    // The next step of its run follows it at once: no pause between them.
+                    let after = if joins[i].is_some() { 0 } else { settings.pause };
+                    let pause = if first { 0 } else { after };
                     let open_here: u32 = kinds.iter().map(|&k| free_in(k, taken)).sum::<u32>().saturating_sub(pause);
                     // The moved end's minutes not taken yet stay for light steps.
                     let kept_light = if day == today { settings.light_only.saturating_sub(light_used) } else { 0 };
@@ -1095,7 +1173,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                         }
                     }
                     if part > 0 && (part >= minutes.min(SHORTEST) || alone) {
-                        let mut owed = part + settings.pause;
+                        let mut owed = part + after;
                         for &k in &kinds {
                             let take = free_in(k, taken).min(owed);
                             taken[k] += take;
@@ -1105,7 +1183,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                             *heavy_used.entry(day).or_insert(0) += 1;
                         }
                         if light[i] && day == today {
-                            light_used += (part + settings.pause).min(settings.light_only.saturating_sub(light_used));
+                            light_used += (part + after).min(settings.light_only.saturating_sub(light_used));
                         }
                         crate::capacity::add(loaded.entry(day).or_insert([0.0; 5]), &rates[i].load(part));
                         let sum = sums.entry(day).or_insert((0.0, 0.0));
@@ -1190,6 +1268,9 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 level: rates[i].level().id(),
                 on_start: on_start[i],
                 optional: optional[i],
+                in_run: in_run[i],
+                // Laid on the same day, whole: else the run is cut there.
+                run_next: joins[i].is_some_and(|j| start[i].is_some() && start[i] == finish[i] && start[j] == start[i]),
             },
         );
     }
@@ -1428,6 +1509,107 @@ mod tests {
         assert!(position("papers") < position("step-one") && position("step-two") < position("big") && position("big") < position("then"), "{:?}", plan.order);
         assert_eq!(plan.items["big"].start, plan.items["step-one"].start);
     }
+    /// A step of "doctor", at its place in the sequence, without an estimate.
+    fn step_of(uid: &str, place: i64) -> Task {
+        Task { uid: uid.into(), title: uid.into(), relations: vec![Relation { kind: "PARENT".into(), uid: "doctor".into(), gap: 0 }], sort_order: Some(place), ..Task::default() }
+    }
+
+    fn doctor_visit() -> Vec<Task> {
+        // Made in another order than they are done; titles that would sort otherwise.
+        vec![task("doctor", 0), step_of("bus", 300), step_of("brush", 100), step_of("bag", 200), task("letter", 45)]
+    }
+
+    #[test]
+    fn steps_come_in_their_sequence_softly() {
+        let none = BTreeSet::new();
+        let at = |plan: &Plan, u: &str| plan.ready.iter().position(|r| r == u).unwrap();
+        let planned = plan(&doctor_visit(), today(), &Settings::default(), &BTreeMap::new(), &none);
+        // In their sequence, together, the first one next: the letter does not come between them.
+        assert_eq!((at(&planned, "brush"), at(&planned, "bag"), at(&planned, "bus")), (0, 1, 2), "{:?}", planned.ready);
+        assert_eq!(planned.next.as_deref(), Some("brush"));
+        // A later step done first: nothing is out of order, the first one is still next.
+        let mut tasks = doctor_visit();
+        tasks.iter_mut().find(|t| t.uid == "bag").unwrap().status = Status::Completed;
+        let planned = plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none);
+        assert_eq!(planned.next.as_deref(), Some("brush"));
+        // The first one done: the next in the sequence; a later step is free, never waiting for it.
+        tasks.iter_mut().find(|t| t.uid == "brush").unwrap().status = Status::Completed;
+        let planned = plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none);
+        assert_eq!(planned.next.as_deref(), Some("bus"));
+        let first = plan(&doctor_visit(), today(), &Settings::default(), &BTreeMap::new(), &none);
+        assert_eq!((first.items["bus"].column, first.items["bus"].waits_for.len()), (Column::Ready, 0));
+        // One started later in the sequence: it comes first, being under way.
+        let mut tasks = doctor_visit();
+        tasks.iter_mut().find(|t| t.uid == "bus").unwrap().status = Status::InProcess;
+        assert_eq!(plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none).next.as_deref(), Some("bus"));
+        // Moved in the sequence: the plan follows.
+        let mut tasks = doctor_visit();
+        tasks.iter_mut().find(|t| t.uid == "bus").unwrap().sort_order = Some(50);
+        assert_eq!(plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none).ready[..3], ["bus", "brush", "bag"]);
+        // In the order the days take, too.
+        let order: Vec<&str> = first.order.iter().map(String::as_str).filter(|u| ["brush", "bag", "bus"].contains(u)).collect();
+        assert_eq!(order, ["brush", "bag", "bus"]);
+    }
+
+    #[test]
+    fn not_now_puts_the_whole_composed_task_aside() {
+        let aside: BTreeSet<String> = ["brush".to_string()].into();
+        let planned = plan(&doctor_visit(), today(), &Settings::default(), &BTreeMap::new(), &aside);
+        assert_eq!(planned.next.as_deref(), Some("letter"), "its other steps are put aside with it");
+    }
+
+    #[test]
+    fn a_step_is_light_and_never_corrected() {
+        let mut settings = Settings::default();
+        // Your record says tasks take you twice as long: never steps.
+        for uid in ["brush", "letter"] {
+            settings.capacity.corrected.insert(uid.into(), 90);
+        }
+        let mut tasks = doctor_visit();
+        tasks.push(Task { estimate: 20, ..step_of("forms", 400) });
+        let planned = plan(&tasks, today(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((planned.items["brush"].left, planned.items["brush"].laid), (STEP_MINUTES, STEP_MINUTES), "five minutes, as estimated");
+        assert_eq!(planned.items["forms"].laid, 20, "its own estimate");
+        assert_eq!(planned.items["letter"].laid, 90, "a whole task is corrected");
+        // A task without an estimate that is no step keeps the usual default.
+        let alone = plan(&[task("alone", 0)], today(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(alone.items["alone"].left, settings.default_estimate);
+    }
+
+    #[test]
+    fn a_run_of_short_steps_is_laid_back_to_back() {
+        // A day of 25 minutes with a pause of 5 after each step.
+        let mut settings = Settings::flat([25; 7]);
+        settings.pause = PAUSE;
+        let tasks = vec![task("doctor", 0), step_of("a", 1), step_of("b", 2), step_of("c", 3), step_of("d", 4)];
+        let planned = plan(&tasks, today(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        // Four steps of five minutes and one pause: today holds them all (four of a quarter of an hour would not).
+        assert_eq!(planned.days[&today()], [("a".to_string(), 5), ("b".to_string(), 5), ("c".to_string(), 5), ("d".to_string(), 5)]);
+        let flags: Vec<(bool, bool)> = ["a", "b", "c", "d"].iter().map(|u| (planned.items[*u].in_run, planned.items[*u].run_next)).collect();
+        assert_eq!(flags, [(true, true), (true, true), (true, true), (true, false)], "the run's last has its pause");
+        // A longer step cuts the run; a short one alone takes its quarter of an hour.
+        let tasks = vec![task("doctor", 0), step_of("a", 1), step_of("b", 2), Task { estimate: 30, ..step_of("long", 3) }, step_of("d", 4)];
+        let planned = plan(&tasks, today(), &Settings::flat([480; 7]), &BTreeMap::new(), &BTreeSet::new());
+        let flags: Vec<(bool, bool)> = ["a", "b", "long", "d"].iter().map(|u| (planned.items[*u].in_run, planned.items[*u].run_next)).collect();
+        assert_eq!(flags, [(true, true), (true, false), (false, false), (false, false)]);
+        assert_eq!(planned.days[&today()].iter().find(|(u, _)| u == "d").map(|(_, m)| *m), Some(SHORTEST));
+        // Steps of two bigger tasks never make one run.
+        let other = Task { relations: vec![Relation { kind: "PARENT".into(), uid: "other".into(), gap: 0 }], ..step_of("x", 2) };
+        let tasks = vec![task("doctor", 0), task("other", 0), step_of("a", 1), other];
+        let planned = plan(&tasks, today(), &Settings::flat([480; 7]), &BTreeMap::new(), &BTreeSet::new());
+        assert!(!planned.items["a"].run_next && !planned.items["x"].run_next);
+    }
+
+    #[test]
+    fn steps_of_each_other_with_a_sequence_are_still_planned() {
+        // A file from elsewhere: two tasks steps of each other, each with a place.
+        let a = Task { relations: vec![Relation { kind: "PARENT".into(), uid: "b".into(), gap: 0 }], sort_order: Some(1), ..task("a", 10) };
+        let b = Task { relations: vec![Relation { kind: "PARENT".into(), uid: "a".into(), gap: 0 }], sort_order: Some(2), ..task("b", 10) };
+        let planned = plan(&[a, b], today(), &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(planned.order.len(), 2, "{:?}", planned.order);
+        assert!(planned.next.is_some());
+    }
+
     #[test]
     fn time_budget_until_a_date() {
         let today = Date::constant(2026, 10, 5); // a Monday

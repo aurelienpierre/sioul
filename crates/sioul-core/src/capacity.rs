@@ -301,7 +301,9 @@ pub struct Finished {
 
 /// Each finished task with an estimate and time spent: its log ratio, all its
 /// sessions summed (TE14); the first estimate, else the current one (a task
-/// estimated before the first was kept). Dropped tasks never count.
+/// estimated before the first was kept). Dropped tasks never count, nor steps
+/// of a bigger task: the estimates of parts sum to more than the whole's
+/// (Forsyth & Burt 2008), so what they teach would not carry over.
 pub fn finished(tasks: &[Task], sessions: &[Session], kind_of: &dyn Fn(&Task) -> &'static str, zone: &TimeZone) -> Vec<Finished> {
     let mut spent: BTreeMap<&str, (u32, f32)> = BTreeMap::new();
     for s in sessions.iter().filter(|s| !s.task.is_empty()) {
@@ -312,7 +314,7 @@ pub fn finished(tasks: &[Task], sessions: &[Session], kind_of: &dyn Fn(&Task) ->
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     tasks
         .iter()
-        .filter(|t| t.status == Status::Completed && seen.insert(t.uid.as_str()))
+        .filter(|t| t.status == Status::Completed && t.parent().is_none() && seen.insert(t.uid.as_str()))
         .filter_map(|t| {
             let estimate = t.estimate_first.unwrap_or(t.estimate);
             let &(minutes, weighed) = spent.get(t.uid.as_str())?;
@@ -1100,7 +1102,8 @@ pub fn gather(tasks: &[Task], sessions: &[Session], settings: &crate::plan::Sett
     let open: Vec<&Task> = tasks.iter().filter(|t| t.status.is_open()).collect();
     let planning = Planning {
         rates: open.iter().map(|t| (t.uid.clone(), index.rates(t))).collect(),
-        corrected: open.iter().filter_map(|t| Some((t.uid.clone(), ratios.corrected(t.estimate, kind(t))?))).collect(),
+        // Steps are laid as estimated (`plan::STEP_MINUTES`, Forsyth & Burt 2008).
+        corrected: open.iter().filter(|t| t.parent().is_none()).filter_map(|t| Some((t.uid.clone(), ratios.corrected(t.estimate, kind(t))?))).collect(),
         held: held_by_events(&ahead, &zone),
         lightened,
         limit: Some(learned.limit()),
@@ -1431,6 +1434,10 @@ mod tests {
         // An old session without a kind counts as typed.
         let unknown = finished(&[done("u", 30, None, "2026-10-05", "admin")], &[session("u", "2026-10-05", 60, None)], &area, &TimeZone::UTC);
         assert_eq!(unknown[0].weight, TYPED_WEIGHT);
+        // A step of a bigger task teaches nothing: parts are guessed otherwise than wholes (Forsyth & Burt 2008).
+        let mut step = done("step", 5, Some(5), "2026-10-05", "admin");
+        step.relations.push(crate::tasks::Relation { kind: "PARENT".into(), uid: "whole".into(), gap: 0 });
+        assert!(finished(&[step], &[session("step", "2026-10-05", 20, Some(Kind::Measured))], &area, &TimeZone::UTC).is_empty());
     }
 
     #[test]

@@ -1370,7 +1370,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
 
 
 def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=None, due=None, estimate=0, kind="", categories=(),
-         project=None, parent=None, waits=(), notes="", links=(), contacts=(), office=None, completed=None, priority=0, created=None, energy="") -> str:
+         project=None, parent=None, waits=(), notes="", links=(), contacts=(), office=None, completed=None, priority=0, created=None, energy="",
+         order=None) -> str:
     made = created or clock.at(clock.day(-12), "09:00")
     lines = ["BEGIN:VTODO", f"UID:demo-task-{uid}", f"DTSTAMP:{utc(made)}", f"CREATED:{utc(made)}", f"SUMMARY:{escape(title)}", f"STATUS:{status}"]
     if notes:
@@ -1398,6 +1399,9 @@ def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=Non
         lines.append(f"REFID:{project}")
     if parent:
         lines.append(f"RELATED-TO;RELTYPE=PARENT:demo-task-{parent}")
+    # Its place among its bigger task's steps, as Sioul writes it (docs/tasks.md, "Steps in order").
+    if order is not None:
+        lines.append(f"X-APPLE-SORT-ORDER:{order}")
     for other in waits:
         lines.append(f"RELATED-TO;RELTYPE=DEPENDS-ON:demo-task-{other}")
     for rel, uri in links:
@@ -1438,14 +1442,14 @@ def write_tasks(p: Profile, mail: dict):
                             notes=t("Two layouts; the calm one first. Opening hours under the photo.",
                                     "Deux mises en page ; la calme d'abord. Les horaires sous la photo."))),
         ("work-tasks", task(c, "photos", t("Gather the library's photos", "Rassembler les photos de la médiathèque"), status="COMPLETED", estimate=30, kind="online",
-                            categories=[work], project="fernhill", parent="mockup", completed=c.at(c.weekday_before(-2), "17:10"), links=[("via", mid(mail["photos"]))])),
+                            categories=[work], project="fernhill", parent="mockup", completed=c.at(c.weekday_before(-2), "17:10"), links=[("via", mid(mail["photos"]))], order=1000)),
         ("work-tasks", task(c, "sketch", t("Sketch two layouts for the homepage", "Esquisser deux mises en page pour l'accueil"), status="IN-PROCESS", start=c.day(0),
-                            estimate=240, kind="make", categories=[work], project="fernhill", parent="mockup", links=[("describedby", project_note)],
+                            estimate=240, kind="make", categories=[work], project="fernhill", parent="mockup", links=[("describedby", project_note)], order=2000,
                             # Notes in Markdown, drawn in the details: a list of boxes, a link of the web.
                             notes=t("Two layouts, **the calm one first**.\n\n- [x] Opening hours under the photo\n- [ ] The map: https://example.org/fernhill-map",
                                     "Deux mises en page, **la calme d\u2019abord**.\n\n- [x] Les horaires sous la photo\n- [ ] Le plan\u202f: https://example.org/fernhill-map"))),
         ("work-tasks", task(c, "send-mockup", t("Send the mock-up to Iris", "Envoyer la maquette à Iris"), estimate=30, kind="write", categories=[work], project="fernhill",
-                            parent="mockup", waits=["sketch"], contacts=["iris"])),
+                            parent="mockup", waits=["sketch"], contacts=["iris"], order=3000)),
         ("work-tasks", task(c, "hours-page", t("Fernhill: opening hours page", "Fougères : page des horaires"), estimate=90, kind="make", categories=[work],
                             project="fernhill", waits=["mockup"], due=c.weekday_after(11), links=[("via", mid(mail["hours"]))])),
         ("work-tasks", task(c, "invoice", t("Invoice Fernhill for the mock-up stage", "Facturer la médiathèque pour l'étape maquette"), estimate=15, kind="online",

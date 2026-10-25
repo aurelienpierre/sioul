@@ -91,6 +91,8 @@ pub fn task_losses(task: &Task, to: Provider) -> Vec<&'static str> {
     add(!task.energy.is_empty(), "energy");
     add(!task.margins.is_empty(), "margins");
     add(task.demands != crate::demands::Demands::default(), "costs");
+    // Google keeps its own order of steps, which Sioul does not write.
+    add(task.parent().is_some() && task.sort_order.is_some(), "order");
     lost
 }
 

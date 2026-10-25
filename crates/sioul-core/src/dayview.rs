@@ -156,7 +156,10 @@ fn spread_out<'a>(mut rest: Vec<Step<'a>>) -> Vec<Step<'a>> {
         let ahead = rest.len().min(LOOK_AHEAD);
         let ready = |s: &Step, rest: &[Step], out: &[Step]| s.planned.waits_for.iter().all(|w| out.iter().any(|o| &o.task.uid == w) || !rest.iter().any(|r| &r.task.uid == w));
         let first = (0..ahead).find(|&k| ready(&rest[k], &rest, &out)).unwrap_or(0);
+        // A run's next step comes right after it (`Planned::run_next`).
+        let run = out.last().filter(|prev| prev.planned.run_next).and_then(|prev| rest.iter().position(|s| s.planned.in_run && s.task.parent().is_some() && s.task.parent() == prev.task.parent()));
         let pick = match out.last() {
+            _ if run.is_some() => run.unwrap_or(first),
             Some(prev) => {
                 let heavy_twice = |s: &Step| prev.level == Level::Heavy && s.level == Level::Heavy;
                 let same_cost = |s: &Step| prev.dominant.is_some() && s.dominant == prev.dominant;
@@ -349,6 +352,8 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         }
         laid.insert(step.task.uid.as_str(), to);
     }
+    // Where the last step laid ends when the next of its run follows it at once (`Planned::run_next`).
+    let mut joined: Option<i64> = None;
     for step in spread_out(others) {
         let (task, planned) = (step.task, step.planned);
         // What it waits for comes first: when that is not laid today, neither is it.
@@ -390,7 +395,9 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         if step.level == crate::demands::Level::Heavy {
             held.extend(heavy_laid.iter().map(|&(start, _)| (start - BREAK_AFTER_HEAVY * 60, start)));
         }
-        let mut free: Vec<(i64, i64)> = crate::plan::less(&runs, &held).into_iter().map(|(from, to, _)| (rounded(from.max(after)), to)).filter(|(from, to)| to > from).collect();
+        // A step of a run starts where the one before it ends, not at the next five minutes.
+        let start_of = |from: i64| if joined == Some(from) && planned.in_run { from.max(after) } else { rounded(from.max(after)) };
+        let mut free: Vec<(i64, i64)> = crate::plan::less(&runs, &held).into_iter().map(|(from, to, _)| (start_of(from), to)).filter(|(from, to)| to > from).collect();
         if light && !moved.is_empty() {
             let inside: Vec<(i64, i64)> = free.iter().flat_map(|&(a, b)| moved.iter().filter_map(move |&(m, n)| (a.max(m) < b.min(n)).then_some((a.max(m), b.min(n))))).collect();
             let outside = crate::plan::less(&free.iter().map(|&(a, b)| (a, b, Area::ALL)).collect::<Vec<_>>(), &moved).into_iter().map(|(a, b, _)| (a, b));
@@ -401,7 +408,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         // one (or one the plan already cut) from the first gap on, in parts of a
         // quarter of an hour at least.
         // Never cut when it has margins: going there twice is not the same step.
-        let cut = task.margins.is_empty() && (planned.laid > WHOLE || planned.on_start < planned.laid.max(SHORTEST));
+        let cut = !planned.in_run && task.margins.is_empty() && (planned.laid > WHOLE || planned.on_start < planned.laid.max(SHORTEST));
         let pieces: Vec<(i64, i64)> = if cut {
             let (mut pieces, mut owed, shortest) = (Vec::new(), length, i64::from(SHORTEST) * 60);
             for &(from, to) in &free {
@@ -428,9 +435,12 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
             continue;
         }
         let count = pieces.len();
+        // The run's next step follows at once: its pause comes after the run.
+        let pause_after = if planned.run_next { 0 } else { pause };
+        joined = planned.run_next.then(|| pieces.last().map_or(0, |p| p.1));
         for (k, &(from, to)) in pieces.iter().enumerate() {
             lay(&mut view, &step, from, to, if count > 1 { k as u32 + 1 } else { 0 }, false);
-            busy.push((from, to + pause));
+            busy.push((from, to + pause_after));
             if step.level == crate::demands::Level::Heavy {
                 heavy_laid.push((from, to));
             }
@@ -644,6 +654,21 @@ mod tests {
         let view = laid_out(&at("2026-10-06T08:00"), &[], &[conference], &[]);
         let midnight = at("2026-10-06T00:00").timestamp().as_second();
         assert_eq!((view.blocks[0].start, view.blocks[0].end, view.from, view.to), (midnight, midnight + 86_400, midnight, midnight + 86_400));
+    }
+
+    #[test]
+    fn a_run_of_steps_is_laid_back_to_back() {
+        // Work 9–13: four steps of "doctor" without estimates, then a letter.
+        let now = at("2026-10-05T08:00");
+        let hours = vec![window("monday", "09:00", "13:00", "work")];
+        let step = |uid: &str, place: i64| Task { relations: vec![crate::tasks::Relation { kind: "PARENT".into(), uid: "doctor".into(), gap: 0 }], sort_order: Some(place), ..task(uid, 0, "") };
+        let tasks = vec![task("doctor", 0, ""), step("brush", 1), step("bag", 2), step("keys", 3), step("coat", 4), task("letter", 30, "")];
+        let view = laid_out(&now, &hours, &[], &tasks);
+        let laid = steps_of(&view);
+        let pause = i64::from(crate::plan::PAUSE);
+        // Back to back, five minutes each, no pause between them; one pause after the run.
+        assert_eq!(laid[..4], [("brush", 540, 545), ("bag", 545, 550), ("keys", 550, 555), ("coat", 555, 560)], "{laid:?}");
+        assert_eq!(laid[4], ("letter", 560 + pause, 590 + pause));
     }
 
     #[test]
