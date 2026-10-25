@@ -272,6 +272,45 @@ pub fn ticked(notes: &str, line: usize, mark: Mark) -> Result<String, Stale> {
     Err(Stale)
 }
 
+/// The notes without the item on `line` and its detail (an item made a
+/// step or a task of its own); every other line as it was. Stale when that
+/// line is no item now.
+pub fn removed(notes: &str, line: usize) -> Result<String, Stale> {
+    let (all, listed) = read(notes);
+    let item = all.iter().find(|i| i.line == line).ok_or(Stale)?;
+    // Its detail: the lines after it that are the list's and no item, up to the next item.
+    let next = all.iter().map(|i| i.line).filter(|&l| l > line).min().unwrap_or(usize::MAX);
+    let lines: Vec<&str> = notes.split('\n').collect();
+    let gone = |i: usize| i == item.line || (i > line && i < next && listed.get(i).copied().unwrap_or(false) && !lines[i].trim().is_empty());
+    let kept: Vec<&str> = lines.iter().enumerate().filter(|(i, _)| !gone(*i)).map(|(_, l)| *l).collect();
+    Ok(kept.join("\n"))
+}
+
+/// The notes with one more item at the end of their list (`text`, its
+/// mark, its detail indented under it); a list begun after the notes' words
+/// when they have none.
+pub fn appended(notes: &str, text: &str, mark: Mark, detail: &[String]) -> String {
+    let mut item = format!("- [{}] {}", mark.char(), one_line(text));
+    for line in detail.iter().map(|d| one_line(d)).filter(|d| !d.is_empty()) {
+        item.push_str(&format!("\n  {line}"));
+    }
+    let (all, listed) = read(notes);
+    let Some(last) = all.last() else {
+        let words = notes.trim_end();
+        return if words.is_empty() { item } else { format!("{words}\n\n{item}") };
+    };
+    // After the last item and its detail.
+    let lines: Vec<&str> = notes.split('\n').collect();
+    let mut end = last.line;
+    while end + 1 < lines.len() && listed.get(end + 1).copied().unwrap_or(false) && boxed(lines[end + 1].trim_end_matches('\r')).is_none() {
+        end += 1;
+    }
+    let mut out: Vec<String> = lines[..=end].iter().map(|l| l.to_string()).collect();
+    out.push(item);
+    out.extend(lines[end + 1..].iter().map(|l| l.to_string()));
+    out.join("\n")
+}
+
 /// A mark changed by a tap: to do or not needed becomes done; done, to do again.
 pub fn toggled(mark: Mark) -> Mark {
     if mark == Mark::Done { Mark::Open } else { Mark::Done }
@@ -542,6 +581,23 @@ mod tests {
         assert_eq!(free_text(&notes), "Free words.");
         assert_eq!(items(&notes).iter().map(|i| i.group.as_str()).collect::<Vec<_>>(), ["", "Bring", "Bring"], "read back in their groups");
         assert_eq!(written("", &[], ""), "");
+    }
+
+    #[test]
+    fn an_item_taken_out_and_one_added() {
+        // The blood test, and its detail, out; nothing else changes.
+        let without = removed(NOTES, 5).unwrap();
+        assert_eq!(without, NOTES.replace("- [x] Last blood test\n  The paper one, in the green folder.\n", ""));
+        assert_eq!(removed(NOTES, 0), Err(Stale));
+        // Back at the end of the list, its detail under it.
+        let back = appended(&without, "Last blood test", Mark::Done, &["The paper one, in the green folder.".to_string()]);
+        assert!(back.ends_with("- [ ] The doctor's address is in the phone\n- [x] Last blood test\n  The paper one, in the green folder."), "{back}");
+        assert_eq!(items(&back).len(), 5);
+        // A list begun after the words; or alone.
+        assert_eq!(appended("Words.", "Keys", Mark::Open, &[]), "Words.\n\n- [ ] Keys");
+        assert_eq!(appended("", "Keys", Mark::Skipped, &[]), "- [-] Keys");
+        // In the middle of the notes: after the last item, the words after it kept.
+        assert_eq!(appended("- [ ] A\n  detail\n\nAfter.", "B", Mark::Open, &[]), "- [ ] A\n  detail\n- [ ] B\n\nAfter.");
     }
 
     #[test]

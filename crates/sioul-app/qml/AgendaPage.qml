@@ -733,6 +733,14 @@ Item {
                     // Its checklist ticked here: a task's that can be changed, an event's of
                     // a calendar you write to, never an invitation's (its organizer's words).
                     tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || (page.opened.organizer === "" && page.opened.attendees.length === 0))
+                    // An item made a task of its own; a step, of a task's list.
+                    converts: tickable
+                    steps: page.openedTask
+                    onConvert: (line, to) => {
+                        const problem = page.openedTask ? page.sioul.convertItem("task", page.opened.task, line, to) : page.sioul.convertItem("event", page.opened.key, line, to)
+                        if (problem !== "")
+                            page.sioul.status = problem
+                    }
                     onCheck: (line, state) => {
                         const problem = page.openedTask ? page.sioul.checkItem("task", page.opened.task, line, state) : page.sioul.checkItem("event", page.opened.key, line, state)
                         if (problem !== "")

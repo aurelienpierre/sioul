@@ -240,6 +240,14 @@ Item {
             page.opened = page.shown.now.now.uid
     }
 
+    // "Make it a step of…": the open task's form, once shown, the field to find its bigger task.
+    function askStepOf() {
+        Qt.callLater(() => {
+            if (page.panel)
+                page.panel.askStepOf()
+        })
+    }
+
     // For the window's pictures: the open task's form, its folded fields shown.
     function showPanelDetails() {
         panelLoader.item.editing = true
@@ -1294,6 +1302,29 @@ Item {
                 MenuItem {
                     text: page.sioul.text("ui-link-existing")
                     onTriggered: page.window.linkFrom(taskMenuForm.source)
+                }
+                MenuSeparator {}
+                // A step of another, found by its title in its form; a task of its own again (docs/tasks.md, "Composed tasks").
+                MenuItem {
+                    objectName: "taskMakeStepOf"
+                    enabled: taskMenuForm.target !== null && !taskMenuForm.target.read_only
+                    text: page.sioul.text("task-make-step-of")
+                    onTriggered: {
+                        page.open(taskMenuForm.target.uid)
+                        page.askStepOf()
+                    }
+                }
+                MenuItem {
+                    objectName: "taskMakeOwnMenu"
+                    visible: taskMenuForm.target !== null && (taskMenuForm.target.depth || 0) > 0
+                    height: visible ? implicitHeight : 0
+                    enabled: taskMenuForm.target !== null && !taskMenuForm.target.read_only
+                    text: page.sioul.text("task-make-own")
+                    onTriggered: {
+                        const answer = JSON.parse(page.sioul.makeStepOf(taskMenuForm.target.uid, "", false) || "{}")
+                        if (answer.error)
+                            page.sioul.status = answer.error
+                    }
                 }
             }
         }

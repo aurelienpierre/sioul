@@ -81,6 +81,16 @@ A task is pinned to a time by a **time block**: an event in a calendar, tied to 
 - **Set right at each re-plan** (`blocks::upkeep`), only what differs, so that nothing is written twice. A block whose task is not known here (not synced yet, deleted elsewhere) is an event like any other, and left alone.
 - **`X-SIOUL-AT`**: read for compatibility (the plan and the day lay such a step today, as before), never written. One for today or later, on an open task, becomes a block once, and the line goes from the task.
 
+## Composed tasks
+A task with steps is a composed task: nothing says it but its steps (`composed`). What changes what a thing is goes through `composed`, the same for the window, `sioul tasks parent` and the MCP (`update_task`'s `parent`, `convert_item`), each change worked out as the files it writes, refused with its reason, then written once, said with Undo (`agents::say`, whose Undo puts back only files still as they were left):
+- **A step of another** (`demote`; the panel's "A step of…", a list's menu "Make it a step of…"): never of itself nor of one of its own steps; never a task of a list you only read, nor one done. A step stays in its bigger task's list: from another list it moves there with its own steps through the move journal (`vdir::move_item`), what that list would not keep asked first (`capabilities::task_losses`). Not into the GitHub list, written by its sync alone: steps of an issue stay in your own list. Its waits, projects, blocks and links stay; it goes after the other steps (`next_in_sequence`). Google Tasks keeps one level of steps: a step of a step there, or a task with steps made a step there, is refused.
+- **A task of its own** (`promote`): its PARENT line goes, and a CHILD line its bigger task holds for it (another program's way); its place stays.
+- **An item made a step** (`item_to_step`) or **a task** (`item_to_task`, tied to what held it by a `related` link): its words the title, its detail the notes, its tick kept (done: done; not needed: dropped), the item taken out of the list.
+- **A step folded into the list** (`step_to_item`): an item at the end of the bigger task's list, its notes its detail, its tick kept; the step and its time blocks to come taken out. A step holding more than words and a tick (an estimate, a wait or what waits for it, steps, a block, dates, a kind, links, people, tags, margins, costs) says what would go first (`beyond_words`), and goes on when asked again.
+- **Breaking a step down** opens the step with its line to add steps: depth has no limit in the files; the window shows two levels at once.
+- **Closing with its last step** (`closing_with`, D16): a bigger task without an estimate of its own, without an open wait, not coming back, that can be written, is done once none of its steps is open and one of them is done (all dropped, nothing was done); further up too. The window says "Done. “Going to the doctor” is done too." with Undo, which reopens the step and the bigger tasks; the command line and the MCP say it in their answer. A bigger task with an estimate of its own keeps its own tick, five minutes in the plan.
+- **Not yet**: a top from outside (a GitHub issue) closed there does not offer to let go of its steps; they stay open as ordinary tasks (D21).
+
 ## Checklists
 A task's or an event's notes may hold a checklist (`checklist`): GitHub task list lines, read wherever they are in the notes, outside fenced code. Not `STYLED-DESCRIPTION` (RFC 9073), which asks `DESCRIPTION` to be marked derived, nor a property of Sioul's own: one truth, readable everywhere.
 - **Read, and ticked where it is read**: drawn in the task's details and the event's (`description::description_html_tickable`), each box a link, `sioul-check:<its line>`; a tap toggles it (to do or not needed → done → to do), the box's menu (right click, long press) sets done, to do or not needed. A tick changes one character of the notes, and their `DESCRIPTION` line alone is written (`checklist::ticked`, `tasks::apply`, `agenda::apply`). The line's item is checked again before it is ticked: a list changed meanwhile is said, never ticked by a guess.
@@ -117,6 +127,7 @@ sioul tasks list [--by project|list] [--done] [words]
 sioul tasks board | timeline [--project <id>] | show <task>
 sioul tasks add "Call the tax office tomorrow ~15m #taxes" [--list <account/id>] [--parent <task>] [--after <task>]
 sioul tasks move <step> [--before <step>]     a step in its task's order: before another, else last
+sioul tasks parent <task> <bigger task|none> [--confirm]   a step of another, or a task of its own
 sioul tasks done | start | not-now <task>     (a task: its UID, or the start of its title)
 sioul tasks weather clear|haze|fog
 sioul tasks lists | new-list <account|local> <name> [--events]

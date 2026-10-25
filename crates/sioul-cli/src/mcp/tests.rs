@@ -401,7 +401,7 @@ const READING: &[&str] = &[
     "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -1474,6 +1474,11 @@ fn last_said() -> sioul_core::agentwrites::Said {
     sioul_core::agentwrites::since(0).0.pop().expect("a change said")
 }
 
+/// The last change said with these words: tests running beside each other say theirs too.
+fn said_about(words: &str) -> sioul_core::agentwrites::Said {
+    sioul_core::agentwrites::since(0).0.into_iter().rev().find(|s| s.line.contains(words)).unwrap_or_else(|| panic!("nothing said about {words}"))
+}
+
 /// Events and tasks read and changed one by one (25 October 2026): each
 /// change said for the window with Undo; a move through the journal, once;
 /// a meeting with others never moved nor deleted; a task made an
@@ -1581,8 +1586,8 @@ fn steps_are_added_and_moved_in_their_order() {
     };
     let titles = |server: &mut Server| steps(server).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
     assert_eq!(titles(&mut server), ["Find the old glasses", "Check the bus times", "Take the bus"]);
-    let said = last_said();
-    assert!(said.line.contains("Going to the optician") && said.files.len() == 3, "{said:?}");
+    let said = said_about("to “Going to the optician”");
+    assert!(said.files.len() == 3, "{said:?}");
     let files: Vec<PathBuf> = said.files.iter().map(|f| f.path.clone()).collect();
     let read = |path: &PathBuf| sioul_core::tasks::task_of_text(&std::fs::read_to_string(path).unwrap(), &jiff::tz::TimeZone::system()).unwrap();
     assert_eq!(read(&files[1]).estimate, 10);
@@ -1597,8 +1602,7 @@ fn steps_are_added_and_moved_in_their_order() {
     assert_eq!(moved["isError"], false, "{moved}");
     assert!(text(&moved).contains("1. Take the bus"), "{moved}");
     assert_eq!(titles(&mut server), ["Take the bus", "Find the old glasses", "Check the bus times", "Pay at the counter"]);
-    let said = last_said();
-    assert!(said.line.contains("Take the bus") && said.line.contains("Going to the optician"), "{said:?}");
+    let said = said_about("“Take the bus” among the steps of “Going to the optician”");
     assert!(said.put_back(), "Undo");
     assert_eq!(titles(&mut server), ["Find the old glasses", "Check the bus times", "Take the bus", "Pay at the counter"]);
     // Last, with no `before`; where it is already, nothing.
@@ -1650,10 +1654,10 @@ fn checklists_are_read_apart_ticked_and_kept() {
     let ticked = call(&mut server, "check_item", json!({ "of": uid, "item": "carte vitale", "state": "done" }));
     assert_eq!(ticked["isError"], false, "{ticked}");
     assert!(text(&ticked).contains("1. [x] Carte Vitale (Bring)"), "{ticked}");
-    assert!(last_said().line.contains("Carte Vitale"));
+    said_about("“Carte Vitale”");
     assert_eq!(call(&mut server, "check_item", json!({ "of": uid, "item": "2", "state": "skipped" }))["isError"], false);
     assert_eq!(file(&uid).notes, "Take the green folder.\n\nBring:\n- [x] Carte Vitale\n- [-] Mutuelle card");
-    assert!(last_said().put_back(), "Undo");
+    assert!(said_about("“Mutuelle card”").put_back(), "Undo");
     assert!(file(&uid).notes.ends_with("- [ ] Mutuelle card"));
     // A stale name: refused, with the items as they are now.
     let stale = call(&mut server, "check_item", json!({ "of": uid, "item": "Passport", "state": "done" }));
@@ -1669,7 +1673,7 @@ fn checklists_are_read_apart_ticked_and_kept() {
     let set = call(&mut server, "set_checklist", json!({ "of": uid, "groups": [{ "name": "Bring", "items": ["Carte Vitale", { "text": "X-rays", "state": "open" }] }, { "name": "Check", "items": ["The address"] }] }));
     assert_eq!(set["isError"], false, "{set}");
     assert_eq!(file(&uid).notes, "Ask about the crown.\n\nBring:\n- [x] Carte Vitale\n- [ ] X-rays\n\nCheck:\n- [ ] The address");
-    assert!(last_said().line.contains("Going to the dentist"));
+    said_about("list of “Going to the dentist”");
     for arguments in [json!({ "of": uid, "groups": [{ "name": "Bring", "items": [""] }] }), json!({ "of": uid, "groups": [{ "items": [{ "text": "A", "state": "lost" }] }] }), json!({ "of": uid, "groups": [{ "title": "Bring", "items": [] }] })] {
         assert_eq!(call(&mut server, "set_checklist", arguments.clone())["isError"], true, "{arguments}");
     }
@@ -1694,4 +1698,56 @@ fn checklists_are_read_apart_ticked_and_kept() {
     let _ = std::fs::remove_file(&meeting);
     let _ = std::fs::remove_file(&event_file);
     let _ = std::fs::remove_file(file(&uid).key);
+}
+
+/// A task made a step and a task of its own again, an item made a step and
+/// folded back, a bigger task done with its last step (25 October 2026):
+/// each said with Undo; a loop refused, a step holding more than words asked
+/// first.
+#[test]
+fn composed_tasks_are_changed_by_agents() {
+    home();
+    let mut server = server();
+    let uid = |answer: &Value| answer["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let whole = uid(&call(&mut server, "add_task", json!({ "title": "Going to the vet", "notes": "Bring:\n- [x] The vaccination book\n- [ ] Treats" })));
+    let carrier = uid(&call(&mut server, "add_task", json!({ "title": "Find the cat carrier" })));
+    let task = |uid: &str| sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().find(|t| t.uid == uid);
+    // A step of the visit; never the visit a step of its own step.
+    let made = call(&mut server, "update_task", json!({ "task": carrier, "parent": whole }));
+    assert_eq!(made["isError"], false, "{made}");
+    assert_eq!(task(&carrier).unwrap().parent(), Some(whole.as_str()));
+    said_about("“Find the cat carrier” a step of “Going to the vet”");
+    let looped = call(&mut server, "update_task", json!({ "task": whole, "parent": carrier }));
+    assert_eq!(looped["isError"], true, "{looped}");
+    // An item made a step, its tick kept; folded back into the list.
+    let step = call(&mut server, "convert_item", json!({ "to": "step", "of": whole, "item": "the vaccination book" }));
+    assert_eq!(step["isError"], false, "{step}");
+    let book = sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().find(|t| t.title == "The vaccination book").unwrap();
+    assert_eq!((book.parent(), book.status), (Some(whole.as_str()), sioul_core::tasks::Status::Completed));
+    assert_eq!(task(&whole).unwrap().notes, "Bring:\n- [ ] Treats");
+    let folded = call(&mut server, "convert_item", json!({ "to": "item", "step": book.uid }));
+    assert_eq!(folded["isError"], false, "{folded}");
+    assert!(task(&book.uid).is_none());
+    assert_eq!(task(&whole).unwrap().notes, "Bring:\n- [ ] Treats\n- [x] The vaccination book");
+    // A step holding more than words: what it would lose said first.
+    call(&mut server, "update_task", json!({ "task": carrier, "estimate": 10 }));
+    let asked = call(&mut server, "convert_item", json!({ "to": "item", "step": carrier }));
+    assert_eq!(asked["isError"], true, "{asked}");
+    assert!(text(&asked).contains("length") && text(&asked).contains("confirm"), "{asked}");
+    // Its last step done: the visit, without an estimate of its own, is done too; Undo puts both back.
+    let done = call(&mut server, "update_task", json!({ "task": carrier, "status": "completed" }));
+    assert_eq!(done["isError"], false, "{done}");
+    assert!(text(&done).contains("Going to the vet"), "{done}");
+    assert_eq!(task(&whole).unwrap().status, sioul_core::tasks::Status::Completed);
+    assert!(said_about("“Going to the vet” is done too").put_back(), "Undo");
+    assert!(task(&whole).unwrap().status.is_open() && task(&carrier).unwrap().status.is_open());
+    // A task of its own again.
+    assert_eq!(call(&mut server, "update_task", json!({ "task": carrier, "parent": "none" }))["isError"], false);
+    assert_eq!(task(&carrier).unwrap().parent(), None);
+    // Taken out again: these tests share one home.
+    for uid in [&whole, &carrier] {
+        if let Some(task) = task(uid) {
+            let _ = std::fs::remove_file(task.key);
+        }
+    }
 }

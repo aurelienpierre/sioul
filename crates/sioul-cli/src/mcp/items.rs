@@ -280,6 +280,75 @@ fn free_text_given(args: &Args, notes: &str) -> Result<String, String> {
     Ok(checklist::with_free_text(notes, &given))
 }
 
+/// Files changed twice in one call: the first before, the last after (Undo puts back the first).
+fn merge_files(files: &mut Vec<FileChange>, more: Vec<FileChange>) {
+    for change in more {
+        match files.iter_mut().find(|f| f.path == change.path) {
+            Some(found) => found.after = change.after,
+            None => files.push(change),
+        }
+    }
+}
+
+/// A composed task's change refused, said; what it would lose, with how to go on.
+fn refused(s: &Session, refusal: sioul_core::composed::Refusal) -> String {
+    match refusal {
+        sioul_core::composed::Refusal::Losses(_) => format!("{} Give “confirm”: true to go on.", refusal.said(&s.tr)),
+        refusal => refusal.said(&s.tr),
+    }
+}
+
+pub fn convert_item(s: &Session, args: &Args) -> Result<Answer, String> {
+    use sioul_core::composed;
+    let desk = Desk::read(s);
+    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let to = args.needed("to")?;
+    // The files as they are, for what is written; what reaches the agent, found through the desk.
+    let all = tasks::all(&zone);
+    let (change, line) = match to.as_str() {
+        "item" => {
+            let step = find_open_task(s, &desk, &args.needed("step")?)?;
+            may_change(&desk.consent, &links::task_uri(&step.uid))?;
+            let whole = step.parent().and_then(|p| all.iter().find(|t| t.uid == p)).map(|t| t.title.clone()).unwrap_or_default();
+            let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
+            let blocks = sioul_core::blocks::to_come_of(&step.uid, &chosen, now.timestamp().as_second(), &zone);
+            let change = composed::step_to_item(&all, &step.uid, &blocks, args.flag("confirm")?, &now).map_err(|r| refused(s, r))?;
+            (change, s.say("agent-folded", &[("title", one_line(&step.title)), ("whole", one_line(&whole))]))
+        }
+        "step" | "task" => {
+            let holder = holder(s, &desk, &args.needed("of")?)?;
+            let notes = holder.notes();
+            let wanted = args.needed("item")?;
+            let item = checklist::find(&notes, &wanted).map_err(|_| format!("No item “{}” alone in the list of “{}”: its items now: {}.", one_line(&wanted), one_line(&holder.title()), checklist_lines(&notes).join("; ")))?;
+            let said = s.say(if to == "step" { "agent-item-step" } else { "agent-item-task" }, &[("title", one_line(&item.text))]);
+            let planned = match (&holder, to.as_str()) {
+                (Holder::Task(task), "step") => composed::item_to_step(&all, &task.uid, item.line, &now),
+                (Holder::Event(_), "step") => return Err("An event's item becomes a task (“to”: “task”): steps are a task's.".into()),
+                (Holder::Task(task), _) => {
+                    let list = tasks::default_list().ok_or_else(|| s.tr.text("task-no-list-yet", None))?;
+                    let task = all.iter().find(|t| t.uid == task.uid).ok_or_else(|| s.tr.text("task-gone", None))?;
+                    composed::item_to_task(&composed::Holder::Task(task), item.line, &list, &now)
+                }
+                (Holder::Event(found), _) => {
+                    if found.calendar.read_only {
+                        return Err(s.tr.text("agenda-read-only", None));
+                    }
+                    if agenda::with_others(&found.text) {
+                        return Err(s.tr.text("checklist-with-others", None));
+                    }
+                    let list = tasks::default_list().ok_or_else(|| s.tr.text("task-no-list-yet", None))?;
+                    composed::item_to_task(&composed::Holder::Event { path: &found.path, text: &found.text, uid: &found.uid }, item.line, &list, &now)
+                }
+            };
+            (planned.map(|(change, _)| change).map_err(|r| refused(s, r))?, said)
+        }
+        other => return Err(format!("“to” is step, task or item; not “{}”.", one_line(other))),
+    };
+    let files = change.write()?;
+    say_in_window(line.clone(), files);
+    Ok(Answer { text: line, data: json!({ "changed": true, "sent": false }) })
+}
+
 /// What holds a checklist, found for an agent: a task, or an event.
 enum Holder {
     Task(Task),
@@ -689,6 +758,15 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         files.push(FileChange::of(Path::new(&task.key), Some(current.clone())));
     }
     let mut line = s.say("agent-task-changed", &[("title", one_line(&edit.title))]);
+    // Done, its bigger task with it, when it was the last step (docs/tasks.md, "Composed tasks").
+    if task.status != Status::Completed && sioul_core::tasks::task_of_text(&text, &zone).is_some_and(|t| t.status == Status::Completed) {
+        let all = tasks::all(&zone);
+        let closing = sioul_core::composed::close_with(&all, &task.uid, &now).map_err(|r| r.said(&s.tr))?;
+        if let Some(whole) = sioul_core::composed::closing_with(&all, &task.uid).first().map(|t| t.title.clone()) {
+            merge_files(&mut files, closing.write()?);
+            line = format!("{line} {}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
+        }
+    }
     if let Some(list) = args.text("list")?.filter(|l| *l != task.list_id) {
         let target = tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == list).ok_or_else(|| s.tr.text("task-list-no-tasks", None))?;
         // What the list would not keep (Google Tasks'), said first, as the window asks.
@@ -718,6 +796,24 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
             files.push(FileChange { path: to, before: None, after: Some(written) });
         }
         line = s.say("agent-task-moved", &[("title", one_line(&edit.title)), ("list", target.label(&s.config, &s.tr))]);
+    }
+    // A step of another, or a task of its own again: after the rest, from the files as they are now.
+    if let Some(parent) = args.text("parent")? {
+        let all = tasks::all(&zone);
+        let keeper = |c: &Collection| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), c);
+        let (planned, said) = if parent.eq_ignore_ascii_case("none") {
+            (sioul_core::composed::promote(&all, &task.uid, &now), s.say("agent-made-own", &[("title", one_line(&edit.title))]))
+        } else {
+            let open = desk.open_tasks();
+            let whole = read::find_task(s, &open, &parent)?;
+            may_change(&desk.consent, &links::task_uri(&whole.uid))?;
+            (sioul_core::composed::demote(&all, &task.uid, &whole.uid, &tasks::lists(), &keeper, args.flag("confirm")?, &now), s.say("agent-made-step", &[("title", one_line(&edit.title)), ("whole", one_line(&whole.title))]))
+        };
+        let change = planned.map_err(|r| refused(s, r))?;
+        if !change.is_empty() {
+            merge_files(&mut files, change.write()?);
+            line = said;
+        }
     }
     if files.is_empty() {
         return Ok(Answer { text: "Nothing changed: the task already says so.".into(), data: json!({ "uri": links::task_uri(&task.uid), "changed": false }) });

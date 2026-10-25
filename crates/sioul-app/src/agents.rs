@@ -40,8 +40,9 @@ pub(crate) fn watch(qt: &QtThread, shared: &Arc<Shared>) {
     });
 }
 
-/// One change said, with Undo; the pages read again.
-fn say(qt: &QtThread, shared: &Arc<Shared>, said: agentwrites::Said) {
+/// One change said, with Undo; the pages read again. The window's own
+/// changes of several files say themselves so too (`work`, composed tasks).
+pub(crate) fn say(qt: &QtThread, shared: &Arc<Shared>, said: agentwrites::Said) {
     let accounts: std::collections::BTreeSet<String> = said.files.iter().filter_map(|f| crate::pim::account_of(&f.path)).collect();
     for account in &accounts {
         crate::pim::nudge(shared, account);

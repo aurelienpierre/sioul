@@ -980,6 +980,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         budget: String,
         /// What was felt after it, or tasks of its kind, before: faint in its form.
         proposed: sioul_core::capacity::Proposal,
+        /// The title of the task it is a step of; "" for none.
+        parent_title: String,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -994,7 +996,99 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         _ => String::new(),
     };
     let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(task);
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed })
+    let parent_title = task.parent().and_then(|p| loaded.tasks.iter().find(|t| t.uid == p)).map(|t| t.title.clone()).unwrap_or_default();
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title })
+}
+
+/// A change of a composed task (`sioul_core::composed`) written and said,
+/// with Undo: {"uid"}, {"error"}, or {"losses", "said"} to ask first.
+fn composed_done(qt: &QtThread, shared: &Arc<Shared>, planned: Result<sioul_core::composed::Change, sioul_core::composed::Refusal>, uid: &str, line: impl FnOnce() -> String) -> String {
+    use sioul_core::composed::Refusal;
+    let change = match planned {
+        Ok(change) => change,
+        Err(Refusal::Losses(what)) => {
+            let said = Refusal::Losses(what.clone()).said(tr());
+            return serde_json::json!({ "losses": what.iter().map(|w| tr().text(&format!("loss-{w}"), None)).collect::<Vec<_>>(), "said": said }).to_string();
+        }
+        Err(refusal) => return answer(Err(refusal.said(tr()))),
+    };
+    if change.is_empty() {
+        return answer(Ok(uid.to_string()));
+    }
+    match change.write() {
+        Ok(files) => {
+            crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line: line(), files });
+            answer(Ok(uid.to_string()))
+        }
+        Err(e) => answer(Err(e)),
+    }
+}
+
+/// Every list's keeper, for what a move would lose.
+fn keeper(config: &sioul_core::config::Config) -> impl Fn(&Collection) -> sioul_core::capabilities::Provider + '_ {
+    move |c: &Collection| sioul_core::capabilities::provider_of_collection(config.account(&c.account), c)
+}
+
+/// A task made a step of `bigger` ("": a task of its own again): {"uid"},
+/// {"error"}, or {"losses", "said"} when its family would move into a list
+/// that keeps less, asked first (`confirmed` goes on).
+pub(crate) fn make_step_of(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bigger: &str, confirmed: bool) -> String {
+    let (zone, now, config) = (TimeZone::system(), Zoned::now(), load_config());
+    let all = tasks::all(&zone);
+    let title = |u: &str| all.iter().find(|t| t.uid == u).map(|t| t.title.clone()).unwrap_or_default();
+    let planned = if bigger.is_empty() { sioul_core::composed::promote(&all, uid, &now) } else { sioul_core::composed::demote(&all, uid, bigger, &tasks::lists(), &keeper(&config), confirmed, &now) };
+    composed_done(qt, shared, planned, uid, || if bigger.is_empty() { say("composed-made-own", &[("title", title(uid))]) } else { say("composed-made-step", &[("title", title(uid)), ("whole", title(bigger))]) })
+}
+
+/// A step folded into its bigger task's list (an item), its blocks to come
+/// taken out: {"uid"} (its bigger task's), {"error"}, or {"losses", "said"}.
+pub(crate) fn fold_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, confirmed: bool) -> String {
+    let (zone, now, config) = (TimeZone::system(), Zoned::now(), load_config());
+    let all = tasks::all(&zone);
+    let step = all.iter().find(|t| t.uid == uid);
+    let whole = step.and_then(|t| t.parent()).unwrap_or_default().to_string();
+    let titles = (step.map(|t| t.title.clone()).unwrap_or_default(), all.iter().find(|t| t.uid == whole).map(|t| t.title.clone()).unwrap_or_default());
+    let chosen = config.tasks.blocks.clone().unwrap_or_default();
+    let blocks = sioul_core::blocks::to_come_of(uid, &chosen, now.timestamp().as_second(), &zone);
+    let planned = sioul_core::composed::step_to_item(&all, uid, &blocks, confirmed, &now);
+    composed_done(qt, shared, planned, &whole, || say("composed-folded", &[("title", titles.0), ("whole", titles.1)]))
+}
+
+/// An item of a checklist made a step of its task (`to` "step") or a task of
+/// its own ("task"): of a task (`kind` "task", `key` its UID) or an event
+/// ("event", its file). Returns what went wrong, else "".
+pub(crate) fn convert_item(qt: &QtThread, shared: &Arc<Shared>, kind: &str, key: &str, line: usize, to: &str) -> String {
+    use sioul_core::composed::{self, Holder};
+    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let all = tasks::all(&zone);
+    let notes = if kind == "event" { crate::pim::ours(key).and_then(|p| sioul_core::agenda::edit_of(&p)).map(|e| e.notes) } else { all.iter().find(|t| t.uid == key).map(|t| t.notes.clone()) };
+    let words = notes.and_then(|n| sioul_core::checklist::items(&n).into_iter().find(|i| i.line == line)).map(|i| i.text).unwrap_or_default();
+    let planned = match (kind, to) {
+        ("task", "step") => composed::item_to_step(&all, key, line, &now).map(|(change, _)| change),
+        ("task", _) => match (all.iter().find(|t| t.uid == key), target_list("")) {
+            (Some(task), Ok(list)) => composed::item_to_task(&Holder::Task(task), line, &list, &now).map(|(change, _)| change),
+            (None, _) => Err(composed::Refusal::Gone),
+            (_, Err(e)) => return e,
+        },
+        _ => {
+            let Some(path) = crate::pim::ours(key) else { return tr().text("agenda-gone", None) };
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let writable = vdir::collections(Kind::Calendars).into_iter().find(|c| path.parent() == Some(c.dir.as_path())).is_some_and(|c| !c.read_only);
+            if !writable {
+                return tr().text("agenda-read-only", None);
+            }
+            if sioul_core::agenda::with_others(&text) {
+                return tr().text("checklist-with-others", None);
+            }
+            let uid = sioul_core::appointments::uid_in(&path);
+            match target_list("") {
+                Ok(list) => composed::item_to_task(&Holder::Event { path: &path, text: &text, uid: &uid }, line, &list, &now).map(|(change, _)| change),
+                Err(e) => return e,
+            }
+        }
+    };
+    let said = composed_done(qt, shared, planned, key, || say(if to == "step" { "composed-item-step" } else { "composed-item-task" }, &[("title", words)]));
+    serde_json::from_str::<serde_json::Value>(&said).ok().and_then(|v| v["error"].as_str().map(str::to_string)).unwrap_or_default()
 }
 
 /// The notes with the checklist's item on `line` ticked: "toggle" (to do or
@@ -1107,9 +1201,32 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
         _ => Status::NeedsAction,
     };
     let before = Desk::new(loaded(shared), shared);
+    // The step as it was, for Undo when its bigger task closes with it.
+    let step_was = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|t| (PathBuf::from(&t.key), std::fs::read_to_string(&t.key).ok()));
     let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &TimeZone::system(), &Zoned::now()));
     if let Err(e) = result {
         return e;
+    }
+    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks"): said, with Undo.
+    if status == Status::Completed
+        && let Ok(closing) = sioul_core::composed::close_with(&before.loaded.tasks, uid, &Zoned::now())
+        && !closing.is_empty()
+        && let Ok(mut files) = closing.write()
+    {
+        let wholes = sioul_core::composed::closing_with(&before.loaded.tasks, uid);
+        let whole = wholes.first().map(|t| t.title.clone()).unwrap_or_default();
+        if let Some((path, was)) = step_was {
+            files.insert(0, sioul_core::agentwrites::FileChange::of(&path, was));
+        }
+        // Done, their blocks not begun go, as any task's (`blocks`).
+        for done in std::iter::once(uid).chain(wholes.iter().map(|t| t.uid.as_str())) {
+            crate::blocks::closed(qt, shared, done, Timestamp::now().as_second());
+        }
+        let line = say("composed-done-too", &[("whole", whole)]);
+        crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line: line.clone(), files });
+        let done = uid.to_string();
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().task_done(QString::from(&done)));
+        return line;
     }
     // Done or dropped (a repeating one's turn done): its blocks not begun go, one under way ends now (`blocks`).
     if matches!(status, Status::Completed | Status::Cancelled) {

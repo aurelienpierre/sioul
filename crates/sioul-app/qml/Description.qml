@@ -39,9 +39,14 @@ ColumnLayout {
     property bool tickable: false
     // The line of the box whose menu is open.
     property int menuLine: -1
+    // An item can be made a task of its own; a step of the task the notes are of.
+    property bool converts: false
+    property bool steps: false
 
     // An item of the checklist, by its line in the notes: "toggle", "done", "open" or "skipped".
     signal check(int line, string state)
+    // An item made a step ("step") or a task ("task"), by its line.
+    signal convert(int line, string to)
 
     spacing: 4
 
@@ -152,6 +157,21 @@ ColumnLayout {
         MenuItem {
             text: notes.sioul.text("checklist-skipped")
             onTriggered: notes.check(notes.menuLine, "skipped")
+        }
+        MenuSeparator {
+            visible: notes.converts
+        }
+        MenuItem {
+            visible: notes.converts && notes.steps
+            height: visible ? implicitHeight : 0
+            text: notes.sioul.text("checklist-to-step")
+            onTriggered: notes.convert(notes.menuLine, "step")
+        }
+        MenuItem {
+            visible: notes.converts
+            height: visible ? implicitHeight : 0
+            text: notes.sioul.text("checklist-to-task")
+            onTriggered: notes.convert(notes.menuLine, "task")
         }
     }
     Label {

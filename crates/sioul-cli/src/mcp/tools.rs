@@ -813,7 +813,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "update_task",
         title: "Change a task",
-        description: "Changes what is given of one task (nothing else changes), the rest kept as it is: its title, notes, place, day to start, date asked, estimate, priority, the time kept before and after it, its status (needs-action, in-process, completed, cancelled), or its list, which moves it there with its steps through Sioul's move journal; a list that would not keep something it uses (Google Tasks) needs `confirm`. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        description: "Changes what is given of one task (nothing else changes), the rest kept as it is: its title, notes, place, day to start, date asked, estimate, priority, the time kept before and after it, its status (needs-action, in-process, completed, cancelled), or its list, which moves it there with its steps through Sioul's move journal; a list that would not keep something it uses (Google Tasks) needs `confirm`. `parent` makes it a step of a bigger task (never of itself nor of one of its own steps; it moves into the bigger task's list with its own steps, and goes after its other steps), or with \"none\" a task of its own again. Done, a bigger task without an estimate of its own is done too when this was its last step. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
         writes: true,
         idempotent: true,
         open_world: false,
@@ -832,6 +832,7 @@ pub const TOOLS: &[Tool] = &[
                     "after": { "type": "integer", "minimum": 0, "maximum": 1440 },
                     "status": { "type": "string", "enum": ["needs-action", "in-process", "completed", "cancelled"] },
                     "list": { "type": "string", "description": "Another task list, as account/id: the task moves there with its steps." },
+                    "parent": { "type": "string", "description": "The bigger task it becomes a step of: its UID or address (best), or words of its title; \"none\": a task of its own again." },
                     "confirm": { "type": "boolean", "description": "Move it even where the list would not keep everything it uses (said first)." },
                 }),
                 &["task"],
@@ -905,6 +906,27 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: items::set_checklist,
+    },
+    Tool {
+        name: "convert_item",
+        title: "Make an item a step, or a step an item",
+        description: "Changes what a thing is, as the window's menus do: an item of a task's checklist made a step of that task (`to`: step), at the end of its steps, its tick kept; an item of a task's or an event's checklist made a task of its own (`to`: task), tied to what held it; or a step folded into its bigger task's checklist (`to`: item, with `step`), its tick kept, the step and its time blocks to come taken out. A step that holds more than words and a tick (an estimate, a wait, steps of its own, a time block…) is refused, naming what would go, unless `confirm`. Nothing else changes. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "to": { "type": "string", "enum": ["step", "task", "item"] },
+                    "of": { "type": "string", "description": "For an item: the task (its address, UID or words of its title) or the event (sioul:event/…) whose list holds it." },
+                    "item": { "type": "string", "description": "For an item: its words, or its number in the list (\"2\")." },
+                    "step": { "type": "string", "description": "For `to`: item: the step to fold, its UID or address, or words of its title." },
+                    "confirm": { "type": "boolean", "description": "Fold it even when it holds more than words and a tick (said first)." },
+                }),
+                &["to"],
+            )
+        },
+        run: items::convert_item,
     },
     Tool {
         name: "delete_task",

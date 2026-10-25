@@ -862,6 +862,22 @@ pub mod qobject {
         #[qinvokable]
         fn move_task(self: Pin<&mut Sioul>, uid: &QString, list: &QString, confirmed: bool) -> QString;
 
+        /// A task made a step of `bigger` ("": a task of its own again):
+        /// {"uid"}, {"error"}, or {"losses", "said"} to ask first (`confirmed` goes on).
+        #[qinvokable]
+        fn make_step_of(self: Pin<&mut Sioul>, uid: &QString, bigger: &QString, confirmed: bool) -> QString;
+
+        /// A step folded into its bigger task's checklist: {"uid"} (the bigger
+        /// task's), {"error"}, or {"losses", "said"} to ask first.
+        #[qinvokable]
+        fn fold_step(self: Pin<&mut Sioul>, uid: &QString, confirmed: bool) -> QString;
+
+        /// An item of a checklist, by its line, made a step ("step") or a task
+        /// ("task"): of a task (`kind` "task", `key` its UID) or an event
+        /// ("event", its file). Returns what went wrong, else "".
+        #[qinvokable]
+        fn convert_item(self: Pin<&mut Sioul>, kind: &QString, key: &QString, line: i32, to: &QString) -> QString;
+
         /// A step moved in its bigger task's sequence, before the step `before`
         /// ("": after the others); returns what went wrong, else "".
         #[qinvokable]
@@ -4845,6 +4861,19 @@ impl qobject::Sioul {
         QString::from(&work::calm_sounds(&self.shared()))
     }
 
+    fn make_step_of(self: Pin<&mut Self>, uid: &QString, bigger: &QString, confirmed: bool) -> QString {
+        QString::from(&work::make_step_of(&self.qt_thread(), &self.shared(), &uid.to_string(), &bigger.to_string(), confirmed))
+    }
+
+    fn fold_step(self: Pin<&mut Self>, uid: &QString, confirmed: bool) -> QString {
+        QString::from(&work::fold_step(&self.qt_thread(), &self.shared(), &uid.to_string(), confirmed))
+    }
+
+    fn convert_item(self: Pin<&mut Self>, kind: &QString, key: &QString, line: i32, to: &QString) -> QString {
+        let Ok(line) = usize::try_from(line) else { return QString::from(&tr().text("checklist-stale", None)) };
+        QString::from(&work::convert_item(&self.qt_thread(), &self.shared(), &kind.to_string(), &key.to_string(), line, &to.to_string()))
+    }
+
     fn move_step(self: Pin<&mut Self>, uid: &QString, before: &QString) -> QString {
         QString::from(&work::move_step(&self.qt_thread(), &self.shared(), &uid.to_string(), &before.to_string()))
     }
@@ -6042,7 +6071,8 @@ impl qobject::Sioul {
         // GnuPG steps as buttons with their commands to copy (docs/health.md, docs/client.md),
         // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "steps" a
         // task's steps moved in their order, its step menu and its form (docs/tasks.md), "checklist" a
-        // task's and an event's lists ticked (docs/tasks.md), "compose"
+        // task's and an event's lists ticked (docs/tasks.md), "composed" a task made a step and its
+        // own again, a step folded, a bigger task done with its last step (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
         // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
@@ -6059,7 +6089,7 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

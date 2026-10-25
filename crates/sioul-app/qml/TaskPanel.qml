@@ -440,6 +440,36 @@ Panel {
         stepMenu.now().popup()
     }
 
+    // A change of a composed task that asks first (what it would lose): its
+    // sentence, and what goes on when asked again; null when none waits.
+    property var composedAsk: null
+
+    // A composed task's change done ({"uid"}, {"error"}, {"losses", "said"}):
+    // an error said, a question asked with `again` to go on.
+    function composed(answer, again) {
+        const read = JSON.parse(answer || "{}")
+        panel.composedAsk = read.losses ? { said: read.said, again: again } : null
+        error.text = read.error || ""
+        return !read.error && !read.losses
+    }
+
+    // This task a step of `bigger` ("": a task of its own again).
+    function makeStepOf(bigger) {
+        const uid = panel.uid
+        panel.composed(panel.sioul.makeStepOf(uid, bigger, false), () => panel.composed(panel.sioul.makeStepOf(uid, bigger, true), null))
+    }
+
+    // A step of this task folded into its list.
+    function foldStep(uid) {
+        panel.composed(panel.sioul.foldStep(uid, false), () => panel.composed(panel.sioul.foldStep(uid, true), null))
+    }
+
+    // "Make it a step of…" from a list's menu: its form, the field to find the bigger task.
+    function askStepOf() {
+        panel.editing = true
+        stepOf.forceActiveFocus()
+    }
+
     // The steps' menu, made (the window's pictures).
     function stepMenuItem() {
         return stepMenu.now()
@@ -852,6 +882,117 @@ Panel {
                 wrapMode: Text.Wrap
                 color: panel.theme.warm
             }
+            // What a change would lose, asked first.
+            RowLayout {
+                visible: panel.composedAsk !== null
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    Layout.fillWidth: true
+                    text: panel.composedAsk ? panel.composedAsk.said : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+                }
+                Button {
+                    objectName: "composedAnyway"
+                    text: panel.sioul.text("composed-anyway")
+                    onClicked: {
+                        const again = panel.composedAsk ? panel.composedAsk.again : null
+                        panel.composedAsk = null
+                        if (again)
+                            again()
+                    }
+                }
+            }
+
+            // The task it is a step of: opened by a tap; in the form, a task of its own
+            // again (×), or a step of another, found by its title (docs/tasks.md, "Composed tasks").
+            RowLayout {
+                visible: panel.detail !== null && (panel.detail.parent_title || "") !== ""
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: panel.detail && panel.detail.parent_title ? panel.sioul.textWith("task-step-of", "title", panel.detail.parent_title) : ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: panel.theme.muted
+
+                    TapHandler {
+                        onTapped: panel.uid = panel.detail.edit.parent
+                    }
+                }
+                ToolButton {
+                    objectName: "taskMakeOwn"
+                    visible: panel.form && panel.canEdit
+                    text: "×"
+                    Accessible.name: panel.sioul.text("task-make-own")
+                    ToolTip.visible: hovered
+                    ToolTip.text: panel.sioul.text("task-make-own")
+                    onClicked: panel.makeStepOf("")
+                }
+            }
+            TextField {
+                id: stepOf
+
+                // The tasks found by their title, offered below.
+                property var matches: []
+
+                objectName: "taskStepOf"
+                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && (panel.detail.parent_title || "") === ""
+                Layout.fillWidth: true
+                placeholderText: panel.sioul.text("task-step-of-field")
+                onTextEdited: {
+                    stepOf.matches = stepOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchTasks(stepOf.text, panel.uid))
+                    if (stepOf.matches.length > 0)
+                        stepOfFound.now().open()
+                }
+                Keys.onEscapePressed: {
+                    stepOf.clear()
+                    stepOfFound.close()
+                }
+
+                Later {
+                    id: stepOfFound
+
+                    sourceComponent: Component {
+                        Popup {
+                            id: stepOfFoundForm
+
+                            y: stepOf.height
+                            width: stepOf.width
+                            padding: 4
+
+                            ListView {
+                                id: stepOfList
+
+                                implicitHeight: Math.min(contentHeight, 240)
+                                width: parent.width
+                                clip: true
+                                model: stepOf.matches
+
+                                delegate: ItemDelegate {
+                                    id: bigger
+
+                                    required property var modelData
+
+                                    width: stepOfList.width
+                                    // "&" doubled: a button reads one as a key to underline.
+                                    text: panel.theme.plain(bigger.modelData.title).replace(/&/g, "&&")
+                                    onClicked: {
+                                        panel.makeStepOf(bigger.modelData.uid)
+                                        stepOf.clear()
+                                        stepOfFoundForm.close()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Its steps, and one more.
             Label {
@@ -1181,7 +1322,11 @@ Panel {
                 markdown: panel.detail ? panel.detail.edit.notes : ""
                 // Its checklist ticked here, when the task can be changed (docs/tasks.md, "Checklists").
                 tickable: panel.canEdit && !panel.fresh
+                // An item made a step of this task, or a task of its own.
+                converts: panel.canEdit && !panel.fresh
+                steps: panel.canEdit && !panel.fresh
                 onCheck: (line, state) => error.text = panel.sioul.checkItem("task", panel.uid, line, state)
+                onConvert: (line, to) => error.text = panel.sioul.convertItem("task", panel.uid, line, to)
             }
 
             // Done: how it was, if you want to say. Filled in with what was
@@ -1807,6 +1952,32 @@ Panel {
                     enabled: panel.canMoveSteps && panel.detail !== null && panel.menuStep < panel.detail.steps.length - 1
                     text: panel.sioul.text("task-step-later")
                     onTriggered: panel.shiftStep(panel.menuStep, 1)
+                }
+                MenuSeparator {}
+                // Steps of its own, opened with the line to add them (docs/tasks.md, "Composed tasks").
+                MenuItem {
+                    objectName: "stepBreakDown"
+                    enabled: stepActions.step !== null && !stepActions.step.read_only
+                    text: panel.sioul.text("task-break-down")
+                    onTriggered: {
+                        panel.uid = stepActions.step.uid
+                        panel.addStep()
+                    }
+                }
+                MenuItem {
+                    objectName: "stepMakeOwn"
+                    enabled: stepActions.step !== null && panel.canEdit && !stepActions.step.read_only
+                    text: panel.sioul.text("task-make-own")
+                    onTriggered: {
+                        const uid = stepActions.step.uid
+                        panel.composed(panel.sioul.makeStepOf(uid, "", false), null)
+                    }
+                }
+                MenuItem {
+                    objectName: "stepFold"
+                    enabled: stepActions.step !== null && panel.canEdit && !stepActions.step.read_only
+                    text: panel.sioul.text("task-fold")
+                    onTriggered: panel.foldStep(stepActions.step.uid)
                 }
             }
         }

@@ -75,6 +75,18 @@ pub(crate) enum TasksCommand {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Makes a task a step of a bigger one, or with "none" a task of its own again.
+    Parent {
+        task: String,
+        /// The bigger task (its UID, or the start of its title), or "none".
+        bigger: String,
+        /// Move it all the same into a list that would not keep everything it uses.
+        #[arg(long)]
+        confirm: bool,
+        /// Write it here only; the next sync sends it.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Marks a task done (a repeating one comes back at its next turn).
     Done { task: String },
     /// Marks a task started.
@@ -227,6 +239,7 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
         TasksCommand::Show { task } => show(s, &task),
         TasksCommand::Add { line, list, parent, after, no_sync } => add(s, &line.join(" "), list.as_deref(), parent.as_deref(), &after, no_sync),
         TasksCommand::Move { step, before, no_sync } => move_step(s, &step, before.as_deref(), no_sync),
+        TasksCommand::Parent { task, bigger, confirm, no_sync } => parent(s, &task, &bigger, confirm, no_sync),
         TasksCommand::Done { task } => set_status(s, &task, Status::Completed),
         TasksCommand::Start { task } => set_status(s, &task, Status::InProcess),
         TasksCommand::NotNow { task } => not_now(s, &task),
@@ -461,6 +474,36 @@ fn move_step(s: &Session, wanted: &str, before: Option<&str>, no_sync: bool) -> 
     Ok(())
 }
 
+/// A task made a step of `bigger`, or with "none" a task of its own again
+/// (`composed::demote`, `promote`): what its list would not keep said, and
+/// done with `--confirm`.
+fn parent(s: &Session, wanted: &str, bigger: &str, confirm: bool, no_sync: bool) -> Result<(), String> {
+    let desk = Desk::read(s);
+    let task = desk.find(s, wanted)?.clone();
+    let now = Zoned::now();
+    let keeper = |c: &Collection| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), c);
+    let (planned, line) = if bigger.trim().eq_ignore_ascii_case("none") {
+        (sioul_core::composed::promote(&desk.loaded.tasks, &task.uid, &now), s.say("composed-made-own", &[("title", one_line(&task.title))]))
+    } else {
+        let whole = desk.find(s, bigger)?;
+        (sioul_core::composed::demote(&desk.loaded.tasks, &task.uid, &whole.uid, &tasks::lists(), &keeper, confirm, &now), s.say("composed-made-step", &[("title", one_line(&task.title)), ("whole", one_line(&whole.title))]))
+    };
+    let change = planned.map_err(|r| match r {
+        sioul_core::composed::Refusal::Losses(_) => format!("{} (--confirm)", r.said(&s.tr)),
+        r => r.said(&s.tr),
+    })?;
+    let files = change.files();
+    change.write()?;
+    println!("{line}");
+    if no_sync {
+        return Ok(());
+    }
+    for list in tasks::lists().into_iter().filter(|c| files.iter().any(|f| f.parent() == Some(c.dir.as_path()))) {
+        sync_list(s, &list)?;
+    }
+    Ok(())
+}
+
 fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     let desk = Desk::read(s);
     let task = desk.find(s, wanted)?;
@@ -470,6 +513,16 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, status, &TimeZone::system(), &Zoned::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
+    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks").
+    if status == Status::Completed {
+        let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+        if !closing.is_empty() {
+            closing.write()?;
+            let whole = sioul_core::composed::closing_with(&desk.loaded.tasks, &task.uid).first().map(|t| t.title.clone()).unwrap_or_default();
+            println!("{}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
+            return write_task(s, task, &text);
+        }
+    }
     if status == Status::Completed {
         // What finishing it changed, said once.
         let after = Desk::read(s);
@@ -1102,6 +1155,13 @@ mod tests {
         assert!(no_step.contains("not a step"), "{no_step}");
         let elsewhere = move_step(&s, "steps-bag", Some("steps-books"), true).unwrap_err();
         assert!(elsewhere.contains("Going to the doctor"), "{elsewhere}");
+        // `sioul tasks parent`: a task of its own, a step of another, never of its own step.
+        let parent_of = |uid: &str| tasks::all(&TimeZone::system()).into_iter().find(|t| t.uid == uid).and_then(|t| t.parent().map(str::to_string));
+        parent(&s, "steps-books", "none", false, true).unwrap();
+        assert_eq!(parent_of("steps-books"), None);
+        parent(&s, "steps-books", "steps-doctor", false, true).unwrap();
+        assert_eq!(parent_of("steps-books").as_deref(), Some("steps-doctor"));
+        assert!(parent(&s, "steps-doctor", "steps-books", false, true).unwrap_err().contains("its own steps"));
     }
 
     #[test]

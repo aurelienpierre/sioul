@@ -204,9 +204,16 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, Status::Completed, &TimeZone::system(), &Zoned::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
+    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks").
+    let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let too = sioul_core::composed::closing_with(&desk.loaded.tasks, &task.uid).first().map(|t| t.title.clone());
+    closing.write()?;
     // What finishing it changed, said once.
     let after = Desk::read(s);
-    let effect = taskview::done_effect(&after.context(s), &desk.plan, &task.uid);
+    let effect = match too.filter(|_| !closing.is_empty()) {
+        Some(whole) => s.say("composed-done-too", &[("whole", one_line(&whole))]),
+        None => taskview::done_effect(&after.context(s), &desk.plan, &task.uid),
+    };
     let comes_back = !task.repeat.is_empty();
     let text = [said, format!("{}  [{}]", one_line(&task.title), task.uid), one_line(&effect)].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n");
     Ok(Answer { text, data: json!({ "uid": task.uid, "changed": true, "comes_back": comes_back, "effect": effect }) })

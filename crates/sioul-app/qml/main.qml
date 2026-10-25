@@ -1007,7 +1007,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1981,6 +1981,33 @@ SioulWindow {
                     const event = grabber.eventNamed("demo-event-doctor")
                     console.warn("checklist: event notes: " + (event ? event.notes.replace(/\n/g, " | ") : "not shown"))
                 },
+                () => window.close()
+            ]
+            // Composed tasks changed (docs/tasks.md, "Composed tasks"): the demo's quote made a
+            // step of the mock-up and a task of its own again, a step folded into its list
+            // (asked first, then done), the mock-up done with its last step; each answer read back.
+            function stepsOf(uid) {
+                const read = JSON.parse(sioul.task(uid) || "{}")
+                return read.steps ? read.steps.map(s => s.title + " (" + s.status + ")").join(" | ") + " · notes: " + read.edit.notes.replace(/\n/g, " | ") : "none"
+            }
+            readonly property var composedSteps: [
+                () => window.page = 1,
+                () => {},
+                () => tasksPage.open("demo-task-mockup"),
+                () => console.warn("composed: step of: " + sioul.makeStepOf("demo-task-quote", "demo-task-mockup", false)),
+                () => {},
+                () => console.warn("composed: steps: " + grabber.stepsOf("demo-task-mockup")),
+                () => grabber.save("composed-step-of"),
+                () => console.warn("composed: own again: " + sioul.makeStepOf("demo-task-quote", "", false)),
+                () => console.warn("composed: fold asked: " + sioul.foldStep("demo-task-photos", false)),
+                () => console.warn("composed: fold: " + sioul.foldStep("demo-task-photos", true)),
+                () => {},
+                () => console.warn("composed: steps: " + grabber.stepsOf("demo-task-mockup")),
+                () => console.warn("composed: sketch done: " + sioul.setTaskStatus("demo-task-sketch", "completed")),
+                () => console.warn("composed: send done: " + sioul.setTaskStatus("demo-task-send-mockup", "completed")),
+                () => {},
+                () => console.warn("composed: mock-up: " + JSON.parse(sioul.task("demo-task-mockup") || "{}").card.status),
+                () => grabber.save("composed-done"),
                 () => window.close()
             ]
             readonly property var movetask: [
