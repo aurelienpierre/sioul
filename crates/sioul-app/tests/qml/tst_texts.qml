@@ -73,6 +73,8 @@ Item {
                 return JSON.stringify({ parts: 1, said: "" })
             if (verb === "send-mms")
                 return JSON.stringify({ said: "", shared: true })
+            if (verb === "archive" || verb === "restore")
+                return JSON.stringify({ said: verb === "archive" ? "texts-archived" : "texts-restored" })
             if (verb === "delete") {
                 mock.conversations = mock.conversations.filter(c => c.id !== args.id)
                 return JSON.stringify({ said: "" })
@@ -99,6 +101,11 @@ Item {
         id: stand
 
         property bool compact: false
+        property string copied: ""
+
+        function copy(text) {
+            stand.copied = text
+        }
     }
 
     TextsPage {
@@ -133,6 +140,51 @@ Item {
             page.select("+33199001234")
             wait(100)
             mock.asked = []
+        }
+
+        // A text's web links open in the browser, never in Sioul; nothing else is a link;
+        // its words can be selected and copied (25 October 2026).
+        function test_links_open_in_the_browser_and_words_are_selectable() {
+            const opened = []
+            page.opener = url => opened.push(url)
+            const said = Object.assign(mock.message(41), { body: "Suivi : https://colis.example/t?id=1", html: "Suivi : <a href=\"https://colis.example/t?id=1\">https://colis.example/t?id=1</a>" })
+            mock.thread = mock.grow(1, 40).concat([said])
+            page.reload()
+            wait(100)
+            const words = findChild(threadView(), "textsWords")
+            verify(words !== null)
+            verify(words.readOnly && words.selectByMouse, "selectable, never editable")
+            page.openLink("https://colis.example/t?id=1")
+            page.openLink("javascript:alert(1)")
+            page.openLink("file:///etc/passwd")
+            compare(opened, ["https://colis.example/t?id=1"], "http and https alone, handed to the browser")
+            words.selectAll()
+            verify(words.selectedText.length > 0, "a span selected")
+            page.opener = url => Qt.openUrlExternally(url)
+        }
+
+        // Archived: out of the list, a view of their own, put back from there (25 October 2026).
+        function test_a_conversation_is_archived_and_put_back() {
+            const archive = findChild(page, "textsArchive")
+            verify(archive !== null && archive.visible)
+            compare(archive.text, "texts-archive")
+            mouseClick(archive)
+            wait(50)
+            compare(mock.asked.filter(a => a[0] === "archive")[0][1].id, "+33199001234")
+            compare(page.openId, "", "closed once archived")
+            const view = findChild(page, "textsArchivedView")
+            mouseClick(view)
+            wait(50)
+            verify(page.archivedView)
+            const asked = mock.asked.filter(a => a[0] === "view")
+            compare(asked[asked.length - 1][1].archived, true, "the archived ones asked")
+            page.select("+33199001234")
+            wait(50)
+            compare(findChild(page, "textsArchive").text, "texts-restore")
+            mouseClick(findChild(page, "textsArchive"))
+            wait(50)
+            compare(mock.asked.filter(a => a[0] === "restore")[0][1].id, "+33199001234")
+            page.archivedView = false
         }
 
         // Unread until opened (23 October 2026): its name in bold, how many said.

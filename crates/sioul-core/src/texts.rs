@@ -820,6 +820,13 @@ pub struct TextMark {
     pub read: i64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub hidden: i64,
+    /// Archived up to its newest text then (25 October 2026): out of the list
+    /// until a newer text comes.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub archived: i64,
+    /// Put back in the list: an archive written before this mark no longer holds.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub restored: bool,
 }
 
 /// Every device's marks, by conversation: the latest moment read up to, and hidden up to.
@@ -827,6 +834,9 @@ pub struct TextMark {
 pub struct Marks {
     pub read: BTreeMap<String, i64>,
     pub hidden: BTreeMap<String, i64>,
+    /// The latest archive or restore of each conversation: when it was
+    /// written, and the moment archived up to (0: restored).
+    pub archive: BTreeMap<String, (i64, i64)>,
 }
 
 impl Marks {
@@ -848,6 +858,20 @@ impl Marks {
                 *kept = (*kept).max(moment);
             }
         }
+        // The latest of the archives and restores holds, by when it was written.
+        if m.archived > 0 || m.restored {
+            let upto = if m.restored { 0 } else { m.archived };
+            let kept = self.archive.entry(m.conversation.clone()).or_insert((i64::MIN, 0));
+            if m.at >= kept.0 {
+                *kept = (m.at, upto);
+            }
+        }
+    }
+
+    /// Whether a conversation is archived, its newest text at `newest`: archived
+    /// up to then or later, and not restored since.
+    pub fn archived(&self, conversation: &str, newest: i64) -> bool {
+        self.archive.get(conversation).is_some_and(|(_, upto)| *upto > 0 && newest <= *upto)
     }
 
     /// Whether a text is hidden: its conversation deleted in Sioul after it came.
@@ -1726,6 +1750,8 @@ pub struct Message {
     /// Who wrote it, in a group.
     pub from: String,
     pub body: String,
+    /// The words as HTML: escaped, their web links clickable and shown whole (`reading::linkify_whole`).
+    pub html: String,
     pub picture: bool,
     pub parts: Vec<Shown>,
     /// Deleted on the phone, kept here: said quietly.
@@ -1901,6 +1927,7 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
             direction: t.direction.clone(),
             from: if t.with.len() > 1 && t.direction == "in" && !t.from.is_empty() { (v.name_of)(&t.from).unwrap_or_else(|| calls::shown_number(&t.from, v.region)) } else { String::new() },
             body: t.body.clone(),
+            html: crate::reading::linkify_whole(&t.body),
             picture: t.picture,
             parts: t.parts.iter().filter_map(|p| shown(p, v)).collect(),
             deleted: t.deleted > 0,
@@ -1921,6 +1948,7 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
             direction: "out".into(),
             from: String::new(),
             body: r.said_words().to_string(),
+            html: crate::reading::linkify_whole(r.said_words()),
             picture: r.media.iter().any(|m| kind_of(&m.ct) == "picture"),
             // Its media as the message shows them from the first moment: sealed here when written here, else brought.
             parts: r.media.iter().filter_map(|m| shown(&Part { ct: m.ct.clone(), size: m.size, hash: m.hash.clone(), state: "here".into(), ..Part::default() }, v)).collect(),
@@ -2007,6 +2035,13 @@ mod tests {
         let mut marks = Marks::default();
         marks.note(&TextMark { at: now, conversation: "+33600000001".into(), read: now - 30_000, ..TextMark::default() });
         assert!(super::unread(&texts, &marks, now).is_empty(), "read once opened");
+        // Archived: out of the list until a newer text; restored, back.
+        marks.note(&TextMark { at: now, conversation: "+33600000001".into(), archived: now - 30_000, ..TextMark::default() });
+        assert!(marks.archived("+33600000001", now - 30_000) && !marks.archived("+33600000001", now + 1), "a newer text brings it back");
+        marks.note(&TextMark { at: now + 1, conversation: "+33600000001".into(), restored: true, ..TextMark::default() });
+        assert!(!marks.archived("+33600000001", now - 30_000), "restored");
+        marks.note(&TextMark { at: now - 5, conversation: "+33600000001".into(), archived: now, ..TextMark::default() });
+        assert!(!marks.archived("+33600000001", now - 30_000), "an older archive written late never undoes a restore");
         marks.note(&TextMark { at: now, conversation: "+33600000001".into(), hidden: now - 45_000, ..TextMark::default() });
         assert_eq!(visible(&texts, &marks).iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["sms-2@2", "sms-3@3", "sms-4@4"], "hidden until then; a newer one shows");
         assert_eq!(folded_into("+33600000001", now - 60_000 + 90_000, &texts).as_deref(), Some("+33600000001"), "the same number, within three minutes");

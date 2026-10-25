@@ -13,7 +13,7 @@
 //! listed after the others, unless the person keeps them from agents
 //! (`[mcp] spam = false`).
 
-use super::{phone, read, records, write};
+use super::{items, phone, read, records, write};
 use crate::Session;
 use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
@@ -85,7 +85,8 @@ pub fn find(name: &str) -> Option<&'static Tool> {
 }
 
 /// A tool as `tools/list` gives it, with its hints (MCP's ToolAnnotations):
-/// nothing destructive, nothing outside this computer.
+/// nothing outside this computer; destructive, the deletions of an event or
+/// a task alone (said in the window with Undo).
 pub fn listing(tool: &Tool) -> Value {
     json!({
         "name": tool.name,
@@ -95,7 +96,7 @@ pub fn listing(tool: &Tool) -> Value {
         "annotations": {
             "title": tool.title,
             "readOnlyHint": !tool.writes,
-            "destructiveHint": false,
+            "destructiveHint": tool.name.starts_with("delete_"),
             "idempotentHint": tool.idempotent,
             "openWorldHint": tool.open_world,
         },
@@ -350,6 +351,16 @@ pub const TOOLS: &[Tool] = &[
         run: read::list_tasks,
     },
     Tool {
+        name: "get_task",
+        title: "Read a task",
+        description: "One task, by its UID or address: its title, notes, place, status, day to start, date asked, estimate, priority, the time kept before and after it, kind, tags, projects, repeat, its list, and the bigger task it is a step of.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({ "task": { "type": "string", "description": "Its UID or address (best), or words of its title that match it alone." } }), &["task"]),
+        run: items::get_task,
+    },
+    Tool {
         name: "agenda",
         title: "What comes",
         description: "The events of every calendar, day by day, from a day (today by default) for a number of days (15 by default), each with its sioul:event/ address.",
@@ -366,6 +377,16 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: read::agenda,
+    },
+    Tool {
+        name: "get_event",
+        title: "Read an event",
+        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({ "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." } }), &["event"]),
+        run: items::get_event,
     },
     Tool {
         name: "search_contacts",
@@ -716,6 +737,103 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: write::add_event,
+    },
+    Tool {
+        name: "update_event",
+        title: "Change an event",
+        description: "Changes what is given of one event (nothing else changes), the rest kept as it is (another program's fields too): its title, start and end (a day for a whole day, a time otherwise), place, notes, repeat, reminder, the time kept before and after it, or its calendar, which moves it there through Sioul's move journal (never twice, never lost). A meeting with others never moves. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." },
+                    "title": { "type": "string" },
+                    "start": { "type": "string", "description": MOMENT },
+                    "end": { "type": "string", "description": "The same form as start; for a whole-day event, its last day." },
+                    "all_day": { "type": "boolean" },
+                    "location": { "type": "string" },
+                    "notes": { "type": "string" },
+                    "repeat": { "type": "string", "enum": ["none", "daily", "weekly", "monthly", "yearly"] },
+                    "remind": { "type": "string", "description": "usual, none, or minutes before it (\"15\")." },
+                    "before": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept before it: getting ready, getting there." },
+                    "after": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept after it: coming back." },
+                    "calendar": { "type": "string", "description": "Another calendar, as account/id: the event moves there." },
+                }),
+                &["event"],
+            )
+        },
+        run: items::update_event,
+    },
+    Tool {
+        name: "delete_event",
+        title: "Delete an event",
+        description: "Deletes one event, or with `occurrence` one time of a repeating event; nothing else changes. A meeting with others is never deleted (its server would cancel or decline it for them). Said in Sioul's window with Undo; the deletion goes to its server at the next sync. Only when the person asked for it.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || object(json!({ "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." }, "occurrence": { "type": "string", "description": "The time one occurrence starts, as 2026-10-05T09:00: that time alone." } }), &["event"]),
+        run: items::delete_event,
+    },
+    Tool {
+        name: "update_task",
+        title: "Change a task",
+        description: "Changes what is given of one task (nothing else changes), the rest kept as it is: its title, notes, place, day to start, date asked, estimate, priority, the time kept before and after it, its status (needs-action, in-process, completed, cancelled), or its list, which moves it there with its steps through Sioul's move journal; a list that would not keep something it uses (Google Tasks) needs `confirm`. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "task": { "type": "string", "description": "Its UID or address (best), or words of its title that match it alone." },
+                    "title": { "type": "string" },
+                    "notes": { "type": "string" },
+                    "location": { "type": "string" },
+                    "start": { "type": "string", "description": MOMENT },
+                    "due": { "type": "string", "description": MOMENT },
+                    "estimate": { "type": "integer", "minimum": 0, "maximum": 6000, "description": "Minutes it takes." },
+                    "priority": { "type": "integer", "minimum": 0, "maximum": 9 },
+                    "before": { "type": "integer", "minimum": 0, "maximum": 1440 },
+                    "after": { "type": "integer", "minimum": 0, "maximum": 1440 },
+                    "status": { "type": "string", "enum": ["needs-action", "in-process", "completed", "cancelled"] },
+                    "list": { "type": "string", "description": "Another task list, as account/id: the task moves there with its steps." },
+                    "confirm": { "type": "boolean", "description": "Move it even where the list would not keep everything it uses (said first)." },
+                }),
+                &["task"],
+            )
+        },
+        run: items::update_task,
+    },
+    Tool {
+        name: "delete_task",
+        title: "Delete a task",
+        description: "Deletes one task, and its time blocks to come, as the window does; nothing else changes. Said in Sioul's window with Undo; the deletion goes to its server at the next sync. Only when the person asked for it.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || object(json!({ "task": { "type": "string", "description": "Its UID or address (best), or words of its title that match it alone." } }), &["task"]),
+        run: items::delete_task,
+    },
+    Tool {
+        name: "task_to_event",
+        title: "Make a task an appointment",
+        description: "A task becomes an event (it changes into one), as the agenda's \"Make it an appointment\": at its time block's time, else its own, else what `start` and `end` give; in the calendar for new events unless `calendar` names one; its title, place, notes, repeat, margins, costs and links go along; the task and its blocks to come go, never twice, never lost; tasks that waited for it stop waiting. Refused for a task done or with steps. Only when the person said it is an appointment.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || object(json!({ "task": { "type": "string", "description": "Its UID or address (best), or words of its title that match it alone." }, "start": { "type": "string", "description": "2026-10-05T09:00" }, "end": { "type": "string", "description": "2026-10-05T10:00" }, "calendar": { "type": "string", "description": "account/id" } }), &["task"]),
+        run: items::task_to_event,
+    },
+    Tool {
+        name: "event_to_task",
+        title: "Make an event a task",
+        description: "An event becomes a task (it changes into one), as the agenda's \"Make it a task\": in the usual list unless `list` names one, its day its day to start, its length its estimate, its time (still to come, not repeating) its time block; then the event goes, never twice, never lost. Refused for a meeting with others and a repeat a task cannot say. Only when the person said it is a task.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || object(json!({ "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." }, "list": { "type": "string", "description": "account/id" } }), &["event"]),
+        run: items::event_to_task,
     },
     Tool {
         name: "add_note",

@@ -317,7 +317,8 @@ Item {
             const today = new Date()
             today.setHours(0, 0, 0, 0)
             const midnight = today.getTime() / 1000
-            const at = m => midnight + m * 60
+            // A local time of today by its minutes on the clock: on the day the clocks change (25 October), not midnight plus as many minutes.
+            const at = m => new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, m).getTime() / 1000
             const block = (start, end, kind, title, key, more) => Object.assign({ start: at(start), end: at(end), kind: kind, title: title, key: key, energy: "", location: "", column: 0, columns: 1, part: 0, pinned: false, note: "", read_only: false, recurring: false }, more || {})
             const day = { from: at(7 * 60), to: at(21 * 60), now: at(8 * 60), hours: [{ start: at(9 * 60), end: at(17 * 60), kind: "work" }], all_day: [], more: 0, said: [], blocks: [
                 block(540, 570, "task", "Letter", "letter-uid"),

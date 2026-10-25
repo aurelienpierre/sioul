@@ -10,6 +10,8 @@
 
 use crate::agenda::EventEdit;
 use crate::tasks::{Status, Task, TaskEdit};
+use crate::vdir::Collection;
+use std::path::{Path, PathBuf};
 use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
@@ -163,6 +165,162 @@ pub fn retarget(text: &str, old: &str, new: &str, became_event: bool, now: &Zone
         })
         .collect();
     crate::tasks::replace_lines(text, |l| names_it(l), added, now).ok()
+}
+
+/// Why a conversion is refused: a word of the translations
+/// (`task-read-only`, `appointment-has-steps`…), or an error said as it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refused {
+    Word(&'static str),
+    Error(String),
+}
+
+impl From<String> for Refused {
+    fn from(e: String) -> Refused {
+        Refused::Error(e)
+    }
+}
+
+impl Refused {
+    /// In words, in `tr`'s language.
+    pub fn said(&self, tr: &crate::i18n::Translator) -> String {
+        match self {
+            Refused::Word(id) => tr.text(id, None),
+            Refused::Error(e) => e.clone(),
+        }
+    }
+}
+
+/// What a conversion writes, as `vdir::replace_items` takes it: what goes,
+/// what is made first (a block), and the new item, its file and text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replacement {
+    pub gone: Vec<PathBuf>,
+    pub made: Vec<(PathBuf, String)>,
+    pub to: PathBuf,
+    pub text: String,
+}
+
+impl Replacement {
+    /// Written, never twice, never lost (`vdir::replace_items`).
+    pub fn write(&self) -> Result<(), String> {
+        crate::vdir::replace_items(&self.gone, &self.made, &self.to, &self.text)
+    }
+
+    /// Every file it touches: to tell their accounts.
+    pub fn files(&self) -> Vec<PathBuf> {
+        self.gone.iter().cloned().chain(self.made.iter().map(|(p, _)| p.clone())).chain(std::iter::once(self.to.clone())).collect()
+    }
+}
+
+/// Whether an event's text is a task's time block: of `uid`, or of any task when `uid` is "".
+pub fn block_of(text: &str, uid: &str) -> bool {
+    crate::lines::unfold(text).iter().any(|l| crate::lines::name(l) == crate::blocks::TASK && (uid.is_empty() || crate::lines::value(l).trim() == uid))
+}
+
+/// The UID a calendar item's file holds; "" none.
+pub fn uid_in(path: &Path) -> String {
+    std::fs::read_to_string(path).ok().and_then(|t| crate::lines::unfold(&t).iter().find(|l| crate::lines::name(l) == "UID").map(|l| crate::lines::value(l).trim().to_string())).unwrap_or_default()
+}
+
+/// A task made an appointment, planned, nothing written (the editor's and
+/// the agents' one way, 25 October 2026): the event `edit` in `target`, the
+/// task and `blocks` (its time blocks to come, the one it was opened from)
+/// going. Refused for a task that can only be read, done, or with steps.
+pub fn task_to_event(task: &Task, others: &[Task], blocks: &[PathBuf], edit: &EventEdit, target: &Collection, zone: &TimeZone) -> Result<Replacement, Refused> {
+    if task.read_only {
+        return Err(Refused::Word("task-read-only"));
+    }
+    // Done, it is the record of work done: it stays a task.
+    if task.status == Status::Completed {
+        return Err(Refused::Word("task-done-stays"));
+    }
+    // Its steps would lose the task they belong to.
+    if others.iter().any(|t| t.status.is_open() && t.parent() == Some(task.uid.as_str())) {
+        return Err(Refused::Word("appointment-has-steps"));
+    }
+    if edit.title.trim().is_empty() {
+        return Err(Refused::Word("event-no-title"));
+    }
+    if target.read_only || !target.holds("VEVENT") {
+        return Err(Refused::Word("dav-no-calendar"));
+    }
+    let text = crate::agenda::new_event(edit, zone)?;
+    // What the task was tied to, the event is (its blocks aside: they go).
+    let links: Vec<String> = task.links.iter().filter(|l| !crate::blocks::is_block_link(l)).map(crate::tasks::link_line).collect();
+    let text = crate::agenda::add_lines(&text, &links).unwrap_or(text);
+    let mut gone = vec![PathBuf::from(&task.key)];
+    for path in blocks {
+        if !gone.contains(path) {
+            gone.push(path.clone());
+        }
+    }
+    Ok(Replacement { gone, made: Vec::new(), to: crate::agenda::new_path(target), text })
+}
+
+/// An event made a task in `list`, planned, nothing written: its file
+/// `path`; its time, still to come and not repeating, the task's block, in
+/// the calendar `place` gives for it (`alarm`: the block's own reminder).
+/// Refused for an invitation, a block, a repeat a task cannot say.
+pub fn event_to_task(path: &Path, list: &Collection, place: &dyn Fn(&Task) -> Result<Collection, String>, alarm: bool, now: &Zoned) -> Result<Replacement, Refused> {
+    use crate::lines;
+    let text = std::fs::read_to_string(path).map_err(|_| Refused::Word("agenda-gone"))?;
+    if block_of(&text, "") {
+        return Err(Refused::Word("task-made-already"));
+    }
+    if crate::agenda::with_others(&text) {
+        return Err(Refused::Word("task-from-invitation"));
+    }
+    let zone = now.time_zone().clone();
+    let event = crate::agenda::edit_of_text(&text, &zone).ok_or(Refused::Word("agenda-gone"))?;
+    let unfolded = lines::unfold(&text);
+    // A repeat a task cannot say (every other Tuesday, until a day) is not lost: a task's is FREQ alone.
+    let plain = format!("FREQ={}", event.repeat.to_ascii_uppercase());
+    if unfolded.iter().filter(|l| lines::name(l) == "RRULE").any(|l| event.repeat.is_empty() || !lines::value(l).trim().eq_ignore_ascii_case(&plain))
+        || unfolded.iter().any(|l| matches!(lines::name(l).as_str(), "RDATE" | "EXDATE" | "RECURRENCE-ID"))
+    {
+        return Err(Refused::Word("task-from-odd-repeat"));
+    }
+    let mut edit = task_of(&event);
+    // What the event was tied to, the task is.
+    edit.links = unfolded.iter().filter(|l| lines::name(l) == "LINK").map(|l| crate::tasks::link_of(l)).filter(|l| !crate::blocks::is_block_link(l)).collect();
+    let uid = crate::vdir::new_name();
+    let mut task_text = crate::tasks::new_task(&edit, &uid, &zone, now)?;
+    let task_path = list.dir.join(format!("{uid}.ics"));
+    let mut made = Vec::new();
+    let at = |text: &str| text.parse::<DateTime>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second());
+    if !event.all_day
+        && event.repeat.is_empty()
+        && let (Some(start), Some(end)) = (at(&event.start), at(&event.end))
+        && end > start
+        && end > now.timestamp().as_second()
+        && let Some(mut task) = crate::tasks::task_of_text(&task_text, &zone)
+    {
+        task.list_id = format!("{}/{}", list.account, list.id);
+        let calendar = place(&task)?;
+        let block_uid = crate::vdir::new_name();
+        let block = crate::blocks::new_block(&task, &block_uid, start, end, alarm, now)?;
+        made.push((calendar.dir.join(format!("{block_uid}.ics")), block));
+        task_text = crate::blocks::task_pinned(&task_text, Some(&block_uid), now)?;
+    }
+    Ok(Replacement { gone: vec![path.to_path_buf()], made, to: task_path, text: task_text })
+}
+
+/// The other tasks that named `old` now name `new` (an appointment when
+/// `became_event`, which nothing waits for any more): their files written,
+/// returned.
+pub fn retie(tasks: &[Task], old: &str, new: &str, became_event: bool, now: &Zoned) -> Vec<PathBuf> {
+    let mut written = Vec::new();
+    for task in tasks.iter().filter(|t| t.uid != old && !t.read_only) {
+        let path = PathBuf::from(&task.key);
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        if let Some(changed) = retarget(&text, old, new, became_event, now)
+            && crate::vdir::write_item(&path, &changed).is_ok()
+        {
+            written.push(path);
+        }
+    }
+    written
 }
 
 #[cfg(test)]

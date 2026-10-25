@@ -50,6 +50,20 @@ Item {
     property string listedText: ""
     readonly property var listed: page.listedText ? JSON.parse(page.listedText) : ({ can: false, conversations: [], said: "", never: "", empty: "" })
     readonly property var rows: page.listed.conversations || []
+    // What the menu of a text copies: its selection, else its words.
+    property string copying: ""
+    // The archived conversations listed instead of the others (25 October 2026).
+    property bool archivedView: false
+    // How a link of a text opens: in the browser, never fetched by Sioul (a test puts its own).
+    property var opener: url => Qt.openUrlExternally(url)
+
+    // A text's link: http and https alone, handed to the browser.
+    function openLink(url) {
+        const text = String(url)
+        if (/^https?:\/\//i.test(text))
+            page.opener(text)
+    }
+
     // The question before a conversation is deleted, for the window's tests.
     readonly property alias deleteAsk: deleteChoice
     // The conversation open, by its id ("+33199001234"), and texts.rs's
@@ -97,7 +111,7 @@ Item {
     function reload() {
         if (!page.sioul)
             return
-        const listed = page.sioul.texts("view", JSON.stringify({ query: page.query }))
+        const listed = page.sioul.texts("view", JSON.stringify({ query: page.query, archived: page.archivedView }))
         if (listed !== page.listedText) {
             // At its top, the list stays at its top: the conversation that just got a text shows there.
             const atTop = list.contentY <= list.originY + 1
@@ -454,6 +468,18 @@ Item {
                 visible: page.listed.can && page.window.compact
                 Layout.fillWidth: true
             }
+            // The archived conversations, or all the others again (25 October 2026).
+            Button {
+                objectName: "textsArchivedView"
+                visible: page.listed.can
+                flat: true
+                text: page.archivedView ? page.sioul.text("texts-all-view") : page.sioul.text("texts-archived-view")
+                onClicked: {
+                    page.archivedView = !page.archivedView
+                    page.close()
+                    page.reload()
+                }
+            }
 
             // Not read on this computer yet: why, and where to turn it on.
             Label {
@@ -631,6 +657,19 @@ Item {
                     elide: Text.ElideRight
                     color: page.theme.text
                 }
+                // Archived: out of the list until its next text; in the archived view, put back.
+                Button {
+                    objectName: "textsArchive"
+                    flat: true
+                    text: page.archivedView ? page.sioul.text("texts-restore") : page.sioul.text("texts-archive")
+                    onClicked: {
+                        const done = page.act(page.archivedView ? "restore" : "archive", { id: page.openId })
+                        page.close()
+                        page.reload()
+                        if (done.said)
+                            page.sioul.status = done.said
+                    }
+                }
                 // Deleted in Sioul: Sioul is not the phone's SMS app, so its texts
                 // leave Sioul on every device and the phone's own app keeps them (23 October 2026).
                 Button {
@@ -756,7 +795,7 @@ Item {
                                 id: wordsWidth
 
                                 visible: false
-                                text: words.text
+                                text: words.plain
                                 textFormat: Text.PlainText
                                 font: words.font
                             }
@@ -855,16 +894,38 @@ Item {
                                         }
                                     }
                                 }
-                                Label {
+                                // Its words: selected with the mouse and copied (Ctrl+C, or the menu),
+                                // their web links clickable, opened in the browser (25 October 2026).
+                                TextEdit {
                                     id: words
 
-                                    visible: words.text !== ""
+                                    readonly property string plain: message.modelData.body !== "" ? message.modelData.body : (message.modelData.picture && message.modelData.parts.length === 0 ? page.sioul.text("phonemsgs-picture") : "")
+
+                                    objectName: "textsWords"
+                                    visible: words.plain !== ""
                                     Layout.fillWidth: true
-                                    text: message.modelData.body !== "" ? message.modelData.body : (message.modelData.picture && message.modelData.parts.length === 0 ? page.sioul.text("phonemsgs-picture") : "")
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
+                                    // rich on purpose: escaped in Rust, web links alone made (`reading::linkify_whole`), nothing loads.
+                                    text: message.modelData.html || page.theme.escaped(words.plain).replace(/\n/g, "<br>")
+                                    textFormat: TextEdit.RichText
+                                    readOnly: true
+                                    selectByMouse: true
+                                    persistentSelection: true
+                                    wrapMode: TextEdit.Wrap
                                     font.pixelSize: page.theme.readingSize
                                     color: page.theme.text
+                                    selectionColor: page.theme.accent
+                                    onLinkActivated: link => page.openLink(link)
+
+                                    HoverHandler {
+                                        cursorShape: words.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                    }
+                                    TapHandler {
+                                        acceptedButtons: Qt.RightButton
+                                        onTapped: {
+                                            page.copying = words.selectedText !== "" ? words.selectedText : words.plain
+                                            copyMenu.now().popup()
+                                        }
+                                    }
                                 }
                                 // Its time; for a text sent from here, what became of it, in words.
                                 Label {
@@ -1190,6 +1251,20 @@ Item {
                     page.reload()
                     if (done.said)
                         page.sioul.status = done.said
+                }
+            }
+        }
+    }
+
+    Later {
+        id: copyMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                MenuItem {
+                    objectName: "textsCopy"
+                    text: page.sioul.text("texts-copy")
+                    onTriggered: page.window.copy(page.copying)
                 }
             }
         }

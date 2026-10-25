@@ -358,6 +358,33 @@ pub fn linkify(text: &str) -> String {
     out
 }
 
+/// Plain text as HTML, its web links clickable and shown whole, as written
+/// (a text's: a link's site said alone would hide where it leads, 25 October
+/// 2026); escaped, its lines kept. Only http and https become links: the
+/// window opens them in the browser, never Sioul itself.
+pub fn linkify_whole(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 64);
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            out.push_str("<br>");
+        }
+        let mut rest = line;
+        while let Some(at) = next_link(rest) {
+            out.push_str(&escape(&rest[..at]));
+            let url_len = rest[at..].find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | ')' | ']')).unwrap_or(rest.len() - at);
+            let url = rest[at..at + url_len].trim_end_matches(['.', ',', ';', ':', '!', '?']);
+            if url.len() <= "https://".len() {
+                out.push_str(&escape(url));
+            } else {
+                out.push_str(&format!("<a href=\"{}\">{}</a>", escape(url), escape(url)));
+            }
+            rest = &rest[at + url.len()..];
+        }
+        out.push_str(&escape(rest));
+    }
+    out
+}
+
 /// Where the next web address starts: "http://" or "https://". One search
 /// for both: searched apart, a line of a thousand "https://" links had its
 /// whole rest read again for an "http://" before each of them.
@@ -639,6 +666,16 @@ fn take_previous_line_into_attribution(q: &crate::words::Quotes, parts: &mut Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A text's links, clickable and shown whole; nothing else becomes markup (25 October 2026).
+    #[test]
+    fn a_texts_links_are_shown_whole() {
+        let html = linkify_whole("Suivi : https://colis.example/t?id=1&x=2. <img src=x> javascript:alert(1) smsto:+331\nhttp:// seul");
+        assert!(html.contains("<a href=\"https://colis.example/t?id=1&amp;x=2\">https://colis.example/t?id=1&amp;x=2</a>."), "{html}");
+        assert!(html.contains("&lt;img src=x&gt;") && !html.contains("<img"), "{html}");
+        assert!(!html.contains("href=\"javascript") && !html.contains("href=\"smsto"), "{html}");
+        assert!(html.contains("<br>http://") && html.matches("<a ").count() == 1, "an address with nothing after it is no link: {html}");
+    }
 
     fn kinds(parts: &[Part]) -> Vec<String> {
         parts

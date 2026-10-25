@@ -398,10 +398,10 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "read_message", "list_tasks", "agenda", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
+    "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
-const WRITING: &[&str] = &["add_task", "complete_task", "add_event", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "complete_task", "add_event", "update_event", "delete_event", "update_task", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -422,7 +422,7 @@ fn the_tools_listed() {
         }
         let hints = &tool["annotations"];
         // Only the corpus's download reaches beyond this computer: your mail servers, read-only.
-        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(false), Some(name == "spam_fetch")), "{name}");
+        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(name.starts_with("delete_")), Some(name == "spam_fetch")), "{name}");
         let writes = WRITING.contains(&name) || SPAM_WRITING.contains(&name);
         assert_eq!(hints["readOnlyHint"].as_bool(), Some(!writes), "{name}");
         assert!(!tool["title"].as_str().unwrap().is_empty());
@@ -434,10 +434,11 @@ fn the_tools_listed() {
         let tool = tools.iter().find(|t| t["name"] == draft).unwrap();
         assert!(tool["description"].as_str().unwrap().contains("NEVER sent"), "{draft}");
     }
-    // Nothing sends, deletes, pays or reads a secret.
-    for word in ["send", "delete", "remove", "pay", "password", "secret", "key"] {
+    // Nothing sends, pays or reads a secret; only an event or a task is deleted (25 October 2026), said in the window with Undo.
+    for word in ["send", "remove", "pay", "password", "secret", "key"] {
         assert!(names.iter().all(|n| !n.contains(word)), "{word}");
     }
+    assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task"]);
 }
 
 #[test]
@@ -1466,4 +1467,98 @@ fn a_jobs_file_from_start_to_end() {
     for id in ["../x", "", "a/b"] {
         assert!(jobs::look(id).is_err() && jobs::Running::open(id).is_err(), "{id}");
     }
+}
+
+/// The last change an agent made, as the window reads it (`agentwrites`).
+fn last_said() -> sioul_core::agentwrites::Said {
+    sioul_core::agentwrites::since(0).0.pop().expect("a change said")
+}
+
+/// Events and tasks read and changed one by one (25 October 2026): each
+/// change said for the window with Undo; a move through the journal, once;
+/// a meeting with others never moved nor deleted; a task made an
+/// appointment and back; nothing done to what is kept from agents.
+#[test]
+fn events_and_tasks_are_changed_one_by_one() {
+    home();
+    let mut server = server();
+    let added = call(&mut server, "add_event", json!({ "title": "Dentist", "start": "2026-11-20T13:00", "end": "2026-11-20T13:40" }));
+    assert_eq!(added["isError"], false, "{added}");
+    let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let file = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    let got = call(&mut server, "get_event", json!({ "event": uri }));
+    assert_eq!((got["structuredContent"]["title"].as_str(), got["structuredContent"]["with_others"].as_bool()), (Some("Dentist"), Some(false)), "{got}");
+    // Changed: its time, reminder and time before; said with Undo.
+    let before = std::fs::read_to_string(&file).unwrap();
+    let changed = call(&mut server, "update_event", json!({ "event": uri, "start": "2026-11-20T14:00", "end": "2026-11-20T15:00", "remind": "15", "before": 20 }));
+    assert_eq!(changed["isError"], false, "{changed}");
+    let edit = sioul_core::agenda::edit_of(&file).unwrap();
+    assert_eq!((edit.start.as_str(), edit.end.as_str(), edit.remind.as_str(), edit.margins.before), ("2026-11-20T14:00", "2026-11-20T15:00", "15", 20));
+    let said = last_said();
+    assert!(said.line.contains("Dentist"), "{said:?}");
+    assert!(said.put_back(), "Undo");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before, "put back as it was");
+    // Moved to another calendar: once, through the journal.
+    let other = vdir::create(Kind::Calendars, vdir::LOCAL, "Other agenda", None, &["VEVENT"]).unwrap();
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "calendar": format!("local/{}", other.id) }));
+    assert_eq!(moved["isError"], false, "{moved}");
+    assert!(!file.exists() && other.items().len() == 1, "there, once");
+    // A meeting with others: never moved, never deleted.
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let meeting = agenda.dir.join("meeting.ics");
+    std::fs::write(&meeting, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting-1\r\nDTSTART:20261121T090000Z\r\nDTEND:20261121T100000Z\r\nSUMMARY:Board\r\nORGANIZER:mailto:chair@example.org\r\nATTENDEE:mailto:jane@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    let kept = std::fs::read_to_string(&meeting).unwrap();
+    for (tool, arguments) in [("update_event", json!({ "event": "sioul:event/meeting-1", "calendar": format!("local/{}", other.id) })), ("delete_event", json!({ "event": "meeting-1" }))] {
+        let refused = call(&mut server, tool, arguments);
+        assert_eq!(refused["isError"], true, "{tool}: {refused}");
+    }
+    assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept);
+    // Deleted, then put back by Undo.
+    let gone = call(&mut server, "delete_event", json!({ "event": uri }));
+    assert_eq!(gone["isError"], false, "{gone}");
+    assert!(other.items().is_empty());
+    assert!(last_said().put_back());
+    assert_eq!(other.items().len(), 1, "Undo brings it back");
+    // A task: changed, moved to another list, made an appointment and back, deleted.
+    let task = call(&mut server, "add_task", json!({ "title": "Call the bank", "start": "2026-11-22T10:00", "estimate": 30 }));
+    let uid = task["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let done = call(&mut server, "update_task", json!({ "task": uid, "priority": 2, "status": "in-process" }));
+    assert_eq!(done["isError"], false, "{done}");
+    assert_eq!(call(&mut server, "get_task", json!({ "task": uid }))["structuredContent"]["status"], "in-process");
+    let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Errands list", None, &["VTODO"]).unwrap();
+    let moved = call(&mut server, "update_task", json!({ "task": uid, "list": format!("local/{}", list.id) }));
+    assert_eq!(moved["isError"], false, "{moved}");
+    assert_eq!(list.items().len(), 1, "moved once");
+    let made = call(&mut server, "task_to_event", json!({ "task": uid, "calendar": format!("local/{}", other.id) }));
+    assert_eq!(made["isError"], false, "{made}");
+    assert!(list.items().is_empty() && other.items().len() == 2, "the task gone, the appointment there");
+    let back = call(&mut server, "event_to_task", json!({ "event": made["structuredContent"]["uri"], "list": format!("local/{}", list.id) }));
+    assert_eq!(back["isError"], false, "{back}");
+    assert_eq!(list.items().len(), 1);
+    let again = back["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let deleted = call(&mut server, "delete_task", json!({ "task": again }));
+    assert_eq!(deleted["isError"], false, "{deleted}");
+    assert!(list.items().is_empty());
+    // What is kept from agents: nothing found, nothing done.
+    let named = |name: &str| vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| p.file_name().is_some_and(|n| n == name)).unwrap();
+    let (zeugma_event, zeugma_pay) = (named("zeugma-event.ics"), named("zeugma-pay.ics"));
+    let zeugma_uid = sioul_core::appointments::uid_in(&zeugma_event);
+    let texts = || (std::fs::read_to_string(&zeugma_event).ok(), std::fs::read_to_string(&zeugma_pay).ok());
+    let before = texts();
+    for (tool, arguments) in [
+        ("get_event", json!({ "event": zeugma_uid })),
+        ("update_event", json!({ "event": zeugma_uid, "title": "Open" })),
+        ("delete_event", json!({ "event": zeugma_uid })),
+        ("event_to_task", json!({ "event": zeugma_uid })),
+        ("get_task", json!({ "task": "zeugma-pay" })),
+        ("update_task", json!({ "task": "zeugma-pay", "status": "completed" })),
+        ("delete_task", json!({ "task": "zeugma-pay" })),
+        ("task_to_event", json!({ "task": "zeugma-pay" })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+        never_zeugma(&refused, tool);
+    }
+    assert_eq!(texts(), before, "nothing written");
+    let _ = std::fs::remove_file(&meeting);
 }

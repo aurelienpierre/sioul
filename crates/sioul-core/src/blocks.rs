@@ -374,6 +374,29 @@ pub fn place_for(chosen: &str, list_account: &str, calendars: &[Collection], mak
     }
 }
 
+/// The time blocks to come of the task `uid` that can be changed: what goes
+/// with it when it is deleted or made an appointment (the window's
+/// `blocks::with_task`, read here from the calendars, for agents).
+pub fn to_come_of(uid: &str, chosen: &str, now: i64, zone: &TimeZone) -> Vec<std::path::PathBuf> {
+    let mut found: Vec<Occurrence> = agenda::occurrences(now, now + 60 * 86_400);
+    found.extend(read(&calendars(chosen), now, now + AHEAD_DAYS * 86_400, zone));
+    let mut seen = BTreeSet::new();
+    found.into_iter().filter(|b| b.task == uid && !b.read_only && !b.recurring && b.start > now && seen.insert(b.key.clone())).map(|b| std::path::PathBuf::from(b.key)).collect()
+}
+
+/// The calendar a task's blocks go into, made when it is the calendar for
+/// blocks and not there yet (`place_for`), named `name` (the window's
+/// `blocks::calendar_for`, for agents).
+pub fn calendar_of(config: &crate::config::Config, task: &Task, name: &str) -> Result<Collection, String> {
+    let chosen = config.tasks.blocks.clone().unwrap_or_default();
+    let account = task.list_id.split('/').next().unwrap_or("").to_string();
+    let makes = crate::capabilities::makes_collections(crate::capabilities::provider_of(config.account(&account)));
+    match place_for(&chosen, &account, &vdir::collections(Kind::Calendars), makes) {
+        Place::Found(calendar) => Ok(calendar),
+        Place::Make(account) => make_calendar(&account, name),
+    }
+}
+
 /// Whether a time block kept on this device alone (`block`, its calendar)
 /// goes to its task's server (21 October 2026): the task's list is a server's
 /// (`list_account`), so the task reaches your other devices while its time,

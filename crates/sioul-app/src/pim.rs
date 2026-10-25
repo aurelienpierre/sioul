@@ -471,10 +471,9 @@ pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, S
     Ok(moved)
 }
 
-/// Whether an event's text names an organizer or guests: a meeting with
-/// others, which a server's scheduling answers for (RFC 6638), mail to them included.
+/// A meeting with others (`agenda::with_others`): never moved nor deleted here.
 pub(crate) fn with_others(text: &str) -> bool {
-    sioul_core::lines::unfold(text).iter().any(|l| matches!(sioul_core::lines::name(l).as_str(), "ORGANIZER" | "ATTENDEE"))
+    agenda::with_others(text)
 }
 
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.

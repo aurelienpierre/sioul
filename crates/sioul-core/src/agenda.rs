@@ -395,6 +395,13 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     all
 }
 
+/// Whether an event's text names an organizer or guests: a meeting with
+/// others, which a server's scheduling answers for (RFC 6638), mail to them
+/// included: never moved nor deleted for them by Sioul's editor or an agent.
+pub fn with_others(text: &str) -> bool {
+    crate::lines::unfold(text).iter().any(|l| matches!(crate::lines::name(l).as_str(), "ORGANIZER" | "ATTENDEE"))
+}
+
 /// Time blocks shown as the tasks they are, in every agenda alike (the
 /// window's, the phone's and the home card, 21 October 2026): a block of a
 /// task known here says its task's list; one whose task is not here (deleted,

@@ -1,12 +1,12 @@
 ---
-description: Laisser un agent d’IA comme Claude Code ou Claude Desktop lire ce que Sioul garde et préparer tâches, événements, notes et brouillons, par MCP ; il n’envoie rien, ne supprime rien, ne paie rien et ne lit aucun mot de passe.
+description: Laisser un agent d’IA comme Claude Code ou Claude Desktop lire ce que Sioul garde et préparer tâches, événements, notes et brouillons, par MCP ; et modifier vos événements et tâches quand vous le demandez ; il n’envoie rien, ne paie rien et ne lit aucun mot de passe.
 ---
 
 # Avec un agent d’IA {#using-an-ai-agent}
 
 ## En bref {#in-short}
 
-Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur cet appareil et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez, et c’est vous qui envoyez. Il n’envoie jamais rien, ne supprime jamais rien, ne déplace jamais d’argent et ne lit jamais un mot de passe, et les codes à usage unique et les numéros de compte lui sont cachés. Sioul n’en connecte aucun de lui-même : cette page est pour le jour où vous le voulez.
+Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur cet appareil et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez, et c’est vous qui envoyez. Il n’envoie jamais rien, ne déplace jamais d’argent et ne lit jamais un mot de passe, et ne supprime qu’un événement ou une tâche que vous lui avez demandé, ce que la fenêtre vous laisse annuler ; et les codes à usage unique et les numéros de compte lui sont cachés. Sioul n’en connecte aucun de lui-même : cette page est pour le jour où vous le voulez.
 
 ## Avant d’en connecter un {#before-you-connect-one}
 
@@ -77,7 +77,8 @@ Sur cet appareil seulement :
 - **un événement** : personne n’est invité ;
 - **une note**, jamais écrite par-dessus une autre ;
 - **une réponse**, ou **un nouveau courriel** : enregistré dans Brouillons, jamais envoyé. Vous le lisez, puis l’envoyez depuis la fenêtre, ou le supprimez ;
-- **un lien** entre deux choses.
+- **un lien** entre deux choses ;
+- **une modification d’un événement ou d’une tâche**, quand vous la demandez : son heure, son titre, son lieu, son agenda ou sa liste, son rappel, le temps gardé avant et après, son état ; sa suppression ; ou faire d’une tâche un rendez-vous, ou d’un rendez-vous une tâche, comme le fait l’agenda. Chaque modification est dite dans la ligne d’état de la fenêtre, avec **Annuler**. Une réunion avec d’autres n’est jamais déplacée ni supprimée.
 
 ## Les outils de votre filtre à indésirables {#the-spam-filters-tools}
 
@@ -85,7 +86,7 @@ Un agent peut aussi s’occuper de votre propre filtre à indésirables, comme v
 
 ## Ce qui ne bouge pas {#what-does-not-move}
 
-- **Rien n’est envoyé, supprimé ni payé.** Aucun outil n’envoie de courriel, ne supprime ni ne déplace un courriel, ni ne déplace d’argent. Les outils du filtre à indésirables sont les seuls à joindre vos serveurs de courriel, et seulement pour lire ([plus haut](#the-spam-filters-tools)).
+- **Rien n’est envoyé ni payé, et aucun courriel n’est supprimé.** Aucun outil n’envoie de courriel, ne supprime ni ne déplace un courriel, ni ne déplace d’argent ; un événement ou une tâche n’est supprimé que quand vous le demandez, et la fenêtre vous laisse l’annuler. Les outils du filtre à indésirables sont les seuls à joindre vos serveurs de courriel, et seulement pour lire ([plus haut](#the-spam-filters-tools)).
 - **Rien de secret.** Aucun mot de passe, aucune clé, aucun jeton n’est lu. Les codes à usage unique sont cachés partout où ils sont écrits, de même que les liens de connexion, de réinitialisation et de confirmation ; un message qui donne un mot de passe est retenu en entier. Les numéros de compte bancaire (IBAN), les numéros de carte et les numéros de sécurité sociale français sont masqués dans les courriels, les notes et les budgets : un IBAN ou un numéro de carte garde ses quatre derniers caractères, pour distinguer deux comptes ; un numéro de sécurité sociale est caché en entier. Vos médicaments et vos prises ne sont pas donnés à un agent.
 - **Les courriels, ce sont des données.** Le texte d’un courriel arrive marqué comme les mots de son expéditeur, pas comme des instructions, et l’agent en est averti quand il se connecte. Les courriels falsifiés sont dits falsifiés. Les courriels hostiles envoyés à une adresse protégée, et les courriels chiffrés, ne sont pas donnés.
 - **Ce que vous gardez fermé reste fermé.** Un projet que vous n’avez pas ouvert, et ce qui n’est dans aucun projet une fois que vous l’avez fermé, ne sont dans aucune réponse ; demandés par leur nom, ils sont refusés.

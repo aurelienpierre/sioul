@@ -3428,6 +3428,8 @@ impl qobject::Sioul {
         pim::show_pim(&qt, &shared);
         work::show_work(&qt, &shared);
         start_watchers(&qt, &shared);
+        // What an AI agent changes through `sioul mcp`, said with Undo (agents.rs).
+        crate::agents::watch(&qt, &shared);
         // Taking pictures of your own pages syncs nothing; the test build does, for its scripted runs.
         if std::env::var_os("SIOUL_GRAB").is_none() || cfg!(feature = "insecure-test-tls") {
             pim::start_dav_watchers(&qt, &shared);

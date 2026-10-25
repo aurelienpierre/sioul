@@ -1,12 +1,12 @@
 ---
-description: Letting an AI agent such as Claude Code or Claude Desktop read what Sioul keeps and prepare tasks, events, notes and drafts, through MCP; it never sends, deletes, pays or reads a password.
+description: Letting an AI agent such as Claude Code or Claude Desktop read what Sioul keeps and prepare tasks, events, notes and drafts, through MCP, and change your events and tasks when you ask; it never sends, pays or reads a password.
 ---
 
 # Using an AI agent
 
 ## In short {#in-short}
 
-An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never deletes, never moves money and never reads a password, and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
+An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never moves money and never reads a password, and deletes nothing but an event or a task you asked it to, which the window lets you undo; and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
 
 ## Before you connect one {#before-you-connect-one}
 
@@ -77,7 +77,8 @@ On this device only:
 - **an event**: nobody is invited;
 - **a note**, never written over another one;
 - **a reply**, or **a new message**: saved in Drafts, never sent. You read it, and send it from the window, or delete it;
-- **a tie** between two things.
+- **a tie** between two things;
+- **a change to an event or a task**, when you ask for it: its time, title, place, calendar or list, reminder, the time kept before and after it, its status; deleting it; or making a task an appointment, or an appointment a task, as the agenda does. Each change is said in the window's status line, with **Undo**. A meeting with others is never moved nor deleted.
 
 ## Your spam filter's tools {#the-spam-filters-tools}
 
@@ -85,7 +86,7 @@ An agent can also look after your own spam filter, as you would from the termina
 
 ## What does not move {#what-does-not-move}
 
-- **Nothing is sent, deleted or paid.** No tool sends mail, deletes or moves a message, or moves money. The spam filter's tools are the only ones that reach your mail servers, and only to read ([above](#the-spam-filters-tools)).
+- **Nothing is sent or paid, and no mail is deleted.** No tool sends mail, deletes or moves a message, or moves money; an event or a task is deleted only when you ask, and the window lets you undo it. The spam filter's tools are the only ones that reach your mail servers, and only to read ([above](#the-spam-filters-tools)).
 - **Nothing secret.** No password, key or token is read. One-time codes are hidden wherever they are written, and so are sign-in, reset and confirmation links; a message that gives a password is withheld whole. Bank account numbers (IBAN), card numbers and French social security numbers are masked in mail, notes and budgets: an IBAN or a card number keeps its last four characters, to tell two accounts apart; a social security number is hidden whole. Your medicines and doses are not given to an agent.
 - **Mail is data.** A message's text comes marked as its sender's words, not as instructions, and the agent is told so when it connects. Forged mail is said forged. Hostile mail to a protected address, and encrypted mail, are not given.
 - **What you keep closed stays closed.** A project you have not opened, and things in no project once you close them, are in no answer; asked for by name, they are refused.
@@ -111,7 +112,7 @@ One more feature uses an AI, and only for an address you protect against harassm
 ## For technical readers {#for-technical-readers}
 
 - **Protocol**: the Model Context Protocol, revision 2025-06-18 (2025-03-26 and 2024-11-05 accepted too), JSON-RPC 2.0, over standard input and output only: the agent runs on this device, and no network port is opened.
-- **Tool hints**: every tool says whether it writes, and none is destructive (MCP's `readOnlyHint`, `destructiveHint: false`, `idempotentHint`; `openWorldHint` only for the spam filter's download, which reads your mail servers).
+- **Tool hints**: every tool says whether it writes; only the deletion of an event or a task is destructive (MCP's `readOnlyHint`, `destructiveHint`, `idempotentHint`; `openWorldHint` only for the spam filter's download, which reads your mail servers).
 - **Masks**: each number is hidden only when its own check holds, so that order and phone numbers stay: IBANs by ISO 13616's mod 97, card numbers of 16 or 19 digits by Luhn's check (fourteen digits are left alone: a SIRET has a Luhn key too, and is no secret), French social security numbers by their key. Codes are hidden wherever they are written, spaced or not; reset, sign-in and confirmation links are hidden; a message that gives a password is withheld whole.
 - **Framing**: a message's or a note's text comes between two lines carrying a mark made for that answer, and the server's instructions say that such text is data, never instructions.
 - **Never given**: hostile mail to a shielded address, encrypted mail, medicines and doses. The day laid out (`list_tasks`, today) shows meal and nap times, as the day in Tasks does.

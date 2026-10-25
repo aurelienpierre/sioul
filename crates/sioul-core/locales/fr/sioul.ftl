@@ -6132,3 +6132,27 @@ texts-unread = { $count ->
 texts-delete = Supprimer…
 texts-delete-action = Supprimer de Sioul
 texts-delete-said = Ses SMS jusqu’à maintenant quittent Sioul sur tous vos appareils : vos ordinateurs et la copie de votre téléphone dans Sioul. L’application de SMS de votre téléphone les garde, car elle seule peut les y supprimer. Un SMS qui arrive plus tard s’affiche de nouveau.
+
+# What an AI agent changed through sioul mcp, said in the window with Undo (25 October 2026).
+agent-event-changed = Un agent d’IA a modifié l’événement « { $title } ».
+agent-event-moved = Un agent d’IA a déplacé l’événement « { $title } » dans { $calendar }.
+agent-event-deleted = Un agent d’IA a supprimé l’événement « { $title } ».
+agent-event-skipped = Un agent d’IA a retiré la fois du { $when } de « { $title } ».
+agent-task-changed = Un agent d’IA a modifié la tâche « { $title } ».
+agent-task-moved = Un agent d’IA a déplacé la tâche « { $title } » dans { $list }.
+agent-task-deleted = Un agent d’IA a supprimé la tâche « { $title } ».
+agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » un rendez-vous, dans { $calendar }.
+agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.
+event-delete-with-others = Une réunion avec d’autres n’est jamais supprimée ici : son serveur l’annulerait ou la déclinerait pour eux. Répondez-y, ou supprimez-la dans son application d’agenda.
+task-list-would-lose = Cette liste ne garderait pas
+
+# A conversation archived in Texts (25 October 2026): out of the list, its texts kept, back with a newer text.
+texts-archive = Archiver
+texts-restore = Remettre dans la liste
+texts-archived-view = Archivées
+texts-all-view = Toutes les conversations
+texts-archived = Archivée : elle revient avec son prochain SMS.
+texts-restored = De retour dans la liste.
+texts-archived-empty = Aucune conversation archivée.
+texts-copy = Copier
+texts-copy-all = Copier le SMS

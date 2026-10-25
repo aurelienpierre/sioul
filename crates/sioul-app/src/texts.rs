@@ -2076,13 +2076,33 @@ fn delete(id: &str) -> Value {
         .max()
         .unwrap_or(0)
         .max(now_ms());
-    let mark = rules::TextMark { at: now_ms(), conversation: id.to_string(), read: upto, hidden: upto };
+    let mark = rules::TextMark { at: now_ms(), conversation: id.to_string(), read: upto, hidden: upto, ..rules::TextMark::default() };
     if let Err(e) = rules::write_mark(&root(), &here, &mark, &seal) {
         return json!({ "said": e });
     }
     crate::phonemsgs::seen_for(&id.split(',').map(str::to_string).collect::<Vec<_>>());
     forget_hidden_media(&here, &seal);
     json!({ "said": "" })
+}
+
+/// A conversation archived (out of the list, its texts kept, until a newer
+/// text comes) or put back in the list, by a sealed mark every device reads.
+fn archive(id: &str, archive: bool) -> Value {
+    let Some((here, seal, _)) = sealed() else { return json!({ "said": tr().text("texts-page-off", None) }) };
+    let (texts, requests, _) = records(&here, &seal);
+    let region = sioul_core::reach::region(&looks().0);
+    let newest = texts
+        .iter()
+        .filter(|t| rules::conversation_id(&t.with) == id)
+        .map(|t| t.at)
+        .chain(requests.iter().filter(|r| phones::key(&r.to, region) == id).map(|r| r.written))
+        .max()
+        .unwrap_or(0);
+    let mark = rules::TextMark { at: now_ms(), conversation: id.to_string(), archived: if archive { newest.max(1) } else { 0 }, restored: !archive, ..rules::TextMark::default() };
+    match rules::write_mark(&root(), &here, &mark, &seal) {
+        Ok(_) => json!({ "said": tr().text(if archive { "texts-archived" } else { "texts-restored" }, None) }),
+        Err(e) => json!({ "said": e }),
+    }
 }
 
 /// The media of hidden texts gone from this device's copies, unless a text shown holds them too.
@@ -2100,7 +2120,7 @@ fn forget_hidden_media(here: &str, seal: &Seal) {
 /// why. With `query`, the conversations holding a text with all its words (or
 /// whose people's names or numbers do), each with the newest such text as its
 /// last words.
-fn view(query: &str) -> Value {
+fn view(query: &str, archived: bool) -> Value {
     let tr = tr();
     let Some((here, seal, _)) = sealed() else { return json!({ "can": false, "said": tr.text("texts-page-off", None), "conversations": [] }) };
     let Some(phone) = sending_phone() else { return json!({ "can": false, "said": tr.text("texts-page-no-phone", None), "conversations": [] }) };
@@ -2134,6 +2154,8 @@ fn view(query: &str) -> Value {
             let id = row["id"].as_str().unwrap_or_default().to_string();
             row["unread"] = json!(unread.get(&id).map_or(0, Vec::len));
         }
+        // Archived ones in their own view, out of the list until a newer text comes (25 October 2026).
+        list.retain(|row| marks.archived(row["id"].as_str().unwrap_or_default(), row["at"].as_i64().unwrap_or(0)) == archived);
     }
     if !query.is_empty()
         && let Value::Array(list) = &mut rows
@@ -2151,7 +2173,8 @@ fn view(query: &str) -> Value {
         "conversations": rows,
         "said": "",
         "never": tr.text("texts-page-never", None),
-        "empty": tr.text(if query.is_empty() { "texts-page-empty" } else { "texts-search-none" }, None),
+        "empty": tr.text(if archived { "texts-archived-empty" } else if query.is_empty() { "texts-page-empty" } else { "texts-search-none" }, None),
+        "archived": archived,
     })
 }
 
@@ -2727,7 +2750,7 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     let asked: Value = serde_json::from_str(json).unwrap_or_default();
     let text = |key: &str| asked[key].as_str().unwrap_or_default().to_string();
     let (answer, shared) = match verb {
-        "view" => (view(&text("query")), false),
+        "view" => (view(&text("query"), asked["archived"].as_bool().unwrap_or(false)), false),
         "conversation" => (conversation(&text("id")), false),
         "send" => send(&text("to"), &text("body"), "", &text("phone")),
         // A multimedia message: its media reduced already, each {ct, path} (a file of this device's).
@@ -2755,9 +2778,16 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
             }
         }
         "again" => again(&text("key")),
+        // Archived, or put back in the list, on every device (25 October 2026).
+        "archive" | "restore" => {
+            let done = archive(&text("id"), verb == "archive");
+            let mut tab = view("", verb == "restore");
+            tab["said"] = done["said"].clone();
+            (tab, true)
+        }
         "delete" => {
             let done = delete(&text("id"));
-            let mut tab = view("");
+            let mut tab = view("", false);
             tab["said"] = done["said"].clone();
             (tab, true)
         }
@@ -3170,7 +3200,7 @@ mod tests {
         assert!(bench.step(&phone, NOW, false));
         assert_eq!(bench.rows().len(), 3);
         let root = bench.base.join("data/texts");
-        let mark = rules::TextMark { at: NOW, conversation: "+33465710042".into(), read: NOW, hidden: NOW };
+        let mark = rules::TextMark { at: NOW, conversation: "+33465710042".into(), read: NOW, hidden: NOW, ..rules::TextMark::default() };
         rules::write_mark(&root, "computer", &mark, &bench.seal).unwrap();
         assert_eq!(rules::drop_hidden(&bench.files.log, &rules::Marks::read_all(&root, &bench.seal), &bench.seal).unwrap(), 3);
         assert!(bench.rows().is_empty(), "gone from the log, so from every computer's copy");

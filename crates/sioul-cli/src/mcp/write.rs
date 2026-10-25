@@ -5,7 +5,8 @@
 //! done, an event added, a note written, a draft saved, two things tied.
 //! Nothing is sent from here. A task or an event changed goes to its server
 //! with the next sync, as what you change in the window does; a draft waits
-//! in Drafts until you read and send it. Nothing is deleted or overwritten.
+//! in Drafts until you read and send it. Nothing is deleted or overwritten
+//! here; an event's or a task's changes and deletions are `items`'.
 //!
 //! What an agent writes may come from mail it read, so it is checked as
 //! mail is: a title, a place, a subject on one line; an address one address;

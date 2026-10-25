@@ -110,10 +110,12 @@
 //! - [`appnotes`](appnotes/index.html): other apps' notifications on a phone: now, or how long they wait.
 //! - [`reaches`](reaches/index.html): Settings ▸ What reaches you in words, and a person's sheet.
 //! - [`access`](access/index.html): what Android withholds from Sioul on a phone, said where you look.
+//! - [`agents`](agents/index.html): what an AI agent changed, said in the status line with Undo.
 //! - [`appointments`](appointments/index.html): a task made an appointment and an appointment a task, from the agenda.
 
 // What Android withholds from Sioul on a phone, said in the join's result and on the Porch (docs/android.md).
 mod access;
+mod agents;
 mod alarms;
 mod appnotes;
 mod appointments;

@@ -1128,7 +1128,7 @@ pub fn carry_into(own: &Path, java: &[Held], region: Option<&Region>, now_ms: i6
 
 /// Adds lines at the end of a file of this device's own, made yours alone
 /// (0600, in a 0700 folder, on Unix). The caller holds its lock.
-pub(crate) fn append_private(path: &Path, text: &str) -> Result<(), String> {
+pub fn append_private(path: &Path, text: &str) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(folder) = path.parent() {

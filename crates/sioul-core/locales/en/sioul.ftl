@@ -6104,3 +6104,27 @@ texts-unread = { $count } new
 texts-delete = Delete…
 texts-delete-action = Delete from Sioul
 texts-delete-said = Its texts until now leave Sioul on every device: your computers and your phone's copy in Sioul. Your phone's own texting app keeps them, since only it may delete them there. A text that comes later shows again.
+
+# What an AI agent changed through sioul mcp, said in the window with Undo (25 October 2026).
+agent-event-changed = An AI agent changed the event “{ $title }”.
+agent-event-moved = An AI agent moved the event “{ $title }” to { $calendar }.
+agent-event-deleted = An AI agent deleted the event “{ $title }”.
+agent-event-skipped = An AI agent left out the { $when } time of “{ $title }”.
+agent-task-changed = An AI agent changed the task “{ $title }”.
+agent-task-moved = An AI agent moved the task “{ $title }” to { $list }.
+agent-task-deleted = An AI agent deleted the task “{ $title }”.
+agent-task-to-event = An AI agent made the task “{ $title }” an appointment, in { $calendar }.
+agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.
+event-delete-with-others = A meeting with others is never deleted here: its server would cancel or decline it for them. Answer it, or delete it in its own calendar app.
+task-list-would-lose = That list would not keep
+
+# A conversation archived in Texts (25 October 2026): out of the list, its texts kept, back with a newer text.
+texts-archive = Archive
+texts-restore = Put back in the list
+texts-archived-view = Archived
+texts-all-view = All conversations
+texts-archived = Archived: it comes back with its next text.
+texts-restored = Back in the list.
+texts-archived-empty = No archived conversation.
+texts-copy = Copy
+texts-copy-all = Copy the text
