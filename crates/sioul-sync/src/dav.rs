@@ -1578,7 +1578,11 @@ fn fetch(client: &Client, kind: Kind, url: &str, hrefs: &[String]) -> Result<Vec
 
 /// Writes an item brought from the server (href, ETag, text). Your version,
 /// changed here since the server last agreed on it (or never agreed), is set
-/// aside first, unless it is the same.
+/// aside first, unless it is the same. A task or an event changed on both
+/// sides by the ticks of its notes' checklist alone (two devices ticking
+/// different items) is merged instead, every tick kept, and the merge goes
+/// back to the server at the next sync (`checklist::merge_calendar`,
+/// docs/tasks.md, "Checklists"): nothing is set aside, no tick is lost.
 fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data): (&str, &str, &str), report: &mut Report) -> Result<(), SyncError> {
     let key = path_key(&absolute(url, href));
     let position = state.items.iter().position(|i| path_key(&absolute(url, &i.href)) == key);
@@ -1587,16 +1591,23 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         None => file_name(href, kind.extension(), &state.items.iter().map(|i| i.file.clone()).chain(local_files(dir, kind)).collect()),
     };
     let path = dir.join(&file);
+    let mut merged: Option<String> = None;
     if let Some(i) = position
         && let Some(mine) = changed_here(&path, &state.items[i])
         && !same_text(&mine, data)
     {
-        report.conflicts.push(set_aside(&path, &mine)?);
+        merged = if kind == Kind::Calendars { std::str::from_utf8(&mine).ok().and_then(|mine| sioul_core::checklist::merge_calendar(mine, data)) } else { None };
+        if merged.is_none() {
+            report.conflicts.push(set_aside(&path, &mine)?);
+        }
     }
     let text = crlf(data);
-    vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
+    // The server's as it came: what it holds now. A merge differs from it, so the next sync sends it.
+    let hash = vdir::content_hash(text.as_bytes());
+    let written = merged.map_or(text, |merged| crlf(&merged));
+    vdir::write_item(&path, &written).map_err(SyncError::Disk)?;
     // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
-    let item = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() };
+    let item = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash, ..ItemState::default() };
     match position {
         Some(i) => state.items[i] = item,
         None => state.items.push(item),
@@ -2167,6 +2178,48 @@ mod tests {
         assert!(std::fs::read_to_string(dir.join("clash.ics")).unwrap().contains("SUMMARY:Theirs"));
         let report = sync_one(&client, "lost", &home, "home").unwrap();
         assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 0, 0), "{report:?}");
+    }
+
+    /// A checklist ticked on two devices (25 October 2026): the server's copy
+    /// changed meanwhile by its ticks alone, the two merge, every tick kept,
+    /// sent back once, nothing set aside. Its words changed on both sides:
+    /// the usual conflict, yours set aside.
+    #[test]
+    fn ticks_on_two_devices_are_both_kept() {
+        home();
+        let (dav, home) = Dav::start(&["errands"]);
+        let task = |marks: [char; 3], stamp: &str, title: &str| {
+            format!(
+                "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VTODO\r\nUID:doctor\r\nDTSTAMP:{stamp}\r\nSUMMARY:{title}\r\nDESCRIPTION:Bring:\\n- [{}] Carte Vitale\\n- [{}] Mutuelle card\\n- [{}] Blood test\r\nEND:VTODO\r\nEND:VCALENDAR\r\n",
+                marks[0], marks[1], marks[2]
+            )
+        };
+        dav.put("errands", "doctor.ics", &task([' ', ' ', ' '], "20261025T090000Z", "Doctor"));
+        let client = client();
+        sync_one(&client, "ticks", &home, "errands").unwrap();
+        let file = folder("ticks", "errands").join("doctor.ics");
+        // Here, the first item ticked; there, by another device, the second.
+        std::fs::write(&file, task(['x', ' ', ' '], "20261025T100000Z", "Doctor")).unwrap();
+        dav.put("errands", "doctor.ics", &task([' ', 'x', ' '], "20261025T100500Z", "Doctor"));
+        let report = sync_one(&client, "ticks", &home, "errands").unwrap();
+        assert!(report.conflicts.is_empty(), "{report:?}");
+        let both = "- [x] Carte Vitale\\n- [x] Mutuelle card\\n- [ ] Blood test";
+        // Read unfolded: written again, its notes' line is folded at 75 octets.
+        let unfolded = |text: &str| sioul_core::lines::unfold(text).join("\n");
+        let here = unfolded(&std::fs::read_to_string(&file).unwrap());
+        assert!(here.contains(both) && here.contains("DTSTAMP:20261025T100500Z"), "the server's, both ticks: {here}");
+        // Sent back at the next sync, once: the server holds both ticks too.
+        let report = sync_one(&client, "ticks", &home, "errands").unwrap();
+        assert_eq!((report.sent, report.conflicts.len()), (1, 0), "{report:?}");
+        assert!(unfolded(&dav.items("errands")["doctor.ics"]).contains(both));
+        let report = sync_one(&client, "ticks", &home, "errands").unwrap();
+        assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 0, 0), "{report:?}");
+        // Its words changed on both sides: not a merge.
+        std::fs::write(&file, task(['x', 'x', 'x'], "20261025T110000Z", "Doctor at two")).unwrap();
+        dav.put("errands", "doctor.ics", &task(['x', 'x', ' '], "20261025T110500Z", "Doctor at three"));
+        let report = sync_one(&client, "ticks", &home, "errands").unwrap();
+        assert_eq!(report.conflicts.len(), 1, "{report:?}");
+        assert!(std::fs::read_to_string(&report.conflicts[0]).unwrap().contains("Doctor at two"));
     }
 
     /// A server that only notes what it is asked, and with what login.

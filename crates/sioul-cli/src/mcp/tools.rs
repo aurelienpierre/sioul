@@ -788,7 +788,7 @@ pub const TOOLS: &[Tool] = &[
                     "end": { "type": "string", "description": "The same form as start; for a whole-day event, its last day." },
                     "all_day": { "type": "boolean" },
                     "location": { "type": "string" },
-                    "notes": { "type": "string" },
+                    "notes": { "type": "string", "description": "Its free text: its checklist is kept as it is (set_checklist, check_item)." },
                     "repeat": { "type": "string", "enum": ["none", "daily", "weekly", "monthly", "yearly"] },
                     "remind": { "type": "string", "description": "usual, none, or minutes before it (\"15\")." },
                     "before": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept before it: getting ready, getting there." },
@@ -822,7 +822,7 @@ pub const TOOLS: &[Tool] = &[
                 json!({
                     "task": { "type": "string", "description": "Its UID or address (best), or words of its title that match it alone." },
                     "title": { "type": "string" },
-                    "notes": { "type": "string" },
+                    "notes": { "type": "string", "description": "Its free text: its checklist is kept as it is (set_checklist, check_item)." },
                     "location": { "type": "string" },
                     "start": { "type": "string", "description": MOMENT },
                     "due": { "type": "string", "description": MOMENT },
@@ -856,6 +856,55 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: items::move_step,
+    },
+    Tool {
+        name: "check_item",
+        title: "Tick an item of a list",
+        description: "Ticks one item of the checklist in a task's or an event's notes (a GitHub task list, \"- [ ] item\"): `done`, `open` (to do again) or `skipped` (not needed this time). Only that character of the notes changes; nothing else changes. The item is named by its words (capitals and accents aside) or its number in the list as get_task or get_event give it now: a name that fits no item, or several, is refused with the items as they are, so that nothing is ticked on a stale reading. Refused for a list that can only be read and for a meeting with others (its organizer's list). Said in Sioul's window with Undo; sent at the next sync. Gives the list back.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "of": { "type": "string", "description": "The task (its address, UID or words of its title) or the event (its address, sioul:event/…)." },
+                    "item": { "type": "string", "description": "The item's words, or its number in the list (\"2\")." },
+                    "state": { "type": "string", "enum": ["done", "open", "skipped"] },
+                }),
+                &["of", "item", "state"],
+            )
+        },
+        run: items::check_item,
+    },
+    Tool {
+        name: "set_checklist",
+        title: "Write a task's or an event's list",
+        description: "Writes the checklist in a task's or an event's notes, in groups (\"Bring\", \"Check\"; a group without a name for items of none), as a GitHub task list that other programs show as it is; the notes' free text stays as it was, nothing else changes. An item given without a state keeps the tick an item of the same words has now. Put there what to carry or to check; what to do goes in steps (add_steps). Never invent what the person did not say. Refused for a list that can only be read, a meeting with others, and notes Google Tasks would cut (8,192 characters). Said in Sioul's window with Undo; sent at the next sync.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "of": { "type": "string", "description": "The task (its address, UID or words of its title) or the event (its address, sioul:event/…)." },
+                    "groups": {
+                        "type": "array",
+                        "description": "The list's groups in order, each {name, items}; items, texts or {text, state}.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": { "type": "string", "description": "\"Bring\", \"Check\"; empty for none." },
+                                "items": { "type": "array", "items": { "anyOf": [{ "type": "string" }, { "type": "object", "properties": { "text": { "type": "string" }, "state": { "type": "string", "enum": ["done", "open", "skipped"] } }, "required": ["text"], "additionalProperties": false }] } },
+                            },
+                            "required": ["items"],
+                            "additionalProperties": false,
+                        },
+                    },
+                }),
+                &["of", "groups"],
+            )
+        },
+        run: items::set_checklist,
     },
     Tool {
         name: "delete_task",

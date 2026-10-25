@@ -1438,6 +1438,13 @@ task-show-done = Faites aussi
 task-title = Titre
 task-steps = Étapes
 task-add-step = Une étape, en une ligne
+checklist-add = Ajouter une liste à cocher
+checklist-done = Fait
+checklist-open = À faire
+checklist-skipped = Pas besoin cette fois
+checklist-stale = Cette liste a changé depuis qu’elle est affichée : la voici à nouveau.
+checklist-with-others = Cette liste fait partie d’une réunion avec d’autres : c’est son organisateur qui l’écrit.
+notes-google-too-long = Google Tasks garde des notes de 8 192 caractères au plus : celles-ci sont plus longues, et leur fin s’y perdrait. Raccourcissez-les, ou déplacez la tâche dans une autre liste.
 task-step-earlier = Monter
 task-step-later = Descendre
 task-waits-title = Attend
@@ -6150,6 +6157,12 @@ agent-steps-added = Un agent d’IA a ajouté { $countf } { $n ->
         [one] étape
        *[other] étapes
     } à « { $title } ».
+agent-item-checked = Un agent d’IA a marqué « { $item } » { $state ->
+        [done] fait
+        [skipped] pas utile cette fois
+       *[open] à faire
+    } dans « { $title } ».
+agent-list-written = Un agent d’IA a écrit la liste de « { $title } ».
 agent-step-moved = Un agent d’IA a déplacé l’étape « { $title } » parmi les étapes de « { $whole } ».
 agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » un rendez-vous, dans { $calendar }.
 agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.

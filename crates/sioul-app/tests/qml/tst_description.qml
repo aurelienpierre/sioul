@@ -31,6 +31,7 @@ Item {
         id: mock
 
         property var drawn: []
+        property bool tickable: false
 
         function text(key) {
             return key
@@ -38,8 +39,11 @@ Item {
         function textWith(key, name, value) {
             return key + " " + value
         }
-        function descriptionHtml(markdown) {
+        function descriptionHtml(markdown, tickable) {
             mock.drawn.push(markdown)
+            mock.tickable = tickable
+            if (tickable)
+                return "<table><tr><td><a href=\"sioul-check:3\">\u2610</a></td><td>Carte Vitale</td></tr></table>"
             return "<p>Join <a href=\"https://meet.example.org/abc\">the call</a> or <a href=\"mailto:desk@example.org?subject=Hi\">write</a></p>\n"
         }
     }
@@ -69,13 +73,44 @@ Item {
         }
     }
 
+    SignalSpy {
+        id: checked
+
+        target: notes
+        signalName: "check"
+    }
+
     TestCase {
         name: "Description"
         when: windowShown
 
         function init() {
             notes.pointed = ""
+            notes.tickable = false
             stand.written = []
+            checked.clear()
+        }
+
+        // Your own list: a box ticks at once, by its line; its menu says the three states (docs/tasks.md, "Checklists").
+        function test_a_box_ticks_its_item() {
+            notes.follow("sioul-check:3")
+            compare(checked.count, 0, "notes not yours: nothing ticks")
+            notes.tickable = true
+            verify(mock.tickable, "asked of Rust with its boxes")
+            verify(notes.drawn.indexOf("sioul-check:3") >= 0, notes.drawn)
+            verify(notes.drawn.indexOf("underline") < 0, "a box without a line under it: " + notes.drawn)
+            verify(notes.drawn.indexOf(String(testTheme.text)) >= 0, "in the words' colour")
+            notes.follow("sioul-check:3")
+            compare(checked.count, 1)
+            compare([checked.signalArguments[0][0], checked.signalArguments[0][1]], [3, "toggle"])
+            compare(notes.pointed, "", "a box is never said as a link")
+            verify(!notes.boxMenu("https://example.org"), "only a box has the menu")
+            verify(!notes.boxMenu("sioul-check:x"))
+            verify(notes.boxMenu("sioul-check:7"))
+            compare(notes.menuLine, 7)
+            notes.check(notes.menuLine, "skipped")
+            compare([checked.signalArguments[1][0], checked.signalArguments[1][1]], [7, "skipped"])
+            notes.tickable = false
         }
 
         function test_drawn_from_rust_read_only() {

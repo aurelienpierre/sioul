@@ -407,6 +407,23 @@ Dialog {
                     placeholderText: dialog.sioul.text("task-field-notes")
                     wrapMode: TextArea.Wrap
                 }
+                // A list to tick, in the notes: what to bring (docs/tasks.md, "Checklists").
+                Item {
+                    implicitWidth: 1
+                    implicitHeight: 1
+                }
+                Button {
+                    objectName: "eventAddChecklist"
+                    flat: true
+                    text: "+  " + dialog.sioul.text("checklist-add")
+                    onClicked: {
+                        const before = notes.text.replace(/\s+$/, "")
+                        const afterItem = /(^|\n)\s*([-*+]|\d+[.)])\s+\[[ xX-]\][^\n]*$/.test(before)
+                        notes.text = before === "" ? "- [ ] " : before + (afterItem ? "\n" : "\n\n") + "- [ ] "
+                        notes.forceActiveFocus()
+                        notes.cursorPosition = notes.length
+                    }
+                }
                 Label {
                     text: dialog.sioul.text("event-repeat")
                     color: dialog.theme.muted

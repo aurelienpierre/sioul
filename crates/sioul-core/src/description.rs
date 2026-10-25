@@ -14,21 +14,54 @@
 //!   and to a number (`tel:`) are kept, and the window hands them on; it never
 //!   fetches one itself. Any other link shows its words and, after them, its
 //!   address as text. A web address written plainly is a link.
-//! - **Task lists** (GFM: `- [ ] item`, `- [x] item`) show a box, ☐ or ☑,
-//!   and no bullet (`task_tables`).
+//! - **Task lists** (GFM: `- [ ] item`, `- [x] item`, and `- [-] item`
+//!   for not needed this time, `checklist`) show a box, ☐, ☑ or ⊟, and no
+//!   bullet (`task_tables`). Drawn to be ticked (`description_html_tickable`,
+//!   the notes of your own task or event), each box of the checklist is a
+//!   link, `sioul-check:<its line>`, which the window ticks.
 //! - Headings are bold lines, not larger type: notes are a few lines in a
 //!   panel. A line break is kept, as other calendar programs show it.
 //!
 //! The notes themselves stay as they were written: this is only how they are
 //! drawn.
 
-use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, TextMergeStream, html};
+use crate::checklist::Mark;
+use pulldown_cmark::{CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
+use std::collections::BTreeSet;
+use std::ops::Range;
 
 /// The links kept: the window opens them in the browser, the mail page or the phone's dialer.
 const KEPT: &[&str] = &["http", "https", "mailto", "tel"];
 
-/// The box of an unticked item, then of a ticked one, each held to its first word.
-const BOXES: [&str; 2] = ["\u{2610}\u{a0}", "\u{2611}\u{a0}"];
+/// A box as HTML, held to its item's first word: a link that ticks the item
+/// on `line` when given.
+fn box_html(mark: Mark, line: Option<usize>) -> String {
+    let glyph = match mark {
+        Mark::Open => "\u{2610}",
+        Mark::Done => "\u{2611}",
+        Mark::Skipped => "\u{229f}",
+    };
+    match line {
+        Some(line) => format!("<a href=\"sioul-check:{line}\">{glyph}</a>\u{a0}"),
+        None => format!("{glyph}\u{a0}"),
+    }
+}
+
+/// The parser's events with where each was read, its texts merged:
+/// pulldown-cmark cuts a text at "&" or "[", and a web address with them.
+fn read(markdown: &str) -> Vec<(Event<'_>, Range<usize>)> {
+    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let mut out: Vec<(Event, Range<usize>)> = Vec::new();
+    for (event, range) in Parser::new_ext(markdown, options).into_offset_iter() {
+        if let (Event::Text(more), Some((Event::Text(text), at))) = (&event, out.last_mut()) {
+            *text = CowStr::from(format!("{text}{more}"));
+            at.end = range.end;
+            continue;
+        }
+        out.push((event, range));
+    }
+    out
+}
 
 /// A picture being read: its address, whether it has words, whether a link
 /// to it was opened (a picture of the web, outside any link).
@@ -38,28 +71,55 @@ struct Picture {
     linked: bool,
 }
 
-/// Notes in Markdown as HTML safe to draw (the module's rules). Empty notes
-/// give an empty string.
+/// Notes in Markdown as HTML safe to draw (the module's rules), their boxes
+/// for reading only. Empty notes give an empty string.
 pub fn description_html(markdown: &str) -> String {
+    drawn(markdown, false)
+}
+
+/// The same, each box of the notes' checklist (`checklist::items`) a link,
+/// `sioul-check:<its line>`, that the window ticks: the notes of your own
+/// task or event. A box the checklist does not hold (in a quote) stays for
+/// reading.
+pub fn description_html_tickable(markdown: &str) -> String {
+    drawn(markdown, true)
+}
+
+fn drawn(markdown: &str, tickable: bool) -> String {
     if markdown.trim().is_empty() {
         return String::new();
     }
-    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    // Where each line starts, and the lines of the checklist's items.
+    let starts: Vec<usize> = std::iter::once(0).chain(markdown.match_indices('\n').map(|(at, _)| at + 1)).collect();
+    let line_of = |offset: usize| starts.partition_point(|&s| s <= offset).saturating_sub(1);
+    let listed: BTreeSet<usize> = if tickable { crate::checklist::items(markdown).iter().map(|i| i.line).collect() } else { BTreeSet::new() };
+    let tick = |offset: usize| Some(line_of(offset)).filter(|line| listed.contains(line));
     let mut events: Vec<Event> = Vec::new();
+    // The events that are boxes.
+    let mut boxes: BTreeSet<usize> = BTreeSet::new();
     // Each link open: none when kept, else its address, said after its words.
     let mut links: Vec<Option<String>> = Vec::new();
     let mut pictures: Vec<Picture> = Vec::new();
     // In a block of code, its words stay as written; the lines of a block of HTML so far.
     let (mut code, mut lines) = (false, 0usize);
-    // Merged: pulldown-cmark cuts a text at "&" or "[", and a web address with them.
-    for event in TextMergeStream::new(Parser::new_ext(markdown, options)) {
+    for (event, range) in read(markdown) {
         if let Event::Text(text) | Event::Code(text) = &event
             && !text.trim().is_empty()
         {
             pictures.iter_mut().for_each(|p| p.words = true);
         }
         let in_link = !links.is_empty() || pictures.iter().any(|p| p.linked);
+        // An item's first words: "[-] …" is a box too (not needed this time), which GFM does not read.
+        let first_words = match events.as_slice() {
+            [.., Event::Start(Tag::Item)] | [.., Event::Start(Tag::Item), Event::Start(Tag::Paragraph)] => true,
+            _ => false,
+        };
         match event {
+            Event::Text(text) if !code && !in_link && first_words && text.starts_with("[-]") && text[3..].starts_with(char::is_whitespace) => {
+                boxes.insert(events.len());
+                events.push(Event::Html(CowStr::from(box_html(Mark::Skipped, tick(range.start)))));
+                bare_links(text[3..].trim_start(), &mut events);
+            }
             Event::Text(text) if !code && !in_link => bare_links(&text, &mut events),
             Event::SoftBreak => events.push(Event::HardBreak),
             Event::Start(Tag::CodeBlock(kind)) => {
@@ -125,13 +185,16 @@ pub fn description_html(markdown: &str) -> String {
                     }
                 }
             }
-            Event::TaskListMarker(done) => events.push(Event::Text(CowStr::from(BOXES[usize::from(done)]))),
+            Event::TaskListMarker(done) => {
+                boxes.insert(events.len());
+                events.push(Event::Html(CowStr::from(box_html(if done { Mark::Done } else { Mark::Open }, tick(range.start)))));
+            }
             // Notes as written: neither footnotes nor mathematics are asked of the parser.
             Event::FootnoteReference(text) | Event::InlineMath(text) | Event::DisplayMath(text) => events.push(Event::Text(text)),
             other => events.push(other),
         }
     }
-    task_tables(&mut events);
+    task_tables(&mut events, &boxes);
     let mut out = String::new();
     html::push_html(&mut out, events.into_iter());
     out
@@ -186,7 +249,7 @@ struct List {
 /// the second: a long item wraps under its words, not under its box. A
 /// numbered list keeps its numbers, and a list with any item that has no box
 /// its bullets.
-fn task_tables(events: &mut [Event]) {
+fn task_tables(events: &mut [Event], boxes: &BTreeSet<usize>) {
     let mut open: Vec<List> = Vec::new();
     for i in 0..events.len() {
         match &events[i] {
@@ -194,7 +257,7 @@ fn task_tables(events: &mut [Event]) {
             Event::Start(Tag::Item) => {
                 // In a loose list, the box comes after the paragraph's start.
                 let at = if matches!(events.get(i + 1), Some(Event::Start(Tag::Paragraph))) { i + 2 } else { i + 1 };
-                let boxed = matches!(events.get(at), Some(Event::Text(t)) if BOXES.contains(&t.as_ref()));
+                let boxed = boxes.contains(&at);
                 if let Some(list) = open.last_mut() {
                     list.boxed &= boxed;
                     list.items.push((i, at));
@@ -212,7 +275,7 @@ fn task_tables(events: &mut [Event]) {
                 }
                 events[list.start] = Event::Html(CowStr::from("<table cellspacing=\"0\" cellpadding=\"0\">\n"));
                 for &(item, at) in &list.items {
-                    let shown = if let Event::Text(t) = &events[at] { t.to_string() } else { String::new() };
+                    let shown = if let Event::Html(t) = &events[at] { t.to_string() } else { String::new() };
                     events[item] = Event::Html(CowStr::from(format!("<tr><td valign=\"top\">{shown}</td><td>")));
                     events[at] = Event::Text(CowStr::from(""));
                 }
@@ -348,5 +411,27 @@ mod tests {
         assert!(numbered.contains("<ol>") && !numbered.contains("<table"), "{numbered}");
         // Written out of a list, it is only words.
         assert!(description_html("[ ] not an item").contains("[ ] not an item"));
+    }
+
+    #[test]
+    fn boxes_tick_their_item_when_asked() {
+        let notes = "Bring:\n\n- [ ] Carte Vitale\n- [x] Last blood test\n- [-] Vaccination record\n\n> - [ ] Quoted\n\n    - [ ] code";
+        let read = description_html(notes);
+        assert!(!read.contains("sioul-check"), "for reading: {read}");
+        assert!(read.contains("\u{229f}\u{a0}</td><td>Vaccination record"), "not needed: its own box: {read}");
+        let html = description_html_tickable(notes);
+        // Each by its line in the notes.
+        for (line, glyph) in [(2, '\u{2610}'), (3, '\u{2611}'), (4, '\u{229f}')] {
+            assert!(html.contains(&format!("<a href=\"sioul-check:{line}\">{glyph}</a>")), "line {line}: {html}");
+        }
+        // A box the checklist does not hold stays for reading; a line of code is no box.
+        assert_eq!(html.matches("sioul-check:").count(), 3, "{html}");
+        assert!(html.contains("<td valign=\"top\">\u{2610}\u{a0}</td><td>Quoted"), "{html}");
+        // In a loose list, and after a group's name and words: the same lines.
+        let loose = "Words first.\n\nCheck:\n\n- [ ] Keys\n\n- [ ] Phone";
+        let html = description_html_tickable(loose);
+        assert!(html.contains("sioul-check:4\"") && html.contains("sioul-check:6\""), "{html}");
+        // "[-]" anywhere but an item's start is words.
+        assert!(description_html_tickable("A [-] B").contains("A [-] B"));
     }
 }

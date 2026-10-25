@@ -1420,6 +1420,13 @@ task-show-done = Done too
 task-title = Title
 task-steps = Steps
 task-add-step = A step, in one line
+checklist-add = Add a list to tick
+checklist-done = Done
+checklist-open = To do
+checklist-skipped = Not needed this time
+checklist-stale = This list changed since it was shown: here it is again.
+checklist-with-others = This list belongs to a meeting with others: its organizer writes it.
+notes-google-too-long = Google Tasks keeps notes of 8,192 characters at most: these are longer, and their end would be lost there. Shorten them, or move the task to another list.
 task-step-earlier = Move up
 task-step-later = Move down
 task-waits-title = Waits for
@@ -6122,6 +6129,12 @@ agent-steps-added = An AI agent added { $count } { $n ->
         [one] step
        *[other] steps
     } to “{ $title }”.
+agent-item-checked = An AI agent marked “{ $item }” { $state ->
+        [done] done
+        [skipped] not needed this time
+       *[open] to do
+    } in “{ $title }”.
+agent-list-written = An AI agent wrote the list of “{ $title }”.
 agent-step-moved = An AI agent moved the step “{ $title }” among the steps of “{ $whole }”.
 agent-task-to-event = An AI agent made the task “{ $title }” an appointment, in { $calendar }.
 agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.

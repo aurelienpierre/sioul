@@ -1669,4 +1669,33 @@ mod tests {
         // Not a step of it: said.
         assert!(reorder(&steps, "zzz", None).is_err() && reorder(&steps, "a", Some("zzz")).is_err());
     }
+
+    /// A step with its place and a checklist: a tick changes its notes' line
+    /// alone; Nextcloud Tasks' way of writing notes (the line taken out, then
+    /// put back at the end) leaves the list as it was.
+    #[test]
+    fn a_tick_touches_only_the_notes() {
+        let notes = "Take the green folder.\n\nBring:\n- [ ] Carte Vitale\n- [ ] Mutuelle, card";
+        let text = LETTER.replace("DESCRIPTION:With the form \r\n and the copy.", &format!("DESCRIPTION:{}", lines::escape(notes))).replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
+        let task = task_of_text(&text, &paris()).unwrap();
+        assert_eq!(task.notes, notes);
+        let line = crate::checklist::items(&task.notes)[1].line;
+        let edit = TaskEdit { notes: crate::checklist::ticked(&task.notes, line, crate::checklist::Mark::Done).unwrap(), ..TaskEdit::of(&task) };
+        let ticked = apply(&text, &edit, &paris(), &now()).unwrap();
+        let (before, after) = (lines::unfold(&text), lines::unfold(&ticked));
+        let gone: Vec<String> = before.iter().filter(|l| !after.contains(l)).map(|l| lines::name(l)).collect();
+        assert_eq!(gone, ["DTSTAMP", "DESCRIPTION"], "{ticked}");
+        assert!(ticked.contains("X-APPLE-SORT-ORDER:814579300") && ticked.contains("X-OTHER-APP:keep me") && ticked.contains("BEGIN:VALARM"));
+        let read = task_of_text(&ticked, &paris()).unwrap();
+        assert_eq!(read.notes, "Take the green folder.\n\nBring:\n- [ ] Carte Vitale\n- [x] Mutuelle, card");
+        // Nextcloud Tasks writes the notes again: the line out, then in at the component's end.
+        let unfolded = lines::unfold(&ticked);
+        let description = unfolded.iter().find(|l| lines::name(l) == "DESCRIPTION").unwrap().clone();
+        let mut moved: Vec<String> = unfolded.iter().filter(|l| **l != description).cloned().collect();
+        let end = moved.iter().rposition(|l| l == "END:VTODO").unwrap();
+        moved.insert(end, description);
+        let rewritten = task_of_text(&lines::fold(&moved), &paris()).unwrap();
+        assert_eq!(crate::checklist::items(&rewritten.notes), crate::checklist::items(&read.notes));
+        assert_eq!(rewritten.sort_order, Some(814_579_300));
+    }
 }

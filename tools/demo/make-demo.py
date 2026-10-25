@@ -1347,7 +1347,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
                        notes=t("The week's steps, in Sioul's Tasks.", "Les étapes de la semaine, dans les Tâches de Sioul."), weekly=True)),
         ("personal", event(c, "doctor", t("Dr Varga: check-up", "Dr Varga : bilan"), c.weekday_after(1), "09:30", "10:00",
                            location=t("Riverside Health Centre, 5 Rue Imaginaire, Lyon", "Centre de santé des Berges, 5 rue Imaginaire, Lyon"),
-                           notes=t("Bring the blood test results.", "Apporter les résultats de la prise de sang."))),
+                           # What to bring, as a list to tick (docs/tasks.md, "Checklists").
+                           notes=t("Bring:\n- [ ] The blood test results\n- [ ] Carte Vitale", "À emporter :\n- [ ] Les résultats de la prise de sang\n- [ ] La carte Vitale"))),
         ("work", event(c, "accountant", t("Call with Marc (accountant)", "Appel avec Marc (comptable)"), c.weekday_after(2), "11:00", "11:30",
                        location=t("Phone: +33 4 65 71 63 25", "Téléphone : +33 4 65 71 63 25"),
                        notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), project="taxes-2026")),

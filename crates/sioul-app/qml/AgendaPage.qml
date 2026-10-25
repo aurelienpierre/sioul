@@ -30,6 +30,15 @@ Item {
     function takeShown() {
         if (page.visible)
             page.agendaText = page.sioul.agenda
+        // The open event read again, with what changed in it (its list ticked): by its file and start.
+        if (page.opened !== null) {
+            const key = page.opened.key
+            const start = page.opened.start
+            for (const day of page.shown.days)
+                for (const event of day.events)
+                    if (event.key === key && event.start === start)
+                        page.opened = event
+        }
         // An event asked for by a link, once its days are shown: its details.
         if (page.wanted !== "" && page.showWanted())
             page.wanted = ""
@@ -721,6 +730,14 @@ Item {
                     theme: page.theme
                     window: page.window
                     markdown: page.opened ? page.opened.notes : ""
+                    // Its checklist ticked here: a task's that can be changed, an event's of
+                    // a calendar you write to, never an invitation's (its organizer's words).
+                    tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || (page.opened.organizer === "" && page.opened.attendees.length === 0))
+                    onCheck: (line, state) => {
+                        const problem = page.openedTask ? page.sioul.checkItem("task", page.opened.task, line, state) : page.sioul.checkItem("event", page.opened.key, line, state)
+                        if (problem !== "")
+                            page.sioul.status = problem
+                    }
                 }
                 Label {
                     visible: page.moreShown && page.opened !== null && page.opened.organizer !== ""

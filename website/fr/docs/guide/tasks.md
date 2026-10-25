@@ -229,6 +229,17 @@ Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se d�
 - **Le créneau garde le titre de la tâche**, changé avec elle.
 - **Vos repas** se décalent après un créneau comme après tout événement.
 
+### Une liste à cocher {#a-list-to-tick}
+
+Les notes d’une tâche, ou d’un événement, peuvent tenir une liste : ce qu’il faut emporter, ce qu’il faut vérifier. Écrivez-la dans les notes en lignes qui commencent par une case, `- [ ] Carte Vitale`, ou passez par **Ajouter une liste à cocher** sous les notes, dans le formulaire de la tâche comme dans celui de l’événement. Une ligne qui finit par deux-points juste avant les éléments nomme leur groupe (« À emporter : », « À vérifier : ») ; les lignes en retrait sous un élément en sont le détail.
+
+- **Cochez-la là où vous la lisez** : dans les détails de la tâche, ou sous **Plus** pour un événement, un appui sur une case la coche, un autre la décoche. Son menu (clic droit, ou appui long sur un écran tactile) propose aussi **Pas besoin cette fois**, qui n’est ni fait ni manqué.
+- **Rien ne la compte.** Un élément n’est pas une tâche : il n’est jamais planifié, jamais en retard, jamais demandé. Pour faire de quelque chose une étape à part, ajoutez une étape.
+- **Les autres programmes montrent la liste telle qu’elle est écrite**, une ligne chacun, « - [ ] Carte Vitale » ; vous pouvez y cocher un élément en tapant un x entre les crochets.
+- **Cochée sur deux appareils à la fois**, chaque coche est gardée : deux appareils qui cochent des éléments différents n’en perdent aucun.
+- **Seules vos propres listes se cochent** : les notes d’une invitation, ou une liste que vous pouvez seulement lire, montrent leurs cases telles qu’elles sont.
+- **Dans une liste Google Tasks**, les notes tiennent 8 192 caractères au plus : Sioul le dit avant qu’elles ne soient coupées, et garde ce que vous avez tapé.
+
 ### Ce qu’elle demande, et ce qu’elle apporte {#what-it-costs-and-what-it-gives-back}
 
 Quatre tuiles, dans le formulaire d’une tâche et dans celui d’un événement, deux par deux (l’une sous l’autre sur un téléphone) : **Réflexion**, **Émotions**, **Inquiétude** et **Corps et sens**, puis **Ce que ça apporte** en dessous. Chacune prend un nombre de 0 à 10, comme vous le ressentez, et pose en petit une question sur ce qui compte :
@@ -474,6 +485,8 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 | Quoi | Écrit comme |
 |---|---|
 | Une étape d’une tâche plus grande | `RELATED-TO;RELTYPE=PARENT:<UID>`, dans l’étape |
+| Sa place parmi les étapes | `X-APPLE-SORT-ORDER`, comme l’écrivent Nextcloud Tasks, Tasks.org et Rappels d’Apple |
+| Une liste à cocher | des lignes d’une liste de tâches GitHub dans ses notes (`DESCRIPTION`) : `- [ ]`, `- [x]`, et `- [-]` pour pas besoin cette fois |
 | Attend une autre tâche | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), dans la tâche qui attend |
 | Attend, avec un délai (« la réponse vient sous deux semaines ») | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import`, et par **Puis attendre** dans le formulaire. Lu de tout programme, `NEXT` aussi |
 | Peut commencer le ; la date demandée | `DTSTART` ; `DUE` |

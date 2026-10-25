@@ -997,11 +997,47 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed })
 }
 
+/// The notes with the checklist's item on `line` ticked: "toggle" (to do or
+/// not needed becomes done, done to do again), "done", "open", "skipped".
+/// The list changed since it was shown: said, nothing written.
+pub(crate) fn ticked_notes(notes: &str, line: usize, state: &str) -> Result<String, String> {
+    let stale = || tr().text("checklist-stale", None);
+    let item = sioul_core::checklist::items(notes).into_iter().find(|i| i.line == line).ok_or_else(stale)?;
+    let mark = if state == "toggle" { sioul_core::checklist::toggled(item.mark) } else { sioul_core::checklist::Mark::parse(state).ok_or_else(stale)? };
+    sioul_core::checklist::ticked(notes, line, mark).map_err(|_| stale())
+}
+
+/// A task's checklist ticked (`ticked_notes`): its DESCRIPTION alone written.
+/// Returns what went wrong, else "".
+pub(crate) fn check_item(qt: &QtThread, shared: &Arc<Shared>, uid: &str, line: usize, state: &str) -> String {
+    let zone = TimeZone::system();
+    let result = change(qt, shared, uid, |text| {
+        let task = tasks::task_of_text(text, &zone).ok_or_else(|| tr().text("task-gone", None))?;
+        let mut edit = TaskEdit::of(&task);
+        edit.notes = ticked_notes(&task.notes, line, state)?;
+        tasks::apply(text, &edit, &zone, &Zoned::now())
+    });
+    result.err().unwrap_or_default()
+}
+
+/// Notes that the task's list would cut (Google Tasks keeps 8,192 characters): said before anything is written.
+fn notes_fit(task: &Task, notes: &str) -> Result<(), String> {
+    let config = load_config();
+    let provider = tasks::lists().into_iter().find(|c| format!("{}/{}", c.account, c.id) == task.list_id).map(|c| sioul_core::capabilities::provider_of_collection(config.account(&c.account), &c));
+    if provider.is_some_and(|p| sioul_core::capabilities::notes_too_long(p, notes)) { Err(tr().text("notes-google-too-long", None)) } else { Ok(()) }
+}
+
 /// Saves the task form; an empty UID makes a new task in `list`. Returns {"uid"} or {"error"}.
 pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, list: &str) -> String {
     let result = serde_json::from_str::<TaskEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
         if uid.is_empty() {
             return create(qt, shared, &edit, list);
+        }
+        // Notes its list would cut: said, nothing written (the field keeps what was typed).
+        if let Ok(task) = find(shared, uid)
+            && task.notes != edit.notes
+        {
+            notes_fit(&task, &edit.notes)?;
         }
         change(qt, shared, uid, |text| tasks::apply(text, &edit, &TimeZone::system(), &Zoned::now()))?;
         write_gaps(qt, shared, uid, &edit);

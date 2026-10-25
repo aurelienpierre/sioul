@@ -346,9 +346,17 @@ pub mod qobject {
         fn preview(self: &Sioul, markdown: &QString) -> QString;
 
         /// The notes of a task or an event, their Markdown drawn safely
-        /// (`description::description_html`): no HTML, no picture, links for the browser.
+        /// (`description::description_html`): no HTML, no picture, links for
+        /// the browser; with `tickable`, each box of their checklist a link
+        /// `sioul-check:<line>` (`description_html_tickable`).
         #[qinvokable]
-        fn description_html(self: &Sioul, markdown: &QString) -> QString;
+        fn description_html(self: &Sioul, markdown: &QString, tickable: bool) -> QString;
+
+        /// An item of a checklist ticked, by its line in the notes: of a task
+        /// (`kind` "task", `key` its UID) or an event ("event", its file);
+        /// `state` "toggle", "done", "open" or "skipped". Returns what went wrong, else "".
+        #[qinvokable]
+        fn check_item(self: Pin<&mut Sioul>, kind: &QString, key: &QString, line: i32, state: &QString) -> QString;
 
         /// Sends after ten seconds to undo; returns what stops it now, else "".
         #[qinvokable]
@@ -3992,8 +4000,15 @@ impl qobject::Sioul {
         QString::from(&sioul_core::compose::markdown_html(&markdown.to_string()))
     }
 
-    fn description_html(&self, markdown: &QString) -> QString {
-        QString::from(&sioul_core::description::description_html(&markdown.to_string()))
+    fn description_html(&self, markdown: &QString, tickable: bool) -> QString {
+        let markdown = markdown.to_string();
+        QString::from(&if tickable { sioul_core::description::description_html_tickable(&markdown) } else { sioul_core::description::description_html(&markdown) })
+    }
+
+    fn check_item(self: Pin<&mut Self>, kind: &QString, key: &QString, line: i32, state: &QString) -> QString {
+        let (key, state) = (key.to_string(), state.to_string());
+        let Ok(line) = usize::try_from(line) else { return QString::from(&tr().text("checklist-stale", None)) };
+        QString::from(&if kind.to_string() == "event" { pim::check_event_item(&self.qt_thread(), &self.shared(), &key, line, &state) } else { work::check_item(&self.qt_thread(), &self.shared(), &key, line, &state) })
     }
 
     fn send(self: Pin<&mut Self>, id: &QString) -> QString {
@@ -6026,7 +6041,8 @@ impl qobject::Sioul {
         // "health-gpg" a prescription's medicines and their takes as rows, and the security key's
         // GnuPG steps as buttons with their commands to copy (docs/health.md, docs/client.md),
         // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "steps" a
-        // task's steps moved in their order, its step menu and its form (docs/tasks.md), "compose"
+        // task's steps moved in their order, its step menu and its form (docs/tasks.md), "checklist" a
+        // task's and an event's lists ticked (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
         // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
@@ -6043,7 +6059,7 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

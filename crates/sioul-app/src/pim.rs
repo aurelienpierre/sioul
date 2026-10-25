@@ -476,6 +476,39 @@ pub(crate) fn with_others(text: &str) -> bool {
     agenda::with_others(text)
 }
 
+/// The notes of an event with an item of their checklist ticked (`line`,
+/// "toggle", "done", "open" or "skipped"), its DESCRIPTION alone written:
+/// one character of it (`checklist::ticked`). Refused for a calendar that can
+/// only be read, and for a meeting with others: its list is its
+/// organizer's, and its server would send the change to every guest.
+/// Returns what went wrong, else "".
+pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, line: usize, state: &str) -> String {
+    let checked = || -> Result<(), String> {
+        let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
+        let read_only = vdir::collections(Kind::Calendars).into_iter().find(|c| path.parent() == Some(c.dir.as_path())).is_none_or(|c| c.read_only);
+        if read_only {
+            return Err(tr().text("agenda-read-only", None));
+        }
+        let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        if with_others(&current) {
+            return Err(tr().text("checklist-with-others", None));
+        }
+        let zone = TimeZone::system();
+        let mut edit = agenda::edit_of_text(&current, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
+        edit.notes = crate::work::ticked_notes(&edit.notes, line, state)?;
+        let text = agenda::apply(&current, &edit, &zone)?;
+        if text != current {
+            vdir::write_item(&path, &text)?;
+            if let Some(account) = account_of(&path) {
+                nudge(shared, &account);
+            }
+            show_pim(qt, shared);
+        }
+        Ok(())
+    };
+    checked().err().unwrap_or_default()
+}
+
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
 pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, calendar: &str) -> Result<(), String> {
     let saved = write_event(key, edit, calendar)?;

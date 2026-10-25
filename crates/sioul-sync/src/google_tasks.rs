@@ -425,7 +425,7 @@ pub fn fields_of(task: &tasks::Task) -> Value {
     let due = task.due_date().map(|d| format!("{d}T00:00:00.000Z"));
     json!({
         "title": task.title.chars().take(1024).collect::<String>(),
-        "notes": task.notes.chars().take(8192).collect::<String>(),
+        "notes": task.notes.chars().take(sioul_core::capabilities::GOOGLE_NOTES).collect::<String>(),
         "status": if done { "completed" } else { "needsAction" },
         "completed": completed,
         "due": due,

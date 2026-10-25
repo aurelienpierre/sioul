@@ -65,6 +65,16 @@ pub fn makes_collections(provider: Provider) -> bool {
     !matches!(provider, Provider::Google)
 }
 
+/// The longest notes a Google Tasks list keeps, in characters (its API's
+/// limit): longer, they lose their tail there, a checklist its last items.
+pub const GOOGLE_NOTES: usize = 8192;
+
+/// Whether notes would lose their tail in a list kept by `provider`: said,
+/// and nothing written, before it happens.
+pub fn notes_too_long(provider: Provider, notes: &str) -> bool {
+    provider == Provider::GoogleTasks && notes.chars().count() > GOOGLE_NOTES
+}
+
 /// What a task uses that a list kept by `provider` would not keep, as words'
 /// keys ("waits", "repeat"…): what to say before moving it there.
 pub fn task_losses(task: &Task, to: Provider) -> Vec<&'static str> {

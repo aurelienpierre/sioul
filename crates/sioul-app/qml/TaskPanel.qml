@@ -1179,6 +1179,9 @@ Panel {
                 theme: panel.theme
                 window: panel.window
                 markdown: panel.detail ? panel.detail.edit.notes : ""
+                // Its checklist ticked here, when the task can be changed (docs/tasks.md, "Checklists").
+                tickable: panel.canEdit && !panel.fresh
+                onCheck: (line, state) => error.text = panel.sioul.checkItem("task", panel.uid, line, state)
             }
 
             // Done: how it was, if you want to say. Filled in with what was
@@ -1681,6 +1684,21 @@ Panel {
                 onEditingFinished: {
                     if (panel.detail && text !== panel.detail.edit.notes)
                         panel.change("notes", text)
+                }
+            }
+            // A list to tick, in the notes: one more item, its words to type (docs/tasks.md, "Checklists").
+            Button {
+                objectName: "taskAddChecklist"
+                visible: taskNotes.visible && taskNotes.enabled
+                flat: true
+                text: "+  " + panel.sioul.text("checklist-add")
+                onClicked: {
+                    const before = taskNotes.text.replace(/\s+$/, "")
+                    // After an item, one more under it; after words, a blank line first.
+                    const afterItem = /(^|\n)\s*([-*+]|\d+[.)])\s+\[[ xX-]\][^\n]*$/.test(before)
+                    taskNotes.text = before === "" ? "- [ ] " : before + (afterItem ? "\n" : "\n\n") + "- [ ] "
+                    taskNotes.forceActiveFocus()
+                    taskNotes.cursorPosition = taskNotes.length
                 }
             }
 

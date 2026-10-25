@@ -229,6 +229,17 @@ While you sleep ([Hours](hours.md#sleep): the night from winding down to waking,
 - **The block keeps the task's title**, changed with it.
 - **Your meals** move past a block as past any event.
 
+### A list to tick {#a-list-to-tick}
+
+A task's notes, or an event's, can hold a list: what to bring, what to check. Write it in the notes as lines that start with a box, `- [ ] Carte Vitale`, or use **Add a list to tick** under the notes, in the task's form and in the event's. A line that ends with a colon just before the items names their group ("Bring:", "Check:"); lines indented under an item are its detail.
+
+- **Tick it where you read it**: in the task's details, or the event's under **More**, a tap on a box ticks it, and another takes the tick away. Its menu (right click, or a long press on a touch screen) also says **Not needed this time**, which is neither done nor missed.
+- **Nothing counts it.** An item is not a task: it is never planned, never late, never asked about. To make something a step of its own, add a step.
+- **Other programs show the list as it is written**, a line each, "- [ ] Carte Vitale"; there, you can tick an item by typing an x between the brackets.
+- **Ticked on two devices at once**, each tick is kept: two devices ticking different items never lose either.
+- **Only your own lists tick**: an invitation's notes, or a list you can only read, show their boxes as they are.
+- **In a Google Tasks list**, notes hold 8,192 characters at most: Sioul says so before they would be cut, and keeps what you typed.
+
 ### What it costs, and what it gives back {#what-it-costs-and-what-it-gives-back}
 
 Four tiles, in a task's form and in an event's, two by two (one under the other on a phone): **Thinking**, **Feelings**, **Worry** and **Body and senses**, then **Gives back** under them. Each takes a number from 0 to 10, as you feel it, and asks a question in small print about what counts:
@@ -474,6 +485,8 @@ Each task is a `VTODO` (RFC 5545 §3.6.2) in a CalDAV task list, one file each, 
 | What | Written as |
 |---|---|
 | A step of a bigger task | `RELATED-TO;RELTYPE=PARENT:<UID>`, in the step |
+| Its place among the steps | `X-APPLE-SORT-ORDER`, as Nextcloud Tasks, Tasks.org and Apple Reminders write it |
+| A list to tick | lines of a GitHub task list in its notes (`DESCRIPTION`): `- [ ]`, `- [x]`, and `- [-]` for not needed this time |
 | Waits for another task | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), in the task that waits |
 | Waits, with a gap ("the answer comes within two weeks") | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`, and by the form's **Then wait**. Read from any program, `NEXT` too |
 | Can start from; the date asked | `DTSTART`; `DUE` |

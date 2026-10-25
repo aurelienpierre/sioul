@@ -401,7 +401,7 @@ const READING: &[&str] = &[
     "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -1628,4 +1628,70 @@ fn steps_are_added_and_moved_in_their_order() {
     for task in sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().filter(|t| t.uid == uid || t.uid == other || t.parent() == Some(uid.as_str()) || t.parent() == Some(other.as_str())) {
         let _ = std::fs::remove_file(&task.key);
     }
+}
+
+/// A task's checklist read apart from its words, ticked by an item's words or
+/// number, written by groups (25 October 2026): its words rewritten never wipe
+/// it; a stale name is refused with the items as they are; an event of a
+/// meeting with others is refused; each change said with Undo.
+#[test]
+fn checklists_are_read_apart_ticked_and_kept() {
+    home();
+    let mut server = server();
+    let notes = "Take the green folder.\n\nBring:\n- [ ] Carte Vitale\n- [ ] Mutuelle card";
+    let made = call(&mut server, "add_task", json!({ "title": "Going to the dentist", "notes": notes }));
+    let uid = made["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let got = call(&mut server, "get_task", json!({ "task": uid }));
+    assert_eq!(got["structuredContent"]["notes"], "Take the green folder.", "{got}");
+    let items = &got["structuredContent"]["checklist"];
+    assert_eq!((items[0]["text"].as_str(), items[1]["group"].as_str(), items[1]["state"].as_str()), (Some("Carte Vitale"), Some("Bring"), Some("open")), "{got}");
+    let file = |uid: &str| sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().find(|t| t.uid == uid).unwrap();
+    // Ticked by its words, accents and capitals aside; by its number.
+    let ticked = call(&mut server, "check_item", json!({ "of": uid, "item": "carte vitale", "state": "done" }));
+    assert_eq!(ticked["isError"], false, "{ticked}");
+    assert!(text(&ticked).contains("1. [x] Carte Vitale (Bring)"), "{ticked}");
+    assert!(last_said().line.contains("Carte Vitale"));
+    assert_eq!(call(&mut server, "check_item", json!({ "of": uid, "item": "2", "state": "skipped" }))["isError"], false);
+    assert_eq!(file(&uid).notes, "Take the green folder.\n\nBring:\n- [x] Carte Vitale\n- [-] Mutuelle card");
+    assert!(last_said().put_back(), "Undo");
+    assert!(file(&uid).notes.ends_with("- [ ] Mutuelle card"));
+    // A stale name: refused, with the items as they are now.
+    let stale = call(&mut server, "check_item", json!({ "of": uid, "item": "Passport", "state": "done" }));
+    assert_eq!(stale["isError"], true, "{stale}");
+    assert!(text(&stale).contains("1. [x] Carte Vitale") && text(&stale).contains("2. [ ] Mutuelle card"), "{stale}");
+    // Its words rewritten: the list kept as it is; a list in them refused.
+    let rewritten = call(&mut server, "update_task", json!({ "task": uid, "notes": "Ask about the crown." }));
+    assert_eq!(rewritten["isError"], false, "{rewritten}");
+    assert_eq!(file(&uid).notes, "Ask about the crown.\n\nBring:\n- [x] Carte Vitale\n- [ ] Mutuelle card");
+    let wiped = call(&mut server, "update_task", json!({ "task": uid, "notes": "- [ ] Only this" }));
+    assert_eq!(wiped["isError"], true, "{wiped}");
+    // Written by groups: the free text kept, a tick kept for the same words.
+    let set = call(&mut server, "set_checklist", json!({ "of": uid, "groups": [{ "name": "Bring", "items": ["Carte Vitale", { "text": "X-rays", "state": "open" }] }, { "name": "Check", "items": ["The address"] }] }));
+    assert_eq!(set["isError"], false, "{set}");
+    assert_eq!(file(&uid).notes, "Ask about the crown.\n\nBring:\n- [x] Carte Vitale\n- [ ] X-rays\n\nCheck:\n- [ ] The address");
+    assert!(last_said().line.contains("Going to the dentist"));
+    for arguments in [json!({ "of": uid, "groups": [{ "name": "Bring", "items": [""] }] }), json!({ "of": uid, "groups": [{ "items": [{ "text": "A", "state": "lost" }] }] }), json!({ "of": uid, "groups": [{ "title": "Bring", "items": [] }] })] {
+        assert_eq!(call(&mut server, "set_checklist", arguments.clone())["isError"], true, "{arguments}");
+    }
+    // A meeting with others: its list is its organizer's.
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let meeting = agenda.dir.join("list-meeting.ics");
+    std::fs::write(&meeting, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:list-meeting\r\nDTSTART:20261121T090000Z\r\nDTEND:20261121T100000Z\r\nSUMMARY:Board\r\nDESCRIPTION:Bring:\\n- [ ] Minutes\r\nORGANIZER:mailto:chair@example.org\r\nATTENDEE:mailto:jane@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    let kept = std::fs::read_to_string(&meeting).unwrap();
+    let got = call(&mut server, "get_event", json!({ "event": "sioul:event/list-meeting" }));
+    assert_eq!(got["structuredContent"]["checklist"][0]["text"], "Minutes", "{got}");
+    for (tool, arguments) in [("check_item", json!({ "of": "sioul:event/list-meeting", "item": "Minutes", "state": "done" })), ("set_checklist", json!({ "of": "sioul:event/list-meeting", "groups": [{ "items": ["Pen"] }] }))] {
+        assert_eq!(call(&mut server, tool, arguments)["isError"], true, "{tool}");
+    }
+    assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept);
+    // An event of its own: ticked.
+    let event = call(&mut server, "add_event", json!({ "title": "Optician", "start": "2026-11-23T10:00", "end": "2026-11-23T10:30", "notes": "- [ ] Old glasses" }));
+    let event_uri = event["structuredContent"]["uri"].as_str().unwrap().to_string();
+    assert_eq!(call(&mut server, "check_item", json!({ "of": event_uri, "item": "1", "state": "done" }))["isError"], false);
+    let event_file = PathBuf::from(event["structuredContent"]["file"].as_str().unwrap());
+    assert_eq!(sioul_core::agenda::edit_of(&event_file).unwrap().notes, "- [x] Old glasses");
+    // Taken out again: these tests share one home.
+    let _ = std::fs::remove_file(&meeting);
+    let _ = std::fs::remove_file(&event_file);
+    let _ = std::fs::remove_file(file(&uid).key);
 }

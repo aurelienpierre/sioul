@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::agentwrites::{FileChange, Said};
 use sioul_core::appointments;
+use sioul_core::checklist::{self, Mark};
 use sioul_core::consent::Consent;
 use sioul_core::links::{self, Loaded};
 use sioul_core::tasks::{self, Status, Task, TaskEdit};
@@ -103,7 +104,9 @@ fn event_json(found: &Found, edit: &EventEdit, s: &Session) -> Value {
         "end": edit.end,
         "all_day": edit.all_day,
         "location": edit.location,
-        "notes": edit.notes,
+        // The free text and the checklist apart (`checklist`): notes written back never wipe the list.
+        "notes": checklist::free_text(&edit.notes),
+        "checklist": checklist_json(&edit.notes),
         "repeat": edit.repeat,
         "remind": edit.remind,
         "before": edit.margins.before,
@@ -160,7 +163,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.location = args.line("location")?.unwrap_or_default();
     }
     if args.has("notes") {
-        edit.notes = args.body("notes")?;
+        edit.notes = free_text_given(args, &edit.notes)?;
     }
     if let Some(repeat) = args.text("repeat")? {
         if !matches!(repeat.as_str(), "none" | "daily" | "weekly" | "monthly" | "yearly") {
@@ -256,6 +259,201 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
     Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "deleted": true, "sent": false }) })
 }
 
+/// A checklist as data: each item's place, group, words, state, detail.
+fn checklist_json(notes: &str) -> Value {
+    Value::Array(checklist::items(notes).iter().map(|i| json!({ "number": i.number, "group": i.group, "text": i.text, "state": i.mark.id(), "detail": i.detail })).collect())
+}
+
+/// A checklist in lines: `1. [x] Carte Vitale (Bring)`.
+fn checklist_lines(notes: &str) -> Vec<String> {
+    checklist::items(notes).iter().map(|i| format!("{}. [{}] {}{}", i.number, i.mark.char(), one_line(&i.text), if i.group.is_empty() { String::new() } else { format!(" ({})", one_line(&i.group)) })).collect()
+}
+
+/// The notes given (`notes`): their free text, the checklist they hold kept
+/// as it is (`checklist::with_free_text`). Lines of a checklist in them are
+/// refused: the list is set by set_checklist, ticked by check_item.
+fn free_text_given(args: &Args, notes: &str) -> Result<String, String> {
+    let given = args.body("notes")?;
+    if !checklist::items(&given).is_empty() {
+        return Err("“notes” is the free text: the checklist (its “- [ ]” lines) is kept as it is; set_checklist writes it, check_item ticks it.".into());
+    }
+    Ok(checklist::with_free_text(notes, &given))
+}
+
+/// What holds a checklist, found for an agent: a task, or an event.
+enum Holder {
+    Task(Task),
+    Event(Found),
+}
+
+/// A task (its address, UID or words of its title) or an event (its address,
+/// sioul:event/…), whose checklist an agent may change.
+fn holder(s: &Session, desk: &Desk, wanted: &str) -> Result<Holder, String> {
+    if wanted.trim().starts_with("sioul:event/") {
+        let found = find_event(&desk.consent, wanted)?;
+        may_change(&desk.consent, &links::event_uri(&found.uid))?;
+        return Ok(Holder::Event(found));
+    }
+    let task = find_open_task(s, desk, wanted)?;
+    may_change(&desk.consent, &links::task_uri(&task.uid))?;
+    Ok(Holder::Task(task))
+}
+
+impl Holder {
+    fn title(&self) -> String {
+        match self {
+            Holder::Task(task) => task.title.clone(),
+            Holder::Event(found) => agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default(),
+        }
+    }
+
+    fn notes(&self) -> String {
+        match self {
+            Holder::Task(task) => task.notes.clone(),
+            Holder::Event(found) => agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.notes).unwrap_or_default(),
+        }
+    }
+
+    fn uri(&self) -> String {
+        match self {
+            Holder::Task(task) => links::task_uri(&task.uid),
+            Holder::Event(found) => links::event_uri(&found.uid),
+        }
+    }
+
+    /// Its notes written as `notes`, their line alone; what it was, to undo.
+    /// Refused where the window refuses: a list or a calendar that can only be
+    /// read, a meeting with others (its organizer's words), notes Google
+    /// Tasks would cut.
+    fn write_notes(&self, s: &Session, notes: &str) -> Result<Option<FileChange>, String> {
+        let zone = TimeZone::system();
+        let (path, current, text) = match self {
+            Holder::Task(task) => {
+                if task.read_only {
+                    return Err(s.tr.text("task-read-only", None));
+                }
+                let provider = tasks::lists().into_iter().find(|c| format!("{}/{}", c.account, c.id) == task.list_id).map(|c| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), &c));
+                if provider.is_some_and(|p| sioul_core::capabilities::notes_too_long(p, notes)) {
+                    return Err(s.tr.text("notes-google-too-long", None));
+                }
+                let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+                let edit = TaskEdit { notes: notes.to_string(), ..TaskEdit::of(task) };
+                let text = tasks::apply(&current, &edit, &zone, &Zoned::now())?;
+                (PathBuf::from(&task.key), current, text)
+            }
+            Holder::Event(found) => {
+                if found.calendar.read_only {
+                    return Err(s.tr.text("agenda-read-only", None));
+                }
+                if agenda::with_others(&found.text) {
+                    return Err(s.tr.text("checklist-with-others", None));
+                }
+                let mut edit = agenda::edit_of_text(&found.text, &zone).ok_or("This event's file does not read.")?;
+                edit.notes = notes.to_string();
+                (found.path.clone(), found.text.clone(), agenda::apply(&found.text, &edit, &zone)?)
+            }
+        };
+        if text == current {
+            return Ok(None);
+        }
+        vdir::write_item(&path, &text)?;
+        Ok(Some(FileChange::of(&path, Some(current))))
+    }
+}
+
+pub fn check_item(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let holder = holder(s, &desk, &args.needed("of")?)?;
+    let state = args.needed("state")?;
+    let mark = Mark::parse(&state).ok_or_else(|| format!("“state” is done, open or skipped; not “{}”.", one_line(&state)))?;
+    let notes = holder.notes();
+    let wanted = args.needed("item")?;
+    // Named by its words or its place in the list as it is now: never a guess on a stale reading.
+    let item = checklist::find(&notes, &wanted).map_err(|now| {
+        let listed = if now.is_empty() { "it has no list".to_string() } else { format!("its items now: {}", checklist_lines(&notes).join("; ")) };
+        format!("No item “{}” alone in the list of “{}”: {listed}. Name one by its words or its number.", one_line(&wanted), one_line(&holder.title()))
+    })?;
+    let ticked = checklist::ticked(&notes, item.line, mark).map_err(|_| "The list changed while it was read: read it again.".to_string())?;
+    let title = holder.title();
+    let mut lines = Vec::new();
+    match holder.write_notes(s, &ticked)? {
+        Some(change) => {
+            let line = s.say("agent-item-checked", &[("item", one_line(&item.text)), ("state", mark.id().to_string()), ("title", one_line(&title))]);
+            say_in_window(line.clone(), vec![change]);
+            lines.push(line);
+        }
+        None => lines.push("Nothing changed: the item says so already.".into()),
+    }
+    lines.extend(checklist_lines(&ticked));
+    Ok(Answer { text: lines.join("\n"), data: json!({ "uri": holder.uri(), "item": item.number, "state": mark.id(), "checklist": checklist_json(&ticked), "sent": false }) })
+}
+
+/// The groups asked: a name each ("" for none) and items, a text each or {text, state}.
+fn groups_asked(args: &Args) -> Result<Vec<checklist::Group>, String> {
+    let wrong = || "“groups” is a list of {name, items}: items a list of texts, or of {text, state}.".to_string();
+    let groups = args.raw("groups").and_then(Value::as_array).ok_or_else(wrong)?;
+    let mut out = Vec::new();
+    let mut count = 0;
+    for group in groups {
+        let fields = group.as_object().ok_or_else(wrong)?;
+        if let Some(other) = fields.keys().find(|k| !matches!(k.as_str(), "name" | "items")) {
+            return Err(format!("A group takes “name” and “items”, not “{}”.", one_line(other)));
+        }
+        let name = fields.get("name").and_then(Value::as_str).unwrap_or_default();
+        let mut entries = Vec::new();
+        for item in fields.get("items").and_then(Value::as_array).ok_or_else(wrong)? {
+            let entry = match item {
+                Value::String(text) => checklist::Entry { text: text.clone(), ..checklist::Entry::default() },
+                Value::Object(item) => {
+                    if let Some(other) = item.keys().find(|k| !matches!(k.as_str(), "text" | "state")) {
+                        return Err(format!("An item takes “text” and “state”, not “{}”.", one_line(other)));
+                    }
+                    let mark = match item.get("state").and_then(Value::as_str) {
+                        None => None,
+                        Some(word) => Some(Mark::parse(word).ok_or_else(|| format!("An item's “state” is done, open or skipped; not “{}”.", one_line(word)))?),
+                    };
+                    checklist::Entry { text: item.get("text").and_then(Value::as_str).ok_or_else(wrong)?.to_string(), mark, detail: Vec::new() }
+                }
+                _ => return Err(wrong()),
+            };
+            if one_line(&entry.text).trim().is_empty() {
+                return Err("An item has words.".into());
+            }
+            count += 1;
+            entries.push(entry);
+        }
+        out.push(checklist::Group { name: one_line(name), items: entries });
+    }
+    if count > MOST_ITEMS {
+        return Err(format!("A list holds {MOST_ITEMS} items at most: it is for scanning once."));
+    }
+    Ok(out)
+}
+
+/// The most items one list holds.
+pub const MOST_ITEMS: usize = 60;
+
+pub fn set_checklist(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let holder = holder(s, &desk, &args.needed("of")?)?;
+    let groups = groups_asked(args)?;
+    let notes = holder.notes();
+    // Its free text kept; an item of the same words keeps its tick when no state is given.
+    let written = checklist::written(&checklist::free_text(&notes), &groups, &notes);
+    let title = holder.title();
+    let mut lines = Vec::new();
+    match holder.write_notes(s, &written)? {
+        Some(change) => {
+            let line = s.say("agent-list-written", &[("title", one_line(&title))]);
+            say_in_window(line.clone(), vec![change]);
+            lines.push(line);
+        }
+        None => lines.push("Nothing changed: the list says so already.".into()),
+    }
+    lines.extend(checklist_lines(&written));
+    Ok(Answer { text: lines.join("\n"), data: json!({ "uri": holder.uri(), "checklist": checklist_json(&written), "sent": false }) })
+}
+
 fn find_open_task(s: &Session, desk: &Desk, wanted: &str) -> Result<Task, String> {
     let open = desk.open_tasks();
     read::find_task(s, &open, wanted).cloned()
@@ -266,7 +464,8 @@ fn task_json(task: &Task) -> Value {
         "uri": links::task_uri(&task.uid),
         "uid": task.uid,
         "title": task.title,
-        "notes": task.notes,
+        "notes": checklist::free_text(&task.notes),
+        "checklist": checklist_json(&task.notes),
         "location": task.location,
         "status": match task.status { Status::NeedsAction => "needs-action", Status::InProcess => "in-process", Status::Completed => "completed", Status::Cancelled => "cancelled" },
         "start": task.start,
@@ -302,7 +501,7 @@ pub fn get_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let (lines, steps) = steps_shown(&desk, &task.uid);
     let mut data = task_json(&task);
     data["steps"] = steps;
-    let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(lines).collect::<Vec<_>>().join("\n");
+    let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(lines).chain(checklist_lines(&task.notes)).collect::<Vec<_>>().join("\n");
     Ok(Answer { text, data })
 }
 
@@ -441,7 +640,7 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.title = title;
     }
     if args.has("notes") {
-        edit.notes = args.body("notes")?;
+        edit.notes = free_text_given(args, &edit.notes)?;
     }
     if args.has("location") {
         edit.location = args.line("location")?.unwrap_or_default();
@@ -463,6 +662,13 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     if let Some(m) = minutes(args, "after")? {
         edit.margins.after = m;
+    }
+    // Notes its list would cut (Google Tasks keeps 8,192 characters): said, nothing written.
+    if edit.notes != task.notes {
+        let provider = tasks::lists().into_iter().find(|c| format!("{}/{}", c.account, c.id) == task.list_id).map(|c| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), &c));
+        if provider.is_some_and(|p| sioul_core::capabilities::notes_too_long(p, &edit.notes)) {
+            return Err(s.tr.text("notes-google-too-long", None));
+        }
     }
     let mut text = tasks::apply(&current, &edit, &zone, &now)?;
     if let Some(status) = args.text("status")? {
