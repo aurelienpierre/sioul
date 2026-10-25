@@ -120,6 +120,7 @@ fn main() {
         "qml/RestCover.qml",
         "qml/DoseTaken.qml",
         "qml/DoubtLine.qml",
+        "qml/Description.qml",
         "qml/NeedsSection.qml",
         "qml/HealthTimeline.qml",
         "qml/HealthSettings.qml",

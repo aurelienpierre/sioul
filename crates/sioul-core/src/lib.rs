@@ -102,6 +102,7 @@
 //! - [`projectview`]: a project on one page: everything dated in it.
 //! - [`github`]: GitHub's issues and pull requests that are yours, as tasks.
 //! - [`notes`]: a folder of Markdown files, read the way Obsidian reads a vault.
+//! - [`description`]: the notes of a task or an event, Markdown drawn safely: no HTML, no picture, links for the browser.
 //! - [`links`]: links between everything: mail, tasks, events, contacts, notes, budget lines.
 //!
 //! ## Time and money
@@ -189,6 +190,7 @@ pub mod config;
 pub mod contracts;
 pub mod dayview;
 pub mod demands;
+pub mod description;
 pub mod doses;
 pub mod draftcopies;
 pub mod dose_reminders;

@@ -713,13 +713,14 @@ Item {
                     text: (page.moreShown ? "▾  " : "▸  ") + page.sioul.text("ui-more-details")
                     onClicked: page.moreShown = !page.moreShown
                 }
-                Label {
+                // Its notes, their Markdown drawn: an invitation's are its sender's words.
+                Description {
                     visible: page.moreShown && page.opened !== null && page.opened.notes !== ""
                     Layout.fillWidth: true
-                    text: page.opened ? page.opened.notes : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    markdown: page.opened ? page.opened.notes : ""
                 }
                 Label {
                     visible: page.moreShown && page.opened !== null && page.opened.organizer !== ""

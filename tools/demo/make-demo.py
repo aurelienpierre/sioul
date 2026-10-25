@@ -1440,7 +1440,10 @@ def write_tasks(p: Profile, mail: dict):
         ("work-tasks", task(c, "photos", t("Gather the library's photos", "Rassembler les photos de la médiathèque"), status="COMPLETED", estimate=30, kind="online",
                             categories=[work], project="fernhill", parent="mockup", completed=c.at(c.weekday_before(-2), "17:10"), links=[("via", mid(mail["photos"]))])),
         ("work-tasks", task(c, "sketch", t("Sketch two layouts for the homepage", "Esquisser deux mises en page pour l'accueil"), status="IN-PROCESS", start=c.day(0),
-                            estimate=240, kind="make", categories=[work], project="fernhill", parent="mockup", links=[("describedby", project_note)])),
+                            estimate=240, kind="make", categories=[work], project="fernhill", parent="mockup", links=[("describedby", project_note)],
+                            # Notes in Markdown, drawn in the details: a list of boxes, a link of the web.
+                            notes=t("Two layouts, **the calm one first**.\n\n- [x] Opening hours under the photo\n- [ ] The map: https://example.org/fernhill-map",
+                                    "Deux mises en page, **la calme d\u2019abord**.\n\n- [x] Les horaires sous la photo\n- [ ] Le plan\u202f: https://example.org/fernhill-map"))),
         ("work-tasks", task(c, "send-mockup", t("Send the mock-up to Iris", "Envoyer la maquette à Iris"), estimate=30, kind="write", categories=[work], project="fernhill",
                             parent="mockup", waits=["sketch"], contacts=["iris"])),
         ("work-tasks", task(c, "hours-page", t("Fernhill: opening hours page", "Fougères : page des horaires"), estimate=90, kind="make", categories=[work],

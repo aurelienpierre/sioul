@@ -1051,17 +1051,15 @@ Panel {
                     }
                 }
             }
-            Label {
+            // Its notes, their Markdown drawn safely: a list shared with other applications may hold anything.
+            Description {
                 visible: !panel.form && panel.detail !== null && panel.detail.edit.notes !== ""
                 Layout.fillWidth: true
                 Layout.topMargin: 6
-                // As written: a list shared with other applications may hold anything.
-                text: panel.detail ? panel.detail.edit.notes : ""
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                font.family: panel.theme.readingFamily || font.family
-                font.pixelSize: panel.theme.readingSize
-                color: panel.theme.text
+                sioul: panel.sioul
+                theme: panel.theme
+                window: panel.window
+                markdown: panel.detail ? panel.detail.edit.notes : ""
             }
 
             // Done: how it was, if you want to say. Filled in with what was

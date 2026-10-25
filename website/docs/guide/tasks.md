@@ -158,7 +158,7 @@ A task opens on the right with its details, from any view: a click on it, **Deta
 
 - **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
 - its tags, **its steps** (each can be ticked here; their minutes are added up), **what it waits for**, each wait with its gap when it has one ("two weeks after it"), and what it frees;
-- its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes;
+- its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes, their Markdown drawn safely (no HTML, no picture, links opened by your browser; a list of `- [ ]` items shows its boxes);
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
 
 **Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:

@@ -404,6 +404,7 @@ Dialog {
                     }
                     Layout.fillWidth: true
                     Layout.preferredHeight: 80
+                    placeholderText: dialog.sioul.text("task-field-notes")
                     wrapMode: TextArea.Wrap
                 }
                 Label {

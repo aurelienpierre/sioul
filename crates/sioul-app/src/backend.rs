@@ -345,6 +345,11 @@ pub mod qobject {
         #[qinvokable]
         fn preview(self: &Sioul, markdown: &QString) -> QString;
 
+        /// The notes of a task or an event, their Markdown drawn safely
+        /// (`description::description_html`): no HTML, no picture, links for the browser.
+        #[qinvokable]
+        fn description_html(self: &Sioul, markdown: &QString) -> QString;
+
         /// Sends after ten seconds to undo; returns what stops it now, else "".
         #[qinvokable]
         fn send(self: Pin<&mut Sioul>, id: &QString) -> QString;
@@ -3980,6 +3985,10 @@ impl qobject::Sioul {
 
     fn preview(&self, markdown: &QString) -> QString {
         QString::from(&sioul_core::compose::markdown_html(&markdown.to_string()))
+    }
+
+    fn description_html(&self, markdown: &QString) -> QString {
+        QString::from(&sioul_core::description::description_html(&markdown.to_string()))
     }
 
     fn send(self: Pin<&mut Self>, id: &QString) -> QString {

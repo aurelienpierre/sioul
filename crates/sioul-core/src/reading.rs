@@ -388,7 +388,7 @@ pub fn linkify_whole(text: &str) -> String {
 /// Where the next web address starts: "http://" or "https://". One search
 /// for both: searched apart, a line of a thousand "https://" links had its
 /// whole rest read again for an "http://" before each of them.
-fn next_link(text: &str) -> Option<usize> {
+pub(crate) fn next_link(text: &str) -> Option<usize> {
     text.match_indices("http").map(|(at, _)| at).find(|&at| {
         let after = &text[at + "http".len()..];
         after.starts_with("://") || after.starts_with("s://")
