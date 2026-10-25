@@ -125,7 +125,10 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let consent = access::of(s, &loaded);
     let found = find_event(&consent, &args.needed("event")?)?;
     let edit = agenda::edit_of_text(&found.text, &TimeZone::system()).ok_or("This event's file does not read.")?;
-    let data = event_json(&found, &edit, s);
+    let mut data = event_json(&found, &edit, s);
+    // The task that prepares it, with its steps and list, when the agent may see it (`pairs`).
+    let reference = loaded.events.iter().find(|e| e.uid == found.uid);
+    data["preparation"] = reference.and_then(|e| sioul_core::pairs::preparation_of(&loaded.tasks, e)).filter(|t| consent.allows(&links::task_uri(&t.uid))).map_or(Value::Null, |t| Value::String(links::task_uri(&t.uid)));
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
     Ok(Answer { text: format!("{} · {when} · {}  <{}>", one_line(&edit.title), data["calendar_name"].as_str().unwrap_or_default(), links::event_uri(&found.uid)), data })
 }
@@ -551,6 +554,8 @@ fn task_json(task: &Task) -> Value {
         "list_name": task.list,
         "read_only": task.read_only,
         "parent": task.parent(),
+        // The appointment it prepares (`pairs`).
+        "appointment": sioul_core::pairs::appointment_of(task).map(|uid| links::event_uri(&uid)),
     })
 }
 
@@ -858,6 +863,40 @@ fn after_of(before: Vec<(PathBuf, Option<String>)>) -> Vec<FileChange> {
     before.into_iter().map(|(path, was)| FileChange::of(&path, was)).collect()
 }
 
+/// An event found for an agent, as the pairing reads it.
+fn event_file(found: &Found) -> sioul_core::pairs::EventFile<'_> {
+    sioul_core::pairs::EventFile { path: &found.path, text: &found.text, writable: !found.calendar.read_only }
+}
+
+pub fn attach_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let task = find_open_task(s, &desk, &args.needed("task")?)?;
+    may_change(&desk.consent, &links::task_uri(&task.uid))?;
+    let found = find_event(&desk.consent, &args.needed("event")?)?;
+    may_change(&desk.consent, &links::event_uri(&found.uid))?;
+    let all = tasks::all(&TimeZone::system());
+    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let files = change.write()?;
+    let summary = agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
+    let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]);
+    say_in_window(line.clone(), files);
+    let task = tasks::all(&TimeZone::system()).into_iter().find(|t| t.uid == task.uid).unwrap_or(task);
+    Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "sent": false }) })
+}
+
+pub fn detach_from_event(s: &Session, args: &Args) -> Result<Answer, String> {
+    let desk = Desk::read(s);
+    let task = find_open_task(s, &desk, &args.needed("task")?)?;
+    may_change(&desk.consent, &links::task_uri(&task.uid))?;
+    let found = sioul_core::pairs::appointment_of(&task).and_then(|uid| find_event(&desk.consent, &uid).ok());
+    let file = found.as_ref().map(event_file);
+    let change = sioul_core::pairs::detach(&task, file.as_ref(), &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let files = change.write()?;
+    let line = s.say("agent-detached", &[("title", one_line(&task.title))]);
+    say_in_window(line.clone(), files);
+    Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "sent": false }) })
+}
+
 pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let desk = Desk::read(s);
     let task = find_open_task(s, &desk, &args.needed("task")?)?;
@@ -885,6 +924,17 @@ pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.end = end;
     }
     let target = calendar_named(&args.text("calendar")?.unwrap_or_default(), s)?;
+    // With steps, or asked: the task stays, paired with the appointment it prepares (`pairs`).
+    let all = tasks::all(&zone);
+    let has_steps = all.iter().any(|t| t.status.is_open() && t.parent() == Some(task.uid.as_str()));
+    if has_steps || args.flag("keep_task")? {
+        let (change, path) = sioul_core::pairs::appointment_for(&all, &task.uid, &edit, &target, &now).map_err(|r| r.said(&s.tr))?;
+        let files = change.write()?;
+        let new_uid = appointments::uid_in(&path);
+        let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&edit.title))]);
+        say_in_window(line.clone(), files);
+        return Ok(Answer { text: format!("{line}\n<{}>", links::event_uri(&new_uid)), data: json!({ "uri": links::event_uri(&new_uid), "task": links::task_uri(&task.uid), "kept": true, "sent": false }) });
+    }
     let plan = appointments::task_to_event(&task, &desk.loaded.tasks, &blocks, &edit, &target, &zone).map_err(|r| r.said(&s.tr))?;
     let mut before = before_of(&plan);
     let tied = naming(&desk.loaded.tasks, &task.uid);

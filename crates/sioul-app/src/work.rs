@@ -138,6 +138,8 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, projects
     settings.closed = situation.closed.clone();
     settings.office_days = situation.office_days;
     settings.office_hours = config.office_hours();
+    // The events there are: a task that prepares one gone waits for a date (`pairs`).
+    settings.appointments = Some(sioul_core::pairs::appointments_of(&loaded(shared).events, now.time_zone()));
     settings
 }
 
@@ -450,6 +452,19 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         if crate::blocks::upkeep(&shared, &desk.loaded.tasks, &Zoned::now()) {
             show_work(&qt, &shared);
             pim::show_pim(&qt, &shared);
+        }
+        // A paired task's date follows its appointment, while it says the day the pairing wrote (`pairs`).
+        let now = Zoned::now();
+        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_of(&desk.loaded.events, now.time_zone()), &now);
+        if !moved.is_empty() {
+            for (path, text) in &moved {
+                if vdir::write_item(path, text).is_ok()
+                    && let Some(account) = account_of(path)
+                {
+                    pim::nudge(&shared, &account);
+                }
+            }
+            show_work(&qt, &shared);
         }
         // The phone's home screen card: the next step as each coming time will have it (homecard.rs).
         crate::homecard::plan_seen(&desk.loaded, &desk.plan, &desk.today, &desk.spent, &desk.stopped);
@@ -982,6 +997,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         proposed: sioul_core::capacity::Proposal,
         /// The title of the task it is a step of; "" for none.
         parent_title: String,
+        /// The appointment it prepares: {uid, key, title, when, here}; null for none (`pairs`).
+        appointment: serde_json::Value,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -997,7 +1014,18 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     };
     let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(task);
     let parent_title = task.parent().and_then(|p| loaded.tasks.iter().find(|t| t.uid == p)).map(|t| t.title.clone()).unwrap_or_default();
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title })
+    // The appointment it prepares, when it is here: its title and when, said as the agenda says them.
+    let appointment = match sioul_core::pairs::appointment_of(task) {
+        Some(uid) => match loaded.events.iter().find(|e| e.uid == uid) {
+            Some(event) => {
+                let when = jiff::Timestamp::from_second(event.start).map(|t| tr().when(&t.to_zoned(TimeZone::system()))).unwrap_or_default();
+                serde_json::json!({ "uid": uid, "key": event.key, "title": event.summary, "when": when, "here": !event.cancelled })
+            }
+            None => serde_json::json!({ "uid": uid, "key": "", "title": "", "when": "", "here": false }),
+        },
+        None => serde_json::Value::Null,
+    };
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment })
 }
 
 /// A change of a composed task (`sioul_core::composed`) written and said,

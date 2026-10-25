@@ -24,6 +24,12 @@
 //!   one bigger task that follow each other are laid as one run, back to
 //!   back, at their own length, with one pause after the run
 //!   (`Planned::in_run`, docs/tasks.md).
+//! - **An appointment and its steps** (`pairs`): a task that prepares an
+//!   appointment has its steps free on the appointment's day, not before,
+//!   unless a step has a day of its own. Its appointment gone (deleted,
+//!   cancelled, not here yet), the task and its steps wait for a date:
+//!   offered nowhere, laid nowhere (`Planned::parked`), until another is
+//!   attached.
 //! - **When**: each task goes into the first days with room, in that order,
 //!   after what it waits for, never before today. A date that passed moves a
 //!   task forward; it never makes it "late". Room is your hours, each kind for
@@ -239,6 +245,9 @@ pub struct Settings {
     /// Tasks done, by UID: the block that held their work, (start, end) in
     /// Unix seconds, where the day shows them done.
     pub records: BTreeMap<String, (i64, i64)>,
+    /// The events there are, by UID (`pairs::appointments_of`): what a task
+    /// that prepares one waits for. None: unknown, nothing waits for a date.
+    pub appointments: Option<BTreeMap<String, crate::pairs::Appointment>>,
 }
 
 impl Default for Settings {
@@ -282,6 +291,7 @@ impl Settings {
             light_only: 0,
             pins: BTreeMap::new(),
             records: BTreeMap::new(),
+            appointments: None,
         }
     }
 
@@ -483,6 +493,10 @@ pub struct Planned {
     /// The next step of its run follows it on the same day: no pause between
     /// them (the run's last has its pause).
     pub run_next: bool,
+    /// It prepares an appointment that is not here (deleted, cancelled, not
+    /// synced yet), or is a step of such a task: it waits for a date,
+    /// offered nowhere, laid nowhere (`pairs`).
+    pub parked: bool,
 }
 
 /// Whether a task's own tags make it optional (`words.tasks.optional`, the
@@ -745,6 +759,15 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let open: Vec<bool> = tasks.iter().map(|t| t.status.is_open()).collect();
     let open_steps: Vec<usize> = (0..n).map(|i| graph.children[i].iter().filter(|&&c| open[c]).count()).collect();
     let optional: Vec<bool> = (0..n).map(|i| is_optional(tasks[i]) || graph.ancestors(i).iter().any(|&a| is_optional(tasks[a]))).collect();
+    // The appointment each task prepares, when the plan knows the events (`pairs`): its day, or
+    // None when it is not here or was cancelled; a step takes its bigger task's.
+    let appointment_of = |i: usize| -> Option<Option<Date>> {
+        let known = settings.appointments.as_ref()?;
+        let uid = crate::pairs::appointment_of(tasks[i])?;
+        Some(known.get(&uid).filter(|a| !a.cancelled).map(|a| a.day))
+    };
+    let appointment: Vec<Option<Option<Date>>> = (0..n).map(|i| std::iter::once(i).chain(graph.ancestors(i)).find_map(appointment_of)).collect();
+    let parked: Vec<bool> = appointment.iter().map(|a| matches!(a, Some(None))).collect();
     let preds: Vec<Vec<(usize, i64)>> = (0..n).map(|i| graph.predecessors(i)).collect();
 
     // The order's ties, among open tasks: what each waits for, and a step before its bigger task.
@@ -798,6 +821,14 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let not_before: Vec<Option<Date>> = (0..n)
         .map(|i| {
             let mut day = tasks[i].start_date().filter(|d| *d > today);
+            // A step of a task that prepares an appointment: free on its day, not before, unless it has a day of its own.
+            if graph.parent[i].is_some()
+                && tasks[i].start.is_empty()
+                && let Some(Some(on)) = appointment[i]
+                && on > today
+            {
+                day = Some(on);
+            }
             for &(p, gap) in &preds[i] {
                 let done_on = tasks[p].completed.and_then(|t| jiff::Timestamp::from_second(t).ok()).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).date());
                 if tasks[p].status == Status::Completed
@@ -865,8 +896,9 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let light: Vec<bool> = rates.iter().map(|r| matches!(r.level(), crate::demands::Level::Light | crate::demands::Level::Rest)).collect();
     let column = |i: usize| match tasks[i].status {
         Status::Completed | Status::Cancelled => Column::Done,
+        Status::InProcess if parked[i] => Column::Waiting,
         Status::InProcess => Column::Doing,
-        Status::NeedsAction if !waits_for[i].is_empty() || not_before[i].is_some() => Column::Waiting,
+        Status::NeedsAction if !waits_for[i].is_empty() || not_before[i].is_some() || parked[i] => Column::Waiting,
         Status::NeedsAction => Column::Ready,
     };
     let rank = |i: usize| Rank {
@@ -915,7 +947,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
 
     // Free to do now: nothing it waits for still open, no day ahead to wait for;
     // a step started too soon waits like the others.
-    let free_now = |i: usize| waits_for[i].is_empty() && not_before[i].is_none();
+    let free_now = |i: usize| waits_for[i].is_empty() && not_before[i].is_none() && !parked[i];
     let mut ready: Vec<usize> = (0..n).filter(|&i| open[i] && open_steps[i] == 0 && free_now(i) && (column(i) == Column::Doing || (column(i) == Column::Ready && !optional[i]))).collect();
     let best_ready = best_of(&ready);
     ready.sort_by_key(|&i| keyed(&best_ready, i));
@@ -1034,7 +1066,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 earliest = earliest.max(add_days(day, 1));
                 rest = Some(left);
             }
-            if optional[i] && tasks[i].status != Status::InProcess {
+            if (optional[i] && tasks[i].status != Status::InProcess) || parked[i] {
                 continue;
             }
             if open_steps[i] > 0 {
@@ -1271,6 +1303,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 in_run: in_run[i],
                 // Laid on the same day, whole: else the run is cut there.
                 run_next: joins[i].is_some_and(|j| start[i].is_some() && start[i] == finish[i] && start[j] == start[i]),
+                parked: parked[i],
             },
         );
     }
@@ -1598,6 +1631,39 @@ mod tests {
         let tasks = vec![task("doctor", 0), task("other", 0), step_of("a", 1), other];
         let planned = plan(&tasks, today(), &Settings::flat([480; 7]), &BTreeMap::new(), &BTreeSet::new());
         assert!(!planned.items["a"].run_next && !planned.items["x"].run_next);
+    }
+
+    #[test]
+    fn an_appointment_frees_its_steps_on_its_day_and_parks_them_when_gone() {
+        let link = crate::tasks::Link { uri: crate::links::event_uri("visit"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() };
+        let doctor = Task { links: vec![link], ..task("doctor", 0) };
+        let bag = Task { start: "2026-10-03".into(), ..step_of("bag", 3) };
+        let tasks = vec![doctor, step_of("brush", 1), step_of("bus", 2), bag, task("letter", 15)];
+        let none = BTreeSet::new();
+        let on = |day: &str, cancelled: bool| -> Settings {
+            let mut settings = Settings::default();
+            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: day.parse().unwrap(), cancelled, recurring: false })]));
+            settings
+        };
+        // Thursday the 8th: its steps free that day, not before; one with a day of its own, on its day.
+        let planned = plan(&tasks, today(), &on("2026-10-08", false), &BTreeMap::new(), &none);
+        assert_eq!((planned.items["brush"].column, planned.items["brush"].not_before), (Column::Waiting, Some(day("2026-10-08"))));
+        assert!(planned.ready.contains(&"bag".to_string()) && !planned.ready.contains(&"brush".to_string()), "{:?}", planned.ready);
+        assert!(!planned.items["doctor"].parked);
+        // Its appointment gone, or cancelled: the task and its steps wait for a date, laid nowhere.
+        let mut gone = Settings::default();
+        gone.appointments = Some(BTreeMap::new());
+        for settings in [gone, on("2026-10-08", true)] {
+            let planned = plan(&tasks, today(), &settings, &BTreeMap::new(), &none);
+            for uid in ["doctor", "brush", "bus", "bag"] {
+                assert!(planned.items[uid].parked && planned.items[uid].column == Column::Waiting, "{uid}");
+                assert!(!planned.days.values().flatten().any(|(u, _)| u == uid), "{uid} laid nowhere");
+            }
+            assert_eq!(planned.next.as_deref(), Some("letter"));
+        }
+        // Events unknown to the plan: nothing waits for a date.
+        let planned = plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none);
+        assert!(!planned.items["brush"].parked && planned.ready.contains(&"brush".to_string()));
     }
 
     #[test]

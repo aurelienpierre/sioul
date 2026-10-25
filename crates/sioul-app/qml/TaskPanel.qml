@@ -907,6 +907,101 @@ Panel {
                 }
             }
 
+            // The appointment it prepares: opened by a tap; in the form, untied (×), or
+            // one tied, found by its title (docs/tasks.md, "An appointment and its steps").
+            RowLayout {
+                visible: panel.detail !== null && !!panel.detail.appointment
+                Layout.fillWidth: true
+                spacing: 6
+
+                Icon {
+                    iconName: "view-calendar-day"
+                    size: 16
+                }
+                Label {
+                    objectName: "taskAppointment"
+                    Layout.fillWidth: true
+                    text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+
+                    TapHandler {
+                        onTapped: {
+                            if (panel.detail.appointment.here)
+                                panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key })
+                        }
+                    }
+                }
+                ToolButton {
+                    objectName: "taskDetach"
+                    visible: panel.form && panel.canEdit
+                    text: "×"
+                    Accessible.name: panel.sioul.text("pair-detach")
+                    ToolTip.visible: hovered
+                    ToolTip.text: panel.sioul.text("pair-detach")
+                    onClicked: error.text = panel.sioul.detachFromEvent(panel.uid)
+                }
+            }
+            TextField {
+                id: appointmentOf
+
+                // The events found by their title, offered below.
+                property var matches: []
+
+                objectName: "taskAttach"
+                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && !panel.detail.appointment
+                Layout.fillWidth: true
+                placeholderText: panel.sioul.text("pair-attach-field")
+                onTextEdited: {
+                    appointmentOf.matches = appointmentOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchThings(appointmentOf.text, "event", "") || "[]")
+                    if (appointmentOf.matches.length > 0)
+                        appointmentFound.now().open()
+                }
+                Keys.onEscapePressed: {
+                    appointmentOf.clear()
+                    appointmentFound.close()
+                }
+
+                Later {
+                    id: appointmentFound
+
+                    sourceComponent: Component {
+                        Popup {
+                            id: appointmentFoundForm
+
+                            y: appointmentOf.height
+                            width: appointmentOf.width
+                            padding: 4
+
+                            ListView {
+                                id: appointmentList
+
+                                implicitHeight: Math.min(contentHeight, 240)
+                                width: parent.width
+                                clip: true
+                                model: appointmentOf.matches
+
+                                delegate: ItemDelegate {
+                                    id: found
+
+                                    required property var modelData
+
+                                    width: appointmentList.width
+                                    // "&" doubled: a button reads one as a key to underline.
+                                    text: panel.theme.plain((found.modelData.title || "") + (found.modelData.when ? "  ·  " + found.modelData.when : "")).replace(/&/g, "&&")
+                                    onClicked: {
+                                        error.text = panel.sioul.attachToEvent(panel.uid, found.modelData.key)
+                                        appointmentOf.clear()
+                                        appointmentFoundForm.close()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // The task it is a step of: opened by a tap; in the form, a task of its own
             // again (×), or a step of another, found by its title (docs/tasks.md, "Composed tasks").
             RowLayout {

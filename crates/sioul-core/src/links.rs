@@ -371,6 +371,7 @@ fn inverse(how: &str) -> &'static str {
         "project" | "case" => "in-project",
         "mention" => "mentioned-by",
         "answers" => "answered-by",
+        "appointment" => "prepared-by",
         _ => "link",
     }
 }
@@ -386,13 +387,14 @@ fn forward(how: &str) -> &'static str {
         "project" | "case" => "project",
         "mention" => "mentions",
         "answers" => "answers",
+        "appointment" => "appointment",
         _ => "link",
     }
 }
 
 /// Which tie says most, when two things are tied twice: smaller first.
 fn closeness(how: &str) -> usize {
-    const ORDER: &[&str] = &["waits-for", "unblocks", "part-of", "step", "source", "made", "answers", "answered-by", "note", "notes-of", "contact", "involves", "project", "in-project", "mentions", "mentioned-by", "link"];
+    const ORDER: &[&str] = &["appointment", "prepared-by", "waits-for", "unblocks", "part-of", "step", "source", "made", "answers", "answered-by", "note", "notes-of", "contact", "involves", "project", "in-project", "mentions", "mentioned-by", "link"];
     ORDER.iter().position(|h| *h == how).unwrap_or(ORDER.len())
 }
 
@@ -450,6 +452,7 @@ impl World<'_> {
                 let how = match link.rel.as_str() {
                     "describedby" => "note",
                     "via" => "source",
+                    crate::pairs::APPOINTMENT => "appointment",
                     _ => "link",
                 };
                 push(me.clone(), self.canonical(&link.uri), how);
@@ -474,6 +477,11 @@ impl World<'_> {
         for event in self.events {
             let me = event_uri(&event.uid);
             for link in &event.links {
+                // The task that prepares it: the same tie as the task's own, from its end.
+                if link.rel == crate::pairs::PREPARATION {
+                    push(self.canonical(&link.uri), me.clone(), "appointment");
+                    continue;
+                }
                 let how = if link.rel == "describedby" { "note" } else if link.rel == "via" { "source" } else { "link" };
                 push(me.clone(), self.canonical(&link.uri), how);
             }

@@ -779,6 +779,79 @@ Item {
                     text: page.openedTask ? page.sioul.text("agenda-make-appointment") : page.sioul.text("agenda-make-task")
                     onClicked: page.changeKind(page.opened)
                 }
+                // What prepares it: its task, with its steps and list (opened by a tap); else steps to
+                // add, or a task made from it to use as its steps (docs/tasks.md, "An appointment and its steps").
+                ColumnLayout {
+                    id: pairing
+
+                    // {task, adoptable, can}, read again when the event or the tasks change.
+                    property var shown: null
+
+                    function read() {
+                        pairing.shown = page.opened && !page.openedTask ? JSON.parse(page.sioul.eventPairing(page.opened.key) || "null") : null
+                    }
+
+                    visible: pairing.shown !== null
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Connections {
+                        target: page
+                        function onOpenedChanged() {
+                            pairing.read()
+                        }
+                    }
+                    Connections {
+                        target: page.sioul
+                        function onTasksChanged() {
+                            pairing.read()
+                        }
+                    }
+                    Label {
+                        objectName: "agendaPairing"
+                        visible: !!pairing.shown && !!pairing.shown.task
+                        Layout.fillWidth: true
+                        text: pairing.shown && pairing.shown.task ? page.sioul.textWith("pair-prepared-by", "title", pairing.shown.task.title) + (pairing.shown.task.next ? "  ·  " + pairing.shown.task.next : "") : ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.text
+
+                        TapHandler {
+                            onTapped: page.window.openThing({ kind: "task", uri: "sioul:task/" + encodeURIComponent(pairing.shown.task.uid), key: pairing.shown.task.uid })
+                        }
+                    }
+                    Button {
+                        objectName: "agendaAddSteps"
+                        visible: !!pairing.shown && pairing.shown.can
+                        flat: true
+                        text: "+  " + page.sioul.text("pair-add-steps")
+                        onClicked: {
+                            const answer = JSON.parse(page.sioul.stepsForEvent(page.opened.key) || "{}")
+                            if (answer.error)
+                                page.sioul.status = answer.error
+                            else
+                                page.window.openThing({ kind: "task", uri: "sioul:task/" + encodeURIComponent(answer.uid), key: answer.uid })
+                        }
+                    }
+                    Repeater {
+                        model: pairing.shown ? pairing.shown.adoptable : []
+
+                        delegate: Button {
+                            id: adopt
+
+                            required property var modelData
+
+                            flat: true
+                            text: page.theme.plain(page.sioul.textWith("pair-adopt", "title", adopt.modelData.title))
+                            onClicked: {
+                                const problem = page.sioul.attachToEvent(adopt.modelData.uid, page.opened.key)
+                                if (problem !== "")
+                                    page.sioul.status = problem
+                                pairing.read()
+                            }
+                        }
+                    }
+                }
                 // What it is tied to, and what can be made from it.
                 RelatedList {
                     Layout.fillWidth: true

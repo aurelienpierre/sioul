@@ -87,6 +87,15 @@ pub(crate) enum TasksCommand {
         #[arg(long)]
         no_sync: bool,
     },
+    /// Ties a task to the appointment it prepares, or with "none" unties it.
+    Attach {
+        task: String,
+        /// The event: its UID, or words of its title; "none" to untie.
+        event: String,
+        /// Write it here only; the next sync sends it.
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Marks a task done (a repeating one comes back at its next turn).
     Done { task: String },
     /// Marks a task started.
@@ -204,6 +213,8 @@ impl Desk {
         // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
+        // As the window plans: a task that prepares an appointment gone waits for a date (`pairs`).
+        settings.appointments = Some(sioul_core::pairs::appointments_of(&loaded.events, now.time_zone()));
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings }
@@ -240,6 +251,7 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
         TasksCommand::Add { line, list, parent, after, no_sync } => add(s, &line.join(" "), list.as_deref(), parent.as_deref(), &after, no_sync),
         TasksCommand::Move { step, before, no_sync } => move_step(s, &step, before.as_deref(), no_sync),
         TasksCommand::Parent { task, bigger, confirm, no_sync } => parent(s, &task, &bigger, confirm, no_sync),
+        TasksCommand::Attach { task, event, no_sync } => attach(s, &task, &event, no_sync),
         TasksCommand::Done { task } => set_status(s, &task, Status::Completed),
         TasksCommand::Start { task } => set_status(s, &task, Status::InProcess),
         TasksCommand::NotNow { task } => not_now(s, &task),
@@ -499,6 +511,49 @@ fn parent(s: &Session, wanted: &str, bigger: &str, confirm: bool, no_sync: bool)
         return Ok(());
     }
     for list in tasks::lists().into_iter().filter(|c| files.iter().any(|f| f.parent() == Some(c.dir.as_path()))) {
+        sync_list(s, &list)?;
+    }
+    Ok(())
+}
+
+/// A task tied to the appointment it prepares (`pairs::attach`), or untied
+/// with "none" (`pairs::detach`); the event by its UID, else words of its title, one only.
+fn attach(s: &Session, wanted: &str, event: &str, no_sync: bool) -> Result<(), String> {
+    let desk = Desk::read(s);
+    let task = desk.find(s, wanted)?.clone();
+    let now = Zoned::now();
+    let file_of = |key: &str| -> Result<(PathBuf, String, bool), String> {
+        let path = PathBuf::from(key);
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("{key}: {e}"))?;
+        let writable = vdir::collections(Kind::Calendars).into_iter().find(|c| path.parent() == Some(c.dir.as_path())).is_some_and(|c| !c.read_only);
+        Ok((path, text, writable))
+    };
+    let (change, line) = if event.trim().eq_ignore_ascii_case("none") {
+        let found = sioul_core::pairs::appointment_of(&task).and_then(|uid| desk.loaded.events.iter().find(|e| e.uid == uid)).map(|e| file_of(&e.key)).transpose()?;
+        let file = found.as_ref().map(|(path, text, writable)| sioul_core::pairs::EventFile { path, text, writable: *writable });
+        (sioul_core::pairs::detach(&task, file.as_ref(), &now).map_err(|r| r.said(&s.tr))?, s.say("pair-detached", &[("title", one_line(&task.title))]))
+    } else {
+        let lower = event.to_lowercase();
+        let found: Vec<&sioul_core::agenda::EventRef> = match desk.loaded.events.iter().find(|e| e.uid == event) {
+            Some(one) => vec![one],
+            None => desk.loaded.events.iter().filter(|e| e.summary.to_lowercase().contains(&lower)).collect(),
+        };
+        let one = match found.as_slice() {
+            [one] => *one,
+            [] => return Err(s.say("pair-event-not-found", &[("what", one_line(event))])),
+            many => return Err(s.say("pair-event-ambiguous", &[("what", one_line(event)), ("titles", many.iter().take(5).map(|e| format!("{} ({})", one_line(&e.summary), e.uid)).collect::<Vec<_>>().join("; "))])),
+        };
+        let (path, text, writable) = file_of(&one.key)?;
+        let file = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
+        (sioul_core::pairs::attach(&desk.loaded.tasks, &task.uid, &file, &desk.loaded.events, &now).map_err(|r| r.said(&s.tr))?, s.say("pair-attached", &[("title", one_line(&task.title)), ("event", one_line(&one.summary))]))
+    };
+    let files = change.files();
+    change.write()?;
+    println!("{line}");
+    if no_sync {
+        return Ok(());
+    }
+    for list in vdir::collections(Kind::Calendars).into_iter().filter(|c| files.iter().any(|f| f.parent() == Some(c.dir.as_path()))) {
         sync_list(s, &list)?;
     }
     Ok(())

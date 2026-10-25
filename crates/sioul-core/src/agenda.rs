@@ -1177,6 +1177,10 @@ pub struct EventRef {
     pub projects: Vec<String>,
     /// The guests' and organizer's addresses.
     pub people: Vec<String>,
+    /// Cancelled (STATUS:CANCELLED): an appointment that will not be.
+    pub cancelled: bool,
+    /// It comes back (RRULE, RDATE): its first start is not its next.
+    pub recurring: bool,
 }
 
 /// The ties of one event's text; None when it holds no event.
@@ -1197,6 +1201,8 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             "RELATED-TO" => found.related.push(crate::tasks::relation_of(line)),
             "REFID" => found.projects.push(lines::unescape(lines::value(line).trim())),
             "ATTENDEE" | "ORGANIZER" => found.people.push(address(lines::value(line))),
+            "STATUS" => found.cancelled = lines::value(line).trim().eq_ignore_ascii_case("CANCELLED"),
+            "RRULE" | "RDATE" => found.recurring = true,
             _ => {}
         }
     }

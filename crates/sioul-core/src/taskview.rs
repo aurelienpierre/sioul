@@ -295,7 +295,10 @@ pub fn pin_view(cx: &Context, uid: &str) -> Option<PinView> {
 /// A task in words.
 pub fn card(cx: &Context, task: &Task) -> CardView {
     let planned = cx.planned(&task.uid).cloned().unwrap_or_default();
-    let waits = if !planned.waits_for.is_empty() {
+    // Its appointment gone (deleted, cancelled, not here yet): it waits for a date (`pairs`).
+    let waits = if planned.parked {
+        cx.tr.text("pair-parked", None)
+    } else if !planned.waits_for.is_empty() {
         let titles: Vec<String> = planned.waits_for.iter().map(|u| cx.title(u)).collect();
         cx.say("task-waits-for", &[("titles", titles.join(", "))])
     } else if let Some(day) = planned.not_before.filter(|d| *d > cx.today) {

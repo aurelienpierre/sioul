@@ -103,6 +103,7 @@
 //! - [`github`]: GitHub's issues and pull requests that are yours, as tasks.
 //! - [`notes`]: a folder of Markdown files, read the way Obsidian reads a vault.
 //! - [`description`]: the notes of a task or an event, Markdown drawn safely: no HTML, no picture, links for the browser.
+//! - [`pairs`]: an appointment and the task that prepares it, tied both ways; the steps waiting for a date when it is gone.
 //! - [`composed`]: composed tasks changed: a task made a step, a step a task, an item a step, a bigger task closing with its last step.
 //! - [`checklist`]: checklists in the notes of a task or an event: GitHub task lists, ticked one character at a time.
 //! - [`links`]: links between everything: mail, tasks, events, contacts, notes, budget lines.
@@ -224,6 +225,7 @@ pub mod mms;
 pub mod money;
 pub mod needs;
 pub mod overlaps;
+pub mod pairs;
 pub mod notes;
 pub mod payments;
 pub mod pgp;

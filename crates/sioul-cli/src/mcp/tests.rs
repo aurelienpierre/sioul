@@ -401,7 +401,7 @@ const READING: &[&str] = &[
     "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -1749,5 +1749,66 @@ fn composed_tasks_are_changed_by_agents() {
         if let Some(task) = task(uid) {
             let _ = std::fs::remove_file(task.key);
         }
+    }
+}
+
+/// A task tied to the appointment it prepares and untied (25 October 2026):
+/// its date the appointment's day, the pair found from either end; a second
+/// task for the same appointment refused; a task with steps made an
+/// appointment stays, tied to it; a meeting with others keeps no line; what
+/// is kept from agents is never tied.
+#[test]
+fn tasks_are_tied_to_their_appointments() {
+    home();
+    let mut server = server();
+    let uid = |answer: &Value| answer["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let task = uid(&call(&mut server, "add_task", json!({ "title": "Going to the optician" })));
+    let event = call(&mut server, "add_event", json!({ "title": "Optician visit", "start": "2026-11-24T10:00", "end": "2026-11-24T10:30" }));
+    let event_uri = event["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let event_file = PathBuf::from(event["structuredContent"]["file"].as_str().unwrap());
+    let tied = call(&mut server, "attach_to_event", json!({ "task": task, "event": event_uri }));
+    assert_eq!(tied["isError"], false, "{tied}");
+    assert_eq!(tied["structuredContent"]["due"], "2026-11-24", "{tied}");
+    said_about("“Going to the optician” to the appointment");
+    let got = call(&mut server, "get_task", json!({ "task": task }));
+    assert_eq!(got["structuredContent"]["appointment"], event_uri.as_str(), "{got}");
+    let got = call(&mut server, "get_event", json!({ "event": event_uri }));
+    assert_eq!(got["structuredContent"]["preparation"], format!("sioul:task/{task}"), "{got}");
+    // A second task for it: refused.
+    let other = uid(&call(&mut server, "add_task", json!({ "title": "Buy a glasses case" })));
+    assert_eq!(call(&mut server, "attach_to_event", json!({ "task": other, "event": event_uri }))["isError"], true);
+    // Untied: both ends, the date it wrote with them.
+    let untied = call(&mut server, "detach_from_event", json!({ "task": task }));
+    assert_eq!(untied["isError"], false, "{untied}");
+    let got = call(&mut server, "get_task", json!({ "task": task }));
+    assert_eq!((got["structuredContent"]["appointment"].clone(), got["structuredContent"]["due"].as_str()), (Value::Null, Some("")), "{got}");
+    assert!(!std::fs::read_to_string(&event_file).unwrap().contains("rel/preparation"));
+    // A task with steps made an appointment: kept, tied to it.
+    let steps = uid(&call(&mut server, "add_task", json!({ "title": "Going to the dentist" })));
+    call(&mut server, "add_steps", json!({ "task": steps, "steps": ["Brush teeth"] }));
+    let made = call(&mut server, "task_to_event", json!({ "task": steps, "start": "2026-11-25T09:00", "end": "2026-11-25T09:30" }));
+    assert_eq!((made["isError"].clone(), made["structuredContent"]["kept"].clone()), (Value::Bool(false), Value::Bool(true)), "{made}");
+    let got = call(&mut server, "get_task", json!({ "task": steps }));
+    assert_eq!(got["structuredContent"]["appointment"], made["structuredContent"]["uri"], "{got}");
+    // A meeting with others: the task's line alone.
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let meeting = agenda.dir.join("pair-meeting.ics");
+    std::fs::write(&meeting, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:pair-meeting\r\nDTSTART:20261126T090000Z\r\nDTEND:20261126T100000Z\r\nSUMMARY:Board\r\nORGANIZER:mailto:chair@example.org\r\nATTENDEE:mailto:jane@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    let kept = std::fs::read_to_string(&meeting).unwrap();
+    assert_eq!(call(&mut server, "attach_to_event", json!({ "task": other, "event": "sioul:event/pair-meeting" }))["isError"], false);
+    assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept, "the invitation never changes");
+    assert_eq!(call(&mut server, "get_event", json!({ "event": "sioul:event/pair-meeting" }))["structuredContent"]["preparation"], format!("sioul:task/{other}"));
+    // Kept from agents: never tied.
+    let refused = call(&mut server, "attach_to_event", json!({ "task": "zeugma-pay", "event": event_uri }));
+    assert_eq!(refused["isError"], true, "{refused}");
+    never_zeugma(&refused, "attach_to_event");
+    // Taken out again: these tests share one home.
+    let _ = std::fs::remove_file(&meeting);
+    let _ = std::fs::remove_file(&event_file);
+    for task in sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().filter(|t| [&task, &other, &steps].contains(&&t.uid) || t.parent() == Some(steps.as_str())) {
+        let _ = std::fs::remove_file(task.key);
+    }
+    if let Some(path) = made["structuredContent"]["uri"].as_str().and_then(|u| vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| sioul_core::appointments::uid_in(p) == sioul_core::links::id_of(u))) {
+        let _ = std::fs::remove_file(path);
     }
 }
