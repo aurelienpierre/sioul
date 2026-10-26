@@ -7,6 +7,8 @@
 //! stays on this computer. What was handed over is named by its addresses
 //! (mid:…, sioul:…) and its length, never by its words: no message's text, no
 //! code, no secret is kept a second time, in a file that outlives the mail.
+//! The server's own events have a line too: a new program that took over the
+//! connection, or one that could not run (follow.rs).
 
 use super::mask;
 use super::tools::Answer;
@@ -31,6 +33,19 @@ pub fn record(client: &str, tool: &str, arguments: &Value, outcome: &Result<Answ
         "at": now.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(), "client": client, "tool": tool,
         "arguments": kept(arguments, 0), "error": error, "given": given, "characters": characters,
     });
+    append(&now, &line);
+}
+
+/// Appends one line about the server itself, not a call: `event` names it
+/// ("followed", "kept"), `detail` says it.
+pub fn event(client: &str, event: &str, detail: &str) {
+    let now = Zoned::now();
+    append(&now, &json!({ "at": now.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(), "client": client, "event": event, "detail": short(detail) }));
+}
+
+/// One line added to this month's file. A log that cannot be written is said
+/// on standard error and never stops the call.
+fn append(now: &Zoned, line: &Value) {
     let folder = config::state_dir().join("mcp");
     let path = folder.join(format!("{}.jsonl", now.strftime("%Y-%m")));
     // One write per line: two calls logged at once never mix their lines.

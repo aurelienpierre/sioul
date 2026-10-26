@@ -26,6 +26,8 @@
 //! - `mask`: what is never handed to an agent as it is (docs/ai.md); the
 //!   command line's `sioul spam` lists masks the same way.
 //! - `log`: what each agent asked, and what it was given.
+//! - `follow`: the program it runs from, followed: when an install replaces
+//!   it, the new one takes over the connection between two messages.
 //!
 //! Every tool works on this computer's files only: nothing is sent, no
 //! password or key is read, nothing is deleted. The tools that write add a
@@ -36,6 +38,7 @@
 //! servers (the training corpus, read-only) or trains; none moves mail.
 
 mod access;
+mod follow;
 mod items;
 mod log;
 pub(crate) mod mask;
@@ -56,7 +59,15 @@ use crate::Session;
 
 /// Serves MCP on standard input and output until the client closes them.
 /// Standard output carries the protocol alone: nothing else may print there.
+/// A program that took over from the one it replaced (follow.rs) goes on with
+/// the same connection, and first tells the client its tools may have changed.
 pub(crate) fn run(s: &Session) -> Result<(), String> {
     let mut server = protocol::Server::new(&s.config_path, s.tr.language());
-    transport::serve(&mut server, &mut transport::Stdio::new())
+    let mut stdio = transport::Stdio::new()?;
+    if let Some(from) = std::env::var(follow::HANDOVER).ok().and_then(|handover| server.take_over(&handover)) {
+        let said = format!("its program was replaced: version {from} handed the connection over to version {}", env!("CARGO_PKG_VERSION"));
+        log::event(server.client(), "followed", &said);
+        transport::Transport::send(&mut stdio, protocol::TOOLS_CHANGED)?;
+    }
+    transport::serve(&mut server, &mut stdio, follow::Follow::start().as_mut())
 }

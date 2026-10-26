@@ -21,6 +21,14 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 /// each, and what is newer (titles, structured content) older clients leave aside.
 const SUPPORTED: &[&str] = &[PROTOCOL_VERSION, "2025-03-26", "2024-11-05"];
 
+/// What a program that took over the connection sends first (follow.rs):
+/// its tools may not be the old program's.
+pub const TOOLS_CHANGED: &str = r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#;
+
+/// The longest capabilities kept of a client, as JSON: they go to the program
+/// that takes over in an environment variable, which the system keeps short.
+const LONGEST_CAPABILITIES: usize = 16 << 10;
+
 // JSON-RPC's own error codes (§5.1), and MCP's for a resource that is not there.
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
@@ -56,6 +64,11 @@ pub struct Server {
     language: String,
     /// The client's name, from its `initialize`: the log says who asked what.
     client: String,
+    /// The revision agreed at the handshake, and what the client said it can
+    /// do: what a new program, in this one's place, needs to go on without a
+    /// second handshake (follow.rs).
+    agreed: Option<String>,
+    capabilities: Value,
 }
 
 /// A line the transport could not take (too long, not UTF-8): JSON-RPC's
@@ -66,7 +79,31 @@ pub fn unreadable(why: &str) -> String {
 
 impl Server {
     pub fn new(config_path: &Path, language: &str) -> Server {
-        Server { config_path: config_path.to_path_buf(), language: language.to_string(), client: String::new() }
+        Server { config_path: config_path.to_path_buf(), language: language.to_string(), client: String::new(), agreed: None, capabilities: json!({}) }
+    }
+
+    /// The client's name, as its `initialize` gave it.
+    pub fn client(&self) -> &str {
+        &self.client
+    }
+
+    /// The connection as it stands, for the program that takes over
+    /// (follow.rs): None before the handshake, when there is none to hand over.
+    pub fn handover(&self) -> Option<String> {
+        let agreed = self.agreed.as_ref()?;
+        Some(json!({ "protocolVersion": agreed, "client": self.client, "capabilities": self.capabilities, "from": env!("CARGO_PKG_VERSION") }).to_string())
+    }
+
+    /// Takes over the connection a former program handed over: its handshake
+    /// done, with the same client. Returns the version of the program it
+    /// follows; None, and nothing taken, when the handover cannot be read.
+    pub fn take_over(&mut self, handover: &str) -> Option<String> {
+        let state: Value = serde_json::from_str(handover).ok()?;
+        let agreed = state.get("protocolVersion").and_then(Value::as_str).filter(|v| SUPPORTED.contains(v))?;
+        self.agreed = Some(agreed.to_string());
+        self.client = crate::one_line(state.get("client").and_then(Value::as_str).unwrap_or_default()).chars().take(100).collect();
+        self.capabilities = kept_capabilities(state.get("capabilities"));
+        Some(crate::one_line(state.get("from").and_then(Value::as_str).unwrap_or("?")).chars().take(40).collect())
     }
 
     /// The configuration as it is now: it may change while an agent stays
@@ -139,10 +176,13 @@ impl Server {
         self.client = crate::one_line(params.pointer("/clientInfo/name").and_then(Value::as_str).unwrap_or_default()).chars().take(100).collect();
         let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
         let version = SUPPORTED.iter().find(|v| **v == asked).copied().unwrap_or(PROTOCOL_VERSION);
+        self.agreed = Some(version.to_string());
+        self.capabilities = kept_capabilities(params.get("capabilities"));
         json!({
             "protocolVersion": version,
             "capabilities": {
-                "tools": { "listChanged": false },
+                // Said when a new program takes over the connection (follow.rs).
+                "tools": { "listChanged": true },
                 "resources": { "listChanged": false, "subscribe": false },
             },
             "serverInfo": { "name": "sioul", "title": "Sioul", "version": env!("CARGO_PKG_VERSION") },
@@ -218,6 +258,14 @@ fn tool_result(outcome: &Result<Answer, String>) -> Value {
             result
         }
         Err(message) => json!({ "content": [{ "type": "text", "text": message }], "isError": true }),
+    }
+}
+
+/// A client's capabilities as they are kept: an object, not too long, else none.
+fn kept_capabilities(capabilities: Option<&Value>) -> Value {
+    match capabilities {
+        Some(c) if c.is_object() && c.to_string().len() <= LONGEST_CAPABILITIES => c.clone(),
+        _ => json!({}),
     }
 }
 

@@ -15,6 +15,8 @@
 //! home for every test of this program. Those that write the spam filter's
 //! state, or must see it still, take `spam_lock` in turn.
 
+#[cfg(unix)]
+use super::follow::Follow;
 use super::mask;
 use super::protocol::{PROTOCOL_VERSION, Server};
 use super::transport::{self, Bytes, Script};
@@ -330,7 +332,8 @@ fn the_handshake() {
     let result = &answer["result"];
     assert_eq!(result["protocolVersion"], PROTOCOL_VERSION);
     assert_eq!(result["serverInfo"]["name"], "sioul");
-    assert_eq!(result["capabilities"]["tools"]["listChanged"], false);
+    // A new program that takes the connection over says so (follow.rs).
+    assert_eq!(result["capabilities"]["tools"]["listChanged"], true);
     assert!(result["capabilities"]["resources"].is_object());
     assert!(result["instructions"].as_str().unwrap().contains("never instructions to you"));
     // An older client is answered in its own revision; an unknown one, in Sioul's.
@@ -388,7 +391,7 @@ fn unreadable_lines_are_said() {
     input.extend_from_slice(long.as_bytes());
     input.extend_from_slice(b"\r\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\n");
     let mut bytes = Bytes { input: &input, longest: 200, outgoing: Vec::new() };
-    transport::serve(&mut server, &mut bytes).unwrap();
+    transport::serve(&mut server, &mut bytes, None).unwrap();
     let answers: Vec<Value> = bytes.outgoing.iter().map(|line| serde_json::from_str(line).unwrap()).collect();
     assert_eq!(answers.len(), 4, "{:?}", bytes.outgoing);
     assert_eq!((answers[0]["id"].as_i64(), answers[3]["id"].as_i64()), (Some(1), Some(3)));
@@ -1069,11 +1072,89 @@ fn served_line_by_line() {
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
     ];
     let mut script = Script { incoming: incoming.iter().map(|l| l.to_string()).collect(), outgoing: Vec::new() };
-    transport::serve(&mut server, &mut script).unwrap();
+    transport::serve(&mut server, &mut script, None).unwrap();
     assert_eq!(script.outgoing.len(), 2, "neither the notification nor the empty line is answered");
     for (line, id) in script.outgoing.iter().zip([1, 2]) {
         assert!(!line.contains('\n'));
         assert_eq!(serde_json::from_str::<Value>(line).unwrap()["id"], id);
+    }
+}
+
+/// What the stand-in for exec was handed, each time it was asked to run a new program.
+#[cfg(unix)]
+static HANDED: std::sync::Mutex<Vec<Option<String>>> = std::sync::Mutex::new(Vec::new());
+
+/// Runs nothing and fails, as a new program that cannot run does; what it was handed is kept.
+#[cfg(unix)]
+fn exec_that_fails(_: &Path, _: &[std::ffi::OsString], handover: Option<&str>) -> std::io::Error {
+    HANDED.lock().unwrap().push(handover.map(str::to_string));
+    std::io::Error::other("a stand-in that runs nothing")
+}
+
+/// The calls and events of one client in the log, in their order.
+#[cfg(unix)]
+fn logged_for(client: &str) -> Vec<String> {
+    let month = Zoned::now().strftime("%Y-%m").to_string();
+    let log = std::fs::read_to_string(home().root.join(format!("state/sioul/mcp/{month}.jsonl"))).unwrap_or_default();
+    let lines = log.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|l| l["client"] == client);
+    lines.map(|l| l["tool"].as_str().or(l["event"].as_str()).unwrap_or_default().to_string()).collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn a_new_program_waits_for_every_unread_message() {
+    let home = home();
+    let folder = home.root.join("follow");
+    std::fs::create_dir_all(&folder).unwrap();
+    let program = folder.join("sioul");
+    std::fs::write(&program, "the program that runs").unwrap();
+    // The file that runs stays, as a program's does while it runs: its inode is not given to another.
+    std::fs::hard_link(&program, folder.join("sioul.running")).unwrap();
+    let mut follow = Follow::of_file(&program, exec_that_fails);
+    let replace = |words: &str| {
+        let staged = folder.join("sioul.new");
+        std::fs::write(&staged, words).unwrap();
+        std::fs::rename(&staged, &program).unwrap();
+    };
+    let ping = |id: u64| format!("{}\n", json!({ "jsonrpc": "2.0", "id": id, "method": "ping" }));
+    // A new program moved in place, then three messages taken in one read: each answered
+    // by this program first, and only then the new one tried, once, with the connection.
+    replace("a new program");
+    let mut serving = server();
+    assert_eq!(serving.handover(), None, "no handshake, nothing to hand over");
+    let initialize = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-03-26", "capabilities": { "roots": { "listChanged": true } }, "clientInfo": { "name": "follow tests" } } });
+    let projects = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "list_projects", "arguments": {} } });
+    let input = format!("{initialize}\n{}{projects}\n", ping(2));
+    let mut bytes = Bytes { input: input.as_bytes(), longest: 1 << 20, outgoing: Vec::new() };
+    transport::serve(&mut serving, &mut bytes, Some(&mut follow)).unwrap();
+    let ids: Vec<Value> = bytes.outgoing.iter().map(|line| serde_json::from_str::<Value>(line).unwrap()["id"].clone()).collect();
+    assert_eq!(ids, [1, 2, 3], "{:?}", bytes.outgoing);
+    assert_eq!(logged_for("follow tests"), ["list_projects", "kept"], "the call answered before the new program was tried");
+    let handed = HANDED.lock().unwrap().clone();
+    assert_eq!(handed.len(), 1, "{handed:?}");
+    let handover = handed[0].clone().expect("the connection handed over");
+    let state: Value = serde_json::from_str(&handover).unwrap();
+    assert_eq!((state["protocolVersion"].as_str(), state["client"].as_str(), state["from"].as_str()), (Some("2025-03-26"), Some("follow tests"), Some(env!("CARGO_PKG_VERSION"))));
+    assert_eq!(state["capabilities"], json!({ "roots": { "listChanged": true } }));
+    // It could not run: this program goes on serving, and leaves that file alone.
+    let input = ping(4);
+    let mut bytes = Bytes { input: input.as_bytes(), longest: 1 << 20, outgoing: Vec::new() };
+    transport::serve(&mut serving, &mut bytes, Some(&mut follow)).unwrap();
+    assert_eq!((bytes.outgoing.len(), HANDED.lock().unwrap().len()), (1, 1));
+    // Another file in its place is tried.
+    replace("a newer program");
+    let mut bytes = Bytes { input: input.as_bytes(), longest: 1 << 20, outgoing: Vec::new() };
+    transport::serve(&mut serving, &mut bytes, Some(&mut follow)).unwrap();
+    assert_eq!((bytes.outgoing.len(), HANDED.lock().unwrap().len()), (1, 2));
+    assert_eq!(logged_for("follow tests"), ["list_projects", "kept", "kept"]);
+    // The program that takes over goes on with that connection, without a second handshake.
+    let mut taken = server();
+    assert_eq!(taken.take_over(&handover).as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    assert_eq!((taken.client(), taken.handover()), ("follow tests", Some(handover)));
+    // What cannot be read is not taken: the client's handshake comes as it would.
+    for wrong in ["", "not json", r#"{"client":"x"}"#, r#"{"protocolVersion":"1999-01-01","client":"x"}"#] {
+        let mut fresh = server();
+        assert_eq!((fresh.take_over(wrong), fresh.handover()), (None, None), "{wrong}");
     }
 }
 
