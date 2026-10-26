@@ -24,12 +24,16 @@
 //!   one bigger task that follow each other are laid as one run, back to
 //!   back, at their own length, with one pause after the run
 //!   (`Planned::in_run`, docs/tasks.md).
-//! - **An appointment and its steps** (`pairs`): a task that prepares an
-//!   appointment has its steps free on the appointment's day, not before,
-//!   unless a step has a day of its own. Its appointment gone (deleted,
-//!   cancelled, not here yet), the task and its steps wait for a date:
-//!   offered nowhere, laid nowhere (`Planned::parked`), until another is
-//!   attached.
+//! - **An appointment and its steps** (`pairs`): a step of a task that
+//!   prepares an appointment goes by its own start when it has one.
+//!   Otherwise the nearest date of its own up the chain decides (the
+//!   step's, a bigger step's, the tied task's own, never the day the
+//!   pairing wrote, `pairs::own_date`): before the appointment's day, the
+//!   step is free now, to be done by then; on that day or after, or none, it
+//!   waits for the day, as a follow-up cannot be done before the
+//!   appointment. Its appointment gone (deleted, cancelled, not here yet),
+//!   the task and its steps wait for a date: offered nowhere, laid nowhere
+//!   (`Planned::parked`), until another is attached.
 //! - **When**: each task goes into the first days with room, in that order,
 //!   after what it waits for, never before today. A date that passed moves a
 //!   task forward; it never makes it "late". Room is your hours, each kind for
@@ -822,15 +826,26 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let not_before: Vec<Option<Date>> = (0..n)
         .map(|i| {
             let mut day = tasks[i].start_date().filter(|d| *d > today);
-            // A step of a task that prepares an appointment: free on its day, not before, unless it
-            // has a day of its own, to start or asked ("book the transport" by the 5th).
+            // A step of a task that prepares an appointment, without a start of its own: the
+            // nearest date of its own up the chain decides, as far as the tied task (the step's,
+            // a bigger step's, the tied task's own, never the day the pairing wrote). Before the
+            // appointment's day, the step is free now ("book the transport" by the 5th); on that
+            // day or after, or none, it waits for the day: a follow-up cannot come before.
             if graph.parent[i].is_some()
                 && tasks[i].start.is_empty()
-                && tasks[i].due.is_empty()
                 && let Some(Some(Some(on))) = appointment[i]
                 && on > today
             {
-                day = Some(on);
+                let mut own = None;
+                for j in std::iter::once(i).chain(graph.ancestors(i)) {
+                    own = crate::pairs::own_date(tasks[j]);
+                    if own.is_some() || appointment_of(j).is_some() {
+                        break;
+                    }
+                }
+                if own.is_none_or(|d| d >= on) {
+                    day = Some(on);
+                }
             }
             for &(p, gap) in &preds[i] {
                 let done_on = tasks[p].completed.and_then(|t| jiff::Timestamp::from_second(t).ok()).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).date());
@@ -1672,6 +1687,23 @@ mod tests {
         booked.push(Task { due: "2026-10-05".into(), ..step_of("book-transport", 4) });
         let planned = plan(&booked, today(), &on("2026-10-08", false), &BTreeMap::new(), &none);
         assert_eq!((planned.items["book-transport"].not_before, planned.items["book-transport"].column), (None, Column::Ready));
+        // Check of 96b3cd8, item 8: the nearest date of its own up the chain decides. A dateless
+        // step of a step due the 6th is free now; a step due after the appointment waits for its day.
+        let sub_step = |uid: &str, of: &str| Task { relations: vec![Relation { kind: "PARENT".into(), uid: of.into(), gap: 0 }], ..task(uid, 0) };
+        let mut chain = tasks.clone();
+        chain.extend([Task { due: "2026-10-06".into(), ..step_of("papers", 5) }, sub_step("copy-papers", "papers"), Task { due: "2026-10-12".into(), ..step_of("thank-you", 6) }, sub_step("write-it", "thank-you")]);
+        let planned = plan(&chain, today(), &on("2026-10-08", false), &BTreeMap::new(), &none);
+        for (uid, held) in [("copy-papers", None), ("thank-you", Some(day("2026-10-08"))), ("write-it", Some(day("2026-10-08")))] {
+            assert_eq!(planned.items[uid].not_before, held, "{uid}");
+        }
+        // The tied task's own earlier date frees its dateless steps; the day the pairing wrote does not.
+        let with_due = |due: &str, written: &str| {
+            let mut all = tasks.clone();
+            all[0] = Task { due: due.into(), due_written: written.into(), ..all[0].clone() };
+            plan(&all, today(), &on("2026-10-08", false), &BTreeMap::new(), &none).items["brush"].not_before
+        };
+        assert_eq!(with_due("2026-10-06", ""), None);
+        assert_eq!(with_due("2026-10-08", "2026-10-08"), Some(day("2026-10-08")));
         // F7: an appointment whose start cannot be read is here, without a day: nothing parked, nothing held.
         let mut undated = Settings::default();
         undated.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: None, cancelled: false, recurring: false })]));

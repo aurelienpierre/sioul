@@ -135,7 +135,9 @@ pub fn event_losses(text: &str) -> Vec<&'static str> {
 /// Another task's text once the thing it names by `old` became `new`, an
 /// appointment (`became_event`) or a task: its links to it named again; its
 /// waits and ties of steps on it dropped when it became an appointment,
-/// which nothing waits for. None when it names nothing of it.
+/// which nothing waits for. When the appointment it prepared became a task,
+/// its tie is undone by the pair's own rule, its date back
+/// (`pairs::untied_text`). None when it names nothing of it.
 pub fn retarget(text: &str, old: &str, new: &str, became_event: bool, now: &Zoned) -> Option<String> {
     use crate::tasks::{link_line, link_of};
     let olds = [format!("uid:{old}"), crate::links::task_uri(old), crate::links::event_uri(old)];
@@ -149,6 +151,9 @@ pub fn retarget(text: &str, old: &str, new: &str, became_event: bool, now: &Zone
     if hits.is_empty() {
         return None;
     }
+    let prepared_it = hits.iter().any(|l| crate::lines::name(l) == "LINK" && link_of(l).rel == crate::pairs::APPOINTMENT);
+    let untied = if prepared_it { crate::pairs::untied_text(text, None, now)? } else { text.to_string() };
+    let text = untied.as_str();
     let added: Vec<String> = hits
         .iter()
         .filter_map(|l| {

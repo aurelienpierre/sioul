@@ -215,16 +215,21 @@ pub(crate) fn pairing(shared: &Shared, key: &str) -> String {
     let next = task.and_then(|t| sioul_core::tasks::steps_of(&loaded.tasks, &t.uid).into_iter().find(|s| s.status.is_open()).map(|s| s.title.clone()));
     let names_it = |t: &Task| t.links.iter().any(|l| l.rel != sioul_core::pairs::APPOINTMENT && (l.uri == format!("uid:{}", event.uid) || l.uri == sioul_core::links::event_uri(&event.uid)));
     let named: Vec<String> = event.links.iter().filter(|l| l.rel != sioul_core::pairs::PREPARATION).filter_map(|l| l.uri.strip_prefix("uid:").map(str::to_string).or_else(|| l.uri.starts_with("sioul:task/").then(|| sioul_core::links::id_of(&l.uri)))).collect();
+    // Never offered what the tie would refuse: a task of a list that keeps no link (Google Tasks, `pairs::links_kept`).
+    let config = load_config();
+    let keeps = sioul_core::pairs::links_kept(&config);
     let adoptable: Vec<serde_json::Value> = if task.is_some() {
         Vec::new()
     } else {
-        loaded.tasks.iter().filter(|t| t.status.is_open() && !t.read_only && sioul_core::pairs::appointment_of(t).is_none() && (names_it(t) || named.contains(&t.uid))).map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect()
+        loaded.tasks.iter().filter(|t| t.status.is_open() && !t.read_only && keeps(&t.list_id) && sioul_core::pairs::appointment_of(t).is_none() && (names_it(t) || named.contains(&t.uid))).map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect()
     };
     let block = std::fs::read_to_string(&event.key).is_ok_and(|text| sioul_core::appointments::block_of(&text, ""));
+    // "Add steps and a list" makes the task in the usual list: offered when that list keeps the tie.
+    let usual = work::target_list("").is_ok_and(|list| keeps(&format!("{}/{}", list.account, list.id)));
     serde_json::json!({
         "task": task.map(|t| serde_json::json!({ "uid": t.uid, "title": t.title, "next": next })),
         "adoptable": adoptable,
-        "can": task.is_none() && !block,
+        "can": task.is_none() && !block && usual,
     })
     .to_string()
 }

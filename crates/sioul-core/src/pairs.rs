@@ -26,13 +26,20 @@
 //!   none or a later one. The day written is kept on its link
 //!   (`X-SIOUL-DUE`), and the date it replaced (`X-SIOUL-DUE-WAS`): the DUE
 //!   follows the appointment while it says that day exactly (a bare date: a
-//!   time you gave it is yours), and a detach puts back the date it
-//!   replaced. Tied again, the same day stays Sioul's own. It follows only
-//!   an appointment this device saw move (`Seen`): a device that has the
+//!   time you gave it is yours), or the date of its own it was given back,
+//!   always the earlier of the two; a detach puts back the date it replaced.
+//!   Tied again, the same day stays Sioul's own. It follows only an
+//!   appointment this device saw move (`Seen`): a device that has the
 //!   task's new date before the moved event never writes the old one back.
-//!   The day is the appointment's in this device's time zone.
-//! - **Its steps** are free on the appointment's day, not before, unless one
-//!   has a day of its own, to start or asked (`plan`).
+//!   The day is the appointment's in this device's time zone. Never a DUE a
+//!   server refuses (Sabre, so Murena: RFC 5545 §3.8.2.3): none before the
+//!   day the task starts (that day then), none when its start has a time.
+//! - **Its steps** (`plan`): one with a start of its own goes by it.
+//!   Otherwise the nearest date of its own up the chain decides (the step's,
+//!   a bigger step's, the tied task's own, never the day the pairing wrote,
+//!   `own_date`): before the appointment's day, the step is free now, to be
+//!   done by then; on that day or after, or none, it waits for the day, as a
+//!   follow-up cannot be done before the appointment.
 //! - **The appointment gone** (deleted, cancelled, or not here yet): the
 //!   task and its steps wait for a date, offered nowhere, until another is
 //!   attached (`plan`, `Planned::parked`). An appointment of an account
@@ -93,23 +100,43 @@ pub fn appointments_of(events: &[EventRef], zone: &TimeZone) -> BTreeMap<String,
         .collect()
 }
 
-/// The appointments there are: `events` (those the pages show) and those of
-/// accounts switched off, which are still here and park nothing.
+/// The appointments there are, as the plan parks what prepares one gone:
+/// `events` (those the pages show), then those of accounts switched off,
+/// which are still here and park nothing (`switched_off_events`). A copy the
+/// pages show wins over one of an account switched off. The date follows
+/// the pages' events alone (`upkeep`): a copy left in an account switched
+/// off never moves it.
 pub fn appointments_here(events: &[EventRef], zone: &TimeZone) -> BTreeMap<String, Appointment> {
     let mut all = appointments_of(events, zone);
-    for dir in crate::vdir::switched_off_dirs(crate::vdir::Kind::Calendars) {
-        let Ok(items) = std::fs::read_dir(&dir) else { continue };
-        let refs: Vec<EventRef> = items
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "ics"))
-            .filter_map(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, &p.display().to_string(), zone)))
-            .collect();
-        for (uid, appointment) in appointments_of(&refs, zone) {
-            all.entry(uid).or_insert(appointment);
-        }
+    for (uid, appointment) in appointments_of(&switched_off_events(zone), zone) {
+        all.entry(uid).or_insert(appointment);
     }
     all
+}
+
+/// The events of accounts switched off (`vdir::switched_off_dirs`), read
+/// once while their folders stay as they are: such an account does not
+/// sync, and its folders change only by a move or a removal here, which
+/// changes their times. Read again in another time zone.
+pub fn switched_off_events(zone: &TimeZone) -> Vec<EventRef> {
+    type Key = (Vec<(PathBuf, Option<std::time::SystemTime>)>, Option<String>);
+    static READ: std::sync::Mutex<Option<(Key, Vec<EventRef>)>> = std::sync::Mutex::new(None);
+    let dirs = crate::vdir::switched_off_dirs(crate::vdir::Kind::Calendars);
+    let key: Key = (dirs.iter().map(|d| (d.clone(), std::fs::metadata(d).and_then(|m| m.modified()).ok())).collect(), zone.iana_name().map(str::to_string));
+    let mut cache = READ.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((known, events)) = cache.as_ref()
+        && *known == key
+    {
+        return events.clone();
+    }
+    let events: Vec<EventRef> = dirs
+        .iter()
+        .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "ics"))
+        .filter_map(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, &p.display().to_string(), zone)))
+        .collect();
+    *cache = Some((key, events.clone()));
+    events
 }
 
 /// Whether a task list keeps a task's links, by its "account/id" (Google
@@ -139,7 +166,7 @@ pub fn is_pair_link(link: &tasks::Link) -> bool {
 /// The task that prepares the event: among the open tasks whose link names
 /// it, the one the event's own line names, else the oldest; else a done one
 /// whose link names it; else the task the event's line names, when that
-/// task names no other appointment and was not untied from it.
+/// line still ties it (`line_ties`).
 pub fn preparation_of<'a>(tasks: &'a [Task], event: &EventRef) -> Option<&'a Task> {
     let lined = event.links.iter().find(|l| l.rel == PREPARATION && l.uri.starts_with("sioul:task/")).map(|l| links::id_of(&l.uri));
     let named = |t: &&Task| appointment_of(t).as_deref() == Some(event.uid.as_str());
@@ -147,8 +174,37 @@ pub fn preparation_of<'a>(tasks: &'a [Task], event: &EventRef) -> Option<&'a Tas
     open.sort_by(|a, b| (lined.as_deref() != Some(a.uid.as_str()), a.created, &a.uid).cmp(&(lined.as_deref() != Some(b.uid.as_str()), b.created, &b.uid)));
     open.first().copied().or_else(|| tasks.iter().find(named)).or_else(|| {
         let uid = lined?;
-        tasks.iter().find(|t| t.uid == uid && !t.untied.contains(&event.uid) && appointment_of(t).is_none_or(|other| other == event.uid))
+        tasks.iter().find(|t| t.uid == uid && line_ties(t, &event.uid))
     })
+}
+
+/// Whether an event's own line (`PREPARATION`) still ties `task` to it
+/// (`event_uid`): the task was not untied from it (`UNTIED`), and names no
+/// other appointment. The one test of a stale line, wherever a pair is read
+/// (`preparation_of`, `links::World::edges`).
+pub fn line_ties(task: &Task, event_uid: &str) -> bool {
+    !task.untied.iter().any(|u| u == event_uid) && appointment_of(task).is_none_or(|other| other == event_uid)
+}
+
+/// The task's own date, as the plan's rule for its steps reads it (`plan`):
+/// its DUE's day, unless that is the day the pairing wrote (`Task::due_written`).
+pub fn own_date(task: &Task) -> Option<Date> {
+    if task.due.is_empty() || (!task.due_written.is_empty() && task.due == task.due_written) {
+        return None;
+    }
+    task.due.get(..10)?.parse().ok()
+}
+
+/// The day the pairing may write as the DUE of `task` for an appointment on
+/// `day`: none when the task starts at a time (a DUE of another value type,
+/// which Sabre, so Murena, refuses), and never before the day it starts
+/// (refused too, RFC 5545 §3.8.2.3): that day then.
+fn writable_day(task: &Task, day: Date) -> Option<Date> {
+    if task.start.contains('T') {
+        return None;
+    }
+    let start = task.start.get(..10).and_then(|d| d.parse::<Date>().ok());
+    Some(start.map_or(day, |s| s.max(day)))
 }
 
 /// What a task's link to its appointment says: the event's UID, the day the
@@ -214,7 +270,8 @@ pub fn attach(all: &[Task], uid: &str, event: &EventFile, refs: &[EventRef], kee
     let task = all.iter().find(|t| t.uid == uid).ok_or(Refused("task-gone"))?;
     let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
     let (text, event_text) = paired(all, task, &current, event, refs, keeps_links, now)?;
-    let mut change = Change { written: vec![(PathBuf::from(&task.key), text)], ..Change::default() };
+    // Tied again as it is: nothing written (the MCP's tool is idempotent).
+    let mut change = Change { written: (text != current).then(|| (PathBuf::from(&task.key), text)).into_iter().collect(), ..Change::default() };
     change.written.extend(event_text.map(|t| (event.path.to_path_buf(), t)));
     Ok(change)
 }
@@ -249,19 +306,32 @@ fn paired(all: &[Task], task: &Task, current: &str, event: &EventFile, refs: &[E
     let own = own_due(task, tie.as_ref());
     let own_day = own.get(..10).and_then(|d| d.parse::<Date>().ok());
     let mut edit = TaskEdit::of(task);
-    let (written, was) = match day {
+    // Never a DUE a server refuses (`writable_day`).
+    let (written, was) = match day.and_then(|d| writable_day(task, d)) {
         Some(day) if own_day.is_none_or(|o| o > day) => {
             edit.due = day.to_string();
             (Some(day), Some(own))
         }
-        _ => {
+        // An earlier date of its own stays, kept on the link: a later move before it is followed (`followed`).
+        Some(_) => {
+            edit.due = own.clone();
+            (None, Some(own))
+        }
+        None => {
             edit.due = own;
             (None, None)
         }
     };
-    let text = tasks::apply(current, &edit, &zone, now).map_err(|_| Refused("task-gone"))?;
+    let line = appointment_line(&reference.uid, written, was.as_deref());
     let mark = |l: &str| crate::lines::name(l) == UNTIED && crate::lines::value(l).trim() == reference.uid;
-    let text = tasks::replace_lines(&text, |l| pair_line(l, APPOINTMENT) || mark(l), vec![appointment_line(&reference.uid, written, was.as_deref())], now).map_err(|_| Refused("task-gone"))?;
+    let source = crate::lines::unfold(current);
+    // Tied again as it is: nothing written.
+    let text = if edit.due == task.due && source.iter().filter(|l| pair_line(l, APPOINTMENT)).eq([&line]) && !source.iter().any(|l| mark(l)) {
+        current.to_string()
+    } else {
+        let text = tasks::apply(current, &edit, &zone, now).map_err(|_| Refused("task-gone"))?;
+        tasks::replace_lines(&text, |l| pair_line(l, APPOINTMENT) || mark(l), vec![line], now).map_err(|_| Refused("task-gone"))?
+    };
     let event_text = if event.takes_lines() {
         let without = agenda::remove_lines(event.text, |l| pair_line(l, PREPARATION)).ok_or(Refused("agenda-gone"))?;
         let with = agenda::add_lines(&without, &[preparation_line(&task.uid)]).ok_or(Refused("agenda-gone"))?;
@@ -272,65 +342,107 @@ fn paired(all: &[Task], task: &Task, current: &str, event: &EventFile, refs: &[E
     Ok((text, event_text))
 }
 
-/// The pair undone: the task's link out, its DUE back to the date it
-/// replaced when it still says the day the pairing wrote; the event's line
-/// out when it holds one and takes lines (`EventFile::takes_lines`: never a
-/// meeting with others). An event that keeps its line, or is not here
-/// (`event` None), leaves the task a mark (`UNTIED`) so that it never ties it
-/// back. The legs stay with the event.
+/// The pair undone (`untie`) from the task's end: its appointment, as its link names it.
 pub fn detach(task: &Task, event: Option<&EventFile>, now: &Zoned) -> Result<Change, Refused> {
     if task.read_only {
         return Err(Refused("task-read-only"));
     }
-    let zone = TimeZone::system();
-    let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
     let Some(event_uid) = appointment_of(task) else { return Err(Refused("pair-none")) };
-    let tie = tie_of(&current);
-    let mut text = current.clone();
-    if sioul_set(task, tie.as_ref()) {
-        text = tasks::apply(&text, &TaskEdit { due: own_due(task, tie.as_ref()), ..TaskEdit::of(task) }, &zone, now).map_err(|_| Refused("task-gone"))?;
+    untie(task, &event_uid, event, now)
+}
+
+/// The pair of `task` and the event `event_uid` undone, by one rule
+/// wherever it is asked (the task panel's ×, the MCP, a Related list's "Undo
+/// this link", `links::Loaded::untie`): the task's link out, its DUE back
+/// (`untied_text`); the event's line out when it holds one and takes lines
+/// (`EventFile::takes_lines`: never a meeting with others). An event that
+/// keeps its line, or is not here (`event` None), leaves the task a mark
+/// (`UNTIED`) so that it never ties it back. The legs stay with the event.
+/// Refused for a task you only read, and when neither end names the other.
+pub fn untie(task: &Task, event_uid: &str, event: Option<&EventFile>, now: &Zoned) -> Result<Change, Refused> {
+    if task.read_only {
+        return Err(Refused("task-read-only"));
     }
+    let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
+    let tied = tasks::task_of_text(&current, &TimeZone::system()).and_then(|t| appointment_of(&t)).as_deref() == Some(event_uid);
     let names_it = |l: &str| pair_line(l, PREPARATION) && tasks::link_of(l).uri == links::task_uri(&task.uid);
+    let lined = event.is_some_and(|e| crate::lines::unfold(e.text).iter().any(|l| names_it(l)));
+    if !tied && !lined {
+        return Err(Refused("pair-none"));
+    }
     let mut change = Change::default();
-    let mut cleared = false;
-    if let Some(event) = event.filter(|e| e.takes_lines()) {
-        cleared = true;
-        if crate::lines::unfold(event.text).iter().any(|l| names_it(l)) {
-            let without = agenda::remove_lines(event.text, names_it).ok_or(Refused("agenda-gone"))?;
-            change.written.push((event.path.to_path_buf(), without));
-        }
+    let cleared = event.is_some_and(|e| e.takes_lines());
+    if let Some(event) = event.filter(|e| e.takes_lines() && lined) {
+        let without = agenda::remove_lines(event.text, names_it).ok_or(Refused("agenda-gone"))?;
+        change.written.push((event.path.to_path_buf(), without));
     }
     // The event's line stays where it cannot be written: the mark keeps it from tying the task back.
-    let marked = if cleared { Vec::new() } else { vec![format!("{UNTIED}:{event_uid}")] };
-    let text = tasks::replace_lines(&text, |l| pair_line(l, APPOINTMENT), marked, now).map_err(|_| Refused("task-gone"))?;
-    change.written.insert(0, (PathBuf::from(&task.key), text));
+    let marked = (!cleared).then_some(event_uid);
+    let text = if tied {
+        untied_text(&current, marked, now).ok_or(Refused("task-gone"))?
+    } else {
+        let mark = |l: &str| crate::lines::name(l) == UNTIED && crate::lines::value(l).trim() == event_uid;
+        match marked {
+            Some(uid) => tasks::replace_lines(&current, mark, vec![format!("{UNTIED}:{uid}")], now).map_err(|_| Refused("task-gone"))?,
+            None => current.clone(),
+        }
+    };
+    if text != current {
+        change.written.insert(0, (PathBuf::from(&task.key), text));
+    }
     Ok(change)
 }
 
-/// The task's text with its DUE moved to its appointment's day, when the
-/// pairing wrote the DUE it has and the appointment's day differs: None when
-/// nothing is to change (its DUE yours since, a repeating or undated
-/// appointment, the same day). A date of its own the pairing replaced comes
-/// back when it is earlier than the new day. `upkeep` asks it only of an
-/// appointment this device saw move.
+/// A task's text with its tie to its appointment undone, by the one date
+/// rule wherever a tie is undone (`untie`, `appointments::retarget`): its
+/// DUE back to the date it replaced when it still says the day the pairing
+/// wrote, its link out, and the mark `UNTIED` for `marked` (an event that
+/// keeps its line). None when the text holds no task.
+pub fn untied_text(text: &str, marked: Option<&str>, now: &Zoned) -> Option<String> {
+    let zone = TimeZone::system();
+    let task = tasks::task_of_text(text, &zone)?;
+    let tie = tie_of(text);
+    let mut out = text.to_string();
+    if sioul_set(&task, tie.as_ref()) {
+        out = tasks::apply(&out, &TaskEdit { due: own_due(&task, tie.as_ref()), ..TaskEdit::of(&task) }, &zone, now).ok()?;
+    }
+    let mark = |l: &str| crate::lines::name(l) == UNTIED && marked.is_some_and(|uid| crate::lines::value(l).trim() == uid);
+    let marks = marked.map(|uid| vec![format!("{UNTIED}:{uid}")]).unwrap_or_default();
+    tasks::replace_lines(&out, |l| pair_line(l, APPOINTMENT) || mark(l), marks, now).ok()
+}
+
+/// The task's text with its DUE following its appointment's day: the
+/// earlier of that day and the date of its own the pairing replaced, kept on
+/// the link either way (`X-SIOUL-DUE-WAS`), while the DUE says the day the
+/// pairing wrote or that date of its own. None when nothing is to change
+/// (its DUE yours since, a repeating or undated appointment, the same day),
+/// and never a DUE a server refuses (`writable_day`). `upkeep` asks it only
+/// of an appointment this device saw move.
 pub fn followed(task: &Task, text: &str, appointment: &Appointment, now: &Zoned) -> Option<String> {
     if appointment.recurring || appointment.cancelled || task.read_only || !task.status.is_open() {
         return None;
     }
-    let day = appointment.day?;
     let tie = tie_of(text)?;
-    if !sioul_set(task, Some(&tie)) || tie.written == Some(day) {
+    let own = tie.was.clone().unwrap_or_default();
+    // Its own date, given back by an earlier move: still the pairing's to follow.
+    let given_back = tie.written.is_none() && !own.is_empty() && task.due == own;
+    if !sioul_set(task, Some(&tie)) && !given_back {
+        return None;
+    }
+    let day = writable_day(task, appointment.day?)?;
+    let uid = appointment_of(task)?;
+    // Its own date when earlier, and when it may be written (not before its start).
+    let own_day = own.get(..10).and_then(|d| d.parse::<Date>().ok()).filter(|o| writable_day(task, *o) == Some(*o));
+    let (due, written) = match own_day {
+        Some(o) if o <= day => (own.clone(), None),
+        _ => (day.to_string(), Some(day)),
+    };
+    if due == task.due && written == tie.written {
         return None;
     }
     let zone = TimeZone::system();
-    let uid = appointment_of(task)?;
-    let was = tie.was.clone().unwrap_or_default();
-    let (due, written, keep) = match was.get(..10).and_then(|d| d.parse::<Date>().ok()) {
-        Some(own) if own <= day => (was.clone(), None, None),
-        _ => (day.to_string(), Some(day), tie.was.as_deref()),
-    };
     let moved = tasks::apply(text, &TaskEdit { due, ..TaskEdit::of(task) }, &zone, now).ok()?;
-    tasks::replace_lines(&moved, |l| pair_line(l, APPOINTMENT), vec![appointment_line(&uid, written, keep)], now).ok()
+    tasks::replace_lines(&moved, |l| pair_line(l, APPOINTMENT), vec![appointment_line(&uid, written, tie.was.as_deref())], now).ok()
 }
 
 /// The day each appointment had when this device last saw it, by UID: kept
@@ -361,29 +473,42 @@ impl Seen {
 }
 
 /// Each paired task's DUE following its appointment (`followed`), for the
-/// appointments this device saw move since it last looked (`seen`, updated
-/// for every tied appointment; one seen for the first time is only noted):
-/// written, and the files written that way returned. A file that could not be
-/// written is not returned, so that nothing is tried again at once.
+/// appointments this device saw move since it last looked (`seen`; one seen
+/// for the first time is only noted): written, and the files written that
+/// way returned. A moved appointment's new day is noted once each of its
+/// tasks was written or needed nothing: a task that could not be read or
+/// written is tried again at the next pass, never at once (it is not
+/// returned).
 pub fn upkeep(all: &[Task], appointments: &BTreeMap<String, Appointment>, seen: &mut Seen, now: &Zoned) -> Vec<PathBuf> {
     let tied: BTreeSet<String> = all.iter().filter(|t| t.status.is_open()).filter_map(appointment_of).collect();
-    let mut moved: BTreeSet<String> = BTreeSet::new();
-    for uid in &tied {
-        let Some(day) = appointments.get(uid).and_then(|a| a.day) else { continue };
-        if seen.days.insert(uid.clone(), day).is_some_and(|before| before != day) {
-            moved.insert(uid.clone());
-        }
-    }
     seen.days.retain(|uid, _| tied.contains(uid));
     let mut written = Vec::new();
-    for task in all {
-        let Some(uid) = appointment_of(task).filter(|u| moved.contains(u)) else { continue };
-        let Some(appointment) = appointments.get(&uid) else { continue };
-        let Ok(text) = std::fs::read_to_string(&task.key) else { continue };
-        if let Some(followed) = followed(task, &text, appointment, now)
-            && crate::vdir::write_item(Path::new(&task.key), &followed).is_ok()
-        {
-            written.push(PathBuf::from(&task.key));
+    for uid in &tied {
+        let Some(appointment) = appointments.get(uid) else { continue };
+        let Some(day) = appointment.day else { continue };
+        match seen.days.get(uid) {
+            Some(before) if *before == day => continue,
+            Some(_) => {}
+            None => {
+                seen.days.insert(uid.clone(), day);
+                continue;
+            }
+        }
+        let mut done = true;
+        for task in all.iter().filter(|t| appointment_of(t).as_deref() == Some(uid.as_str())) {
+            let Ok(text) = std::fs::read_to_string(&task.key) else {
+                done = false;
+                continue;
+            };
+            if let Some(followed) = followed(task, &text, appointment, now) {
+                match crate::vdir::write_item(Path::new(&task.key), &followed) {
+                    Ok(()) => written.push(PathBuf::from(&task.key)),
+                    Err(_) => done = false,
+                }
+            }
+        }
+        if done {
+            seen.days.insert(uid.clone(), day);
         }
     }
     written
@@ -524,9 +649,9 @@ mod tests {
         let desk = Desk::new("f3");
         desk.task("prep", TaskEdit::default());
         let path = desk.event("visit", "");
-        for _ in 0..2 {
-            attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
-        }
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        // Tied again as it is: nothing written (check of 96b3cd8, item 10).
+        assert!(attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().is_empty());
         let task = task_of(&desk, "prep");
         assert!(crate::lines::unfold(&read(Path::new(&task.key))).join("\n").contains("X-SIOUL-DUE=20261029"), "{}", read(Path::new(&task.key)));
         assert!(followed(&task, &read(Path::new(&task.key)), &at("2026-11-03"), &now()).is_some());
@@ -559,6 +684,17 @@ mod tests {
         let task = task_of(&desk, "later");
         let moved = followed(&task, &read(Path::new(&task.key)), &at("2026-12-05"), &now()).unwrap();
         assert_eq!(tasks::task_of_text(&moved, &TimeZone::system()).unwrap().due, "2026-11-30");
+        // Check of 96b3cd8, item 6: that date kept on the link, a later move before it is followed,
+        // and one past it gives it back again: always the earlier.
+        std::fs::write(&task.key, &moved).unwrap();
+        let task = task_of(&desk, "later");
+        let earlier = followed(&task, &moved, &at("2026-11-20"), &now()).unwrap();
+        assert_eq!(tasks::task_of_text(&earlier, &TimeZone::system()).unwrap().due, "2026-11-20");
+        std::fs::write(&task.key, &earlier).unwrap();
+        let task = task_of(&desk, "later");
+        let again = followed(&task, &earlier, &at("2026-12-10"), &now()).unwrap();
+        assert_eq!(tasks::task_of_text(&again, &TimeZone::system()).unwrap().due, "2026-11-30");
+        assert!(followed(&Task { key: task.key.clone(), ..tasks::task_of_text(&again, &TimeZone::system()).unwrap() }, &again, &at("2026-12-12"), &now()).is_none(), "the same, nothing written");
         // A time given to the date: yours, never moved.
         let task = task_of(&desk, "prep");
         let timed = tasks::apply(&read(Path::new(&task.key)), &TaskEdit { due: "2026-11-03T09:00".into(), ..TaskEdit::of(&task) }, &TimeZone::system(), &now()).unwrap();
@@ -595,12 +731,19 @@ mod tests {
         assert_eq!(task_of(&desk, "prep").due, "2026-11-10");
         assert!(upkeep(&desk.tasks(), &here("2026-11-10"), &mut seen, &now()).is_empty(), "the same twice");
         // F12: its folder read-only, the write fails: nothing returned, nothing tried again at once.
-        use std::os::unix::fs::PermissionsExt;
-        let dir = desk.list.dir.clone();
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
-        let written = upkeep(&desk.tasks(), &here("2026-11-12"), &mut seen, &now());
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(written.is_empty(), "{written:?}");
+        // Unix alone: a folder's write permission is what fails the write there.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = desk.list.dir.clone();
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+            let written = upkeep(&desk.tasks(), &here("2026-11-12"), &mut seen, &now());
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(written.is_empty(), "{written:?}");
+            // Check of 96b3cd8, item 5: the move not noted, so the next pass, the folder writable again, writes it.
+            assert_eq!(upkeep(&desk.tasks(), &here("2026-11-12"), &mut seen, &now()).len(), 1);
+            assert_eq!(task_of(&desk, "prep").due, "2026-11-12");
+        }
     }
 
     /// F7: an event whose start cannot be read has no day: nothing written.
@@ -642,6 +785,8 @@ mod tests {
     }
 
     /// F14: the event made first: cut short (its calendar cannot be written), the task is untouched.
+    /// Unix alone: a folder's write permission is what cuts the write short there.
+    #[cfg(unix)]
     #[test]
     fn an_event_made_for_a_task_is_made_first() {
         use std::os::unix::fs::PermissionsExt;
@@ -657,14 +802,96 @@ mod tests {
         assert_eq!(read(&desk.list.dir.join("vet.ics")), before, "the task never tied to nothing");
     }
 
-    /// F13: an appointment made a task: the tasks that prepared it keep no tie to a task.
+    /// F13: an appointment made a task: the tasks that prepared it keep no tie to a task;
+    /// check of 96b3cd8, item 7: untied by the pair's rule, the date the tie replaced back.
     #[test]
     fn a_conversion_keeps_no_pair_link() {
-        let task = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:prep\r\nLINK;LINKREL=\"tag:aurelienpierre.com,2026:sioul/rel/appointment\";X-SIOUL-DUE=20261029;VALUE=URI:sioul:event/visit\r\nLINK;LINKREL=related;VALUE=UID:visit\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        let task = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:prep\r\nDUE;VALUE=DATE:20261029\r\nLINK;LINKREL=\"tag:aurelienpierre.com,2026:sioul/rel/appointment\";X-SIOUL-DUE=20261029;X-SIOUL-DUE-WAS=2026-11-30;VALUE=URI:sioul:event/visit\r\nLINK;LINKREL=related;VALUE=UID:visit\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
         let text = crate::appointments::retarget(task, "visit", "new-task", false, &now()).unwrap();
         let read = tasks::task_of_text(&text, &TimeZone::UTC).unwrap();
-        assert_eq!(appointment_of(&read), None);
-        assert!(!text.contains("rel/appointment") && text.contains("VALUE=UID:new-task"), "{text}");
+        assert_eq!((appointment_of(&read), read.due.as_str()), (None, "2026-11-30"));
+        assert!(!text.contains("rel/appointment") && !text.contains(DUE_WAS) && text.contains("VALUE=UID:new-task"), "{text}");
+    }
+
+    /// Check of 96b3cd8, items 1 and 2: "Undo this link" in a Related list unties a
+    /// pair by the ×'s rule: its date back, a meeting with others never written, the
+    /// pair gone from both Related lists; and no message's tie goes into the meeting.
+    #[test]
+    fn undoing_the_link_unties_by_the_pair_s_rule() {
+        let desk = Desk::new("undo-link");
+        desk.task("prep", TaskEdit { due: "2026-11-30".into(), ..TaskEdit::default() });
+        let path = desk.event("meet", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        assert_eq!(task_of(&desk, "prep").due, "2026-10-29");
+        // Guests added since, its line kept by the editor.
+        let with_guests = read(&path).replace("SUMMARY:Doctor", "SUMMARY:Doctor\r\nORGANIZER:mailto:chair@example.org\r\nATTENDEE:mailto:jane@example.org");
+        std::fs::write(&path, &with_guests).unwrap();
+        let loaded = links::Loaded { tasks: desk.tasks(), events: desk.refs(), ..links::Loaded::default() };
+        let undone = loaded.untie(&links::task_uri("prep"), &links::event_uri("meet"), &now());
+        assert_eq!(undone.len(), 1, "the task alone, never the meeting: {undone:?}");
+        assert_ne!(undone[0].path, path);
+        let task = tasks::task_of_text(&undone[0].text, &TimeZone::system()).unwrap();
+        assert_eq!((task.due.as_str(), appointment_of(&task), task.untied.clone()), ("2026-11-30", None, vec!["meet".to_string()]));
+        std::fs::write(&undone[0].path, &undone[0].text).unwrap();
+        let loaded = links::Loaded { tasks: desk.tasks(), events: desk.refs(), ..links::Loaded::default() };
+        let edges = loaded.world().edges();
+        assert!(!edges.iter().any(|e| e.how == "appointment"), "gone from both Related lists: {edges:?}");
+        assert!(loaded.tie("mid:agenda@example.org", &links::event_uri("meet"), &now()).is_none(), "the file of ties holds it, not the meeting");
+    }
+
+    /// Check of 96b3cd8, item 3: never a DUE a server refuses. A task that starts on
+    /// 27 October, whose appointment moves to 26 October, is due on its start day;
+    /// one whose start has a time gets no DUE at all, nor a day to follow.
+    #[test]
+    fn never_a_due_before_the_start_nor_of_another_kind() {
+        let desk = Desk::new("murena");
+        desk.task("prep", TaskEdit { start: "2026-10-27".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let task = task_of(&desk, "prep");
+        assert_eq!(task.due, "2026-10-29");
+        let moved = followed(&task, &read(Path::new(&task.key)), &at("2026-10-26"), &now()).unwrap();
+        std::fs::write(&task.key, &moved).unwrap();
+        let task = task_of(&desk, "prep");
+        assert_eq!((task.start.as_str(), task.due.as_str()), ("2026-10-27", "2026-10-27"));
+        // Moved after its start again: it follows.
+        let back = followed(&task, &moved, &at("2026-10-30"), &now()).unwrap();
+        assert_eq!(tasks::task_of_text(&back, &TimeZone::system()).unwrap().due, "2026-10-30");
+        // Tied when it starts after the appointment: due on its start day.
+        desk.task("late", TaskEdit { start: "2026-10-31".into(), ..TaskEdit::default() });
+        let other = desk.event("visit-late", "");
+        attach(&desk.tasks(), "late", &file(&other, &read(&other), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        assert_eq!(task_of(&desk, "late").due, "2026-10-31");
+        // A start with a time (another program's): no DUE, no day written to follow.
+        desk.task("timed", TaskEdit { start: "2026-10-27T09:00".into(), ..TaskEdit::default() });
+        let third = desk.event("visit-timed", "");
+        attach(&desk.tasks(), "timed", &file(&third, &read(&third), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let timed = task_of(&desk, "timed");
+        assert_eq!((timed.due.as_str(), appointment_of(&timed).as_deref()), ("", Some("visit-timed")));
+        assert!(!read(Path::new(&timed.key)).contains(DUE_WRITTEN), "{}", read(Path::new(&timed.key)));
+        assert!(followed(&timed, &read(Path::new(&timed.key)), &at("2026-11-03"), &now()).is_none());
+    }
+
+    /// Check of 96b3cd8, item 9: an appointment of an account switched off is here
+    /// for parking, a copy the pages show wins, and the pages' events alone move a date.
+    #[test]
+    fn appointments_of_accounts_switched_off_are_here() {
+        let zone = TimeZone::system();
+        let off = Kind::Calendars.root().join("pairs-off-test");
+        std::fs::create_dir_all(off.join("agenda")).unwrap();
+        std::fs::write(off.join("agenda/away.ics"), read_event("away", "20261103T130000Z")).unwrap();
+        std::fs::write(off.join("agenda/both.ics"), read_event("both", "20261104T130000Z")).unwrap();
+        vdir::set_account_off("pairs-off-test", true);
+        let shown = EventRef { uid: "both".into(), start: "2026-11-10T09:00:00Z".parse::<jiff::Timestamp>().unwrap().as_second(), ..EventRef::default() };
+        let here = appointments_here(std::slice::from_ref(&shown), &zone);
+        assert_eq!(here.get("away").and_then(|a| a.day), day("2026-11-03"));
+        assert_eq!(here["both"].day, day("2026-11-10"), "the pages' copy wins");
+        assert!(switched_off_events(&zone).iter().any(|e| e.uid == "away"));
+        // Read once while the folder stays as it is; again once it changes.
+        std::fs::remove_file(off.join("agenda/away.ics")).unwrap();
+        assert!(!appointments_here(&[], &zone).contains_key("away"));
+        vdir::set_account_off("pairs-off-test", false);
+        let _ = std::fs::remove_dir_all(&off);
     }
 
     #[test]

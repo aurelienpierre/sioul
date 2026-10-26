@@ -31,7 +31,7 @@ use crate::mailindex::{MailIndex, bare_id};
 use crate::notes::{self, Vault};
 use crate::tasks::Task;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// What a link points at.
@@ -477,9 +477,14 @@ impl World<'_> {
         for event in self.events {
             let me = event_uri(&event.uid);
             for link in &event.links {
-                // The task that prepares it: the same tie as the task's own, from its end.
+                // The task that prepares it: the same tie as the task's own, from its end; a
+                // line the task was untied from, or one naming a task tied elsewhere, ties nothing
+                // (`pairs::line_ties`, as `pairs::preparation_of` reads it).
                 if link.rel == crate::pairs::PREPARATION {
-                    push(self.canonical(&link.uri), me.clone(), "appointment");
+                    let task = self.tasks.iter().find(|t| task_uri(&t.uid) == self.canonical(&link.uri));
+                    if task.is_none_or(|t| crate::pairs::line_ties(t, &event.uid)) {
+                        push(self.canonical(&link.uri), me.clone(), "appointment");
+                    }
                     continue;
                 }
                 let how = if link.rel == "describedby" { "note" } else if link.rel == "via" { "source" } else { "link" };
@@ -757,11 +762,35 @@ pub struct Rewrite {
 }
 
 impl Loaded {
-    /// The file of an event whose calendar can be written.
+    /// The file of an event a tie may be written into: its calendar can be
+    /// written, and it is no meeting with others, whose server would tell
+    /// every guest (`agenda::with_others`, read in the file as it is now).
     fn writable_event(&self, uid: &str) -> Option<PathBuf> {
+        let (path, text, writable) = self.event_file(uid)?;
+        (writable && !crate::agenda::with_others(&text)).then_some(path)
+    }
+
+    /// An event's file, read as it is now: its path, its text, whether its calendar can be written.
+    fn event_file(&self, uid: &str) -> Option<(PathBuf, String, bool)> {
         let event = self.events.iter().find(|e| e.uid == uid)?;
         let path = PathBuf::from(&event.key);
-        crate::vdir::collections(crate::vdir::Kind::Calendars).into_iter().find(|c| path.starts_with(&c.dir)).filter(|c| !c.read_only).map(|_| path)
+        let text = std::fs::read_to_string(&path).ok()?;
+        let writable = crate::vdir::collections(crate::vdir::Kind::Calendars).into_iter().find(|c| path.starts_with(&c.dir)).is_some_and(|c| !c.read_only);
+        Some((path, text, writable))
+    }
+
+    /// The task and the event's UID when `a` and `b` are a pair, a task and
+    /// the appointment it prepares, named from either end (`pairs`).
+    fn pair_of(&self, a: &str, b: &str) -> Option<(&Task, String)> {
+        let (task, event) = match (kind_of(a), kind_of(b)) {
+            (Kind::Task, Kind::Event) => (a, b),
+            (Kind::Event, Kind::Task) => (b, a),
+            _ => return None,
+        };
+        let task = self.tasks.iter().find(|t| t.uid == id_of(task))?;
+        let event_uid = id_of(event);
+        let lined = self.events.iter().find(|e| e.uid == event_uid).is_some_and(|e| e.links.iter().any(|l| l.rel == crate::pairs::PREPARATION && self.world().canonical(&l.uri) == task_uri(&task.uid)));
+        (crate::pairs::appointment_of(task).as_deref() == Some(event_uid.as_str()) || lined).then_some((task, event_uid))
     }
 
     /// The line a task or an event holds to point at `other`.
@@ -833,6 +862,18 @@ impl Loaded {
                 _ => false,
             }
         };
+        // A task and the appointment it prepares: undone by the pair's own rule
+        // (`pairs::untie`: its date back, a meeting with others never written,
+        // the mark when the event keeps its line), on the event as it is now;
+        // what else ties the two goes after, as for any tie.
+        let mut paired: BTreeMap<PathBuf, String> = BTreeMap::new();
+        if let Some((task, event_uid)) = self.pair_of(&a, &b) {
+            let fresh = self.event_file(&event_uid);
+            let event = fresh.as_ref().map(|(path, text, writable)| crate::pairs::EventFile { path, text, writable: *writable });
+            if let Ok(change) = crate::pairs::untie(task, &event_uid, event.as_ref(), now) {
+                paired.extend(change.written);
+            }
+        }
         let mut out = Vec::new();
         for (holder, other) in [(&a, &b), (&b, &a)] {
             let id = id_of(holder);
@@ -840,19 +881,24 @@ impl Loaded {
                 Kind::Task => {
                     if let Some(task) = self.tasks.iter().find(|t| t.uid == id).filter(|t| !t.read_only)
                         && let Ok(text) = std::fs::read_to_string(&task.key)
-                        && crate::lines::unfold(&text).iter().any(|l| points_at(l, other))
-                        && let Ok(less) = crate::tasks::remove_lines(&text, |l| points_at(l, other), now)
                     {
-                        out.push(Rewrite { kind: Kind::Task, path: PathBuf::from(&task.key), text: less });
+                        let path = PathBuf::from(&task.key);
+                        let base = paired.remove(&path).unwrap_or_else(|| text.clone());
+                        let less = if crate::lines::unfold(&base).iter().any(|l| points_at(l, other)) { crate::tasks::remove_lines(&base, |l| points_at(l, other), now).unwrap_or(base) } else { base };
+                        if less != text {
+                            out.push(Rewrite { kind: Kind::Task, path, text: less });
+                        }
                     }
                 }
                 Kind::Event => {
                     if let Some(path) = self.writable_event(&id)
                         && let Ok(text) = std::fs::read_to_string(&path)
-                        && let Some(less) = crate::agenda::remove_lines(&text, |l| points_at(l, other))
-                        && less != text
                     {
-                        out.push(Rewrite { kind: Kind::Event, path, text: less });
+                        let base = paired.remove(&path).unwrap_or_else(|| text.clone());
+                        let less = crate::agenda::remove_lines(&base, |l| points_at(l, other)).unwrap_or(base);
+                        if less != text {
+                            out.push(Rewrite { kind: Kind::Event, path, text: less });
+                        }
                     }
                 }
                 Kind::Note => {

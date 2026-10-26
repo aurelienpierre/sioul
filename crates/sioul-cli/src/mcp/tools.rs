@@ -951,7 +951,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "attach_to_event",
         title: "Tie a task to its appointment",
-        description: "Ties one task to the appointment it prepares: its steps and its list then belong to that event, which stays a plain event (docs/tasks.md, \"An appointment and its steps\"). Written as a link in the task and, when the event can be written and has no guests, one in the event; the task's date asked becomes the appointment's day when it has none or a later one, and follows the appointment while it says that day. The steps are free on that day. Refused for a task done or one you only read, a time block, an event another open task prepares already; an invitation is never changed. Nothing else changes. Said in Sioul's window with Undo; sent at the next sync.",
+        description: "Ties one task to the appointment it prepares: its steps and its list then belong to that event, which stays a plain event (docs/tasks.md, \"An appointment and its steps\"). Written as a link in the task and, when the event can be written and has no guests, one in the event; the task's date asked becomes the appointment's day when it has none or a later one (never before the day the task starts, none when its start has a time), and follows the appointment while it says that day. A step without a start of its own waits for that day, unless it, a bigger step or the task has an earlier date of its own. Refused for a task done or one you only read, a task of a Google Tasks list, a time block, an event another open task prepares already; an invitation is never changed. Tied already as it is, nothing is written. Nothing else changes. Said in Sioul's window with Undo; sent at the next sync.",
         writes: true,
         idempotent: true,
         open_world: false,
@@ -961,7 +961,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "detach_from_event",
         title: "Untie a task from its appointment",
-        description: "Unties one task from the appointment it prepares: both links out, its date asked with them when it still says the day the tie wrote; the event and its rides stay as they are, nothing else changes. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        description: "Unties one task from the appointment it prepares, by the same rule as the window: the task's link out, and its date asked back to the date the tie replaced when it still says the day the tie wrote; the event's link out when the event can be written and has no guests, else the task keeps a mark so that the event's line never ties it back (a meeting with others is never written). The event and its rides stay as they are; nothing else changes. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
         writes: true,
         idempotent: false,
         open_world: false,

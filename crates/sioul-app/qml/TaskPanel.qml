@@ -950,7 +950,8 @@ Panel {
                 property var matches: []
 
                 objectName: "taskAttach"
-                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && !panel.detail.appointment
+                // Never offered for a task of a list that keeps no tie (Google Tasks).
+                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && !panel.detail.appointment && panel.detail.keeps_ties !== false
                 Layout.fillWidth: true
                 placeholderText: panel.sioul.text("pair-attach-field")
                 onTextEdited: {

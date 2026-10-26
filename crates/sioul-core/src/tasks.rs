@@ -195,6 +195,10 @@ pub struct Task {
     /// The appointments it was untied from whose event could not be written
     /// (`pairs::UNTIED`): their own line names it still, and never ties it back.
     pub untied: Vec<String>,
+    /// The day the pairing wrote as its DUE (`pairs::DUE_WRITTEN`, on its
+    /// link to its appointment), "2026-10-29"; "" when none: a DUE that says
+    /// it is the pairing's, not a date of its own (`pairs::own_date`).
+    pub due_written: String,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -564,7 +568,15 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             name @ (crate::demands::FELT_COST | crate::demands::FELT_GAIN) => felt.push((name.to_string(), lines::param(line, crate::demands::FELT_ON).and_then(|d| crate::demands::felt_date(&d)), value.to_string())),
             ESTIMATE_FIRST => task.estimate_first = minutes_of(value).and_then(|m| u32::try_from(m).ok()).filter(|m| *m > 0),
             AT => task.at = zoned(line, zone).map(|z| z.strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default(),
-            "LINK" => task.links.push(link_of(line)),
+            "LINK" => {
+                let link = link_of(line);
+                if link.rel == crate::pairs::APPOINTMENT
+                    && let Some(day) = lines::param(line, crate::pairs::DUE_WRITTEN).and_then(|d| jiff::civil::Date::strptime("%Y%m%d", d.trim()).ok())
+                {
+                    task.due_written = day.to_string();
+                }
+                task.links.push(link);
+            }
             "CONTACT" => task.contacts.push(contact(line)),
             "REFID" => task.projects.push(lines::unescape(value.trim())),
             "RRULE" => task.repeat = repeat_of(value),

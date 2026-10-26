@@ -458,7 +458,8 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         // Only a move this device saw (`pairs::Seen`), and again at once only after a write that succeeded (F4, F12).
         let mut seen = sioul_core::pairs::Seen::load();
         let before = seen.clone();
-        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_here(&desk.loaded.events, now.time_zone()), &mut seen, &now);
+        // The pages' events alone: a copy left in an account switched off never moves a date (F15).
+        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_of(&desk.loaded.events, now.time_zone()), &mut seen, &now);
         if seen != before {
             let _ = seen.save();
         }
@@ -1001,6 +1002,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         parent_title: String,
         /// The appointment it prepares: {uid, key, title, when, here}; null for none (`pairs`).
         appointment: serde_json::Value,
+        /// Its list keeps ties to appointments (not Google Tasks, `pairs::links_kept`): "Its appointment…" offered.
+        keeps_ties: bool,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -1016,18 +1019,22 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     };
     let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(task);
     let parent_title = task.parent().and_then(|p| loaded.tasks.iter().find(|t| t.uid == p)).map(|t| t.title.clone()).unwrap_or_default();
-    // The appointment it prepares, when it is here: its title and when, said as the agenda says them.
+    // The appointment it prepares, when it is here (an account switched off's too, as the plan
+    // finds it): its title and when, said as the agenda says them; no "when" for a start that
+    // cannot be read.
+    let zone = TimeZone::system();
     let appointment = match sioul_core::pairs::appointment_of(task) {
-        Some(uid) => match loaded.events.iter().find(|e| e.uid == uid) {
+        Some(uid) => match loaded.events.iter().find(|e| e.uid == uid).cloned().or_else(|| sioul_core::pairs::switched_off_events(&zone).into_iter().find(|e| e.uid == uid)) {
             Some(event) => {
-                let when = jiff::Timestamp::from_second(event.start).map(|t| tr().when(&t.to_zoned(TimeZone::system()))).unwrap_or_default();
+                let when = (event.start > 0).then(|| jiff::Timestamp::from_second(event.start).ok()).flatten().map(|t| tr().when(&t.to_zoned(zone.clone()))).unwrap_or_default();
                 serde_json::json!({ "uid": uid, "key": event.key, "title": event.summary, "when": when, "here": !event.cancelled })
             }
             None => serde_json::json!({ "uid": uid, "key": "", "title": "", "when": "", "here": false }),
         },
         None => serde_json::Value::Null,
     };
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment })
+    let keeps_ties = sioul_core::pairs::links_kept(&config)(&task.list_id);
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties })
 }
 
 /// A change of a composed task (`sioul_core::composed`) written and said,

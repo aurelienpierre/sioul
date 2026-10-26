@@ -880,6 +880,10 @@ pub fn attach_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&desk.consent, &links::event_uri(&found.uid))?;
     let all = tasks::all(&TimeZone::system());
     let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    // Tied already, as it is: nothing written, nothing said in the window.
+    if change.is_empty() {
+        return Ok(Answer { text: "Nothing changed: the task is tied to this appointment already.".into(), data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "changed": false, "sent": false }) });
+    }
     let files = change.write()?;
     let summary = agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
     let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]);
