@@ -35,6 +35,10 @@ Dialog {
     property string hereOnly: ""
     // Why it stays in its calendar: a meeting with others (F2, 22 October 2026); else "".
     property string stays: ""
+    // A meeting with others (Rust's one rule, `agenda::may_change`): its time,
+    // title, place, notes and repeat are its organizer's and are not offered;
+    // your time around it, its costs and your reminder are.
+    property bool withOthers: false
     property bool moreShown: false
     property string problem: ""
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
@@ -101,6 +105,7 @@ Dialog {
             dialog.calendarName = found.calendar_name || ""
             dialog.hereOnly = found.here_only || ""
             dialog.stays = found.stays || ""
+            dialog.withOthers = found.with_others === true
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
             dialog.remind = e.remind || ""
@@ -123,6 +128,7 @@ Dialog {
             dialog.calendarName = ""
             dialog.hereOnly = ""
             dialog.stays = ""
+            dialog.withOthers = false
             dialog.around = { before: 0, after: 0 }
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.remind = ""
@@ -259,15 +265,18 @@ Dialog {
             TextField {
                 id: title
 
+                enabled: !dialog.withOthers
                 Layout.fillWidth: true
                 placeholderText: dialog.sioul.text("event-title")
             }
             CheckBox {
                 id: allDay
 
+                enabled: !dialog.withOthers
                 text: dialog.sioul.text("agenda-all-day")
             }
             GridLayout {
+                enabled: !dialog.withOthers
                 columns: 3
                 columnSpacing: 8
                 rowSpacing: 6
@@ -316,6 +325,7 @@ Dialog {
             TextField {
                 id: place
 
+                enabled: !dialog.withOthers
                 Layout.fillWidth: true
                 placeholderText: dialog.sioul.text("event-where")
             }
@@ -396,6 +406,8 @@ Dialog {
                 TextArea {
                     id: notes
 
+                    // Its organizer's words: read, never changed here.
+                    readOnly: dialog.withOthers
                     // A field shows where it is: a border, darker when it has the focus.
                     background: Rectangle {
                         color: dialog.theme.surface
@@ -414,6 +426,7 @@ Dialog {
                 }
                 Button {
                     objectName: "eventAddChecklist"
+                    enabled: !dialog.withOthers
                     flat: true
                     text: "+  " + dialog.sioul.text("checklist-add")
                     onClicked: {
@@ -431,6 +444,7 @@ Dialog {
                 PlainComboBox {
                     id: repeat
 
+                    enabled: !dialog.withOthers
                     Layout.fillWidth: true
                     model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
                 }

@@ -198,8 +198,10 @@ ColumnLayout {
         return Math.floor((event.end - day.start) / 60) === event.to_minute
     }
 
+    // What Rust's writer would refuse is not offered (`agenda::may_change`):
+    // a calendar you only read, a meeting with others.
     function movable(event) {
-        return !event.read_only && !event.all_day
+        return !event.read_only && !event.all_day && !event.with_others
     }
 
     function columnAt(x) {

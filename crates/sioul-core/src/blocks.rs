@@ -376,12 +376,14 @@ pub fn place_for(chosen: &str, list_account: &str, calendars: &[Collection], mak
 
 /// The time blocks to come of the task `uid` that can be changed: what goes
 /// with it when it is deleted or made an appointment (the window's
-/// `blocks::with_task`, read here from the calendars, for agents).
+/// `blocks::with_task`, read here from the calendars, for agents). Never a
+/// block given a guest: a meeting with others now, its organizer's
+/// (`agenda::may_change`), it stays as it is.
 pub fn to_come_of(uid: &str, chosen: &str, now: i64, zone: &TimeZone) -> Vec<std::path::PathBuf> {
     let mut found: Vec<Occurrence> = agenda::occurrences(now, now + 60 * 86_400);
     found.extend(read(&calendars(chosen), now, now + AHEAD_DAYS * 86_400, zone));
     let mut seen = BTreeSet::new();
-    found.into_iter().filter(|b| b.task == uid && !b.read_only && !b.recurring && b.start > now && seen.insert(b.key.clone())).map(|b| std::path::PathBuf::from(b.key)).collect()
+    found.into_iter().filter(|b| b.task == uid && !b.read_only && !b.recurring && !b.with_others && b.start > now && seen.insert(b.key.clone())).map(|b| std::path::PathBuf::from(b.key)).collect()
 }
 
 /// The calendar a task's blocks go into, made when it is the calendar for

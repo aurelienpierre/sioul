@@ -383,6 +383,18 @@ impl Health {
         }
     }
 
+    /// The health file as it reads, or why not: empty when there is none;
+    /// `Unsound::Unreadable` when it is there and does not read, which the
+    /// window says rather than read it as no medicines (`health::load_said`).
+    /// Nothing copied aside here (`load` does).
+    pub fn read(path: &Path) -> Result<Health, Unsound> {
+        match std::fs::read_to_string(path).map(|t| toml::from_str::<Health>(&t)) {
+            Ok(Ok(health)) => Ok(health),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Health::default()),
+            _ => Err(Unsound::Unreadable),
+        }
+    }
+
     /// Written next to its place, then moved: never half a file. Yours alone.
     /// Under the file's lock, which the sharing takes too.
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -1060,6 +1072,52 @@ pub struct Errand {
     pub title: String,
 }
 
+/// What tells the task of an errand, in each language Sioul writes: the
+/// category it is given ("health", « santé »), and its title's words around
+/// the prescription's ("Pharmacy: …", "Doctor: renew the prescription for …").
+struct ErrandWords {
+    categories: Vec<String>,
+    titles: Vec<(String, String)>,
+}
+
+fn errand_words() -> &'static ErrandWords {
+    static WORDS: std::sync::OnceLock<ErrandWords> = std::sync::OnceLock::new();
+    WORDS.get_or_init(|| {
+        // Where the prescription's title goes: a character no title holds.
+        const MARK: &str = "\u{1}";
+        let mut words = ErrandWords { categories: Vec::new(), titles: Vec::new() };
+        for (language, _) in crate::i18n::LANGUAGES {
+            let tr = crate::i18n::Translator::new(language);
+            words.categories.push(tr.text("health-category", None).trim().to_lowercase());
+            for id in ["health-errand-refill", "health-errand-renew"] {
+                let mut args = crate::i18n::args();
+                args.set("title", MARK);
+                // Words around it, never the title alone: that would be every task.
+                if let Some((before, after)) = tr.text(id, Some(&args)).split_once(MARK).filter(|(before, after)| !before.trim().is_empty() || !after.trim().is_empty()) {
+                    words.titles.push((before.to_string(), after.to_string()));
+                }
+            }
+        }
+        words
+    })
+}
+
+/// Whether a task is a pharmacy or renewal errand (`Health::errands`):
+/// health, which never reaches an AI agent (docs/mcp.md). Known by the
+/// category it was made with, in any language Sioul writes; by its UID among
+/// the errands' tasks the record keeps (`recorded`: `HealthState::errand_uids`);
+/// or by its title, one Sioul gives an errand in any language: a list that
+/// keeps no category (Google Tasks) still keeps the title.
+pub fn is_errand(task: &crate::tasks::Task, recorded: &std::collections::BTreeSet<String>) -> bool {
+    if recorded.contains(&task.uid) {
+        return true;
+    }
+    let words = errand_words();
+    let title = task.title.trim();
+    task.categories.iter().any(|c| words.categories.contains(&c.trim().to_lowercase()))
+        || words.titles.iter().any(|(before, after)| title.len() > before.len() + after.len() && title.starts_with(before.as_str()) && title.ends_with(after.as_str()))
+}
+
 /// What is marked of the doses and done of the errands, kept apart from the
 /// health file: `$XDG_STATE_HOME/sioul/health-state.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1132,6 +1190,19 @@ pub enum Problem {
 impl HealthState {
     pub fn default_path() -> PathBuf {
         crate::config::state_dir().join("health-state.toml")
+    }
+
+    /// The UIDs of the tasks made for errands (`errands`), alone: what keeps
+    /// them from agents (`is_errand`). Nothing else of the record is kept,
+    /// the errands' keys either (they name prescriptions); none when the
+    /// record does not read, and nothing set aside or repaired here.
+    pub fn errand_uids(path: &Path) -> std::collections::BTreeSet<String> {
+        #[derive(Deserialize)]
+        struct Errands {
+            #[serde(default)]
+            errands: BTreeMap<String, String>,
+        }
+        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<Errands>(&text).ok()).map(|e| e.errands.into_values().collect()).unwrap_or_default()
     }
 
     /// The doses' record as written, or why it cannot be trusted. Never an
@@ -1769,6 +1840,44 @@ mod tests {
         };
         let errands: Vec<(ErrandKind, String)> = health.errands().into_iter().map(|e| (e.kind, e.day.to_string())).collect();
         assert_eq!(errands, vec![(ErrandKind::Refill, "2026-10-27".to_string()), (ErrandKind::Renew, "2026-12-17".to_string())]);
+    }
+
+    /// An errand is health wherever it went (docs/mcp.md): known by its
+    /// category in either language, by the record's UID alone, or by Sioul's
+    /// own title in either language (a Google list keeps no category); a task
+    /// of your own about a pharmacy is not one.
+    #[test]
+    fn an_errand_is_known_by_its_category_its_record_or_its_title() {
+        use crate::tasks::Task;
+        let titled = |language: &str, id: &str| {
+            let mut args = crate::i18n::args();
+            args.set("title", "Vitamin D 1000 IU");
+            crate::i18n::Translator::new(language).text(id, Some(&args))
+        };
+        let task = |uid: &str, title: &str, categories: &[&str]| Task { uid: uid.into(), title: title.into(), categories: categories.iter().map(|c| c.to_string()).collect(), ..Task::default() };
+        let recorded: std::collections::BTreeSet<String> = ["renamed".to_string()].into();
+        for errand in [
+            task("fr", "Aller chercher la boîte", &["Santé"]),
+            task("en", "Fetch the box", &["health"]),
+            task("renamed", "Collect the order", &[]),
+            task("google-en", &titled("en", "health-errand-refill"), &[]),
+            task("google-fr", &titled("fr", "health-errand-renew"), &[]),
+        ] {
+            assert!(is_errand(&errand, &recorded), "{errand:?}");
+        }
+        for own in [task("call", "Call the pharmacy", &[]), task("bread", "Buy bread", &["shopping"]), task("bare", "Pharmacy:", &[])] {
+            assert!(!is_errand(&own, &recorded), "{own:?}");
+        }
+        // The record's UIDs alone: its keys (they name prescriptions) and its marks are not kept.
+        let dir = std::env::temp_dir().join(format!("sioul-errand-uids-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health-state.toml");
+        std::fs::write(&path, "[taken]\n\"vitamin-d@1790000000\" = 1790000000\n\n[errands]\n\"refill:vitamin-d:2026-10-27\" = \"uid-1\"\n").unwrap();
+        assert_eq!(HealthState::errand_uids(&path), ["uid-1".to_string()].into());
+        std::fs::write(&path, "not toml [[").unwrap();
+        assert!(HealthState::errand_uids(&path).is_empty());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "nothing set aside");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

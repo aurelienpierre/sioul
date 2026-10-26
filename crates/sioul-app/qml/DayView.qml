@@ -171,7 +171,7 @@ ColumnLayout {
 
     // What a hand can move: a step (by its card or its margins); a meal or a nap
     // not over; an event in a calendar that can be written, wholly today (by
-    // its card or its margins).
+    // its card or its margins), never a meeting with others (`agenda::may_change`).
     function movable(block) {
         const owner = dayView.ownerOf(block)
         if (owner === null)
@@ -180,7 +180,7 @@ ColumnLayout {
             return true
         if (owner.kind === "meal" || owner.kind === "nap")
             return owner.end > dayView.now
-        return owner.kind === "event" && owner.read_only === false && owner.start > dayView.day.from && owner.end < dayView.midnight()
+        return owner.kind === "event" && owner.read_only === false && owner.with_others !== true && owner.start > dayView.day.from && owner.end < dayView.midnight()
     }
 
     // What lies at `p` (the day's content): {block, index, part: "body", or

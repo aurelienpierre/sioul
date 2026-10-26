@@ -6581,6 +6581,19 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         return Err(e);
     }
     let _ = set_time(&opened, std::time::SystemTime::now());
+    // Its bytes on the disk before the lock: a rename that replaces a file has the
+    // system write every byte of the new one not written yet, inside the rename
+    // (ext4's auto_da_alloc, btrfs's flush on rename), for as long as the disk is
+    // busy (CI's Linux job of 26 October 2026: a dose's exchange waited 285 ms
+    // behind a 64 MB version kept as a copy; one opened from the sharing folder,
+    // `blobs::get`, is written through already).
+    let written_through = match on_the_disk(&opened) {
+        Ok(through) => through,
+        Err(e) => {
+            let _ = std::fs::remove_file(&opened);
+            return Err(fail(e));
+        }
+    };
     // The file as it is now copied into its versions ahead of the lock too, closed there, so that
     // under the lock it is kept by a rename alone, while it is as it was copied (review of part 3, R-7).
     let prepare = || {
@@ -6629,12 +6642,14 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         let parent = path.parent().ok_or_else(not_there)?;
         private_dirs(parent).map_err(fail)?;
         // Into its own folder: a rename on one disk; across disks (one mounted below), opened there again.
+        let mut through = written_through;
         let beside = if opened.parent() == Some(parent) {
             opened.clone()
         } else {
             let beside = temporary(&path);
             if std::fs::rename(&opened, &beside).is_err() {
                 let _ = std::fs::remove_file(&opened);
+                through = false;
                 if let Err(e) = bring(&beside) {
                     let _ = std::fs::remove_file(&beside);
                     return Err(e);
@@ -6655,6 +6670,9 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             }
             // Dated now, wherever the copy took its time from: a change made here, which the others take.
             let _ = set_time(&beside, std::time::SystemTime::now());
+            if !through {
+                crate::history::grew_under_lock("its bytes written by its rename: not on the disk before the lock");
+            }
             std::fs::rename(&beside, &path).map_err(fail)
         };
         // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
@@ -6672,6 +6690,17 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
 /// How many times a file changed between its copy and the exchanges' lock
 /// is copied again outside it before it is copied under it (`put_back`).
 const PREPARE_AGAIN: usize = 3;
+
+/// A file's bytes written to the disk, through a handle that may write it
+/// (Windows flushes no other): whether they are; false where the file system
+/// cannot do it (a kind of error that says so), an error otherwise.
+fn on_the_disk(path: &Path) -> std::io::Result<bool> {
+    match std::fs::OpenOptions::new().write(true).open(path)?.sync_all() {
+        Ok(()) => Ok(true),
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
 
 /// For a file sealed apart, the content a change made here replaces: its hash as last known ("" new).
 fn base_of(memory: &Memory, key: &str) -> String {

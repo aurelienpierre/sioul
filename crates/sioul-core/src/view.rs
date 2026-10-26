@@ -1469,6 +1469,9 @@ pub struct AgendaEvent {
     pub cancelled: bool,
     pub tentative: bool,
     pub read_only: bool,
+    /// A meeting with others (`agenda::meeting_with_others`): the window offers
+    /// no drag, no Delete and none of its organizer's fields (`agenda::may_change`).
+    pub with_others: bool,
     pub organizer: String,
     pub attendees: Vec<crate::agenda::Attendee>,
     pub all_day: bool,
@@ -1543,6 +1546,7 @@ pub fn agenda(occurrences: &[crate::agenda::Occurrence], from: jiff::civil::Date
                 cancelled: o.cancelled,
                 tentative: o.tentative,
                 read_only: o.read_only,
+                with_others: o.with_others,
                 organizer: o.organizer.clone(),
                 attendees: o.attendees.clone(),
                 all_day: o.all_day || (o.start <= start && o.end >= end),
@@ -1815,6 +1819,7 @@ host = "imap.example.com"
             cancelled: false,
             tentative: false,
             read_only: false,
+            with_others: false,
             organizer: String::new(),
             attendees: Vec::new(),
             all_day: false,

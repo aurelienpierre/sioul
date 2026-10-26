@@ -121,6 +121,13 @@ Item {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
 
+    // A writer's answer, said in the status line when something stops it
+    // (a calendar you only read, a meeting with others: Rust's one rule).
+    function said(problem) {
+        if (problem !== "")
+            page.sioul.status = problem
+    }
+
     // The first day a mode shows around `day`: the day itself, its Monday, the Monday before the 1st.
     function startOf(day, mode) {
         const d = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12)
@@ -233,9 +240,10 @@ Item {
     }
 
     // An event of your own that could be a task instead: not a task's time
-    // already, not an invitation (others expect you there), not read only.
+    // already, not a meeting with others (Rust's one rule: others expect you
+    // there), not read only.
     function canBeTask(event) {
-        return event !== null && (event.task || "") === "" && !event.read_only && event.organizer === "" && event.attendees.length === 0
+        return event !== null && (event.task || "") === "" && !event.read_only && !event.with_others
     }
 
     // A task made an appointment (the event form, its block's time, then
@@ -712,6 +720,8 @@ Item {
                         const problem = page.sioul.setEventReminder(page.opened.key, page.reminds[index].value)
                         if (problem === "")
                             page.readReminder()
+                        else
+                            page.sioul.status = problem
                     }
                 }
                 Button {
@@ -731,8 +741,8 @@ Item {
                     window: page.window
                     markdown: page.opened ? page.opened.notes : ""
                     // Its checklist ticked here: a task's that can be changed, an event's of
-                    // a calendar you write to, never an invitation's (its organizer's words).
-                    tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || (page.opened.organizer === "" && page.opened.attendees.length === 0))
+                    // a calendar you write to, never a meeting with others' (its organizer's words).
+                    tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || page.opened.with_others !== true)
                     // An item made a task of its own; a step, of a task's list.
                     converts: tickable
                     steps: page.openedTask
@@ -881,8 +891,9 @@ Item {
                         text: page.sioul.text("ui-edit")
                         onClicked: eventDialog.now().edit(page.opened.key, "")
                     }
+                    // Never a meeting with others: its server would cancel or decline it for them.
                     Button {
-                        visible: page.opened !== null && !page.opened.read_only
+                        visible: page.opened !== null && !page.opened.read_only && page.opened.with_others !== true
                         flat: true
                         text: page.sioul.text("ui-delete")
                         onClicked: {
@@ -930,7 +941,7 @@ Item {
                     onTriggered: eventDialog.now().edit(page.menuTarget.key, "")
                 }
                 MenuItem {
-                    enabled: page.menuTarget !== null && !page.menuTarget.read_only
+                    enabled: page.menuTarget !== null && !page.menuTarget.read_only && page.menuTarget.with_others !== true
                     text: page.sioul.text("ui-delete")
                     onTriggered: deleteChoice.now().open()
                 }
@@ -972,7 +983,7 @@ Item {
                 title: page.menuTarget ? page.theme.plain(page.menuTarget.summary) : ""
                 onAboutToShow: {
                     if (page.menuTarget && !page.menuTarget.recurring) {
-                        page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false)
+                        page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false))
                         page.opened = null
                         Qt.callLater(() => deleteChoiceForm.close())
                     }
@@ -986,7 +997,7 @@ Item {
                         Layout.fillWidth: true
                         text: page.sioul.text("agenda-delete-this")
                         onClicked: {
-                            page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, true)
+                            page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, true))
                             page.opened = null
                             deleteChoiceForm.close()
                         }
@@ -995,7 +1006,7 @@ Item {
                         Layout.fillWidth: true
                         text: page.sioul.text("agenda-delete-all")
                         onClicked: {
-                            page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false)
+                            page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false))
                             page.opened = null
                             deleteChoiceForm.close()
                         }

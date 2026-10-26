@@ -248,6 +248,9 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
     // between is moved as it wrote it (the review of 22 October 2026, F8).
     crate::filelock::with_lock(&moves_path(), || {
         let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
+        // An event's: through the one rule (`agenda::guard`), as it is now, before anything is noted.
+        guarded(from, crate::agenda::Change::Move)?;
+        guarded(to, crate::agenda::Change::Write(&text))?;
         replace_locked(from, &[], &[], to, &text)
     })
 }
@@ -262,6 +265,15 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
 /// never neither.
 pub fn replace_items(gone: &[PathBuf], made: &[(PathBuf, String)], to: &Path, text: &str) -> Result<(), String> {
     let Some((from, also)) = gone.split_first() else { return Err("nothing to replace".into()) };
+    // Each event among them through the one rule (`agenda::guard`) before anything is noted:
+    // refused, nothing is done (a meeting with others never taken out, a calendar you only read never written).
+    for path in gone.iter().filter(|p| p.as_path() != to) {
+        guarded(path, crate::agenda::Change::Delete)?;
+    }
+    for (path, made) in made {
+        guarded(path, crate::agenda::Change::Write(made))?;
+    }
+    guarded(to, crate::agenda::Change::Write(text))?;
     // One move at a time, in this program and between programs (the window,
     // `sioul`, a sync): another finishing moves meanwhile never takes back
     // what one under way has made, nor clears its note (22 October 2026; the
@@ -709,8 +721,43 @@ pub fn content_hash(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
-/// Writes an item next to its place, then moves it in.
+/// Writes an item next to its place, then moves it in. An event's file goes
+/// through the one rule of every event's writer first (`agenda::guard`, on
+/// the file as it is now): never into a calendar you only read, never a
+/// meeting with others changed but for Sioul's own lines; anything else (a
+/// task, a contact) as it comes.
 pub fn write_item(path: &Path, text: &str) -> Result<(), String> {
+    guarded(path, crate::agenda::Change::Write(text))?;
+    store_item(path, text)
+}
+
+/// An item taken out of its collection; an event's through the one rule
+/// first (`agenda::guard`): never one of a calendar you only read, never a
+/// meeting with others (its server would cancel or decline it for them).
+pub fn remove_item(path: &Path) -> Result<(), String> {
+    guarded(path, crate::agenda::Change::Delete)?;
+    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// `agenda::guard` for a file of a collection, its refusal said.
+fn guarded(path: &Path, change: crate::agenda::Change) -> Result<(), String> {
+    crate::agenda::guard(path, change).map_err(|refusal| crate::agenda::said(refusal, &change))
+}
+
+/// Whether the calendar whose folder holds `path` can only be read; None
+/// when `path` is no file of a calendar's folder.
+pub fn calendar_read_only(path: &Path) -> Option<bool> {
+    let rest = path.strip_prefix(Kind::Calendars.root()).ok()?;
+    let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    let [account, id, _file] = parts.as_slice() else { return None };
+    Some(State::load(&state_path(account, Kind::Calendars, id)).read_only)
+}
+
+/// An item written as it came, without `agenda::guard`: what a server sent
+/// (the sync's copy of it), an invitation's event as your answer keeps it
+/// (`pim::answer`, the one path that writes a meeting with others), and
+/// `write_item` once the rule let it through. Next to its place, then moved in.
+pub fn store_item(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(fail)?;

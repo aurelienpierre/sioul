@@ -49,14 +49,16 @@ impl Said {
         if self.files.iter().any(|f| std::fs::read_to_string(&f.path).ok() != f.after) {
             return false;
         }
+        // An event among them through the one rule first (`agenda::guard`): one refused, none put back.
+        if self.files.iter().any(|f| crate::agenda::guard(&f.path, f.before.as_deref().map_or(crate::agenda::Change::Delete, crate::agenda::Change::Write)).is_err()) {
+            return false;
+        }
         for f in &self.files {
             let done = match &f.before {
                 Some(text) => crate::vdir::write_item(&f.path, text),
                 // Gone already (made, then moved on by the same change): removed.
-                None => match std::fs::remove_file(&f.path) {
-                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-                    _ => Ok(()),
-                },
+                None if !f.path.exists() => Ok(()),
+                None => crate::vdir::remove_item(&f.path),
             };
             if done.is_err() {
                 return false;

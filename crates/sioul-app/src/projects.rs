@@ -435,18 +435,42 @@ pub(crate) fn invoice_again(number: &str) -> String {
     }
 }
 
-/// An invoice paid (or not): its record says so, and its budget line is no
-/// longer planned but dated today.
+/// An invoice paid (or not): its record says so, and its budget line follows.
+/// Paid: the line is no longer planned but dated today, with "Undo" for ten
+/// seconds, which puts it back as it was. Not paid: planned again, on the
+/// day it had (`budget::unsettle_line`), its due day when that is not known.
 pub(crate) fn set_paid(qt: &QtThread, shared: &Arc<Shared>, number: &str, paid: bool) -> String {
-    let result = (|| -> Result<(), String> {
-        let mut found = invoice::all_in(&invoice::folder()).into_iter().find(|i| i.number == number).ok_or_else(|| tr().text("invoice-gone", None))?;
-        found.paid = paid;
-        invoice::save_in(&invoice::folder(), &found)?;
-        if paid && let Ok(store) = store() {
-            budget::settle_line(&store.root.join(budget::LEDGER), &format!("sioul:invoice/{number}"), Zoned::now().date())?;
-        }
-        Ok(())
-    })();
+    let result = paid_as(number, paid, None);
     work::refresh(qt, shared);
-    result.err().unwrap_or_default()
+    match result {
+        Ok(was) if paid => {
+            let owned = number.to_string();
+            crate::mail::offer_back(qt, shared, say("invoice-marked-paid", &[("number", number.to_string())]), move |qt, shared| {
+                let back = paid_as(&owned, false, was).err().unwrap_or_default();
+                work::refresh(qt, shared);
+                back
+            });
+            String::new()
+        }
+        Ok(_) => String::new(),
+        Err(e) => e,
+    }
+}
+
+/// The invoice `number` marked paid or not, and its budget line with it:
+/// paid, settled today, the day it had returned (for "Undo"); not paid,
+/// planned again on `was`, else on the invoice's due day.
+fn paid_as(number: &str, paid: bool, was: Option<jiff::civil::Date>) -> Result<Option<jiff::civil::Date>, String> {
+    let mut found = invoice::all_in(&invoice::folder()).into_iter().find(|i| i.number == number).ok_or_else(|| tr().text("invoice-gone", None))?;
+    found.paid = paid;
+    invoice::save_in(&invoice::folder(), &found)?;
+    let Ok(store) = store() else { return Ok(None) };
+    let (ledger, link) = (store.root.join(budget::LEDGER), format!("sioul:invoice/{number}"));
+    if paid {
+        return budget::settle_line(&ledger, &link, Zoned::now().date());
+    }
+    if let Some(day) = was.or_else(|| found.due.parse().ok()) {
+        budget::unsettle_line(&ledger, &link, day)?;
+    }
+    Ok(None)
 }

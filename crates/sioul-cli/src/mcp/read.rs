@@ -623,7 +623,7 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
         view.then = None;
     }
     match &view.now {
-        Some(_) if kept_now => lines.push("The next step is one the person keeps from agents (a project not opened to them): nothing of it is given here. Ask the person if it matters.".into()),
+        Some(_) if kept_now => lines.push("The next step is one the person keeps from agents (a project not opened to them, or health): nothing of it is given here. Ask the person if it matters.".into()),
         Some(card) => {
             lines.push(s.tr.text("task-now-title", None));
             lines.extend(card_lines(card, 0));
@@ -664,9 +664,23 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let mut closed = before - events.len();
     let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
     let mut day = dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
-    let before = day.blocks.len();
-    day.blocks.retain(|b| !matches!(b.kind, "task" | "done") || desk.allows(&b.key));
-    closed += before - day.blocks.len();
+    // Only the events, the steps, the tasks done and their margins, each by
+    // its owner's consent, a thing kept back counted once however many blocks
+    // it has; meals, naps, the time kept free and the time for you never, nor
+    // counted: health and your own time stay out (docs/mcp.md).
+    let own_events: std::collections::BTreeSet<&str> = events.iter().map(|e| e.key.as_str()).collect();
+    let mut kept_back = std::collections::BTreeSet::new();
+    day.blocks.retain(|b| match b.kind {
+        "event" => true,
+        "margin" if own_events.contains(b.key.as_str()) => true,
+        "task" | "done" | "margin" if desk.allows(&b.key) => true,
+        "task" | "done" | "margin" => {
+            kept_back.insert(b.key.clone());
+            false
+        }
+        _ => false,
+    });
+    closed += kept_back.len();
     let hour = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let mut lines = vec![s.tr.text("agenda-today", None)];
     if !day.all_day.is_empty() {

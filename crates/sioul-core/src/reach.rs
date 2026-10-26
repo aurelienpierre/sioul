@@ -173,7 +173,8 @@ impl Clock {
     /// events from the day before `now` to `HORIZON_DAYS` after it.
     pub fn load(config: &Config, now: &Zoned) -> Clock {
         let overrides = Overrides::load(&Overrides::default_path());
-        let needs = crate::health::Health::load(&crate::health::Health::default_path()).needs;
+        // Health's `[needs]` alone: no medicine read here.
+        let needs = crate::needs::Needs::read(&crate::health::Health::default_path());
         let days = Days::load(&Days::default_path());
         let stamp = now.timestamp().as_second();
         let events = crate::agenda::occurrences(stamp - 86_400, stamp + (HORIZON_DAYS + 1) * 86_400);

@@ -210,14 +210,20 @@ impl Drop for Prepared {
 
 #[cfg(test)]
 thread_local! {
-    /// Tests only: each copy into the history made under the exchanges' lock
-    /// on this thread, with why (`share::put_back`), so that a test says why
-    /// rather than how long a dose waited.
+    /// Tests only: each work that grows with a file's size done under the
+    /// exchanges' lock on this thread (`share::put_back`: a copy into the
+    /// history, a file's bytes written by its rename), with why, so that a
+    /// test says why rather than how long a dose waited.
     pub(crate) static UNDER_LOCK: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// A copy made under the exchanges' lock, and why (tests only: counted).
 pub(crate) fn copied_under_lock(why: &str) {
+    grew_under_lock(why);
+}
+
+/// Work that grows with a file's size done under the exchanges' lock, and why (tests only: counted).
+pub(crate) fn grew_under_lock(why: &str) {
     #[cfg(test)]
     UNDER_LOCK.with(|all| all.borrow_mut().push(why.to_string()));
     let _ = why;

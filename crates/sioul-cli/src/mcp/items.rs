@@ -67,6 +67,10 @@ fn find_event(consent: &Consent, wanted: &str) -> Result<Found, String> {
 
 /// Whether something in these projects may be changed for an agent: each open; in none, while things outside projects are open.
 pub(super) fn may_change(consent: &Consent, uri: &str) -> Result<(), String> {
+    // Health (an errand, its steps, its blocks): never written for an agent, whatever its projects.
+    if consent.is_health(uri) {
+        return Err(access::kept(if uri.starts_with("sioul:event/") { "This event" } else { "This task" }));
+    }
     let projects = consent.projects_of(uri);
     if let Some(closed) = projects.iter().find(|p| consent.knows(p) && !consent.is_open(p)) {
         return Err(access::closed_project(closed));
@@ -253,7 +257,7 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
             vec![FileChange::of(&found.path, Some(found.text.clone()))]
         }
         None => {
-            std::fs::remove_file(&found.path).map_err(|e| e.to_string())?;
+            vdir::remove_item(&found.path)?;
             line = s.say("agent-event-deleted", &[("title", one_line(&title))]);
             vec![FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None }]
         }
@@ -548,7 +552,12 @@ pub fn set_checklist(s: &Session, args: &Args) -> Result<Answer, String> {
 
 fn find_open_task(s: &Session, desk: &Desk, wanted: &str) -> Result<Task, String> {
     let open = desk.open_tasks();
-    read::find_task(s, &open, wanted).cloned()
+    read::find_task(s, &open, wanted).cloned().map_err(|missing| {
+        // Asked for by its address, a task kept from agents (a closed project's, health) is refused, saying so.
+        let wanted = wanted.trim();
+        let kept = desk.loaded.tasks.iter().any(|t| (t.uid == wanted || links::task_uri(&t.uid) == wanted) && !desk.allows(&t.uid));
+        if kept { access::kept("This task") } else { missing }
+    })
 }
 
 fn task_json(task: &Task) -> Value {
@@ -865,10 +874,16 @@ pub fn delete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     // Its time blocks to come go with it, as the window deletes them.
     let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
     let blocks = sioul_core::blocks::to_come_of(&task.uid, &chosen, now.timestamp().as_second(), now.time_zone());
+    let gone: Vec<PathBuf> = std::iter::once(PathBuf::from(&task.key)).chain(blocks).collect();
+    // Each through the one rule first (`agenda::guard`): one refused, none taken out.
+    let change = agenda::Change::Delete;
+    if let Some(refusal) = gone.iter().find_map(|path| agenda::guard(path, change).err()) {
+        return Err(s.tr.text(refusal.word(&change), None));
+    }
     let mut files = Vec::new();
-    for path in std::iter::once(PathBuf::from(&task.key)).chain(blocks) {
+    for path in gone {
         let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        vdir::remove_item(&path)?;
         files.push(FileChange { path, before: Some(text), after: None });
     }
     let line = s.say("agent-task-deleted", &[("title", one_line(&task.title))]);

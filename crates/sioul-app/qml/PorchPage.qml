@@ -715,8 +715,11 @@ Item {
                                     Button {
                                         text: page.sioul.text(dueDose.modelData.late && !dueDose.modelData.choose ? "health-taken-when" : "health-taken")
                                         onClicked: {
+                                            // The writer's answer said, as Health's list says it.
                                             if (dueDose.modelData.choose) {
-                                                page.sioul.doseChoose(dueDose.modelData.key, true)
+                                                const chosen = page.sioul.doseChoose(dueDose.modelData.key, true)
+                                                if (chosen !== "")
+                                                    page.sioul.status = chosen
                                                 page.reloadDoses()
                                                 return
                                             }
@@ -724,7 +727,9 @@ Item {
                                                 page.window.askDose(dueDose.modelData.key)
                                                 return
                                             }
-                                            page.sioul.setDoseTaken(dueDose.modelData.key, true)
+                                            const problem = page.sioul.setDoseTaken(dueDose.modelData.key, true)
+                                            if (problem !== "")
+                                                page.sioul.status = problem
                                             page.reloadDoses()
                                         }
                                     }
@@ -733,7 +738,9 @@ Item {
                                         flat: true
                                         text: page.sioul.text("health-not-taken")
                                         onClicked: {
-                                            page.sioul.doseChoose(dueDose.modelData.key, false)
+                                            const problem = page.sioul.doseChoose(dueDose.modelData.key, false)
+                                            if (problem !== "")
+                                                page.sioul.status = problem
                                             page.reloadDoses()
                                         }
                                     }

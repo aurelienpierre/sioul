@@ -91,9 +91,11 @@ pub(crate) fn pins(shared: &Shared, events: &[Occurrence], tasks: &[Task], now: 
 }
 
 /// The blocks of a task found when the plan was last made, each file once.
+/// Never a block given a guest: a meeting with others now, its organizer's
+/// (`agenda::may_change`), it is neither moved, ended, renamed nor taken out.
 fn found_of(uid: &str) -> Vec<Occurrence> {
     let mut seen = BTreeSet::new();
-    FOUND.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|b| b.task == uid && seen.insert(b.key.clone())).cloned().collect()
+    FOUND.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|b| b.task == uid && !b.with_others && seen.insert(b.key.clone())).cloned().collect()
 }
 
 /// A file written, and its account told to send it.
@@ -105,9 +107,9 @@ fn write(shared: &Shared, path: &Path, text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A file deleted here; its account deletes it there at the next sync.
+/// A file deleted here, through the one rule (`vdir::remove_item`); its account deletes it there at the next sync.
 fn remove(shared: &Shared, path: &Path) -> Result<(), String> {
-    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    vdir::remove_item(path)?;
     if let Some(account) = pim::account_of(path) {
         pim::nudge(shared, &account);
     }
@@ -405,7 +407,7 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
     let chosen = load_config().tasks.blocks.unwrap_or_default();
     let stamp = now.timestamp().as_second();
     let mut seen = BTreeSet::new();
-    for block in found.iter().filter(|b| b.end > stamp && !b.recurring) {
+    for block in found.iter().filter(|b| b.end > stamp && !b.recurring && !b.with_others) {
         let Some(task) = tasks.iter().find(|t| t.uid == block.task && t.status.is_open() && !t.read_only) else { continue };
         let path = PathBuf::from(&block.key);
         if !seen.insert(path.clone()) || !path.is_file() {
@@ -427,4 +429,34 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
         }
     }
     wrote
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A time block given a guest is a meeting with others now (26 October
+    /// 2026): none of the window's task changes takes it (`found_of`, read by
+    /// Done, Delete, "Make it an appointment", a rename, a pin), while the
+    /// task's block of its own still goes; and the door refuses it anyway.
+    #[test]
+    fn a_block_given_a_guest_is_left_to_its_meeting() {
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Blocks given a guest", None, &["VEVENT"]).unwrap();
+        let now = Zoned::now();
+        let day = now.date().tomorrow().unwrap().strftime("%Y%m%d").to_string();
+        let block = |uid: &str, extra: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{day}T100000Z\r\nDTEND:{day}T110000Z\r\nSUMMARY:Guest task\r\n{}:guest-task-1\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n", blocks::TASK);
+        let (own, met) = (calendar.dir.join("own.ics"), calendar.dir.join("met.ics"));
+        std::fs::write(&own, block("own-block", "")).unwrap();
+        let meeting = block("met-block", "ORGANIZER:mailto:jane@example.org\r\nATTENDEE:mailto:paul@example.org\r\n");
+        std::fs::write(&met, &meeting).unwrap();
+        let task = Task { uid: "guest-task-1".into(), title: "Guest task".into(), ..Task::default() };
+        let stamp = now.timestamp().as_second();
+        let events = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 3 * 86_400);
+        let shared = Shared::default();
+        let _ = pins(&shared, &events, std::slice::from_ref(&task), &now);
+        assert_eq!(with_task("guest-task-1").into_iter().map(|(_, p)| p).collect::<Vec<_>>(), vec![own.clone()], "its own block goes with it, never the meeting");
+        assert!(remove(&shared, &met).is_err() && write(&shared, &met, &meeting.replace("SUMMARY:Guest task", "SUMMARY:Renamed")).is_err());
+        assert_eq!(std::fs::read_to_string(&met).unwrap(), meeting, "byte for byte");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
 }

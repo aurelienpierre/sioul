@@ -28,6 +28,17 @@ fn load() -> Health {
     Health::load(&Health::default_path())
 }
 
+/// The health file, and whether it is there but could not be read: its
+/// medicines then are not shown, and the page says so instead of reading it
+/// as none (copied aside as every reader does, `Health::load`).
+fn load_said() -> (Health, bool) {
+    let path = Health::default_path();
+    match Health::read(&path) {
+        Ok(health) => (health, false),
+        Err(_) => (Health::load(&path), true),
+    }
+}
+
 /// The health file read, changed by `change` and written back, all under its
 /// lock, which the sharing takes too: a change is set over the medicines as
 /// the file holds them then (`Health::change`), never over a copy read earlier.
@@ -282,6 +293,8 @@ struct PageView {
     shared_note: String,
     /// Reminders come on another computer, the one you are at: said, by its name.
     reminded_there: String,
+    /// The health file could not be read here: said, its doses not shown; "" when it reads.
+    unreadable: String,
     /// The minutes "Later" moves a block by.
     later: u32,
     /// Anything set at all (meals, naps, the night, a medicine): else the page says where to set them.
@@ -460,18 +473,20 @@ fn capitalized(text: &str) -> String {
     chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
-/// The health page, as JSON: the week of the day it shows, and what only today says.
-pub(crate) fn page() -> String {
-    let health = load();
+/// The health page, as JSON: the week of the day it shows, and what only
+/// today says; the events whose deletion waits (`waiting`) left out.
+pub(crate) fn page(waiting: &Waiting) -> String {
+    let (health, unreadable) = load_said();
     let state = record();
     let knowledge = know();
     let now = Zoned::now();
     let shown = SHOWN.lock().ok().and_then(|s| *s).unwrap_or(now.date());
     let records = records();
-    let week = week_view(&health, &state, &records, &knowledge, shown, &now);
+    let week = week_view(&health, &state, &records, &knowledge, shown, &now, waiting);
     let needs = &health.needs;
     json(&PageView {
-        any: needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
+        any: unreadable || needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
+        unreadable: if unreadable { tr().text("health-unreadable", None) } else { String::new() },
         week,
         missed: missed_rows(&health, &state, &told().unwrap_or_default(), &knowledge, &now, tr()),
         shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
@@ -502,9 +517,18 @@ pub(crate) fn settings_view() -> String {
     })
 }
 
-/// The events of the week from `monday`, read again five minutes after at most:
-/// the page is made again each minute while it is open.
-fn week_events(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occurrence>> {
+/// Events whose deletion waits ("Undo": `mail::hidden_pim`), and occurrences left out.
+pub(crate) type Waiting = (std::collections::BTreeSet<std::path::PathBuf>, std::collections::BTreeSet<(std::path::PathBuf, i64)>);
+
+/// The events of the week from `monday`, read again five minutes after at most
+/// (the page is made again each minute while it is open), those whose deletion
+/// waits left out as every agenda leaves them out (`pim::without_waiting`), at once.
+fn week_events(monday: Date, zone: &TimeZone, waiting: &Waiting) -> Vec<sioul_core::agenda::Occurrence> {
+    crate::pim::without_waiting(week_read(monday, zone).as_ref().clone(), &waiting.0, &waiting.1)
+}
+
+/// The calendars' events of the week from `monday`, as read, kept five minutes.
+fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occurrence>> {
     type Cached = Option<(i64, Date, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
     static CACHE: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
     let stamp = Timestamp::now().as_second();
@@ -531,11 +555,11 @@ fn night_of(kept: &Kept, zone: &TimeZone) -> Option<Date> {
 
 /// The week of `day`, Monday to Sunday: each day's list and timeline, and
 /// the hours the timeline shows (the same each day).
-fn week_view(health: &Health, state: &HealthState, records: &DoseRecords, knowledge: &Knowledge, day: Date, now: &Zoned) -> WeekView {
+fn week_view(health: &Health, state: &HealthState, records: &DoseRecords, knowledge: &Knowledge, day: Date, now: &Zoned, waiting: &Waiting) -> WeekView {
     let zone = now.time_zone().clone();
     let monday = day.checked_sub(Span::new().days(i64::from(day.weekday().to_monday_zero_offset()))).unwrap_or(day);
     let days = days();
-    let events = week_events(monday, &zone);
+    let events = week_events(monday, &zone, waiting);
     // Meals move past the events with their margins, as the plan has them.
     let held = sioul_core::plan::event_spans(&events, 0);
     let steps = crate::work::day_steps();
@@ -1394,8 +1418,8 @@ fn shared_note(knowledge: &Knowledge) -> String {
 /// claims, a shared folder that may be slow) and shown.
 pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
-    crate::backend::coalesced(shared, |s| &s.health_job, move |_| {
-        let (view, missed, needs) = (page(), missed(), needs_today());
+    crate::backend::coalesced(shared, |s| &s.health_job, move |shared| {
+        let (view, missed, needs) = (page(&crate::mail::hidden_pim(shared)), missed(), needs_today());
         if cfg!(target_os = "android") {
             eprintln!("sioul: health: {} medicines, {} prescriptions", load().medicines.len(), load().prescriptions.len());
         }
@@ -2890,8 +2914,37 @@ fn state_held() -> std::sync::MutexGuard<'static, ()> {
 /// One tick at a time: a slow one (a shared folder) is not overtaken by the next.
 static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Whether the window may answer a dose now (decision 26 of the unified
+/// agenda): today's, at any hour; one of a day to come is refused, since
+/// marked it would leave the alarms a phone is given (`alarms_coming`) and its
+/// reminder would not come. First in the window's dose writers (`not_taken`,
+/// `taken_late`, `choose`, and the window's Taken before `set_taken`); the
+/// alarms' own Taken keeps no day check (`set_taken`): a reminder can show a
+/// minute before its dose, a minute before midnight. `now` given: the tests' clock.
+pub(crate) fn may_answer(key: &str, now: &Zoned) -> Result<(), String> {
+    let Some(due) = due_of(key) else { return Err(tr().text("dose-not-known", None)) };
+    let today_ends = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map(|z| z.timestamp().as_second());
+    match today_ends {
+        Some(end) if due >= end => Err(tr().text("dose-day-to-come", None)),
+        _ => Ok(()),
+    }
+}
+
+/// The window's Taken (or its taking back): a dose of a day to come refused
+/// first (`may_answer`), then `set_taken`, through which the alarms answer
+/// alone. Returns what went wrong, else "".
+pub(crate) fn window_taken(key: &str, taken: bool, now: &Zoned) -> String {
+    match may_answer(key, now) {
+        Ok(()) => set_taken(key, taken),
+        Err(problem) => problem,
+    }
+}
+
 /// A dose not taken, said afterwards: asked no more. Returns what went wrong, else "".
 pub(crate) fn not_taken(key: &str) -> String {
+    if let Err(problem) = may_answer(key, &Zoned::now()) {
+        return problem;
+    }
     let now = Timestamp::now().as_second();
     let problem = change(|state| {
         state.not_taken.insert(key.to_string(), now);
@@ -2909,6 +2962,9 @@ pub(crate) fn not_taken(key: &str) -> String {
 /// an older Sioul, as you chose; not taken after all, the doses its take moved
 /// go back. Returns what went wrong, else "".
 pub(crate) fn choose(key: &str, taken: bool) -> String {
+    if let Err(problem) = may_answer(key, &Zoned::now()) {
+        return problem;
+    }
     let _held = state_held();
     let now = Timestamp::now().as_second();
     let first_taken = match sioul_core::doses::answered(key, &record(), &records()) {
@@ -2954,6 +3010,9 @@ pub(crate) fn is_late(key: &str) -> bool {
 /// doses that many hours after it. Returns what went wrong, else "".
 pub(crate) fn taken_late(key: &str, time: &str) -> String {
     let now = Zoned::now();
+    if let Err(problem) = may_answer(key, &now) {
+        return problem;
+    }
     let Some(clock) = time.trim().split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok()) else {
         return tr().text("dose-time-wrong", None);
     };
@@ -3011,9 +3070,14 @@ pub(crate) fn dose_info(key: &str) -> String {
 
 /// A dose marked taken, or not, as it happens: taken every few hours, the
 /// next doses come that many hours after now; a mark taken back puts them
-/// back. Returns what went wrong, else "".
+/// back. Taken again, a dose already marked taken writes nothing: no second
+/// time, no new move of its next doses (which taking it back must restore),
+/// no second answer. Returns what went wrong, else "".
 pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let _held = state_held();
+    if taken && HealthState::read(&HealthState::default_path()).is_ok_and(|state| state.taken.contains_key(key)) {
+        return String::new();
+    }
     let now = Timestamp::now().as_second();
     let shift = if taken {
         match change_health(|health| Ok(health.taken_at(key, now))) {
@@ -3388,8 +3452,9 @@ fn change_day(date: &str, edit: &DayEdit) -> String {
 /// A day's block moved by a drag on the page's timeline (`change_need`'s
 /// JSON: "move", or "times" for one of its ends), changed as "Move to…" and
 /// "Change its times…" change it, then "Undo" offered for ten seconds, which
-/// puts that day's block back as it was. Dropped where it was: nothing
-/// changes, nothing to undo. Returns what went wrong, else "".
+/// puts back what the drag wrote and only that (`undo_drag`): a choice made
+/// since on the same block, the night's alarm included, stays. Dropped where
+/// it was: nothing changes, nothing to undo. Returns what went wrong, else "".
 pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> String {
     #[derive(Deserialize)]
     struct Asked {
@@ -3415,6 +3480,7 @@ pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
     if after.get(date, &key) == was.as_ref() {
         return String::new();
     }
+    let wrote = after.get(date, &key).cloned();
     // Said as the day has it now: its name, its time kept.
     let zone = now.time_zone().clone();
     let line = blocks_now(&load().needs, &after, date, &now)
@@ -3423,21 +3489,29 @@ pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         .map(|k| say("drag-done", &[("what", name_of(k)), ("time", format!("{}–{}", clock(k.start, &zone), clock(k.end, &zone)))]))
         .unwrap_or_else(|| tr().text("drag-done-plain", None));
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
-        // Put back over the days as the file holds them now, under its lock, which the sharing takes too.
-        let _ = days();
-        let problem = Days::change_file(&Days::default_path(), Zoned::now().date(), |days| match &was {
-            Some(block) => days.change(date, &key, |b| *b = block.clone()),
-            None => days.forget(date, &key),
-        })
-        .err()
-        .unwrap_or_default();
-        // A night put back: a phone's alarm at waking follows (`wake`).
-        crate::wake::schedule();
+        let problem = undo_drag(date, &key, was.as_ref(), wrote.as_ref());
         crate::work::show_work(qt, shared);
         show_health(qt, shared);
         problem
     });
     String::new()
+}
+
+/// A drag's Undo (`drag_need`): what it wrote on that day's block (`was`
+/// before it, `wrote` after it) put back, field by field, over the days as
+/// the file holds them now, under its lock, which the sharing takes too; a
+/// field changed since stays (`Days::put_back`). Nothing left to put back:
+/// "too late". Returns what went wrong, else "".
+fn undo_drag(date: Date, key: &str, was: Option<&sioul_core::needs::DayBlock>, wrote: Option<&sioul_core::needs::DayBlock>) -> String {
+    let _ = days();
+    let problem = match Days::change_file(&Days::default_path(), Zoned::now().date(), |days| days.put_back(date, key, was, wrote)) {
+        Ok(true) => String::new(),
+        Ok(false) => tr().text("undo-too-late", None),
+        Err(e) => e,
+    };
+    // A night put back: a phone's alarm at waking follows (`wake`).
+    crate::wake::schedule();
+    problem
 }
 
 /// A block moved today only (the question, a notice's "Later"): by `minutes`
@@ -4173,6 +4247,82 @@ mod tests {
     /// need the translator, which reads the configuration): times as the
     /// day's list writes them, what comes for each prescription and when,
     /// the medicines it covers when its title does not name them.
+    /// The window's dose writers (decision 26 of the unified agenda), on
+    /// stand-in files: each refuses a dose of tomorrow and writes nothing, and
+    /// the dose stays among the alarms a phone is given; the window's Taken
+    /// says its problem; under a fake clock, a dose due at midnight is
+    /// tomorrow's at 23:59:30 and today's at 00:00:10; the alarms' Taken
+    /// keeps no day check (a reminder can show a minute before midnight); a
+    /// second Taken changes nothing, the next doses it moved included, and
+    /// taking it back puts them back. One test: the files are this process's.
+    #[test]
+    fn the_window_never_answers_a_day_to_come() {
+        let (health_path, state_path, records_path) = (Health::default_path(), HealthState::default_path(), DoseRecords::default_path());
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let next_midnight = now.date().tomorrow().unwrap().to_zoned(zone.clone()).unwrap();
+        let tomorrow_noon = next_midnight.checked_add(Span::new().hours(12)).unwrap().timestamp().as_second();
+        let from = now.timestamp().as_second() - 3600;
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        std::fs::write(&health_path, format!("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"00:00\", \"12:00\"]\n\n[[medicine]]\nid = \"corvan\"\nname = \"Corvan\"\n[medicine.schedule]\nevery = \"hours\"\nhours = 6\nfrom = {from}\n")).unwrap();
+        let bytes = |p: &std::path::Path| std::fs::read(p).ok();
+        let files = || (bytes(&health_path), bytes(&state_path), bytes(&records_path));
+        let tomorrow = format!("lumiel@{tomorrow_noon}");
+        let refused = tr().text("dose-day-to-come", None);
+        let before = files();
+        assert_eq!(not_taken(&tomorrow), refused);
+        assert_eq!(taken_late(&tomorrow, "09:00"), refused);
+        assert_eq!(choose(&tomorrow, true), refused);
+        assert_eq!(window_taken(&tomorrow, true, &now), refused, "the window's Taken says its problem");
+        assert_eq!(files(), before, "nothing written");
+        let coming: Vec<serde_json::Value> = serde_json::from_str(&alarms_coming()).unwrap();
+        assert!(coming.iter().any(|a| a["key"] == tomorrow.as_str()), "still rung on its day: {coming:?}");
+        assert_eq!(may_answer("lumiel", &now), Err(tr().text("dose-not-known", None)));
+        let at_midnight = format!("lumiel@{}", next_midnight.timestamp().as_second());
+        let half_a_minute_before = now.date().to_datetime(jiff::civil::time(23, 59, 30, 0)).to_zoned(zone.clone()).unwrap();
+        assert_eq!(may_answer(&at_midnight, &half_a_minute_before), Err(refused.clone()));
+        assert_eq!(may_answer(&at_midnight, &next_midnight.checked_add(Span::new().seconds(10)).unwrap()), Ok(()));
+        let answered: serde_json::Value = serde_json::from_str(&alarm_taken(&at_midnight)).unwrap();
+        assert_eq!(answered["done"], true, "{answered}");
+        assert!(HealthState::read(&state_path).unwrap().taken.contains_key(&at_midnight), "the alarm's Taken marks it");
+        // A dose of a medicine counted from its last take, taken, then Taken again.
+        let due = format!("corvan@{from}");
+        assert_eq!(set_taken(&due, true), "");
+        assert!(HealthState::read(&state_path).unwrap().moved.contains_key(&due), "the next doses moved, once");
+        let once = files();
+        assert_eq!(set_taken(&due, true), "");
+        assert_eq!(files(), once, "a second Taken writes nothing");
+        assert_eq!(set_taken(&due, false), "");
+        assert!(load().medicines.iter().any(|m| m.id == "corvan" && m.schedule == Schedule::Hours { hours: 6, from }), "taken back, the next doses as they were");
+        // An unreadable health file is said on the page, never read as no medicines.
+        std::fs::write(&health_path, "[[medicine]\nid = ").unwrap();
+        let page: serde_json::Value = serde_json::from_str(&page(&Waiting::default())).unwrap();
+        assert_eq!(page["unreadable"], tr().text("health-unreadable", None).as_str(), "{page}");
+        assert!(page["any"] == true && page["medicines"].as_array().is_some_and(Vec::is_empty));
+        for path in [health_path.clone(), health_path.with_extension("toml.unreadable"), state_path.clone(), records_path.clone()] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    /// Health's week reads the calendars as every agenda does: an event
+    /// whose deletion waits for its "Undo" is not in it, and comes back with
+    /// "Undo" (`pim::without_waiting`).
+    #[test]
+    fn health_s_week_leaves_out_an_event_waiting_for_undo() {
+        use sioul_core::vdir::{self, Kind};
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Health week waiting", None, &["VEVENT"]).unwrap();
+        let monday: Date = "2031-03-03".parse().unwrap();
+        let file = calendar.dir.join("visit.ics");
+        std::fs::write(&file, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:visit-1\r\nDTSTART:20310304T090000Z\r\nDTEND:20310304T100000Z\r\nSUMMARY:Visit\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let zone = TimeZone::system();
+        let shown = |waiting: &Waiting| week_events(monday, &zone, waiting).iter().any(|o| o.uid == "visit-1");
+        assert!(shown(&Waiting::default()));
+        let waiting: Waiting = ([file.clone()].into(), Default::default());
+        assert!(!shown(&waiting), "its deletion waits: left out at once");
+        assert!(shown(&Waiting::default()), "undone: back");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     #[test]
     fn medicines_and_prescriptions_on_the_page() {
         let day = |text: &str| text.parse::<Date>().unwrap();

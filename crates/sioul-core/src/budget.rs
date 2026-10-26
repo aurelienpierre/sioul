@@ -1288,28 +1288,77 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
 }
 
 /// The planned line `link` names (an invoice, "sioul:invoice/2026-002") made
-/// real: paid on `date`, no longer planned. Returns whether there was one.
-pub fn settle_line(path: &Path, link: &str, date: Date) -> Result<bool, String> {
-    // Read, changed and written under the file's lock, which the sharing takes too.
+/// real: paid on `date`, no longer planned. Returns the day it had, for an
+/// Undo (`unsettle_line`); None when there is no such line.
+pub fn settle_line(path: &Path, link: &str, date: Date) -> Result<Option<Date>, String> {
+    change_linked(path, link, |line| {
+        let was = line.get("date").and_then(Item::as_datetime).and_then(|d| d.date).and_then(|d| Date::new(i16::try_from(d.year).ok()?, i8::try_from(d.month).ok()?, i8::try_from(d.day).ok()?).ok());
+        line.remove("planned");
+        line["date"] = value(day_of(date));
+        was
+    })
+    .map(Option::flatten)
+}
+
+/// The line `link` names planned again, on `date`, where it is in the file:
+/// an invoice marked not paid after all (`settle_line` undone). Returns
+/// whether there was one.
+pub fn unsettle_line(path: &Path, link: &str, date: Date) -> Result<bool, String> {
+    change_linked(path, link, |line| {
+        line["date"] = value(day_of(date));
+        line["planned"] = value(true);
+    })
+    .map(|changed| changed.is_some())
+}
+
+/// A day as the ledger writes it.
+fn day_of(date: Date) -> toml_edit::Datetime {
+    toml_edit::Datetime { date: Some(toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 }), time: None, offset: None }
+}
+
+/// The first line naming `link` changed by `change` in place, read and
+/// written under the file's lock, which the sharing takes too: what `change`
+/// returned, None when no line names it.
+fn change_linked<T>(path: &Path, link: &str, change: impl FnOnce(&mut Table) -> T) -> Result<Option<T>, String> {
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
         let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
-        let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(false) };
-        line.remove("planned");
-        let day = toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 };
-        line["date"] = value(toml_edit::Datetime { date: Some(day), time: None, offset: None });
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
+        let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(None) };
+        let out = change(line);
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
         std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
-        Ok(true)
+        Ok(Some(out))
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An invoice paid, then not paid after all ("Undo", or Not paid): its
+    /// line planned again on the day it had, where it was in the file; the
+    /// budget reads as it was. A line no link names: nothing changed.
+    #[test]
+    fn paid_then_not_paid_leaves_the_budget_as_it_was() {
+        let path = std::env::temp_dir().join(format!("sioul-budget-paid-{}.toml", std::process::id()));
+        let day = |text: &str| text.parse::<Date>().unwrap();
+        std::fs::write(&path, "[[budget]]\nid = \"studio\"\ntitle = \"Studio\"\nperiod = \"month\"\n\n[[line]]\nbudget = \"studio\"\ndate = 2026-11-15\namount = 480.0\nlabel = \"Invoice 2026-002\"\nplanned = true\nlinks = [\"sioul:invoice/2026-002\", \"sioul:project/studio\"]\n\n[[line]]\nbudget = \"studio\"\ndate = 2026-10-02\namount = -12.5\nlabel = \"Paper\"\n").unwrap();
+        let lines = || Ledger::load_file(&path).unwrap().lines.iter().map(|l| format!("{:?}", (l.date, l.amount.cents(), &l.label, l.planned, &l.links))).collect::<Vec<_>>();
+        let before = lines();
+        let was = settle_line(&path, "sioul:invoice/2026-002", day("2026-10-26")).unwrap();
+        assert_eq!(was, Some(day("2026-11-15")));
+        let paid = Ledger::load_file(&path).unwrap();
+        assert!(!paid.lines[0].planned && paid.lines[0].date == day("2026-10-26"), "made real, dated today");
+        assert!(unsettle_line(&path, "sioul:invoice/2026-002", day("2026-11-15")).unwrap());
+        assert_eq!(lines(), before, "as it was");
+        assert!(std::fs::read_to_string(&path).unwrap().find("Invoice 2026-002") < std::fs::read_to_string(&path).unwrap().find("Paper"), "where it was");
+        assert!(!unsettle_line(&path, "sioul:invoice/1999-001", day("2026-11-15")).unwrap());
+        assert_eq!(settle_line(&path, "sioul:invoice/1999-001", day("2026-10-26")).unwrap(), None);
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn budgets_made_changed_and_taken_out() {

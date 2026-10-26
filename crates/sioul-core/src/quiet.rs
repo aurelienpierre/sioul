@@ -339,7 +339,8 @@ impl Blocks {
 
     /// Read from Health's files, the meals pushed past `events`.
     pub fn read(now: &Zoned, events: &[crate::agenda::Occurrence]) -> Blocks {
-        let needs = crate::health::Health::load(&crate::health::Health::default_path()).needs;
+        // Health's `[needs]` alone: no medicine read here (an agent's `now`, docs/mcp.md).
+        let needs = crate::needs::Needs::read(&crate::health::Health::default_path());
         let days = crate::needs::Days::load(&crate::needs::Days::default_path());
         Blocks::of(&needs, &days, &crate::plan::event_spans(events, 0), now)
     }
@@ -697,6 +698,25 @@ mod tests {
         let m = mode(&config.windows, &[], &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
         assert_eq!((m.time, m.reason.clone()), (Time::Leisure, Reason::Evening));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-09T09:00:00", "never Saturday's old free time");
+    }
+
+    /// What now is for says a meal or a nap by its kind and its end, never by
+    /// its name: all an agent's `now` gives of health (docs/mcp.md).
+    #[test]
+    fn a_meal_now_is_said_by_its_kind_never_its_name() {
+        let mut needs = health();
+        needs.meals[1].name = "Marrowbake".into();
+        needs.naps[0].name = "Dozewell".into();
+        let tr = crate::i18n::Translator::new("en");
+        for (time, id, end) in [("12:30", "mode-meal", "13:00"), ("14:10", "mode-nap", "14:35")] {
+            let now = at(&format!("2026-10-02T{time}[Europe/Paris]"));
+            let m = mode(&week(), &[], &Overrides::default(), &Blocks::of(&needs, &Days::default(), &[], &now), &now);
+            assert!(matches!(m.reason, Reason::Meal | Reason::Nap) && m.label.is_empty(), "{m:?}");
+            let mut args = crate::i18n::args();
+            args.set("until", until_text(&tr, m.until.as_ref().unwrap(), &now));
+            let said = tr.text(id, Some(&args));
+            assert!(said.contains(end) && !said.contains("Marrowbake") && !said.contains("Dozewell"), "{said}");
+        }
     }
 
     #[test]

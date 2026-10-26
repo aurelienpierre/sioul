@@ -98,7 +98,13 @@ pub(crate) fn agenda_items(from: i64, to: i64, removed: &std::collections::BTree
 /// aside, before their tasks are known (`agenda_items`; the home card marks
 /// them with the tasks of its plan).
 pub(crate) fn agenda_read(from: i64, to: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> Vec<agenda::Occurrence> {
-    agenda::occurrences(from, to).into_iter().filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start))).collect()
+    without_waiting(agenda::occurrences(from, to), removed, skipped)
+}
+
+/// Occurrences read, those whose deletion waits ("Undo": `mail::hidden_pim`) left out:
+/// what every agenda reads (`agenda_read`), Health's week too.
+pub(crate) fn without_waiting(occurrences: Vec<agenda::Occurrence>, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> Vec<agenda::Occurrence> {
+    occurrences.into_iter().filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start))).collect()
 }
 
 /// The account a contact or event file belongs to, from its folder.
@@ -395,7 +401,11 @@ struct EventView {
     /// "Only on this computer", when its calendar stays here alone; else "".
     here_only: String,
     read_only: bool,
-    /// Why it stays in its calendar, said in the editor: a meeting with others (`with_others`); else "".
+    /// A meeting with others (`with_others`): the editor offers none of its
+    /// organizer's fields (`agenda::may_change`), only your own around it.
+    with_others: bool,
+    /// What stays as it is, said in the editor: a meeting with others' time,
+    /// title, place, notes and calendar (`with_others`); else "".
     stays: String,
 }
 
@@ -441,9 +451,10 @@ pub(crate) fn event(key: &str) -> String {
     let Some(calendar) = collection_of(&path) else { return String::new() };
     let config = load_config();
     let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
-    let stays = if std::fs::read_to_string(&path).is_ok_and(|t| with_others(&t)) { tr().text("event-move-with-others", None) } else { String::new() };
+    let others = std::fs::read_to_string(&path).is_ok_and(|t| with_others(&t));
+    let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
     agenda::edit_of(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, stays }))
+        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays }))
         .unwrap_or_default()
 }
 
@@ -471,7 +482,9 @@ pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, S
     Ok(moved)
 }
 
-/// A meeting with others (`agenda::with_others`): never moved nor deleted here.
+/// A meeting with others (`agenda::with_others`): never moved, deleted, nor
+/// changed here but for Sioul's own lines (`agenda::may_change`, which every
+/// event's writer applies through `vdir`).
 pub(crate) fn with_others(text: &str) -> bool {
     agenda::with_others(text)
 }
@@ -610,6 +623,10 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
         return tr().text("agenda-read-only", None);
     }
     let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+    // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it).
+    if with_others(&before) {
+        return tr().text("event-change-with-others", None);
+    }
     let zone = TimeZone::system();
     let text = match agenda::moved(&before, start, new_start, new_end, only_this, &zone) {
         Ok(text) => text,
@@ -655,15 +672,23 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
     String::new()
 }
 
-/// Deletes an event, or only this occurrence of a repeating one, after ten seconds to undo.
-pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, only_this: bool) {
-    let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return };
+/// Deletes an event, or only this occurrence of a repeating one, after ten
+/// seconds to undo; never one of a calendar you only read, nor a meeting with
+/// others (`agenda::may_change`, asked again when the ten seconds end).
+/// Returns what went wrong, else "".
+pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, only_this: bool) -> String {
+    let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return tr().text("agenda-gone", None) };
+    let change = agenda::Change::Delete;
+    if let Err(refusal) = agenda::guard(&path, change) {
+        return tr().text(refusal.word(&change), None);
+    }
     if only_this {
         mail::schedule_skip(qt, shared, &account, path, start, tr().text("undo-occurrence-skipped", None));
     } else {
         mail::schedule_removal(qt, shared, &account, path, tr().text("undo-event-deleted", None));
     }
     show_pim(qt, shared);
+    String::new()
 }
 
 /// Addresses to complete what is typed in an address field, as JSON.
@@ -738,23 +763,28 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
     let known = find_uid(&asked.uid);
     match answer {
         "remove" => {
+            // Your answer to its cancellation: the one path that takes a meeting with others out (`mail`).
             if let Some(file) = known {
                 let account = account_of(&file).unwrap_or_default();
-                mail::schedule_removal(qt, shared, &account, file, tr().text("undo-event-deleted", None));
+                mail::schedule_cancelled_removal(qt, shared, &account, file, tr().text("undo-event-deleted", None));
             }
             return Ok(());
         }
         "accepted" | "tentative" | "add" => {
             let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
-            let target = known.clone().unwrap_or_else(|| agenda::new_path(&calendar));
-            // Answered, your calendar keeps your answer on your own line: a device
-            // answering it too can tell whether it said the same (`dav`, an item
-            // the server holds already under its UID).
-            let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
-            let kept = if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &answer.to_ascii_uppercase()) };
-            vdir::write_item(&target, &kept)?;
-            if let Some(account) = account_of(&target) {
-                nudge(shared, &account);
+            // A copy in a calendar you only read is never written: its server keeps it, and your answer goes all the same.
+            if known.as_deref().is_none_or(|file| vdir::calendar_read_only(file) != Some(true)) {
+                let target = known.clone().unwrap_or_else(|| agenda::new_path(&calendar));
+                // Answered, your calendar keeps your answer on your own line: a device
+                // answering it too can tell whether it said the same (`dav`, an item
+                // the server holds already under its UID). The one path that writes a
+                // meeting with others (`vdir::store_item`): how a guest speaks to its organizer.
+                let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
+                let kept = if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &answer.to_ascii_uppercase()) };
+                vdir::store_item(&target, &kept)?;
+                if let Some(account) = account_of(&target) {
+                    nudge(shared, &account);
+                }
             }
         }
         _ => {}
@@ -969,8 +999,51 @@ mod tests {
         assert!(to.items().is_empty());
         let shown: serde_json::Value = serde_json::from_str(&event(path.to_str().unwrap())).unwrap();
         assert!(!shown["stays"].as_str().unwrap_or_default().is_empty(), "the editor says why");
+        assert_eq!(shown["with_others"], true, "and offers none of its organizer's fields");
+        // In its own calendar: its own lines (the time kept before it) change from its
+        // form, no SEQUENCE its server would send on; its organizer's never (`agenda::may_change`).
+        let here = format!("{}/{}", from.account, from.id);
+        let mut edit = agenda::edit_of(&path).unwrap();
+        edit.margins.before = 15;
+        assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here).is_ok());
+        let kept = std::fs::read_to_string(&path).unwrap();
+        assert!(kept.contains(sioul_core::demands::BEFORE) && !kept.contains("SEQUENCE") && kept.contains("SUMMARY:Meeting"), "{kept}");
+        for (field, change) in [("title", "Meeting, moved"), ("location", "Room 2")] {
+            let mut theirs = edit.clone();
+            if field == "title" { theirs.title = change.into() } else { theirs.location = change.into() }
+            assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&theirs).unwrap(), &here).is_err(), "{field}");
+        }
+        let mut later = edit.clone();
+        later.start = "2099-10-23T15:00".into();
+        later.end = "2099-10-23T16:00".into();
+        assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&later).unwrap(), &here).is_err(), "its time");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), kept, "nothing of its organizer's written");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&to.dir);
+    }
+
+    /// No writer of the window writes an event of a calendar you only read:
+    /// its form, its reminder (through the form), its checklist, its drag
+    /// and its Delete (`agenda::may_change`, in `vdir`'s doors and asked first).
+    #[test]
+    fn a_calendar_you_only_read_is_never_written() {
+        let account = "read-only-writers";
+        vdir::prepare(Kind::Calendars, account, "theirs", "Theirs", None).unwrap();
+        let state = vdir::state_path(account, Kind::Calendars, "theirs");
+        let mut read_only = vdir::State::load(&state);
+        read_only.read_only = true;
+        read_only.save(&state).unwrap();
+        let path = Kind::Calendars.root().join(account).join("theirs").join("e.ics");
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:theirs-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\nSUMMARY:Theirs\r\nDESCRIPTION:- [ ] bring the form\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(&path, text).unwrap();
+        let mut edit = agenda::edit_of(&path).unwrap();
+        edit.remind = "30".into();
+        assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), "").is_err(), "its form, its reminder");
+        assert!(agenda::guard(&path, agenda::Change::Delete).is_err() && agenda::guard(&path, agenda::Change::Move).is_err(), "its Delete, its drag");
+        let ticked = text.replace("- [ ] bring", "- [x] bring");
+        assert!(vdir::write_item(&path, &ticked).is_err(), "its checklist");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }
 
     /// The choosers by what a collection takes (21 October 2026): a new

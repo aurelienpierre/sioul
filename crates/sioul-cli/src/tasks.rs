@@ -178,7 +178,8 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
     let events = sioul_core::blocks::without_blocks(read.clone(), tasks);
     // Meals, naps and the night first: the work goes around them, as each day has them,
     // meals pushed past the events they would fall in, as the window plans.
-    let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
+    // Health's `[needs]` alone: this process keeps no medicine (docs/mcp.md).
+    let needs = sioul_core::needs::Needs::read(&sioul_core::health::Health::default_path());
     let days = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path());
     // Meals move past the blocks as past any event.
     let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&read, 0));
@@ -1011,7 +1012,8 @@ fn blocks_of(uid: &str) -> Vec<PathBuf> {
         .into_iter()
         .filter(|c| !c.read_only)
         .flat_map(|c| c.items())
-        .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| sioul_core::lines::unfold(&t).iter().any(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK && sioul_core::lines::value(l).trim() == uid)))
+        // Never a block given a guest: a meeting with others now, it stays as it is (`agenda::may_change`).
+        .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| sioul_core::lines::unfold(&t).iter().any(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK && sioul_core::lines::value(l).trim() == uid) && !sioul_core::agenda::with_others(&t)))
         .collect()
 }
 
@@ -1067,10 +1069,17 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
             (Some(path), _) => {
                 let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
                 let text = sioul_core::agenda::apply(&current, &edit, zone)?;
+                let change = sioul_core::agenda::Change::Write(&text);
                 if text != current {
-                    println!("~ {}", one_line(&event.title));
-                    if !dry_run {
-                        vdir::write_item(&path, &text)?;
+                    // A calendar you only read, a meeting with others: left as it is, and said (`agenda::may_change`).
+                    match sioul_core::agenda::guard(&path, change) {
+                        Err(refusal) => println!("= {}: {}", one_line(&event.title), s.tr.text(refusal.word(&change), None)),
+                        Ok(()) => {
+                            println!("~ {}", one_line(&event.title));
+                            if !dry_run {
+                                vdir::write_item(&path, &text)?;
+                            }
+                        }
                     }
                 }
                 touched.extend(path.strip_prefix(Kind::Calendars.root()).ok().and_then(|p| p.components().next()).map(|a| format!("{}/", a.as_os_str().to_string_lossy())));

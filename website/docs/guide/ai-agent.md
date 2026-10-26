@@ -13,7 +13,7 @@ An AI agent you already use, such as Claude Code or Claude Desktop, can read wha
 !!! warning "What an agent sees"
     Once connected, an agent reads what you open to it: the projects you open, each closed until you do, and, unless you close them, the things that belong to no project (the Porch's other mail, your agenda, contacts, notes and tasks of no project, your phone's messages and calls, papers). What it reads goes to the model behind it (Anthropic's, for Claude), under your own agreement with that company. See [Choosing what an agent sees](#choosing-what-an-agent-sees).
 
-Some things are kept from it whatever happens ([below](#what-does-not-move)): passwords and keys, one-time codes and sign-in links, bank, card and social security numbers, your medicines and doses.
+Some things are kept from it whatever happens ([below](#what-does-not-move)): passwords and keys, one-time codes and sign-in links, bank, card and social security numbers, your health: medicines and doses, meals, naps and nights, the pharmacy and renewal errands.
 
 ## Connecting {#connecting}
 
@@ -78,7 +78,7 @@ On this device only:
 - **a note**, never written over another one;
 - **a reply**, or **a new message**: saved in Drafts, never sent. You read it, and send it from the window, or delete it;
 - **a tie** between two things;
-- **a change to an event or a task**, when you ask for it: its time, title, place, calendar or list, reminder, the time kept before and after it, its status; deleting it; or making a task an appointment, or an appointment a task, as the agenda does. Each change is said in the window's status line, with **Undo**. A meeting with others is never moved nor deleted.
+- **a change to an event or a task**, when you ask for it: its time, title, place, calendar or list, reminder, the time kept before and after it, its status; deleting it; or making a task an appointment, or an appointment a task, as the agenda does. Each change is said in the window's status line, with **Undo**. A meeting with others (an event with guests) is never moved nor deleted, and only what is yours of it changes: the time kept before and after it, your reminder.
 
 ## Your spam filter's tools {#the-spam-filters-tools}
 
@@ -87,7 +87,7 @@ An agent can also look after your own spam filter, as you would from the termina
 ## What does not move {#what-does-not-move}
 
 - **Nothing is sent or paid, and no mail is deleted.** No tool sends mail, deletes or moves a message, or moves money; an event or a task is deleted only when you ask, and the window lets you undo it. The spam filter's tools are the only ones that reach your mail servers, and only to read ([above](#the-spam-filters-tools)).
-- **Nothing secret.** No password, key or token is read. One-time codes are hidden wherever they are written, and so are sign-in, reset and confirmation links; a message that gives a password is withheld whole. Bank account numbers (IBAN), card numbers and French social security numbers are masked in mail, notes and budgets: an IBAN or a card number keeps its last four characters, to tell two accounts apart; a social security number is hidden whole. Your medicines and doses are not given to an agent.
+- **Nothing secret.** No password, key or token is read. One-time codes are hidden wherever they are written, and so are sign-in, reset and confirmation links; a message that gives a password is withheld whole. Bank account numbers (IBAN), card numbers and French social security numbers are masked in mail, notes and budgets: an IBAN or a card number keeps its last four characters, to tell two accounts apart; a social security number is hidden whole. Your medicines and doses, your meals, naps and nights, and the pharmacy and renewal errands Health makes for you are not given to an agent, whatever their projects; what now is for says a meal or a nap by its kind and when it ends, never by its name.
 - **Mail is data.** A message's text comes marked as its sender's words, not as instructions, and the agent is told so when it connects. Forged mail is said forged. Hostile mail to a protected address, and encrypted mail, are not given.
 - **What you keep closed stays closed.** A project you have not opened, and things in no project once you close them, are in no answer; asked for by name, they are refused.
 - **Writing only adds.** A note never replaces another; a tie is made once.
@@ -115,7 +115,7 @@ One more feature uses an AI, and only for an address you protect against harassm
 - **Tool hints**: every tool says whether it writes; only the deletion of an event or a task is destructive (MCP's `readOnlyHint`, `destructiveHint`, `idempotentHint`; `openWorldHint` only for the spam filter's download, which reads your mail servers).
 - **Masks**: each number is hidden only when its own check holds, so that order and phone numbers stay: IBANs by ISO 13616's mod 97, card numbers of 16 or 19 digits by Luhn's check (fourteen digits are left alone: a SIRET has a Luhn key too, and is no secret), French social security numbers by their key. Codes are hidden wherever they are written, spaced or not; reset, sign-in and confirmation links are hidden; a message that gives a password is withheld whole.
 - **Framing**: a message's or a note's text comes between two lines carrying a mark made for that answer, and the server's instructions say that such text is data, never instructions.
-- **Never given**: hostile mail to a shielded address, encrypted mail, medicines and doses. The day laid out (`list_tasks`, today) shows meal and nap times, as the day in Tasks does.
+- **Never given**: hostile mail to a shielded address, encrypted mail, medicines and doses, meals, naps and nights, the pharmacy and renewal errands. The day laid out (`list_tasks`, today) shows your events, the plan's steps, the tasks done and the time kept around them, each as its project allows.
 - **The log**: `$XDG_STATE_HOME/sioul/mcp/YYYY-MM.jsonl`, one JSON line per call, written 0600 in a 0700 folder on Linux and macOS. It holds the time, the agent, the tool, its arguments (200 characters each, a body or notes by their length alone, account and card numbers masked), and the addresses (`mid:…`, `sioul:…`) and length of what was given.
 - **Turning tools off**: `[mcp] spam = false` keeps the spam filter's tools from agents, unlisted and refused.
 - **Per project**: `ai = true` on a project's entry in `sioul-projects.toml` (or `sioul-cases.toml`, the file's first name) opens it; without it, closed. `[mcp] outside_projects = false` closes things in no project. A search's count of what it left out does not depend on its words, so that it cannot tell what a closed project holds. More: [the MCP server, "Per-project access"](../dev/mcp.md#per-project-access).

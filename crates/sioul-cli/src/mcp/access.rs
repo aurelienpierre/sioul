@@ -28,10 +28,14 @@ pub const KEPT: &str = "(kept from agents)";
 /// everything read; mail as the Porch's checks take it (`porch::Gate`), so
 /// that forged mail claiming a client never reaches an agent through the
 /// client's project. The gate remembers its verdicts for the server's life.
+/// The pharmacy and renewal errands are health, kept whatever their projects
+/// (`Consent::keep_errands`): their tasks, steps and time blocks.
 pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     let gate = sioul_core::porch::Gate::load(&s.config, jiff::Timestamp::now().as_second());
     let mut consent = Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)));
     consent.keep_accounts(kept_accounts(&s.config), &loaded.mail);
+    let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path());
+    consent.keep_errands(loaded, &recorded);
     consent
 }
 
@@ -58,14 +62,14 @@ pub fn for_mail(s: &Session, index: MailIndex) -> (Consent, MailIndex) {
 pub fn left_out(count: usize) -> Option<String> {
     (count > 0).then(|| {
         let things = if count == 1 { "1 more thing belongs".to_string() } else { format!("{count} more things belong") };
-        format!("({things} to projects the person keeps from agents, to no project while those are kept from agents, or to a work or school account kept from agents: left out on purpose. Do not guess what they are; ask the person if it matters.)")
+        format!("({things} to projects the person keeps from agents, to no project while those are kept from agents, or to a work or school account kept from agents, or are health, which agents never see: left out on purpose. Do not guess what they are; ask the person if it matters.)")
     })
 }
 
 /// A thing the agent asked for by its address, kept from agents.
 pub fn kept(what: &str) -> String {
     format!(
-        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, or to a work or school account kept from agents. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too."
+        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, or to a work or school account kept from agents, or it is health, which agents never see. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too."
     )
 }
 

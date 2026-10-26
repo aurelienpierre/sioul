@@ -58,7 +58,13 @@ enum Work {
     SendSigned { draft: String, account: Account, outgoing: compose::Outgoing },
     Discard { draft: String },
     /// A contact or an event deleted here; the account's sync deletes it there.
+    /// An event through the one rule when its ten seconds end (`vdir::remove_item`):
+    /// one become a meeting with others meanwhile is not taken out.
     Remove { account: String, file: PathBuf },
+    /// An invitation's event its organizer cancelled, taken out as your answer
+    /// to it (`pim::answer`, the one path that writes a meeting with others):
+    /// from a calendar that can be written only.
+    RemoveCancelled { account: String, file: PathBuf },
     /// One occurrence of a repeating event left out (EXDATE).
     Skip { account: String, file: PathBuf, start: i64 },
     /// The day closed, already in effect: "Undo" puts the time back as it was.
@@ -109,7 +115,7 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
             Work::Act { file, action, .. } if moves(action) => {
                 files.insert(file.clone());
             }
-            Work::Across { file, .. } | Work::Remove { file, .. } => {
+            Work::Across { file, .. } | Work::Remove { file, .. } | Work::RemoveCancelled { file, .. } => {
                 files.insert(file.clone());
             }
             Work::Batch { files: batch, .. } => files.extend(batch.iter().cloned()),
@@ -132,7 +138,7 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
 pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathBuf, i64)>) {
     fn add(work: &Work, files: &mut BTreeSet<PathBuf>, skipped: &mut BTreeSet<(PathBuf, i64)>) {
         match work {
-            Work::Remove { file, .. } => {
+            Work::Remove { file, .. } | Work::RemoveCancelled { file, .. } => {
                 files.insert(file.clone());
             }
             Work::Skip { file, start, .. } => {
@@ -153,7 +159,7 @@ pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathB
 /// Whether a work deletes a contact, an event or a task, or leaves an occurrence out: the pages follow at once.
 fn touches_pim(work: &Work) -> bool {
     match work {
-        Work::Remove { .. } | Work::Skip { .. } => true,
+        Work::Remove { .. } | Work::RemoveCancelled { .. } | Work::Skip { .. } => true,
         Work::Many(works) => works.iter().any(touches_pim),
         _ => false,
     }
@@ -172,6 +178,12 @@ pub(crate) fn schedule_removals(qt: &QtThread, shared: &Arc<Shared>, files: Vec<
 /// Deletes a contact or an event after ten seconds to undo.
 pub(crate) fn schedule_removal(qt: &QtThread, shared: &Arc<Shared>, account: &str, file: PathBuf, line: String) {
     schedule(qt, shared, Work::Remove { account: account.to_string(), file }, line);
+}
+
+/// Takes out an invitation's event its organizer cancelled, as your answer
+/// to the cancellation (`pim::answer`), after ten seconds to undo.
+pub(crate) fn schedule_cancelled_removal(qt: &QtThread, shared: &Arc<Shared>, account: &str, file: PathBuf, line: String) {
+    schedule(qt, shared, Work::RemoveCancelled { account: account.to_string(), file }, line);
 }
 
 /// Runs your mail filters on the inboxes as their preview said, after ten
@@ -757,13 +769,26 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             }
             None
         }
-        Work::Remove { account, file } => match std::fs::remove_file(file) {
+        // Through the one rule, on the file as it is now: one become a meeting with others meanwhile stays.
+        Work::Remove { account, file } => match sioul_core::vdir::remove_item(file) {
             Ok(()) => {
                 crate::pim::nudge(shared, account);
                 None
             }
-            Err(e) => Some(format!("{}: {e}", file.display())),
+            Err(e) => Some(e),
         },
+        Work::RemoveCancelled { account, file } => {
+            if sioul_core::vdir::calendar_read_only(file) == Some(true) {
+                return Some(tr().text("agenda-read-only", None));
+            }
+            match std::fs::remove_file(file) {
+                Ok(()) => {
+                    crate::pim::nudge(shared, account);
+                    None
+                }
+                Err(e) => Some(format!("{}: {e}", file.display())),
+            }
+        }
         Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => None,
         Work::Unsubscribe { list, sender, account, way } => Some(unsubscribe_now(list, sender, account, way, shared)),
         Work::Filters { planned } => {
@@ -774,6 +799,11 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             said
         }
         Work::Skip { account, file, start } => {
+            // One time left out is a deletion of it: never of a meeting with others, nor in a calendar you only read.
+            let change = sioul_core::agenda::Change::Delete;
+            if let Err(refusal) = sioul_core::agenda::guard(file, change) {
+                return Some(tr().text(refusal.word(&change), None));
+            }
             let skipped = std::fs::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
             match skipped.map(|text| sioul_core::vdir::write_item(file, &text)) {
                 Some(Ok(())) => {
@@ -991,7 +1021,7 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
         Work::Send { draft } | Work::SendSigned { draft, .. } => (tr().text("undo-send-undone", None), Some(draft.clone())),
         Work::Discard { draft } => (tr().text("undo-done", None), Some(draft.clone())),
         // A task or an event deleted, an occurrence left out: back in the plan and the agenda at once.
-        Work::Remove { .. } | Work::Skip { .. } => {
+        Work::Remove { .. } | Work::RemoveCancelled { .. } | Work::Skip { .. } => {
             if let Ok(mut cache) = shared.loaded.lock() {
                 *cache = None;
             }
@@ -1328,6 +1358,33 @@ mod tests {
         assert!(said.is_some_and(|line| line.contains("gone.ics")));
         assert!(!task.exists() && !block.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A deletion waits its ten seconds; meanwhile its event gained a guest
+    /// (a sync brought its organizer's invitation): neither it nor one time of
+    /// it is taken out, and what stopped it is said; your own event with an
+    /// email alarm still is (`agenda::may_change`, on the file as it is then).
+    #[test]
+    fn a_removal_never_takes_out_the_meeting_its_event_became() {
+        use sioul_core::vdir::{self, Kind};
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Removals meanwhile", None, &["VEVENT"]).unwrap();
+        let shared = Shared::default();
+        let event = |extra: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:removal-1\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20991028T090000Z\r\nDTEND:20991028T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Review\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let file = calendar.dir.join("review.ics");
+        std::fs::write(&file, event("")).unwrap();
+        // Asked while it was your own; a guest came before its ten seconds ended.
+        let meeting = event("ORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\n");
+        std::fs::write(&file, &meeting).unwrap();
+        let said = perform(&Work::Remove { account: String::new(), file: file.clone() }, &shared);
+        assert!(said.is_some() && std::fs::read_to_string(&file).unwrap() == meeting, "{said:?}");
+        let first = "2099-10-28T09:00:00Z".parse::<jiff::Timestamp>().unwrap().as_second();
+        let said = perform(&Work::Skip { account: String::new(), file: file.clone(), start: first }, &shared);
+        assert!(said.is_some() && std::fs::read_to_string(&file).unwrap() == meeting, "{said:?}");
+        // Your own, an email alarm's recipient in it: taken out.
+        std::fs::write(&file, event("BEGIN:VALARM\r\nACTION:EMAIL\r\nATTENDEE:mailto:paul@example.org\r\nSUMMARY:Soon\r\nDESCRIPTION:Soon\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\n")).unwrap();
+        assert_eq!(perform(&Work::Remove { account: String::new(), file: file.clone() }, &shared), None);
+        assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
     #[test]

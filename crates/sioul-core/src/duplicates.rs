@@ -602,10 +602,8 @@ fn is_id(id: &str) -> bool {
 fn put(path: &Path, text: Option<&str>) -> Result<(), String> {
     match text {
         Some(text) => crate::vdir::write_item(path, text),
-        None => match std::fs::remove_file(path) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
-            _ => Ok(()),
-        },
+        None if !path.exists() => Ok(()),
+        None => crate::vdir::remove_item(path),
     }
 }
 

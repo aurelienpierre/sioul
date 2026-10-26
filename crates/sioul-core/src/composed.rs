@@ -113,6 +113,15 @@ impl Change {
     /// Done once: each file as it was before and as it is now, for Undo.
     /// What is new first: cut short, nothing is left pointing at what was not made.
     pub fn write(&self) -> Result<Vec<FileChange>, String> {
+        // Every event among them through the one rule first (`agenda::guard`): one
+        // refused (a meeting with others, a calendar you only read), nothing is written.
+        use crate::agenda::{Change as Done, guard, said};
+        let checks = self.made.iter().chain(&self.written).map(|(path, text)| (path, Done::Write(text)))
+            .chain(self.moved.iter().flat_map(|(from, to, text)| [(from, Done::Move), (to, Done::Write(text))]))
+            .chain(self.gone.iter().map(|path| (path, Done::Delete)));
+        for (path, change) in checks {
+            guard(path, change).map_err(|refusal| said(refusal, &change))?;
+        }
         let mut out = Vec::new();
         for (path, text) in &self.made {
             vdir::write_item(path, text)?;
@@ -134,7 +143,7 @@ impl Change {
         }
         for path in &self.gone {
             let Ok(before) = std::fs::read_to_string(path) else { continue };
-            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+            vdir::remove_item(path)?;
             out.push(FileChange { path: path.clone(), before: Some(before), after: None });
         }
         Ok(out)

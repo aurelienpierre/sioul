@@ -1320,6 +1320,9 @@ fn removing_a_device_plans_again_outside_the_lock() {
 /// lock, a rename alone under it: a 24 MB and a 64 MB note, measured, then
 /// each copy into the history 400 ms slower (`history::SLOW_COPY`), a dose's
 /// exchange waits a quarter of a second at most; the note as it was kept.
+/// The version's bytes reach the disk before the lock too: the rename that
+/// replaces the note would else write them, under it (CI's Linux job of 26
+/// October 2026: 285 ms behind a 64 MB version kept as a copy, not synced).
 #[test]
 fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
     for megabytes in [24, 64] {
@@ -1356,8 +1359,8 @@ fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
             let (longest, _) = waits_beside(&memory, &putting, std::time::Duration::from_millis(5));
             let (done, under_lock) = putting.join().unwrap();
             assert_eq!(done, Ok(()));
-            // Why, rather than how long a dose waited (22 October 2026: CI's Linux job, 0.49 s).
-            assert!(under_lock.is_empty(), "copied under the lock: {under_lock:?}");
+            // Why, rather than how long a dose waited (22 October 2026: CI's Linux job, 0.49 s; 26 October, 285 ms).
+            assert!(under_lock.is_empty(), "work that grows with the note's size, under the lock: {under_lock:?}");
             longest
         };
         // The sealed version over the second note, measured: the second note kept, as a copy.

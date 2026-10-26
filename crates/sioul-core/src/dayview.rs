@@ -56,6 +56,9 @@ pub struct Block {
     pub read_only: bool,
     /// An event (or its margins) that comes back: one occurrence of it; false for anything else.
     pub recurring: bool,
+    /// An event (or its margins) that is a meeting with others: never moved
+    /// here (`agenda::may_change`); false for anything else.
+    pub with_others: bool,
 }
 
 /// A stretch of the day's hours and what it is for: "work", "admin",
@@ -227,9 +230,9 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     for event in &timed {
         // An event from yesterday evening, or of several days, shows its part of today.
         let (start, end) = (event.start.max(midnight), event.end.max(event.start + 15 * 60).min(day_end));
-        view.blocks.push(Block { start, end, kind: "event", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: event.location.clone(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: event.read_only, recurring: event.recurring });
+        view.blocks.push(Block { start, end, kind: "event", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: event.location.clone(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: event.read_only, recurring: event.recurring, with_others: event.with_others });
         // Its margins, shown apart: getting there and back is not the event, nor a pause.
-        let margin = |from: i64, to: i64| Block { start: from.max(midnight), end: to.min(day_end), kind: "margin", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: event.read_only, recurring: event.recurring };
+        let margin = |from: i64, to: i64| Block { start: from.max(midnight), end: to.min(day_end), kind: "margin", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: event.read_only, recurring: event.recurring, with_others: event.with_others };
         for block in [margin(start - i64::from(event.margins.before) * 60, start), margin(end, end + i64::from(event.margins.after) * 60)] {
             if block.end > block.start {
                 view.blocks.push(block);
@@ -245,7 +248,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
             Some(&(from, to)) => (from.max(midnight), to.min(day_end).max(from.max(midnight) + 15 * 60)),
             None => ((done - length).max(midnight), done.max(midnight + 15 * 60)),
         };
-        view.blocks.push(Block { start, end, kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
+        view.blocks.push(Block { start, end, kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false });
     }
     // Meals and naps, kept free (`needs`), as today has them (its own changes):
     // shown, a step never laid over them. The night is kept free too, but not
@@ -253,7 +256,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     for kept in settings.needs.kept_with(today, &zone, &settings.needs_days, &|key: &str| settings.shifts.get(key).copied().unwrap_or(0)).into_iter().filter(|k| k.kind != "sleep") {
         let (start, end) = (kept.start.max(midnight), kept.end.min(day_end));
         if end > start {
-            view.blocks.push(Block { start, end, kind: kept.kind, title: kept.name.clone(), key: kept.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
+            view.blocks.push(Block { start, end, kind: kept.kind, title: kept.name.clone(), key: kept.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false });
         }
     }
     // Held: the events with a pause around each, what is kept free, what passed, and each step laid, with its pause.
@@ -289,6 +292,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         note: String::new(),
         read_only: false,
         recurring: false,
+        with_others: false,
     };
     // A step laid: its margins at both ends, shown apart (getting there and back is not the step, nor a pause).
     let lay = |view: &mut DayView, step: &Step, from: i64, to: i64, part: u32, pinned: bool| {
@@ -465,7 +469,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         let wanted = i64::from(slack) * 60;
         let in_hours: Vec<(i64, i64)> = crate::plan::less(&hours, &busy).into_iter().map(|(a, b, _)| (a, b)).collect();
         if let Some((from, to)) = first_gap(&in_hours, last + pause, SLACK_SHOWN * 60, wanted).filter(|_| wanted >= SLACK_SHOWN * 60) {
-            view.blocks.push(Block { start: from, end: to, kind: "slack", title: String::new(), key: "slack".into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
+            view.blocks.push(Block { start: from, end: to, kind: "slack", title: String::new(), key: "slack".into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false });
             busy.push((from, to));
         }
     }
@@ -478,7 +482,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         }
     }
     for (from, to, key) in gains {
-        view.blocks.push(Block { start: from, end: to, kind: "gain", title: String::new(), key: key.into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
+        view.blocks.push(Block { start: from, end: to, kind: "gain", title: String::new(), key: key.into(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false, with_others: false });
     }
     view.blocks.sort_by_key(|b| b.start);
     // Two events at once: side by side, never one over the other.

@@ -1264,7 +1264,8 @@ fn adopt(dir: &Path, listed: &Listed, file: &str, mine: &str, (href, etag, data)
         report.conflicts.push(set_aside(&path, mine.as_bytes())?);
     }
     let text = crlf(&data);
-    vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
+    // The server's copy, as it came (`vdir::store_item`): no writer's rule applies to it.
+    vdir::store_item(&path, &text).map_err(SyncError::Disk)?;
     report.received += 1;
     // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
     Ok(ItemState { href: path_key(&absolute(&listed.url, &href)), file: file.to_string(), etag, hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() })
@@ -1596,7 +1597,12 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         && let Some(mine) = changed_here(&path, &state.items[i])
         && !same_text(&mine, data)
     {
+        // The merge goes to the server at the next sync: only where the one rule of
+        // every event's writer lets it (`agenda::may_change`): never into a meeting
+        // with others, whose server would tell every guest, nor a calendar you only
+        // read; there, yours is set aside as any item changed on both sides.
         merged = if kind == Kind::Calendars { std::str::from_utf8(&mine).ok().and_then(|mine| sioul_core::checklist::merge_calendar(mine, data)) } else { None };
+        merged = merged.filter(|merged| sioul_core::agenda::may_change(data, state.read_only, &sioul_core::agenda::own_addresses(), sioul_core::agenda::Change::Write(merged)).is_ok());
         if merged.is_none() {
             report.conflicts.push(set_aside(&path, &mine)?);
         }
@@ -1605,7 +1611,8 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
     // The server's as it came: what it holds now. A merge differs from it, so the next sync sends it.
     let hash = vdir::content_hash(text.as_bytes());
     let written = merged.map_or(text, |merged| crlf(&merged));
-    vdir::write_item(&path, &written).map_err(SyncError::Disk)?;
+    // The server's copy, or the merge the rule let through: written as it is (`vdir::store_item`).
+    vdir::store_item(&path, &written).map_err(SyncError::Disk)?;
     // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
     let item = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash, ..ItemState::default() };
     match position {

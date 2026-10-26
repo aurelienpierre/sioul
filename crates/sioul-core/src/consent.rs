@@ -60,12 +60,54 @@ pub struct Consent {
     kept_accounts: BTreeMap<String, std::path::PathBuf>,
     /// The messages found in those folders, by bare Message-ID.
     kept_mail: BTreeSet<String>,
+    /// Health, never to an agent whatever its projects: the errands' tasks,
+    /// their steps and their time blocks, by address (`keep_errands`).
+    health: BTreeSet<String>,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new() }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new() }
+    }
+
+    /// Keeps the pharmacy and renewal errands from agents whatever their
+    /// projects (`health::is_errand`, `recorded`: the UIDs the record keeps):
+    /// each errand's task, its steps however deep, and its time blocks.
+    /// Health never reaches an agent (docs/mcp.md); each tool counts them
+    /// among what it left out, never which.
+    pub fn keep_errands(&mut self, loaded: &Loaded, recorded: &BTreeSet<String>) {
+        let errands: BTreeSet<&str> = loaded.tasks.iter().filter(|t| crate::health::is_errand(t, recorded)).map(|t| t.uid.as_str()).collect();
+        if errands.is_empty() {
+            return;
+        }
+        let parent: HashMap<&str, &str> = loaded
+            .tasks
+            .iter()
+            .filter_map(|t| t.relations.iter().find(|r| r.kind.eq_ignore_ascii_case("PARENT")).map(|r| (t.uid.as_str(), r.uid.as_str())))
+            .collect();
+        // A step of an errand, however far down: its bigger task's health.
+        let under_errand = |uid: &str| {
+            let mut seen = BTreeSet::new();
+            let mut at = uid;
+            loop {
+                if errands.contains(at) {
+                    return true;
+                }
+                match parent.get(at).copied().filter(|up| seen.insert(*up)) {
+                    Some(up) => at = up,
+                    None => return false,
+                }
+            }
+        };
+        let kept: BTreeSet<String> = loaded.tasks.iter().filter(|t| under_errand(&t.uid)).map(|t| t.uid.clone()).collect();
+        self.health.extend(kept.iter().map(|uid| links::task_uri(uid)));
+        self.health.extend(loaded.events.iter().filter(|e| !e.task.is_empty() && kept.contains(&e.task)).map(|e| links::event_uri(&e.uid)));
+    }
+
+    /// Whether a thing is health (`keep_errands`): never to an agent.
+    pub fn is_health(&self, uri: &str) -> bool {
+        !self.health.is_empty() && self.health.contains(uri.trim())
     }
 
     /// Keeps these accounts' mail from agents whatever its projects (by id,
@@ -259,6 +301,9 @@ impl Consent {
         if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
             return false;
         }
+        if self.is_health(uri) {
+            return false;
+        }
         self.allows_projects(self.projects_of(uri).iter().map(String::as_str))
     }
 
@@ -354,6 +399,29 @@ mod tests {
         assert!(!consent.allows_mail(card.message_id.as_deref(), Some(&card)));
         card.path = Some("/data/mail/workshop/new/3".into());
         assert!(consent.allows_mail(card.message_id.as_deref(), Some(&card)), "a folder whose name only begins the same");
+    }
+
+    /// The pharmacy and renewal errands are health, whatever their projects:
+    /// the task (an open project's, or none), its step two levels down, its
+    /// time block; another task and its block stay as they were.
+    #[test]
+    fn errands_are_health_whatever_their_projects() {
+        let tasks = vec![
+            Task { uid: "e1".into(), title: "Fetch the box".into(), categories: vec!["Santé".into()], projects: vec!["lumen".into()], ..Task::default() },
+            Task { uid: "e2".into(), title: "Find the card".into(), relations: vec![Relation { kind: "PARENT".into(), uid: "e1".into(), gap: 0 }], ..Task::default() },
+            Task { uid: "e3".into(), title: "Its pocket".into(), relations: vec![Relation { kind: "PARENT".into(), uid: "e2".into(), gap: 0 }], ..Task::default() },
+            Task { uid: "e4".into(), title: "A box of my own".into(), ..Task::default() },
+            Task { uid: "t1".into(), title: "Mock-ups".into(), projects: vec!["lumen".into()], ..Task::default() },
+        ];
+        let block = |uid: &str, task: &str| crate::agenda::EventRef { key: format!("/data/calendars/local/blocks/{uid}.ics"), uid: uid.into(), task: task.into(), ..Default::default() };
+        let loaded = Loaded { tasks, events: vec![block("b1", "e1"), block("b2", "t1")], projects: vec![project("lumen", true)], ..Loaded::default() };
+        let mut consent = Consent::of(&loaded, true, None);
+        assert!(consent.allows(&links::task_uri("e1")) && consent.allows(&links::event_uri("b1")), "nothing kept yet");
+        consent.keep_errands(&loaded, &["e4".to_string()].into());
+        for kept in [links::task_uri("e1"), links::task_uri("e2"), links::task_uri("e3"), links::task_uri("e4"), links::event_uri("b1")] {
+            assert!(!consent.allows(&kept) && consent.is_health(&kept), "{kept}");
+        }
+        assert!(consent.allows(&links::task_uri("t1")) && consent.allows(&links::event_uri("b2")), "the others as they were");
     }
 
     #[test]

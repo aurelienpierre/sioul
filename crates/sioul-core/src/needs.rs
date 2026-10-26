@@ -139,6 +139,20 @@ pub struct Needs {
 }
 
 impl Needs {
+    /// The health file's `[needs]` alone (`Health::default_path`): the times
+    /// kept free, for the plan and for what now is for, read where no
+    /// medicine may be kept (`sioul mcp`: docs/mcp.md). Nothing else of the
+    /// file becomes a value; one that does not read gives the usual needs, and
+    /// is neither copied aside nor changed here (the window says it).
+    pub fn read(path: &Path) -> Needs {
+        #[derive(Deserialize)]
+        struct Only {
+            #[serde(default)]
+            needs: Needs,
+        }
+        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<Only>(&text).ok()).map(|only| only.needs).unwrap_or_default()
+    }
+
     /// The settings' change, from what the page showed (`shown`) to what it
     /// sends (`self`), set over the settings as the file holds them now
     /// (`current`): each field the page changed, the page's; the others as
@@ -361,6 +375,37 @@ impl Days {
                 self.0.remove(&date);
             }
         }
+    }
+
+    /// What a change wrote on `date`'s block `key` undone, field by field (a
+    /// drag's Undo on the Health page): `was` before it, `wrote` right after
+    /// it, none for no change that day. A field it wrote, still as it wrote
+    /// it, goes back; every other field stays as it is now, a choice made
+    /// since included ("Alarm at 07:00 after all", "Not that day"). Back to
+    /// no change at all, the block's change is forgotten. Whether anything
+    /// was put back.
+    pub fn put_back(&mut self, date: Date, key: &str, was: Option<&DayBlock>, wrote: Option<&DayBlock>) -> bool {
+        let usual = DayBlock::default();
+        let (was, wrote) = (was.unwrap_or(&usual), wrote.unwrap_or(&usual));
+        let now = self.get(date, key).cloned().unwrap_or_default();
+        let mut back = now.clone();
+        macro_rules! undone {
+            ($($field:ident),*) => {
+                $(if wrote.$field != was.$field && now.$field == wrote.$field {
+                    back.$field = was.$field.clone();
+                })*
+            };
+        }
+        undone!(kind, name, at, wake, minutes, before, after, quiet, off, no_alarm);
+        if back == now {
+            return false;
+        }
+        if back == usual {
+            self.forget(date, key);
+        } else {
+            self.change(date, key, |b| *b = back);
+        }
+        true
     }
 
     /// A usual block taken out of the settings (its kind, its place): its
@@ -906,6 +951,69 @@ mod tests {
 
     fn none(_: &str) -> i64 {
         0
+    }
+
+    /// The health file's `[needs]` read alone, as an agent's process reads
+    /// them (docs/mcp.md): the same needs as the whole file gives, whatever
+    /// its medicines say, even ones no longer readable as medicines; a file
+    /// that does not read gives the usual needs and is left as it is.
+    #[test]
+    fn the_needs_are_read_without_the_medicines() {
+        let dir = std::env::temp_dir().join(format!("sioul-needs-alone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        let needs = "[needs]\nmeals_on = true\nsleep_on = true\n\n[[needs.meals]]\nname = \"Lunch\"\nat = \"12:30\"\nminutes = 30\n\n[needs.sleep]\nbed = \"22:30\"\nwake = \"06:45\"\n";
+        std::fs::write(&path, format!("[[medicine]]\nid = \"iron\"\nname = \"Iron\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n\n{needs}")).unwrap();
+        let read = Needs::read(&path);
+        assert_eq!(read, crate::health::Health::load(&path).needs);
+        assert!(read.meals_on && read.meals[0].name == "Lunch" && read.sleep.bed == "22:30", "{read:?}");
+        // A medicine written by a newer Sioul (a schedule this one cannot read): the needs still read.
+        std::fs::write(&path, format!("[[medicine]]\nid = \"iron\"\nname = \"Iron\"\n[medicine.schedule]\nevery = \"moon\"\n\n{needs}")).unwrap();
+        assert_eq!(Needs::read(&path).sleep.wake, "06:45");
+        std::fs::write(&path, "[needs\nmeals_on = ").unwrap();
+        assert_eq!(Needs::read(&path), Needs::default());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "nothing copied aside");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A drag's Undo puts back what the drag wrote and only that
+    /// (`Days::put_back`): the night's waking edge dragged, then "Alarm at
+    /// 07:00 after all" chosen, then Undo: the alarm stays on, waking as
+    /// before the drag. A meal dragged, then "Not that day": Undo keeps it;
+    /// a block the drag made, all put back, leaves no change of that day.
+    #[test]
+    fn a_drag_s_undo_puts_back_only_what_it_wrote() {
+        let monday: Date = "2026-10-05".parse().unwrap();
+        let now = monday.at(8, 0, 0, 0).to_zoned(zone()).unwrap();
+        let mut needs = Needs { meals_on: true, sleep_on: true, ..Needs::default() };
+        needs.sleep.alarm = [true; 7];
+        let ask = |key: &str, action: &str| DayEdit { key: key.into(), action: action.into(), ..DayEdit::default() };
+        let mut days = Days::default();
+        needs.change_day(&mut days, monday, &ask("sleep", "no-alarm"), &now, &[]).unwrap();
+        let was = days.get(monday, "sleep").cloned();
+        let drag = DayEdit { from: "22:00".into(), bed: "23:00".into(), to: "08:30".into(), ..ask("sleep", "times") };
+        needs.change_day(&mut days, monday, &drag, &now, &[]).unwrap();
+        let wrote = days.get(monday, "sleep").cloned();
+        assert!(wrote.as_ref().is_some_and(|b| b.wake == "08:30" && b.no_alarm), "{wrote:?}");
+        needs.change_day(&mut days, monday, &ask("sleep", "alarm"), &now, &[]).unwrap();
+        assert!(days.put_back(monday, "sleep", was.as_ref(), wrote.as_ref()));
+        let night = days.get(monday, "sleep").cloned().unwrap_or_default();
+        assert!(!night.no_alarm, "the alarm stays on: {night:?}");
+        assert_eq!(night.wake, was.unwrap_or_default().wake, "waking as before the drag");
+        // A meal: dragged, then not that day; Undo keeps "not that day".
+        let mut days = Days::default();
+        let moved = DayEdit { from: "13:15".into(), ..ask("meal:1", "move") };
+        needs.change_day(&mut days, monday, &moved, &now, &[]).unwrap();
+        let wrote = days.get(monday, "meal:1").cloned();
+        needs.change_day(&mut days, monday, &ask("meal:1", "quiet"), &now, &[]).unwrap();
+        assert!(days.put_back(monday, "meal:1", None, wrote.as_ref()));
+        assert_eq!(days.get(monday, "meal:1").map(|b| (b.at.as_str(), b.quiet)), Some(("", true)), "its time back, not that day kept");
+        // Nothing changed since: all put back, no change of that day left.
+        let mut days = Days::default();
+        needs.change_day(&mut days, monday, &moved, &now, &[]).unwrap();
+        let wrote = days.get(monday, "meal:1").cloned();
+        assert!(days.put_back(monday, "meal:1", None, wrote.as_ref()) && days.get(monday, "meal:1").is_none());
+        assert!(!days.put_back(monday, "meal:1", None, wrote.as_ref()), "nothing left to put back");
     }
 
     #[test]

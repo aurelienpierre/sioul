@@ -44,6 +44,7 @@ An event opens on the right with its day, its time, its place, its calendar, and
 
 - **To change it**: **Edit**.
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
+- **A meeting with others**, an event with guests (you invited them, or they invited you): its time, title, place, notes and calendar are its organiser's, since its server tells every guest of a change. Sioul neither drags nor deletes it, and its form changes only what is yours: the time kept before and after it, its costs and what it gives back, your reminder. An event that names only an organiser, as Google writes into your own events, stays yours to change.
 
 An event can also be made from a message, from a task, or from a paper letter's appointment, and stays tied to it. From an event, you can make a note (dated, with its guests listed, and **Send to the guests** once written) or a task to prepare it.
 

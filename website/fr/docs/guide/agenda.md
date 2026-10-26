@@ -44,6 +44,7 @@ Un événement s’ouvre à droite avec son jour, son heure, son lieu, son agend
 
 - **Pour le changer** : **Modifier**.
 - **Pour le supprimer** : **Supprimer**. Il attend dix secondes, avec **Annuler**. Un événement qui se répète demande d’abord : **Cette fois seulement**, ou **Toutes les fois**.
+- **Une réunion avec d’autres**, un événement avec des personnes invitées (vous les avez invitées, ou elles vous ont invité) : son heure, son titre, son lieu, ses notes et son agenda sont ceux de son organisateur, car son serveur préviendrait chaque invité d’un changement. Sioul ne la fait ni glisser ni supprimer, et son formulaire ne change que ce qui est à vous : le temps gardé avant et après, ses coûts et ce qu’elle vous rend, votre rappel. Un événement qui ne nomme qu’un organisateur, comme Google l’écrit dans vos propres événements, reste à vous de le changer.
 
 Un événement peut aussi naître d’un courriel, d’une tâche, ou du rendez-vous d’une lettre papier, et il lui reste lié. Depuis un événement, vous pouvez faire une note (datée, avec la liste des personnes invitées, et **Envoyer aux personnes invitées** une fois écrite) ou une tâche pour le préparer.
 

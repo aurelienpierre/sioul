@@ -127,11 +127,12 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
         let config = load_config();
         let (mut change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
         // The block whose time the form took: the appointment is that time now (F14).
-        change.gone.extend(pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
+        change.gone.extend(pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
         change.write()?;
         return Ok((Vec::new(), path, target.label(&config, tr())));
     }
-    let opened = pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
+    // Never a block given a guest: a meeting with others now, it stays as it is (`agenda::may_change`).
+    let opened = pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
     let blocks: Vec<PathBuf> = opened.into_iter().chain(crate::blocks::with_task(uid).into_iter().map(|(_, p)| p)).collect();
     let plan = appointments::task_to_event(task, others, &blocks, &edit, &target, &TimeZone::system()).map_err(|r| r.said(tr()))?;
     plan.write()?;
@@ -355,7 +356,8 @@ mod tests {
 
         // An invitation stays an event; a repeat the task cannot say is never lost.
         let invited = personal.dir.join("i-kinds.ics");
-        std::fs::write(&invited, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:i\r\nDTSTART:20991024T090000Z\r\nDTEND:20991024T100000Z\r\nSUMMARY:Meeting\r\nORGANIZER:mailto:boss@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        std::fs::write(&invited, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:i\r\nDTSTART:20991024T090000Z\r\nDTEND:20991024T100000Z\r\nSUMMARY:Meeting\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        // An invitation names you among its guests (an organizer alone tells nobody: no meeting, 26 October 2026).
         assert!(make_task(invited.to_str().unwrap(), &list).is_err() && invited.exists());
         let odd = personal.dir.join("o-kinds.ics");
         std::fs::write(&odd, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:o\r\nDTSTART:20991024T090000Z\r\nDTEND:20991024T100000Z\r\nSUMMARY:Odd\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();

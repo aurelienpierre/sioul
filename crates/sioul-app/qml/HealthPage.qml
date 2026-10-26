@@ -30,7 +30,7 @@ Item {
     required property var window
 
     // The page's view (`health::page`): the week of the day shown, and what only today says.
-    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", later: 15, any: true, medicines: [], prescriptions: [] })
+    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", unreadable: "", later: 15, any: true, medicines: [], prescriptions: [] })
     // The medicines, the prescriptions and the week's days, taken from the view
     // only when they change: the view comes again each minute, and their rows
     // and timelines stay as they are.
@@ -189,6 +189,13 @@ Item {
     // The week of the day asked for, made again off the window's thread (`healthView`).
     function reload() {
         page.sioul.showHealthWeek(page.wanted)
+    }
+
+    // A dose writer's answer, said in the status line when it says something
+    // went wrong (a dose of a day to come, a record that could not be written).
+    function said(problem) {
+        if (problem !== "")
+            page.sioul.status = problem
     }
 
     function takeView() {
@@ -783,7 +790,7 @@ Item {
                                     onClicked: {
                                         // Answers that differ on your devices: you choose.
                                         if (row.modelData.choose) {
-                                            page.sioul.doseChoose(row.modelData.key, true)
+                                            page.said(page.sioul.doseChoose(row.modelData.key, true))
                                             page.reload()
                                             return
                                         }
@@ -791,7 +798,7 @@ Item {
                                             page.window.askDose(row.modelData.key)
                                             return
                                         }
-                                        page.sioul.setDoseTaken(row.modelData.key, row.modelData.taken === "")
+                                        page.said(page.sioul.setDoseTaken(row.modelData.key, row.modelData.taken === ""))
                                         page.reload()
                                     }
                                 }
@@ -801,7 +808,7 @@ Item {
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                                     text: page.sioul.text("health-not-taken")
                                     onClicked: {
-                                        page.sioul.doseChoose(row.modelData.key, false)
+                                        page.said(page.sioul.doseChoose(row.modelData.key, false))
                                         page.reload()
                                     }
                                 }
@@ -872,6 +879,19 @@ Item {
                     theme: page.theme
                     window: page.window
                     date: scroll.day !== null ? scroll.day.date : ""
+                }
+
+                // The health file could not be read here: said on every day, never read as no medicines.
+                Label {
+                    objectName: "health-unreadable"
+                    visible: (page.shown.unreadable || "") !== ""
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    text: page.shown.unreadable || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: page.theme.warm
                 }
 
                 // Today: what is not known of the doses marked elsewhere; where reminders come.

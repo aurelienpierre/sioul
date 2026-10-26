@@ -482,9 +482,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
 
-        /// Deletes an event, or only the occurrence starting at `start`, after ten seconds to undo.
+        /// Deletes an event, or only the occurrence starting at `start`, after ten
+        /// seconds to undo; never a meeting with others nor one of a calendar
+        /// you only read. Returns what went wrong, else "".
         #[qinvokable]
-        fn delete_event(self: Pin<&mut Sioul>, key: &QString, start: f64, only_this: bool);
+        fn delete_event(self: Pin<&mut Sioul>, key: &QString, start: f64, only_this: bool) -> QString;
 
         /// An event dragged: its occurrence starting at `start` now from
         /// `new_start` to `new_end` (Unix seconds), that time alone or every
@@ -943,9 +945,11 @@ pub mod qobject {
         fn refilled(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
         /// A dose marked taken, or not, as it happens: taken late or early, it
-        /// may move the next ones (a medicine counted from its last dose).
+        /// may move the next ones (a medicine counted from its last dose). One
+        /// of a day to come is refused (`health::may_answer`). Returns what
+        /// went wrong, else "".
         #[qinvokable]
-        fn set_dose_taken(self: Pin<&mut Sioul>, key: &QString, taken: bool);
+        fn set_dose_taken(self: Pin<&mut Sioul>, key: &QString, taken: bool) -> QString;
 
         /// A dose not taken, said afterwards: not asked again.
         #[qinvokable]
@@ -4186,8 +4190,8 @@ impl qobject::Sioul {
         QString::from(&pim::move_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, new_start as i64, new_end as i64, only_this))
     }
 
-    fn delete_event(self: Pin<&mut Self>, key: &QString, start: f64, only_this: bool) {
-        pim::delete_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, only_this);
+    fn delete_event(self: Pin<&mut Self>, key: &QString, start: f64, only_this: bool) -> QString {
+        QString::from(&pim::delete_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, only_this))
     }
 
     fn completions(&self, typed: &QString) -> QString {
@@ -4953,7 +4957,7 @@ impl qobject::Sioul {
     }
 
     fn health_page(&self) -> QString {
-        QString::from(&crate::health::page())
+        QString::from(&crate::health::page(&crate::mail::hidden_pim(&self.shared())))
     }
 
     fn save_medicine(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
@@ -4976,13 +4980,12 @@ impl qobject::Sioul {
         QString::from(&crate::health::refilled(&id.to_string()))
     }
 
-    fn set_dose_taken(self: Pin<&mut Self>, key: &QString, taken: bool) {
-        let problem = crate::health::set_taken(&key.to_string(), taken);
-        if !problem.is_empty() {
-            tell(&self.qt_thread(), &self.shared(), problem);
-        }
+    fn set_dose_taken(self: Pin<&mut Self>, key: &QString, taken: bool) -> QString {
+        // The window's Taken: a dose of a day to come refused first; the alarms answer through `set_taken` alone.
+        let problem = crate::health::window_taken(&key.to_string(), taken, &jiff::Zoned::now());
         // Your other computers know at once.
         crate::share::exchange(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
     }
 
     fn dose_not_taken(self: Pin<&mut Self>, key: &QString) {
