@@ -52,7 +52,11 @@ impl Said {
         for f in &self.files {
             let done = match &f.before {
                 Some(text) => crate::vdir::write_item(&f.path, text),
-                None => std::fs::remove_file(&f.path).map_err(|e| e.to_string()),
+                // Gone already (made, then moved on by the same change): removed.
+                None => match std::fs::remove_file(&f.path) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+                    _ => Ok(()),
+                },
             };
             if done.is_err() {
                 return false;

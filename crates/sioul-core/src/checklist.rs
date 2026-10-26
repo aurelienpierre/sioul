@@ -276,13 +276,24 @@ pub fn ticked(notes: &str, line: usize, mark: Mark) -> Result<String, Stale> {
 /// step or a task of its own); every other line as it was. Stale when that
 /// line is no item now.
 pub fn removed(notes: &str, line: usize) -> Result<String, Stale> {
-    let (all, listed) = read(notes);
-    let item = all.iter().find(|i| i.line == line).ok_or(Stale)?;
-    // Its detail: the lines after it that are the list's and no item, up to the next item.
-    let next = all.iter().map(|i| i.line).filter(|&l| l > line).min().unwrap_or(usize::MAX);
+    let (all, _) = read(notes);
+    all.iter().find(|i| i.line == line).ok_or(Stale)?;
     let lines: Vec<&str> = notes.split('\n').collect();
-    let gone = |i: usize| i == item.line || (i > line && i < next && listed.get(i).copied().unwrap_or(false) && !lines[i].trim().is_empty());
-    let kept: Vec<&str> = lines.iter().enumerate().filter(|(i, _)| !gone(*i)).map(|(_, l)| *l).collect();
+    // Its detail, as `read` takes it: the indented lines after it (blank lines
+    // between them stay), up to the first other line, never the name of the
+    // group that comes next.
+    let mut gone = vec![line];
+    for (i, l) in lines.iter().enumerate().skip(line + 1) {
+        let l = l.strip_suffix('\r').unwrap_or(l);
+        if l.trim().is_empty() {
+            continue;
+        }
+        if fence(l) || boxed(l).is_some() || !l.starts_with([' ', '\t']) {
+            break;
+        }
+        gone.push(i);
+    }
+    let kept: Vec<&str> = lines.iter().enumerate().filter(|(i, _)| !gone.contains(i)).map(|(_, l)| *l).collect();
     Ok(kept.join("\n"))
 }
 
@@ -588,6 +599,12 @@ mod tests {
         // The blood test, and its detail, out; nothing else changes.
         let without = removed(NOTES, 5).unwrap();
         assert_eq!(without, NOTES.replace("- [x] Last blood test\n  The paper one, in the green folder.\n", ""));
+        // The last item of a group, a blank line and a group after it: that group's name stays, its item in it.
+        let last_of_bring = removed(NOTES, 7).unwrap();
+        assert_eq!(last_of_bring, NOTES.replace("- [-] Vaccination record\n", ""));
+        assert_eq!(items(&last_of_bring).iter().map(|i| (i.text.as_str(), i.group.as_str())).last(), Some(("The doctor's address is in the phone", "Check")));
+        // The last item of the last group.
+        assert_eq!(removed(NOTES, 10).unwrap(), NOTES.replace("\n- [ ] The doctor's address is in the phone", ""));
         assert_eq!(removed(NOTES, 0), Err(Stale));
         // Back at the end of the list, its detail under it.
         let back = appended(&without, "Last blood test", Mark::Done, &["The paper one, in the green folder.".to_string()]);

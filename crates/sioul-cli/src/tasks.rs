@@ -568,8 +568,9 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, status, &TimeZone::system(), &Zoned::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
-    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks").
-    if status == Status::Completed {
+    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks");
+    // only a step done for good: a repeating one's turn comes back open, and closes nothing.
+    if status == Status::Completed && sioul_core::composed::done_for_good(&text) {
         let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
         if !closing.is_empty() {
             closing.write()?;

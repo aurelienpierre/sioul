@@ -66,6 +66,13 @@ mod unix {
     /// only when the program could not run, with why.
     pub type Exec = fn(&Path, &[OsString], Option<&str>) -> std::io::Error;
 
+    /// How a new program is tried before it takes the connection (`try_it`),
+    /// or a test's stand-in: why it cannot serve, when it cannot.
+    pub type Probe = fn(&Path) -> Result<(), String>;
+
+    /// The longest a new program's `--version` may take.
+    const PROBE: Duration = Duration::from_secs(5);
+
     /// A file as the system describes it: which one it is, and what was last done to it.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Stat {
@@ -113,6 +120,7 @@ mod unix {
         /// A new file that could not run: left alone until the path holds another.
         failed: Option<Stat>,
         settle: Duration,
+        probe: Probe,
         exec: Exec,
     }
 
@@ -121,15 +129,15 @@ mod unix {
         pub fn start() -> Option<Follow> {
             let (resolved, running) = own_program()?;
             let path = started_as(&running).unwrap_or(resolved);
-            Some(Follow { path, arguments: std::env::args_os().collect(), running, own: true, seen: None, failed: None, settle: SETTLE, exec })
+            Some(Follow { path, arguments: std::env::args_os().collect(), running, own: true, seen: None, failed: None, settle: SETTLE, probe: try_it, exec })
         }
 
-        /// A file followed as if it were the program, run by `exec` at once
-        /// when it is replaced: for tests.
+        /// A file followed as if it were the program, tried by `probe` and
+        /// run by `exec` at once when it is replaced: for tests.
         #[cfg(test)]
-        pub fn of_file(path: &Path, exec: Exec) -> Follow {
+        pub fn of_file(path: &Path, probe: Probe, exec: Exec) -> Follow {
             let running = Stat::of(path).expect("a file to follow");
-            Follow { path: path.to_path_buf(), arguments: vec!["sioul".into(), "mcp".into()], running, own: false, seen: None, failed: None, settle: Duration::ZERO, exec }
+            Follow { path: path.to_path_buf(), arguments: vec!["sioul".into(), "mcp".into()], running, own: false, seen: None, failed: None, settle: Duration::ZERO, probe, exec }
         }
 
         /// Between two messages, while nothing the client sent waits unread:
@@ -158,7 +166,12 @@ mod unix {
                     }
                 }
             }
-            let error = (self.exec)(&self.path, &self.arguments, server.handover().as_deref());
+            // Tried first: a program that cannot start (its arguments refused, a library
+            // missing, a file cut short) never takes the connection, which would end.
+            let error = match (self.probe)(&self.path) {
+                Ok(()) => (self.exec)(&self.path, &self.arguments, server.handover().as_deref()).to_string(),
+                Err(why) => why,
+            };
             self.seen = None;
             self.failed = Some(new);
             let said = format!("its program was replaced, but the new one could not run ({error}); this one goes on serving");
@@ -223,6 +236,27 @@ mod unix {
             std::env::split_paths(&std::env::var_os("PATH")?).map(|folder| folder.join(&first)).filter(|path| path.is_absolute()).collect()
         };
         candidates.into_iter().find(|path| Stat::of(path).is_some_and(|stat| stat.same_file(running)))
+    }
+
+    /// The new program tried once, before it takes the connection: `--version`,
+    /// standard input from /dev/null, its output captured, five seconds at
+    /// most (`PROBE`). Why it cannot serve, when it cannot.
+    fn try_it(path: &Path) -> Result<(), String> {
+        use std::process::{Command, Stdio};
+        let mut child = Command::new(path).arg("--version").env_remove(HANDOVER).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        let deadline = Instant::now() + PROBE;
+        loop {
+            match child.try_wait().map_err(|e| e.to_string())? {
+                Some(status) if status.success() => return Ok(()),
+                Some(status) => return Err(format!("its --version ended with {status}")),
+                None if Instant::now() >= deadline => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("its --version did not answer within five seconds".into());
+                }
+                None => std::thread::sleep(Duration::from_millis(20)),
+            }
+        }
     }
 
     /// Runs `path` in this process's place with `arguments`, the environment

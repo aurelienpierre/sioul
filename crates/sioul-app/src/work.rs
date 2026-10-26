@@ -1091,6 +1091,11 @@ pub(crate) fn fold_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, confirme
     composed_done(qt, shared, planned, &whole, || say("composed-folded", &[("title", titles.0), ("whole", titles.1)]))
 }
 
+/// Whether the task `uid`'s list keeps one level of steps (Google Tasks, `capabilities::one_level`).
+fn one_level(all: &[Task], uid: &str) -> bool {
+    all.iter().find(|t| t.uid == uid).is_some_and(|t| sioul_core::capabilities::one_level(&load_config(), &t.list_id))
+}
+
 /// An item of a checklist made a step of its task (`to` "step") or a task of
 /// its own ("task"): of a task (`kind` "task", `key` its UID) or an event
 /// ("event", its file). Returns what went wrong, else "".
@@ -1101,7 +1106,7 @@ pub(crate) fn convert_item(qt: &QtThread, shared: &Arc<Shared>, kind: &str, key:
     let notes = if kind == "event" { crate::pim::ours(key).and_then(|p| sioul_core::agenda::edit_of(&p)).map(|e| e.notes) } else { all.iter().find(|t| t.uid == key).map(|t| t.notes.clone()) };
     let words = notes.and_then(|n| sioul_core::checklist::items(&n).into_iter().find(|i| i.line == line)).map(|i| i.text).unwrap_or_default();
     let planned = match (kind, to) {
-        ("task", "step") => composed::item_to_step(&all, key, line, &now).map(|(change, _)| change),
+        ("task", "step") => composed::item_to_step(&all, key, line, one_level(&all, key), &now).map(|(change, _)| change),
         ("task", _) => match (all.iter().find(|t| t.uid == key), target_list("")) {
             (Some(task), Ok(list)) => composed::item_to_task(&Holder::Task(task), line, &list, &now).map(|(change, _)| change),
             (None, _) => Err(composed::Refusal::Gone),
@@ -1245,7 +1250,10 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
         return e;
     }
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks"): said, with Undo.
+    // Only a step done for good: a repeating one's turn comes back open, and closes nothing.
+    let for_good = step_was.as_ref().and_then(|(path, _)| std::fs::read_to_string(path).ok()).is_some_and(|text| sioul_core::composed::done_for_good(&text));
     if status == Status::Completed
+        && for_good
         && let Ok(closing) = sioul_core::composed::close_with(&before.loaded.tasks, uid, &Zoned::now())
         && !closing.is_empty()
         && let Ok(mut files) = closing.write()

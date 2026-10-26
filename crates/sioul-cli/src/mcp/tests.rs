@@ -1110,7 +1110,7 @@ fn a_new_program_waits_for_every_unread_message() {
     std::fs::write(&program, "the program that runs").unwrap();
     // The file that runs stays, as a program's does while it runs: its inode is not given to another.
     std::fs::hard_link(&program, folder.join("sioul.running")).unwrap();
-    let mut follow = Follow::of_file(&program, exec_that_fails);
+    let mut follow = Follow::of_file(&program, |_| Ok(()), exec_that_fails);
     let replace = |words: &str| {
         let staged = folder.join("sioul.new");
         std::fs::write(&staged, words).unwrap();
@@ -1147,6 +1147,13 @@ fn a_new_program_waits_for_every_unread_message() {
     transport::serve(&mut serving, &mut bytes, Some(&mut follow)).unwrap();
     assert_eq!((bytes.outgoing.len(), HANDED.lock().unwrap().len()), (1, 2));
     assert_eq!(logged_for("follow tests"), ["list_projects", "kept", "kept"]);
+    // Check of c792bd7, item 8: a new program whose --version fails is never run: said, and this one serves on.
+    let mut probed = Follow::of_file(&program, |_| Err("its --version ended with exit status: 1".into()), exec_that_fails);
+    replace("a program that cannot start");
+    let mut bytes = Bytes { input: input.as_bytes(), longest: 1 << 20, outgoing: Vec::new() };
+    transport::serve(&mut serving, &mut bytes, Some(&mut probed)).unwrap();
+    assert_eq!((bytes.outgoing.len(), HANDED.lock().unwrap().len()), (1, 2), "answered, never run");
+    assert_eq!(logged_for("follow tests"), ["list_projects", "kept", "kept", "kept"]);
     // The program that takes over goes on with that connection, without a second handshake.
     let mut taken = server();
     assert_eq!(taken.take_over(&handover).as_deref(), Some(env!("CARGO_PKG_VERSION")));
@@ -1830,6 +1837,106 @@ fn composed_tasks_are_changed_by_agents() {
         if let Some(task) = task(uid) {
             let _ = std::fs::remove_file(task.key);
         }
+    }
+}
+
+/// Check of c792bd7, item 2: the turn of a weekly last step done leaves its bigger
+/// task open; once the step's repeat has ended, done closes it.
+#[test]
+fn a_repeating_last_step_closes_its_bigger_task_only_once_it_ends() {
+    home();
+    let mut server = server();
+    let zone = jiff::tz::TimeZone::system();
+    let now = Zoned::now();
+    let list = tasks::default_list().unwrap();
+    let write = |uid: &str, edit: TaskEdit| vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: format!("{uid} title"), ..edit }, uid, &zone, &now).unwrap()).unwrap();
+    write("c2-balcony", TaskEdit::default());
+    write("c2-water", TaskEdit { parent: "c2-balcony".into(), start: "2026-10-26".into(), due: "2026-10-26".into(), repeat: "weekly".into(), ..TaskEdit::default() });
+    let task = |uid: &str| tasks::all(&zone).into_iter().find(|t| t.uid == uid).unwrap();
+    let done = call(&mut server, "complete_task", json!({ "task": "c2-water" }));
+    assert_eq!(done["isError"], false, "{done}");
+    assert!(task("c2-water").status.is_open() && task("c2-balcony").status.is_open(), "a turn: both open");
+    assert!(!text(&done).contains("c2-balcony"), "{done}");
+    // Its repeat ended: done for good, its bigger task with it.
+    let water = task("c2-water");
+    let ended = std::fs::read_to_string(&water.key).unwrap().replace("RRULE:FREQ=WEEKLY", "RRULE:FREQ=WEEKLY;UNTIL=20261001");
+    std::fs::write(&water.key, ended).unwrap();
+    let done = call(&mut server, "complete_task", json!({ "task": "c2-water" }));
+    assert_eq!(done["isError"], false, "{done}");
+    assert_eq!(task("c2-balcony").status, tasks::Status::Completed, "{done}");
+    for uid in ["c2-balcony", "c2-water"] {
+        let _ = std::fs::remove_file(task(uid).key);
+    }
+}
+
+/// Check of c792bd7, item 3: update_task given a list and a bigger task at once,
+/// then its Undo: one task, back where it was and as it was; the bigger task in
+/// a third list, then in the list the task started from.
+#[test]
+fn a_list_and_a_parent_at_once_undo_to_one_task() {
+    home();
+    let mut server = server();
+    let zone = jiff::tz::TimeZone::system();
+    let now = Zoned::now();
+    let start = tasks::default_list().unwrap();
+    let via = vdir::create(Kind::Calendars, vdir::LOCAL, "C3 errands", None, &["VTODO"]).unwrap();
+    let third = vdir::create(Kind::Calendars, vdir::LOCAL, "C3 trips", None, &["VTODO"]).unwrap();
+    let write = |list: &vdir::Collection, uid: &str| vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: format!("{uid} trip"), ..TaskEdit::default() }, uid, &zone, &now).unwrap()).unwrap();
+    let copies = |uid: &str| tasks::all(&zone).into_iter().filter(|t| t.uid == uid).collect::<Vec<_>>();
+    for (label, bigger_list) in [("third", &third), ("start", &start)] {
+        let (whole, task) = (format!("c3-whole-{label}"), format!("c3-task-{label}"));
+        write(bigger_list, &whole);
+        write(&start, &task);
+        let path = start.dir.join(format!("{task}.ics"));
+        let before = std::fs::read_to_string(&path).unwrap();
+        let moved = call(&mut server, "update_task", json!({ "task": task, "list": format!("{}/{}", via.account, via.id), "parent": whole }));
+        assert_eq!(moved["isError"], false, "{label}: {moved}");
+        let after = copies(&task);
+        assert_eq!(after.len(), 1, "{label}: {after:?}");
+        assert_eq!(after[0].parent(), Some(whole.as_str()), "{label}");
+        assert!(said_about(&format!("{task} trip")).put_back(), "{label}: Undo");
+        let back = copies(&task);
+        assert_eq!(back.len(), 1, "{label}: one task after Undo: {back:?}");
+        assert_eq!((PathBuf::from(&back[0].key), std::fs::read_to_string(&path).unwrap()), (path.clone(), before), "{label}: where it was, as it was");
+        for t in copies(&task).into_iter().chain(copies(&whole)) {
+            let _ = std::fs::remove_file(&t.key);
+        }
+    }
+}
+
+/// Check of c792bd7, item 6: a step in an open project of its own, its bigger task
+/// kept from agents (in no project, things outside projects closed): done, the
+/// bigger task neither closed, nor written, nor named; a fold into it refused.
+#[test]
+fn a_bigger_task_kept_from_agents_is_never_closed_nor_named() {
+    let home = home();
+    let path = home.root.join("config/sioul/kept-bigger.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&path, format!("{config}\n[mcp]\noutside_projects = false\n")).unwrap();
+    let mut server = Server::new(&path, "en");
+    let zone = jiff::tz::TimeZone::system();
+    let now = Zoned::now();
+    let list = tasks::default_list().unwrap();
+    let write = |uid: &str, edit: TaskEdit| vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
+    write("c6-errand", TaskEdit { title: "A private errand".into(), notes: "- [ ] Keys".into(), ..TaskEdit::default() });
+    write("c6-call", TaskEdit { title: "Call the housing office".into(), parent: "c6-errand".into(), projects: vec!["housing".into()], ..TaskEdit::default() });
+    let task = |uid: &str| tasks::all(&zone).into_iter().find(|t| t.uid == uid).unwrap();
+    let errand = task("c6-errand").key;
+    let errand_before = std::fs::read_to_string(&errand).unwrap();
+    let folded = call(&mut server, "convert_item", json!({ "to": "item", "step": "c6-call" }));
+    assert_eq!(folded["isError"], true, "{folded}");
+    assert!(!text(&folded).contains("private errand"), "{folded}");
+    for (tool, arguments) in [("complete_task", json!({ "task": "c6-call" })), ("update_task", json!({ "task": "c6-call", "status": "completed" }))] {
+        let done = call(&mut server, tool, arguments);
+        assert_eq!(done["isError"], false, "{tool}: {done}");
+        assert!(!text(&done).contains("private errand"), "{tool}: {done}");
+        assert_eq!(std::fs::read_to_string(&errand).unwrap(), errand_before, "{tool}: never written");
+        let call_key = task("c6-call").key;
+        let reopened = tasks::set_status(&std::fs::read_to_string(&call_key).unwrap(), tasks::Status::NeedsAction, &zone, &now).unwrap();
+        std::fs::write(&call_key, reopened).unwrap();
+    }
+    for uid in ["c6-errand", "c6-call"] {
+        let _ = std::fs::remove_file(task(uid).key);
     }
 }
 

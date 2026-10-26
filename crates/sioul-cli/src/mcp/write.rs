@@ -203,10 +203,15 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, Status::Completed, &TimeZone::system(), &Zoned::now())?;
+    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md,
+    // "Composed tasks"): only for a step done for good (a repeating one's turn comes back open),
+    // and as far as agents may change them, worked out before anything is written.
+    let (closing, too) = if sioul_core::composed::done_for_good(&text) {
+        super::items::closing_allowed(&desk.consent, &desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?
+    } else {
+        (sioul_core::composed::Change::default(), None)
+    };
     vdir::write_item(Path::new(&task.key), &text)?;
-    // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks").
-    let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
-    let too = sioul_core::composed::closing_with(&desk.loaded.tasks, &task.uid).first().map(|t| t.title.clone());
     closing.write()?;
     // What finishing it changed, said once.
     let after = Desk::read(s);

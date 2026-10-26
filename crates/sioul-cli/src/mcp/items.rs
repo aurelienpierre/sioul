@@ -66,7 +66,7 @@ fn find_event(consent: &Consent, wanted: &str) -> Result<Found, String> {
 }
 
 /// Whether something in these projects may be changed for an agent: each open; in none, while things outside projects are open.
-fn may_change(consent: &Consent, uri: &str) -> Result<(), String> {
+pub(super) fn may_change(consent: &Consent, uri: &str) -> Result<(), String> {
     let projects = consent.projects_of(uri);
     if let Some(closed) = projects.iter().find(|p| consent.knows(p) && !consent.is_open(p)) {
         return Err(access::closed_project(closed));
@@ -283,7 +283,9 @@ fn free_text_given(args: &Args, notes: &str) -> Result<String, String> {
     Ok(checklist::with_free_text(notes, &given))
 }
 
-/// Files changed twice in one call: the first before, the last after (Undo puts back the first).
+/// Files changed twice in one call: the first before, the last after (Undo
+/// puts back the first). A file made, then moved on within the call, was
+/// never there before nor after: nothing to put back, left out.
 fn merge_files(files: &mut Vec<FileChange>, more: Vec<FileChange>) {
     for change in more {
         match files.iter_mut().find(|f| f.path == change.path) {
@@ -291,6 +293,20 @@ fn merge_files(files: &mut Vec<FileChange>, more: Vec<FileChange>) {
             None => files.push(change),
         }
     }
+    files.retain(|f| f.before.is_some() || f.after.is_some());
+}
+
+/// The bigger tasks a step done closes with it (`composed::close_with`), as
+/// far up as an agent may change them (`may_change`): one kept from it is
+/// never written, nor named, nor any above it. Worked out before anything
+/// is written; the change and the first title said.
+pub(super) fn closing_allowed(consent: &Consent, all: &[Task], uid: &str, now: &Zoned) -> Result<(sioul_core::composed::Change, Option<String>), sioul_core::composed::Refusal> {
+    let wholes = sioul_core::composed::closing_with(all, uid);
+    let allowed: Vec<&Task> = wholes.into_iter().take_while(|t| may_change(consent, &links::task_uri(&t.uid)).is_ok()).collect();
+    let mut closing = sioul_core::composed::close_with(all, uid, now)?;
+    let keys: Vec<PathBuf> = allowed.iter().map(|t| PathBuf::from(&t.key)).collect();
+    closing.written.retain(|(path, _)| keys.contains(path));
+    Ok((closing, allowed.first().map(|t| t.title.clone())))
 }
 
 /// A composed task's change refused, said; what it would lose, with how to go on.
@@ -312,6 +328,10 @@ pub fn convert_item(s: &Session, args: &Args) -> Result<Answer, String> {
         "item" => {
             let step = find_open_task(s, &desk, &args.needed("step")?)?;
             may_change(&desk.consent, &links::task_uri(&step.uid))?;
+            // The bigger task's list is written too: never one kept from agents.
+            if let Some(whole) = step.parent() {
+                may_change(&desk.consent, &links::task_uri(whole))?;
+            }
             let whole = step.parent().and_then(|p| all.iter().find(|t| t.uid == p)).map(|t| t.title.clone()).unwrap_or_default();
             let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
             let blocks = sioul_core::blocks::to_come_of(&step.uid, &chosen, now.timestamp().as_second(), &zone);
@@ -325,7 +345,7 @@ pub fn convert_item(s: &Session, args: &Args) -> Result<Answer, String> {
             let item = checklist::find(&notes, &wanted).map_err(|_| format!("No item “{}” alone in the list of “{}”: its items now: {}.", one_line(&wanted), one_line(&holder.title()), checklist_lines(&notes).join("; ")))?;
             let said = s.say(if to == "step" { "agent-item-step" } else { "agent-item-task" }, &[("title", one_line(&item.text))]);
             let planned = match (&holder, to.as_str()) {
-                (Holder::Task(task), "step") => composed::item_to_step(&all, &task.uid, item.line, &now),
+                (Holder::Task(task), "step") => composed::item_to_step(&all, &task.uid, item.line, sioul_core::capabilities::one_level(&s.config, &task.list_id), &now),
                 (Holder::Event(_), "step") => return Err("An event's item becomes a task (“to”: “task”): steps are a task's.".into()),
                 (Holder::Task(task), _) => {
                     let list = tasks::default_list().ok_or_else(|| s.tr.text("task-no-list-yet", None))?;
@@ -761,20 +781,23 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
             text = tasks::set_status(&text, status, &zone, &now)?;
         }
     }
+    // Done for good (a repeating one's turn comes back open), its bigger tasks with it when it
+    // was the last step, as far as agents may change them (docs/tasks.md, "Composed tasks"):
+    // worked out before anything is written.
+    let closing = if task.status != Status::Completed && sioul_core::composed::done_for_good(&text) {
+        Some(closing_allowed(&desk.consent, &tasks::all(&zone), &task.uid, &now).map_err(|r| r.said(&s.tr))?)
+    } else {
+        None
+    };
     let mut files = Vec::new();
     if text != current {
         vdir::write_item(Path::new(&task.key), &text)?;
         files.push(FileChange::of(Path::new(&task.key), Some(current.clone())));
     }
     let mut line = s.say("agent-task-changed", &[("title", one_line(&edit.title))]);
-    // Done, its bigger task with it, when it was the last step (docs/tasks.md, "Composed tasks").
-    if task.status != Status::Completed && sioul_core::tasks::task_of_text(&text, &zone).is_some_and(|t| t.status == Status::Completed) {
-        let all = tasks::all(&zone);
-        let closing = sioul_core::composed::close_with(&all, &task.uid, &now).map_err(|r| r.said(&s.tr))?;
-        if let Some(whole) = sioul_core::composed::closing_with(&all, &task.uid).first().map(|t| t.title.clone()) {
-            merge_files(&mut files, closing.write()?);
-            line = format!("{line} {}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
-        }
+    if let Some((closing, Some(whole))) = closing {
+        merge_files(&mut files, closing.write()?);
+        line = format!("{line} {}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
     }
     if let Some(list) = args.text("list")?.filter(|l| *l != task.list_id) {
         let target = tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == list).ok_or_else(|| s.tr.text("task-list-no-tasks", None))?;

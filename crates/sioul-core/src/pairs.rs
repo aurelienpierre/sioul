@@ -343,11 +343,12 @@ fn paired(all: &[Task], task: &Task, current: &str, event: &EventFile, refs: &[E
             edit.due = day.to_string();
             (Some(day), Some(own))
         }
-        // An earlier date of its own stays its own, nothing on the link; a date
-        // given back by a move keeps its mark, so that tying again changes nothing.
+        // An earlier date of its own stays its own, nothing on the link; the date
+        // the tie replaced keeps its mark, whether the DUE still says the day the
+        // tie wrote or a move gave it back: it follows on, and tying again changes nothing.
         Some(_) => {
             edit.due = own_due(task, tie.as_ref());
-            (None, tie.as_ref().filter(|t| given_back(task, t)).and_then(|t| t.was.clone()))
+            (None, tie.as_ref().filter(|t| sioul_set(task, Some(t)) || given_back(task, t)).and_then(|t| t.was.clone()))
         }
         None => {
             edit.due = own_due(task, tie.as_ref());
@@ -924,12 +925,49 @@ mod tests {
         let change = detach(&task, Some(&file(&path, &read(&path), true)), &now()).unwrap();
         let untied = &change.written.iter().find(|(p, _)| *p == PathBuf::from(&task.key)).unwrap().1;
         assert_eq!(date_lines(untied), ["DTSTART;VALUE=DATE:20261027", "DUE;VALUE=DATE:20261130"], "{untied}");
+        // Check of c792bd7, item 7: given back beside its start, it follows on; tied again as it is, nothing is
+        // written; tied to a second event, that one's day is written.
+        std::fs::write(&task.key, &moved).unwrap();
+        let given = task_of(&desk, "prep");
+        let earlier = followed(&given, &moved, &at("2026-11-20"), &now()).unwrap();
+        assert_eq!(date_lines(&earlier), ["DTSTART;VALUE=DATE:20261027", "DUE;VALUE=DATE:20261120"], "{earlier}");
+        // The appointment moved there, its line kept.
+        std::fs::write(&path, read(&path).replace("20261029T13", "20261205T13")).unwrap();
+        assert!(attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().is_empty(), "a date given back, tied again: nothing");
+        let second = desk.calendar.dir.join("second.ics");
+        std::fs::write(&second, read_event("second", "20261103T130000Z")).unwrap();
+        attach(&desk.tasks(), "prep", &file(&second, &read(&second), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let tied = task_of(&desk, "prep");
+        assert_eq!((tied.due.as_str(), appointment_of(&tied).as_deref()), ("2026-11-03", Some("second")));
         // A start with a time: no date put back beside it.
         let timed = Task { start: "2026-10-27T09:00".into(), ..task.clone() };
         assert_eq!(put_back(&timed, "2026-11-30T17:00"), "");
         // No start: as kept; before the start day: that day.
         assert_eq!(put_back(&Task { start: String::new(), ..task.clone() }, "2026-11-30T17:00"), "2026-11-30T17:00");
         assert_eq!(put_back(&task, "2026-10-20"), "2026-10-27");
+    }
+
+    /// Check of c792bd7, item 7: a re-tie keeps the replaced date following. Due 30
+    /// November, tied to 29 October, tied again to 5 December, which moves to 20
+    /// November: due 20 November; a third tie writes nothing.
+    #[test]
+    fn a_re_tie_keeps_the_replaced_date_following() {
+        let desk = Desk::new("re-tie");
+        desk.task("prep", TaskEdit { due: "2026-11-30".into(), ..TaskEdit::default() });
+        let first = desk.event("first", "");
+        attach(&desk.tasks(), "prep", &file(&first, &read(&first), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        assert_eq!(task_of(&desk, "prep").due, "2026-10-29");
+        let later = desk.calendar.dir.join("later.ics");
+        std::fs::write(&later, read_event("later", "20261205T130000Z")).unwrap();
+        attach(&desk.tasks(), "prep", &file(&later, &read(&later), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let task = task_of(&desk, "prep");
+        assert_eq!(task.due, "2026-11-30", "its own date back, earlier than 5 December");
+        let moved = followed(&task, &read(Path::new(&task.key)), &at("2026-11-20"), &now()).unwrap();
+        std::fs::write(&task.key, &moved).unwrap();
+        assert_eq!(task_of(&desk, "prep").due, "2026-11-20");
+        // The appointment moved there, its line kept.
+        std::fs::write(&later, read(&later).replace("DTSTART:20261205T130000Z", "DTSTART:20261120T130000Z")).unwrap();
+        assert!(attach(&desk.tasks(), "prep", &file(&later, &read(&later), true), &desk.refs(), &any, &now()).unwrap().is_empty(), "a third tie: nothing written");
     }
 
     /// Check of 60ad872, item 3: a date of your own the tie never replaced stays yours:

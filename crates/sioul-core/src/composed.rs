@@ -281,11 +281,15 @@ fn mark_of(status: Status) -> Mark {
 
 /// The item on `line` of a task's checklist made a step of it: its words
 /// its title, its detail its notes, after the other steps, its tick kept.
-/// The new step's UID with the change.
-pub fn item_to_step(tasks: &[Task], holder: &str, line: usize, now: &Zoned) -> Result<(Change, String), Refusal> {
+/// Refused for an item of a step in a list that keeps one level (`one_level`:
+/// Google Tasks), as `demote` refuses. The new step's UID with the change.
+pub fn item_to_step(tasks: &[Task], holder: &str, line: usize, one_level: bool, now: &Zoned) -> Result<(Change, String), Refusal> {
     let whole = find(tasks, holder)?;
     if whole.read_only {
         return Err(Refusal::ReadOnly);
+    }
+    if one_level && whole.parent().is_some() {
+        return Err(Refusal::OneLevel);
     }
     let item = checklist::items(&whole.notes).into_iter().find(|i| i.line == line).ok_or(Refusal::Stale)?;
     let zone = TimeZone::system();
@@ -377,6 +381,16 @@ pub fn beyond_words(tasks: &[Task], step: &Task, blocks: &[PathBuf]) -> Vec<&'st
     add(!step.categories.is_empty(), "categories");
     add(!step.margins.is_empty(), "margins");
     add(step.demands != crate::demands::Demands::default(), "costs");
+    add(!step.location.is_empty(), "place");
+    // Its projects beyond its bigger task's: a step takes its bigger task's, its own go with it.
+    let whole = step.parent().and_then(|p| tasks.iter().find(|t| t.uid == p));
+    add(step.projects.iter().any(|p| whole.is_none_or(|w| !w.projects.contains(p))), "projects");
+    add(!step.felt.is_empty(), "felt");
+    add(!step.area.is_empty(), "area");
+    add(step.billable.is_some(), "billable");
+    add(!step.energy.is_empty(), "energy");
+    // Time noted for it: its sessions would lose the title, the project and the billing they take from it.
+    add(crate::timelog::sessions().iter().any(|s| s.task == step.uid), "time");
     lost
 }
 
@@ -437,6 +451,13 @@ pub fn closing_with<'a>(tasks: &'a [Task], done: &str) -> Vec<&'a Task> {
         at = whole.parent().and_then(|p| tasks.iter().find(|t| t.uid == p));
     }
     out
+}
+
+/// Whether a task's written text says it is done for good: a repeating
+/// task's turn done comes back open on its next turn (`tasks::set_status`),
+/// and closes no bigger task (`closing_with` asks it of the step's text).
+pub fn done_for_good(text: &str) -> bool {
+    tasks::task_of_text(text, &TimeZone::system()).is_some_and(|t| t.status == Status::Completed)
 }
 
 /// Those bigger tasks marked done (`closing_with`).
@@ -538,8 +559,8 @@ mod tests {
     fn a_google_list_keeps_one_level_and_says_what_it_loses() {
         let desk = Desk::new("google");
         let google = |c: &Collection| if c.id == desk.other.id { Provider::GoogleTasks } else { Provider::Dav };
-        desk.add(&desk.other, "groceries", TaskEdit::default());
-        desk.add(&desk.other, "groceries-step", step("groceries"));
+        desk.add(&desk.other, "groceries", TaskEdit { notes: "- [ ] Bags".into(), ..TaskEdit::default() });
+        desk.add(&desk.other, "groceries-step", TaskEdit { notes: "- [ ] Oat milk".into(), ..step("groceries") });
         desk.add(&desk.list, "milk", TaskEdit { estimate: 10, ..TaskEdit::default() });
         desk.add(&desk.list, "eggs", TaskEdit::default());
         desk.add(&desk.list, "eggs-step", step("eggs"));
@@ -550,6 +571,21 @@ mod tests {
         assert_eq!(demote(&desk.tasks(), "milk", "groceries", &desk.lists(), &google, false, &now()), Err(Refusal::Losses(vec!["estimate"])));
         demote(&desk.tasks(), "milk", "groceries", &desk.lists(), &google, true, &now()).unwrap().write().unwrap();
         assert_eq!(desk.task("milk").parent(), Some("groceries"));
+        // Check of c792bd7, item 5: an item of a step made a step there would be a second level: refused.
+        assert_eq!(item_to_step(&desk.tasks(), "groceries-step", 0, true, &now()).map(|_| ()), Err(Refusal::OneLevel));
+        assert!(item_to_step(&desk.tasks(), "groceries", 0, true, &now()).is_ok(), "one level is kept");
+    }
+
+    /// Check of c792bd7, item 2: the turn of a weekly step done comes back open and
+    /// closes nothing; a step whose repeat has ended is done for good.
+    #[test]
+    fn a_repeating_step_s_turn_is_not_done_for_good() {
+        let weekly = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:plants\r\nDTSTAMP:20261001T080000Z\r\nSUMMARY:Water the plants\r\nDTSTART;VALUE=DATE:20261026\r\nDUE;VALUE=DATE:20261026\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        let turned = tasks::set_status(weekly, Status::Completed, &TimeZone::system(), &now()).unwrap();
+        assert!(!done_for_good(&turned), "{turned}");
+        let ended = weekly.replace("RRULE:FREQ=WEEKLY", "RRULE:FREQ=WEEKLY;UNTIL=20261027");
+        let done = tasks::set_status(&ended, Status::Completed, &TimeZone::system(), &now()).unwrap();
+        assert!(done_for_good(&done), "{done}");
     }
 
     #[test]
@@ -558,13 +594,13 @@ mod tests {
         desk.add(&desk.list, "doctor", TaskEdit { notes: "Bring:\n- [x] Carte Vitale\n  The new one.\n- [ ] Mutuelle card".into(), ..TaskEdit::default() });
         desk.add(&desk.list, "brush", step("doctor"));
         // The ticked item: a step done, after the others, its detail its notes.
-        let (change, uid) = item_to_step(&desk.tasks(), "doctor", 1, &now()).unwrap();
+        let (change, uid) = item_to_step(&desk.tasks(), "doctor", 1, false, &now()).unwrap();
         change.write().unwrap();
         let made = desk.task(&uid);
         assert_eq!((made.title.as_str(), made.status, made.notes.as_str(), made.parent()), ("Carte Vitale", Status::Completed, "The new one.", Some("doctor")));
         assert!(made.sequence() > desk.task("brush").sequence());
         assert_eq!(desk.task("doctor").notes, "Bring:\n- [ ] Mutuelle card");
-        assert_eq!(item_to_step(&desk.tasks(), "doctor", 0, &now()).map(|_| ()), Err(Refusal::Stale), "a line that is no item");
+        assert_eq!(item_to_step(&desk.tasks(), "doctor", 0, false, &now()).map(|_| ()), Err(Refusal::Stale), "a line that is no item");
         // Folded back: the same words, the same tick, the detail under it; the step gone.
         step_to_item(&desk.tasks(), &uid, &[], false, &now()).unwrap().write().unwrap();
         assert_eq!(desk.task("doctor").notes, "Bring:\n- [ ] Mutuelle card\n- [x] Carte Vitale\n  The new one.");
@@ -572,6 +608,12 @@ mod tests {
         // A step with more than words: what it would lose said.
         desk.add(&desk.list, "bus", TaskEdit { estimate: 25, due: "2026-10-29".into(), ..step("doctor") });
         assert_eq!(step_to_item(&desk.tasks(), "bus", &[], false, &now()), Err(Refusal::Losses(vec!["estimate", "due"])));
+        // Check of c792bd7, item 4: its place and how it went, said too.
+        desk.add(&desk.list, "clinic", TaskEdit { location: "Clinic, 2 rue Haute".into(), ..step("doctor") });
+        let clinic = desk.task("clinic");
+        let rated = tasks::set_felt(&std::fs::read_to_string(&clinic.key).unwrap(), &crate::demands::Demands { anxiety: Some(3), ..Default::default() }, now().date(), &now()).unwrap();
+        std::fs::write(&clinic.key, rated).unwrap();
+        assert_eq!(step_to_item(&desk.tasks(), "clinic", &[], false, &now()), Err(Refusal::Losses(vec!["place", "felt"])));
         assert_eq!(step_to_item(&desk.tasks(), "doctor", &[], false, &now()), Err(Refusal::NotAStep));
         // An item made a task of its own, tied to what held it.
         let (change, uid) = item_to_task(&Holder::Task(&desk.task("doctor")), 1, &desk.other, &now()).unwrap();

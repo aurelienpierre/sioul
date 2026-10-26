@@ -1420,7 +1420,8 @@ Panel {
                 tickable: panel.canEdit && !panel.fresh
                 // An item made a step of this task, or a task of its own.
                 converts: panel.canEdit && !panel.fresh
-                steps: panel.canEdit && !panel.fresh
+                // Never a step of a step where its list keeps one level (Google Tasks: "steps" among what it loses).
+                steps: panel.canEdit && !panel.fresh && !(panel.detail && panel.detail.limited && panel.detail.limited.indexOf("steps") >= 0)
                 onCheck: (line, state) => error.text = panel.sioul.checkItem("task", panel.uid, line, state)
                 onConvert: (line, to) => error.text = panel.sioul.convertItem("task", panel.uid, line, to)
             }

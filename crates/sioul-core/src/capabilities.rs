@@ -59,6 +59,12 @@ pub fn task_fields_lost(provider: Provider, is_step: bool) -> Vec<&'static str> 
     lost
 }
 
+/// Whether the task list "account/id" keeps one level of steps (Google
+/// Tasks): a step of a step refused there (`composed::demote`, `composed::item_to_step`).
+pub fn one_level(config: &crate::config::Config, list_id: &str) -> bool {
+    crate::tasks::lists().iter().find(|c| format!("{}/{}", c.account, c.id) == list_id).is_some_and(|c| provider_of_collection(config.account(&c.account), c) == Provider::GoogleTasks)
+}
+
 /// Whether a provider can make, rename and delete a calendar or an address
 /// book; Google Tasks makes task lists.
 pub fn makes_collections(provider: Provider) -> bool {
