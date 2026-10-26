@@ -9,7 +9,7 @@
 //! word (`put_back_withheld`); a folder missing or unreadable whole never
 //! leaves; the content of a file taken out leaves the folder as soon as
 //! every device that counts read so, once each keeps such a file as a copy
-//! (`removed_due`, `blobs::KEEPING_MOVED`), else in its time; a note edited
+//! (`stands`, `blobs::KEEPING_MOVED`), else in its time; a note edited
 //! many times keeps its earlier versions by reference twelve days, their
 //! contents two weeks; "Remove its files" takes out every round of a device
 //! that no longer counts, its claims, its note and its entry once nothing
@@ -269,10 +269,13 @@ fn a_notes_folder_missing_whole_never_leaves() {
 
 /// A note and a paper deleted alone go once gone a while (`EMPTIED_WAIT`);
 /// their contents leave the folder as soon as every device that counts read
-/// the round that took them out (strictly past it), not two weeks later,
-/// once each says it keeps a file taken out as a copy; the laptop keeps
-/// both among its earlier versions, as copies, which put back without the
-/// folder.
+/// the record that took them out (its line, `Seen::lines`: the remover's
+/// records need not go on in a later round), whatever their age, once each
+/// says it keeps a file taken out as a copy; meanwhile Settings says which
+/// device they wait for (`leaving`). The laptop keeps both among its
+/// earlier versions, as copies, which put back without the folder (26
+/// October 2026: until then they waited for a later round and for their
+/// files to be two weeks old).
 #[test]
 fn a_note_and_a_paper_taken_out_free_their_contents_once_every_device_read_so() {
     let base = scratch("gc-early");
@@ -292,19 +295,22 @@ fn a_note_and_a_paper_taken_out_free_their_contents_once_every_device_read_so() 
     with_notes(&desk, &folder, &key, NOW, &dn);
     with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
     let (a, p, b) = (content_name(&base, &key, b"# A note to delete\n"), content_name(&base, &key, &paper), content_name(&base, &key, b"# A note that stays\n"));
-    for name in [&a, &p, &b] {
-        sealed_long_ago(&folder, name);
-    }
     std::fs::remove_file(dn.join("a.md")).unwrap();
     std::fs::remove_file(dn.join("papers/invoice.pdf")).unwrap();
     assert_eq!(with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn).sent, 0, "held a while");
     let outcome = with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn);
     assert_eq!(outcome.sent, 2, "{outcome:?}");
     let round = Memory::load(&desk.memory, &desk.id).round;
-    let removed = Memory::load_all(&desk.memory, &desk.id).sealed.removed;
-    assert_eq!(removed.get(&a), Some(&(desk.id.clone(), round)), "{removed:?}");
-    assert_eq!(removed.get(&p), Some(&(desk.id.clone(), round)));
-    // The laptop reads the take-outs: each kept as a copy there.
+    let noted = Memory::load_all(&desk.memory, &desk.id).sealed;
+    assert_eq!(noted.removed.get(&a), Some(&(desk.id.clone(), round)), "{:?}", noted.removed);
+    assert_eq!(noted.removed.get(&p), Some(&(desk.id.clone(), round)));
+    let line = noted.removed_at[&a].0.max(noted.removed_at[&p].0);
+    assert!(noted.removed_at[&a].0 > 0 && noted.removed_at[&p].0 > 0, "{:?}", noted.removed_at);
+    // Not read yet: kept, and said so, with their size.
+    assert!(sealed(&folder, &a) && sealed(&folder, &p), "not read yet");
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.unread.get(&laptop.id).is_some_and(|(n, bytes)| *n == 2 && *bytes > 0), "{said:?}");
+    // The laptop reads the take-outs: each kept as a copy there; how far it read said at once.
     with_notes(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln);
     assert_eq!(names_in(&ln), BTreeSet::from(["b.md".to_string(), "papers/lease.pdf".to_string()]));
     let root = crate::history::root(&laptop.memory);
@@ -312,19 +318,16 @@ fn a_note_and_a_paper_taken_out_free_their_contents_once_every_device_read_so() 
         let versions = crate::history::versions(&root, part, file);
         assert!(versions.len() == 1 && versions[0].sealed.is_none(), "{file}: {versions:?}");
     }
-    // Read into that round only: kept (a reader enters the next round once it read this one to its end).
-    assert_eq!(read_of(&folder, &laptop, &desk), round);
-    with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn);
-    assert!(sealed(&folder, &a) && sealed(&folder, &p), "not read past yet");
-    // The desk's records go on in a later round, which the laptop reads: the contents leave the folder.
-    let now = past_round(&desk, &folder, &key, &dn, NOW + 15 * MINUTE, round);
-    with_notes(&laptop, &folder, &key, now + 10_000, &ln);
-    assert!(read_of(&folder, &laptop, &desk) > round);
+    assert_eq!(read_of(&folder, &laptop, &desk), round, "still in that round");
+    assert!(read_seen(&folder, &laptop.id).and_then(|s| s.lines.get(&desk.id).copied()).is_some_and(|at| at >= (round, line)), "its line said read");
     assert!(sealed(&folder, &a) && sealed(&folder, &p), "only the writer sweeps its own");
-    with_notes(&desk, &folder, &key, now + MINUTE, &dn);
-    assert!(!sealed(&folder, &a) && !sealed(&folder, &p), "every device read so: gone, days early");
+    // The desk's next exchange: gone, though sealed minutes ago.
+    with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn);
+    assert!(!sealed(&folder, &a) && !sealed(&folder, &p), "every device read so: gone at once");
     assert!(sealed(&folder, &b), "a current note's content stays");
-    assert!(Memory::load_all(&desk.memory, &desk.id).sealed.removed.is_empty());
+    let left = Memory::load_all(&desk.memory, &desk.id).sealed;
+    assert!(left.removed.is_empty() && left.removed_at.is_empty(), "{:?}", left.removed);
+    assert!(leaving(&desk.memory, &desk.id).unread.is_empty());
     // Their copies put back on the laptop without the folder.
     let version = crate::history::versions(&root, "notes", "files/notes/a.md")[0].stamp.clone();
     match crate::history::version(&root, "notes", "files/notes/a.md", &version) {
@@ -1870,5 +1873,299 @@ fn a_note_replaced_by_a_link_is_said_as_that_note() {
     assert_eq!(with_notes(&desk, &folder, &key, NOW + 30 * DAY_MS + 2 * MINUTE, &dn).sent, 1);
     with_notes(&laptop, &folder, &key, NOW + 30 * DAY_MS + 3 * MINUTE, &ln);
     assert_eq!(names_in(&ln), BTreeSet::from(["today.md".to_string(), "single.md.bak".to_string()]));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A sealed file of the folder, dated `days` ago.
+fn sealed_days_ago(folder: &Path, name: &str, days: u64) {
+    let then = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 86_400);
+    std::fs::File::options().write(true).open(folder.join("blobs").join(name)).unwrap().set_modified(then).unwrap();
+}
+
+fn modified(folder: &Path, name: &str) -> std::time::SystemTime {
+    std::fs::metadata(folder.join("blobs").join(name)).unwrap().modified().unwrap()
+}
+
+/// A device that counts and does not read (an old computer, silent for
+/// days) holds the content of a note taken out in the folder, and Settings
+/// says which device it waits for (`leaving`); forgotten, it no longer
+/// counts, and the next exchange takes that content out (as when an account
+/// is full and an old phone has gone silent).
+#[test]
+fn a_silent_device_holds_a_take_out_until_it_is_forgotten() {
+    let base = scratch("gc-silent");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop, old) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"), Computer::new(&base, "old"));
+    let (dn, ln, on) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("old-notes"));
+    for c in [&desk, &laptop, &old] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let audio = b"RIFF a recording, fiction\n".repeat(400);
+    put(&dn, "voice.wav", &audio);
+    put(&dn, "b.md", b"# A note that stays\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    with_notes(&old, &folder, &key, NOW + 2 * MINUTE, &on);
+    let voice = content_name(&base, &key, &audio);
+    std::fs::remove_file(dn.join("voice.wav")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 3 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 14 * MINUTE, &dn).sent, 1);
+    with_notes(&laptop, &folder, &key, NOW + 15 * MINUTE, &ln);
+    with_notes(&desk, &folder, &key, NOW + 16 * MINUTE, &dn);
+    assert!(sealed(&folder, &voice), "the old computer has not read it");
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.unread.len() == 1 && said.unread.get(&old.id).is_some_and(|(n, bytes)| *n == 1 && *bytes > 0), "{said:?}");
+    // Days later, still there: it still counts.
+    with_notes(&desk, &folder, &key, NOW + 5 * DAY_MS, &dn);
+    assert!(sealed(&folder, &voice));
+    // Forgotten here: the next exchange takes it out.
+    forget_device(&folder, &key, &desk.memory, &desk.id, &old.id).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 5 * DAY_MS + MINUTE, &dn);
+    assert!(!sealed(&folder, &voice), "no device that counts left to read it");
+    assert!(sealed(&folder, &content_name(&base, &key, b"# A note that stays\n")));
+    assert!(leaving(&desk.memory, &desk.id).unread.is_empty());
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Notes gone many at once are held (`GONE_GRACE`): no record takes them
+/// out, their contents stay, and Settings says their size; "Take them out
+/// now" writes their take-outs at the next exchange, and once the other
+/// device read them, the exchange after takes their contents out.
+#[test]
+fn a_bulk_held_keeps_its_contents_until_taken_out_now() {
+    let base = scratch("gc-bulk-now");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    put(&dn, "today.md", b"# Today\n");
+    for n in 0..20 {
+        put(&dn, &format!("old/{n}.md"), format!("# old {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let names: Vec<String> = (0..20).map(|n| content_name(&base, &key, format!("# old {n}\n").as_bytes())).collect();
+    std::fs::remove_dir_all(dn.join("old")).unwrap();
+    let outcome = with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/:20"), "{outcome:?}");
+    let held = withheld(&desk.memory, &desk.id);
+    assert!(held.len() == 1 && held[0].count == 20 && held[0].bytes > 0, "{held:?}");
+    with_notes(&laptop, &folder, &key, NOW + 3 * MINUTE, &ln);
+    with_notes(&desk, &folder, &key, NOW + 4 * MINUTE, &dn);
+    assert!(names.iter().all(|n| sealed(&folder, n)), "held: nothing taken out");
+    assert_eq!(confirm_withheld(&desk.memory, &desk.id, "files/notes/"), Ok(20));
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 5 * MINUTE, &dn).sent, 20);
+    assert!(names.iter().all(|n| sealed(&folder, n)), "taken out, not read yet");
+    with_notes(&laptop, &folder, &key, NOW + 6 * MINUTE, &ln);
+    with_notes(&desk, &folder, &key, NOW + 7 * MINUTE, &dn);
+    assert!(names.iter().all(|n| !sealed(&folder, n)), "read: their contents gone at the next exchange");
+    assert!(sealed(&folder, &content_name(&base, &key, b"# Today\n")));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A replaced content keeps its two weeks (a device may still need it
+/// between the record that names it and the one that replaces it), while
+/// the content of a note taken out beside it goes at once; Settings counts
+/// the replaced one among those that go in their time.
+#[test]
+fn a_replaced_content_keeps_its_two_weeks_beside_a_take_out() {
+    let base = scratch("gc-replaced-keeps");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    put(&dn, "plans.md", b"# Plans, first\n");
+    put(&dn, "gone.md", b"# Gone soon\n");
+    put(&dn, "stays.md", b"# Stays\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    put(&dn, "plans.md", b"# Plans, second\n");
+    std::fs::remove_file(dn.join("gone.md")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln);
+    with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn);
+    let (first, gone) = (content_name(&base, &key, b"# Plans, first\n"), content_name(&base, &key, b"# Gone soon\n"));
+    assert!(!sealed(&folder, &gone), "taken out, read: gone at once");
+    assert!(sealed(&folder, &first), "replaced: its two weeks");
+    assert_eq!(leaving(&desk.memory, &desk.id).in_time.0, 1);
+    // Two weeks on, its file as old as the sweep's care asks: it goes.
+    sealed_long_ago(&folder, &first);
+    with_notes(&desk, &folder, &key, NOW + 13 * DAY_MS, &dn);
+    assert!(sealed(&folder, &first), "within two weeks of its replacement");
+    with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &first), "two weeks on");
+    assert!(sealed(&folder, &content_name(&base, &key, b"# Plans, second\n")));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A text's medium never leaves so: a note holding the same bytes as a
+/// picture the phone received, taken out, keeps that content in the folder
+/// (in its time, as a content used); a computer that does not share the
+/// texts cannot tell, keeps it too, and Settings says so (`Leaving::untold`).
+#[test]
+fn a_text_s_medium_never_leaves_with_a_note_taken_out() {
+    use sioul_core::texts;
+    let base = scratch("gc-medium-early");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    let picture = b"a picture, fiction\n".repeat(50);
+    put(&dn, "picture.jpg", &picture);
+    put(&dn, "b.md", b"# A note that stays\n");
+    with_texts(&desk, &folder, &key, NOW, &dn);
+    // The phone's text with that very picture.
+    let seal = crate::textseal::TextSeal::new(&key);
+    let own = texts::own_file(&phone.roots.data.join(texts::FOLDER), texts::LOG, &phone.id);
+    let path = base.join("picture");
+    std::fs::write(&path, &picture).unwrap();
+    let (hash, size) = crate::blobs::hash_file(&path).unwrap();
+    let part = texts::Part { seq: 0, ct: "image/jpeg".into(), hash, size, state: "here".into(), ..texts::Part::default() };
+    let text = texts::Text { id: "mms-1@1790000000000".into(), at: NOW, direction: "in".into(), with: vec!["+33199001234".into()], parts: vec![part], ..texts::Text::default() };
+    let id = |t: &texts::Text| t.line_id();
+    texts::append(&own, std::slice::from_ref(&text), &seal, Some(&id)).unwrap();
+    with_texts(&phone, &folder, &key, NOW + MINUTE, &pn);
+    with_texts(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    let medium = content_name(&base, &key, &picture);
+    std::fs::remove_file(dn.join("picture.jpg")).unwrap();
+    with_texts(&desk, &folder, &key, NOW + 3 * MINUTE, &dn);
+    assert_eq!(with_texts(&desk, &folder, &key, NOW + 14 * MINUTE, &dn).sent, 1);
+    with_texts(&phone, &folder, &key, NOW + 15 * MINUTE, &pn);
+    with_texts(&desk, &folder, &key, NOW + 16 * MINUTE, &dn);
+    assert!(sealed(&folder, &medium), "named by the phone's text");
+    // Its take-out forgotten: used, it goes in its time; the texts are not read again for it.
+    assert!(Memory::load_all(&desk.memory, &desk.id).sealed.removed.is_empty());
+    // Taken out again where this device does not share the texts, a phone in the sharing: it cannot tell, and says so.
+    put(&dn, "picture.jpg", &picture);
+    with_texts(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    with_texts(&phone, &folder, &key, NOW + 18 * MINUTE, &pn);
+    std::fs::remove_file(dn.join("picture.jpg")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 19 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 30 * MINUTE, &dn).sent, 1);
+    with_texts(&phone, &folder, &key, NOW + 31 * MINUTE, &pn);
+    with_notes(&desk, &folder, &key, NOW + 32 * MINUTE, &dn);
+    assert!(sealed(&folder, &medium));
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.untold.0 == 1 && said.untold.1 > 0, "{said:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A note taken out, then put back on the other device before the remover's
+/// next exchange: its content stays (current again, the take-out
+/// forgotten); the put back made its file fresh (`fresh_again`, whatever
+/// its age), so that its sync app sends it again and a remover that had not
+/// read the put back yet finds it used since.
+#[test]
+fn a_note_put_back_before_the_sweep_keeps_its_content() {
+    let base = scratch("gc-put-back");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    put(&dn, "a.md", b"# Back again\n");
+    put(&dn, "b.md", b"# A note that stays\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let a = content_name(&base, &key, b"# Back again\n");
+    std::fs::remove_file(dn.join("a.md")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 1);
+    with_notes(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln);
+    assert!(!ln.join("a.md").exists());
+    // Two days old: `blobs::put` alone would not make it fresh (`FRESH_DAYS`).
+    sealed_days_ago(&folder, &a, 2);
+    let before = modified(&folder, &a);
+    put(&ln, "a.md", b"# Back again\n");
+    with_notes(&laptop, &folder, &key, NOW + 15 * MINUTE, &ln);
+    assert!(modified(&folder, &a) > before, "made fresh by the put back");
+    with_notes(&desk, &folder, &key, NOW + 16 * MINUTE, &dn);
+    assert!(sealed(&folder, &a), "current again: kept");
+    assert_eq!(std::fs::read(dn.join("a.md")).unwrap(), b"# Back again\n");
+    assert!(Memory::load_all(&desk.memory, &desk.id).sealed.removed.is_empty(), "the take-out forgotten");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Two devices sweeping at once the content of a note taken out whose
+/// writer no longer counts: each takes it out of its folder once (the
+/// second finds it gone), says it for the server (`Memory::taken`, with
+/// when the take-out was noted, `taken_since`: its copy there goes when no
+/// newer), and nothing else goes: the departed device's other last word,
+/// and every current note, stay.
+#[test]
+fn two_devices_sweeping_at_once_take_nothing_twice_and_lose_nothing() {
+    let o = old_one("gc-two-sweep");
+    for c in [&o.desk, &o.laptop] {
+        forget_device(&o.folder, &o.key, &c.memory, &c.id, &o.old.id).unwrap();
+    }
+    std::fs::remove_file(o.dn.join("kept.md")).unwrap();
+    with_notes(&o.desk, &o.folder, &o.key, o.now, &o.dn);
+    assert_eq!(with_notes(&o.desk, &o.folder, &o.key, o.now + 11 * MINUTE, &o.dn).sent, 1);
+    // The laptop reads it (the desk wrote it: no other device to wait for)
+    // and the desk sweeps in the same instant.
+    with_notes(&o.laptop, &o.folder, &o.key, o.now + 12 * MINUTE, &o.ln);
+    with_notes(&o.desk, &o.folder, &o.key, o.now + 12 * MINUTE, &o.dn);
+    assert!(!sealed(&o.folder, &o.last_word), "taken out");
+    assert!(sealed(&o.folder, &content_name(&o.base, &o.key, b"# Plans, second\n")), "a current note of the old one stays");
+    assert!(sealed(&o.folder, &content_name(&o.base, &o.key, b"# The desk's note\n")));
+    for c in [&o.desk, &o.laptop] {
+        let memory = Memory::load_all(&c.memory, &c.id);
+        assert!(memory.taken.contains_key(&o.last_word) && memory.taken_since.contains_key(&o.last_word), "{}: said for the server: {:?}", c.id, memory.taken);
+        assert!(!memory.sealed.theirs.contains_key(&o.last_word));
+    }
+    // Its copy there goes when no newer than when the take-out was noted, not two weeks before the sweep.
+    let (swept, since) = (swept_theirs(&o.desk.memory, &o.desk.id), Memory::load_all(&o.desk.memory, &o.desk.id).taken_since);
+    assert!(swept.get(&o.last_word).is_some_and(|(_, newest)| Some(newest) == since.get(&o.last_word)), "{swept:?} {since:?}");
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
+/// The first exchange after the last device read a take-out sweeps its
+/// content, a phone's background one too: while it waits, the notes of the
+/// device it waits for are watched (`Quiet::watched`), and their change ends
+/// the quiet; until then, nothing new, nothing done (the brief of 26
+/// October 2026: soon after, not only hourly).
+#[test]
+fn a_background_exchange_sweeps_once_the_reader_read() {
+    let base = scratch("gc-background");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    put(&dn, "a.md", b"# A note to delete\n");
+    put(&dn, "b.md", b"# A note that stays\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let a = content_name(&base, &key, b"# A note to delete\n");
+    std::fs::remove_file(dn.join("a.md")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 1);
+    let background = |now: i64| {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        exchange(&Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: false, hurry: None }, &stores_with(&desk, &dn, false), now).unwrap()
+    };
+    // The files it wrote, read once more: then settled, and nothing new: nothing done.
+    background(NOW + 14 * MINUTE);
+    background(NOW + 15 * MINUTE);
+    assert!(background(NOW + 15 * MINUTE + 30_000).quiet, "nothing new: nothing done");
+    assert!(sealed(&folder, &a));
+    with_notes(&laptop, &folder, &key, NOW + 16 * MINUTE, &ln);
+    let outcome = background(NOW + 17 * MINUTE);
+    assert!(!outcome.quiet, "the laptop's notes changed: {outcome:?}");
+    assert!(!sealed(&folder, &a), "swept at the first exchange after it read so");
     let _ = std::fs::remove_dir_all(&base);
 }

@@ -57,10 +57,13 @@ ColumnLayout {
     // "Remove its files" pressed for a device (its id): what goes and what stays, said first ({text, live}).
     property string removing: ""
     property var removal: ({ text: "", live: false })
+    // Where it was pressed: "" in the devices' lists, "leaving" in what waits to leave the server.
+    property string removingAt: ""
 
-    function askRemoval(id) {
+    function askRemoval(id, at) {
         panel.removal = JSON.parse(panel.sioul.deviceFiles(id) || "{}")
         panel.removing = id
+        panel.removingAt = at || ""
     }
     // The sign-in's panel, for the window's pictures (main.qml's grabber).
     property alias join: joinPanel
@@ -579,7 +582,7 @@ ColumnLayout {
                 onClicked: panel.askRemoval(device.modelData.id)
             }
             RemovalAsked {
-                visible: panel.removing === device.modelData.id
+                visible: panel.removing === device.modelData.id && panel.removingAt === ""
                 Layout.fillWidth: true
                 host: panel
                 deviceId: device.modelData.id
@@ -1061,6 +1064,15 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: panel.theme.muted
             }
+            Label {
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: held.modelData.size || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
@@ -1082,6 +1094,51 @@ ColumnLayout {
                         panel.reload()
                     }
                 }
+            }
+        }
+    }
+    // What this device takes out of the folder and its server, and why each
+    // waits (docs/database.md, "Old contents go"): sizes, never a file's name;
+    // a device it waits for named, with "Forget it and remove its files…".
+    Label {
+        visible: (panel.status.leaving || []).length > 0
+        Layout.topMargin: 12
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-leaving-title")
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: panel.theme.text
+    }
+    Repeater {
+        model: panel.status.leaving || []
+
+        delegate: ColumnLayout {
+            id: leaving
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 2
+
+            Label {
+                Layout.fillWidth: true
+                text: leaving.modelData.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            Button {
+                visible: leaving.modelData.device !== "" && panel.removing !== leaving.modelData.device
+                flat: true
+                text: panel.sioul.text("share-device-remove-live")
+                onClicked: panel.askRemoval(leaving.modelData.device, "leaving")
+            }
+            RemovalAsked {
+                visible: leaving.modelData.device !== "" && panel.removing === leaving.modelData.device && panel.removingAt === "leaving"
+                Layout.fillWidth: true
+                host: panel
+                deviceId: leaving.modelData.device
             }
         }
     }

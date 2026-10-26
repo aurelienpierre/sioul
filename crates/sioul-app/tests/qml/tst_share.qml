@@ -38,6 +38,8 @@ Item {
         property bool sent: false
         // Notes held after going many at once, and a device that no longer counts (`test_held_notes_and_a_device_s_files`).
         property bool held: false
+        // What waits to leave the server, said (`leaving`).
+        property bool leaving: false
         property var asked: []
         // Made up: no real device, no real server.
         readonly property var words: ({
@@ -111,7 +113,11 @@ Item {
                 problems: [],
                 parts: [],
                 vanished: [],
-                withheld: mock.held ? [{ store: "files/notes/", text: "23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.", leaves: "They leave your other devices by themselves 14 days after they went, by Friday 16 October at the latest, unless they come back here first. Nothing has to be done.", key: "porch-withheld-said:files/notes/:1790000000000" }] : [],
+                withheld: mock.held ? [{ store: "files/notes/", text: "23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.", leaves: "They leave your other devices by themselves 14 days after they went, by Friday 16 October at the latest, unless they come back here first. Nothing has to be done.", key: "porch-withheld-said:files/notes/:1790000000000", size: mock.leaving ? "Their contents in the folder: 2.3 MB." : "" }] : [],
+                leaving: mock.leaving ? [
+                    { text: "The contents of 3 notes and papers taken out, 12.4 MB, leave once The phone (FP5) has read that they were. The phone (FP5) has been silent since Sat 3 Oct 09:00: if it is no longer in use, “Forget it and remove its files…” lets them go at the next exchange.", device: "a" },
+                    { text: "2 earlier versions and contents used lately, 1.1 MB, leave two weeks after their last use.", device: "" }
+                ] : [],
                 gone_devices: mock.held ? [{ id: "c", name: "The phone (Model 7)", state: "Forgotten here. Its files are still in the folder: 16.1 MB." }] : [],
                 devices: [
                     { id: "a", name: "The phone (FP5)", state: "In use now; last shared 10:41.", notes: [], off: false, forget: false, build: said.phone },
@@ -209,6 +215,7 @@ Item {
             mock.again = 0
             mock.sent = false
             mock.held = false
+            mock.leaving = false
             mock.asked = []
         }
 
@@ -256,6 +263,33 @@ Item {
             button("share-device-remove-confirm").clicked()
             compare(mock.asked, ["files a", "remove a"])
             save("share-held-and-removal")
+        }
+
+        // What waits to leave the server, and why, with sizes and never a
+        // file's name (docs/database.md, "Old contents go"): the device it
+        // waits for with "Forget it and remove its files…", asked there, the
+        // question said once; the held notes' size under their lines.
+        function test_what_waits_to_leave_the_server() {
+            mock.language = "en"
+            mock.held = true
+            mock.leaving = true
+            panel.reload()
+            wait(50)
+            verify(shown("share-leaving-title") !== null, "its heading")
+            const waiting = "The contents of 3 notes and papers taken out, 12.4 MB, leave once The phone (FP5) has read that they were. The phone (FP5) has been silent since Sat 3 Oct 09:00: if it is no longer in use, “Forget it and remove its files…” lets them go at the next exchange."
+            verify(shown(waiting) !== null, "the device it waits for, named")
+            verify(shown("2 earlier versions and contents used lately, 1.1 MB, leave two weeks after their last use.") !== null)
+            verify(shown("Their contents in the folder: 2.3 MB.") !== null, "the held notes' size")
+            const live = walk(panel, i => i.visible && i.text === "share-device-remove-live" && i.clicked !== undefined, [])
+            compare(live.length, 3, "one for each device that counts, and one where it waits")
+            live[2].clicked()
+            const what = "What goes: its records (17 files) and the small files it kept there, 16.1 MB. What stays: everything your devices already read of it."
+            tryVerify(() => shown(what) !== null, 2000, "what goes and what stays, said first")
+            compare(walk(panel, i => i.visible && i.text === "share-device-remove-confirm" && i.clicked !== undefined && i.checked !== undefined, []).length, 1, "asked once, where it was pressed")
+            compare(mock.asked, ["files a"])
+            button("share-device-remove-confirm").clicked()
+            compare(mock.asked, ["files a", "remove a"])
+            save("share-leaving")
         }
 
         function test_the_build_the_switch_and_send_everything_again_data() {

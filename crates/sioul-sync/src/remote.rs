@@ -2217,7 +2217,9 @@ impl Puller<'_> {
     /// What this device took out here of the devices that no longer count
     /// (`Departed`), taken out there too: their past rounds still listed in
     /// this step and gone here, over the ETag listed; the sealed files swept,
-    /// every six hours at most, when still as old there (`take_out_swept`).
+    /// every six hours at most, and at the first step after a sweep since the
+    /// last look (one swept as soon as its take-out was read: `share::stands`),
+    /// when still as old there (`take_out_swept`).
     /// Another device doing the same first makes it gone (`404`), a sync
     /// app's copy sent again since makes it changed (`412`): left, as any
     /// other answer or failure, for a later step.
@@ -2227,13 +2229,14 @@ impl Puller<'_> {
                 self.pulled.taken_out += 1;
             }
         }
-        if self.departed.blobs.is_empty() || !self.covered.contains("") || self.now - self.state.swept_at < CHECK_AGAIN {
+        let swept_since = self.departed.blobs.values().any(|(at, _)| at / 1000 > self.state.swept_at);
+        if self.departed.blobs.is_empty() || !self.covered.contains("") || (self.now - self.state.swept_at < CHECK_AGAIN && !swept_since) {
             return;
         }
         self.state.swept_at = self.now;
-        for (name, at) in self.departed.blobs.clone() {
+        for (name, (_, newest)) in self.departed.blobs.clone() {
             let relative = format!("blobs/{name}");
-            if !self.folder.join(&relative).exists() && take_out_swept(self.server, &self.url(&relative), at) {
+            if !self.folder.join(&relative).exists() && take_out_swept(self.server, &self.url(&relative), newest) {
                 self.pulled.taken_out += 1;
             }
         }
@@ -3516,7 +3519,9 @@ struct Sender<'a> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Departed {
     rounds: BTreeMap<String, u32>,
-    blobs: BTreeMap<String, i64>,
+    /// By name: when each was swept here, and the newest time its copy there
+    /// may have and still go (milliseconds; `share::swept_theirs`).
+    blobs: BTreeMap<String, (i64, i64)>,
     /// The devices whose files you removed here ("Remove its files",
     /// `share::removed_devices`): their rounds before the last are below
     /// `rounds`; their last round while no longer than it was, and each
@@ -3571,13 +3576,15 @@ fn round_of(relative: &str) -> Option<u32> {
 
 /// A sealed file this device swept as written by a device that no longer
 /// counts (`Departed::blobs`), taken out there when it is still as old there
-/// as it was here (its time there, `getlastmodified`, two weeks at least
-/// before it was swept: another device that uses that content again makes it
-/// fresh, `blobs::put`, and its sync app sends the new time), over its ETag
-/// there now. Whether it went. Any failure, any other answer: left there.
-fn take_out_swept(server: &Server, url: &str, swept_ms: i64) -> bool {
+/// as it was here (its time there, `getlastmodified`, no newer than `newest_ms`:
+/// two weeks before it was swept, or, swept as soon as its take-out was
+/// read, when that was noted here; another device that uses that content
+/// again makes it fresh, `blobs::put`, `blobs::make_fresh`, and its sync app
+/// sends the new time), over its ETag there now. Whether it went. Any
+/// failure, any other answer: left there.
+fn take_out_swept(server: &Server, url: &str, newest_ms: i64) -> bool {
     let Ok(Some(there)) = server.stat(url) else { return false };
-    let old = there.modified.is_some_and(|at| at <= swept_ms / 1000 - crate::blobs::UNUSED_DAYS * 86_400);
+    let old = there.modified.is_some_and(|at| at <= newest_ms / 1000);
     if there.dir || there.etag.is_empty() || !old {
         return false;
     }
@@ -3986,14 +3993,14 @@ impl Sender<'_> {
         let fetched = overlay(self.folder);
         let here = |relative: &str| self.folder.join(relative).exists() || fetched.as_ref().is_some_and(|f| f.join(relative).exists());
         let rounds: Vec<(String, String)> = listed.iter().filter(|(relative, item)| !item.dir && !item.etag.is_empty() && (self.departed.past_round(relative) || self.departed.removed_as_known(relative, item, self.known)) && !here(relative)).map(|(relative, item)| (relative.clone(), item.etag.clone())).collect();
-        let blobs: Vec<(String, i64)> = self.departed.blobs.iter().map(|(name, at)| (format!("blobs/{name}"), *at)).filter(|(relative, _)| !here(relative)).collect();
+        let blobs: Vec<(String, i64)> = self.departed.blobs.iter().map(|(name, (_, newest))| (format!("blobs/{name}"), *newest)).filter(|(relative, _)| !here(relative)).collect();
         for (relative, etag) in rounds {
             if matches!(self.server.delete(&self.url(&relative), Some(&etag)), Ok(200 | 204)) {
                 self.pulled.taken_out += 1;
             }
         }
-        for (relative, at) in blobs {
-            if take_out_swept(self.server, &self.url(&relative), at) {
+        for (relative, newest) in blobs {
+            if take_out_swept(self.server, &self.url(&relative), newest) {
                 self.pulled.taken_out += 1;
             }
         }
@@ -7822,6 +7829,49 @@ mod tests {
         let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&d.memory).unwrap()).unwrap();
         memory["taken"] = names.iter().map(|name| (name.to_string(), serde_json::Value::from(at * 1000))).collect::<serde_json::Map<_, _>>().into();
         std::fs::write(&d.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+    }
+
+    /// Sealed files said swept here as a device's that no longer counts as
+    /// soon as their take-out was read (`share::stands`), at `at` (seconds),
+    /// the take-out noted at `noted` (`Memory::taken_since`).
+    fn swept_early_here(d: &Device, names: &[&str], at: i64, noted: SystemTime) {
+        let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&d.memory).unwrap()).unwrap();
+        let noted = noted.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as i64;
+        memory["taken"] = names.iter().map(|name| (name.to_string(), serde_json::Value::from(at * 1000))).collect::<serde_json::Map<_, _>>().into();
+        memory["taken_since"] = names.iter().map(|name| (name.to_string(), serde_json::Value::from(noted))).collect::<serde_json::Map<_, _>>().into();
+        std::fs::write(&d.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+    }
+
+    /// The content of a note taken out, swept here as a device's that no
+    /// longer counts as soon as every device read its take-out: its copy on
+    /// the server goes at the next send after the sweep, not six hours later,
+    /// when it is no newer than the take-out as noted here (not two weeks
+    /// older than the sweep); one made fresh there since (another device
+    /// using that content again) stays (26 October 2026).
+    #[test]
+    fn a_content_swept_as_soon_as_read_leaves_the_server_at_the_next_send() {
+        let w = World::new("swept-early");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        // The take-out noted half a minute after the first sweep below; the
+        // swept file two days old there (two weeks would be needed otherwise),
+        // the one made fresh ten minutes after the take-out.
+        let at = |seconds: i64| SystemTime::UNIX_EPOCH + Duration::from_secs(seconds as u64);
+        let noted = at(DUE + 30);
+        let (before, old, fresh) = ("e".repeat(64), "c".repeat(64), "d".repeat(64));
+        for (name, at) in [(&before, at(DUE)), (&old, noted - Duration::from_secs(2 * 86_400)), (&fresh, noted + Duration::from_secs(600))] {
+            put(&w.server, &format!("blobs/{name}"), "sealed\n");
+            set_mtime(&w.server.join("blobs").join(name), at);
+        }
+        // A sweep of the usual kind first, looked for there: too new to go, and the six hours' look done.
+        swept_here(&w.phone, &[&before], DUE);
+        let first = phone_sends(&w, DUE + 10, true);
+        assert!(first.problem.is_none() && w.server.join("blobs").join(&before).exists(), "two weeks older than its sweep, it would go: {first:?}");
+        // A minute later, two swept as soon as their take-out was read.
+        swept_early_here(&w.phone, &[&old, &fresh], DUE + 60, noted);
+        let sent = phone_sends(&w, DUE + 120, true);
+        assert!(sent.problem.is_none(), "{sent:?}");
+        assert!(!w.server.join("blobs").join(&old).exists(), "no newer than its take-out: gone at the next send");
+        assert!(w.server.join("blobs").join(&fresh).exists(), "made fresh there since: left");
     }
 
     /// A phone dead for good, under a sync app that never passes a deletion

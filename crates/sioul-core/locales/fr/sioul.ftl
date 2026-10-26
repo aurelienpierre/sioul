@@ -3034,6 +3034,32 @@ share-device-unnamed = Un appareil
 share-device-remove = Retirer ses fichiers…
 share-device-remove-live = L’oublier et retirer ses fichiers…
 share-device-remove-confirm = Les retirer
+share-withheld-size = { $count ->
+    [one] Son contenu dans le dossier : { $size }.
+   *[other] Leurs contenus dans le dossier : { $size }.
+}
+share-leaving-title = Ce qui quitte le serveur de votre dossier
+share-leaving-unread = { $count ->
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part dès que { $device } a lu qu’il l’était.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent dès que { $device } a lu qu’ils l’étaient.
+}
+share-leaving-silent = { $device } est silencieux depuis { $when } : s’il ne sert plus, « L’oublier et retirer ses fichiers… » les laisse partir au prochain échange.
+share-leaving-older = { $count ->
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : { $device } a un Sioul plus ancien, qui le garde par référence.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent deux semaines après leur dernier usage : { $device } a un Sioul plus ancien, qui les garde par référence.
+}
+share-leaving-untold = { $count ->
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : cet appareil ne partage pas vos SMS, ou pas toutes les notes, les papiers et le filtre anti-spam, et ne peut savoir si un autre fichier a les mêmes octets.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent deux semaines après leur dernier usage : cet appareil ne partage pas vos SMS, ou pas toutes les notes, les papiers et le filtre anti-spam, et ne peut savoir si un autre fichier a les mêmes octets.
+}
+share-leaving-in-time = { $count ->
+    [one] Une version antérieure, { $size }, part deux semaines après son dernier usage.
+   *[other] { $count } versions antérieures et contenus servis récemment, { $size }, partent deux semaines après leur dernier usage.
+}
+share-leaving-next = { $count ->
+    [one] Un contenu retiré ici, { $size }, quitte le serveur au prochain échange.
+   *[other] { $count } contenus retirés ici, { $size }, quittent le serveur au prochain échange.
+}
 share-remove-live = Il compte encore ici : il est d’abord oublié, pour vos prises aussi, jusqu’à ce qu’il dise du nouveau. S’il sert encore, il partage de nouveau de lui-même et renvoie tout ce qu’il a.
 share-remove-rounds = { $count ->
     [0] Ce qui part : les petits fichiers qu’il y tenait, { $size }.

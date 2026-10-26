@@ -427,6 +427,8 @@ struct Status {
     withheld: Vec<WithheldShown>,
     /// The devices that no longer count here and still have files in the folder: "Remove its files".
     gone_devices: Vec<GoneRow>,
+    /// What this device takes out of the folder and its server, and why each waits (`leaving_rows`).
+    leaving: Vec<LeavingRow>,
     /// Your other devices, as this one knows them: in use, closed, silent, off as you said.
     devices: Vec<crate::health::DeviceRow>,
     /// The other devices' files fetched from the server too: where it stands, the switch, the place given by hand.
@@ -608,7 +610,8 @@ pub(crate) fn status(folder: &str) -> String {
     let replace = if on { crate::join::replacing() } else { None };
     let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, withheld, gone_devices, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+    let leaving = if on { leaving_rows(&path) } else { Vec::new() };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -684,6 +687,8 @@ pub(crate) struct WithheldShown {
     text: String,
     leaves: String,
     key: String,
+    /// Their contents' size in the folder, in words (Settings); "" when an older Sioul did not say it.
+    size: String,
 }
 
 /// A day in words: "Friday 17 October".
@@ -744,7 +749,8 @@ fn withheld_words(w: share::Withheld, root: Option<&Path>) -> WithheldShown {
         say("porch-withheld-days", &[("count", w.count.to_string()), ("part", part), ("first", day(w.first)), ("last", day(w.last)), ("folders", folders)])
     };
     let leaves = say("porch-withheld-leave", &[("count", w.count.to_string()), ("day", day(w.leaves)), ("days", share::GONE_GRACE_DAYS.to_string())]);
-    WithheldShown { key: format!("porch-withheld-said:{}:{}", w.store, w.last), store: w.store, text, leaves }
+    let size = if w.bytes > 0 { say("share-withheld-size", &[("count", w.count.to_string()), ("size", size_words(w.bytes))]) } else { String::new() };
+    WithheldShown { key: format!("porch-withheld-said:{}:{}", w.store, w.last), store: w.store, text, leaves, size }
 }
 
 /// "Put them back": the notes or papers held after going many at once from
@@ -821,6 +827,84 @@ fn gone_rows(folder: &Path) -> Vec<GoneRow> {
             GoneRow { name: device_named(&gone.name, &gone.kind), id: gone.id, state }
         })
         .collect()
+}
+
+/// What waits to leave the folder, and its server with it, as Settings says it.
+#[derive(Serialize)]
+struct LeavingRow {
+    text: String,
+    /// The device it waits for, for "Forget it and remove its files…"; "" when none.
+    device: String,
+}
+
+/// A size in words: "12 MB".
+fn size_words(bytes: u64) -> String {
+    sioul_core::view::size(tr(), usize::try_from(bytes).unwrap_or(usize::MAX))
+}
+
+/// What this device takes out of the folder and its server, and why each
+/// waits (docs/database.md, "Old contents go"), as its last exchange found
+/// it (`share::leaving`): the contents of notes and papers taken out that
+/// wait for a device to read so (named, with when it was last heard of when
+/// that is a day or more ago, and "Forget it and remove its files…"), that
+/// go in two weeks while a device runs an earlier Sioul, or while this one
+/// cannot tell; the earlier versions that go in their time; and this
+/// device's sealed files taken out here and still on the server, which
+/// leave it at the next exchange. Sizes, never a file's name. The notes
+/// held after going many at once are said with their own lines (`withheld`).
+fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
+    let here = here();
+    let memory = memory_path();
+    let leaving = share::leaving(&memory, &here.id);
+    let key = key();
+    let entries = key.map(|key| sioul_sync::devices::all(folder, &key).0).unwrap_or_default();
+    let named = |id: &str| entries.iter().find(|e| e.id == id).map_or_else(|| tr().text("share-device-unnamed", None), |e| device_named(&e.name, &e.kind));
+    let mut rows = Vec::new();
+    // A device silent a day or more: said, with "Forget it and remove its files…".
+    let silent = |id: &str| {
+        let heard = key.map_or(0, |key| share::heard_of(folder, &key, &memory, &here.id, id)) / 1000;
+        (heard > 0 && jiff::Timestamp::now().as_second() - heard >= 86_400).then(|| say("share-leaving-silent", &[("device", named(id)), ("when", when(heard))]))
+    };
+    for (id, (count, bytes)) in &leaving.unread {
+        let said = say("share-leaving-unread", &[("count", count.to_string()), ("size", size_words(*bytes)), ("device", named(id))]);
+        let text = silent(id).map_or_else(|| said.clone(), |silent| [said.clone(), silent].join(" "));
+        rows.push(LeavingRow { text, device: id.clone() });
+    }
+    for (id, (count, bytes)) in &leaving.older {
+        let said = say("share-leaving-older", &[("count", count.to_string()), ("size", size_words(*bytes)), ("device", named(id))]);
+        let (text, device) = match silent(id) {
+            Some(silent) => ([said, silent].join(" "), id.clone()),
+            None => (said, String::new()),
+        };
+        rows.push(LeavingRow { text, device });
+    }
+    if leaving.untold.0 > 0 {
+        rows.push(LeavingRow { text: say("share-leaving-untold", &[("count", leaving.untold.0.to_string()), ("size", size_words(leaving.untold.1))]), device: String::new() });
+    }
+    if leaving.in_time.0 > 0 {
+        rows.push(LeavingRow { text: say("share-leaving-in-time", &[("count", leaving.in_time.0.to_string()), ("size", size_words(leaving.in_time.1))]), device: String::new() });
+    }
+    let (count, bytes) = still_on_the_server(folder, &memory);
+    if count > 0 {
+        rows.push(LeavingRow { text: say("share-leaving-next", &[("count", count.to_string()), ("size", size_words(bytes))]), device: String::new() });
+    }
+    rows
+}
+
+/// This device's sealed files taken out of the folder here that it sent to
+/// the server and has not taken out there yet (Sioul keeping the folder
+/// itself, or sending beside the sync app: `remote::State::sent`,
+/// `remote::Sending::sent`): how many, and their size. One listing of the
+/// folder's sealed files, never a look at each. A sync app alone carries
+/// what goes (none known here).
+fn still_on_the_server(folder: &Path, memory: &Path) -> (usize, u64) {
+    let state = sioul_sync::remote::State::load(memory);
+    let sent = if state.mode == sioul_sync::remote::MIRROR { state.sent } else { sioul_sync::remote::Sending::load(memory).sent };
+    if !sent.keys().any(|relative| relative.starts_with("blobs/")) {
+        return (0, 0);
+    }
+    let here: std::collections::BTreeSet<String> = std::fs::read_dir(folder.join("blobs")).into_iter().flatten().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    sent.iter().filter(|(relative, _)| relative.strip_prefix("blobs/").is_some_and(|name| !here.contains(name))).fold((0, 0), |(n, size), (_, s)| (n + 1, size + s.size))
 }
 
 /// What "Remove its files" would take out for a device, and what stays,
@@ -3227,12 +3311,13 @@ mod tests {
     }
 
     /// Notes gone many at once, said in words: how many, from where (each
-    /// folder by its place here), when, and when they leave; never a key.
+    /// folder by its place here), when, and when they leave, with their size
+    /// in Settings (none as an older Sioul said them); never a key.
     #[test]
     fn notes_held_are_said_in_words() {
         let day_ms = 86_400_000;
         let went = 1_791_000_000_000;
-        let held = share::Withheld { store: "files/notes/".into(), count: 23, first: went, last: went + 60_000, leaves: went + 60_000 + 14 * day_ms, folders: vec!["archive/2026".into(), String::new()] };
+        let held = share::Withheld { store: "files/notes/".into(), count: 23, first: went, last: went + 60_000, leaves: went + 60_000 + 14 * day_ms, folders: vec!["archive/2026".into(), String::new()], bytes: 2_400_000 };
         let root = Path::new("/srv/notes");
         let shown = withheld_words(held.clone(), Some(root));
         assert!(shown.text.contains("23") && shown.text.contains("/srv/notes/archive/2026") && shown.text.contains(&day(went)), "{}", shown.text);
@@ -3240,9 +3325,11 @@ mod tests {
         assert_eq!(shown.key, format!("porch-withheld-said:files/notes/:{}", went + 60_000));
         let spread = withheld_words(share::Withheld { first: went - 2 * day_ms, ..held.clone() }, None);
         assert!(spread.text.contains(&day(went - 2 * day_ms)) && spread.text.contains(&day(went)), "between two days: {}", spread.text);
-        let one = withheld_words(share::Withheld { count: 1, folders: vec![String::new()], ..held }, Some(root));
-        for words in [&shown.text, &shown.leaves, &spread.text, &one.text, &one.leaves] {
-            assert!(!words.contains("porch-") && !words.contains('{'), "{words}");
+        let one = withheld_words(share::Withheld { count: 1, folders: vec![String::new()], ..held.clone() }, Some(root));
+        assert!(shown.size.contains(&size_words(2_400_000)), "{}", shown.size);
+        assert!(withheld_words(share::Withheld { bytes: 0, ..held }, None).size.is_empty(), "an older Sioul's: no size said");
+        for words in [&shown.text, &shown.leaves, &shown.size, &spread.text, &one.text, &one.leaves, &one.size] {
+            assert!(!words.contains("porch-") && !words.contains("share-") && !words.contains('{'), "{words}");
         }
     }
 

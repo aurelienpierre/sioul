@@ -56,7 +56,7 @@ pub const KEEPING_TWO_WEEKS: u32 = 1;
 /// among its earlier versions as a copy, never by reference
 /// (`history::keep_moved`): once every device that counts says so, the
 /// content of a note or paper taken out may leave the folder as soon as each
-/// read that it was (`share::removed_due`).
+/// read that it was (`share::stands`).
 pub const KEEPING_MOVED: u32 = 2;
 /// A content sealed in the folder longer ago than this and used again has
 /// its file made fresh (`put`), so that its writer, which may not have read
@@ -211,6 +211,16 @@ pub fn put(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result<O
         return Ok(None);
     }
     seal_into(folder, key, source, hash).map(Some)
+}
+
+/// A sealed file of the folder made fresh, its time now, whatever its age: a
+/// device naming again a content another device sealed (`share::fresh_again`),
+/// so that its sync app sends it again (eDrive and Nextcloud send a file
+/// whose time changed) and its writer, which may be sweeping it as taken out,
+/// finds it used since (`share::stands`). Nothing when it is not there.
+pub fn make_fresh(folder: &Path, key: &[u8; 32], hash: &str) {
+    let target = path(folder, key, hash);
+    let _ = std::fs::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
 }
 
 /// A content sealed again over a copy in the folder that is damaged or cut

@@ -249,7 +249,7 @@ fn slow_copy() {
 /// A file another device's change takes out, moved here as it is: nothing
 /// copied (it was going anyway), and no reference to its content, which
 /// leaves the sharing folder as soon as every device that counts read that it
-/// was taken out (`share::removed_due`): this version stays its 30 days.
+/// was taken out (`share::stands`): this version stays its 30 days.
 /// Copied (`keep`) when it cannot be moved (another disk: on a phone, the
 /// notes are in its shared storage, the history in Sioul's own), and when
 /// the file has other names (hard links): moved, the history would hold the

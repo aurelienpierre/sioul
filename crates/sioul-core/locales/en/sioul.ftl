@@ -3016,6 +3016,32 @@ share-device-unnamed = A device
 share-device-remove = Remove its files…
 share-device-remove-live = Forget it and remove its files…
 share-device-remove-confirm = Remove them
+share-withheld-size = { $count ->
+    [one] Its content in the folder: { $size }.
+   *[other] Their contents in the folder: { $size }.
+}
+share-leaving-title = Leaving your folder’s server
+share-leaving-unread = { $count ->
+    [one] The content of a note or paper taken out, { $size }, leaves once { $device } has read that it was.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave once { $device } has read that they were.
+}
+share-leaving-silent = { $device } has been silent since { $when }: if it is no longer in use, “Forget it and remove its files…” lets them go at the next exchange.
+share-leaving-older = { $count ->
+    [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: { $device } runs an earlier Sioul, which keeps it by reference.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave two weeks after their last use: { $device } runs an earlier Sioul, which keeps them by reference.
+}
+share-leaving-untold = { $count ->
+    [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: this device does not share your texts, or all of notes, papers and the spam filter, and cannot tell whether another file holds the same bytes.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave two weeks after their last use: this device does not share your texts, or all of notes, papers and the spam filter, and cannot tell whether another file holds the same bytes.
+}
+share-leaving-in-time = { $count ->
+    [one] An earlier version, { $size }, leaves two weeks after its last use.
+   *[other] { $count } earlier versions and contents used lately, { $size }, leave two weeks after their last use.
+}
+share-leaving-next = { $count ->
+    [one] A content taken out here, { $size }, leaves the server at the next exchange.
+   *[other] { $count } contents taken out here, { $size }, leave the server at the next exchange.
+}
 share-remove-live = It still counts here: it is forgotten first, for your doses too, until it says anything newer. If it is still in use, it shares again by itself and sends everything it holds again.
 share-remove-rounds = { $count ->
     [0] What goes: the small files it kept there, { $size }.
