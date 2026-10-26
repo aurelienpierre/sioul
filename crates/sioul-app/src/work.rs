@@ -139,7 +139,7 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, projects
     settings.office_days = situation.office_days;
     settings.office_hours = config.office_hours();
     // The events there are: a task that prepares one gone waits for a date (`pairs`).
-    settings.appointments = Some(sioul_core::pairs::appointments_of(&loaded(shared).events, now.time_zone()));
+    settings.appointments = Some(sioul_core::pairs::appointments_here(&loaded(shared).events, now.time_zone()));
     settings
 }
 
@@ -455,14 +455,16 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // A paired task's date follows its appointment, while it says the day the pairing wrote (`pairs`).
         let now = Zoned::now();
-        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_of(&desk.loaded.events, now.time_zone()), &now);
+        // Only a move this device saw (`pairs::Seen`), and again at once only after a write that succeeded (F4, F12).
+        let mut seen = sioul_core::pairs::Seen::load();
+        let before = seen.clone();
+        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_here(&desk.loaded.events, now.time_zone()), &mut seen, &now);
+        if seen != before {
+            let _ = seen.save();
+        }
         if !moved.is_empty() {
-            for (path, text) in &moved {
-                if vdir::write_item(path, text).is_ok()
-                    && let Some(account) = account_of(path)
-                {
-                    pim::nudge(&shared, &account);
-                }
+            for account in moved.iter().filter_map(|p| account_of(p)).collect::<BTreeSet<_>>() {
+                pim::nudge(&shared, &account);
             }
             show_work(&qt, &shared);
         }

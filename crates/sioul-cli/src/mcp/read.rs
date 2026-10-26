@@ -535,7 +535,7 @@ impl Desk {
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
         // As the window plans: a task that prepares an appointment gone waits for a date (`pairs`).
-        settings.appointments = Some(sioul_core::pairs::appointments_of(&loaded.events, now.time_zone()));
+        settings.appointments = Some(sioul_core::pairs::appointments_here(&loaded.events, now.time_zone()));
         let plan = plan::plan(&loaded.tasks, now.date(), &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, consent, filter, offices: situation.offices, plan, settings, today, spent, stopped }

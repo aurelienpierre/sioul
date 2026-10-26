@@ -124,9 +124,12 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
         .or_else(agenda::default_calendar)
         .ok_or_else(|| tr().text("dav-no-calendar", None))?;
     if others.iter().any(|t| t.status.is_open() && t.parent() == Some(uid)) {
-        let (change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let config = load_config();
+        let (mut change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
+        // The block whose time the form took: the appointment is that time now (F14).
+        change.gone.extend(pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
         change.write()?;
-        return Ok((Vec::new(), path, target.label(&load_config(), tr())));
+        return Ok((Vec::new(), path, target.label(&config, tr())));
     }
     let opened = pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
     let blocks: Vec<PathBuf> = opened.into_iter().chain(crate::blocks::with_task(uid).into_iter().map(|(_, p)| p)).collect();
@@ -158,7 +161,8 @@ pub(crate) fn attach_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, ke
         let loaded = work::loaded(shared);
         let all = sioul_core::tasks::all(&TimeZone::system());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
-        let change = sioul_core::pairs::attach(&all, uid, &event, &loaded.events, &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let config = load_config();
+        let change = sioul_core::pairs::attach(&all, uid, &event, &loaded.events, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
         let title = all.iter().find(|t| t.uid == uid).map(|t| t.title.clone()).unwrap_or_default();
         let summary = agenda::edit_of_text(&text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
         paired_done(qt, shared, change, say("pair-attached", &[("title", title), ("event", summary)]))
@@ -189,7 +193,8 @@ pub(crate) fn steps_for_event(qt: &QtThread, shared: &Arc<Shared>, key: &str) ->
         let loaded = work::loaded(shared);
         let all = sioul_core::tasks::all(&TimeZone::system());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
-        let (change, uid) = sioul_core::pairs::new_for(&all, &event, &loaded.events, &list, &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let config = load_config();
+        let (change, uid) = sioul_core::pairs::new_for(&all, &event, &loaded.events, &list, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
         let summary = agenda::edit_of_text(&text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
         paired_done(qt, shared, change, say("pair-made", &[("title", summary.clone()), ("event", summary)]))?;
         Ok(uid)
@@ -296,14 +301,18 @@ mod tests {
         // A task with steps stays a task, tied to the event made, which it prepares
         // (docs/tasks.md, "An appointment and its steps"): its steps keep the task they belong to.
         let original = std::fs::read_to_string(&task_path).unwrap();
+        let block_text = std::fs::read_to_string(&block_path).unwrap();
         let step = Task { uid: "s".into(), relations: vec![tasks::Relation { kind: "PARENT".into(), uid: "t-kinds".into(), gap: 0 }], ..Task::default() };
         let (gone, made, _) = make_event(&task, &[task.clone(), step], block_path.to_str().unwrap(), &edit, &calendar).unwrap();
-        assert!(gone.is_empty() && task_path.exists() && block_path.exists(), "nothing taken out");
+        assert!(gone.is_empty() && task_path.exists(), "the task stays");
+        // F14: the block whose time the form took is the appointment's time now: it goes.
+        assert!(!block_path.exists(), "no block beside the appointment at the same time");
         assert!(std::fs::read_to_string(&made).unwrap().contains("sioul:task/t-kinds"));
         assert!(std::fs::read_to_string(&task_path).unwrap().contains("rel/appointment"));
-        // Untied for what follows: the event out, the task as it was.
+        // Untied for what follows: the event out, the task and its block as they were.
         std::fs::remove_file(&made).unwrap();
         std::fs::write(&task_path, original).unwrap();
+        std::fs::write(&block_path, block_text).unwrap();
 
         // Done, it stays a task: the record of work done (F5).
         let done = Task { status: tasks::Status::Completed, ..task.clone() };

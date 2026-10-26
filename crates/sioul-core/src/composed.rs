@@ -111,8 +111,13 @@ impl Change {
     }
 
     /// Done once: each file as it was before and as it is now, for Undo.
+    /// What is new first: cut short, nothing is left pointing at what was not made.
     pub fn write(&self) -> Result<Vec<FileChange>, String> {
         let mut out = Vec::new();
+        for (path, text) in &self.made {
+            vdir::write_item(path, text)?;
+            out.push(FileChange { path: path.clone(), before: None, after: Some(text.clone()) });
+        }
         for (path, text) in &self.written {
             let before = std::fs::read_to_string(path).ok();
             vdir::write_item(path, text)?;
@@ -126,10 +131,6 @@ impl Change {
             }
             out.push(FileChange { path: from.clone(), before, after: None });
             out.push(FileChange { path: to.clone(), before: None, after: Some(text.clone()) });
-        }
-        for (path, text) in &self.made {
-            vdir::write_item(path, text)?;
-            out.push(FileChange { path: path.clone(), before: None, after: Some(text.clone()) });
         }
         for path in &self.gone {
             let Ok(before) = std::fs::read_to_string(path) else { continue };

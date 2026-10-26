@@ -154,6 +154,10 @@ pub fn retarget(text: &str, old: &str, new: &str, became_event: bool, now: &Zone
         .filter_map(|l| {
             if crate::lines::name(l) == "LINK" {
                 let link = link_of(l);
+                // The appointment it prepared is a task now: no appointment to prepare (`pairs`).
+                if crate::pairs::is_pair_link(&link) {
+                    return None;
+                }
                 let uri = if link.uri.starts_with("uid:") { format!("uid:{new}") } else if became_event { crate::links::event_uri(new) } else { crate::links::task_uri(new) };
                 Some(link_line(&crate::tasks::Link { uri, ..link }))
             } else if became_event {
@@ -247,7 +251,8 @@ pub fn task_to_event(task: &Task, others: &[Task], blocks: &[PathBuf], edit: &Ev
     }
     let text = crate::agenda::new_event(edit, zone)?;
     // What the task was tied to, the event is (its blocks aside: they go).
-    let links: Vec<String> = task.links.iter().filter(|l| !crate::blocks::is_block_link(l)).map(crate::tasks::link_line).collect();
+    // Its tie to an appointment it prepared is the task's, which goes (`pairs`).
+    let links: Vec<String> = task.links.iter().filter(|l| !crate::blocks::is_block_link(l) && !crate::pairs::is_pair_link(l)).map(crate::tasks::link_line).collect();
     let text = crate::agenda::add_lines(&text, &links).unwrap_or(text);
     let mut gone = vec![PathBuf::from(&task.key)];
     for path in blocks {
@@ -283,7 +288,8 @@ pub fn event_to_task(path: &Path, list: &Collection, place: &dyn Fn(&Task) -> Re
     }
     let mut edit = task_of(&event);
     // What the event was tied to, the task is.
-    edit.links = unfolded.iter().filter(|l| lines::name(l) == "LINK").map(|l| crate::tasks::link_of(l)).filter(|l| !crate::blocks::is_block_link(l)).collect();
+    // The task that prepared it keeps its own tie, dropped as the appointment goes (`retarget`).
+    edit.links = unfolded.iter().filter(|l| lines::name(l) == "LINK").map(|l| crate::tasks::link_of(l)).filter(|l| !crate::blocks::is_block_link(l) && !crate::pairs::is_pair_link(l)).collect();
     let uid = crate::vdir::new_name();
     let mut task_text = crate::tasks::new_task(&edit, &uid, &zone, now)?;
     let task_path = list.dir.join(format!("{uid}.ics"));

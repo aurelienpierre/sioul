@@ -214,7 +214,7 @@ impl Desk {
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
         // As the window plans: a task that prepares an appointment gone waits for a date (`pairs`).
-        settings.appointments = Some(sioul_core::pairs::appointments_of(&loaded.events, now.time_zone()));
+        settings.appointments = Some(sioul_core::pairs::appointments_here(&loaded.events, now.time_zone()));
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings }
@@ -545,7 +545,7 @@ fn attach(s: &Session, wanted: &str, event: &str, no_sync: bool) -> Result<(), S
         };
         let (path, text, writable) = file_of(&one.key)?;
         let file = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
-        (sioul_core::pairs::attach(&desk.loaded.tasks, &task.uid, &file, &desk.loaded.events, &now).map_err(|r| r.said(&s.tr))?, s.say("pair-attached", &[("title", one_line(&task.title)), ("event", one_line(&one.summary))]))
+        (sioul_core::pairs::attach(&desk.loaded.tasks, &task.uid, &file, &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?, s.say("pair-attached", &[("title", one_line(&task.title)), ("event", one_line(&one.summary))]))
     };
     let files = change.files();
     change.write()?;

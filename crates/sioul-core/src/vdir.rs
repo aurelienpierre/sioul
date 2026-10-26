@@ -422,6 +422,18 @@ pub fn moved_here(new: &Path) -> bool {
     moved_change(|m| m.moved.iter().any(|i| i.new == new))
 }
 
+/// The folders of the collections of accounts switched off (`set_account_off`):
+/// out of the pages, their items still here.
+pub fn switched_off_dirs(kind: Kind) -> Vec<PathBuf> {
+    let Ok(accounts) = std::fs::read_dir(kind.root()) else { return Vec::new() };
+    accounts
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p.join(OFF).exists())
+        .flat_map(|account| std::fs::read_dir(account).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()))
+        .collect()
+}
+
 /// Every collection kept here, those deleted and not yet gone from the server included.
 pub fn every_collection(kind: Kind) -> Vec<Collection> {
     let mut found = Vec::new();

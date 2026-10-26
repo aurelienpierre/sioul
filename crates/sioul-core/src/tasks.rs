@@ -192,6 +192,9 @@ pub struct Task {
     /// Its place among its bigger task's steps (`SORT_ORDER`), as written;
     /// None when unsaid: then its creation's (`Task::sequence`).
     pub sort_order: Option<i64>,
+    /// The appointments it was untied from whose event could not be written
+    /// (`pairs::UNTIED`): their own line names it still, and never ties it back.
+    pub untied: Vec<String>,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -566,6 +569,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "REFID" => task.projects.push(lines::unescape(value.trim())),
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
+            crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
             // A whole number; another program's decimal read to the nearest.
             SORT_ORDER => task.sort_order = value.trim().parse::<i64>().ok().or_else(|| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 9e15).map(|v| v.round() as i64)),
             "DTSTAMP" => stamp = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),

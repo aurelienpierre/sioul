@@ -1474,6 +1474,7 @@ agent-folded = Un agent d’IA a rangé l’étape « { $title } » dans la 
 agent-item-step = Un agent d’IA a fait de l’élément « { $title } » une étape.
 agent-item-task = Un agent d’IA a fait de l’élément « { $title } » une tâche.
 pair-parked = Son rendez-vous n’est pas là : elle attend une date.
+pair-google = Google Tasks ne garde aucun lien vers un rendez-vous : le lien resterait sur cet appareil. Liez une tâche d’une autre liste.
 pair-block = Cet événement est le temps d’une tâche : il ne tient pas d’étapes à lui.
 pair-leg = Cet événement appartient à un autre rendez-vous.
 pair-taken = Ce rendez-vous a déjà ses étapes.

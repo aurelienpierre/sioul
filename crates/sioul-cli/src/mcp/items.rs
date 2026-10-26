@@ -575,6 +575,10 @@ pub fn get_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let (lines, steps) = steps_shown(&desk, &task.uid);
     let mut data = task_json(&task);
     data["steps"] = steps;
+    // An appointment kept from agents: not even its address.
+    if data["appointment"].as_str().is_some_and(|uri| !desk.consent.allows(uri)) {
+        data["appointment"] = Value::Null;
+    }
     let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(lines).chain(checklist_lines(&task.notes)).collect::<Vec<_>>().join("\n");
     Ok(Answer { text, data })
 }
@@ -875,7 +879,7 @@ pub fn attach_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let found = find_event(&desk.consent, &args.needed("event")?)?;
     may_change(&desk.consent, &links::event_uri(&found.uid))?;
     let all = tasks::all(&TimeZone::system());
-    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &Zoned::now()).map_err(|r| r.said(&s.tr))?;
     let files = change.write()?;
     let summary = agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
     let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]);
@@ -928,7 +932,7 @@ pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = tasks::all(&zone);
     let has_steps = all.iter().any(|t| t.status.is_open() && t.parent() == Some(task.uid.as_str()));
     if has_steps || args.flag("keep_task")? {
-        let (change, path) = sioul_core::pairs::appointment_for(&all, &task.uid, &edit, &target, &now).map_err(|r| r.said(&s.tr))?;
+        let (change, path) = sioul_core::pairs::appointment_for(&all, &task.uid, &edit, &target, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?;
         let files = change.write()?;
         let new_uid = appointments::uid_in(&path);
         let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&edit.title))]);

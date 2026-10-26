@@ -1456,6 +1456,7 @@ agent-folded = An AI agent folded the step “{ $title }” into the list of “
 agent-item-step = An AI agent made the item “{ $title }” a step.
 agent-item-task = An AI agent made the item “{ $title }” a task.
 pair-parked = Its appointment is not here: it waits for a date.
+pair-google = Google Tasks keeps no tie to an appointment: the tie would stay on this device. Tie a task of another list.
 pair-block = This event is a task's time: it holds no steps of its own.
 pair-leg = This event belongs to another appointment.
 pair-taken = This appointment has its steps already.
