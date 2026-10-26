@@ -53,7 +53,7 @@ mod transport;
 mod write;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use crate::Session;
 

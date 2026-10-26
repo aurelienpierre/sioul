@@ -802,6 +802,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
         }
         "accepted" | "tentative" | "add" => {
             let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
+            let mut older = false;
             let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
             // Your answer made before anything is written: one that cannot be made writes nothing (can-wait 4).
             let reply = if answer == "add" { None } else { Some(agenda::reply(&text, &me, &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?) };
@@ -818,7 +819,17 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 let written = match &known {
                     Some(file) => {
                         let there = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
-                        agenda::answered_into(&there, &text, &me, &partstat).map(|changed| (file.clone(), changed))
+                        match agenda::answered_into(&there, &text, &me, &partstat, &agenda::own_addresses()) {
+                            agenda::Answered::Written(changed) => Some((file.clone(), changed)),
+                            agenda::Answered::Same => None,
+                            // Older than your copy: nothing written, and said so, never "it is in your calendar" (review of 36002ea's check, must-fix 6).
+                            agenda::Answered::Older => {
+                                older = true;
+                                None
+                            }
+                            // Not from its organizer, or a meeting you organize: nothing written, no answer sent (its check, low 8).
+                            agenda::Answered::Refused => return Err(tr().text("invitation-update-refused", None)),
+                        }
                     }
                     None => Some((agenda::new_path(&calendar), if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &partstat) })),
                 };
@@ -831,6 +842,11 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
             }
             if let Some(ics) = reply {
                 send_answer(&path, &ics, &asked, answer)?;
+            }
+            if older {
+                tell(qt, shared, tr().text(if answer == "add" { "invitation-older-added" } else { "invitation-older" }, None));
+                show_pim(qt, shared);
+                return Ok(());
             }
         }
         _ => send_answer(&path, &agenda::reply(&text, &load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default(), &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?, &asked, answer)?,

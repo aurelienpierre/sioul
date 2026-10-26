@@ -2092,12 +2092,17 @@ pub fn default_path() -> PathBuf {
 /// that writes health, state, config or calendars where Sioul reads them asks
 /// it first (`stand_ins_only`; rules.md; review of 36002ea, can-wait 11).
 pub fn stand_in_folders() -> bool {
-    if std::env::var_os("CI").is_some_and(|v| v == "true") {
-        return true;
-    }
-    [("XDG_CONFIG_HOME", "~/.config"), ("XDG_DATA_HOME", "~/.local/share"), ("XDG_STATE_HOME", "~/.local/state")]
-        .iter()
-        .all(|(variable, own)| std::env::var_os(variable).filter(|v| !v.is_empty()).is_some_and(|v| PathBuf::from(v) != expand_home(own)))
+    // As the disk resolves it (a link followed), whole when it is not there yet.
+    let resolved = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()));
+    // Each of the four set, and Sioul's folder in it neither the person's own,
+    // nor inside it, nor holding it; never `CI=true` alone (review of
+    // 36002ea's check, A2): a runner gives its tests folders of their own too
+    // (build.yml: under its temporary folder).
+    [("XDG_CONFIG_HOME", "~/.config"), ("XDG_DATA_HOME", "~/.local/share"), ("XDG_STATE_HOME", "~/.local/state"), ("XDG_CACHE_HOME", "~/.cache")].iter().all(|(variable, own)| {
+        let Some(set) = std::env::var_os(variable).filter(|v| !v.is_empty()) else { return false };
+        let (theirs, own) = (resolved(&PathBuf::from(set)).join("sioul"), resolved(&expand_home(own)).join("sioul"));
+        !theirs.starts_with(&own) && !own.starts_with(&theirs)
+    })
 }
 
 /// For a test that writes Sioul's files where it reads them: refuses to go
@@ -2106,7 +2111,7 @@ pub fn stand_in_folders() -> bool {
 pub fn stand_ins_only() {
     assert!(
         stand_in_folders(),
-        "this test writes Sioul's files: run it with folders of its own (XDG_CONFIG_HOME, XDG_DATA_HOME and XDG_STATE_HOME set, as tools/final-pass.sh sets them), never with the person's own"
+        "this test writes Sioul's files: run it with folders of its own (XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME set, as tools/final-pass.sh sets them), never with the person's own"
     );
 }
 

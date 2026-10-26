@@ -394,17 +394,13 @@ fn step(reason: &str) -> serde_json::Value {
     // a message's line for your computers (`phonemsgs`, the listener's "messages").
     let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
     rounds_wait();
-    if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
-        eprintln!("sioul: steps: {e}");
-    }
+    rearm_after(crate::share::exchange_here(fetch_first));
     // texts and replies: the requests this exchange brought, decided and handed over now, their
     // outcomes shared at once; a batch of the import too, the full rounds waiting while it goes on.
     let replied = crate::replies::phone_step();
     if crate::texts::phone_step() || replied {
         rounds_wait();
-        if let Some(Err(e)) = crate::share::exchange_here(false) {
-            eprintln!("sioul: steps: {e}");
-        }
+        rearm_after(crate::share::exchange_here(false));
     }
     // The others' sealed notes and papers this phone waits for, fetched
     // from the server by their names beside the mail (`share::fetch_wanted_here`;
@@ -536,6 +532,19 @@ pub extern "C" fn sioul_dnd_toggle() -> *mut std::ffi::c_char {
     })
     .unwrap_or_default();
     crate::alarms::handed(answer)
+}
+
+/// A background step's exchange, said when it failed; one that brought a
+/// medicine's change or a mark (a move among them) from another device
+/// hands Android the doses' alarms anew, Sioul in the background
+/// (`alarms::schedule`; review of 36002ea's check, A2): a move made
+/// elsewhere rings here at its new time, a dose marked there rings no more.
+fn rearm_after(exchanged: Option<Result<sioul_sync::share::Outcome, String>>) {
+    match exchanged {
+        Some(Err(e)) => eprintln!("sioul: steps: {e}"),
+        Some(Ok(outcome)) if ["data/health.toml", "state/health-state.toml"].iter().any(|f| outcome.written.contains(*f)) => crate::alarms::schedule(),
+        _ => {}
+    }
 }
 
 /// A press made on this phone outside the window (a system's change heard,

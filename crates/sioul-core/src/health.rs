@@ -373,10 +373,11 @@ impl Health {
     /// copied aside first, as `health.toml.unreadable`: saving over it then
     /// loses no medicine.
     pub fn load(path: &Path) -> Health {
-        match std::fs::read_to_string(path).map(|t| toml::from_str::<Health>(&t)) {
-            Ok(Ok(health)) => health,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Health::default(),
-            _ => {
+        match Health::read(path) {
+            Ok(health) => health,
+            // Lost (of no bytes, or gone though written here): nothing to copy aside.
+            Err(Unsound::Lost) => Health::default(),
+            Err(Unsound::Unreadable) => {
                 let _ = std::fs::copy(path, path.with_extension("toml.unreadable"));
                 Health::default()
             }
@@ -392,26 +393,38 @@ impl Health {
     /// window says rather than read it as no medicines (`health::load_said`).
     /// Nothing copied aside here (`load` does).
     pub fn read(path: &Path) -> Result<Health, Unsound> {
-        match std::fs::read_to_string(path).map(|t| toml::from_str::<Health>(&t)) {
-            Ok(Ok(health)) => Ok(health),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Health::default()),
-            _ => Err(Unsound::Unreadable),
+        Health::read_bytes(path).map(|(health, _)| health)
+    }
+
+    /// `read`, with the very bytes that read: what is kept as its last read
+    /// (`health::keep_last_read` in the window), never a second look at the
+    /// file. The doses' records' rule (review of 36002ea's check, A2): Sioul
+    /// never writes it empty (its tables are always written), so a file of no
+    /// bytes, or one gone though written here before (`witnessed`), was lost
+    /// (a crash before its bytes reached the disk, a full disk, a folder
+    /// wiped), never read as no medicines.
+    pub fn read_bytes(path: &Path) -> Result<(Health, Vec<u8>), Unsound> {
+        match std::fs::read(path) {
+            Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Err(Unsound::Lost),
+            Ok(bytes) => std::str::from_utf8(&bytes).ok().and_then(|text| toml::from_str::<Health>(text).ok()).map(|health| (health, bytes)).ok_or(Unsound::Unreadable),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if witnessed(path) {
+                    Err(Unsound::Lost)
+                } else {
+                    Ok((Health::default(), Vec::new()))
+                }
+            }
+            Err(_) => Err(Unsound::Unreadable),
         }
     }
 
-    /// Written next to its place, then moved: never half a file. Yours alone.
-    /// Under the file's lock, which the sharing takes too.
+    /// Written as the doses' records are (`write_witnessed`): next to its
+    /// place, its bytes on the disk before it takes the name, then its
+    /// witnesses made, so that a crash after a save leaves a file lost, said,
+    /// never one of no bytes read as no medicines (review of 36002ea's check,
+    /// A2). Yours alone. Under the file's lock, which the sharing takes too.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        crate::filelock::with_lock(path, || {
-            let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(fail)?;
-            }
-            let temporary = path.with_extension("toml.new");
-            std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-            keep_private(&temporary);
-            std::fs::rename(&temporary, path).map_err(fail)
-        })
+        crate::filelock::with_lock(path, || write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes()))
     }
 
     /// Read, changed by `change` and written back, all under the file's lock,
@@ -525,6 +538,12 @@ impl Health {
             for _ in 0..moves.len() {
                 let Some(([_, after], _)) = moves.iter().filter(|([before, after], _)| *before == *from && after != before).max_by_key(|(_, taken)| *taken) else { break };
                 *from = *after;
+                mended = true;
+            }
+            // A move taken back (`HealthState::back`): its start put back, unless it moved again since.
+            let backs = state.back.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id));
+            if let Some((_, [before, _, _])) = backs.filter(|(_, [before, after, _])| *after == *from && after != before).max_by_key(|(_, [_, _, at])| *at) {
+                *from = *before;
                 mended = true;
             }
         }
@@ -1011,8 +1030,16 @@ pub(crate) fn witnesses(path: &Path) -> Vec<PathBuf> {
     let mut all = vec![path.with_file_name(&name)];
     #[cfg(test)]
     let apart = APART.with(|apart| apart.borrow().as_ref().map(|dir| dir.join(&name)));
+    // Kept in the other folder too: a record of the state folder's in the data
+    // folder's, the health file of the data folder's in the state folder's.
     #[cfg(not(test))]
-    let apart = (path.parent() == Some(crate::config::state_dir().as_path())).then(|| crate::config::data_dir().join(&name));
+    let apart = if path.parent() == Some(crate::config::state_dir().as_path()) {
+        Some(crate::config::data_dir().join(&name))
+    } else if path.parent() == Some(crate::config::data_dir().as_path()) {
+        Some(crate::config::state_dir().join(&name))
+    } else {
+        None
+    };
     all.extend(apart.filter(|apart| !all.contains(apart)));
     all
 }
@@ -1033,12 +1060,32 @@ pub fn witnessed(path: &Path) -> bool {
 /// file whose bytes a crash lost: a record of no bytes), then its folder's
 /// change made to last; its witnesses made when missing.
 pub fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_synced(path, bytes)?;
+    // Once the bytes have the name, made when missing: a witness that could
+    // not be made (a full disk) never says the write failed, which it did not
+    // (review of 36002ea's check, low 23: a mark written, its move put back).
+    for witness in witnesses(path) {
+        if !witness.exists() {
+            if let Some(folder) = witness.parent() {
+                let _ = std::fs::create_dir_all(folder);
+            }
+            let _ = std::fs::write(&witness, "");
+        }
+    }
+    Ok(())
+}
+
+/// Written next to its place, its bytes on the disk before it takes the
+/// name, then its folder's change made to last: never half a file, never a
+/// name over bytes a crash lost. Yours alone.
+pub fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let parent = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(fail)?;
     // Next to its place, then moved: a dose marked is never lost to half a file.
-    let temporary = path.with_extension("toml.new");
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let temporary = path.with_file_name(format!("{name}.new"));
     let mut file = std::fs::File::create(&temporary).map_err(fail)?;
     file.write_all(bytes).and_then(|()| file.sync_all()).map_err(fail)?;
     drop(file);
@@ -1046,14 +1093,6 @@ pub fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::rename(&temporary, path).map_err(fail)?;
     #[cfg(unix)]
     let _ = std::fs::File::open(parent).and_then(|dir| dir.sync_all());
-    for witness in witnesses(path) {
-        if !witness.exists() {
-            if let Some(folder) = witness.parent() {
-                let _ = std::fs::create_dir_all(folder);
-            }
-            std::fs::write(&witness, "").map_err(fail)?;
-        }
-    }
     Ok(())
 }
 
@@ -1165,6 +1204,13 @@ pub struct HealthState {
     /// before and after (`Health::taken_at`); kept with the mark.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub moved: BTreeMap<String, [i64; 2]>,
+    /// Moves taken back, by key: where the next doses started before and
+    /// after the take, and when it was taken back (Unix seconds); kept a
+    /// week. Every device puts them back from here (`Health::mend_shifts`),
+    /// its health file read or not where it was taken back (review of
+    /// 36002ea's check, A2: a take back there once dropped its restore).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub back: BTreeMap<String, [i64; 3]>,
     /// Errands whose task was made, by key.
     #[serde(default)]
     pub errands: BTreeMap<String, String>,
@@ -1281,6 +1327,7 @@ impl HealthState {
         self.unshown.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
+        self.back.retain(|_, [_, _, at]| *at >= week);
         write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
@@ -2250,6 +2297,53 @@ mod tests {
         std::fs::remove_dir_all(&state).unwrap();
         assert_eq!(crate::doses::DoseRecords::read(&records), Err(Unsound::Lost));
         APART.with(|apart| *apart.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The check of 36002ea, A2: a health file of no bytes, or gone though
+    /// written here, was lost (Sioul never writes it empty): never read as no
+    /// medicines, never written over; a move taken back (`HealthState::back`)
+    /// puts the start back on every device, unless it moved again since; a
+    /// witness that cannot be made never says the write failed.
+    #[test]
+    fn a_health_file_of_no_bytes_is_lost_and_a_move_taken_back_comes_back() {
+        let dir = std::env::temp_dir().join(format!("sioul-health-lost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("health.toml");
+        let start = at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second();
+        let medicine = |from: i64| Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: "1 tablet".into(), schedule: Schedule::Hours { hours: 8, from }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+        Health { medicines: vec![medicine(start)], ..Health::default() }.save(&path).unwrap();
+        assert!(witnessed(&path), "its witness made");
+        assert_eq!(Health::read(&path).unwrap().medicines.len(), 1);
+        std::fs::write(&path, "").unwrap();
+        assert!(matches!(Health::read(&path), Err(Unsound::Lost)), "of no bytes: lost");
+        assert!(matches!(Health::read_bytes(&path), Err(Unsound::Lost)));
+        assert!(Health::change(&path, |h| Ok(h.medicines.clear())).is_err(), "never written over");
+        assert_eq!(std::fs::read(&path).unwrap(), b"");
+        assert!(!path.with_extension("toml.unreadable").exists(), "nothing to copy aside");
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(Health::read(&path), Err(Unsound::Lost)), "gone though written here");
+        // A move taken back: the start put back, where it is where the take had moved it.
+        let late = start + 90 * 60;
+        let after = late + 8 * 3600;
+        let mut health = Health { medicines: vec![medicine(after)], ..Health::default() };
+        let mut state = HealthState::default();
+        state.back.insert(format!("antibiotic@{start}"), [start, after, late + 600]);
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start), "put back");
+        assert!(!health.mend_shifts(&state), "once");
+        // Moved again since (the next dose taken late, its move recorded): left where that move put it.
+        let mut health = Health { medicines: vec![medicine(after)], ..Health::default() };
+        let next = after + 3600 + 8 * 3600;
+        state.moved.insert(format!("antibiotic@{after}"), [after, next]);
+        state.taken.insert(format!("antibiotic@{after}"), after + 3600);
+        assert!(health.mend_shifts(&state));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == next), "the later move holds");
+        // Kept a week, then gone with the marks' week.
+        let mut saved = HealthState::default();
+        saved.back.insert("antibiotic@1".into(), [1, 2, late]);
+        saved.save(&dir.join("health-state.toml"), late + 8 * 86_400).unwrap();
+        assert!(HealthState::read(&dir.join("health-state.toml")).unwrap().back.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

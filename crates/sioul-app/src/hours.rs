@@ -56,7 +56,10 @@ pub(crate) fn blocks(now: &Zoned) -> Blocks {
     {
         return blocks.clone();
     }
-    let needs = sioul_core::health::Health::load(&health).needs;
+    // As the doses read it (`health::needs`): its last read when it does not
+    // read here, so that "Doses during sleep: stay silent" holds then too
+    // (review of 36002ea's check, low 21).
+    let needs = crate::health::needs();
     let blocks = Blocks::of(&needs, &sioul_core::needs::Days::load(&days), &held(now), now);
     *KEPT.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, blocks.clone()));
     blocks

@@ -1644,10 +1644,64 @@ fn own_lines(event: &[String]) -> impl Iterator<Item = &String> {
     }).map(|(_, line)| line)
 }
 
-/// Which time of a series an event is: its RECURRENCE-ID (its zone and its
-/// value), "" for the series itself.
+/// Which time of a series an event is, "" for the series itself: its
+/// RECURRENCE-ID as the instant it names when its zone reads here
+/// (`@<Unix seconds>`), so that two servers writing it otherwise (UTC, or a
+/// zone renamed) name one time; else its zone and value as written (review
+/// of 36002ea's check, low 7).
 fn which_time(event: &[String]) -> String {
-    own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID").map(|l| format!("{}|{}", lines::param(l, "TZID").unwrap_or_default(), lines::value(l).trim())).unwrap_or_default()
+    let Some(line) = own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID") else { return String::new() };
+    let (value, zone) = (lines::value(line).trim().to_string(), lines::param(line, "TZID"));
+    instant_of(&value, zone.as_deref()).map_or_else(|| format!("{}|{value}", zone.unwrap_or_default()), |at| format!("@{at}"))
+}
+
+/// A DATE-TIME as an instant, Unix seconds: in UTC (its Z), or in the zone
+/// it names; a floating time, a date alone or a zone not known here: none.
+fn instant_of(value: &str, zone: Option<&str>) -> Option<i64> {
+    let (civil, utc) = match value.strip_suffix('Z') {
+        Some(civil) => (civil, true),
+        None => (value, false),
+    };
+    let civil = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", civil).ok()?;
+    let zone = if utc { TimeZone::UTC } else { TimeZone::get(zone?).ok()? };
+    civil.to_zoned(zone).ok().map(|z| z.timestamp().as_second())
+}
+
+/// Where Sioul keeps, in your copy of an invitation's event, the SEQUENCE
+/// its organizer sent: what an update is compared with, never the SEQUENCE
+/// of the copy, which an older Sioul raised at each save of your own lines
+/// (review of 36002ea's check, must-fix 6).
+pub const ORGANIZER_SEQUENCE: &str = "X-SIOUL-SEQUENCE";
+
+/// The organizer's SEQUENCE an event of your copy holds (`ORGANIZER_SEQUENCE`); none written yet.
+fn organizers_sequence(event: &[String]) -> Option<i64> {
+    own_lines(event).find(|l| lines::name(l) == ORGANIZER_SEQUENCE).and_then(|l| lines::value(l).trim().parse().ok())
+}
+
+/// An event with the organizer's SEQUENCE kept on its own line (`ORGANIZER_SEQUENCE`), once.
+fn with_organizers_sequence(event: &[String]) -> Vec<String> {
+    let kept: Vec<String> = without_own(event, ORGANIZER_SEQUENCE);
+    with_lines(&kept, &[format!("{ORGANIZER_SEQUENCE}:{}", sequence_of(event))])
+}
+
+/// An event's lines without its own lines of that name (its alarms' kept).
+fn without_own(event: &[String], name: &str) -> Vec<String> {
+    let mut nested = 0usize;
+    event
+        .iter()
+        .enumerate()
+        .filter(|(i, line)| {
+            let line_name = lines::name(line);
+            if *i > 0 && line_name == "BEGIN" {
+                nested += 1;
+            } else if line_name == "END" && nested > 0 {
+                nested -= 1;
+                return true;
+            }
+            !(nested == 0 && line_name == name)
+        })
+        .map(|(_, line)| line.clone())
+        .collect()
 }
 
 fn sequence_of(event: &[String]) -> i64 {
@@ -1668,41 +1722,93 @@ fn with_lines(event: &[String], extra: &[String]) -> Vec<String> {
     out
 }
 
+/// What an invitation's answer did to the copy your calendar holds (`answered_into`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Answered {
+    /// The copy as it is now, to write.
+    Written(String),
+    /// Nothing to change: it holds what the message carries already.
+    Same,
+    /// Older than the copy, by the organizer's SEQUENCE: nothing written.
+    Older,
+    /// Not from the copy's organizer, or for a meeting you organize: nothing written.
+    Refused,
+}
+
 /// An invitation answered (accepted or maybe; "" for an event published,
 /// added as it is), written into the copy your calendar holds already
-/// (`stored_text`), only what the message carries changed: each of its
-/// events (the series, or one time of it) in place of the same one there,
-/// by its RECURRENCE-ID, your own line (`me`) saying `answer`, Sioul's own
-/// lines of the one there kept (the time kept around it, its costs and gain,
-/// your reminder); the other times of the series as they are. One older
-/// than the one there (a lower SEQUENCE) is not written (review of 36002ea,
-/// can-wait 4). None when nothing would change.
-pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str) -> Option<String> {
+/// (`stored_text`): only from the copy's organizer, never for a meeting you
+/// organize (`own`; review of 36002ea's check, low 8). Each of its events not
+/// older than the copy's by the organizer's SEQUENCE (`ORGANIZER_SEQUENCE`;
+/// a copy that keeps none takes it) is written, your own line (`me`) saying
+/// `answer`, Sioul's own lines of the same time there kept (the time kept
+/// around it, its costs and gain, your reminder), the organizer's SEQUENCE
+/// kept. A message that carries the series replaces every time of the copy,
+/// the times it no longer carries gone (its check, must-fix 7); one that
+/// carries single times changes those alone (review of 36002ea, can-wait 4).
+pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str, own: &[String]) -> Answered {
     let mut there = cut(stored_text);
     let sent = cut(&stored(message));
-    let mut changed = false;
-    for event in &sent.events {
-        let time = which_time(event);
-        let found = there.events.iter().position(|e| which_time(e) == time);
-        if found.is_some_and(|i| sequence_of(event) < sequence_of(&there.events[i])) {
-            continue;
-        }
-        let mut new: Vec<String> = event
-            .iter()
-            .map(|l| if !answer.is_empty() && !me.is_empty() && lines::name(l) == "ATTENDEE" && address(lines::value(l)).eq_ignore_ascii_case(me) { with_answer(l, answer) } else { l.clone() })
-            .collect();
-        if let Some(i) = found {
-            let ours: Vec<String> = own_lines(&there.events[i]).filter(|l| lines::name(l).starts_with("X-SIOUL-")).filter(|l| !new.contains(l)).cloned().collect();
-            new = with_lines(&new, &ours);
-            if there.events[i] != new {
-                there.events[i] = new;
-                changed = true;
-            }
-        } else {
-            there.events.push(new);
-            changed = true;
-        }
+    let theirs = there.events.iter().find(|e| which_time(e).is_empty()).or(there.events.first()).map(|e| organizer_of(e)).unwrap_or_default();
+    let from = sent.events.first().map(|e| organizer_of(e)).unwrap_or_default();
+    if !theirs.is_empty() && (theirs != from || own.contains(&theirs)) {
+        return Answered::Refused;
     }
+    let older = |event: &[String], copy: &[String]| organizers_sequence(copy).is_some_and(|known| sequence_of(event) < known);
+    let answered = |event: &[String]| -> Vec<String> {
+        event.iter().map(|l| if !answer.is_empty() && !me.is_empty() && lines::name(l) == "ATTENDEE" && address(lines::value(l)).eq_ignore_ascii_case(me) { with_answer(l, answer) } else { l.clone() }).collect()
+    };
+    // Sioul's own lines of the copy's time of the same instant, carried over.
+    let carried = |event: Vec<String>, copy: Option<&Vec<String>>| -> Vec<String> {
+        let ours: Vec<String> = copy.map(|c| own_lines(c).filter(|l| lines::name(l).starts_with("X-SIOUL-") && lines::name(l) != ORGANIZER_SEQUENCE).filter(|l| !event.contains(l)).cloned().collect()).unwrap_or_default();
+        with_lines(&event, &ours)
+    };
+    let series_there = there.events.iter().position(|e| which_time(e).is_empty());
+    let series_sent = sent.events.iter().find(|e| which_time(e).is_empty());
+    let mut skipped = 0usize;
+    let new_events: Vec<Vec<String>> = match series_sent {
+        // The series, not older: every time of the copy replaced by the message's.
+        Some(series) if !series_there.is_some_and(|i| older(series, &there.events[i])) => sent
+            .events
+            .iter()
+            .map(|event| {
+                let time = which_time(event);
+                let copy = there.events.iter().find(|e| which_time(e) == time);
+                carried(with_organizers_sequence(&answered(event)), copy)
+            })
+            .collect(),
+        // Single times: each in place of the same time there, or added.
+        _ => {
+            let mut events = there.events.clone();
+            for event in &sent.events {
+                let time = which_time(event);
+                let found = events.iter().position(|e| which_time(e) == time);
+                // Older than the same time there. A time the copy holds no
+                // version of yet is never compared with the series: organizers
+                // number a time's SEQUENCE their own way, and a real update
+                // dropped costs more than an old one written (the check's low
+                // 30, left so on purpose).
+                if found.is_some_and(|i| older(event, &events[i])) {
+                    skipped += 1;
+                    continue;
+                }
+                let new = carried(with_organizers_sequence(&answered(event)), found.map(|i| &events[i]));
+                match found {
+                    Some(i) => events[i] = new,
+                    None => events.push(new),
+                }
+            }
+            events
+        }
+    };
+    if series_sent.is_some() && series_there.is_some_and(|i| series_sent.is_some_and(|s| older(s, &there.events[i]))) {
+        return Answered::Older;
+    }
+    if skipped == sent.events.len() && skipped > 0 {
+        return Answered::Older;
+    }
+    let changed = new_events != there.events;
+    there.events = new_events;
     // The zones its times name, those the copy lacks.
     let mut zone: Vec<String> = Vec::new();
     let mut in_zone = false;
@@ -1723,7 +1829,7 @@ pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str) -
             zone.clear();
         }
     }
-    changed.then(|| there.text())
+    if changed { Answered::Written(there.text()) } else { Answered::Same }
 }
 
 /// What a cancellation (METHOD:CANCEL) does to the copy your calendar holds
@@ -1763,21 +1869,44 @@ pub fn cancellation(stored_text: &str, message: &str, own: &[String]) -> Cancell
             let kept: Vec<String> = there.events[i].iter().filter(|l| lines::name(l) != "STATUS").cloned().collect();
             there.events[i] = with_lines(&kept, &["STATUS:CANCELLED".to_string()]);
         } else if let Some(at) = own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID") {
-            // The same time and zone, as EXDATE (RANGE aside: one time alone).
-            let head: Vec<&str> = at.split(':').next().unwrap_or("").split(';').skip(1).filter(|p| !p.to_ascii_uppercase().starts_with("RANGE=")).collect();
-            let params: String = head.iter().map(|p| format!(";{p}")).collect();
+            // The same time and zone, as EXDATE (RANGE aside: one time alone),
+            // its parameters read whole, a quoted zone with its colons kept
+            // (the check of 36002ea, low 29); never twice (low 28).
+            let params: String = lines::params(at)
+                .into_iter()
+                .filter(|(name, _)| name != "RANGE")
+                .map(|(name, value)| format!(";{name}={}", lines::param_value(&value)))
+                .collect();
             let exdate = format!("EXDATE{params}:{}", lines::value(at).trim());
-            there.events[series] = with_lines(&there.events[series], &[exdate]);
+            let same = |l: &&String| lines::name(l) == "EXDATE" && lines::value(l).split(',').any(|v| exdate_time(v.trim(), lines::param(l, "TZID").as_deref()) == exdate_time(lines::value(at).trim(), lines::param(at, "TZID").as_deref()));
+            if !own_lines(&there.events[series]).any(|l| same(&l)) {
+                there.events[series] = with_lines(&there.events[series], &[exdate]);
+            }
         }
     }
     Cancellation::Changed(there.text())
 }
 
+/// An EXDATE's or a RECURRENCE-ID's time, as `which_time` compares them.
+fn exdate_time(value: &str, zone: Option<&str>) -> String {
+    instant_of(value, zone).map_or_else(|| format!("{}|{value}", zone.unwrap_or_default()), |at| format!("@{at}"))
+}
+
 /// Adds an invitation's event to a calendar file, as the organizer sent it,
-/// METHOD removed (RFC 4791 §4.1 forbids it in stored objects).
+/// METHOD removed (RFC 4791 §4.1 forbids it in stored objects), each event's
+/// SEQUENCE kept on Sioul's own line beside it too (`ORGANIZER_SEQUENCE`):
+/// what its next update is compared with.
 pub fn stored(text: &str) -> String {
     let kept: Vec<String> = lines::unfold(text).into_iter().filter(|l| lines::name(l) != "METHOD").collect();
-    lines::fold(&kept)
+    let mut cut = cut(&lines::fold(&kept));
+    for event in &mut cut.events {
+        *event = with_organizers_sequence(event);
+    }
+    if cut.events.is_empty() {
+        return lines::fold(&kept);
+    }
+    // In its order: the head, its events (`Cut::text`); a file with none, as it came.
+    cut.text()
 }
 
 #[cfg(test)]
@@ -2125,31 +2254,55 @@ mod tests {
 
     /// Can-wait 4 of the review of 36002ea: accepting the update of one time
     /// of a series writes that time alone beside the series, your answer in it,
-    /// the series as it was (its rule, your own line); an older update writes
-    /// nothing; the answer to it can be made before anything is written.
+    /// the series as it was (its rule, your own line); the answer to it can be
+    /// made before anything is written. Its check (must-fix 6 and 7, lows 7,
+    /// 8 and 30): an update is compared with the organizer's SEQUENCE Sioul
+    /// keeps (`ORGANIZER_SEQUENCE`), never with one an older Sioul raised; the
+    /// series replaces every time of the copy; times are matched by instant;
+    /// only the copy's organizer updates it, never for your own meeting.
     #[test]
     fn an_answer_to_one_time_writes_that_time_alone() {
-        let answered = answered_into(SERIES, &one_time("REQUEST", 3, ""), "me@example.org", "TENTATIVE").expect("one time written");
+        let me = "me@example.org";
+        let written = |answered: Answered| match answered {
+            Answered::Written(text) => text,
+            other => panic!("written: {other:?}"),
+        };
+        let answered = written(answered_into(SERIES, &one_time("REQUEST", 3, ""), me, "TENTATIVE", &[]));
         let cut_of = cut(&answered);
         assert_eq!(cut_of.events.len(), 2, "{answered}");
         assert_eq!(cut_of.events[0], cut(SERIES).events[0], "the series as it was");
         let time = cut_of.events[1].join("\n");
-        assert!(time.contains("RECURRENCE-ID:20261111T090000Z") && time.contains("DTSTART:20261111T140000Z") && time.contains("PARTSTAT=TENTATIVE"), "{time}");
+        assert!(time.contains("RECURRENCE-ID:20261111T090000Z") && time.contains("DTSTART:20261111T140000Z") && time.contains("PARTSTAT=TENTATIVE") && time.contains("X-SIOUL-SEQUENCE:3"), "{time}");
         assert!(!answered.contains("METHOD:"), "stored without its METHOD");
-        // The same time answered again: replaced in place, never twice.
-        let again = answered_into(&answered, &one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").unwrap();
+        // The same time answered again: replaced in place, never twice; named in its zone, the same instant too.
+        let again = written(answered_into(&answered, &one_time("REQUEST", 3, ""), me, "ACCEPTED", &[]));
         assert_eq!(cut(&again).events.len(), 2);
         assert!(cut(&again).events[1].join("\n").contains("PARTSTAT=ACCEPTED"));
-        // An update of the series older than your copy: nothing written.
-        let older = SERIES.replace("SEQUENCE:2", "SEQUENCE:1").replace("SUMMARY:Review", "SUMMARY:Old review");
-        assert_eq!(answered_into(SERIES, &older.replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST"), "me@example.org", "ACCEPTED"), None);
-        // A newer one of the series: your own line kept in it.
+        let zoned = one_time("REQUEST", 3, "").replace("RECURRENCE-ID:20261111T090000Z", "RECURRENCE-ID;TZID=Europe/Paris:20261111T100000");
+        assert_eq!(cut(&written(answered_into(&answered, &zoned, me, "ACCEPTED", &[]))).events.len(), 2, "one instant, one time");
+        assert_eq!(answered_into(&again, &one_time("REQUEST", 3, ""), me, "ACCEPTED", &[]), Answered::Same);
+        // Against the organizer's SEQUENCE kept: an older update of the series writes nothing.
+        let kept = stored(&SERIES.replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST"));
+        assert!(kept.contains("X-SIOUL-SEQUENCE:2"), "{kept}");
+        let older = SERIES.replace("SEQUENCE:2", "SEQUENCE:1").replace("SUMMARY:Review", "SUMMARY:Old review").replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST");
+        assert_eq!(answered_into(&kept, &older, me, "ACCEPTED", &[]), Answered::Older);
+        // A copy an older Sioul raised (SEQUENCE:4 by your own lines' saves), none kept: the organizer's update written (must-fix 6).
+        let raised = SERIES.replace("SEQUENCE:2", "SEQUENCE:4");
+        let moved = SERIES.replace("SEQUENCE:2", "SEQUENCE:3").replace("DTSTART:20261104T090000Z", "DTSTART:20261104T100000Z").replace("X-SIOUL-BEFORE:20\r\n", "");
+        let renewed = written(answered_into(&raised, &moved, me, "ACCEPTED", &[]));
+        assert!(renewed.contains("DTSTART:20261104T100000Z") && renewed.contains("X-SIOUL-BEFORE:20") && renewed.contains("X-SIOUL-SEQUENCE:3"), "{renewed}");
+        // The series anew: every time of the copy replaced, the one it no longer carries gone (must-fix 7).
         let newer = SERIES.replace("SEQUENCE:2", "SEQUENCE:4").replace("SUMMARY:Review", "SUMMARY:Review, new room").replace("X-SIOUL-BEFORE:20\r\n", "");
-        let renewed = answered_into(SERIES, &newer, "me@example.org", "ACCEPTED").unwrap();
+        let renewed = written(answered_into(&answered, &newer, me, "ACCEPTED", &[]));
+        assert_eq!(cut(&renewed).events.len(), 1, "the time it dropped, gone: {renewed}");
         assert!(renewed.contains("SUMMARY:Review\\, new room") || renewed.contains("SUMMARY:Review, new room"), "{renewed}");
         assert!(renewed.contains("X-SIOUL-BEFORE:20"), "your own line kept: {renewed}");
+        // Only from its organizer, never for your own meeting.
+        let other = one_time("REQUEST", 5, "").replace("ORGANIZER:mailto:boss@example.org", "ORGANIZER:mailto:paul@example.org");
+        assert_eq!(answered_into(SERIES, &other, me, "ACCEPTED", &[]), Answered::Refused);
+        assert_eq!(answered_into(SERIES, &one_time("REQUEST", 5, ""), me, "ACCEPTED", &["boss@example.org".to_string()]), Answered::Refused);
         // The answer to one time alone is made, its RECURRENCE-ID in it.
-        let reply = reply(&one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").expect("an answer to one time");
+        let reply = reply(&one_time("REQUEST", 3, ""), me, "ACCEPTED").expect("an answer to one time");
         assert!(reply.contains("RECURRENCE-ID:20261111T090000Z") && reply.contains("PARTSTAT=ACCEPTED") && reply.contains("METHOD:REPLY"), "{reply}");
     }
 
@@ -2161,8 +2314,15 @@ mod tests {
         let own = vec!["me@example.org".to_string()];
         let Cancellation::Changed(left) = cancellation(SERIES, &one_time("CANCEL", 3, "STATUS:CANCELLED\r\n"), &own) else { panic!("one time left out") };
         assert!(left.contains("EXDATE:20261111T090000Z") && left.contains("RRULE:FREQ=WEEKLY") && left.contains("X-SIOUL-BEFORE:20"), "{left}");
+        // Cancelled again (a second Remove, another device): never a second EXDATE (the check's low 28).
+        let Cancellation::Changed(twice) = cancellation(&left, &one_time("CANCEL", 3, "STATUS:CANCELLED\r\n"), &own) else { panic!("left out once") };
+        assert_eq!(twice.matches("EXDATE").count(), 1, "{twice}");
+        // A zone quoted, its colons inside: kept whole (low 29).
+        let quoted = one_time("CANCEL", 3, "STATUS:CANCELLED\r\n").replace("RECURRENCE-ID:20261111T090000Z", "RECURRENCE-ID;TZID=\"(UTC+01:00) Amsterdam, Berlin\":20261111T100000");
+        let Cancellation::Changed(zoned) = cancellation(SERIES, &quoted, &own) else { panic!("one time left out") };
+        assert!(zoned.contains("EXDATE;TZID=\"(UTC+01:00) Amsterdam, Berlin\":20261111T100000"), "{zoned}");
         // That time changed in your copy already: its STATUS cancelled there.
-        let with_time = answered_into(SERIES, &one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").unwrap();
+        let Answered::Written(with_time) = answered_into(SERIES, &one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED", &[]) else { panic!("one time written") };
         let Cancellation::Changed(left) = cancellation(&with_time, &one_time("CANCEL", 4, ""), &own) else { panic!("one time cancelled") };
         assert!(cut(&left).events[1].iter().any(|l| l == "STATUS:CANCELLED") && cut(&left).events[0] == cut(SERIES).events[0], "{left}");
         // The series cancelled by its organizer: the copy goes.

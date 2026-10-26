@@ -429,6 +429,8 @@ mod tests {
     /// which the sharing would carry to every device.
     #[test]
     fn an_answered_encrypted_message_stays_encrypted_beside_the_draft() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let tsk = pgp::stand_in_key("Me <me@example.org>").unwrap();
         let keys = Keys { own: pgp::certificates_in(&tsk), ..Keys::default() };
         let clear = b"From: Jane <jane@example.org>\r\nTo: Me <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-b@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is here.\r\n";
@@ -644,6 +646,8 @@ mod tests {
     /// forwards, and the copy stays as it came.
     #[test]
     fn a_draft_opened_without_the_key_says_so_and_stays_encrypted() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let elsewhere = pgp::certificates_in(&pgp::stand_in_key("Card Holder <me@example.org>").unwrap());
         let sealed = pgp::seal_message(LEASE, &[&elsewhere[0]]).unwrap();
         let mut draft = Draft::new("me");

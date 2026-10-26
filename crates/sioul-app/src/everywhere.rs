@@ -253,6 +253,8 @@ pub(crate) static FILES: Mutex<()> = Mutex::new(());
 /// Tests only: those files taken away, for a test to start from none.
 #[cfg(test)]
 pub(crate) fn files_cleared() {
+    // Deletes where Sioul reads: never the person's own (review of 36002ea's check, A2).
+    sioul_core::config::stand_ins_only();
     for path in [Switch::default_path(), Overrides::default_path(), rules::gone_path(), sioul_core::appnotes::Ledger::default_path(), sioul_core::appnotes::Choices::default_path()] {
         let _ = std::fs::remove_file(path);
     }

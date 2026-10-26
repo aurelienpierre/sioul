@@ -31,13 +31,13 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The test home: its root, and its configuration file.
-struct Home {
+pub(crate) struct Home {
     root: PathBuf,
     config: PathBuf,
 }
 
 /// Made once, before any test reads a path: every test starts here.
-fn home() -> &'static Home {
+pub(crate) fn home() -> &'static Home {
     static HOME: OnceLock<Home> = OnceLock::new();
     HOME.get_or_init(|| {
         forget_old_homes();

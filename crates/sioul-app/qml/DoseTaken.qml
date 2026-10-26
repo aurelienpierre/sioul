@@ -20,8 +20,9 @@ Dialog {
     property string key: ""
     property var info: null
     property string problem: ""
-    // Marked taken already, when ("08:03"): said, and no second Taken offered
-    // (review of 36002ea, can-wait 1); "" when not.
+    // Marked taken already, when ("08:03"): said, its Taken kept beside it,
+    // which writes the mark again at the time given (a time corrected too),
+    // never a second move (review of 36002ea's check, must-fix 1); "" when not.
     readonly property string marked: dialog.info !== null ? (dialog.info.taken || "") : ""
 
     // Answered, taken or not: the pages showing doses read them again.
@@ -74,7 +75,6 @@ Dialog {
             color: dialog.theme.text
         }
         RowLayout {
-            visible: dialog.marked === ""
             spacing: 8
 
             Label {
@@ -123,7 +123,6 @@ Dialog {
             anchors.fill: parent
 
             Button {
-                visible: dialog.marked === ""
                 text: dialog.sioul.text("health-taken")
                 highlighted: true
                 onClicked: dialog.taken()

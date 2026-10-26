@@ -1199,6 +1199,8 @@ mod tests {
     /// another task, is said.
     #[test]
     fn steps_imported_in_order_and_moved() {
+        // The tests' own home, whichever test comes first (review of 36002ea's check, A2), then the guard.
+        crate::mcp::tests::home();
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
@@ -1244,6 +1246,8 @@ mod tests {
     /// its block taken out, once; imported again, nothing changes.
     #[test]
     fn an_appointment_in_a_plan_file_is_an_event_said_so() {
+        // The tests' own home, whichever test comes first (review of 36002ea's check, A2), then the guard.
+        crate::mcp::tests::home();
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };

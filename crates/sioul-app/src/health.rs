@@ -29,6 +29,12 @@ fn load() -> Health {
     load_said().0
 }
 
+/// The meals, naps and night as the doses read them (`load`): the last read
+/// when the file does not read here.
+pub(crate) fn needs() -> sioul_core::needs::Needs {
+    load().needs
+}
+
 /// The health file, and whether it is there but could not be read. A file
 /// that reads is kept beside it as last read (`health.toml.last-read`,
 /// written when it changed); one that does not read gives that copy
@@ -47,14 +53,23 @@ fn load_said() -> (Health, bool) {
 /// (`alarm_decide`): never silenced by a file that does not read.
 fn load_known() -> Option<(Health, bool)> {
     let path = Health::default_path();
-    match Health::read(&path) {
-        Ok(health) => {
-            keep_last_read(&path);
+    match Health::read_bytes(&path) {
+        Ok((health, bytes)) => {
+            keep_last_read(&path, &bytes);
             Some((health, false))
         }
         Err(_) => {
             let _ = Health::load(&path);
-            last_read(&path).map(|health| (health, true))
+            let mut copy = last_read(&path)?;
+            // Mended from the doses' record in memory, nothing written: the
+            // moves your devices made since it was read, and those taken back,
+            // so that it rings and marks the times they hold (review of
+            // 36002ea's check, must-fix 2). One structural rule: the record
+            // holds every move; each device, its file read or not, follows it.
+            if let Ok(state) = HealthState::read(&HealthState::default_path()) {
+                copy.mend_shifts(&state);
+            }
+            Some((copy, true))
         }
     }
 }
@@ -65,25 +80,34 @@ fn last_read_path(path: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// The health file's bytes kept beside it as last read, when they changed
-/// since: one look at its content a read, one write a change.
-fn keep_last_read(path: &std::path::Path) {
+/// since: the very bytes that read (`Health::read_bytes`), never a second
+/// look at the file; written as the file is, synced; never of no bytes (no
+/// file yet: nothing to keep) (review of 36002ea's check, A2).
+fn keep_last_read(path: &std::path::Path, bytes: &[u8]) {
     static KEPT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-    let Ok(bytes) = std::fs::read(path) else { return };
-    let hash = sioul_core::vdir::content_hash(&bytes);
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return;
+    }
+    let hash = sioul_core::vdir::content_hash(bytes);
     let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let copy = last_read_path(path);
     if kept.as_deref() == Some(hash.as_str()) && copy.exists() {
         return;
     }
-    if std::fs::read(&copy).ok().as_deref() != Some(bytes.as_slice()) && sioul_sync::share::write_atomically(&copy, &bytes).is_err() {
+    if std::fs::read(&copy).ok().as_deref() != Some(bytes) && sioul_core::health::write_synced(&copy, bytes).is_err() {
         return;
     }
     *kept = Some(hash);
 }
 
-/// The health file as last read here (`keep_last_read`); none kept yet.
+/// The health file as last read here (`keep_last_read`); none kept yet, and
+/// never a copy of no bytes read as no medicines.
 fn last_read(path: &std::path::Path) -> Option<Health> {
-    toml::from_str(&std::fs::read_to_string(last_read_path(path)).ok()?).ok()
+    let text = std::fs::read_to_string(last_read_path(path)).ok()?;
+    if text.trim().is_empty() {
+        return None;
+    }
+    toml::from_str(&text).ok()
 }
 
 /// A reminder's words when the health file does not read here: its doses
@@ -534,7 +558,10 @@ fn capitalized(text: &str) -> String {
 /// The health page, as JSON: the week of the day it shows, and what only
 /// today says; the events whose deletion waits (`waiting`) left out.
 pub(crate) fn page(waiting: &Waiting) -> String {
-    let (health, unreadable) = load_said();
+    let known = load_known();
+    // As last known only when its last read is what is shown (review of 36002ea's check, low 17).
+    let copy = known.as_ref().is_some_and(|(_, last_known)| *last_known);
+    let (health, unreadable) = known.unwrap_or_else(|| (Health::default(), true));
     let state = record();
     let knowledge = know();
     let now = Zoned::now();
@@ -545,9 +572,9 @@ pub(crate) fn page(waiting: &Waiting) -> String {
     json(&PageView {
         any: unreadable || needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
         // Its medicines as last read, when a copy was kept; else none shown.
-        unreadable: if unreadable { tr().text(if last_read_path(&Health::default_path()).exists() { "health-last-known" } else { "health-unreadable" }, None) } else { String::new() },
+        unreadable: if unreadable { tr().text(if copy { "health-last-known" } else { "health-unreadable" }, None) } else { String::new() },
         week,
-        missed: missed_rows(&health, &state, &told().unwrap_or_default(), &knowledge, &now, tr()),
+        missed: with_lately(missed_rows(&health, &state, &told().unwrap_or_default(), &knowledge, &now, tr()), &health, &state, &now),
         shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
         reminded_there: [
             REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
@@ -954,6 +981,20 @@ fn note_minute(record: &mut HealthState, reminded: &[String], unshown: &[String]
 struct PorchDoses {
     due: Vec<DoseRow>,
     closed: Vec<DoseRow>,
+    /// Nothing read here, the health file nor its last read: said, never an
+    /// empty list read as no doses (review of 36002ea's check, low 19).
+    note: String,
+}
+
+/// Rows of doses with the safety net of a medicine taken every few hours
+/// said first in their doubt (`taken_lately`).
+fn with_lately(mut rows: Vec<DoseRow>, health: &Health, state: &HealthState, now: &Zoned) -> Vec<DoseRow> {
+    for row in &mut rows {
+        if let Some(said) = taken_lately(&row.key, health, state, now) {
+            row.doubt = if row.doubt.is_empty() { said } else { format!("{said} {}", row.doubt) };
+        }
+    }
+    rows
 }
 
 /// `records` and `me` (this device's id): today's doses whose answers differ
@@ -989,17 +1030,22 @@ fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, told
         }
     }
     due.sort_by_key(|row| due_of(&row.key).unwrap_or(0));
-    PorchDoses { due, closed: if heard { missed_rows(health, state, told, knowledge, now, words) } else { Vec::new() } }
+    PorchDoses { due, closed: if heard { missed_rows(health, state, told, knowledge, now, words) } else { Vec::new() }, note: String::new() }
 }
 
 /// The Porch's doses, as JSON (`PorchDoses`), made off the window's thread.
 pub(crate) fn missed() -> String {
-    let (health, last_known) = load_said();
+    let Some((health, last_known)) = load_known() else {
+        return json(&PorchDoses { note: tr().text("health-unreadable", None), ..PorchDoses::default() });
+    };
     if health.medicines.is_empty() {
         return json(&PorchDoses::default());
     }
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
-    let mut doses = porch_doses(&health, &record(), &records(), &told().unwrap_or_default(), &this_device(), &know(), &Zoned::now(), crate::hours::doses_silent(), heard, tr());
+    let (state, now) = (record(), Zoned::now());
+    let mut doses = porch_doses(&health, &state, &records(), &told().unwrap_or_default(), &this_device(), &know(), &now, crate::hours::doses_silent(), heard, tr());
+    doses.due = with_lately(doses.due, &health, &state, &now);
+    doses.closed = with_lately(doses.closed, &health, &state, &now);
     // The health file not read here: each dose as last known, to check first (review of 36002ea, can-wait 3).
     if last_known {
         let said = tr().text("dose-last-known", None);
@@ -1572,23 +1618,27 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     // The medicine taken out, or its doses moved: this one is no more, nor its reminder.
     let Some(dose) = health.doses(&start, &end).into_iter().find(|d| d.key == key) else {
         // Nothing read here, the health file nor its last read: the alarm
-        // Android kept rings, said in doubt, unless the dose was marked or
-        // your sleep keeps doses silent; shown once, looked at again while it
-        // may show (review of 36002ea, can-wait 3).
-        if nothing_read && !state.taken.contains_key(key) && !state.not_taken.contains_key(key) {
+        // Android kept rings, said in doubt, unless the dose was marked, its
+        // time is past the Porch's hours or a recorded move of its medicine
+        // replaced it, or your sleep keeps doses silent; shown as the alarm
+        // that reads shows it: recorded reminded and said to your other
+        // devices, once across restarts (review of 36002ea, can-wait 3; its
+        // check, must-fix 5).
+        let due = due_of(key).unwrap_or(stamp);
+        if nothing_read && !state.taken.contains_key(key) && !state.not_taken.contains_key(key) && stamp - due <= MISSED_HOURS * 3600 && !replaced_by_move(key, &state) {
             if crate::hours::doses_silent()
                 && let Some(waking) = crate::hours::waking()
             {
                 return answer(false, "", "", waking);
             }
-            let due = due_of(key).unwrap_or(stamp);
-            let again = if stamp < due + SHOWN_WATCH { stamp + SHOWN_EVERY } else { 0 };
-            let shown_before = SENT.lock().map(|mut sent| !sent.insert(key.to_string())).unwrap_or(false);
-            if shown_before || state.reminded.contains_key(key) {
+            if state.reminded.contains_key(key) || SENT.lock().is_ok_and(|sent| sent.contains(key)) {
+                let again = if stamp < due + SHOWN_WATCH { stamp + SHOWN_EVERY } else { 0 };
                 return answer(false, "", "", again);
             }
             let at = Timestamp::from_second(due).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
-            return answer(true, "", &format!("{at}. {}", tr().text("dose-last-known", None)), again);
+            let lately = marked_lately_said(key, &state, &now).map(|said| format!(" {said}")).unwrap_or_default();
+            remind_shown(key, stamp, _held);
+            return answer(true, "", &format!("{at}. {}{lately}", tr().text("dose-last-known", None)), stamp + SHOWN_EVERY);
         }
         crate::alarms::remove_reminder(key);
         return answer(false, "", "", 0);
@@ -1656,12 +1706,24 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     let named = named(&dose);
     let (title, body) = if doubt.is_empty() { (named, dose.at.strftime("%H:%M").to_string()) } else { (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M"))) };
     let (title, body) = as_last_known(&dose, title, body, last_known);
+    let body = match taken_lately(key, &health, &state, &now) {
+        Some(said) => format!("{body} {said}"),
+        None => body,
+    };
+    remind_shown(key, stamp, _held);
+    // Shown: looked at again while it may still be shown (a mark elsewhere takes it away).
+    answer(true, &title, &body, stamp + SHOWN_EVERY)
+}
+
+/// A reminder the phone's alarm shows, noted before it shows: in a session
+/// of its own, Sioul not on the screen (`devices::receiver`): up, the
+/// reminder and the dose's record (the canary) noted, sent, down. Your other
+/// devices know it was reminded: they do not remind it again. `held`: the
+/// record's hold, let go once noted.
+fn remind_shown(key: &str, stamp: i64, held: std::sync::MutexGuard<'static, ()>) {
     if let Ok(mut sent) = SENT.lock() {
         sent.insert(key.to_string());
     }
-    // A session of its own, Sioul not on the screen (`devices::receiver`): up,
-    // the reminder and the dose's record (the canary) noted, sent, down. Your
-    // other devices know it was reminded: they do not remind it again.
     crate::devices::receiver(move || {
         let _ = change(|record| {
             record.reminded.insert(key.to_string(), stamp);
@@ -1672,11 +1734,46 @@ pub(crate) fn alarm_decide(key: &str) -> String {
             mine.shown = stamp;
         });
         open_canaries(&[key.to_string()], stamp);
-        drop(_held);
+        drop(held);
         let _ = crate::share::exchange_here(false);
     });
-    // Shown: looked at again while it may still be shown (a mark elsewhere takes it away).
-    answer(true, &title, &body, stamp + SHOWN_EVERY)
+}
+
+/// Whether a dose's time is one a recorded move of its medicine replaced:
+/// its medicine started again after it, from a dose taken before it
+/// (`HealthState::moved`), so that its schedule no longer holds it; known
+/// without the health file (review of 36002ea's check, must-fix 5).
+fn replaced_by_move(key: &str, state: &HealthState) -> bool {
+    let (Some((id, _)), Some(due)) = (key.rsplit_once('@'), due_of(key)) else { return false };
+    state.moved.iter().any(|(taken, [_, after])| taken.rsplit_once('@').is_some_and(|(other, _)| other == id) && due_of(taken).is_some_and(|first| first < due) && due < *after)
+}
+
+/// The latest mark of a dose's medicine in the record, other than its own:
+/// the moment it was marked taken (Unix seconds), within the Porch's hours.
+fn latest_mark(key: &str, state: &HealthState, now: i64) -> Option<i64> {
+    let (id, _) = key.rsplit_once('@')?;
+    state.taken.iter().filter(|(other, at)| other.as_str() != key && other.rsplit_once('@').is_some_and(|(medicine, _)| medicine == id) && **at <= now && now - **at <= MISSED_HOURS * 3600).map(|(_, at)| *at).max()
+}
+
+/// The safety net of a medicine taken every few hours (review of 36002ea's
+/// check, A2), wherever one of its doses is reminded or shown: its latest
+/// mark in the record, when it is fewer hours before than the hours between
+/// two doses: when it was taken, and from when the next may be. None else.
+fn taken_lately(key: &str, health: &Health, state: &HealthState, now: &Zoned) -> Option<String> {
+    let (id, _) = key.rsplit_once('@')?;
+    let Schedule::Hours { hours, .. } = health.medicines.iter().find(|m| m.id == id)?.schedule else { return None };
+    let step = i64::from(hours) * 3600;
+    let stamp = now.timestamp().as_second();
+    let last = latest_mark(key, state, stamp)?;
+    let at = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    (stamp - last < step).then(|| say("dose-taken-lately", &[("time", at(last)), ("next", at(last + step))]))
+}
+
+/// The same when nothing reads here, its hours not known: the latest mark of its medicine, said.
+fn marked_lately_said(key: &str, state: &HealthState, now: &Zoned) -> Option<String> {
+    let last = latest_mark(key, state, now.timestamp().as_second())?;
+    let at = Timestamp::from_second(last).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    Some(say("dose-last-marked", &[("time", at)]))
 }
 
 /// "Taken", pressed on the phone's reminder. More than half an hour late, when
@@ -1693,8 +1790,8 @@ pub(crate) fn alarm_taken(key: &str) -> String {
             return serde_json::json!({ "done": false, "open": true, "line": problem }).to_string();
         }
         let _ = crate::share::exchange_here(false);
-        // Marked, its next doses unmoved (its file not read here): said (review of 36002ea, can-wait 2).
-        let line = if unmoved(key) { tr().text("dose-next-unmoved", None) } else { say("health-taken-at", &[("time", Zoned::now().strftime("%H:%M").to_string())]) };
+        // Marked, nothing read here to move its next doses: said (review of 36002ea, can-wait 2; its check, low 22).
+        let line = unmoved_note().unwrap_or_else(|| say("health-taken-at", &[("time", Zoned::now().strftime("%H:%M").to_string())]));
         serde_json::json!({ "done": true, "open": false, "line": line }).to_string()
     })
 }
@@ -1747,14 +1844,23 @@ fn dose_open(health: &Health, records: Option<(&HealthState, &DoseRecords)>, now
 /// as empty: every dose is then not known. Whether doses show while you
 /// sleep or pause is the card's frames' to say.
 pub(crate) fn card_doses(now: &Zoned) -> Vec<crate::homecard::Dose> {
-    let (health, last_known) = load_said();
+    let known = load_known();
+    // The health file not read here, its last read or nothing: said first,
+    // until midnight, its doses as last known, every one "check" (review of
+    // 36002ea, can-wait 3; its check, low 19).
+    let unread = known.as_ref().is_none_or(|(_, last_known)| *last_known);
+    let (health, last_known) = known.unwrap_or_else(|| (Health::default(), true));
+    let said = unread.then(|| {
+        let stamp = now.timestamp().as_second();
+        let midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(stamp + 86_400, |m| m.timestamp().as_second());
+        crate::homecard::Dose { name: tr().text("health-card-unread", None), time: String::new(), at: stamp, until: midnight, known_until: 0 }
+    });
     if health.medicines.is_empty() {
-        return Vec::new();
+        return said.into_iter().collect();
     }
     let read = HealthState::read(&HealthState::default_path());
-    // The health file not read here: its doses as last known, every one "check" (review of 36002ea, can-wait 3).
     let readable = read.is_ok() && !last_known;
-    doses_for_card(&health, &read.unwrap_or_default(), &records(), readable, &know(), now)
+    said.into_iter().chain(doses_for_card(&health, &read.unwrap_or_default(), &records(), readable, &know(), now)).collect()
 }
 
 /// `card_doses`, from what was read. A dose answered differently on two
@@ -2065,7 +2171,19 @@ fn open_canaries(keys: &[String], now: i64) {
 
 /// This device's id in the sharing ("" before it has one).
 fn this_device() -> String {
+    #[cfg(test)]
+    if let Some(id) = DEVICE.with(|device| device.borrow().clone()) {
+        return id;
+    }
     crate::share::vault().map(|(id, _)| id).unwrap_or_default()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// This device's id in a test's thread, when it says one (two devices
+    /// played in one test): never the sharing's file, which other tests read
+    /// beside it (review of 36002ea's check, A2: here.toml rewritten under them).
+    static DEVICE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 /// What this computer saw of your other devices, for the doses: kept here
@@ -3018,52 +3136,51 @@ static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub(crate) fn may_answer(key: &str, now: &Zoned) -> Result<(), String> {
     let Some(due) = due_of(key) else { return Err(tr().text("dose-not-known", None)) };
     let today_ends = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map(|z| z.timestamp().as_second());
-    // A dose due within a minute after midnight is today's still: its reminder,
-    // and the question it opens, can come a minute before it (review of 36002ea, low 17).
+    // A dose due within a minute of now is answered as today's: its reminder,
+    // and the question it opens, can come a minute before it, a minute before
+    // midnight too (review of 36002ea, low 17); never a dose of tomorrow
+    // answered all day long (the check's low 24).
     match today_ends {
-        Some(end) if due >= end + 60 => Err(tr().text("dose-day-to-come", None)),
+        Some(end) if due >= end && due > now.timestamp().as_second() + 60 => Err(tr().text("dose-day-to-come", None)),
         _ => Ok(()),
     }
 }
 
 /// The window's Taken (or its taking back): a dose of a day to come refused
 /// first when taking (`may_answer`; a taking back is never refused), then
-/// `set_taken`, through which the alarms answer alone. Marked, a medicine
-/// taken every few hours whose file does not read here says that its next
-/// doses could not be moved. Returns what went wrong or what to know, else "".
+/// `set_taken`, through which the alarms answer alone. Returns what went
+/// wrong, else "" (what to know besides: `unmoved_note`).
 pub(crate) fn window_taken(key: &str, taken: bool, now: &Zoned) -> String {
     if taken && let Err(problem) = may_answer(key, now) {
         return problem;
     }
-    let problem = set_taken(key, taken);
-    if problem.is_empty() && taken && unmoved(key) {
-        return tr().text("dose-next-unmoved", None);
-    }
-    problem
+    set_taken(key, taken)
 }
 
-/// Whether a dose's next ones could not be moved: its medicine counted from
-/// its last take, its file not read here (it is never written over).
-fn unmoved(key: &str) -> bool {
-    let Some((id, _)) = key.rsplit_once('@') else { return false };
-    Health::read(&Health::default_path()).is_err() && load().medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { .. }))
+/// What a Taken written says besides, when nothing reads here (the health
+/// file nor its last read): its next doses could not be moved, if its
+/// medicine moves them. With the last read, the move is recorded beside the
+/// mark and made everywhere (`set_taken`): nothing to say.
+pub(crate) fn unmoved_note() -> Option<String> {
+    load_known().is_none().then(|| tr().text("dose-next-unmoved", None))
 }
 
-/// A dose marked taken already, Taken again: no second mark and no new move
-/// of its next doses, but this device's own answer when it has none in the
-/// doses' records, so that a take back written earlier on another device
-/// leaves the dose taken (review of 36002ea, must-fix 1). Returns what went
-/// wrong, else "".
-fn taken_again(key: &str) -> String {
-    let me = this_device();
-    if me.is_empty() {
-        return String::new();
+/// A dose marked taken already, Taken again (on time, or late at the time
+/// said, `at`): its mark written again at this Taken's time, and this
+/// device's TAKEN answer anew, never a move (the move stays as the first
+/// Taken made it). Each is a newer word than a take back written elsewhere
+/// before it, which then never leaves the dose open; a time typed later
+/// corrects the mark's (review of 36002ea's check, must-fix 1, low 25).
+/// Returns what went wrong, else "".
+fn taken_again(key: &str, at: i64) -> String {
+    let problem = change(|state| {
+        state.taken.insert(key.to_string(), at);
+        state.not_taken.remove(key);
+    });
+    if !problem.is_empty() {
+        return problem;
     }
-    let said = DoseRecords::read(&DoseRecords::default_path()).ok().is_some_and(|records| records.dose.get(key).and_then(|r| r.answer.get(&me)).is_some_and(|a| a.state == sioul_core::doses::TAKEN));
-    if said {
-        return String::new();
-    }
-    record_answer(key, sioul_core::doses::TAKEN, Timestamp::now().as_second(), false)
+    record_answer(key, sioul_core::doses::TAKEN, at, false)
 }
 
 /// A dose not taken, said afterwards: asked no more. Returns what went wrong, else "".
@@ -3147,21 +3264,22 @@ pub(crate) fn taken_late(key: &str, time: &str) -> String {
         at -= 86_400;
     }
     let _held = state_held();
-    // Marked already (the phone's "Taken at 08:03" line tapped later): no
-    // second mark nor move, its own answer only (review of 36002ea, can-wait 1).
+    // Marked already (the phone's "Taken at 08:03" line tapped later, or a
+    // time corrected): the mark written again at the time said, and this
+    // device's answer anew, no second move (review of 36002ea, can-wait 1;
+    // its check, must-fix 1).
     if HealthState::read(&HealthState::default_path()).is_ok_and(|state| state.taken.contains_key(key)) {
-        return taken_again(key);
+        return taken_again(key, at);
     }
-    // The doses it moves, moved in the medicines as the file holds them now,
-    // under its lock; a file that does not read: marked all the same, unmoved.
-    let moved = match change_health(|health| Ok(health.taken_at(key, at))) {
+    let moved = match moved_by(key, at) {
         Ok(moved) => moved,
-        Err(_) if Health::read(&Health::default_path()).is_err() => None,
         Err(e) => return e,
     };
     let problem = change(|state| {
         state.taken.insert(key.to_string(), at);
         state.not_taken.remove(key);
+        // Taken anew: a move taken back before is passed.
+        state.back.remove(key);
         if let Some((before, after)) = moved {
             state.moved.insert(key.to_string(), [before, after]);
         }
@@ -3176,32 +3294,56 @@ pub(crate) fn taken_late(key: &str, time: &str) -> String {
     {
         let _ = change_health(|health| Ok(health.taken_back(key, before, after)));
     }
-    if problem.is_empty() && unmoved(key) {
-        return tr().text("dose-next-unmoved", None);
-    }
     problem
+}
+
+/// The next doses a Taken at `at` moves (a medicine taken every few hours:
+/// `Health::taken_at`), where they started before and after: moved in the
+/// health file as it holds them now, under its lock. A file that does not
+/// read is never written over: the move is made on its last read, mended
+/// from the record (`load_known`), and recorded beside the mark alone
+/// (`HealthState::moved`), so that each device whose file reads makes it
+/// at its next minute (`Health::mend_shifts`) and this one shows it
+/// (review of 36002ea's check, must-fix 3). Nothing read at all: none.
+fn moved_by(key: &str, at: i64) -> Result<Option<(i64, i64)>, String> {
+    match change_health(|health| Ok(health.taken_at(key, at))) {
+        Ok(moved) => Ok(moved),
+        Err(_) if Health::read(&Health::default_path()).is_err() => Ok(load_known().and_then(|(mut copy, _)| copy.taken_at(key, at))),
+        Err(e) => Err(e),
+    }
 }
 
 /// What the late dose's question shows, as JSON: {name, dose, due, now, hours}.
 pub(crate) fn dose_info(key: &str) -> String {
-    let health = load();
+    let known = load_known();
     let now = Zoned::now();
     let (Some((id, _)), Some(due)) = (key.rsplit_once('@'), due_of(key)) else { return "null".into() };
-    let Some(medicine) = health.medicines.iter().find(|m| m.id == id) else { return "null".into() };
+    let medicine = known.as_ref().and_then(|(health, _)| health.medicines.iter().find(|m| m.id == id));
+    // Its medicine taken out: no question. Nothing read here at all (the file
+    // nor its last read): asked all the same, from the key alone, so that a
+    // late Taken is never lost (review of 36002ea's check, must-fix 5).
+    if known.is_some() && medicine.is_none() {
+        return "null".into();
+    }
     let due = Timestamp::from_second(due).map(|t| t.to_zoned(now.time_zone().clone())).unwrap_or_else(|_| now.clone());
-    let hours = match medicine.schedule {
-        Schedule::Hours { hours, .. } => hours,
+    let hours = match medicine.map(|m| &m.schedule) {
+        Some(Schedule::Hours { hours, .. }) => *hours,
         _ => 0,
     };
+    let dose = match (&known, medicine) {
+        (Some((health, _)), Some(medicine)) => health.amount_of(key, now.time_zone()).unwrap_or_else(|| medicine.dose.clone()),
+        _ => String::new(),
+    };
     serde_json::json!({
-        "name": medicine.short_name(),
-        "dose": health.amount_of(key, now.time_zone()).unwrap_or_else(|| medicine.dose.clone()),
+        "name": medicine.map_or_else(|| id.to_string(), |m| m.short_name()),
+        "dose": dose,
         "due": if due.date() == now.date() { due.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(due.date()), due.strftime("%H:%M")) },
         "now": now.strftime("%H:%M").to_string(),
         // Every few hours: the next dose comes that many hours after the one taken.
         "hours": hours,
         // Marked taken already (the phone's "Taken at 08:03" line tapped later): when, said
-        // instead of a second Taken (review of 36002ea, can-wait 1); "" when not.
+        // beside the Taken that writes it again, a time corrected too (review of 36002ea,
+        // can-wait 1; its check, must-fix 1); "" when not.
         "taken": HealthState::read(&HealthState::default_path()).ok().and_then(|state| state.taken.get(key).copied()).and_then(|at| Timestamp::from_second(at).ok()).map(|at| {
             let at = at.to_zoned(now.time_zone().clone());
             if at.date() == now.date() { at.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(at.date()), at.strftime("%H:%M")) }
@@ -3211,21 +3353,22 @@ pub(crate) fn dose_info(key: &str) -> String {
 }
 
 /// A dose marked taken, or not, as it happens: taken every few hours, the
-/// next doses come that many hours after now; a mark taken back puts them
-/// back. Taken again, a dose already marked taken writes nothing: no second
-/// time, no new move of its next doses (which taking it back must restore),
-/// no second answer. Returns what went wrong, else "".
+/// next doses come that many hours after now (`moved_by`: recorded beside
+/// the mark, made on every device); a mark taken back puts them back, the
+/// move kept in the record as taken back (`HealthState::back`) for every
+/// device to put back, its file read here or not (review of 36002ea's
+/// check, must-fix 4). Taken again, a dose already marked taken: its mark
+/// and this device's answer written anew, no second move (`taken_again`).
+/// Returns what went wrong, else "".
 pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let _held = state_held();
-    if taken && HealthState::read(&HealthState::default_path()).is_ok_and(|state| state.taken.contains_key(key)) {
-        return taken_again(key);
-    }
     let now = Timestamp::now().as_second();
+    if taken && HealthState::read(&HealthState::default_path()).is_ok_and(|state| state.taken.contains_key(key)) {
+        return taken_again(key, now);
+    }
     let shift = if taken {
-        match change_health(|health| Ok(health.taken_at(key, now))) {
+        match moved_by(key, now) {
             Ok(shift) => shift,
-            // Its file not read here: never written over; the mark written all the same, its next doses unmoved.
-            Err(_) if Health::read(&Health::default_path()).is_err() => None,
             Err(e) => return e,
         }
     } else {
@@ -3235,16 +3378,23 @@ pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let problem = change(|state| {
         if taken {
             state.taken.insert(key.to_string(), now);
+            // Taken anew: a move taken back before is passed.
+            state.back.remove(key);
             if let Some((before, after)) = shift {
                 state.moved.insert(key.to_string(), [before, after]);
             }
         } else {
             state.taken.remove(key);
-            if let Ok(mut moved) = moved.lock() {
-                *moved = state.moved.remove(key);
+            if let Some([before, after]) = state.moved.remove(key) {
+                state.back.insert(key.to_string(), [before, after, now]);
+                if let Ok(mut moved) = moved.lock() {
+                    *moved = Some([before, after]);
+                }
             }
         }
     });
+    // Put back here at once where the file reads; where it does not, the
+    // record's word does it on each device whose file reads.
     if let Some([before, after]) = moved.into_inner().ok().flatten() {
         let _ = change_health(|health| Ok(health.taken_back(key, before, after)));
     }
@@ -4112,7 +4262,15 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // A dose taken late moved the next ones; the medicine, changed meanwhile
     // on another device, came back with its start as it was: moved again,
     // and sent (review of 5 October 2026, F23).
-    let health = if health.clone().mend_shifts(&state) && change_health(|h| Ok(h.mend_shifts(&state))).is_ok() { load() } else { health };
+    // Its write refused (the file does not read here): the mended copy kept all the same (review of 36002ea's check, must-fix 2).
+    let mut mended = health.clone();
+    let health = if !mended.mend_shifts(&state) {
+        health
+    } else if change_health(|h| Ok(h.mend_shifts(&state))).is_ok() {
+        load()
+    } else {
+        mended
+    };
     let knowledge = know();
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
@@ -4228,6 +4386,10 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 Plan::Late(why) => late_said(&dose, &knowledge, stamp, since, why),
             };
             let (title, body) = as_last_known(&dose, title, body, last_known);
+            let body = match taken_lately(&dose.key, &health, &state, &now) {
+                Some(said) => format!("{body} {said}"),
+                None => body,
+            };
             if let Ok(mut sent) = SENT.lock() {
                 sent.insert(dose.key.clone());
             }
@@ -4240,8 +4402,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                     return;
                 }
                 let problem = set_taken(&key, true);
-                // Marked, its next doses unmoved (its file not read here): said (review of 36002ea, can-wait 2).
-                let problem = if problem.is_empty() && unmoved(&key) { tr().text("dose-next-unmoved", None) } else { problem };
+                // Marked, nothing read here to move its next doses: said (review of 36002ea, can-wait 2; its check, low 22).
+                let problem = if problem.is_empty() { unmoved_note().unwrap_or_default() } else { problem };
                 if !problem.is_empty() {
                     tell(&qt_taken, &shared_taken, problem);
                 }
@@ -4277,6 +4439,10 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             let mut body = say("health-missed-body", &[("doses", names.join(", "))]);
             if let Some(doubt) = doubts.first() {
                 body = format!("{body} {doubt}");
+            }
+            // The health file not read here: these doses as last known (review of 36002ea's check, low 20).
+            if last_known {
+                body = format!("{body} {}", tr().text("health-last-known", None));
             }
             if let Err(e) = sioul_sync::notify::remind(&missed_title(&missed, &state, &told_now.clone().unwrap_or_default(), tr()), &body, Some((tr().text("health-missed-open", None), open))) {
                 tell(qt, shared, e);
@@ -4416,14 +4582,18 @@ mod tests {
         sioul_core::config::stand_ins_only();
         let held = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let health = Health::default_path();
-        let mut gone = vec![health.clone(), last_read_path(&health), health.with_extension("toml.unreadable"), sioul_sync::share::Here::path(&sioul_core::config::state_dir())];
-        for record in [HealthState::default_path(), DoseRecords::default_path()] {
+        // This device's sharing file stays (other tests read it beside these): a
+        // test playing another device says its id in its thread (`DEVICE`).
+        let mut gone = vec![last_read_path(&health), health.with_extension("toml.unreadable")];
+        // Each file with its witnesses, beside it and in the other folder (`health::witnesses`).
+        for record in [health, HealthState::default_path(), DoseRecords::default_path()] {
             let witness = format!(".{}.written", record.file_name().unwrap().to_string_lossy());
-            gone.extend([record.with_file_name(&witness), sioul_core::config::data_dir().join(&witness), record]);
+            gone.extend([record.with_file_name(&witness), sioul_core::config::data_dir().join(&witness), sioul_core::config::state_dir().join(&witness), record]);
         }
         for path in gone {
             let _ = std::fs::remove_file(path);
         }
+        DEVICE.with(|device| *device.borrow_mut() = None);
         held
     }
 
@@ -4467,9 +4637,10 @@ mod tests {
         let due = format!("corvan@{from}");
         assert_eq!(set_taken(&due, true), "");
         assert!(HealthState::read(&state_path).unwrap().moved.contains_key(&due), "the next doses moved, once");
-        let once = files();
+        let (once, moved) = (files(), HealthState::read(&state_path).unwrap().moved.clone());
         assert_eq!(set_taken(&due, true), "");
-        assert_eq!(files(), once, "a second Taken writes nothing");
+        // A second Taken: its mark and answer anew (the check of 36002ea, must-fix 1), never a second move.
+        assert_eq!((files().0, HealthState::read(&state_path).unwrap().moved.clone()), (once.0, moved), "the medicines and the move as they were");
         assert_eq!(set_taken(&due, false), "");
         assert!(load().medicines.iter().any(|m| m.id == "corvan" && m.schedule == Schedule::Hours { hours: 6, from }), "taken back, the next doses as they were");
         // An unreadable health file is said on the page, its medicines as last read, never as none.
@@ -4494,12 +4665,8 @@ mod tests {
         let now = Timestamp::now().as_second();
         std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
         std::fs::write(&health_path, "[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n").unwrap();
-        // This device is the phone, by its sharing's id.
-        let state_dir = sioul_core::config::state_dir();
-        let mut here = sioul_sync::share::Here::load(&state_dir);
-        here.id = "phone-1".into();
-        here.save(&state_dir).unwrap();
-        let here = sioul_sync::share::Here::path(&state_dir);
+        // This device is the phone, said in this test's thread: the sharing's file stays as it is.
+        DEVICE.with(|device| *device.borrow_mut() = Some("phone-1".into()));
         assert_eq!(this_device(), "phone-1");
         // The desk's Taken at 08:01, come here: its mark and its answer.
         let key = format!("lumiel@{}", now - 240);
@@ -4510,30 +4677,32 @@ mod tests {
         .unwrap();
         DoseRecords::update(&records_path, now, |records| records.answer(&key, "desk-1", desk.clone())).unwrap();
         let moved_before = HealthState::read(&state_path).unwrap().moved.clone();
-        // Taken on the phone: no second mark, its own answer.
+        // Taken on the phone: the mark written again at its own time, its own answer, no move
+        // (the check of 36002ea, must-fix 1: a newer word than a take back written before it).
         assert_eq!(set_taken(&key, true), "");
         let state = HealthState::read(&state_path).unwrap();
-        assert_eq!((state.taken.get(&key).copied(), state.moved.clone()), (Some(now - 180), moved_before), "no second time, no move");
+        assert!(state.taken.get(&key).is_some_and(|at| *at >= now), "marked again, at this Taken's time: {:?}", state.taken);
+        assert_eq!(state.moved, moved_before, "no move");
         assert!(DoseRecords::read(&records_path).unwrap().dose[&key].answer.get("phone-1").is_some_and(|a| a.state == sioul_core::doses::TAKEN), "this device's own answer");
-        // The desk's take back, written before the phone's answer, comes: its mark and its own answer go.
-        HealthState::update(&state_path, now, |state| {
-            state.taken.remove(&key);
-        })
-        .unwrap();
+        // The desk's take back, written before the phone's Taken, comes: its own answer goes (the mark, older, loses to the phone's).
         DoseRecords::update(&records_path, now, |records| {
             records.dose.get_mut(&key).map(|r| r.answer.remove("desk-1"));
         })
         .unwrap();
         assert!(matches!(sioul_core::doses::answered(&key, &record(), &records()), Answered::Taken(_)), "taken, as answered on the phone");
-        // Taken once more: its answer there already, nothing written.
-        let bytes = std::fs::read(&records_path).unwrap();
-        HealthState::update(&state_path, now, |state| {
-            state.taken.insert(key.clone(), now - 60);
+        // Taken once more, after a take back elsewhere took this device's answer too: written anew.
+        DoseRecords::update(&records_path, now, |records| {
+            records.dose.get_mut(&key).map(|r| r.answer.remove("phone-1"));
         })
         .unwrap();
         assert_eq!(set_taken(&key, true), "");
-        assert_eq!(std::fs::read(&records_path).unwrap(), bytes);
-        let _ = std::fs::remove_file(here);
+        assert!(DoseRecords::read(&records_path).unwrap().dose[&key].answer.get("phone-1").is_some_and(|a| a.state == sioul_core::doses::TAKEN), "its answer anew");
+        // Late, at a time typed: the mark at that time, corrected (the check's low 25); still no move.
+        let typed = Zoned::now().checked_sub(Span::new().minutes(2)).unwrap();
+        assert_eq!(taken_late(&key, &typed.strftime("%H:%M").to_string()), "");
+        let marked = HealthState::read(&state_path).unwrap().taken[&key];
+        assert_eq!(marked / 60, typed.timestamp().as_second() / 60, "the time said");
+        assert_eq!(HealthState::read(&state_path).unwrap().moved, moved_before);
     }
 
     /// Can-wait 1 of the review of 36002ea: a late time given to a dose its
@@ -4597,13 +4766,30 @@ mod tests {
         let (title, body) = as_last_known(&dose, "Lumiel".into(), "10:00".into(), true);
         assert!(title.contains("Lumiel") && body.ends_with(&tr().text("dose-last-known", None)), "{title} / {body}");
         assert_eq!(as_last_known(&dose, "Lumiel".into(), "10:00".into(), false), ("Lumiel".to_string(), "10:00".to_string()));
-        // Taken: marked, never written over the file, the next doses unmoved and said so.
+        // Taken: marked, never written over the file; its move made on the last
+        // read and recorded beside the mark, for every device whose file reads
+        // to make, and shown here (the check of 36002ea, must-fix 3).
         let key = format!("corvan@{from}");
-        assert_eq!(window_taken(&key, true, &now), tr().text("dose-next-unmoved", None));
-        assert!(HealthState::read(&state_path).unwrap().taken.contains_key(&key), "the mark kept");
-        assert!(!HealthState::read(&state_path).unwrap().moved.contains_key(&key), "no move recorded");
+        assert_eq!(window_taken(&key, true, &now), "");
+        assert_eq!(unmoved_note(), None, "the move recorded: nothing to say");
+        let state = HealthState::read(&state_path).unwrap();
+        assert!(state.taken.contains_key(&key), "the mark kept");
+        let [before, after] = state.moved[&key];
+        assert!(before == from && after >= now.timestamp().as_second() + 6 * 3600, "its move recorded: {:?}", state.moved);
+        assert!(load().medicines.iter().any(|m| m.schedule == Schedule::Hours { hours: 6, from: after }), "this device's last read follows the record");
+        // Another device's file, as this one last read it: the move not made there yet.
+        let mut reading = last_read(&health_path).unwrap();
+        assert!(reading.mend_shifts(&state) && reading.medicines.iter().any(|m| m.schedule == Schedule::Hours { hours: 6, from: after }), "a device whose file reads makes it");
         assert_eq!(std::fs::read_to_string(&health_path).unwrap(), broken, "never written over");
         assert_eq!(std::fs::read_to_string(health_path.with_extension("toml.unreadable")).unwrap(), broken, "copied aside as it is");
+        // Taken back here: its move kept in the record as taken back, put back
+        // here and on every device whose file reads (must-fix 4), never dropped.
+        assert_eq!(window_taken(&key, false, &now), "");
+        let state = HealthState::read(&state_path).unwrap();
+        assert!(!state.taken.contains_key(&key) && !state.moved.contains_key(&key), "{state:?}");
+        assert_eq!(state.back.get(&key).map(|b| [b[0], b[1]]), Some([before, after]), "kept as taken back");
+        assert!(load().medicines.iter().any(|m| m.schedule == Schedule::Hours { hours: 6, from: before }), "put back here too");
+        assert!(reading.mend_shifts(&state) && reading.medicines.iter().any(|m| m.schedule == Schedule::Hours { hours: 6, from: before }), "and where the file reads");
         assert_eq!(set_setting("movement.minutes", "5"), tr().text("health-not-written", None), "every writer refuses, saying why");
         assert_eq!(std::fs::read_to_string(&health_path).unwrap(), broken);
     }
@@ -4634,22 +4820,37 @@ mod tests {
         assert_eq!(said["show"], true, "{said}");
         assert!(said["title"].as_str().is_some_and(|t| t == say("dose-check-title", &[("dose", "Mirel".into())])), "{said}");
         assert!(said["body"].as_str().is_some_and(|b| b.ends_with(&tr().text("dose-last-known", None))), "{said}");
-        // Its Taken: marked, its next doses unmoved, said so.
+        // Its Taken: marked, its move made on the last read and recorded (the check of 36002ea, must-fix 3), nothing to say besides.
         let taken: serde_json::Value = serde_json::from_str(&alarm_taken(&mirel)).unwrap();
-        assert_eq!((taken["done"].as_bool(), taken["line"].as_str()), (Some(true), Some(tr().text("dose-next-unmoved", None).as_str())), "{taken}");
+        assert!(taken["done"] == true && taken["line"] != tr().text("dose-next-unmoved", None).as_str(), "{taken}");
         let state = HealthState::read(&state_path).unwrap();
-        assert!(state.taken.contains_key(&mirel) && !state.moved.contains_key(&mirel), "marked, nothing moved");
+        let [_, after] = state.moved[&mirel];
+        assert!(state.taken.contains_key(&mirel) && after >= now + 6 * 3600, "marked, its move recorded: {:?}", state.moved);
         // Nothing reads, nor a last read: no list handed to Android, which keeps its own.
         std::fs::remove_file(last_read_path(&health_path)).unwrap();
         assert_eq!(alarms_coming(), None, "Android keeps the alarms it has");
-        // The alarm Android kept rings all the same, in doubt, once.
+        // The alarm Android kept rings all the same, in doubt, once: recorded
+        // reminded, as the alarm that reads records it (must-fix 5).
         let kept = format!("lumiel@{}", now - 20);
         let said: serde_json::Value = serde_json::from_str(&alarm_decide(&kept)).unwrap();
         assert_eq!(said["show"], true, "never silenced: {said}");
         assert!(said["body"].as_str().is_some_and(|b| b.ends_with(&tr().text("dose-last-known", None))), "{said}");
         assert!(said["again_at"].as_i64().is_some_and(|again| again > now * 1000), "looked at again: {said}");
+        assert!(HealthState::read(&state_path).unwrap().reminded.contains_key(&kept), "recorded reminded: other devices know");
         let again: serde_json::Value = serde_json::from_str(&alarm_decide(&kept)).unwrap();
         assert_eq!(again["show"], false, "shown once: {again}");
+        // Past the Porch's hours, or a time the recorded move replaced: no more.
+        for gone in [format!("lumiel@{}", now - (MISSED_HOURS + 1) * 3600), format!("mirel@{}", now + 3600)] {
+            let said: serde_json::Value = serde_json::from_str(&alarm_decide(&gone)).unwrap();
+            assert_eq!((said["show"].as_bool(), said["again_at"].as_i64()), (Some(false), Some(0)), "{gone}: {said}");
+        }
+        // Its late question opens from the key alone, and its Taken is written, said unmoved.
+        let info: serde_json::Value = serde_json::from_str(&dose_info(&kept)).unwrap();
+        assert_eq!(info["name"], "lumiel", "{info}");
+        let late = Zoned::now().checked_sub(Span::new().minutes(1)).unwrap().strftime("%H:%M").to_string();
+        assert_eq!(taken_late(&kept, &late), "");
+        assert!(HealthState::read(&state_path).unwrap().taken.contains_key(&kept), "never lost");
+        assert_eq!(unmoved_note(), Some(tr().text("dose-next-unmoved", None)));
         // A dose marked on another device: not shown, never asked again.
         let marked = format!("lumiel@{}", now - 10);
         HealthState::update(&state_path, now, |state| {
@@ -4658,6 +4859,72 @@ mod tests {
         .unwrap();
         let said: serde_json::Value = serde_json::from_str(&alarm_decide(&marked)).unwrap();
         assert_eq!((said["show"].as_bool(), said["again_at"].as_i64()), (Some(false), Some(0)), "{said}");
+    }
+
+    /// The check of 36002ea, must-fix 2, on two devices: the desk marks an
+    /// every-six-hours dose late and moves the next ones; the phone, whose
+    /// health file does not read, rings and marks the times the desk holds,
+    /// its last read mended from the record (nothing written), and says when
+    /// the dose was last taken, from when the next may be (the safety net).
+    #[test]
+    fn the_last_read_follows_the_record_on_two_devices() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let now = Timestamp::now().as_second();
+        let from = now - 2 * 3600;
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        std::fs::write(&health_path, format!("[[medicine]]\nid = \"corvan\"\nname = \"Corvan\"\n[medicine.schedule]\nevery = \"hours\"\nhours = 6\nfrom = {from}\n")).unwrap();
+        assert_eq!(load_said().0.medicines.len(), 1, "read: its copy kept");
+        std::fs::write(&health_path, "[[medicine]\nid = ").unwrap();
+        // The desk's Taken an hour late, come here: its mark and its move.
+        let (first, moved_to) = (format!("corvan@{from}"), from + 3600 + 6 * 3600);
+        HealthState::update(&state_path, now, |state| {
+            state.taken.insert(first.clone(), from + 3600);
+            state.moved.insert(first.clone(), [from, moved_to]);
+        })
+        .unwrap();
+        // Here: the times the desk holds, the file and its copy as they were.
+        let copy = std::fs::read(last_read_path(&health_path)).unwrap();
+        assert!(load().medicines.iter().any(|m| m.schedule == Schedule::Hours { hours: 6, from: moved_to }), "mended in memory");
+        assert_eq!(std::fs::read(last_read_path(&health_path)).unwrap(), copy, "nothing written");
+        let coming: Vec<serde_json::Value> = serde_json::from_str(&alarms_coming().unwrap()).unwrap();
+        let keys: Vec<&str> = coming.iter().filter_map(|a| a["key"].as_str()).collect();
+        assert!(keys.contains(&format!("corvan@{moved_to}").as_str()) && !keys.contains(&format!("corvan@{}", from + 6 * 3600).as_str()), "{keys:?}");
+        // The safety net: the next dose said with the time the last was taken, and from when the next may be.
+        let next = format!("corvan@{moved_to}");
+        let said = taken_lately(&next, &load(), &record(), &Zoned::now()).expect("taken an hour ago, every six hours");
+        let hour = |at: i64| Timestamp::from_second(at).unwrap().to_zoned(TimeZone::system()).strftime("%H:%M").to_string();
+        assert_eq!(said, say("dose-taken-lately", &[("time", hour(from + 3600)), ("next", hour(from + 3600 + 6 * 3600))]));
+        assert_eq!(taken_lately(&format!("lumiel@{now}"), &load(), &record(), &Zoned::now()), None, "a medicine at set times: none");
+    }
+
+    /// The check of 36002ea, A2: a health file of no bytes after a good read
+    /// (a crash before its bytes reached the disk) was lost: the doses come
+    /// from its last read, said so, nothing is written over it, and a copy of
+    /// no bytes is never kept nor read as no medicines.
+    #[test]
+    fn a_health_file_of_no_bytes_gives_its_last_read() {
+        let _files = health_files();
+        let health_path = Health::default_path();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        std::fs::write(&health_path, "[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n").unwrap();
+        assert!(!load_said().1);
+        std::fs::write(&health_path, "").unwrap();
+        let (health, last_known) = load_said();
+        assert!(last_known && health.medicines.len() == 1, "lost: its last read");
+        assert_eq!(set_setting("movement.minutes", "5"), tr().text("health-not-written", None));
+        assert_eq!(std::fs::read(&health_path).unwrap(), b"", "never written over");
+        let shown: serde_json::Value = serde_json::from_str(&page(&Waiting::default())).unwrap();
+        assert_eq!(shown["unreadable"], tr().text("health-last-known", None).as_str());
+        // A copy of no bytes: never read as no medicines; nothing reads, said.
+        std::fs::write(last_read_path(&health_path), "").unwrap();
+        assert!(last_read(&health_path).is_none() && load_known().is_none());
+        let shown: serde_json::Value = serde_json::from_str(&page(&Waiting::default())).unwrap();
+        assert_eq!(shown["unreadable"], tr().text("health-unreadable", None).as_str(), "as last known only when its copy is used");
+        let porch: serde_json::Value = serde_json::from_str(&missed()).unwrap();
+        assert_eq!(porch["note"], tr().text("health-unreadable", None).as_str(), "the Porch says it");
+        let card = card_doses(&Zoned::now());
+        assert!(card.first().is_some_and(|d| d.name == tr().text("health-card-unread", None) && d.time.is_empty()), "the home card says it");
     }
 
     /// Health's week reads the calendars as every agenda does: an event

@@ -269,6 +269,13 @@ jobs:
       - name: Tests (core, sync, command line)
         env:
           SIOUL_SWEEP: ${{ runner.os == 'Linux' && 'wide' || '' }}
+          # Folders of their own, under the runner's temporary folder: a test
+          # that writes Sioul's files refuses to run without them
+          # (core config::stand_ins_only), CI or not.
+          XDG_CONFIG_HOME: ${{ runner.temp }}/xdg/config
+          XDG_DATA_HOME: ${{ runner.temp }}/xdg/data
+          XDG_STATE_HOME: ${{ runner.temp }}/xdg/state
+          XDG_CACHE_HOME: ${{ runner.temp }}/xdg/cache
         run: cargo test --release --locked -p sioul-core -p sioul-sync -p sioul-cli
 
       # Every icon the window names is in its bundled themes, as Qt reads them

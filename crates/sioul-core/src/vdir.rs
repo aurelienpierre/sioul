@@ -827,6 +827,8 @@ mod tests {
     /// made with it, one side whole, never both, never neither.
     #[test]
     fn an_item_made_another_cut_at_each_step_ends_once() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         for step in 0..=4u8 {
             let list = prepare(Kind::Calendars, LOCAL, &format!("kinds-list-{step}"), "List", None).unwrap();
             let calendar = prepare(Kind::Calendars, LOCAL, &format!("kinds-calendar-{step}"), "Calendar", None).unwrap();
@@ -907,6 +909,8 @@ mod tests {
     /// move ends or is cut short at any step.
     #[test]
     fn an_item_made_another_in_its_own_place_stays() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         for step in 0..=4u8 {
             let dir = prepare(Kind::Calendars, LOCAL, &format!("same-place-{step}"), "Both", None).unwrap();
             let path = dir.join("plan-x.ics");
@@ -931,6 +935,8 @@ mod tests {
     /// writing and its event's).
     #[test]
     fn moves_side_by_side_each_end_once() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let finishing = {
             let stop = std::sync::Arc::clone(&stop);
@@ -967,6 +973,8 @@ mod tests {
     /// 2026, F3). Saved kinds are not changed by it.
     #[test]
     fn what_a_calendar_holds_always_shows() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         for (account, id) in [(LOCAL, "held-events-local"), ("held-server", "held-events")] {
             let dir = prepare(Kind::Calendars, account, id, "Events", None).unwrap();
             State { components: vec!["VEVENT".into()], ..State::default() }.save(&state_path(account, Kind::Calendars, id)).unwrap();
@@ -988,6 +996,8 @@ mod tests {
     /// choosers' test run beside others).
     #[test]
     fn a_calendar_made_while_others_look_keeps_what_it_takes() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let looking = {
             let stop = std::sync::Arc::clone(&stop);
@@ -1012,6 +1022,8 @@ mod tests {
     /// synced all the same, never showed. The marks follow the configuration.
     #[test]
     fn an_account_on_again_elsewhere_shows_its_calendars_here() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let account = "marked-elsewhere";
         prepare(Kind::Calendars, account, "work", "Work", None).unwrap();
         prepare(Kind::Calendars, account, "family", "Family", None).unwrap();

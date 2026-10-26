@@ -4983,9 +4983,11 @@ impl qobject::Sioul {
     fn set_dose_taken(self: Pin<&mut Self>, key: &QString, taken: bool) -> QString {
         // The window's Taken: a dose of a day to come refused first; the alarms answer through `set_taken` alone.
         let problem = crate::health::window_taken(&key.to_string(), taken, &jiff::Zoned::now());
-        // Said in the status line and kept there a while (`tell`), routine news after it waiting (review of 36002ea, low 20).
-        if !problem.is_empty() {
-            tell(&self.qt_thread(), &self.shared(), problem.clone());
+        // Said in the status line and kept there a while (`tell`), routine news after it waiting (review of 36002ea, low 20);
+        // a mark written, what to know besides (nothing read here to move its next doses), said the same way.
+        let said = if problem.is_empty() && taken { crate::health::unmoved_note().unwrap_or_default() } else { problem.clone() };
+        if !said.is_empty() {
+            tell(&self.qt_thread(), &self.shared(), said);
         }
         // Your other computers know at once.
         crate::share::exchange(&self.qt_thread(), &self.shared());
@@ -5002,8 +5004,13 @@ impl qobject::Sioul {
 
     fn dose_taken_at(self: Pin<&mut Self>, key: &QString, time: &QString) -> QString {
         let problem = crate::health::taken_late(&key.to_string(), &time.to_string());
-        // Sent whatever it says: a mark written with its next doses unmoved says so too
-        // (review of 36002ea, can-wait 2); one not written sends nothing.
+        // Written: what to know besides said in the status line, and the question
+        // closes (review of 36002ea's check, low 16); a problem stays in it.
+        if problem.is_empty()
+            && let Some(note) = crate::health::unmoved_note()
+        {
+            tell(&self.qt_thread(), &self.shared(), note);
+        }
         crate::share::exchange(&self.qt_thread(), &self.shared());
         QString::from(&problem)
     }

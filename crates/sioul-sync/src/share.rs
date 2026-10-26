@@ -1278,9 +1278,30 @@ fn entries_of(store: &Store, bytes: &[u8]) -> Option<Vec<(String, String)>> {
     match store.shape {
         Shape::Whole => Some(vec![(String::new(), B64.encode(bytes))]),
         Shape::Lines => Some(std::str::from_utf8(bytes).ok()?.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(|l| (l.to_string(), String::new())).collect()),
+        // The health file that does not read as medicines (of no bytes, a value
+        // its reader refuses) is unknown, as a file that is not TOML: nothing of
+        // it taken out elsewhere, nothing written into it (review of 36002ea's check, A2).
+        Shape::Toml(_) if of_medicines(store) && !reads_as_medicines(bytes) => None,
         Shape::Toml(rules) => toml_entries(std::str::from_utf8(bytes).ok()?, rules).ok(),
         Shape::Files => None,
     }
+}
+
+/// The health file's store: what reaches your other devices as medicines alone.
+fn of_medicines(store: &Store) -> bool {
+    store.name == "data/health.toml"
+}
+
+/// Whether a health file's bytes read as its reader reads them
+/// (`sioul_core::health::Health::read`): never of no bytes, never a value it refuses.
+fn reads_as_medicines(bytes: &[u8]) -> bool {
+    !bytes.iter().all(u8::is_ascii_whitespace) && std::str::from_utf8(bytes).ok().is_some_and(|text| toml::from_str::<sioul_core::health::Health>(text).is_ok())
+}
+
+/// How many medicines a health file's entries name.
+fn medicines_in<'a>(entries: impl Iterator<Item = &'a str>) -> usize {
+    let mark = format!("medicine{SEP}{MARK}");
+    entries.filter(|entry| entry.starts_with(&mark)).count()
 }
 
 /// A list's or a settings file's text, to write entries into: none there yet
@@ -1480,6 +1501,19 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
         if old == new {
             return Ok(written);
         }
+        // The health file as it would be once written: one that would not read
+        // as medicines, would go, or would lose every medicine at once (two or
+        // more), is held, said, never written; what came waits (review of
+        // 36002ea's check, A2).
+        if of_medicines(store) {
+            if new.as_deref().is_none_or(|bytes| !reads_as_medicines(bytes)) {
+                return Err(format!("share-not-medicines:{}", store.name));
+            }
+            let before = old.as_deref().and_then(|bytes| entries_of(store, bytes)).map_or(0, |entries| medicines_in(entries.iter().map(|(entry, _)| entry.as_str())));
+            if before >= 2 && medicines_in(written.keys().map(String::as_str)) == 0 {
+                return Err(format!("share-medicines-emptied-there:{}", store.name));
+            }
+        }
         // A doses' record not here that would hold no entry (only removals
         // came): nothing written. Written empty, with its witness, it would
         // read as lost and be repaired again and again.
@@ -1495,7 +1529,7 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
             // witnesses made, so that a power cut after a mark received here
             // leaves a record lost, said, never a sound empty one (review of
             // 10 October 2026, R6).
-            Some(bytes) if of_the_doses(store) => sioul_core::health::write_witnessed(path, &bytes)?,
+            Some(bytes) if of_the_doses(store) || of_medicines(store) => sioul_core::health::write_witnessed(path, &bytes)?,
             Some(bytes) => write_atomically(path, &bytes)?,
             None => match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
@@ -4879,6 +4913,22 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     withheld.extend(mass_held.iter().map(|(store, files)| withheld_of(store, files)));
     withheld.sort_by(|a, b| a.store.cmp(&b.store));
     memory.withheld = withheld;
+    // The health file here taking every medicine out at once (two or more
+    // known, none now: a device's bug, a list emptied by hand): held, said,
+    // never spread, as a file that does not read; your other devices keep
+    // theirs (review of 36002ea's check, A2).
+    for store in stores.iter().filter(|s| of_medicines(s)) {
+        let file = store.name.clone();
+        let mark = format!("{file}#medicine{SEP}{MARK}");
+        let known = memory.entries.iter().filter(|(key, k)| key.starts_with(&mark) && !k.h.is_empty()).count();
+        let now = found.hashes.keys().filter(|key| key.starts_with(&mark)).count();
+        if known >= 2 && now == 0 && found.files.contains_key(&file) {
+            found.hashes.retain(|key, _| file_of(key) != file);
+            found.values.retain(|key, _| file_of(key) != file);
+            found.unknown.insert(file.clone());
+            outcome.problems.push(format!("share-medicines-emptied:{file}"));
+        }
+    }
     let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
     // The contents of the files sealed apart as this exchange finds them: used
     // in it, so that one replaced in it (here, or by another device's change

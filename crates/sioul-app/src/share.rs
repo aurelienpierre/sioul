@@ -648,6 +648,7 @@ fn problem_text(code: &str) -> String {
         Some(("share-refused", name)) => say("share-refused", &[("file", file(name))]),
         Some(("share-not-text", name)) => say("share-not-text", &[("file", file(name))]),
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
+        Some((code @ ("share-not-medicines" | "share-medicines-emptied" | "share-medicines-emptied-there"), name)) => say(code, &[("file", file(name))]),
         Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
         None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut" | "share-device-counts" | "share-device-unknown") => tr().text(code, None),

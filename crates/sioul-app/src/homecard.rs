@@ -977,6 +977,10 @@ fn dose_lines(tr: &Translator, doses: &[Dose], details: bool) -> Vec<DoseLine> {
     doses
         .iter()
         .map(|d| {
+            // A line of no time: a sentence of its own ("your medicines could not be read here"), said as it is.
+            if d.time.is_empty() {
+                return DoseLine { line: d.name.clone(), check: d.name.clone(), from: d.at * 1000, until: d.until * 1000, known_until: d.known_until * 1000 };
+            }
             let pairs = [("dose", d.name.clone()), ("time", d.time.clone())];
             DoseLine { line: said(tr, "home-card-dose", &pairs), check: said(tr, "home-card-dose-check", &pairs), from: d.at * 1000, until: d.until * 1000, known_until: d.known_until * 1000 }
         })

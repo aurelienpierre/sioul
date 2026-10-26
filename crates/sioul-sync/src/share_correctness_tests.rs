@@ -1467,3 +1467,56 @@ fn a_health_file_that_does_not_read_is_left_as_it_is_everywhere() {
     assert!(outcome.problems.iter().any(|p| p.starts_with("share-unreadable")), "{outcome:?}");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The check of 36002ea, A2, on two devices: the sharing never takes every
+/// medicine out. A health file emptied to no bytes (a crash), or one that is
+/// TOML but does not read as medicines, is held as a file that is not TOML:
+/// nothing of it reaches the phone, nothing is written into it; a change
+/// that takes every medicine out at once (two or more) is held too, and
+/// said; written here, the health file has its witness, as the records do.
+#[test]
+fn the_sharing_never_takes_every_medicine_out() {
+    use sioul_core::health::{Health, Medicine, Schedule};
+    let base = scratch("medicines-held");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let medicine = |id: &str| Medicine { id: id.into(), name: id.into(), dose: "1 tablet".into(), schedule: Schedule::Day { times: vec!["08:00".into()], amounts: Default::default() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+    let both = Health { medicines: vec![medicine("lumiel"), medicine("corvan")], ..Health::default() };
+    both.save(&desk.path("data/health.toml")).unwrap();
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    let held = |c: &Computer| Health::read(&c.path("data/health.toml")).map(|h| h.medicines.len()).unwrap_or(99);
+    assert_eq!(held(&phone), 2);
+    assert!(phone.path("data/.health.toml.written").exists(), "written by the sharing with its witness");
+    let minute = std::cell::Cell::new(2i64);
+    let round = |c: &Computer| {
+        minute.set(minute.get() + 1);
+        c.exchange(&folder, &key, NOW + minute.get() * MINUTE)
+    };
+    // Of no bytes on the desk, then TOML that does not read as medicines: the phone keeps both, for longer than the emptied wait.
+    for broken in ["", "[[medicine]]\nid = \"lumiel\"\n"] {
+        desk.write("data/health.toml", broken);
+        for _ in 0..3 {
+            round(&desk);
+            round(&phone);
+        }
+        minute.set(minute.get() + 30);
+        round(&desk);
+        round(&phone);
+        assert_eq!(held(&phone), 2, "{broken:?}: nothing taken out");
+        assert_eq!(desk.read("data/health.toml"), broken, "nothing written into it");
+    }
+    // Every medicine out at once, in a file that reads: held, said; the phone keeps both.
+    Health::default().save(&desk.path("data/health.toml")).unwrap();
+    let said = round(&desk);
+    assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied:")), "{said:?}");
+    round(&phone);
+    assert_eq!(held(&phone), 2, "kept on the phone");
+    // One back on the desk: the sharing goes on, from there.
+    Health { medicines: vec![medicine("lumiel")], ..Health::default() }.save(&desk.path("data/health.toml")).unwrap();
+    round(&desk);
+    round(&phone);
+    assert_eq!(held(&phone), 1, "the change spreads once a medicine is there");
+    let _ = std::fs::remove_dir_all(&base);
+}

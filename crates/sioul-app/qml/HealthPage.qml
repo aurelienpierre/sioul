@@ -339,7 +339,7 @@ Item {
 
         // A dose marked, a medicine or a day changed on another device: shown at once.
         function onSharedIn(stores) {
-            if (page.visible && (stores.indexOf("state/health-state.toml") >= 0 || stores.indexOf("data/health.toml") >= 0 || stores.indexOf("data/health-days.toml") >= 0))
+            if (page.visible && (stores.indexOf("state/health-state.toml") >= 0 || stores.indexOf("state/health-doses.toml") >= 0 || stores.indexOf("data/health.toml") >= 0 || stores.indexOf("data/health-days.toml") >= 0))
                 page.reload()
         }
     }

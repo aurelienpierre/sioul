@@ -607,6 +607,8 @@ mod tests {
     /// phone, without its notification's name, says nothing.
     #[test]
     fn a_relayed_notification_says_what_it_offers() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let device = format!("phone-{}", std::process::id());
         let posted = Posted { key: "0|org.thoughtcrime.securesms|42|null|10123".into(), package: "org.thoughtcrime.securesms".into(), ..Posted::default() };
         let line = Line { at: 1, id: "1-a".into(), notice: rules::notice(&posted.package, &posted.key), talk: "fedcba9876543210".into(), ..Line::default() };

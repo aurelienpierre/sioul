@@ -665,6 +665,22 @@ Item {
                     }
                 }
 
+                // Nothing read here, the health file nor its last read: said,
+                // never an empty list read as no doses (review of 36002ea's check, low 19).
+                Panel {
+                    visible: (page.doses.note || "") !== ""
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    Label {
+                        anchors.fill: parent
+                        text: page.doses.note || ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.text
+                    }
+                }
+
                 // Today's doses from their time on, not marked yet: reminded or
                 // not, a notification can go unseen. "Taken" marks one now; more
                 // than half an hour late, when it was taken is asked (DoseTaken.qml).
