@@ -613,14 +613,19 @@ fn week_events(monday: Date, zone: &TimeZone, waiting: &Waiting) -> Vec<sioul_co
     crate::pim::without_waiting(week_read(monday, zone).as_ref().clone(), &waiting.0, &waiting.1)
 }
 
-/// The calendars' events of the week from `monday`, as read, kept five minutes.
+/// The calendars' events of the week from `monday`, as read, kept five
+/// minutes, never past a delayed work on the calendars' files ending (a
+/// deletion written, or undone: `mail::pim_ended`), so that an event deleted
+/// never comes back for those minutes (the check of 36002ea, low 23).
 fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occurrence>> {
-    type Cached = Option<(i64, Date, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
+    type Cached = Option<(i64, Date, u64, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
     static CACHE: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
     let stamp = Timestamp::now().as_second();
+    let ended = crate::mail::pim_ended();
     let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((at, day, events)) = cache.as_ref()
+    if let Some((at, day, seen, events)) = cache.as_ref()
         && *day == monday
+        && *seen == ended
         && (0..300).contains(&(stamp - at))
     {
         return Arc::clone(events);
@@ -628,7 +633,7 @@ fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occur
     let from = midnight(monday, zone);
     let to = monday.checked_add(Span::new().days(7)).map_or(from + 7 * 86_400, |d| midnight(d, zone));
     let events = Arc::new(sioul_core::agenda::occurrences(from, to));
-    *cache = Some((stamp, monday, Arc::clone(&events)));
+    *cache = Some((stamp, monday, ended, Arc::clone(&events)));
     events
 }
 
@@ -3724,28 +3729,37 @@ pub(crate) fn change_need(edit: &str) -> String {
 }
 
 fn change_day(date: &str, edit: &DayEdit) -> String {
+    change_day_seen(date, edit).err().unwrap_or_default()
+}
+
+/// `change_day`, and its block as it was and as the change left it, both
+/// read under the file's lock with the change itself: what a drag's Undo
+/// puts back is the drag's alone, never a change an exchange wrote between
+/// (the check of 36002ea, low 21). Returns the day, or what went wrong.
+fn change_day_seen(date: &str, edit: &DayEdit) -> Result<(Date, Option<sioul_core::needs::DayBlock>, Option<sioul_core::needs::DayBlock>), String> {
     let now = Zoned::now();
     let date = if date.trim().is_empty() { Some(now.date()) } else { date.trim().parse::<Date>().ok() };
-    let Some(date) = date else { return tr().text("need-times-wrong", None) };
+    let Some(date) = date else { return Err(tr().text("need-times-wrong", None)) };
     // Changed over the days as the file holds them now, under its lock, which the sharing takes too.
     let _ = days();
     let needs = load().needs;
     let held = held_on(date, &now);
-    let changed = match Days::change_file(&Days::default_path(), now.date(), |days| needs.change_day(days, date, edit, &now, &held)) {
-        Ok(changed) => changed,
-        Err(e) => return e,
-    };
+    let (changed, was, wrote) = Days::change_file(&Days::default_path(), now.date(), |days| {
+        let was = days.get(date, &edit.key).cloned();
+        let changed = needs.change_day(days, date, edit, &now, &held);
+        (changed, was, days.get(date, &edit.key).cloned())
+    })?;
     match changed {
         Ok(()) => {
             // A night changed, or its alarm: a phone's alarm at waking follows (`wake`).
             crate::wake::schedule();
-            String::new()
+            Ok((date, was, wrote))
         }
-        Err(DayProblem::Past) => tr().text("need-past", None),
-        Err(DayProblem::Times) => tr().text("need-times-wrong", None),
-        Err(DayProblem::TooShort) => tr().text("need-too-short", None),
-        Err(DayProblem::OtherDay) => tr().text("need-other-day", None),
-        Err(DayProblem::Unknown) => say("setting-unknown-key", &[("key", edit.action.clone())]),
+        Err(DayProblem::Past) => Err(tr().text("need-past", None)),
+        Err(DayProblem::Times) => Err(tr().text("need-times-wrong", None)),
+        Err(DayProblem::TooShort) => Err(tr().text("need-too-short", None)),
+        Err(DayProblem::OtherDay) => Err(tr().text("need-other-day", None)),
+        Err(DayProblem::Unknown) => Err(say("setting-unknown-key", &[("key", edit.action.clone())])),
     }
 }
 
@@ -3768,19 +3782,15 @@ pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         Err(e) => return e.to_string(),
     };
     let now = Zoned::now();
-    let date = if asked.date.trim().is_empty() { Some(now.date()) } else { asked.date.trim().parse::<Date>().ok() };
-    let Some(date) = date else { return tr().text("need-times-wrong", None) };
     let key = asked.edit.key.clone();
-    let was = days().get(date, &key).cloned();
-    let problem = change_day(&asked.date, &asked.edit);
-    if !problem.is_empty() {
-        return problem;
-    }
-    let after = days();
-    if after.get(date, &key) == was.as_ref() {
+    let (date, was, wrote) = match change_day_seen(&asked.date, &asked.edit) {
+        Ok(seen) => seen,
+        Err(problem) => return problem,
+    };
+    if wrote == was {
         return String::new();
     }
-    let wrote = after.get(date, &key).cloned();
+    let after = days();
     // Said as the day has it now: its name, its time kept.
     let zone = now.time_zone().clone();
     let line = blocks_now(&load().needs, &after, date, &now)
@@ -4945,6 +4955,10 @@ mod tests {
         let waiting: Waiting = ([file.clone()].into(), Default::default());
         assert!(!shown(&waiting), "its deletion waits: left out at once");
         assert!(shown(&Waiting::default()), "undone: back");
+        // Its deletion written: the week read again at once, never the event back for five minutes (the check of 36002ea, low 23).
+        std::fs::remove_file(&file).unwrap();
+        crate::mail::pim_work_ended();
+        assert!(!shown(&Waiting::default()), "deleted: gone at once");
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 

@@ -360,7 +360,7 @@ mod tests {
         }
         assert_eq!(again_at(&usual(Wait::Paused), stamp + AGAIN), stamp + 2 * AGAIN, "never now");
         // A reminder's alarm: its time; due and free, at once; held (a train after waking), at waking.
-        let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until) };
+        let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until), names: None };
         let night = usual(Wait::Sleep { from: stamp - 8 * 3600, until: stamp + 900 });
         assert_eq!(when(&reminder(stamp + 600, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 600);
         assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 1);

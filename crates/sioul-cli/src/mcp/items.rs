@@ -98,8 +98,6 @@ fn calendar_named(id: &str, s: &Session) -> Result<Collection, String> {
 }
 
 fn event_json(found: &Found, edit: &EventEdit, s: &Session) -> Value {
-    let unfolded = sioul_core::lines::unfold(&found.text);
-    let count = |name: &str| unfolded.iter().filter(|l| sioul_core::lines::name(l) == name).count();
     json!({
         "uri": links::event_uri(&found.uid),
         "uid": found.uid,
@@ -119,7 +117,8 @@ fn event_json(found: &Found, edit: &EventEdit, s: &Session) -> Value {
         "calendar_name": found.calendar.label(&s.config, &s.tr),
         "read_only": found.calendar.read_only,
         "with_others": agenda::with_others(&found.text),
-        "guests": count("ATTENDEE"),
+        // Its guests as the rule reads them, never an email alarm's recipient (review of 36002ea, low 26).
+        "guests": agenda::guests(&found.text),
         "task_block": appointments::block_of(&found.text, ""),
     })
 }
@@ -738,6 +737,12 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&desk.consent, &links::task_uri(&task.uid))?;
     if task.read_only {
         return Err(s.tr.text("task-read-only", None));
+    }
+    // Moved to another list, its steps go with it: never one kept from agents
+    // (an errand made a step of it), refused before anything is written, as
+    // `move_step` refuses it (review of 36002ea, low 27).
+    if args.text("list")?.is_some_and(|l| l != task.list_id) && desk.loaded.tasks.iter().any(|t| t.parent() == Some(task.uid.as_str()) && !desk.allows(&t.uid)) {
+        return Err(access::kept("A step of this task"));
     }
     let zone = TimeZone::system();
     let now = Zoned::now();

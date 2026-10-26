@@ -159,6 +159,10 @@ pub fn prepare(root: &Path, part: &str, file: &str, path: &Path) -> Result<Prepa
         let _ = std::fs::remove_file(&temporary);
         return Err(format!("{}: {e}", temporary.display()));
     }
+    // Its bytes on the disk here, outside the lock: the rename that keeps it
+    // under the lock never leaves a kept copy of no bytes after a crash (the
+    // check of 36002ea, low 22; a write handle: Windows flushes no other).
+    let _ = std::fs::OpenOptions::new().write(true).open(&temporary).and_then(|copy| copy.sync_all());
     let _ = crate::share::set_time(&temporary, std::time::SystemTime::now());
     Ok(Prepared { dir, temporary, path: path.to_path_buf(), copied })
 }
@@ -187,18 +191,19 @@ impl Prepared {
     }
 
     /// Kept as the file's version at `now_ms` by a rename, when the file is
-    /// still as it was copied: whether it was (else the caller keeps the file
-    /// as it is now, `keep`). Under the exchanges' lock.
-    pub fn keep(self, now_ms: i64) -> bool {
+    /// still as it was copied: the versions it then makes too many, to take
+    /// out once the lock is let go, never under it (the check of 36002ea, low
+    /// 22); None when it was not kept (the caller keeps the file as it is
+    /// now, `keep`). Under the exchanges' lock.
+    pub fn keep(self, now_ms: i64) -> Option<Vec<PathBuf>> {
         if self.copied.is_none() || standing(&self.path) != self.copied {
-            return false;
+            return None;
         }
         let target = self.dir.join(new_stamp(&self.dir, now_ms));
         if std::fs::rename(&self.temporary, &target).is_err() {
-            return false;
+            return None;
         }
-        prune_file(&self.dir, now_ms, false);
-        true
+        Some(to_prune(&self.dir, now_ms, false))
     }
 }
 
@@ -302,12 +307,22 @@ pub fn keep_sealed(root: &Path, part: &str, file: &str, hash: &str, size: u64, n
 /// older than 30 days (all of those when the file is no longer here), and
 /// those kept by reference past `SEALED_DAYS`.
 fn prune_file(dir: &Path, now_ms: i64, gone: bool) {
-    for (i, version) in versions_in(dir).into_iter().enumerate() {
-        let old = now_ms - version.at > DAYS * DAY;
-        if (old && (i >= VERSIONS || gone)) || (version.sealed.is_some() && now_ms - version.at > SEALED_DAYS * DAY) {
-            let _ = std::fs::remove_file(dir.join(name_of(&version)));
-        }
+    for path in to_prune(dir, now_ms, gone) {
+        let _ = std::fs::remove_file(path);
     }
+}
+
+/// The versions `prune_file` takes out, named, nothing taken out yet.
+fn to_prune(dir: &Path, now_ms: i64, gone: bool) -> Vec<PathBuf> {
+    versions_in(dir)
+        .into_iter()
+        .enumerate()
+        .filter(|(i, version)| {
+            let old = now_ms - version.at > DAYS * DAY;
+            (old && (*i >= VERSIONS || gone)) || (version.sealed.is_some() && now_ms - version.at > SEALED_DAYS * DAY)
+        })
+        .map(|(_, version)| dir.join(name_of(&version)))
+        .collect()
 }
 
 fn name_of(version: &Version) -> String {
@@ -417,6 +432,12 @@ pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bo
             // a file still here's, the item on its server or not: no shared
             // store holds them (review of 10 October 2026, R4).
             prune_file(&dir, now_ms, part != ACCOUNTS && !here(&part, &file));
+            // Your calendars' and contacts' items set aside by their sync are
+            // kept on this device alone, and small: never swept by the cap,
+            // only by their own twenty and thirty days (the check of 36002ea, low 24).
+            if part == ACCOUNTS {
+                continue;
+            }
             copies.extend(versions_in(&dir).into_iter().filter(|v| v.sealed.is_none()).map(|v| (v.at, dir.join(&v.stamp), v.size)));
         }
     }
@@ -476,6 +497,38 @@ mod tests {
         assert!(version(&root, "../notes", "files/notes/admin/lease.md", &kept[3].stamp).is_none());
         assert!(version(&root, "notes", "files/notes/admin/lease.md", "../../config.toml").is_none());
         assert_eq!(kept_at(&stamp(start + 123)), Some(start + 123));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The check of 36002ea, lows 22 and 24: a version kept under the
+    /// exchanges' lock names the ones it makes too many, taken out once the
+    /// lock is let go; the cap's sweep never takes your calendars' and
+    /// contacts' items set aside by their sync, which their own twenty and
+    /// thirty days keep.
+    #[test]
+    fn what_a_kept_version_makes_too_many_goes_after_the_lock_and_set_asides_stay() {
+        let base = scratch("after-lock");
+        let root = base.join("history");
+        let file = base.join("lease.md");
+        let start = 1_790_000_000_000;
+        for n in 0..VERSIONS as i64 {
+            std::fs::write(&file, format!("version {n}")).unwrap();
+            keep(&root, "notes", "files/notes/lease.md", &file, start + n * DAY).unwrap();
+        }
+        std::fs::write(&file, "now").unwrap();
+        let prepared = prepare(&root, "notes", "files/notes/lease.md", &file).unwrap();
+        let now = start + 400 * DAY;
+        let gone = prepared.keep(now).expect("kept by its rename");
+        assert!(gone.len() == 1 && gone.iter().all(|p| p.exists()), "named, not taken out yet: {gone:?}");
+        for version in &gone {
+            std::fs::remove_file(version).unwrap();
+        }
+        assert_eq!(versions(&root, "notes", "files/notes/lease.md").len(), VERSIONS);
+        // Past the cap: the notes' versions swept, your calendar's item set aside kept.
+        keep_bytes(&root, ACCOUNTS, "data/calendars/work/personal/dentist.ics", &[b'x'; 4096], start).unwrap();
+        prune(&root, now, 0, &|_, _| true);
+        assert!(versions(&root, "notes", "files/notes/lease.md").is_empty(), "swept by the cap");
+        assert_eq!(versions(&root, ACCOUNTS, "data/calendars/work/personal/dentist.ics").len(), 1, "never by the cap");
         let _ = std::fs::remove_dir_all(&base);
     }
 

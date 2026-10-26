@@ -2971,6 +2971,7 @@ share-history-more = { $count ->
 }
 share-history-filter = Trouver un fichier par son nom
 share-put-back-whole = { $file } revient comme il était ({ $when }) ; le fichier tel qu’il est maintenant est gardé dans la liste.
+share-put-back-meeting = { $file } est une réunion avec d’autres : seules vos propres lignes de cette version ({ $when }) reviennent, votre temps autour, ses coûts et votre rappel ; son heure, son titre et ses invités restent tels que son organisateur les a mis. La réunion telle qu’elle est maintenant est gardée dans la liste.
 share-put-back-nothing = { $file } contient déjà ce que contenait cette version : rien à remettre.
 share-put-back-entries = { $file } comme il était ({ $when }) : { $changed ->
     [one] une entrée revient à ce qu’elle était

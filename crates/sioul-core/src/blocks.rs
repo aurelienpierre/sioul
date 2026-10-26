@@ -121,10 +121,13 @@ fn known(tasks: &[Task]) -> BTreeSet<&str> {
 }
 
 /// The events without the blocks of the tasks known here: what holds time as
-/// an event, to the plan, the day and the record. A block is its task's time.
+/// an event, to the plan, the day and the record. A block is its task's time;
+/// one given a guest is a meeting with others, an event of its own everywhere:
+/// its step is never pinned to it, its time held as an event's (the check of
+/// 36002ea, low 25).
 pub fn without_blocks(mut events: Vec<Occurrence>, tasks: &[Task]) -> Vec<Occurrence> {
     let known = known(tasks);
-    events.retain(|e| e.task.is_empty() || !known.contains(e.task.as_str()));
+    events.retain(|e| e.task.is_empty() || e.with_others || !known.contains(e.task.as_str()));
     events
 }
 
@@ -135,7 +138,8 @@ impl Blocks {
         let by_uid: BTreeMap<&str, &Task> = tasks.iter().map(|t| (t.uid.as_str(), t)).collect();
         let day = |seconds: i64| Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()).date());
         let mut seen = BTreeSet::new();
-        let mut sorted: Vec<&Occurrence> = blocks.iter().filter(|b| !b.task.is_empty() && !b.cancelled && !b.all_day && b.end > b.start).filter(|b| seen.insert((b.key.clone(), b.start))).collect();
+        // A block given a guest is a meeting with others: no block of its task (`without_blocks`).
+        let mut sorted: Vec<&Occurrence> = blocks.iter().filter(|b| !b.task.is_empty() && !b.with_others && !b.cancelled && !b.all_day && b.end > b.start).filter(|b| seen.insert((b.key.clone(), b.start))).collect();
         sorted.sort_by(|a, b| (a.start, a.end, &a.key).cmp(&(b.start, b.end, &b.key)));
         let mut out = Blocks::default();
         for block in sorted {
@@ -168,7 +172,8 @@ pub fn calendars(chosen: &str) -> Vec<Collection> {
 /// The blocks of `calendars` between `from` and `to` (Unix seconds); times
 /// without a zone in `zone`.
 pub fn read(calendars: &[Collection], from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
-    calendars.iter().flat_map(|c| c.items().into_iter().flat_map(|path| agenda::file_occurrences(&path, c, from, to, zone)).collect::<Vec<_>>()).filter(|o| !o.task.is_empty()).collect()
+    let own = agenda::own_addresses();
+    calendars.iter().flat_map(|c| c.items().into_iter().flat_map(|path| agenda::file_occurrences_as(&path, c, from, to, zone, &own)).collect::<Vec<_>>()).filter(|o| !o.task.is_empty()).collect()
 }
 
 /// A value written as it is: no line break nor other control character.
@@ -536,6 +541,13 @@ mod tests {
         let stranger = Occurrence { task: "elsewhere".into(), ..block("stranger", "2026-10-06T16:00", "2026-10-06T17:00") };
         let events = without_blocks(vec![blocks[2].clone(), stranger.clone(), Occurrence { key: "dentist".into(), ..Occurrence::default() }], std::slice::from_ref(&bank));
         assert_eq!(events.iter().map(|e| e.key.as_str()).collect::<Vec<_>>(), ["stranger", "dentist"]);
+        // This afternoon's given a guest in another app: a meeting with others, an event of its
+        // own; the step pinned to the next one (the check of 36002ea, low 25).
+        let mut met = blocks.clone();
+        met[2].with_others = true;
+        let found_met = Blocks::of(&met, std::slice::from_ref(&bank), now, &zone);
+        assert_eq!(found_met.pins["bank"].key, "thursday", "never pinned to the meeting");
+        assert_eq!(without_blocks(vec![met[2].clone()], std::slice::from_ref(&bank)).len(), 1, "its time held as an event's");
         // Done: it pins nothing; the block it was done in is its record.
         let done = Task { status: Status::Completed, completed: Some(at("2026-10-06T14:30")), ..bank.clone() };
         let found = Blocks::of(&blocks, std::slice::from_ref(&done), at("2026-10-06T15:00"), &zone);

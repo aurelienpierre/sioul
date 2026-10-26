@@ -619,8 +619,19 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
     let mut lines: Vec<String> = [&view.weather_note, &view.office_note, &view.tied_note].into_iter().filter(|n| !n.is_empty()).cloned().collect();
     // A step kept from agents: said so, nothing of it given, nor why it comes now.
     let kept_now = view.now.as_ref().is_some_and(|card| !desk.allows(&card.uid));
-    if view.then.as_ref().is_some_and(|card| !desk.allows(&card.uid)) {
-        view.then = None;
+    // Every other card the person keeps from agents, the next one's too: left
+    // out before anything is given, counted (review of 36002ea, can-wait 9).
+    let mut closed = usize::from(kept_now);
+    for card in [&mut view.then, &mut view.rest] {
+        if card.as_ref().is_some_and(|card| !desk.allows(&card.uid)) {
+            *card = None;
+            closed += 1;
+        }
+    }
+    for cards in [&mut view.others, &mut view.started, &mut view.done_week, &mut view.joy] {
+        let before = cards.len();
+        cards.retain(|card| desk.allows(&card.uid));
+        closed += before - cards.len();
     }
     match &view.now {
         Some(_) if kept_now => lines.push("The next step is one the person keeps from agents (a project not opened to them, or health): nothing of it is given here. Ask the person if it matters.".into()),
@@ -640,13 +651,18 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
         lines.push(String::new());
         lines.push(line.clone());
     }
+    if let Some(note) = access::left_out(closed - usize::from(kept_now)) {
+        lines.push(String::new());
+        lines.push(note);
+    }
+    lines.extend(access::health_doubt(&desk.consent));
     let mut data = serde_json::to_value(&view).unwrap_or(Value::Null);
     if kept_now {
         for field in ["now", "then", "why", "picked"] {
             data[field] = Value::Null;
         }
-        data["kept_from_agents"] = json!(true);
     }
+    data["kept_from_agents"] = json!(closed);
     Answer { text: rows(&lines), data }
 }
 
@@ -658,10 +674,20 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let midnight = day_start(now.date());
     // Up to tomorrow's midnight: the day of a clock change has 23 or 25 hours.
     let mut events = agenda::occurrences(midnight, now.date().tomorrow().map_or(midnight + 86_400, day_start));
-    // Events and steps kept from agents: left out of the day, counted.
-    let before = events.len();
-    events.retain(|e| desk.consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || desk.allows(&e.task)));
-    let mut closed = before - events.len();
+    // Events and steps kept from agents: left out of the day, counted; a
+    // task's block under its task, counted once with its step (review of
+    // 36002ea, low 27).
+    let mut kept_back = std::collections::BTreeSet::new();
+    let mut closed = 0;
+    events.retain(|e| {
+        let shown = desk.consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || desk.allows(&e.task));
+        if !shown && e.task.is_empty() {
+            closed += 1;
+        } else if !shown {
+            kept_back.insert(e.task.clone());
+        }
+        shown
+    });
     let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
     let mut day = dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
     // Only the events, the steps, the tasks done and their margins, each by
@@ -669,7 +695,6 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     // it has; meals, naps, the time kept free and the time for you never, nor
     // counted: health and your own time stay out (docs/mcp.md).
     let own_events: std::collections::BTreeSet<&str> = events.iter().map(|e| e.key.as_str()).collect();
-    let mut kept_back = std::collections::BTreeSet::new();
     day.blocks.retain(|b| match b.kind {
         "event" => true,
         "margin" if own_events.contains(b.key.as_str()) => true,
@@ -697,6 +722,7 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
         lines.push(s.tr.text("day-more", Some(&s.tr.counted(day.more))));
     }
     lines.extend(access::left_out(closed));
+    lines.extend(access::health_doubt(&desk.consent));
     let blocks: Vec<Value> = day
         .blocks
         .iter()
@@ -730,6 +756,7 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
         lines.push(String::new());
         lines.push(note);
     }
+    lines.extend(access::health_doubt(&desk.consent));
     let mut data = serde_json::to_value(&view).unwrap_or(Value::Null);
     data["kept_from_agents"] = json!(closed);
     Answer { text: rows(&lines).trim().to_string(), data }
@@ -772,6 +799,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
         lines.push(shown.sentence.clone());
     }
     lines.extend(access::left_out(closed));
+    lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "from": shown.from, "days": out, "sentence": shown.sentence, "kept_from_agents": closed }) })
 }
 
@@ -1182,5 +1210,6 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
     if consent.closed_projects() > 0 || !consent.outside {
         lines.push("(What the person keeps from agents is not searched here.)".into());
     }
+    lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "found": found }) })
 }

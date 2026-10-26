@@ -157,6 +157,22 @@ pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathB
 }
 
 /// Whether a work deletes a contact, an event or a task, or leaves an occurrence out: the pages follow at once.
+/// How many delayed works on calendars' and contacts' files ended (done or
+/// undone): a page that keeps what it read of the calendars a while (Health's
+/// week) reads them again once it changed (the check of 36002ea, low 23).
+static PIM_ENDED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// `PIM_ENDED` now.
+pub(crate) fn pim_ended() -> u64 {
+    PIM_ENDED.load(Ordering::Relaxed)
+}
+
+/// Tests only: a delayed work on the calendars ended, as `forget` counts it.
+#[cfg(test)]
+pub(crate) fn pim_work_ended() {
+    PIM_ENDED.fetch_add(1, Ordering::Relaxed);
+}
+
 fn touches_pim(work: &Work) -> bool {
     match work {
         Work::Remove { .. } | Work::RemoveCancelled { .. } | Work::Skip { .. } => true,
@@ -648,7 +664,10 @@ fn finish(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
         tell(qt, shared, line);
     }
     show(qt, shared);
+    // The agenda drawn again whatever the work did: refused by the rule, the
+    // event it hid comes back at once, not at the next redraw (low 23).
     if touches_pim(&pending.work) {
+        crate::pim::show_pim(qt, shared);
         crate::work::show_work(qt, shared);
     }
 }
@@ -704,6 +723,9 @@ pub(crate) fn offer_back(qt: &QtThread, shared: &Arc<Shared>, line: String, back
 
 /// Takes a pending act off the list; the one before it, if any, can still be undone.
 fn forget(qt: &QtThread, shared: &Shared, pending: &Arc<Pending>) {
+    if touches_pim(&pending.work) {
+        PIM_ENDED.fetch_add(1, Ordering::Relaxed);
+    }
     let next = shared
         .pending
         .lock()

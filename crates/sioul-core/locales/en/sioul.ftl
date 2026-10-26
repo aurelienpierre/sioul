@@ -2953,6 +2953,7 @@ share-history-more = { $count ->
 }
 share-history-filter = Find a file by its name
 share-put-back-whole = { $file } goes back as it was ({ $when }); the file as it is now is kept in the list.
+share-put-back-meeting = { $file } is a meeting with others: only your own lines of that version ({ $when }) come back, your time around it, its costs and your reminder; its time, title and guests stay as its organizer set them. The meeting as it is now is kept in the list.
 share-put-back-nothing = { $file } holds that version's entries already: nothing to put back.
 share-put-back-entries = { $file } as it was ({ $when }): { $changed ->
     [one] one entry goes back to what it was

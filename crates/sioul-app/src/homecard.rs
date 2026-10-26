@@ -2419,7 +2419,7 @@ mod tests {
 
     /// A reminder of `kind`, due at `at` until `until` (Paris times).
     fn reminder(kind: reminders::Kind, key: &str, at_: &str, until: &str, title: &str, body: &str, target: &str, work: bool) -> Reminder {
-        Reminder { key: key.into(), kind, at: at(at_).timestamp().as_second(), until: at(until).timestamp().as_second(), title: title.into(), body: body.into(), target: target.into(), work, starts: None }
+        Reminder { key: key.into(), kind, at: at(at_).timestamp().as_second(), until: at(until).timestamp().as_second(), title: title.into(), body: body.into(), target: target.into(), work, starts: None, names: None }
     }
 
     /// A date asked for a work task, a payment, a paper from tomorrow, and an

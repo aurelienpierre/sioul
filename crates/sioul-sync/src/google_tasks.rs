@@ -251,7 +251,14 @@ fn sync_list(api: &Api, account: &str, id: &str, local: &str, title: &str, zone:
     let started = Timestamp::now() - jiff::SignedDuration::from_secs(120);
     // The state is kept whatever happens (and after each task made on Google):
     // a task sent is known at the next sync, never sent twice.
-    let synced = push(api, id, &dir, &mut state, &state_path, zone, report).and_then(|()| pull(api, id, &dir, &mut state, report));
+    let synced = push(api, id, &dir, &mut state, &state_path, zone, report).and_then(|ids| {
+        // The errands' tasks by their id here, beside Sioul's UID in the doses'
+        // record: your other devices know them by that id alone, and keep them
+        // from agents too (review of 36002ea, can-wait 10). Written only when new.
+        let record = sioul_core::health::HealthState::default_path();
+        let _ = sioul_core::health::HealthState::note_elsewhere(&record, Timestamp::now().as_second(), &ids);
+        pull(api, id, &dir, &mut state, report)
+    });
     if synced.is_ok() {
         state.sync_token = Some(started.strftime("%Y-%m-%dT%H:%M:%S.000Z").to_string());
     }
@@ -268,7 +275,8 @@ fn uid_in(path: &Path) -> Option<String> {
 /// What changed here, sent: deleted, changed (patched, moved under its
 /// parent), new (inserted, parents first: Google has one level of steps).
 /// The state follows each answer, and is kept after each task made on Google.
-fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path, zone: &TimeZone, report: &mut Report) -> Result<(), SyncError> {
+/// Returns Google's id of each task, by its UID here.
+fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path, zone: &TimeZone, report: &mut Report) -> Result<BTreeMap<String, String>, SyncError> {
     // UID → Google's id, for parents.
     let mut google_of: BTreeMap<String, String> = state.items.iter().filter_map(|i| Some((uid_in(&dir.join(&i.file))?, i.href.clone()))).collect();
     let mut i = 0;
@@ -338,7 +346,7 @@ fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path,
         vdir::write_item(&dir.join(&file), &text).map_err(SyncError::Disk)?;
         report.sent += 1;
     }
-    Ok(())
+    Ok(google_of)
 }
 
 /// A task put under another (or at the top, `None`); Google's answer.

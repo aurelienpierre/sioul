@@ -213,8 +213,9 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     // Today, and the end of hours that run past midnight: what lasts longer is cut there.
     let day_end = next_midnight.max(closing);
     let mut view = DayView { now: stamp, hours: hours.iter().map(|&(start, end, open)| Stretch { start, end, kind: open.id() }).collect(), ..DayView::default() };
-    // A task's time block is the task's time, laid as the task (`blocks`): never an event of its own here.
-    let own: Vec<Occurrence> = events.iter().filter(|e| e.task.is_empty() || !plan.items.contains_key(&e.task)).cloned().collect();
+    // A task's time block is the task's time, laid as the task (`blocks`): never an event of its own here;
+    // one given a guest is a meeting with others, laid as the event it is (the check of 36002ea, low 25).
+    let own: Vec<Occurrence> = events.iter().filter(|e| e.task.is_empty() || e.with_others || !plan.items.contains_key(&e.task)).cloned().collect();
     let events = own.as_slice();
     // A task pinned to a block today: laid there, its margins around it, whatever else is.
     let block_today = |uid: &str| plan.pins.get(uid).filter(|pin| pin.end > midnight && pin.start < next_midnight);

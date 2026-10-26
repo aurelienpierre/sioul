@@ -23,7 +23,7 @@ use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Occurrences of a repeating event looked at, at most, per file: a safety
@@ -327,8 +327,15 @@ fn from_window(text: &str, from: i64) -> std::borrow::Cow<'_, str> {
 /// times written without a zone are taken in `zone`, yours. Expanded from just
 /// before `from` (`from_window`), not from each event's start.
 pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
+    file_occurrences_as(path, calendar, from, to, zone, &own_addresses())
+}
+
+/// `file_occurrences`, you being `own` (`own_addresses`, asked once for a
+/// whole pass over the calendars, never once a file: review of 36002ea,
+/// can-wait 13).
+pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
-    let with_others = meeting_with_others(&text, &own_addresses());
+    let with_others = meeting_with_others(&text, own);
     let Some(ical) = parse(&for_expansion(&from_window(&text, from))) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
     let mut found = Vec::new();
@@ -387,11 +394,12 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
 /// you declined marked (`declined`), by your accounts' addresses.
 pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     let zone = TimeZone::system();
+    let own = own_addresses();
     // The calendars that take events (a task list's tasks are the task views'; its tasks show here by their time blocks).
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
         .iter()
         .filter(|c| c.holds("VEVENT"))
-        .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences(&path, calendar, from, to, &zone)).collect::<Vec<_>>())
+        .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences_as(&path, calendar, from, to, &zone, &own)).collect::<Vec<_>>())
         .collect();
     if all.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
         let own: Vec<String> = crate::config::Config::load(&crate::config::default_path()).map(|c| c.every_account().filter_map(|a| a.address.clone()).collect()).unwrap_or_default();
@@ -451,6 +459,29 @@ pub fn meeting_with_others(text: &str, own: &[String]) -> bool {
         }
     }
     false
+}
+
+/// How many guests an event names, as the rule reads them
+/// (`meeting_with_others`): the ATTENDEE lines of its events (the series and
+/// each time of it changed), each address once, never an alarm's recipient
+/// (review of 36002ea, low 26).
+pub fn guests(text: &str) -> usize {
+    let (mut inside, mut nested) = (false, 0usize);
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for line in lines::unfold(text) {
+        let name = lines::name(&line);
+        match name.as_str() {
+            "BEGIN" if !inside => inside = lines::value(&line).trim().eq_ignore_ascii_case("VEVENT"),
+            "BEGIN" => nested += 1,
+            "END" if inside && nested > 0 => nested -= 1,
+            "END" if inside => inside = false,
+            "ATTENDEE" if inside && nested == 0 => {
+                seen.insert(address(lines::value(&line)).trim().to_lowercase());
+            }
+            _ => {}
+        }
+    }
+    seen.len()
 }
 
 /// Your addresses (every account's, those switched off too), in lower
@@ -547,15 +578,28 @@ fn theirs(text: &str) -> Vec<String> {
 /// read-only mark and your addresses read here: every writer's last word
 /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`). A file
 /// that holds no event (a task, a contact), or none of a calendar, passes; a
-/// new event is refused only in a calendar you only read.
+/// new event is refused only in a calendar you only read. What holds no
+/// event, before and after, is asked nothing more than its read: no sync
+/// state parsed, no address asked (review of 36002ea, can-wait 13).
 pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
+    let old = std::fs::read_to_string(path).ok().filter(|text| holds_event(text));
+    let new_event = matches!(change, Change::Write(new) if holds_event(new));
+    if old.is_none() && !new_event {
+        return Ok(());
+    }
     let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
-    let event = |text: &str| text.contains("BEGIN:VEVENT");
-    match (std::fs::read_to_string(path).ok().filter(|text| event(text)), change) {
+    match (old, change) {
         (Some(text), change) => may_change(&text, read_only, &own_addresses(), change),
-        (None, Change::Write(new)) if read_only && event(new) => Err(Refusal::ReadOnly),
+        (None, Change::Write(_)) if read_only => Err(Refusal::ReadOnly),
         _ => Ok(()),
     }
+}
+
+/// Whether a calendar's text holds an event: a line BEGIN:VEVENT, in any
+/// case, as `meeting_with_others` and the calendars' reader take it (review
+/// of 36002ea, low 26).
+fn holds_event(text: &str) -> bool {
+    text.lines().any(|line| line.trim().eq_ignore_ascii_case("BEGIN:VEVENT"))
 }
 
 /// A refusal in your language (`own`), by what was asked.
@@ -1722,6 +1766,81 @@ fn with_lines(event: &[String], extra: &[String]) -> Vec<String> {
     out
 }
 
+/// An event's lines without its own `X-SIOUL-…` lines, its alarms' as they are.
+fn without_own_sioul(event: &[String]) -> Vec<String> {
+    let mut nested = 0usize;
+    event
+        .iter()
+        .enumerate()
+        .filter(|(i, line)| {
+            let name = lines::name(line);
+            if *i > 0 && name == "BEGIN" {
+                nested += 1;
+            } else if name == "END" && nested > 0 {
+                nested -= 1;
+                return true;
+            }
+            // The organizer's SEQUENCE kept (`ORGANIZER_SEQUENCE`): the organizer's, not yours.
+            !(nested == 0 && name.starts_with("X-SIOUL-") && name != ORGANIZER_SEQUENCE)
+        })
+        .map(|(_, line)| line.clone())
+        .collect()
+}
+
+/// A meeting with others as it is now (`current`), with an earlier version's
+/// own lines of yours instead of its own (`X-SIOUL-…`: your reminder, the
+/// time kept around it, its costs and gain), each time of it from the same
+/// time of the version (its RECURRENCE-ID); the rest as it is, in its order:
+/// its organizer's lines untouched, which the rule lets through
+/// (`may_change`). What putting back a version set aside by the sync does
+/// to a meeting (review of 36002ea, can-wait 6).
+pub fn with_own_lines_of(current: &str, version: &str) -> String {
+    let then = cut(version);
+    let mut out: Vec<String> = Vec::new();
+    let mut event: Vec<String> = Vec::new();
+    let (mut inside, mut nested) = (false, 0usize);
+    for line in lines::unfold(current) {
+        let name = lines::name(&line);
+        if !inside {
+            if name == "BEGIN" && lines::value(&line).trim().eq_ignore_ascii_case("VEVENT") {
+                (inside, nested) = (true, 0);
+                event = vec![line];
+            } else {
+                out.push(line);
+            }
+            continue;
+        }
+        let ends = match name.as_str() {
+            "BEGIN" => {
+                nested += 1;
+                false
+            }
+            "END" if nested > 0 => {
+                nested -= 1;
+                false
+            }
+            "END" => true,
+            _ => false,
+        };
+        event.push(line);
+        if ends {
+            inside = false;
+            let whole = std::mem::take(&mut event);
+            let time = which_time(&whole);
+            match then.events.iter().find(|e| which_time(e) == time) {
+                Some(old) => {
+                    let ours: Vec<String> = own_lines(old).filter(|l| lines::name(l).starts_with("X-SIOUL-") && lines::name(l) != ORGANIZER_SEQUENCE).cloned().collect();
+                    out.extend(with_lines(&without_own_sioul(&whole), &ours));
+                }
+                None => out.extend(whole),
+            }
+        }
+    }
+    // An event cut short (no END): as it was.
+    out.extend(event);
+    lines::fold(&out)
+}
+
 /// What an invitation's answer did to the copy your calendar holds (`answered_into`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Answered {
@@ -2164,10 +2283,14 @@ mod tests {
     /// through the one rule, since the doors of a calendar's files call it
     /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`); what
     /// goes in without it (`vdir::store_item`) is a server's copy or an
-    /// invitation's answer alone; and in every file that writes through a
-    /// door, no file is removed, renamed or written but through one, except
-    /// what is named below with why. A new one fails until it goes through a
-    /// door or is named here.
+    /// invitation's answer alone; and in every source, no file is removed,
+    /// renamed, copied or written otherwise (eight ways) in the collections'
+    /// modules or in a function that names a calendar, a collection, an
+    /// item's file or a door, except the lines named below with why (review
+    /// of 36002ea, can-wait 14). A new one fails until it goes through a
+    /// door or is named here; a name that matches nothing fails too. What it
+    /// cannot see: a writer handed any path, the sharing's copy of another
+    /// device's local calendars among them (its writers asked the rule there).
     #[test]
     fn no_writer_of_an_event_goes_around_the_rule() {
         let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
@@ -2177,40 +2300,87 @@ mod tests {
             let body = vdir_source.split(door).nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap_or_default();
             assert!(body.contains("guarded("), "{door} keeps the rule");
         }
-        // Each line of a source outside its tests, with the function it is in.
-        fn lines_of(text: &str) -> Vec<(String, String)> {
-            let (mut out, mut function) = (Vec::new(), String::new());
+        // Each line of a source outside its tests: the function it is in (by its first line, and its name), the line.
+        fn lines_of(text: &str) -> Vec<(usize, String, String)> {
+            let (mut out, mut start, mut function) = (Vec::new(), 0usize, String::new());
             let all: Vec<&str> = text.lines().collect();
             for (n, line) in all.iter().enumerate() {
                 let code = line.trim_start();
                 if code.starts_with("#[cfg(test)]") && all.get(n + 1).is_some_and(|next| next.trim_start().starts_with("mod ")) {
                     break;
                 }
-                let head = ["pub(crate) ", "pub(super) ", "pub ", "async "].iter().fold(code, |c, p| c.strip_prefix(p).unwrap_or(c));
+                let head = ["pub(crate) ", "pub(super) ", "pub ", "const ", "async ", "unsafe ", "extern \"C\" "].iter().fold(code, |c, p| c.strip_prefix(p).unwrap_or(c));
                 if let Some(name) = head.strip_prefix("fn ") {
                     function = name.split(['(', '<']).next().unwrap_or("").to_string();
+                    start = n;
                 }
                 if !code.starts_with("//") {
-                    out.push((function.clone(), code.to_string()));
+                    out.push((start, function.clone(), code.to_string()));
                 }
             }
             out
         }
         // What goes in as it came: the door itself, the sync's copy of the server, your answer to an invitation.
         let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-app/src/pim.rs", "answer")];
-        // Files removed, renamed or written otherwise, in files that write through a door, and why.
-        let named = [
-            ("sioul-app/src/mail.rs", "perform", "an invitation's event its organizer cancelled, taken out as your answer"),
-            ("sioul-app/src/pim.rs", "move_contact", "a contact"),
-            ("sioul-app/src/work.rs", "move_task", "a task"),
-            ("sioul-app/src/work.rs", "save", "the window's own state"),
-            ("sioul-core/src/duplicates.rs", "save", "contacts' record of duplicates"),
-            ("sioul-core/src/duplicates.rs", "apply", "contacts' record of duplicates"),
-            ("sioul-core/src/duplicates.rs", "done", "contacts' record of duplicates"),
-            ("sioul-core/src/duplicates.rs", "undo", "contacts, put back"),
-            ("sioul-sync/src/google_tasks.rs", "send_list_changes", "tasks, the server's word"),
-            ("sioul-sync/src/google_tasks.rs", "forget_gone", "tasks, the server's word"),
-            ("sioul-sync/src/google_tasks.rs", "pull", "tasks, the server's word"),
+        // Every source outside the tests is read (review of 36002ea, can-wait 14). A raw write
+        // counts in the modules of the collections (`modules`), and in any function that names a
+        // calendar, a collection, an item's file or a door (`markers`): each one named below by its
+        // file, its function and its line, with why it may go around the rule.
+        let raw = ["remove_file(", "fs::rename(", "fs::write(", "write_atomically(", "filelock::replace(", "fs::copy(", "remove_dir_all(", "write_synced("];
+        let markers = [".ics", "vevent", "vtodo", "account_item(", "collection", "calendar", "vdir::", "kind::calendars", "kind::contacts"];
+        let modules = ["sioul-core/src/vdir.rs", "sioul-sync/src/dav.rs", "sioul-sync/src/google_tasks.rs"];
+        let named: &[(&str, &str, &str)] = &[
+            // The doors themselves, guarded where they begin, and their journal's finish after a crash.
+            ("sioul-core/src/vdir.rs", "remove_item", "std::fs::remove_file(path)"),
+            ("sioul-core/src/vdir.rs", "store_item", "std::fs::write(&temporary, text)"),
+            ("sioul-core/src/vdir.rs", "store_item", "std::fs::rename(&temporary, path)"),
+            ("sioul-core/src/vdir.rs", "replace_locked", "std::fs::remove_file(from)"),
+            ("sioul-core/src/vdir.rs", "replace_locked", "std::fs::remove_file(path)"),
+            ("sioul-core/src/vdir.rs", "finish_moves_now", "std::fs::remove_file(path)"),
+            // Their records, no item: the moves' journal, the items moved, a collection's name,
+            // colour and state, an account's mark of being off.
+            ("sioul-core/src/vdir.rs", "moves_save", "std::fs::remove_file(&path)"),
+            ("sioul-core/src/vdir.rs", "moves_save", "crate::filelock::replace(&path"),
+            ("sioul-core/src/vdir.rs", "moved_change", "std::fs::remove_file(&path)"),
+            ("sioul-core/src/vdir.rs", "moved_change", "crate::filelock::replace(&path"),
+            ("sioul-core/src/vdir.rs", "rename_collection", "join(\"displayname\")"),
+            ("sioul-core/src/vdir.rs", "prepare", "join(\"displayname\")"),
+            ("sioul-core/src/vdir.rs", "prepare", "join(\"color\")"),
+            ("sioul-core/src/vdir.rs", "save", "crate::filelock::replace(path, text.as_bytes())"),
+            ("sioul-core/src/vdir.rs", "set_account_off", "dir.join(OFF)"),
+            ("sioul-sync/src/dav.rs", "save", "std::fs::write(&path, toml::to_string(self)"),
+            // A collection deleted while it holds nothing, or gone from its server (copies).
+            ("sioul-core/src/vdir.rs", "delete_collection", "std::fs::remove_dir_all(&collection.dir)"),
+            ("sioul-core/src/vdir.rs", "delete_collection", "std::fs::remove_file(&path)"),
+            ("sioul-sync/src/dav.rs", "forget_gone", "std::fs::remove_dir_all(&collection.dir)"),
+            ("sioul-sync/src/dav.rs", "forget_gone", "std::fs::remove_file(collection.state_path())"),
+            ("sioul-sync/src/dav.rs", "send_changes", "std::fs::remove_dir_all(&collection.dir)"),
+            ("sioul-sync/src/dav.rs", "send_changes", "std::fs::remove_file(&path)"),
+            ("sioul-sync/src/google_tasks.rs", "send_list_changes", "std::fs::remove_dir_all(&collection.dir)"),
+            ("sioul-sync/src/google_tasks.rs", "send_list_changes", "std::fs::remove_file(&path)"),
+            ("sioul-sync/src/google_tasks.rs", "forget_gone", "std::fs::remove_dir_all(&collection.dir)"),
+            ("sioul-sync/src/google_tasks.rs", "forget_gone", "std::fs::remove_file(collection.state_path())"),
+            // The server's word: an item gone there goes here (yours set aside first, when changed).
+            ("sioul-sync/src/dav.rs", "pull", "std::fs::remove_file(&path)"),
+            ("sioul-sync/src/google_tasks.rs", "pull", "std::fs::remove_file(dir.join("),
+            // The stand-in server's home, made for the tests alone (`dav::stand_in`).
+            ("sioul-sync/src/dav.rs", "home", "std::fs::remove_dir_all(&root)"),
+            ("sioul-sync/src/dav.rs", "forget_old_homes", "std::fs::remove_dir_all(entry.path())"),
+            // No item: a contact's photo, the mail's own id, the calendars waiting to be chosen,
+            // an attachment checked, the health file's last read.
+            ("sioul-core/src/contacts.rs", "photo_in", "std::fs::write(&path, &bytes)"),
+            ("sioul-core/src/config.rs", "sioul_authserv_id", "std::fs::write(&path, &id)"),
+            ("sioul-app/src/join.rs", "defer_agenda", "write_atomically(&pending_path()"),
+            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::write(&file, &bytes)"),
+            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::remove_file(&file)"),
+            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::copy(&file, &target)"),
+            ("sioul-app/src/health.rs", "keep_last_read", "write_synced(&copy, bytes)"),
+            // A task, a contact moved: written through a door first, its old file then taken out.
+            ("sioul-app/src/work.rs", "move_task", "std::fs::remove_file(from)"),
+            ("sioul-app/src/pim.rs", "move_contact", "std::fs::remove_file(&from)"),
+            // Your answer to a cancellation its organizer sent (`agenda::cancellation`, refused
+            // otherwise): the one removal of a meeting with others.
+            ("sioul-app/src/mail.rs", "perform", "match std::fs::remove_file(file)"),
         ];
         let mut sources = Vec::new();
         let mut stack = vec![crates.clone()];
@@ -2225,22 +2395,38 @@ mod tests {
                 }
             }
         }
-        let mut astray = Vec::new();
+        let (mut astray, mut used) = (Vec::new(), std::collections::BTreeSet::new());
         for path in sources {
             let file = path.strip_prefix(&crates).unwrap_or(&path).to_string_lossy().replace('\\', "/");
             let lines = lines_of(&std::fs::read_to_string(&path).unwrap_or_default());
-            let through_a_door = file != "sioul-core/src/vdir.rs" && lines.iter().any(|(_, l)| doors.iter().any(|d| l.contains(d)));
-            for (function, line) in &lines {
+            let mut bodies: BTreeMap<usize, String> = BTreeMap::new();
+            for (start, _, line) in &lines {
+                let body = bodies.entry(*start).or_default();
+                body.push_str(&line.to_lowercase());
+                body.push('\n');
+            }
+            for (start, function, line) in &lines {
                 if line.contains("store_item(") && !line.contains("fn store_item(") && !stored.contains(&(file.as_str(), function.as_str())) {
                     astray.push(format!("{file}: {function}: {line}"));
                 }
-                let raw = ["remove_file(", "fs::rename(", "fs::write("].iter().any(|r| line.contains(r));
-                if through_a_door && raw && !named.iter().any(|(f, n, _)| *f == file && n == function) {
-                    astray.push(format!("{file}: {function}: {line}"));
+                let defined = ["fn ", "pub fn ", "pub(crate) fn "].iter().any(|d| line.starts_with(d));
+                if defined || !raw.iter().any(|r| line.contains(r)) {
+                    continue;
+                }
+                let body = &bodies[start];
+                let near = modules.contains(&file.as_str()) || markers.iter().any(|m| body.contains(m)) || doors.iter().any(|d| body.contains(d));
+                match named.iter().position(|(f, n, l)| *f == file && n == function && line.contains(l)) {
+                    Some(i) => {
+                        used.insert(i);
+                    }
+                    None if near => astray.push(format!("{file}: {function}: {line}")),
+                    None => {}
                 }
             }
         }
         assert!(astray.is_empty(), "around the one rule of events' writers (agenda::guard):\n{}", astray.join("\n"));
+        let stale: Vec<String> = named.iter().enumerate().filter(|(i, _)| !used.contains(i)).map(|(_, (f, n, l))| format!("{f}: {n}: {l}")).collect();
+        assert!(stale.is_empty(), "named, and found nowhere: take them out\n{}", stale.join("\n"));
     }
 
     /// Your weekly meeting, as your calendar holds it: the series, your own
@@ -2333,6 +2519,56 @@ mod tests {
         assert_eq!(cancellation(SERIES, &by_guest, &own), Cancellation::Refused);
         let organized = SERIES.replace("ORGANIZER:mailto:boss@example.org", "ORGANIZER:mailto:me@example.org");
         assert_eq!(cancellation(&organized, &whole.replace("boss@example.org", "me@example.org"), &own), Cancellation::Refused);
+    }
+
+    /// Can-wait 6 of the review of 36002ea: a meeting's version set aside by
+    /// the sync, put back, brings back your own lines alone (your reminder, the
+    /// time kept before it), onto the meeting as its organizer has it now, in
+    /// its order, which the rule lets through; the version whole would not be.
+    #[test]
+    fn a_meeting_put_back_takes_back_only_your_own_lines() {
+        let own = vec!["me@example.org".to_string()];
+        let now = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review-1\r\nDTSTART:20991023T150000Z\r\nDTEND:20991023T160000Z\r\nSEQUENCE:2\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nX-SIOUL-BEFORE:5\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nEND:VTIMEZONE\r\nEND:VCALENDAR\r\n";
+        let then = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review-1\r\nDTSTART:20991023T140000Z\r\nDTEND:20991023T150000Z\r\nSEQUENCE:1\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nX-SIOUL-REMIND:30\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let back = with_own_lines_of(now, then);
+        assert!(back.contains("DTSTART:20991023T150000Z") && back.contains("SEQUENCE:2") && back.contains("X-SIOUL-REMIND:30") && !back.contains("X-SIOUL-BEFORE"), "{back}");
+        assert!(back.contains("TRIGGER:-PT10M") && back.find("BEGIN:VTIMEZONE") > back.find("END:VEVENT") && back.ends_with("END:VCALENDAR\r\n"), "the rest as it was, in its order: {back}");
+        assert_eq!(may_change(now, false, &own, Change::Write(&back)), Ok(()));
+        assert_eq!(may_change(now, false, &own, Change::Write(then)), Err(Refusal::WithOthers), "the version whole: refused");
+    }
+
+    /// Can-wait 13 and low 26 of the review of 36002ea: the guard takes an
+    /// event written in any case, follows a calendar's read-only mark as its
+    /// state changes (kept between writes otherwise), and an event's guests
+    /// are counted as the rule reads them, never an email alarm's recipient.
+    #[test]
+    fn the_guard_reads_what_it_needs_in_any_case() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
+        let account = "guard-reads";
+        vdir::prepare(Kind::Calendars, account, "cal", "Cal", None).unwrap();
+        let dir = Kind::Calendars.root().join(account).join("cal");
+        let meeting = dir.join("meeting.ics");
+        std::fs::write(&meeting, "Begin:VCalendar\r\nBegin:VEvent\r\nUID:m-1\r\nDTSTART:20991023T090000Z\r\nOrganizer:mailto:boss@example.org\r\nAttendee:mailto:jane@example.org\r\nEnd:VEvent\r\nEnd:VCalendar\r\n").unwrap();
+        assert_eq!(guard(&meeting, Change::Delete), Err(Refusal::WithOthers), "a meeting in another case");
+        let own = dir.join("own.ics");
+        std::fs::write(&own, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:o-1\r\nDTSTART:20991023T090000Z\r\nSUMMARY:Own\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let task = dir.join("task.ics");
+        std::fs::write(&task, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t-1\r\nSUMMARY:Task\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+        assert_eq!(guard(&own, Change::Delete), Ok(()));
+        let state = vdir::state_path(account, Kind::Calendars, "cal");
+        for read_only in [true, false, true] {
+            let mut marked = vdir::State::load(&state);
+            marked.read_only = read_only;
+            marked.save(&state).unwrap();
+            assert_eq!(guard(&own, Change::Delete).is_err(), read_only, "its mark read again once its state changed");
+        }
+        assert_eq!(guard(&task, Change::Write("BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t-1\r\nSUMMARY:Done\r\nEND:VTODO\r\nEND:VCALENDAR\r\n")), Ok(()), "a task: nothing asked");
+        assert_eq!(guard(&dir.join("new.ics"), Change::Write("begin:vevent\r\nend:vevent\r\n")), Err(Refusal::ReadOnly), "a new event in any case");
+        let series = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nATTENDEE:mailto:Jane@example.org\r\nBEGIN:VALARM\r\nACTION:EMAIL\r\nATTENDEE:mailto:me@example.org\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:g\r\nRECURRENCE-ID:20991030T090000Z\r\nATTENDEE:mailto:jane@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(guests(series), 1, "one guest, named in two times of it");
+        assert_eq!(guests("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nBEGIN:VALARM\r\nACTION:EMAIL\r\nATTENDEE:mailto:me@example.org\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"), 0, "an email alarm's recipient");
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }
 
     #[test]

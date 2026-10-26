@@ -750,7 +750,27 @@ pub fn calendar_read_only(path: &Path) -> Option<bool> {
     let rest = path.strip_prefix(Kind::Calendars.root()).ok()?;
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
-    Some(State::load(&state_path(account, Kind::Calendars, id)).read_only)
+    Some(read_only_of(&state_path(account, Kind::Calendars, id)))
+}
+
+/// A calendar's read-only mark from its sync state (`State::read_only`),
+/// parsed again only when that file changed (its time or its size), never
+/// at each write: the state holds a row per item its server has (review of
+/// 36002ea, can-wait 13).
+fn read_only_of(state: &Path) -> bool {
+    type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, bool)>;
+    static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+    let meta = std::fs::metadata(state).ok();
+    let (when, size) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, std::fs::Metadata::len));
+    let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, length, mark)) = seen.get(state)
+        && (*at, *length) == (when, size)
+    {
+        return *mark;
+    }
+    let mark = State::load(state).read_only;
+    seen.insert(state.to_path_buf(), (when, size, mark));
+    mark
 }
 
 /// An item written as it came, without `agenda::guard`: what a server sent

@@ -35,8 +35,15 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     let mut consent = Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)));
     consent.keep_accounts(kept_accounts(&s.config), &loaded.mail);
     let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path());
-    consent.keep_errands(loaded, &recorded);
+    consent.keep_errands(loaded, recorded.as_ref());
     consent
+}
+
+/// What an answer listing tasks or events says when the errands' record
+/// does not read here (`Consent::health_unread`): the doubt, never the
+/// record read as empty (review of 36002ea, can-wait 10).
+pub fn health_doubt(consent: &Consent) -> Option<String> {
+    consent.health_unread.then(|| "(Sioul's record of its health errands could not be read here: an errand renamed on a list that keeps no category may show as a task of its own. If one looks like health, leave it and ask the person.)".to_string())
 }
 
 /// The accounts whose mail is kept from agents whatever its projects, with

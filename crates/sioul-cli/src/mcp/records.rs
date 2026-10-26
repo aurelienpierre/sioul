@@ -294,14 +294,17 @@ pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {
     let stamp = now.timestamp().as_second();
     let (all, _) = reminders::gather(&s.config, &s.tr, &now);
     let (consent, loaded) = consent(s);
-    // What each is about: a task, an event (by its file), a budget, a paper, a contract.
+    // What each is about: a task, an event (by its file), a budget, a paper, a
+    // contract; and what its words name besides (the task a wait came after),
+    // never one kept from agents (review of 36002ea, low 27).
     let allowed = |r: &reminders::Reminder| {
         let event = loaded.events.iter().find(|e| e.key == r.target);
-        match event {
+        let about = match event {
             Some(event) => consent.allows(&links::event_uri(&event.uid)),
             None if r.target.starts_with("sioul:") => consent.allows(&r.target),
             None => consent.outside,
-        }
+        };
+        about && r.names.as_deref().is_none_or(|other| consent.allows(other))
     };
     let coming: Vec<&reminders::Reminder> = all.iter().filter(|r| r.until > stamp && r.at < stamp + days * 86_400).collect();
     let shown: Vec<&&reminders::Reminder> = coming.iter().filter(|r| allowed(r)).collect();
@@ -320,6 +323,7 @@ pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {
         lines.push(s.tr.text("remind-nothing", None));
     }
     lines.extend(access::left_out(closed));
+    lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "days": days, "reminders": out, "kept_from_agents": closed }) })
 }
 

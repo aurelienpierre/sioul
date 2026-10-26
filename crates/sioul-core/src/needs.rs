@@ -377,13 +377,14 @@ impl Days {
         }
     }
 
-    /// What a change wrote on `date`'s block `key` undone, field by field (a
-    /// drag's Undo on the Health page): `was` before it, `wrote` right after
-    /// it, none for no change that day. A field it wrote, still as it wrote
-    /// it, goes back; every other field stays as it is now, a choice made
-    /// since included ("Alarm at 07:00 after all", "Not that day"). Back to
-    /// no change at all, the block's change is forgotten. Whether anything
-    /// was put back.
+    /// What a drag wrote on `date`'s block `key` undone, field by field (its
+    /// Undo on the Health page): `was` before it, `wrote` right after it,
+    /// none for no change that day. A field a drag writes (its time, its
+    /// waking, its length, the time kept before and after it), still as it
+    /// wrote it, goes back; every other field stays as it is now, a choice
+    /// made since included, whatever wrote it ("Alarm at 07:00 after all",
+    /// "Not that day": the check of 36002ea, low 21). Back to no change at
+    /// all, the block's change is forgotten. Whether anything was put back.
     pub fn put_back(&mut self, date: Date, key: &str, was: Option<&DayBlock>, wrote: Option<&DayBlock>) -> bool {
         let usual = DayBlock::default();
         let (was, wrote) = (was.unwrap_or(&usual), wrote.unwrap_or(&usual));
@@ -396,7 +397,7 @@ impl Days {
                 })*
             };
         }
-        undone!(kind, name, at, wake, minutes, before, after, quiet, off, no_alarm);
+        undone!(at, wake, minutes, before, after);
         if back == now {
             return false;
         }
@@ -1014,6 +1015,18 @@ mod tests {
         let wrote = days.get(monday, "meal:1").cloned();
         assert!(days.put_back(monday, "meal:1", None, wrote.as_ref()) && days.get(monday, "meal:1").is_none());
         assert!(!days.put_back(monday, "meal:1", None, wrote.as_ref()), "nothing left to put back");
+        // A choice written beside the drag (another device's "Alarm after all",
+        // read between): never undone with it, whatever `was` held (the check
+        // of 36002ea, low 21).
+        let mut days = Days::default();
+        needs.change_day(&mut days, monday, &ask("sleep", "no-alarm"), &now, &[]).unwrap();
+        let was = days.get(monday, "sleep").cloned();
+        needs.change_day(&mut days, monday, &ask("sleep", "alarm"), &now, &[]).unwrap();
+        needs.change_day(&mut days, monday, &drag, &now, &[]).unwrap();
+        let wrote = days.get(monday, "sleep").cloned();
+        assert!(days.put_back(monday, "sleep", was.as_ref(), wrote.as_ref()));
+        let night = days.get(monday, "sleep").cloned().unwrap_or_default();
+        assert!(!night.no_alarm && night.wake == was.unwrap_or_default().wake, "its waking back, the alarm asked for kept: {night:?}");
     }
 
     #[test]

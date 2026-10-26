@@ -1169,9 +1169,16 @@ pub fn is_errand(task: &crate::tasks::Task, recorded: &std::collections::BTreeSe
         return true;
     }
     let words = errand_words();
-    let title = task.title.trim();
-    task.categories.iter().any(|c| words.categories.contains(&c.trim().to_lowercase()))
-        || words.titles.iter().any(|(before, after)| title.len() > before.len() + after.len() && title.starts_with(before.as_str()) && title.ends_with(after.as_str()))
+    task.categories.iter().any(|c| words.categories.contains(&c.trim().to_lowercase())) || is_errand_title(&task.title)
+}
+
+/// Whether a title is one Sioul gives an errand, in any language it writes
+/// ("Pharmacy: …", "Doctor: renew the prescription for …"): an errand's
+/// task, its time block (titled as its task) or the appointment it was made
+/// (`consent::Consent::keep_errands`; review of 36002ea, can-wait 7 and 8).
+pub fn is_errand_title(title: &str) -> bool {
+    let title = title.trim();
+    errand_words().titles.iter().any(|(before, after)| title.len() > before.len() + after.len() && title.starts_with(before.as_str()) && title.ends_with(after.as_str()))
 }
 
 /// What is marked of the doses and done of the errands, kept apart from the
@@ -1250,22 +1257,60 @@ pub enum Problem {
     Write(String),
 }
 
+/// What follows an errand's key in the record where the id a list that
+/// keeps no UID gave its task is kept (`HealthState::note_elsewhere`).
+pub const ELSEWHERE: &str = "#elsewhere";
+
 impl HealthState {
     pub fn default_path() -> PathBuf {
         crate::config::state_dir().join("health-state.toml")
     }
 
     /// The UIDs of the tasks made for errands (`errands`), alone: what keeps
-    /// them from agents (`is_errand`). Nothing else of the record is kept,
-    /// the errands' keys either (they name prescriptions); none when the
-    /// record does not read, and nothing set aside or repaired here.
-    pub fn errand_uids(path: &Path) -> std::collections::BTreeSet<String> {
+    /// them from agents (`is_errand`); with them, the ids a list that keeps
+    /// no UID gave them (`ELSEWHERE`). Nothing else of the record is kept,
+    /// the errands' keys either (they name prescriptions). None, never an
+    /// empty set, when the record does not read or was lost: the doubt is
+    /// said (review of 36002ea, can-wait 10); nothing set aside or repaired here.
+    pub fn errand_uids(path: &Path) -> Option<std::collections::BTreeSet<String>> {
         #[derive(Deserialize)]
         struct Errands {
             #[serde(default)]
             errands: BTreeMap<String, String>,
         }
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<Errands>(&text).ok()).map(|e| e.errands.into_values().collect()).unwrap_or_default()
+        match std::fs::read_to_string(path) {
+            Ok(text) if text.trim().is_empty() && witnessed(path) => None,
+            Ok(text) => toml::from_str::<Errands>(&text).ok().map(|e| e.errands.into_values().collect()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (!witnessed(path)).then(std::collections::BTreeSet::new),
+            Err(_) => None,
+        }
+    }
+
+    /// The errands' tasks as a list that keeps no UID knows them (Google
+    /// Tasks: its own id, `ids` by Sioul's UID), recorded beside each errand
+    /// under its key and `ELSEWHERE`, so that a device that knows the task by
+    /// that id alone keeps it from agents too (`errand_uids`; review of
+    /// 36002ea, can-wait 10). Written only when one is new; nothing when the
+    /// record does not read. An older Sioul reads such a key as no errand of
+    /// its own, and the id among the errands' UIDs.
+    pub fn note_elsewhere(path: &Path, now: i64, ids: &BTreeMap<String, String>) -> Result<(), Problem> {
+        let new = |state: &HealthState| -> Vec<(String, String)> {
+            state
+                .errands
+                .iter()
+                .filter(|(key, _)| !key.ends_with(ELSEWHERE))
+                .filter_map(|(key, uid)| Some((format!("{key}{ELSEWHERE}"), ids.get(uid)?.clone())))
+                .filter(|(key, id)| state.errands.get(key) != Some(id))
+                .collect()
+        };
+        if new(&HealthState::read(path).map_err(Problem::Unsound)?).is_empty() {
+            return Ok(());
+        }
+        HealthState::update(path, now, |state| {
+            for (key, id) in new(state) {
+                state.errands.insert(key, id);
+            }
+        })
     }
 
     /// The doses' record as written, or why it cannot be trusted. Never an
@@ -1937,10 +1982,23 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("health-state.toml");
         std::fs::write(&path, "[taken]\n\"vitamin-d@1790000000\" = 1790000000\n\n[errands]\n\"refill:vitamin-d:2026-10-27\" = \"uid-1\"\n").unwrap();
-        assert_eq!(HealthState::errand_uids(&path), ["uid-1".to_string()].into());
+        assert_eq!(HealthState::errand_uids(&path), Some(["uid-1".to_string()].into()));
+        // Its id on a list that keeps no UID, recorded beside it once, read with it (can-wait 10).
+        let ids: BTreeMap<String, String> = [("uid-1".to_string(), "google-1".to_string())].into();
+        HealthState::note_elsewhere(&path, 1_790_000_000, &ids).unwrap();
+        assert_eq!(HealthState::errand_uids(&path), Some(["uid-1".to_string(), "google-1".to_string()].into()));
+        let written = std::fs::read(&path).unwrap();
+        HealthState::note_elsewhere(&path, 1_790_000_100, &ids).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), written, "nothing new: nothing written");
+        // A record that does not read: not known, never none.
         std::fs::write(&path, "not toml [[").unwrap();
-        assert!(HealthState::errand_uids(&path).is_empty());
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "nothing set aside");
+        assert_eq!(HealthState::errand_uids(&path), None);
+        assert!(HealthState::note_elsewhere(&path, 1_790_000_200, &ids).is_err());
+        let names: Vec<String> = std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        assert!(names.iter().all(|n| !n.contains("unreadable") && !n.contains("lost")), "nothing set aside: {names:?}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not toml [[", "nor written over");
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(HealthState::errand_uids(&path), None, "lost: written here before");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

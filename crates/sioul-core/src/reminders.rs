@@ -179,6 +179,11 @@ pub struct Reminder {
     /// An event's own reminder (its alarm, Sioul's before it): when the event starts, Unix seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starts: Option<i64>,
+    /// The other thing its words name, by its address: the task a wait came
+    /// after (`sioul:task/<UID>`), so that an agent is never told of one kept
+    /// from it (review of 36002ea, low 27).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub names: Option<String>,
 }
 
 /// What waits now.
@@ -415,6 +420,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 target: event.key.clone(),
                 work: false,
                 starts: Some(event.start),
+                names: None,
             });
         }
         for (offset, due) in alarms {
@@ -428,6 +434,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 target: event.key.clone(),
                 work: false,
                 starts: Some(event.start),
+                names: None,
             });
         }
         // The working day before; not for calendars you only read (holidays, subscriptions).
@@ -448,6 +455,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 target: event.key.clone(),
                 work: false,
                 starts: None,
+                names: None,
             });
         }
     }
@@ -472,14 +480,23 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 target: format!("sioul:task/{}", task.uid),
                 work: !personal(task),
                 starts: None,
+                names: None,
             });
         }
-        // A wait after a step done: once it is over, when work is there.
+        // A wait after a step done: once it is over, when work is there. Written
+        // in the task that comes first (its FINISHTOSTART or NEXT names this one,
+        // RFC 9253 §4, as `tasks::set_gap` writes it), or in this one (its
+        // DEPENDS-ON), as the plan reads both (`plan::Graph`; review of
+        // 36002ea, low 27: it was read in this one alone, the wrong way).
         if settings.waits {
-            for relation in task.relations.iter().filter(|r| r.kind.eq_ignore_ascii_case("FINISHTOSTART") && r.gap > 0) {
-                let Some(before) = tasks.iter().find(|t| t.uid == relation.uid) else { continue };
+            let first: Vec<(&Task, i64)> = tasks
+                .iter()
+                .flat_map(|before| before.relations.iter().filter(|r| matches!(r.kind.to_ascii_uppercase().as_str(), "FINISHTOSTART" | "NEXT") && r.uid == task.uid && r.gap > 0).map(move |r| (before, r.gap)))
+                .chain(task.relations.iter().filter(|r| r.kind.eq_ignore_ascii_case("DEPENDS-ON") && r.gap > 0).filter_map(|r| Some((tasks.iter().find(|t| t.uid == r.uid)?, r.gap))))
+                .collect();
+            for (before, gap) in first {
                 // The gap is the task file's: one too long to be a time waits for nothing.
-                let Some(over) = before.completed.and_then(|done| done.checked_add(relation.gap.checked_mul(60)?)).and_then(at) else { continue };
+                let Some(over) = before.completed.and_then(|done| done.checked_add(gap.checked_mul(60)?)).and_then(at) else { continue };
                 let Some(due) = work_from(&hours, &config.time_off, &over) else { continue };
                 let mut args = crate::i18n::args();
                 args.set("before", before.title.clone());
@@ -493,6 +510,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                     target: format!("sioul:task/{}", task.uid),
                     work: !personal(task),
                     starts: None,
+                    names: Some(format!("sioul:task/{}", before.uid)),
                 });
             }
         }
@@ -528,6 +546,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 target: format!("sioul:budget/{}", line.budget),
                 work: false,
                 starts: None,
+                names: None,
             });
         }
     }
@@ -552,6 +571,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             target: format!("sioul:paper/{}", paper.id),
             work: false,
             starts: None,
+            names: None,
         });
     }
     // Contracts renewing each year: two weeks before the last day a notice can leave.
@@ -574,6 +594,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             target: format!("sioul:contract/{}", contract.id),
             work: false,
             starts: None,
+            names: None,
         });
     }
     // The money watch: once each, calmly.
@@ -606,7 +627,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             }
             crate::bank::Finding::Changed { .. } => continue,
         };
-        out.push(Reminder { key, kind: Kind::Money, at: at.timestamp().as_second(), until, title, body, target: "sioul:budget/".into(), work: false, starts: None });
+        out.push(Reminder { key, kind: Kind::Money, at: at.timestamp().as_second(), until, title, body, target: "sioul:budget/".into(), work: false, starts: None, names: None });
     }
     out.sort_by(|a, b| (a.at, &a.key).cmp(&(b.at, &b.key)));
     out
@@ -770,8 +791,9 @@ mod tests {
         let mut letter = task("letter", "");
         letter.status = Status::Completed;
         letter.completed = Some(at("2026-10-02T11:00").timestamp().as_second());
-        let mut follow = task("follow-up", "");
-        follow.relations = vec![crate::tasks::Relation { kind: "FINISHTOSTART".into(), uid: "letter".into(), gap: 2 * 1440 }];
+        // Written in the letter, the task that comes first (RFC 9253 §4, `tasks::set_gap`): the follow-up waits.
+        letter.relations = vec![crate::tasks::Relation { kind: "FINISHTOSTART".into(), uid: "follow-up".into(), gap: 2 * 1440 }];
+        let follow = task("follow-up", "");
         tasks.extend([letter, follow]);
         let ledger: Ledger = toml::from_str("[[line]]\nbudget = \"home\"\ndate = 2026-10-15\namount = -120.50\nlabel = \"Water bill\"\nplanned = true\n").unwrap();
         // A passport ending on 30 December: renewing starts on 1 October, a Thursday, told when work starts.
@@ -1002,7 +1024,7 @@ mod tests {
     fn each_kind(at: i64, starts: i64) -> Vec<Reminder> {
         [Kind::Before, Kind::Alarm, Kind::Event, Kind::Asked, Kind::Wait, Kind::Payment, Kind::Paper, Kind::Contract, Kind::Money]
             .into_iter()
-            .flat_map(|kind| [false, true].map(move |work| Reminder { key: format!("{kind:?}:{work}"), kind, at, until: starts + 60, title: String::new(), body: String::new(), target: String::new(), work, starts: Some(starts) }))
+            .flat_map(|kind| [false, true].map(move |work| Reminder { key: format!("{kind:?}:{work}"), kind, at, until: starts + 60, title: String::new(), body: String::new(), target: String::new(), work, starts: Some(starts), names: None }))
             .collect()
     }
 
@@ -1037,7 +1059,7 @@ mod tests {
         let now = at("2026-10-07T23:30").timestamp().as_second();
         let night = Wait::Sleep { from: now - 3600, until: now + 7 * 3600 };
         let after_waking = now + 8 * 3600;
-        let train = Reminder { key: "before:train".into(), kind: Kind::Before, at: now - 60, until: after_waking, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(after_waking) };
+        let train = Reminder { key: "before:train".into(), kind: Kind::Before, at: now - 60, until: after_waking, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(after_waking), names: None };
         let dinner = Reminder { key: "alarm:dinner".into(), kind: Kind::Alarm, starts: Some(now + 600), until: now + 600, ..train.clone() };
         let bill = Reminder { key: "payment:water".into(), kind: Kind::Payment, until: now + 86_400, starts: None, ..train.clone() };
         let mut holds = Holds::usual(night);

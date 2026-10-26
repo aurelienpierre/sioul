@@ -231,22 +231,30 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
 }
 
 /// Words planted in every field of health (`health_never_reaches_an_agent`):
-/// a medicine's name and generic name, a prescription's title, a meal's and a
-/// nap's names, and the titles of three errands; none may be in any answer.
-const HEALTH_WORDS: [&str; 7] = ["Quillaine", "quillanoxate", "Brackenwort", "Marrowbake", "Dozewell", "Ferngale", "Wyrmroot"];
+/// a medicine's name (its id too), generic name and strength, a
+/// prescription's title (its id too), prescriber and note, a meal's and a
+/// nap's names, and the titles of the errands; none may be in any answer,
+/// case and accents aside.
+const HEALTH_WORDS: &[&str] = &["Quillaine", "quillanoxate", "Brackenwort", "Marrowbake", "Dozewell", "Ferngale", "Wyrmroot", "Thistlewick", "Ambermoss", "Gloamwell"];
 
 /// Health in the home: a medicine and its prescription, a meal, a nap and a
 /// night today at times that are not now (other tests read now), marks of
 /// doses; three errands in no project, one known by its French category,
 /// one by the record alone, one by Sioul's own title alone (a Google list),
-/// with a step, and a time block tomorrow.
+/// with a step, and a time block tomorrow. The shapes of the review of
+/// 36002ea (can-wait 7 to 10, low 27): an errand made an appointment, a
+/// block whose errand is gone (last week), a block named by the phone's UID,
+/// an errand of a Google list made on the phone and renamed (known here by
+/// Google's id alone, recorded beside), a timer note on an errand, an errand
+/// done this week and a task of yours waiting after it, your own task holding
+/// an errand as its step.
 fn health_fixture() {
     let now = Zoned::now();
     let hour = i64::from(now.hour());
     let clock = |h: i64| format!("{:02}:{:02}", h.rem_euclid(24), now.minute());
     let meal = if hour < 12 { hour + 2 } else { hour - 3 };
     let health = format!(
-        "[[prescription]]\nid = \"brackenwort\"\ntitle = \"Brackenwort 20\"\nrefill_days = 30\n\n[[medicine]]\nid = \"quillaine\"\nname = \"Quillaine\"\ngeneric = \"quillanoxate\"\ndose = \"1 tablet\"\nprescription = \"brackenwort\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\", \"{}\"]\n\n[needs]\nmeals_on = true\nnaps_on = true\nsleep_on = true\n\n[[needs.meals]]\nname = \"Marrowbake\"\nat = \"{}\"\nminutes = 30\n\n[[needs.naps]]\nname = \"Dozewell\"\nat = \"{}\"\nminutes = 20\n\n[needs.sleep]\nbed = \"{}\"\nwake = \"{}\"\n",
+        "[[prescription]]\nid = \"brackenwort\"\ntitle = \"Brackenwort 20\"\nprescriber = \"Dr Thistlewick\"\nnote = \"Keep the Ambermoss leaflet\"\nrefill_days = 30\n\n[[medicine]]\nid = \"quillaine\"\nname = \"Quillaine\"\ngeneric = \"quillanoxate\"\nstrength = \"12 mg Gloamwell\"\ndose = \"1 tablet\"\nprescription = \"brackenwort\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\", \"{}\"]\n\n[needs]\nmeals_on = true\nnaps_on = true\nsleep_on = true\n\n[[needs.meals]]\nname = \"Marrowbake\"\nat = \"{}\"\nminutes = 30\n\n[[needs.naps]]\nname = \"Dozewell\"\nat = \"{}\"\nminutes = 20\n\n[needs.sleep]\nbed = \"{}\"\nwake = \"{}\"\n",
         clock(meal),
         clock(meal + 1),
         clock(meal),
@@ -259,7 +267,14 @@ fn health_fixture() {
     std::fs::write(&path, health).unwrap();
     let state = sioul_core::health::HealthState::default_path();
     std::fs::create_dir_all(state.parent().unwrap()).unwrap();
-    std::fs::write(&state, "[taken]\n\"quillaine@1790000000\" = 1790000000\n\n[errands]\n\"refill:brackenwort:2026-10-27\" = \"errand-recorded\"\n").unwrap();
+    std::fs::write(
+        &state,
+        format!(
+            "[taken]\n\"quillaine@1790000000\" = 1790000000\n\n[errands]\n\"refill:brackenwort:2026-10-27\" = \"errand-recorded\"\n\"refill:brackenwort:2026-10-20\" = \"errand-gone\"\n\"renew:brackenwort:2027-01-01\" = \"phone-uid-1\"\n\"renew:brackenwort:2027-01-01{}\" = \"google-renamed\"\n",
+            sioul_core::health::ELSEWHERE
+        ),
+    )
+    .unwrap();
     let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
     let zone = jiff::tz::TimeZone::system();
     let pharmacy = {
@@ -270,7 +285,7 @@ fn health_fixture() {
     for (uid, edit) in [
         ("errand-category", TaskEdit { title: "Ask about Ferngale".into(), categories: vec!["santé".into()], estimate: 30, ..TaskEdit::default() }),
         ("errand-recorded", TaskEdit { title: "Collect the Wyrmroot order".into(), estimate: 30, ..TaskEdit::default() }),
-        ("errand-title", TaskEdit { title: pharmacy, estimate: 30, ..TaskEdit::default() }),
+        ("errand-title", TaskEdit { title: pharmacy.clone(), estimate: 30, ..TaskEdit::default() }),
         ("errand-step", TaskEdit { title: "Bring the Ferngale card".into(), parent: "errand-category".into(), estimate: 5, ..TaskEdit::default() }),
     ] {
         vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
@@ -282,6 +297,46 @@ fn health_fixture() {
     // Its own UID, to be asked for by its address.
     let block: String = block.lines().map(|l| if l.starts_with("UID:") { "UID:errand-block".to_string() } else { l.to_string() }).map(|l| l + "\r\n").collect();
     vdir::write_item(&calendar.dir.join("errand-block.ics"), &block).unwrap();
+    // The review of 36002ea's shapes.
+    let event = |uid: &str, title: &str, day: jiff::civil::Date, hour: i8, task: &str| {
+        let edit = sioul_core::agenda::EventEdit { title: title.into(), start: format!("{day}T{hour:02}:00"), end: format!("{day}T{hour:02}:30"), ..Default::default() };
+        let mut text = sioul_core::agenda::new_event(&edit, &zone).unwrap();
+        if !task.is_empty() {
+            text = sioul_core::agenda::add_lines(&text, &[format!("{}:{task}", sioul_core::blocks::TASK)]).unwrap();
+        }
+        let text: String = text.lines().map(|l| if l.starts_with("UID:") { format!("UID:{uid}") } else { l.to_string() }).map(|l| l + "\r\n").collect();
+        vdir::write_item(&calendar.dir.join(format!("{uid}.ics")), &text).unwrap();
+    };
+    // An errand made an appointment: its title, no task of its own.
+    event("errand-appointment", &pharmacy, tomorrow, 11, "");
+    // A block whose errand is gone, last week; one named by the phone's UID, its task known here by Google's id.
+    event("errand-gone-block", "Collect the Wyrmroot order", now.date().checked_sub(jiff::Span::new().days(7)).unwrap(), 15, "errand-gone");
+    event("errand-phone-block", "Pick up the Wyrmroot order at Lafayette", tomorrow, 16, "phone-uid-1");
+    let renew = {
+        let mut args = sioul_core::i18n::args();
+        args.set("title", "Brackenwort 20");
+        sioul_core::i18n::Translator::new("en").text("health-errand-renew", Some(&args))
+    };
+    for (uid, edit) in [
+        // Made on the phone in a Google list, renamed there: known here by Google's id alone.
+        ("google-renamed", TaskEdit { title: "Pick up the Wyrmroot order at Lafayette".into(), estimate: 15, ..TaskEdit::default() }),
+        // Your own task, an errand as its step.
+        ("saturday", TaskEdit { title: "Saturday errands".into(), estimate: 60, ..TaskEdit::default() }),
+        ("errand-in-saturday", TaskEdit { title: "Ask about Ferngale at the counter".into(), categories: vec!["health".into()], parent: "saturday".into(), estimate: 10, ..TaskEdit::default() }),
+        // A task of yours waiting after the errand done this week.
+        ("receipt-wait", TaskEdit { title: "Send the receipt to the mutuelle".into(), estimate: 10, ..TaskEdit::default() }),
+    ] {
+        vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
+    }
+    // An errand done this week, the wait after it written in it (it comes first: RFC 9253 §4).
+    let done = tasks::new_task(&TaskEdit { title: renew, estimate: 30, ..TaskEdit::default() }, "errand-done", &zone, &now).unwrap();
+    let done = tasks::set_status(&done, tasks::Status::Completed, &zone, &now).unwrap();
+    let done = tasks::completed_at(&done, &now.checked_sub(jiff::Span::new().hours(20)).unwrap()).unwrap();
+    let done = tasks::set_gap(&done, "receipt-wait", 1, &now).unwrap();
+    vdir::write_item(&list.dir.join("errand-done.ics"), &done).unwrap();
+    // A timer note on an errand.
+    let stamp = now.timestamp().as_second();
+    sioul_core::timelog::record(&sioul_core::timelog::Session { task: "errand-category".into(), start: stamp - 3 * 3600, minutes: 10, note: "ask for the Quillaine generic".into(), ..Default::default() }).unwrap();
 }
 
 /// The key the texts of the tests are sealed with (`phone::sealer` takes it in tests: never a keyring).
@@ -659,81 +714,165 @@ fn a_closed_project_is_never_shown() {
 }
 
 /// Health never reaches an agent (docs/mcp.md): no answer of any tool or
-/// resource holds a word planted in health (`HEALTH_WORDS`), listed,
-/// searched, followed or laid out today, the errands counted among what was
-/// left out; asked for by address, an errand, its step or its time block is
-/// refused, and nothing is written into it. `now` says what now is for by its
-/// kind and its end alone (core `quiet`'s test holds that at a meal).
+/// resource holds a word planted in health (`HEALTH_WORDS`, case and accents
+/// aside), each tool the server lists asked at least once (review of
+/// 36002ea, can-wait 15): listed, searched, followed, laid out today and on
+/// a past day, the errands counted among what was left out; asked for by
+/// address, an errand, its step, its time blocks and the appointment it was
+/// made are refused, and nothing is written into them. `now` says what now is
+/// for by its kind and its end alone (core `quiet`'s test holds that at a meal).
 #[test]
 fn health_never_reaches_an_agent() {
     let home = home();
     let mut server = server();
-    let asks = [
+    let zone = jiff::tz::TimeZone::system();
+    let today = Zoned::now().date();
+    let tomorrow = today.tomorrow().unwrap();
+    let last_week = today.checked_sub(jiff::Span::new().days(8)).unwrap();
+    // Every tool asked, reads as they list, search and lay out, writes on health's things (each refused).
+    let asks: Vec<(&str, Value)> = vec![
+        ("porch", json!({})),
         ("porch", json!({ "open": true, "all": true })),
+        ("search_mail", json!({ "query": "Ferngale" })),
+        ("search_mail", json!({ "query": "brackenwort", "in_text": true })),
+        ("read_message", json!({ "message": "mid:letter-1@housing.example" })),
         ("list_tasks", json!({ "view": "list" })),
         ("list_tasks", json!({ "view": "list", "done": true })),
         ("list_tasks", json!({ "view": "list", "query": "Ferngale" })),
         ("list_tasks", json!({ "view": "list", "by": "list" })),
         ("list_tasks", json!({ "view": "now" })),
         ("list_tasks", json!({ "view": "today" })),
+        ("get_task", json!({ "task": "sioul:task/saturday" })),
+        ("get_task", json!({ "task": "sioul:task/receipt-wait" })),
         ("agenda", json!({ "days": 5 })),
+        ("agenda", json!({ "from": last_week.to_string(), "days": 8 })),
+        ("search_contacts", json!({ "query": "Thistlewick" })),
+        ("budgets", json!({})),
         ("search_notes", json!({})),
+        ("search_notes", json!({ "query": "Quillaine", "in_text": true })),
+        ("read_note", json!({ "note": "notes/letters.md" })),
         ("list_projects", json!({})),
+        ("list_projects", json!({ "id": "housing" })),
         ("links", json!({ "uri": "sioul:project/housing" })),
+        ("links", json!({ "uri": "sioul:task/saturday" })),
+        ("links", json!({ "uri": "sioul:task/receipt-wait" })),
         ("find", json!({ "query": "Ferngale" })),
         ("find", json!({ "query": "Pharmacy" })),
+        ("find", json!({ "query": "Doctor" })),
         ("find", json!({ "query": "Wyrmroot" })),
-        ("time", json!({})),
-        ("reminders", json!({ "days": 30 })),
+        ("find", json!({ "query": "brackenwort" })),
+        ("find", json!({ "query": "Lafayette" })),
+        ("phone_messages", json!({})),
+        ("calls", json!({})),
         ("papers", json!({})),
         ("contracts", json!({})),
+        ("letters", json!({})),
+        ("time", json!({})),
+        ("invoices", json!({})),
+        ("reminders", json!({ "days": 30 })),
         ("now", json!({})),
-        ("resources/read", json!({ "uri": "sioul:projects" })),
+        ("get_event", json!({ "event": "sioul:event/errand-block" })),
+        ("add_task", json!({ "title": "A step", "parent": "errand-category" })),
+        ("add_steps", json!({ "task": "errand-category", "title": "A step" })),
+        ("complete_task", json!({ "task": "errand-category" })),
+        ("add_event", json!({ "title": "Check", "start": "not a time", "end": "not a time" })),
+        ("update_event", json!({ "event": "sioul:event/errand-appointment", "title": "Something else" })),
+        ("delete_event", json!({ "event": "sioul:event/errand-gone-block" })),
+        ("update_task", json!({ "task": "sioul:task/errand-title", "title": "Something else" })),
+        ("update_task", json!({ "task": "sioul:task/saturday", "list": "local/nowhere" })),
+        ("move_step", json!({ "step": "errand-in-saturday", "before": "saturday" })),
+        ("check_item", json!({ "of": "sioul:task/errand-category", "item": "1", "state": "done" })),
+        ("set_checklist", json!({ "of": "sioul:task/errand-category", "items": ["Pen"] })),
+        ("convert_item", json!({ "to": "item", "step": "errand-step" })),
+        ("delete_task", json!({ "task": "errand-category" })),
+        ("task_to_event", json!({ "task": "errand-title", "start": format!("{tomorrow}T09:00") })),
+        ("attach_to_event", json!({ "task": "errand-category", "event": "sioul:event/errand-appointment" })),
+        ("detach_from_event", json!({ "task": "errand-category" })),
+        ("event_to_task", json!({ "event": "sioul:event/errand-appointment" })),
+        ("add_note", json!({ "title": "Thoughts", "links": ["sioul:task/errand-category"] })),
+        ("draft_reply", json!({ "message": "mid:letter-1@housing.example", "body": "Thanks.", "links": ["sioul:task/errand-category"] })),
+        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Hello", "body": "Hello.", "links": ["sioul:task/errand-category"] })),
+        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" })),
     ];
-    for (tool, arguments) in asks {
-        let answer = if tool.contains('/') { ask(&mut server, tool, arguments.clone()) } else { call(&mut server, tool, arguments.clone()) };
-        assert!(answer["isError"] != true && answer.get("error").is_none(), "{tool} {arguments}: {answer}");
+    let listed = ask(&mut server, "tools/list", json!({}));
+    let names: Vec<String> = listed["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
+    let writes: std::collections::BTreeSet<String> = listed["result"]["tools"].as_array().unwrap().iter().filter(|t| t["annotations"]["readOnlyHint"] == false).filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
+    let missing: Vec<&String> = names.iter().filter(|name| !name.starts_with("spam_") && !asks.iter().any(|(tool, _)| tool == name)).collect();
+    assert!(missing.is_empty(), "every tool listed is asked: {missing:?}");
+    // Health's words, folded: an id ("quillaine") is a word as its name is.
+    let planted: Vec<String> = HEALTH_WORDS.iter().map(|w| sioul_core::words::folded(w)).collect();
+    let holds = |answer: &Value| {
         // The agent's own words said back ("Nothing matches “Ferngale”") are not health's.
-        let said = answer.to_string().replace("“Ferngale”", "“…”").replace("“Wyrmroot”", "“…”");
-        for word in HEALTH_WORDS {
-            assert!(!said.contains(word), "{tool} {arguments} holds {word}: {said}");
+        let mut said = answer.to_string();
+        for word in ["Ferngale", "Wyrmroot", "brackenwort", "Quillaine", "Thistlewick"] {
+            said = said.replace(&format!("“{word}”"), "“…”");
+        }
+        let said = sioul_core::words::folded(&said);
+        planted.iter().find(|w| said.contains(w.as_str())).cloned()
+    };
+    let list_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap().dir;
+    let calendar_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap().dir;
+    let theirs: Vec<PathBuf> = ["errand-category", "errand-recorded", "errand-title", "errand-step", "google-renamed", "errand-in-saturday", "errand-done", "saturday"].iter().map(|u| list_dir.join(format!("{u}.ics"))).chain(["errand-block", "errand-appointment", "errand-gone-block", "errand-phone-block"].iter().map(|u| calendar_dir.join(format!("{u}.ics")))).collect();
+    let before = snapshot(&theirs);
+    for (tool, arguments) in &asks {
+        let answer = call(&mut server, tool, arguments.clone());
+        if let Some(word) = holds(&answer) {
+            panic!("{tool} {arguments} holds {word}: {answer}");
+        }
+        if writes.contains(*tool) {
+            assert_eq!(answer["isError"], true, "{tool} {arguments}: refused: {answer}");
         }
     }
-    // Counted among what was left out, never named: the three errands and the step.
+    assert_eq!(snapshot(&theirs), before, "nothing written into health's things");
+    // Every resource the server lists, and each template by a thing of its own.
+    let resources = ask(&mut server, "resources/list", json!({}));
+    let mut uris: Vec<String> = resources["result"]["resources"].as_array().unwrap().iter().filter_map(|r| r["uri"].as_str().map(str::to_string)).collect();
+    let templates = ask(&mut server, "resources/templates/list", json!({}));
+    for template in templates["result"]["resourceTemplates"].as_array().unwrap() {
+        match template["uriTemplate"].as_str().unwrap() {
+            "sioul:note/{path}" => uris.push("sioul:note/notes/letters.md".into()),
+            "mid:{message_id}" => uris.push("mid:letter-1@housing.example".into()),
+            other => panic!("a template asked nowhere here: {other}"),
+        }
+    }
+    for uri in uris {
+        let answer = ask(&mut server, "resources/read", json!({ "uri": uri }));
+        if let Some(word) = holds(&answer) {
+            panic!("{uri} holds {word}: {answer}");
+        }
+    }
+    // Counted among what was left out, never named: the errands and their steps.
     let list = call(&mut server, "list_tasks", json!({ "view": "list" }));
-    assert!(list["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 4 && text(&list).contains("health, which agents never see"), "{list}");
-    assert!(text(&list).contains("Find the rent receipt"), "the rest still comes");
+    assert!(list["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 6 && text(&list).contains("health, which agents never see"), "{list}");
+    assert!(text(&list).contains("Find the rent receipt") && text(&list).contains("Saturday errands"), "the rest still comes");
+    let now = call(&mut server, "list_tasks", json!({ "view": "now" }));
+    let cards = |field: &str| now["structuredContent"][field].as_array().cloned().unwrap_or_default();
+    assert!(["others", "started", "done_week", "joy"].iter().flat_map(|f| cards(f)).all(|card| card["uid"].as_str().is_some_and(|u| !u.starts_with("errand") && u != "google-renamed")), "no kept card: {now}");
+    let reminders = call(&mut server, "reminders", json!({ "days": 30 }));
+    assert!(reminders["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "the wait after an errand, left out: {reminders}");
     // Asked for by address: refused, saying so.
     for (tool, arguments) in [
         ("get_task", json!({ "task": "sioul:task/errand-category" })),
         ("get_task", json!({ "task": "sioul:task/errand-recorded" })),
         ("get_task", json!({ "task": "sioul:task/errand-title" })),
         ("get_task", json!({ "task": "sioul:task/errand-step" })),
+        ("get_task", json!({ "task": "sioul:task/google-renamed" })),
+        ("get_task", json!({ "task": "sioul:task/errand-in-saturday" })),
+        ("get_task", json!({ "task": "sioul:task/errand-done" })),
         ("links", json!({ "uri": "sioul:task/errand-category" })),
         ("get_event", json!({ "event": "sioul:event/errand-block" })),
+        ("get_event", json!({ "event": "sioul:event/errand-appointment" })),
+        ("get_event", json!({ "event": "sioul:event/errand-gone-block" })),
+        ("get_event", json!({ "event": "sioul:event/errand-phone-block" })),
     ] {
         let refused = call(&mut server, tool, arguments.clone());
         assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
         assert!(text(&refused).contains("kept from agents"), "{tool}: {}", text(&refused));
-        for word in HEALTH_WORDS {
-            assert!(!refused.to_string().contains(word), "{tool} holds {word}: {refused}");
+        if let Some(word) = holds(&refused) {
+            panic!("{tool} holds {word}: {refused}");
         }
     }
-    // Nothing written into them.
-    let list_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap().dir;
-    let before = snapshot(&[list_dir.join("errand-category.ics"), list_dir.join("errand-recorded.ics"), list_dir.join("errand-title.ics")]);
-    for (tool, arguments) in [
-        ("complete_task", json!({ "task": "errand-category" })),
-        ("complete_task", json!({ "task": "errand-recorded" })),
-        ("update_task", json!({ "task": "sioul:task/errand-title", "title": "Something else" })),
-        ("add_task", json!({ "title": "A step", "parent": "errand-category" })),
-        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" })),
-    ] {
-        let refused = call(&mut server, tool, arguments.clone());
-        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
-    }
-    assert_eq!(snapshot(&[list_dir.join("errand-category.ics"), list_dir.join("errand-recorded.ics"), list_dir.join("errand-title.ics")]), before, "nothing written");
-    let _ = home;
+    let _ = (home, zone);
 }
 
 /// A time block given a guest is a meeting with others now (26 October

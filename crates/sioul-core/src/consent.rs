@@ -63,24 +63,32 @@ pub struct Consent {
     /// Health, never to an agent whatever its projects: the errands' tasks,
     /// their steps and their time blocks, by address (`keep_errands`).
     health: BTreeSet<String>,
+    /// The errands' record did not read here: an errand renamed on a list
+    /// that keeps no category may not be known as one (`keep_errands`).
+    pub health_unread: bool,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new() }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false }
     }
 
     /// Keeps the pharmacy and renewal errands from agents whatever their
-    /// projects (`health::is_errand`, `recorded`: the UIDs the record keeps):
-    /// each errand's task, its steps however deep, and its time blocks.
-    /// Health never reaches an agent (docs/mcp.md); each tool counts them
-    /// among what it left out, never which.
-    pub fn keep_errands(&mut self, loaded: &Loaded, recorded: &BTreeSet<String>) {
+    /// projects (`health::is_errand`, `recorded`: the UIDs the record keeps,
+    /// none when it did not read: `health_unread`, said): each errand's task,
+    /// its steps however deep, and the events of it: a time block of a task
+    /// kept or recorded (gone since, not here yet, or known here by another
+    /// id), an event titled as Sioul titles an errand (one made an
+    /// appointment, a block named by another UID), the appointment a kept
+    /// errand prepares, and an event tied to one (review of 36002ea,
+    /// can-wait 7 and 8). Health never reaches an agent (docs/mcp.md); each
+    /// tool counts them among what it left out, never which.
+    pub fn keep_errands(&mut self, loaded: &Loaded, recorded: Option<&BTreeSet<String>>) {
+        let none = BTreeSet::new();
+        self.health_unread = recorded.is_none();
+        let recorded = recorded.unwrap_or(&none);
         let errands: BTreeSet<&str> = loaded.tasks.iter().filter(|t| crate::health::is_errand(t, recorded)).map(|t| t.uid.as_str()).collect();
-        if errands.is_empty() {
-            return;
-        }
         let parent: HashMap<&str, &str> = loaded
             .tasks
             .iter()
@@ -101,8 +109,18 @@ impl Consent {
             }
         };
         let kept: BTreeSet<String> = loaded.tasks.iter().filter(|t| under_errand(&t.uid)).map(|t| t.uid.clone()).collect();
+        let ours = |uid: &str| kept.contains(uid) || recorded.contains(uid);
+        let prepared: BTreeSet<String> = loaded.tasks.iter().filter(|t| kept.contains(&t.uid)).filter_map(crate::pairs::appointment_of).collect();
+        let of_errand = |e: &&crate::agenda::EventRef| {
+            (!e.task.is_empty() && ours(&e.task))
+                || crate::health::is_errand_title(&e.summary)
+                || prepared.contains(&e.uid)
+                || e.links.iter().any(|l| l.uri.starts_with("sioul:task/") && ours(&links::id_of(&l.uri)))
+                || e.related.iter().any(|r| ours(&r.uid))
+        };
+        let events: Vec<String> = loaded.events.iter().filter(of_errand).map(|e| links::event_uri(&e.uid)).collect();
         self.health.extend(kept.iter().map(|uid| links::task_uri(uid)));
-        self.health.extend(loaded.events.iter().filter(|e| !e.task.is_empty() && kept.contains(&e.task)).map(|e| links::event_uri(&e.uid)));
+        self.health.extend(events);
     }
 
     /// Whether a thing is health (`keep_errands`): never to an agent.
@@ -417,7 +435,7 @@ mod tests {
         let loaded = Loaded { tasks, events: vec![block("b1", "e1"), block("b2", "t1")], projects: vec![project("lumen", true)], ..Loaded::default() };
         let mut consent = Consent::of(&loaded, true, None);
         assert!(consent.allows(&links::task_uri("e1")) && consent.allows(&links::event_uri("b1")), "nothing kept yet");
-        consent.keep_errands(&loaded, &["e4".to_string()].into());
+        consent.keep_errands(&loaded, Some(&["e4".to_string()].into()));
         for kept in [links::task_uri("e1"), links::task_uri("e2"), links::task_uri("e3"), links::task_uri("e4"), links::event_uri("b1")] {
             assert!(!consent.allows(&kept) && consent.is_health(&kept), "{kept}");
         }

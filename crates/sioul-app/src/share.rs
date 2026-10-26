@@ -1046,18 +1046,31 @@ fn account_item(file: &str) -> Option<PathBuf> {
 }
 
 /// A calendar's item or a contact set aside put back (`history::ACCOUNTS`):
-/// its version written over the item, the item as it is then kept first; its
-/// account's sync sends it, over the server's version. Returns the account
-/// to sync, or what went wrong.
+/// its version written over the item through the agenda's one rule
+/// (`vdir::write_item`), its refusal said: never into a calendar you only
+/// read; onto a meeting with others, the version's own lines of yours alone
+/// (your reminder, the time kept around it, its costs and gain), its
+/// organizer's as they are now (`agenda::with_own_lines_of`; review of
+/// 36002ea, can-wait 6). The item as it is then kept first; its account's
+/// sync sends it, over the server's version. Returns the account to sync, or
+/// what went wrong.
 pub(crate) fn put_back_item(file: &str, stamp: &str) -> Result<String, String> {
     let root = sioul_sync::history::root(&memory_path());
     let path = account_item(file).ok_or_else(|| format!("{file}?"))?;
     let Some(sioul_sync::history::Kept::Copy(version)) = sioul_sync::history::version(&root, sioul_sync::history::ACCOUNTS, file, stamp) else { return Err(format!("{file}: {stamp}: not kept")) };
-    let bytes = std::fs::read(&version).map_err(|e| e.to_string())?;
+    let text = std::fs::read_to_string(&version).map_err(|e| e.to_string())?;
+    let written = match std::fs::read_to_string(&path) {
+        Ok(current) if sioul_core::agenda::meeting_with_others(&current, &sioul_core::agenda::own_addresses()) => sioul_core::agenda::with_own_lines_of(&current, &text),
+        _ => text,
+    };
+    // Refused (a calendar you only read): nothing kept nor written.
+    if sioul_core::vdir::calendar_read_only(&path) == Some(true) {
+        return Err(tr().text("agenda-read-only", None));
+    }
     if path.is_file() {
         sioul_sync::history::keep(&root, sioul_sync::history::ACCOUNTS, file, &path, jiff::Timestamp::now().as_millisecond())?;
     }
-    share::write_atomically(&path, &bytes)?;
+    sioul_core::vdir::write_item(&path, &written)?;
     crate::pim::account_of(&path).ok_or_else(|| format!("{file}?"))
 }
 
@@ -1085,9 +1098,15 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
     let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
     let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
     let shown = share::shown(file).to_string();
-    // Your calendar's item or contact set aside: it goes back whole, sent to its server.
+    // Your calendar's item or contact set aside: it goes back whole, sent to its server; onto a
+    // meeting with others, your own lines alone (`put_back_item`); into a calendar you only read, never.
     if part == sioul_sync::history::ACCOUNTS {
-        return say("share-put-back-whole", &[("file", shown), ("when", kept)]);
+        let path = account_item(file);
+        if path.as_deref().and_then(sioul_core::vdir::calendar_read_only) == Some(true) {
+            return tr().text("agenda-read-only", None);
+        }
+        let meeting = path.and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|current| sioul_core::agenda::meeting_with_others(&current, &sioul_core::agenda::own_addresses()));
+        return say(if meeting { "share-put-back-meeting" } else { "share-put-back-whole" }, &[("file", shown), ("when", kept)]);
     }
     match share::put_back_preview(&memory_path(), &stores, part, file, stamp) {
         Ok(back) if back.whole => say("share-put-back-whole", &[("file", shown), ("when", kept)]),
@@ -3155,6 +3174,56 @@ mod tests {
         assert!(account_item(event).is_some_and(|p| p.ends_with("calendars/work/personal/dentist.ics")));
         assert!(account_item("data/../config/config.toml").is_none() && account_item("data/drafts/reply.eml").is_none() && account_item("config/config.toml").is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Can-wait 6 of the review of 36002ea: putting back a calendar's item
+    /// set aside goes through the agenda's rule. A meeting with others takes
+    /// back your own lines of the version alone (its reminder), its
+    /// organizer's time staying; an event of your own goes back whole; a
+    /// calendar you only read takes nothing, said; the preview says each first.
+    #[test]
+    fn a_set_aside_item_goes_back_through_the_agenda_s_rule() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
+        use sioul_core::vdir::{self, Kind};
+        let account = "put-back-rule";
+        vdir::prepare(Kind::Calendars, account, "mine", "Mine", None).unwrap();
+        let dir = Kind::Calendars.root().join(account).join("mine");
+        let root = sioul_sync::history::root(&memory_path());
+        let event = |uid: &str, start: &str, extra: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{start}\r\nDTEND:20991023T170000Z\r\nSUMMARY:{uid}\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let guests = "ORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\n";
+        let file = |name: &str| format!("data/calendars/{account}/mine/{name}.ics");
+        let mut stamps = std::collections::BTreeMap::new();
+        for (name, now, then) in [("review", event("review", "20991023T150000Z", guests), event("review", "20991023T140000Z", &format!("{guests}X-SIOUL-REMIND:30\r\n"))), ("dentist", event("dentist", "20991023T100000Z", ""), event("dentist", "20991023T090000Z", ""))] {
+            std::fs::write(dir.join(format!("{name}.ics")), &now).unwrap();
+            sioul_sync::history::keep_bytes(&root, sioul_sync::history::ACCOUNTS, &file(name), then.as_bytes(), 1_790_000_000_000).unwrap();
+            let stamp = sioul_sync::history::versions(&root, sioul_sync::history::ACCOUNTS, &file(name)).first().unwrap().stamp.clone();
+            stamps.insert(name, (stamp, then));
+        }
+        let said = |key: &str, name: &str| {
+            let kept = sioul_sync::history::kept_at(&stamps[name].0).map(|at| when(at / 1000)).unwrap_or_default();
+            say(key, &[("file", share::shown(&file(name)).to_string()), ("when", kept)])
+        };
+        assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("review"), &stamps["review"].0), said("share-put-back-meeting", "review"));
+        assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("dentist"), &stamps["dentist"].0), said("share-put-back-whole", "dentist"));
+        // The meeting: its time as its organizer has it now, your reminder back.
+        assert_eq!(put_back_item(&file("review"), &stamps["review"].0), Ok(account.to_string()));
+        let review = std::fs::read_to_string(dir.join("review.ics")).unwrap();
+        assert!(review.contains("DTSTART:20991023T150000Z") && review.contains("X-SIOUL-REMIND:30"), "{review}");
+        // Your own event: back whole.
+        assert_eq!(put_back_item(&file("dentist"), &stamps["dentist"].0), Ok(account.to_string()));
+        assert_eq!(std::fs::read_to_string(dir.join("dentist.ics")).unwrap(), stamps["dentist"].1);
+        // A calendar you only read: nothing written, said first and after.
+        let state = vdir::state_path(account, Kind::Calendars, "mine");
+        let mut read_only = vdir::State::load(&state);
+        read_only.read_only = true;
+        read_only.save(&state).unwrap();
+        let before = std::fs::read_to_string(dir.join("dentist.ics")).unwrap();
+        let refused = tr().text("agenda-read-only", None);
+        assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("dentist"), &stamps["dentist"].0), refused);
+        assert_eq!(put_back_item(&file("dentist"), &stamps["dentist"].0), Err(refused));
+        assert_eq!(std::fs::read_to_string(dir.join("dentist.ics")).unwrap(), before);
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }
 
     /// Notes gone many at once, said in words: how many, from where (each

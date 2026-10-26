@@ -6713,8 +6713,8 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
                 Some(prepared) => prepared.changed().unwrap_or_else(|| "its copy could not be renamed".into()),
                 None => "it came meanwhile".into(),
             };
-            let kept_ahead = prepared.take().is_some_and(|prepared| prepared.keep(now_ms));
-            if path.exists() && !kept_ahead {
+            let kept_ahead = prepared.take().and_then(|prepared| prepared.keep(now_ms));
+            if path.exists() && kept_ahead.is_none() {
                 crate::history::copied_under_lock(&why);
                 crate::history::keep(&root, part, file, &path, now_ms)?;
             }
@@ -6723,7 +6723,16 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             if !through {
                 crate::history::grew_under_lock("its bytes written by its rename: not on the disk before the lock");
             }
-            std::fs::rename(&beside, &path).map_err(fail)
+            // The file it replaces held open until the lock is let go: freed
+            // outside it, its pages dropped and its writeback waited for there,
+            // never inside the rename (the check of 36002ea, low 22). Windows
+            // refuses to replace an open file, and flushes nothing on a rename.
+            #[cfg(unix)]
+            let held = std::fs::File::open(&path).ok();
+            #[cfg(not(unix))]
+            let held: Option<std::fs::File> = None;
+            std::fs::rename(&beside, &path).map_err(fail)?;
+            Ok((held, kept_ahead.unwrap_or_default()))
         };
         // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
         let done = if matches!(store.shape, Shape::Files) && !sioul_core::filelock::has_lock(&path) { put() } else { sioul_core::filelock::with_lock(&path, put) };
@@ -6734,7 +6743,13 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         })();
     };
     let _ = std::fs::remove_file(&opened);
-    placed
+    // The lock let go: the file replaced freed, and the versions too many taken out, now.
+    placed.map(|(held, gone)| {
+        drop(held);
+        for version in gone {
+            let _ = std::fs::remove_file(version);
+        }
+    })
 }
 
 /// How many times a file changed between its copy and the exchanges' lock
