@@ -383,6 +383,10 @@ impl Health {
         }
     }
 
+    /// What `change` answers when the file does not read: nothing was written.
+    /// The window says it in your words.
+    pub const UNREADABLE: &'static str = "health.toml does not read: nothing written over it";
+
     /// The health file as it reads, or why not: empty when there is none;
     /// `Unsound::Unreadable` when it is there and does not read, which the
     /// window says rather than read it as no medicines (`health::load_said`).
@@ -412,10 +416,16 @@ impl Health {
 
     /// Read, changed by `change` and written back, all under the file's lock,
     /// which the sharing takes too: a change is set over the file as it is
-    /// then, never over a copy read earlier. Returns what `change` returns.
+    /// then, never over a copy read earlier. Returns what `change` returns. A
+    /// file that does not read is never written over (`Health::UNREADABLE`): written
+    /// empty, the sharing would take every medicine out on every device
+    /// (review of 36002ea, can-wait 2); it is copied aside (`load`) and left.
     pub fn change<R>(path: &Path, change: impl FnOnce(&mut Health) -> Result<R, String>) -> Result<R, String> {
         crate::filelock::with_lock(path, || {
-            let mut health = Health::load(path);
+            let Ok(mut health) = Health::read(path) else {
+                let _ = Health::load(path);
+                return Err(Self::UNREADABLE.to_string());
+            };
             let out = change(&mut health)?;
             health.save(path)?;
             Ok(out)
@@ -480,6 +490,13 @@ impl Health {
         let Schedule::Hours { hours, from } = &mut medicine.schedule else { return None };
         let step = i64::from(*hours) * 3600;
         if step == 0 || at == due {
+            return None;
+        }
+        // Only a dose the schedule still has moves the next ones: once moved, a
+        // dose taken earlier is no longer one of them, and taking it again (a
+        // late time typed after its Taken) never moves them a second time
+        // (review of 36002ea, can-wait 1).
+        if due < *from || (due - *from) % step != 0 {
             return None;
         }
         let before = *from;

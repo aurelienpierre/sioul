@@ -1428,3 +1428,42 @@ fn the_repair_sends_no_old_mark_again() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The review of 36002ea, can-wait 2: a health file that does not read (a
+/// hand's edit, a newer Sioul) is never written over by a Taken
+/// (`Health::change` refuses), and the sharing takes none of its medicines
+/// out elsewhere, nor writes another device's change into it: each device
+/// keeps what it had.
+#[test]
+fn a_health_file_that_does_not_read_is_left_as_it_is_everywhere() {
+    use sioul_core::health::{Health, Medicine, Schedule};
+    let base = scratch("health-unread");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let medicine = |id: &str| Medicine { id: id.into(), name: id.into(), dose: "1 tablet".into(), schedule: Schedule::Day { times: vec!["08:00".into()], amounts: Default::default() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+    Health { medicines: vec![medicine("lumiel"), medicine("corvan")], ..Health::default() }.save(&desk.path("data/health.toml")).unwrap();
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    assert_eq!(Health::load(&phone.path("data/health.toml")).medicines.len(), 2);
+    // Broken on the desk; a Taken there writes nothing over it.
+    let broken = "[[medicine]\nid = \"lumiel\"\n";
+    desk.write("data/health.toml", broken);
+    let taken = Health::change(&desk.path("data/health.toml"), |h| Ok(h.taken_at("lumiel@0", 60)));
+    assert_eq!(taken, Err(Health::UNREADABLE.to_string()));
+    assert_eq!(desk.read("data/health.toml"), broken, "never written over");
+    desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+    assert_eq!(Health::load(&phone.path("data/health.toml")).medicines.len(), 2, "none taken out elsewhere");
+    // A change on the phone: never written into the desk's broken file.
+    Health::change(&phone.path("data/health.toml"), |h| {
+        h.medicines[0].dose = "2 tablets".into();
+        Ok(())
+    })
+    .unwrap();
+    phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+    let outcome = desk.exchange(&folder, &key, NOW + 5 * MINUTE);
+    assert_eq!(desk.read("data/health.toml"), broken, "left as it is");
+    assert!(outcome.problems.iter().any(|p| p.starts_with("share-unreadable")), "{outcome:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -1366,6 +1366,8 @@ mod tests {
     /// email alarm still is (`agenda::may_change`, on the file as it is then).
     #[test]
     fn a_removal_never_takes_out_the_meeting_its_event_became() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         use sioul_core::vdir::{self, Kind};
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Removals meanwhile", None, &["VEVENT"]).unwrap();
         let shared = Shared::default();

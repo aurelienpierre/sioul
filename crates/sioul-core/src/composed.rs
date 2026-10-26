@@ -496,6 +496,8 @@ mod tests {
 
     impl Desk {
         fn new(name: &str) -> Desk {
+            // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+            crate::config::stand_ins_only();
             let list = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, &format!("{name} errands"), None, &["VTODO"]).unwrap();
             let other = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, &format!("{name} work"), None, &["VTODO"]).unwrap();
             Desk { list, other }

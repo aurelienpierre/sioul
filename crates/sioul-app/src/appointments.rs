@@ -289,6 +289,8 @@ mod tests {
     /// in the list with its length, its time its block. One file each time.
     #[test]
     fn a_task_becomes_an_appointment_and_back_once() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "kinds-stand-in";
         let list = vdir::create(Kind::Calendars, account, "Plan", None, &["VTODO"]).unwrap();
         vdir::prepare(Kind::Calendars, account, "personal", "Personal", None).unwrap();

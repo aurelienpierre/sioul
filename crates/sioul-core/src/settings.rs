@@ -1298,6 +1298,8 @@ mod tests {
     /// never where they go.
     #[test]
     fn new_events_go_where_the_agenda_says() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let account = "agenda-default";
         crate::vdir::prepare(crate::vdir::Kind::Calendars, account, "personnel", "Personnel", None).unwrap();
         crate::vdir::prepare(crate::vdir::Kind::Calendars, account, "birthdays", "Birthdays", None).unwrap();

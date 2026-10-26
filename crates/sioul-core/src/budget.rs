@@ -1287,17 +1287,53 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
     })
 }
 
+/// What Paid found on the line an invoice names (`settle_line`): the day it
+/// had, and whether it was planned, which Paid alone then made real.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Settled {
+    pub date: Option<Date>,
+    pub planned: bool,
+}
+
 /// The planned line `link` names (an invoice, "sioul:invoice/2026-002") made
-/// real: paid on `date`, no longer planned. Returns the day it had, for an
-/// Undo (`unsettle_line`); None when there is no such line.
-pub fn settle_line(path: &Path, link: &str, date: Date) -> Result<Option<Date>, String> {
+/// real: paid on `date`, no longer planned. A line already real (dated in
+/// Budgets, matched with the bank) is left as it is. Returns what the line
+/// was, for an Undo (`unsettle_paid`); None when no line names it.
+pub fn settle_line(path: &Path, link: &str, date: Date) -> Result<Option<Settled>, String> {
     change_linked(path, link, |line| {
-        let was = line.get("date").and_then(Item::as_datetime).and_then(|d| d.date).and_then(|d| Date::new(i16::try_from(d.year).ok()?, i8::try_from(d.month).ok()?, i8::try_from(d.day).ok()?).ok());
-        line.remove("planned");
-        line["date"] = value(day_of(date));
+        let was = Settled { date: date_of(line), planned: line.get("planned").and_then(Item::as_bool).unwrap_or(false) };
+        if was.planned {
+            line.remove("planned");
+            line["date"] = value(day_of(date));
+        }
         was
     })
-    .map(Option::flatten)
+}
+
+/// Paid's Undo on its line (`settle_line` undone): planned again on the day
+/// it had, only when Paid made it real (`was`) and it still holds what Paid
+/// wrote (real, dated `wrote`). Whether it was put back: false when Paid
+/// changed nothing on it, or something changed it since ("too late").
+pub fn unsettle_paid(path: &Path, link: &str, was: Settled, wrote: Date) -> Result<bool, String> {
+    if !was.planned {
+        return Ok(false);
+    }
+    change_linked(path, link, |line| {
+        let as_paid = !line.get("planned").and_then(Item::as_bool).unwrap_or(false) && date_of(line) == Some(wrote);
+        if as_paid {
+            if let Some(date) = was.date {
+                line["date"] = value(day_of(date));
+            }
+            line["planned"] = value(true);
+        }
+        as_paid
+    })
+    .map(|put| put.unwrap_or(false))
+}
+
+/// A line's day, as the ledger writes it.
+fn date_of(line: &Table) -> Option<Date> {
+    line.get("date").and_then(Item::as_datetime).and_then(|d| d.date).and_then(|d| Date::new(i16::try_from(d.year).ok()?, i8::try_from(d.month).ok()?, i8::try_from(d.day).ok()?).ok())
 }
 
 /// The line `link` names planned again, on `date`, where it is in the file:
@@ -1327,9 +1363,13 @@ fn change_linked<T>(path: &Path, link: &str, change: impl FnOnce(&mut Table) -> 
         let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
         let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(None) };
         let out = change(line);
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        // Written only when something changed.
+        let changed = doc.to_string();
+        if changed != text {
+            let temporary = path.with_extension("toml.new");
+            std::fs::write(&temporary, changed).map_err(|e| fail(e.to_string()))?;
+            std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        }
         Ok(Some(out))
     })
 }
@@ -1348,15 +1388,36 @@ mod tests {
         std::fs::write(&path, "[[budget]]\nid = \"studio\"\ntitle = \"Studio\"\nperiod = \"month\"\n\n[[line]]\nbudget = \"studio\"\ndate = 2026-11-15\namount = 480.0\nlabel = \"Invoice 2026-002\"\nplanned = true\nlinks = [\"sioul:invoice/2026-002\", \"sioul:project/studio\"]\n\n[[line]]\nbudget = \"studio\"\ndate = 2026-10-02\namount = -12.5\nlabel = \"Paper\"\n").unwrap();
         let lines = || Ledger::load_file(&path).unwrap().lines.iter().map(|l| format!("{:?}", (l.date, l.amount.cents(), &l.label, l.planned, &l.links))).collect::<Vec<_>>();
         let before = lines();
-        let was = settle_line(&path, "sioul:invoice/2026-002", day("2026-10-26")).unwrap();
-        assert_eq!(was, Some(day("2026-11-15")));
+        let (link, today) = ("sioul:invoice/2026-002", day("2026-10-26"));
+        let was = settle_line(&path, link, today).unwrap().unwrap();
+        assert_eq!(was, Settled { date: Some(day("2026-11-15")), planned: true });
         let paid = Ledger::load_file(&path).unwrap();
-        assert!(!paid.lines[0].planned && paid.lines[0].date == day("2026-10-26"), "made real, dated today");
-        assert!(unsettle_line(&path, "sioul:invoice/2026-002", day("2026-11-15")).unwrap());
+        assert!(!paid.lines[0].planned && paid.lines[0].date == today, "made real, dated today");
+        // Paid's Undo: planned again on its day, where it was.
+        assert!(unsettle_paid(&path, link, was, today).unwrap());
         assert_eq!(lines(), before, "as it was");
         assert!(std::fs::read_to_string(&path).unwrap().find("Invoice 2026-002") < std::fs::read_to_string(&path).unwrap().find("Paper"), "where it was");
+        // Not paid, later: planned again on the day given.
+        settle_line(&path, link, today).unwrap();
+        assert!(unsettle_line(&path, link, day("2026-11-15")).unwrap());
+        assert_eq!(lines(), before);
+        // A line already real (dated in Budgets): Paid leaves it, and its Undo too.
+        std::fs::write(&path, std::fs::read_to_string(&path).unwrap().replace("planned = true\n", "").replace("2026-11-15", "2026-10-20")).unwrap();
+        let real = lines();
+        let was = settle_line(&path, link, today).unwrap().unwrap();
+        assert_eq!(was, Settled { date: Some(day("2026-10-20")), planned: false });
+        assert_eq!(lines(), real, "a payment already real stays as it is");
+        assert!(!unsettle_paid(&path, link, was, today).unwrap());
+        assert_eq!(lines(), real, "never made planned by an Undo");
+        // Paid, then the line changed in Budgets before Undo: too late, left as it is.
+        std::fs::write(&path, std::fs::read_to_string(&path).unwrap().replace("2026-10-20", "2026-11-15").replace("label = \"Invoice 2026-002\"", "label = \"Invoice 2026-002\"\nplanned = true")).unwrap();
+        let was = settle_line(&path, link, today).unwrap().unwrap();
+        std::fs::write(&path, std::fs::read_to_string(&path).unwrap().replace("2026-10-26", "2026-10-27")).unwrap();
+        let moved = lines();
+        assert!(!unsettle_paid(&path, link, was, today).unwrap(), "too late");
+        assert_eq!(lines(), moved);
         assert!(!unsettle_line(&path, "sioul:invoice/1999-001", day("2026-11-15")).unwrap());
-        assert_eq!(settle_line(&path, "sioul:invoice/1999-001", day("2026-10-26")).unwrap(), None);
+        assert_eq!(settle_line(&path, "sioul:invoice/1999-001", today).unwrap(), None);
         let _ = std::fs::remove_file(&path);
     }
 

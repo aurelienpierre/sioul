@@ -436,41 +436,101 @@ pub(crate) fn invoice_again(number: &str) -> String {
 }
 
 /// An invoice paid (or not): its record says so, and its budget line follows.
-/// Paid: the line is no longer planned but dated today, with "Undo" for ten
-/// seconds, which puts it back as it was. Not paid: planned again, on the
-/// day it had (`budget::unsettle_line`), its due day when that is not known.
+/// Paid: a planned line is made real, dated today, with "Undo" for ten
+/// seconds, which puts back only what Paid changed (the invoice's own earlier
+/// state included), and only while the line still holds what Paid wrote,
+/// else says it is too late (review of 36002ea, must-fix 3). Not paid: the
+/// line planned again on the invoice's due day (`budget::unsettle_line`).
 pub(crate) fn set_paid(qt: &QtThread, shared: &Arc<Shared>, number: &str, paid: bool) -> String {
-    let result = paid_as(number, paid, None);
+    let today = Zoned::now().date();
+    let result = paid_as(number, paid, today);
     work::refresh(qt, shared);
     match result {
-        Ok(was) if paid => {
+        Ok(Some(before)) => {
             let owned = number.to_string();
             crate::mail::offer_back(qt, shared, say("invoice-marked-paid", &[("number", number.to_string())]), move |qt, shared| {
-                let back = paid_as(&owned, false, was).err().unwrap_or_default();
+                let back = paid_back(&owned, before, today).err().unwrap_or_default();
                 work::refresh(qt, shared);
                 back
             });
             String::new()
         }
-        Ok(_) => String::new(),
+        Ok(None) => String::new(),
         Err(e) => e,
     }
 }
 
-/// The invoice `number` marked paid or not, and its budget line with it:
-/// paid, settled today, the day it had returned (for "Undo"); not paid,
-/// planned again on `was`, else on the invoice's due day.
-fn paid_as(number: &str, paid: bool, was: Option<jiff::civil::Date>) -> Result<Option<jiff::civil::Date>, String> {
+/// What Paid found, for its Undo: the invoice's own `paid` before it, and
+/// its budget line (`budget::settle_line`: none when no line names it).
+#[derive(Debug, Clone, Copy)]
+struct PaidBefore {
+    paid: bool,
+    line: Option<budget::Settled>,
+}
+
+/// The invoice `number` marked paid or not, its budget line with it: paid,
+/// a planned line settled on `today`, what Paid found returned for its
+/// Undo; not paid, the line planned again on its due day (None).
+fn paid_as(number: &str, paid: bool, today: Date) -> Result<Option<PaidBefore>, String> {
     let mut found = invoice::all_in(&invoice::folder()).into_iter().find(|i| i.number == number).ok_or_else(|| tr().text("invoice-gone", None))?;
+    let was = found.paid;
     found.paid = paid;
     invoice::save_in(&invoice::folder(), &found)?;
-    let Ok(store) = store() else { return Ok(None) };
-    let (ledger, link) = (store.root.join(budget::LEDGER), format!("sioul:invoice/{number}"));
+    let store = store().ok();
+    let (ledger, link) = (store.map(|s| s.root.join(budget::LEDGER)), format!("sioul:invoice/{number}"));
     if paid {
-        return budget::settle_line(&ledger, &link, Zoned::now().date());
+        let line = match &ledger {
+            Some(ledger) => budget::settle_line(ledger, &link, today)?,
+            None => None,
+        };
+        return Ok(Some(PaidBefore { paid: was, line }));
     }
-    if let Some(day) = was.or_else(|| found.due.parse().ok()) {
-        budget::unsettle_line(&ledger, &link, day)?;
+    if let (Some(ledger), Ok(day)) = (&ledger, found.due.parse::<Date>()) {
+        budget::unsettle_line(ledger, &link, day)?;
     }
     Ok(None)
+}
+
+/// Paid's Undo: its line planned again where it still holds what Paid wrote
+/// (`budget::unsettle_paid`), the invoice as it was before Paid; nothing
+/// put back, and "too late" said, when the line changed since.
+fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String> {
+    if let Some(line) = before.line.filter(|line| line.planned)
+        && let Ok(store) = store()
+        && !budget::unsettle_paid(&store.root.join(budget::LEDGER), &format!("sioul:invoice/{number}"), line, today)?
+    {
+        return Err(tr().text("undo-too-late", None));
+    }
+    let mut found = invoice::all_in(&invoice::folder()).into_iter().find(|i| i.number == number).ok_or_else(|| tr().text("invoice-gone", None))?;
+    if found.paid != before.paid {
+        found.paid = before.paid;
+        invoice::save_in(&invoice::folder(), &found)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Paid, then its Undo (review of 36002ea, must-fix 3): an invoice
+    /// another device marked paid stays paid; one Paid made paid is unpaid
+    /// again. Its budget line's part (a line already real, one changed since)
+    /// is `budget::tests::paid_then_not_paid_leaves_the_budget_as_it_was`.
+    #[test]
+    fn paid_s_undo_puts_back_only_what_paid_changed() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
+        let folder = invoice::folder();
+        let today = Zoned::now().date();
+        for (number, paid_before) in [("2026-901", false), ("2026-902", true)] {
+            let bill = invoice::Invoice { number: number.into(), date: today.to_string(), due: today.to_string(), paid: paid_before, total_cents: 1000, currency: "EUR".into(), ..Default::default() };
+            invoice::save_in(&folder, &bill).unwrap();
+            let before = paid_as(number, true, today).unwrap().unwrap();
+            assert_eq!(before.paid, paid_before);
+            assert!(invoice::all_in(&folder).iter().any(|i| i.number == number && i.paid), "marked paid");
+            paid_back(number, before, today).unwrap();
+            assert_eq!(invoice::all_in(&folder).iter().find(|i| i.number == number).map(|i| i.paid), Some(paid_before), "{number}: as it was before Paid");
+        }
+    }
 }

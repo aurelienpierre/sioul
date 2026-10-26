@@ -1231,6 +1231,8 @@ mod tests {
     }
 
     fn switch_saved(devices: &[(&str, rules::Device)]) {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let switch = Switch { device: devices.iter().map(|(id, d)| (id.to_string(), d.clone())).collect(), ..Switch::default() };
         switch.save(&Switch::default_path()).unwrap();
     }
@@ -1244,6 +1246,8 @@ mod tests {
     /// that the focus session begun before holds again there.
     #[test]
     fn every_reading_reads_a_gone_device_and_a_pause_alike() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let _files = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         files_cleared();
         const DAY: i64 = 86_400_000;
@@ -1275,6 +1279,8 @@ mod tests {
     /// usual carries nothing of it, as the readers read that As usual.
     #[test]
     fn reachable_pressed_after_a_gone_device_s_as_usual_carries_nothing() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let _files = FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         files_cleared();
         let ms = jiff::Timestamp::now().as_millisecond();

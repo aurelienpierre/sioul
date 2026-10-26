@@ -1744,11 +1744,6 @@ fn a_jobs_file_from_start_to_end() {
     }
 }
 
-/// The last change an agent made, as the window reads it (`agentwrites`).
-fn last_said() -> sioul_core::agentwrites::Said {
-    sioul_core::agentwrites::since(0).0.pop().expect("a change said")
-}
-
 /// The last change said with these words: tests running beside each other say theirs too.
 fn said_about(words: &str) -> sioul_core::agentwrites::Said {
     sioul_core::agentwrites::since(0).0.into_iter().rev().find(|s| s.line.contains(words)).unwrap_or_else(|| panic!("nothing said about {words}"))
@@ -1774,8 +1769,8 @@ fn events_and_tasks_are_changed_one_by_one() {
     assert_eq!(changed["isError"], false, "{changed}");
     let edit = sioul_core::agenda::edit_of(&file).unwrap();
     assert_eq!((edit.start.as_str(), edit.end.as_str(), edit.remind.as_str(), edit.margins.before), ("2026-11-20T14:00", "2026-11-20T15:00", "15", 20));
-    let said = last_said();
-    assert!(said.line.contains("Dentist"), "{said:?}");
+    // By its words: the tests beside this one say theirs too, and an Undo taken from them undid theirs.
+    let said = said_about("Dentist");
     assert!(said.put_back(), "Undo");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), before, "put back as it was");
     // Moved to another calendar: once, through the journal.
@@ -1797,7 +1792,7 @@ fn events_and_tasks_are_changed_one_by_one() {
     let gone = call(&mut server, "delete_event", json!({ "event": uri }));
     assert_eq!(gone["isError"], false, "{gone}");
     assert!(other.items().is_empty());
-    assert!(last_said().put_back());
+    assert!(said_about("Dentist").put_back());
     assert_eq!(other.items().len(), 1, "Undo brings it back");
     // A task: changed, moved to another list, made an appointment and back, deleted.
     let task = call(&mut server, "add_task", json!({ "title": "Call the bank", "start": "2026-11-22T10:00", "estimate": 30 }));

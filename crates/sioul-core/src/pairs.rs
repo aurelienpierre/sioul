@@ -600,6 +600,8 @@ mod tests {
 
     impl Desk {
         fn new(name: &str) -> Desk {
+            // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+            crate::config::stand_ins_only();
             let list = vdir::create(Kind::Calendars, vdir::LOCAL, &format!("{name} tasks"), None, &["VTODO"]).unwrap();
             let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, &format!("{name} agenda"), None, &["VEVENT"]).unwrap();
             Desk { list, calendar }
@@ -996,6 +998,8 @@ mod tests {
     /// said to be kept there, a pair's own line is not.
     #[test]
     fn a_note_s_tie_goes_into_no_meeting_nor_a_calendar_you_only_read() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let desk = Desk::new("note-ties");
         let meeting = desk.event("meeting", "ORGANIZER:mailto:chair@example.org\r\nATTENDEE:mailto:jane@example.org\r\n");
         let plain = desk.event("plain", "");
@@ -1029,6 +1033,8 @@ mod tests {
     /// for parking, a copy the pages show wins, and the pages' events alone move a date.
     #[test]
     fn appointments_of_accounts_switched_off_are_here() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let zone = TimeZone::system();
         let off = Kind::Calendars.root().join("pairs-off-test");
         std::fs::create_dir_all(off.join("agenda")).unwrap();

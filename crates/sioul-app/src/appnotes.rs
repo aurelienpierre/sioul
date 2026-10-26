@@ -989,6 +989,8 @@ mod tests {
     /// the press.
     #[test]
     fn no_release_during_a_pause_it_waits_for_its_end() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         const PEOPLE: &str = "0|com.google.android.apps.messaging|2|sms|10001";
         const SHOP_KEY: &str = "0|com.shop.example|1|null|10500";
         const SHOP: &str = r#"{"key":"0|com.shop.example|1|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"offers","title":"-30 % sur les chaussures","text":"Jusqu'à dimanche seulement","alerted":true}"#;

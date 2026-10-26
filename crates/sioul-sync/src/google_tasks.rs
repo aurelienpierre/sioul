@@ -613,6 +613,8 @@ mod tests {
     }
 
     fn list_dir(account: &str) -> std::path::PathBuf {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         Kind::Calendars.root().join(account).join("tasks-L")
     }
 
@@ -656,6 +658,8 @@ mod tests {
     #[test]
     #[ignore]
     fn against_a_stand_in() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let base = std::env::var("SIOUL_TEST_GOOGLE_TASKS").expect("SIOUL_TEST_GOOGLE_TASKS");
         let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
         let google = |path: &str| -> Value { serde_json::from_str(&agent.get(&format!("{base}/_state{path}")).call().unwrap().body_mut().read_to_string().unwrap()).unwrap() };

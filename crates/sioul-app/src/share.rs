@@ -2955,6 +2955,8 @@ mod tests {
     #[test]
     #[ignore]
     fn measure_the_alarm_path_with_a_look_pending() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let state = state_dir();
         let folder = state.join("measure-folder");
         let set_up = state.join("measure-set-up");

@@ -557,20 +557,29 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
         .ok()
         .and_then(|v| v.get("links").and_then(|l| l.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
         .unwrap_or_default();
-    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-    if edit.title.trim().is_empty() {
-        return Err(tr().text("event-no-title", None));
-    }
+    let mut edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
     let zone = TimeZone::system();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
     let mut renamed: Option<String> = None;
     let (path, text) = match ours(key) {
         Some(path) => {
             let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let meeting = with_others(&current);
             // Another calendar chosen for a meeting with others: nothing written (F2).
             let elsewhere = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar).is_some_and(|c| path.parent() != Some(c.dir.as_path()));
-            if elsewhere && with_others(&current) {
+            if elsewhere && meeting {
                 return Err(tr().text("event-move-with-others", None));
+            }
+            // A meeting with others: its organizer's fields as its file has them, the form's
+            // taken for yours alone (the time kept around it, its costs and gain, your
+            // reminder). Its read-only notes come back from the form changed (a no-break
+            // space, a line separator), never as the organizer wrote them (review of 36002ea, must-fix 2).
+            if meeting {
+                let mut kept = agenda::edit_of_text(&current, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
+                (kept.margins, kept.demands, kept.remind) = (edit.margins, edit.demands, edit.remind);
+                edit = kept;
+            } else if edit.title.trim().is_empty() {
+                return Err(tr().text("event-no-title", None));
             }
             let task = sioul_core::lines::unfold(&current).iter().find(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK).map(|l| sioul_core::lines::value(l).trim().to_string());
             if let Some(task) = task.filter(|t| !t.is_empty())
@@ -581,6 +590,9 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
             (path, agenda::apply(&current, &edit, &zone)?)
         }
         None => {
+            if edit.title.trim().is_empty() {
+                return Err(tr().text("event-no-title", None));
+            }
             let target = vdir::collections(Kind::Calendars)
                 .into_iter()
                 .find(|c| !c.read_only && c.holds("VEVENT") && format!("{}/{}", c.account, c.id) == calendar)
@@ -763,34 +775,65 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
     let known = find_uid(&asked.uid);
     match answer {
         "remove" => {
-            // Your answer to its cancellation: the one path that takes a meeting with others out (`mail`).
-            if let Some(file) = known {
-                let account = account_of(&file).unwrap_or_default();
-                mail::schedule_cancelled_removal(qt, shared, &account, file, tr().text("undo-event-deleted", None));
+            // Your answer to its cancellation: the one path that takes a meeting with
+            // others out (`mail`), as its organizer asks it alone, and only what it
+            // cancels (review of 36002ea, can-wait 5).
+            let Some(file) = known else { return Ok(()) };
+            let there = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+            match agenda::cancellation(&there, &text, &agenda::own_addresses()) {
+                agenda::Cancellation::Refused => return Err(tr().text("invitation-cancel-refused", None)),
+                agenda::Cancellation::Whole => {
+                    let account = account_of(&file).unwrap_or_default();
+                    mail::schedule_cancelled_removal(qt, shared, &account, file, tr().text("undo-event-deleted", None));
+                }
+                agenda::Cancellation::Changed(changed) => {
+                    if vdir::calendar_read_only(&file) == Some(true) {
+                        return Err(tr().text("agenda-read-only", None));
+                    }
+                    vdir::store_item(&file, &changed)?;
+                    if let Some(account) = account_of(&file) {
+                        nudge(shared, &account);
+                    }
+                    show_pim(qt, shared);
+                    crate::work::show_work(qt, shared);
+                }
             }
             return Ok(());
         }
         "accepted" | "tentative" | "add" => {
             let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
+            let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
+            // Your answer made before anything is written: one that cannot be made writes nothing (can-wait 4).
+            let reply = if answer == "add" { None } else { Some(agenda::reply(&text, &me, &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?) };
             // A copy in a calendar you only read is never written: its server keeps it, and your answer goes all the same.
             if known.as_deref().is_none_or(|file| vdir::calendar_read_only(file) != Some(true)) {
-                let target = known.clone().unwrap_or_else(|| agenda::new_path(&calendar));
                 // Answered, your calendar keeps your answer on your own line: a device
                 // answering it too can tell whether it said the same (`dav`, an item
                 // the server holds already under its UID). The one path that writes a
-                // meeting with others (`vdir::store_item`): how a guest speaks to its organizer.
-                let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
-                let kept = if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &answer.to_ascii_uppercase()) };
-                vdir::store_item(&target, &kept)?;
-                if let Some(account) = account_of(&target) {
-                    nudge(shared, &account);
+                // meeting with others (`vdir::store_item`): how a guest speaks to its
+                // organizer. Into a copy there already, only what the message carries
+                // (one time of a series, say), your own lines kept, nothing for an
+                // older version (`agenda::answered_into`).
+                let partstat = if answer == "add" { String::new() } else { answer.to_ascii_uppercase() };
+                let written = match &known {
+                    Some(file) => {
+                        let there = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
+                        agenda::answered_into(&there, &text, &me, &partstat).map(|changed| (file.clone(), changed))
+                    }
+                    None => Some((agenda::new_path(&calendar), if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &partstat) })),
+                };
+                if let Some((target, kept)) = written {
+                    vdir::store_item(&target, &kept)?;
+                    if let Some(account) = account_of(&target) {
+                        nudge(shared, &account);
+                    }
                 }
             }
+            if let Some(ics) = reply {
+                send_answer(&path, &ics, &asked, answer)?;
+            }
         }
-        _ => {}
-    }
-    if answer != "add" {
-        send_answer(&path, &text, &asked, answer)?;
+        _ => send_answer(&path, &agenda::reply(&text, &load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default(), &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?, &asked, answer)?,
     }
     tell(qt, shared, tr().text(&format!("invitation-{answer}"), None));
     show_pim(qt, shared);
@@ -799,17 +842,15 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
     Ok(())
 }
 
-/// The REPLY to the organizer, through the account the invitation came to.
-fn send_answer(message: &Path, text: &str, asked: &agenda::Invitation, answer: &str) -> Result<(), String> {
+/// The REPLY (`ics`, made by `agenda::reply`) to the organizer, through the account the invitation came to.
+fn send_answer(message: &Path, ics: &str, asked: &agenda::Invitation, answer: &str) -> Result<(), String> {
     let config = load_config();
     let account = config.account_of(message).cloned().ok_or_else(|| tr().text("mail-no-account", None))?;
     let me = account.address.clone().unwrap_or_default();
-    let partstat = answer.to_ascii_uppercase();
-    let ics = agenda::reply(text, &me, &partstat).ok_or_else(|| tr().text("agenda-gone", None))?;
     let name = account.name.clone().unwrap_or_default();
     let sentence = say(&format!("invitation-sentence-{answer}"), &[("name", if name.is_empty() { me.clone() } else { name.clone() }), ("summary", asked.summary.clone())]);
     let subject = say(&format!("invitation-subject-{answer}"), &[("summary", asked.summary.clone())]);
-    let outgoing = sioul_core::compose::invitation_answer((&name, &me), &asked.organizer_address, &subject, &sentence, &ics, Zoned::now().timestamp().as_second())?;
+    let outgoing = sioul_core::compose::invitation_answer((&name, &me), &asked.organizer_address, &subject, &sentence, ics, Zoned::now().timestamp().as_second())?;
     let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
     let account = with_smtp(&account)?;
     match sioul_sync::send::send(&account, &password, &outgoing) {
@@ -955,6 +996,8 @@ mod tests {
     /// to stay here.
     #[test]
     fn an_event_moves_to_another_calendar_once() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "moves-here";
         for (id, name) in [("from", "From"), ("to", "To"), ("shared", "Shared")] {
             vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
@@ -986,6 +1029,8 @@ mod tests {
     /// October 2026, F2). Nothing is written; the editor says why.
     #[test]
     fn a_meeting_with_others_stays_in_its_calendar() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "with-others";
         let from = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT"]).unwrap();
         let to = vdir::create(Kind::Calendars, vdir::LOCAL, "With others mine", None, &["VEVENT"]).unwrap();
@@ -1008,18 +1053,46 @@ mod tests {
         assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here).is_ok());
         let kept = std::fs::read_to_string(&path).unwrap();
         assert!(kept.contains(sioul_core::demands::BEFORE) && !kept.contains("SEQUENCE") && kept.contains("SUMMARY:Meeting"), "{kept}");
-        for (field, change) in [("title", "Meeting, moved"), ("location", "Room 2")] {
-            let mut theirs = edit.clone();
-            if field == "title" { theirs.title = change.into() } else { theirs.location = change.into() }
-            assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&theirs).unwrap(), &here).is_err(), "{field}");
-        }
-        let mut later = edit.clone();
-        later.start = "2099-10-23T15:00".into();
-        later.end = "2099-10-23T16:00".into();
-        assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&later).unwrap(), &here).is_err(), "its time");
+        // Its organizer's fields typed in its form anyway (they are not offered): never written (must-fix 2).
+        let mut theirs = edit.clone();
+        theirs.title = "Meeting, moved".into();
+        theirs.location = "Room 2".into();
+        (theirs.start, theirs.end) = ("2099-10-23T15:00".into(), "2099-10-23T16:00".into());
+        assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&theirs).unwrap(), &here).is_ok());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), kept, "nothing of its organizer's written");
+        // And the door refuses it whatever writes it (`agenda::may_change`).
+        assert!(vdir::write_item(&path, &kept.replace("SUMMARY:Meeting", "SUMMARY:Meeting, moved")).is_err());
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&to.dir);
+    }
+
+    /// Must-fix 2 of the review of 36002ea: a meeting's own fields (the time
+    /// kept before it) are saved from its form however the form gives the
+    /// organizer's back (a notes field turns a no-break space and a line
+    /// separator into plain ones), and a meeting with no title takes them
+    /// too; its organizer's lines stay as they were, its SEQUENCE too.
+    #[test]
+    fn a_meeting_s_own_fields_save_whatever_its_notes_hold() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Meeting notes", None, &["VEVENT"]).unwrap();
+        let here = format!("{}/{}", calendar.account, calendar.id);
+        let theirs = |text: &str| text.lines().filter(|l| !l.starts_with("X-SIOUL-") && !l.starts_with("DTSTAMP") && !l.starts_with("LAST-MODIFIED")).map(str::to_string).collect::<Vec<_>>();
+        for (name, extra) in [("spaces", "SUMMARY:Point d\u{2019}équipe\r\nDESCRIPTION:Ordre du jour\u{a0}: budget\u{2028}puis questions\r\n"), ("untitled", "")] {
+            let path = calendar.dir.join(format!("{name}.ics"));
+            let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{name}-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\n{extra}ORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+            std::fs::write(&path, &text).unwrap();
+            let mut edit = agenda::edit_of(&path).unwrap();
+            // As Qt's text field gives the notes back.
+            edit.notes = edit.notes.replace('\u{a0}', " ").replace('\u{2028}', "\n");
+            edit.margins.before = 15;
+            let saved = write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here);
+            assert!(saved.is_ok(), "{name}: {:?}", saved.err());
+            let written = std::fs::read_to_string(&path).unwrap();
+            assert!(written.contains(sioul_core::demands::BEFORE), "{name}: {written}");
+            assert_eq!(theirs(&written), theirs(&text), "{name}: the organizer's lines as they were");
+        }
+        let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
     /// No writer of the window writes an event of a calendar you only read:
@@ -1027,6 +1100,8 @@ mod tests {
     /// and its Delete (`agenda::may_change`, in `vdir`'s doors and asked first).
     #[test]
     fn a_calendar_you_only_read_is_never_written() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "read-only-writers";
         vdir::prepare(Kind::Calendars, account, "theirs", "Theirs", None).unwrap();
         let state = vdir::state_path(account, Kind::Calendars, "theirs");
@@ -1052,6 +1127,8 @@ mod tests {
     /// says so.
     #[test]
     fn each_chooser_offers_what_takes_its_kind() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let events = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser events", None, &["VEVENT"]).unwrap();
         let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser both", None, &["VEVENT", "VTODO"]).unwrap();
         let tasks = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds chooser tasks", None, &["VTODO"]).unwrap();
@@ -1073,6 +1150,8 @@ mod tests {
     /// and back, one file each time; saved with its own calendar, it stays.
     #[test]
     fn a_saved_event_goes_to_the_calendar_chosen() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "saved-moves";
         let personnel = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT", "VTODO"]).unwrap();
         let mine = vdir::create(Kind::Calendars, vdir::LOCAL, "Saved moves mine", None, &["VEVENT"]).unwrap();
@@ -1122,6 +1201,8 @@ mod tests {
     /// one stays out of the chooser, listed there fixed, its row saying why.
     #[test]
     fn an_empty_calendar_is_offered_and_a_read_only_one_says_why() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let account = "offered-here";
         for (id, name) in [("full", "Full"), ("empty", "Empty"), ("shared", "Shared")] {
             vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();

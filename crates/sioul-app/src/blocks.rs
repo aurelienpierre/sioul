@@ -441,6 +441,8 @@ mod tests {
     /// task's block of its own still goes; and the door refuses it anyway.
     #[test]
     fn a_block_given_a_guest_is_left_to_its_meeting() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Blocks given a guest", None, &["VEVENT"]).unwrap();
         let now = Zoned::now();
         let day = now.date().tomorrow().unwrap().strftime("%Y%m%d").to_string();

@@ -1199,6 +1199,8 @@ mod tests {
     /// another task, is said.
     #[test]
     fn steps_imported_in_order_and_moved() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
         let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Steps plan", None, &["VTODO"]).unwrap();
         let file = sioul_core::config::state_dir().join("steps-import.toml");
@@ -1242,6 +1244,8 @@ mod tests {
     /// its block taken out, once; imported again, nothing changes.
     #[test]
     fn an_appointment_in_a_plan_file_is_an_event_said_so() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
         let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds plan", None, &["VTODO"]).unwrap();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds personal", None, &["VEVENT"]).unwrap();

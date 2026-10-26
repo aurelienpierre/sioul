@@ -1263,6 +1263,8 @@ mod tests {
     /// calendar of events alone is never one; one taking both is.
     #[test]
     fn the_task_views_read_lists_that_take_tasks() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let events = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds only events", None, &["VEVENT"]).unwrap();
         let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds events and tasks", None, &["VEVENT", "VTODO"]).unwrap();
         let tasks = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds only tasks", None, &["VTODO"]).unwrap();

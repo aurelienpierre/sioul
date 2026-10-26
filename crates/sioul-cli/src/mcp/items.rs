@@ -9,7 +9,7 @@
 //! (`tasks::apply`), a move through the move journal (`vdir::move_item`),
 //! a conversion as the agenda's (`appointments`), never twice, never lost.
 //!
-//! Refused as in the window: a meeting with others (an organizer or guests)
+//! Refused as in the window: a meeting with others (a guest who is not you, or an organizer who is not you beside a guest)
 //! is never moved nor deleted, since its server would cancel it for them;
 //! a calendar or a list that can only be read is never written. Refused as
 //! for every agent: nothing kept from agents is found, nothing is changed in

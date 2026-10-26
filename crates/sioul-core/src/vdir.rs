@@ -790,6 +790,8 @@ mod tests {
     /// twice, never lost.
     #[test]
     fn a_move_cut_at_each_step_ends_once() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:moved-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         for step in 0..=4u8 {
             let account = format!("moves-{step}");
@@ -855,6 +857,8 @@ mod tests {
     /// what it holds, and kept with it. One that takes both says so.
     #[test]
     fn a_calendar_says_what_it_takes() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let tr = crate::i18n::Translator::new("en");
         let config = crate::config::Config::default();
         // Each folder made whole beside, then put in place: a look from another

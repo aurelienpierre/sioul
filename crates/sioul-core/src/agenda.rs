@@ -1482,7 +1482,8 @@ pub fn invitation(text: &str, zone: &TimeZone) -> Option<Invitation> {
 /// "DECLINED" or "TENTATIVE".
 pub fn reply(text: &str, me: &str, answer: &str) -> Option<String> {
     let source = lines::unfold(text);
-    let master = master_range(&source)?;
+    // Its series, else the one time of it the message carries (an update of one occurrence).
+    let master = master_range(&source).or_else(|| first_event(&source))?;
     let mine = |line: &str| address(lines::value(line)).eq_ignore_ascii_case(me);
     let attendee = source[master.clone()].iter().find(|l| lines::name(l) == "ATTENDEE" && mine(l)).cloned().unwrap_or_else(|| format!("ATTENDEE:mailto:{me}"));
     let attendee = with_answer(&attendee, answer);
@@ -1559,6 +1560,219 @@ pub fn answers(text: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// The first VEVENT of a calendar, its lines' range.
+fn first_event(source: &[String]) -> Option<std::ops::Range<usize>> {
+    let start = source.iter().position(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VEVENT"))?;
+    let mut nested = 0usize;
+    for (i, line) in source.iter().enumerate().skip(start + 1) {
+        match lines::name(line).as_str() {
+            "BEGIN" => nested += 1,
+            "END" if nested > 0 => nested -= 1,
+            "END" => return Some(start..i + 1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// A calendar cut into what it holds around its events (`head`: its own
+/// lines, its time zones) and its events, each whole (its alarms in it).
+struct Cut {
+    head: Vec<String>,
+    events: Vec<Vec<String>>,
+}
+
+fn cut(text: &str) -> Cut {
+    let mut out = Cut { head: Vec::new(), events: Vec::new() };
+    let mut event: Vec<String> = Vec::new();
+    let (mut inside, mut nested) = (false, 0usize);
+    for line in lines::unfold(text) {
+        let name = lines::name(&line);
+        let upper = lines::value(&line).trim().to_ascii_uppercase();
+        if !inside {
+            if name == "BEGIN" && upper == "VEVENT" {
+                (inside, nested) = (true, 0);
+                event = vec![line];
+            } else if !(name == "END" && upper == "VCALENDAR") {
+                out.head.push(line);
+            }
+            continue;
+        }
+        let ends = match name.as_str() {
+            "BEGIN" => {
+                nested += 1;
+                false
+            }
+            "END" if nested > 0 => {
+                nested -= 1;
+                false
+            }
+            "END" => true,
+            _ => false,
+        };
+        event.push(line);
+        if ends {
+            inside = false;
+            out.events.push(std::mem::take(&mut event));
+        }
+    }
+    out
+}
+
+impl Cut {
+    fn text(&self) -> String {
+        let mut out = self.head.clone();
+        out.extend(self.events.iter().flatten().cloned());
+        out.push("END:VCALENDAR".to_string());
+        lines::fold(&out)
+    }
+}
+
+/// An event's lines of its own, its alarms' aside.
+fn own_lines(event: &[String]) -> impl Iterator<Item = &String> {
+    let mut nested = 0usize;
+    event.iter().enumerate().filter(move |(i, line)| {
+        let name = lines::name(line);
+        let inside = nested > 0;
+        if *i > 0 && name == "BEGIN" {
+            nested += 1;
+        } else if name == "END" && nested > 0 {
+            nested -= 1;
+            return false;
+        }
+        !inside && !(name == "BEGIN" && nested > 0)
+    }).map(|(_, line)| line)
+}
+
+/// Which time of a series an event is: its RECURRENCE-ID (its zone and its
+/// value), "" for the series itself.
+fn which_time(event: &[String]) -> String {
+    own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID").map(|l| format!("{}|{}", lines::param(l, "TZID").unwrap_or_default(), lines::value(l).trim())).unwrap_or_default()
+}
+
+fn sequence_of(event: &[String]) -> i64 {
+    own_lines(event).find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0)
+}
+
+/// The organizer an event names, by address (lower case); "" none.
+fn organizer_of(event: &[String]) -> String {
+    own_lines(event).find(|l| lines::name(l) == "ORGANIZER").map(|l| address(lines::value(l)).trim().to_lowercase()).unwrap_or_default()
+}
+
+/// `extra` lines put into an event, among its own lines, before its alarms.
+fn with_lines(event: &[String], extra: &[String]) -> Vec<String> {
+    let at = event.iter().enumerate().skip(1).find(|(_, l)| lines::name(l) == "BEGIN").map_or(event.len().saturating_sub(1), |(i, _)| i);
+    let mut out = event[..at].to_vec();
+    out.extend(extra.iter().cloned());
+    out.extend(event[at..].iter().cloned());
+    out
+}
+
+/// An invitation answered (accepted or maybe; "" for an event published,
+/// added as it is), written into the copy your calendar holds already
+/// (`stored_text`), only what the message carries changed: each of its
+/// events (the series, or one time of it) in place of the same one there,
+/// by its RECURRENCE-ID, your own line (`me`) saying `answer`, Sioul's own
+/// lines of the one there kept (the time kept around it, its costs and gain,
+/// your reminder); the other times of the series as they are. One older
+/// than the one there (a lower SEQUENCE) is not written (review of 36002ea,
+/// can-wait 4). None when nothing would change.
+pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str) -> Option<String> {
+    let mut there = cut(stored_text);
+    let sent = cut(&stored(message));
+    let mut changed = false;
+    for event in &sent.events {
+        let time = which_time(event);
+        let found = there.events.iter().position(|e| which_time(e) == time);
+        if found.is_some_and(|i| sequence_of(event) < sequence_of(&there.events[i])) {
+            continue;
+        }
+        let mut new: Vec<String> = event
+            .iter()
+            .map(|l| if !answer.is_empty() && !me.is_empty() && lines::name(l) == "ATTENDEE" && address(lines::value(l)).eq_ignore_ascii_case(me) { with_answer(l, answer) } else { l.clone() })
+            .collect();
+        if let Some(i) = found {
+            let ours: Vec<String> = own_lines(&there.events[i]).filter(|l| lines::name(l).starts_with("X-SIOUL-")).filter(|l| !new.contains(l)).cloned().collect();
+            new = with_lines(&new, &ours);
+            if there.events[i] != new {
+                there.events[i] = new;
+                changed = true;
+            }
+        } else {
+            there.events.push(new);
+            changed = true;
+        }
+    }
+    // The zones its times name, those the copy lacks.
+    let mut zone: Vec<String> = Vec::new();
+    let mut in_zone = false;
+    for line in &sent.head {
+        let upper = lines::value(line).trim().to_ascii_uppercase();
+        if lines::name(line) == "BEGIN" && upper == "VTIMEZONE" {
+            in_zone = true;
+        }
+        if in_zone {
+            zone.push(line.clone());
+        }
+        if lines::name(line) == "END" && upper == "VTIMEZONE" {
+            in_zone = false;
+            let id = zone.iter().find(|l| lines::name(l) == "TZID").map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
+            if changed && !there.head.iter().any(|l| lines::name(l) == "TZID" && lines::value(l).trim() == id) {
+                there.head.extend(zone.iter().cloned());
+            }
+            zone.clear();
+        }
+    }
+    changed.then(|| there.text())
+}
+
+/// What a cancellation (METHOD:CANCEL) does to the copy your calendar holds
+/// (`cancellation`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cancellation {
+    /// Not from the organizer of the copy, or for a meeting you organize
+    /// (`own`): nothing is taken out.
+    Refused,
+    /// The series cancelled: the copy goes.
+    Whole,
+    /// One time of it cancelled, or a few: the copy with those times left
+    /// out (their STATUS:CANCELLED where the copy holds them changed, else
+    /// an EXDATE in the series).
+    Changed(String),
+}
+
+/// A cancellation read against the copy your calendar holds (review of
+/// 36002ea, can-wait 5): only its organizer's counts, never a guest's, and
+/// none for a meeting you organize, which you cancel in your own calendar
+/// app; a cancellation of one time of a series leaves that time out alone.
+pub fn cancellation(stored_text: &str, message: &str, own: &[String]) -> Cancellation {
+    let mut there = cut(stored_text);
+    let sent = cut(message);
+    let theirs = there.events.iter().find(|e| which_time(e).is_empty()).or(there.events.first()).map(|e| organizer_of(e)).unwrap_or_default();
+    let from = sent.events.first().map(|e| organizer_of(e)).unwrap_or_default();
+    if theirs.is_empty() || theirs != from || own.contains(&theirs) {
+        return Cancellation::Refused;
+    }
+    if sent.events.is_empty() || sent.events.iter().any(|e| which_time(e).is_empty()) {
+        return Cancellation::Whole;
+    }
+    let Some(series) = there.events.iter().position(|e| which_time(e).is_empty()) else { return Cancellation::Whole };
+    for event in &sent.events {
+        let time = which_time(event);
+        if let Some(i) = there.events.iter().position(|e| which_time(e) == time) {
+            let kept: Vec<String> = there.events[i].iter().filter(|l| lines::name(l) != "STATUS").cloned().collect();
+            there.events[i] = with_lines(&kept, &["STATUS:CANCELLED".to_string()]);
+        } else if let Some(at) = own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID") {
+            // The same time and zone, as EXDATE (RANGE aside: one time alone).
+            let head: Vec<&str> = at.split(':').next().unwrap_or("").split(';').skip(1).filter(|p| !p.to_ascii_uppercase().starts_with("RANGE=")).collect();
+            let params: String = head.iter().map(|p| format!(";{p}")).collect();
+            let exdate = format!("EXDATE{params}:{}", lines::value(at).trim());
+            there.events[series] = with_lines(&there.events[series], &[exdate]);
+        }
+    }
+    Cancellation::Changed(there.text())
+}
+
 /// Adds an invitation's event to a calendar file, as the organizer sent it,
 /// METHOD removed (RFC 4791 §4.1 forbids it in stored objects).
 pub fn stored(text: &str) -> String {
@@ -1575,6 +1789,8 @@ mod tests {
     /// what a folder holds counts, nothing is hidden (F3, 22 October 2026).
     #[test]
     fn the_agenda_reads_calendars_that_take_events() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds events", None, &["VEVENT"]).unwrap();
         let both = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds both", None, &["VEVENT", "VTODO"]).unwrap();
         let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Kinds list", None, &["VTODO"]).unwrap();
@@ -1783,6 +1999,8 @@ mod tests {
     /// goes in as it came (`store_item`), and a task as before.
     #[test]
     fn every_door_of_a_calendar_keeps_the_one_rule() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         let account = "guard-doors";
         for (id, name) in [("mine", "Mine"), ("other", "Other"), ("read", "Read only")] {
             vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
@@ -1894,6 +2112,67 @@ mod tests {
             }
         }
         assert!(astray.is_empty(), "around the one rule of events' writers (agenda::guard):\n{}", astray.join("\n"));
+    }
+
+    /// Your weekly meeting, as your calendar holds it: the series, your own
+    /// line of it (the time kept before it), your answer.
+    const SERIES: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:2\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org\r\nX-SIOUL-BEFORE:20\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    /// One time of a series moved by its organizer, as an invitation carries it.
+    fn one_time(method: &str, sequence: u32, extra: &str) -> String {
+        format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:{sequence}\r\nRECURRENCE-ID:20261111T090000Z\r\nDTSTART:20261111T140000Z\r\nDTEND:20261111T150000Z\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.org\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n")
+    }
+
+    /// Can-wait 4 of the review of 36002ea: accepting the update of one time
+    /// of a series writes that time alone beside the series, your answer in it,
+    /// the series as it was (its rule, your own line); an older update writes
+    /// nothing; the answer to it can be made before anything is written.
+    #[test]
+    fn an_answer_to_one_time_writes_that_time_alone() {
+        let answered = answered_into(SERIES, &one_time("REQUEST", 3, ""), "me@example.org", "TENTATIVE").expect("one time written");
+        let cut_of = cut(&answered);
+        assert_eq!(cut_of.events.len(), 2, "{answered}");
+        assert_eq!(cut_of.events[0], cut(SERIES).events[0], "the series as it was");
+        let time = cut_of.events[1].join("\n");
+        assert!(time.contains("RECURRENCE-ID:20261111T090000Z") && time.contains("DTSTART:20261111T140000Z") && time.contains("PARTSTAT=TENTATIVE"), "{time}");
+        assert!(!answered.contains("METHOD:"), "stored without its METHOD");
+        // The same time answered again: replaced in place, never twice.
+        let again = answered_into(&answered, &one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").unwrap();
+        assert_eq!(cut(&again).events.len(), 2);
+        assert!(cut(&again).events[1].join("\n").contains("PARTSTAT=ACCEPTED"));
+        // An update of the series older than your copy: nothing written.
+        let older = SERIES.replace("SEQUENCE:2", "SEQUENCE:1").replace("SUMMARY:Review", "SUMMARY:Old review");
+        assert_eq!(answered_into(SERIES, &older.replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST"), "me@example.org", "ACCEPTED"), None);
+        // A newer one of the series: your own line kept in it.
+        let newer = SERIES.replace("SEQUENCE:2", "SEQUENCE:4").replace("SUMMARY:Review", "SUMMARY:Review, new room").replace("X-SIOUL-BEFORE:20\r\n", "");
+        let renewed = answered_into(SERIES, &newer, "me@example.org", "ACCEPTED").unwrap();
+        assert!(renewed.contains("SUMMARY:Review\\, new room") || renewed.contains("SUMMARY:Review, new room"), "{renewed}");
+        assert!(renewed.contains("X-SIOUL-BEFORE:20"), "your own line kept: {renewed}");
+        // The answer to one time alone is made, its RECURRENCE-ID in it.
+        let reply = reply(&one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").expect("an answer to one time");
+        assert!(reply.contains("RECURRENCE-ID:20261111T090000Z") && reply.contains("PARTSTAT=ACCEPTED") && reply.contains("METHOD:REPLY"), "{reply}");
+    }
+
+    /// Can-wait 5 of the review of 36002ea: a cancellation of one time of a
+    /// series leaves that time out alone; of the series, the copy goes; never
+    /// from a guest, nor for a meeting you organize.
+    #[test]
+    fn a_cancellation_takes_out_what_its_organizer_cancels_alone() {
+        let own = vec!["me@example.org".to_string()];
+        let Cancellation::Changed(left) = cancellation(SERIES, &one_time("CANCEL", 3, "STATUS:CANCELLED\r\n"), &own) else { panic!("one time left out") };
+        assert!(left.contains("EXDATE:20261111T090000Z") && left.contains("RRULE:FREQ=WEEKLY") && left.contains("X-SIOUL-BEFORE:20"), "{left}");
+        // That time changed in your copy already: its STATUS cancelled there.
+        let with_time = answered_into(SERIES, &one_time("REQUEST", 3, ""), "me@example.org", "ACCEPTED").unwrap();
+        let Cancellation::Changed(left) = cancellation(&with_time, &one_time("CANCEL", 4, ""), &own) else { panic!("one time cancelled") };
+        assert!(cut(&left).events[1].iter().any(|l| l == "STATUS:CANCELLED") && cut(&left).events[0] == cut(SERIES).events[0], "{left}");
+        // The series cancelled by its organizer: the copy goes.
+        let whole = SERIES.replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:CANCEL");
+        assert_eq!(cancellation(SERIES, &whole, &own), Cancellation::Whole);
+        // From a guest of the meeting, or for a meeting you organize: refused.
+        let by_guest = whole.replace("ORGANIZER:mailto:boss@example.org", "ORGANIZER:mailto:paul@example.org");
+        assert_eq!(cancellation(SERIES, &by_guest, &own), Cancellation::Refused);
+        let organized = SERIES.replace("ORGANIZER:mailto:boss@example.org", "ORGANIZER:mailto:me@example.org");
+        assert_eq!(cancellation(&organized, &whole.replace("boss@example.org", "me@example.org"), &own), Cancellation::Refused);
     }
 
     #[test]

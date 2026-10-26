@@ -2108,6 +2108,8 @@ mod tests {
     }
 
     fn folder(account: &str, calendar: &str) -> PathBuf {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         Kind::Calendars.root().join(account).join(calendar)
     }
 

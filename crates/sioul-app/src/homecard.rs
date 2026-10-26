@@ -1722,6 +1722,8 @@ mod tests {
     /// a task. An event slipped into a list shows in all three (F3).
     #[test]
     fn every_agenda_reads_the_same_items() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         use sioul_core::vdir::{self, Kind};
         let now = Zoned::now();
         let zone = now.time_zone().clone();

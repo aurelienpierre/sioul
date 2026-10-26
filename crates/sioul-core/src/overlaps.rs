@@ -143,6 +143,8 @@ mod tests {
     /// one way, not two, and fits; half an hour does not, and is said.
     #[test]
     fn twenty_minutes_apart_never_overlap_whatever_their_form() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
         use crate::vdir::{self, Kind};
         let paris = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Overlap forms", None, &["VEVENT"]).unwrap();

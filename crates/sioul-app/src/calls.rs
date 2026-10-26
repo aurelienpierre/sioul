@@ -910,6 +910,8 @@ mod tests {
     /// people you know never ring under it from a reading kept.
     #[test]
     fn the_table_s_layers_read_the_switch_anew() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
         let ms = jiff::Timestamp::now().as_millisecond();
@@ -954,6 +956,8 @@ mod tests {
     #[test]
     #[ignore]
     fn gone_expecting_a_call_in_the_table() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
         assert!(phone(), "SIOUL_CALLS");
         const DAY: i64 = 86_400_000;
         let ms = jiff::Timestamp::now().as_millisecond();

@@ -446,6 +446,19 @@ Item {
             SettingsGear {}
         }
 
+        // The health file could not be read here: said above the day and the
+        // week alike, on every day, never read as no medicines (review of 36002ea, can-wait 12).
+        Label {
+            objectName: "health-unreadable"
+            visible: (page.shown.unreadable || "") !== ""
+            Layout.fillWidth: true
+            text: page.shown.unreadable || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: page.theme.warm
+        }
+
         // Doses due while Sioul ran on none of your computers: a question on the
         // past, answered once; never a reminder to take one now. Made only then.
         Loader {
@@ -879,19 +892,6 @@ Item {
                     theme: page.theme
                     window: page.window
                     date: scroll.day !== null ? scroll.day.date : ""
-                }
-
-                // The health file could not be read here: said on every day, never read as no medicines.
-                Label {
-                    objectName: "health-unreadable"
-                    visible: (page.shown.unreadable || "") !== ""
-                    Layout.fillWidth: true
-                    Layout.topMargin: 6
-                    text: page.shown.unreadable || ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    font.pixelSize: 13
-                    color: page.theme.warm
                 }
 
                 // Today: what is not known of the doses marked elsewhere; where reminders come.

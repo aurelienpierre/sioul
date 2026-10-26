@@ -20,6 +20,9 @@ Dialog {
     property string key: ""
     property var info: null
     property string problem: ""
+    // Marked taken already, when ("08:03"): said, and no second Taken offered
+    // (review of 36002ea, can-wait 1); "" when not.
+    readonly property string marked: dialog.info !== null ? (dialog.info.taken || "") : ""
 
     // Answered, taken or not: the pages showing doses read them again.
     signal answered
@@ -61,7 +64,17 @@ Dialog {
             wrapMode: Text.Wrap
             color: dialog.theme.text
         }
+        Label {
+            objectName: "dose-already-marked"
+            visible: dialog.marked !== ""
+            Layout.fillWidth: true
+            text: dialog.sioul.textWith("dose-already-marked", "time", dialog.marked)
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: dialog.theme.text
+        }
         RowLayout {
+            visible: dialog.marked === ""
             spacing: 8
 
             Label {
@@ -80,7 +93,7 @@ Dialog {
         }
         // Every few hours: the hours between two doses are kept, from the time said.
         Label {
-            visible: dialog.info !== null && dialog.info.hours > 0
+            visible: dialog.marked === "" && dialog.info !== null && dialog.info.hours > 0
             Layout.fillWidth: true
             text: dialog.info === null ? "" : dialog.sioul.textWith("dose-next-after", "hours", String(dialog.info.hours))
             textFormat: Text.PlainText
@@ -110,11 +123,13 @@ Dialog {
             anchors.fill: parent
 
             Button {
+                visible: dialog.marked === ""
                 text: dialog.sioul.text("health-taken")
                 highlighted: true
                 onClicked: dialog.taken()
             }
             Button {
+                visible: dialog.marked === ""
                 flat: true
                 text: dialog.sioul.text("health-not-taken")
                 onClicked: {

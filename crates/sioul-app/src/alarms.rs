@@ -80,7 +80,8 @@ pub(crate) fn schedule() {
     for key in gone {
         remove_reminder(&key);
     }
-    let coming = crate::health::alarms_coming();
+    // Nothing reads here, the health file nor its last read: Android keeps the alarms it has.
+    let Some(coming) = crate::health::alarms_coming() else { return };
     let Ok(mut given) = GIVEN.lock() else { return };
     if *given == coming {
         return;

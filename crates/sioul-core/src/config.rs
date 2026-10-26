@@ -2085,6 +2085,31 @@ pub fn default_path() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+/// Whether this process writes Sioul's files in folders of its own:
+/// XDG_CONFIG_HOME, XDG_DATA_HOME and XDG_STATE_HOME each set, none the
+/// person's own (`~/.config`, `~/.local/share`, `~/.local/state`); or a CI
+/// runner's (`CI=true`), whose home is thrown away after the run. Every test
+/// that writes health, state, config or calendars where Sioul reads them asks
+/// it first (`stand_ins_only`; rules.md; review of 36002ea, can-wait 11).
+pub fn stand_in_folders() -> bool {
+    if std::env::var_os("CI").is_some_and(|v| v == "true") {
+        return true;
+    }
+    [("XDG_CONFIG_HOME", "~/.config"), ("XDG_DATA_HOME", "~/.local/share"), ("XDG_STATE_HOME", "~/.local/state")]
+        .iter()
+        .all(|(variable, own)| std::env::var_os(variable).filter(|v| !v.is_empty()).is_some_and(|v| PathBuf::from(v) != expand_home(own)))
+}
+
+/// For a test that writes Sioul's files where it reads them: refuses to go
+/// on, before it writes anything, unless its folders are stand-ins
+/// (`stand_in_folders`), so that it never writes the person's own.
+pub fn stand_ins_only() {
+    assert!(
+        stand_in_folders(),
+        "this test writes Sioul's files: run it with folders of its own (XDG_CONFIG_HOME, XDG_DATA_HOME and XDG_STATE_HOME set, as tools/final-pass.sh sets them), never with the person's own"
+    );
+}
+
 /// `$XDG_CONFIG_HOME/sioul`, else `~/.config/sioul`.
 pub fn config_dir() -> PathBuf {
     xdg("XDG_CONFIG_HOME", "~/.config").join("sioul")
