@@ -753,6 +753,19 @@ pub struct Loaded {
     pub sites: Vec<crate::sites::Site>,
 }
 
+/// Whether a line of a task or an event points at `other` (a canonical
+/// address): its LINK, CONTACT or REFID.
+fn points_at(world: &World, line: &str, other: &str) -> bool {
+    let value = crate::lines::value(line).trim();
+    match crate::lines::name(line).as_str() {
+        "LINK" if crate::lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID")) => world.canonical(&format!("uid:{value}")) == other,
+        "LINK" => world.canonical(value) == other,
+        "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other),
+        "REFID" => project_uri(&crate::lines::unescape(value)) == other,
+        _ => false,
+    }
+}
+
 /// A file to write so that a tie is made or undone: the thing that holds it, and its new text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rewrite {
@@ -765,7 +778,7 @@ impl Loaded {
     /// The file of an event a tie may be written into: its calendar can be
     /// written, and it is no meeting with others, whose server would tell
     /// every guest (`agenda::with_others`, read in the file as it is now).
-    fn writable_event(&self, uid: &str) -> Option<PathBuf> {
+    pub fn writable_event(&self, uid: &str) -> Option<PathBuf> {
         let (path, text, writable) = self.event_file(uid)?;
         (writable && !crate::agenda::with_others(&text)).then_some(path)
     }
@@ -845,6 +858,28 @@ impl Loaded {
         self.holding(&a, &b, now).or_else(|| self.holding(&b, &a, now))
     }
 
+    /// The event's own tie to `other` (a note made for it, Add ▸ Note): its
+    /// LINK, written only where `writable_event` allows; None otherwise, the
+    /// tie then held by the other's end alone (a note's front matter).
+    pub fn tie_into_event(&self, event_uid: &str, other: &str, now: &jiff::Zoned) -> Option<Rewrite> {
+        self.holding(&event_uri(event_uid), &self.world().canonical(other), now).filter(|r| r.kind == Kind::Event)
+    }
+
+    /// Whether a tie between `a` and `b` stays written in a meeting with
+    /// others, which is never written (`writable_event`): a line of an
+    /// earlier build, or another program's, there to point at the other. A
+    /// pair's own line is not one: the mark undoes it (`pairs::untie`).
+    pub fn kept_in_meeting(&self, a: &str, b: &str) -> bool {
+        let world = self.world();
+        let (a, b) = (world.canonical(a), world.canonical(b));
+        [(&a, &b), (&b, &a)].into_iter().any(|(holder, other)| {
+            kind_of(holder) == Kind::Event
+                && self.event_file(&id_of(holder)).is_some_and(|(_, text, _)| {
+                    crate::agenda::with_others(&text) && crate::lines::unfold(&text).iter().any(|l| !(crate::lines::name(l) == "LINK" && crate::pairs::is_pair_link(&crate::tasks::link_of(l))) && points_at(&world, l, other))
+                })
+        })
+    }
+
     /// What undoes a tie between `a` and `b`, wherever it is written: a
     /// task's LINK, CONTACT or REFID, an event's LINK, a note's front matter.
     /// The local file is the caller's (`LocalLinks::untie`). A step, a wait,
@@ -852,16 +887,7 @@ impl Loaded {
     pub fn untie(&self, a: &str, b: &str, now: &jiff::Zoned) -> Vec<Rewrite> {
         let world = self.world();
         let (a, b) = (world.canonical(a), world.canonical(b));
-        let points_at = |line: &str, other: &str| -> bool {
-            let value = crate::lines::value(line).trim();
-            match crate::lines::name(line).as_str() {
-                "LINK" if crate::lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID")) => world.canonical(&format!("uid:{value}")) == other,
-                "LINK" => world.canonical(value) == other,
-                "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other),
-                "REFID" => project_uri(&crate::lines::unescape(value)) == other,
-                _ => false,
-            }
-        };
+        let points_at = |line: &str, other: &str| points_at(&world, line, other);
         // A task and the appointment it prepares: undone by the pair's own rule
         // (`pairs::untie`: its date back, a meeting with others never written,
         // the mark when the event keeps its line), on the event as it is now;

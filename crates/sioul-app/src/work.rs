@@ -1886,6 +1886,7 @@ pub(crate) fn unlink(qt: &QtThread, shared: &Arc<Shared>, a: &str, b: &str) -> S
     let (a, b) = (world.canonical(a), world.canonical(b));
     let mut undone = false;
     let mut problem = None;
+    let kept = loaded.kept_in_meeting(&a, &b);
     // Read again and written with the notes' lock held, as `link` does.
     notes::with_lock(|| {
         for change in loaded.untie(&a, &b, &Zoned::now()) {
@@ -1903,6 +1904,10 @@ pub(crate) fn unlink(qt: &QtThread, shared: &Arc<Shared>, a: &str, b: &str) -> S
     links_changed(qt, shared);
     if let Some(problem) = problem {
         return problem;
+    }
+    // Written in a meeting with others, it stays there: its guests would hear of any change.
+    if kept {
+        return tr().text("link-kept-in-meeting", None);
     }
     if undone {
         return tr().text("link-undone", None);
@@ -2125,8 +2130,10 @@ fn event_ref(shared: &Shared, key: &str) -> Option<agenda::EventRef> {
     loaded(shared).events.iter().find(|e| e.key == key).cloned()
 }
 
-/// A note for an event: dated, the guests listed, linked both ways (the
-/// event's LINK when its calendar can be written, the note's front matter always).
+/// A note for an event: dated, the guests listed, linked both ways: the
+/// note's front matter always, the event's LINK only where a tie may be
+/// written (`links::Loaded::tie_into_event`: its calendar can be written,
+/// and it is no meeting with others, whose server would tell every guest).
 pub(crate) fn note_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: f64) -> String {
     let Some(event) = event_ref(shared, key) else { return String::new() };
     let at = Timestamp::from_second(start as i64).map(|t| t.to_zoned(TimeZone::system())).unwrap_or_else(|_| Zoned::now());
@@ -2140,14 +2147,8 @@ pub(crate) fn note_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, st
             return String::new();
         }
     };
-    let link = tasks::link_line(&Link { uri: notes::uri_of(&path), label: String::new(), rel: "describedby".into() });
-    if let Ok(text) = std::fs::read_to_string(&event.key)
-        && let Some(with_link) = agenda::add_lines(&text, &[link])
-    {
-        let _ = vdir::write_item(Path::new(&event.key), &with_link);
-        if let Some(account) = account_of(Path::new(&event.key)) {
-            pim::nudge(shared, &account);
-        }
+    if let Some(change) = loaded(shared).tie_into_event(&event.uid, &notes::uri_of(&path), &Zoned::now()) {
+        let _ = rewrite(shared, &change);
     }
     show_work(qt, shared);
     path

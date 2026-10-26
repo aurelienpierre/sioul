@@ -1941,6 +1941,7 @@ link-is-plan = This tie is a step or a wait: change it in the task.
 link-in-text = This link is written in the note's text: edit the note to take it out.
 link-is-guest = This person is a guest of the event: change it in the event.
 link-not-found = This tie is no longer there.
+link-kept-in-meeting = This tie is written in a meeting with others: it stays there, as its guests would hear of any change to the event.
 link-not-made = It could not be made.
 ui-add-new = Add
 ui-link-existing = Link to…

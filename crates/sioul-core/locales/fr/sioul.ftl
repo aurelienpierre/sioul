@@ -1959,6 +1959,7 @@ link-is-plan = Ce lien est une étape ou une attente : il se change dans la t�
 link-in-text = Ce lien est écrit dans le texte de la note : modifiez la note pour l’enlever.
 link-is-guest = Cette personne est invitée à l’événement : cela se change dans l’événement.
 link-not-found = Ce lien n’existe plus.
+link-kept-in-meeting = Ce lien est écrit dans une réunion avec d’autres : il y reste, car ses invités seraient prévenus de tout changement de l’événement.
 link-not-made = Cela n’a pas pu être fait.
 ui-add-new = Ajouter
 ui-link-existing = Lier à…
