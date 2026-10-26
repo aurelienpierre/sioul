@@ -338,14 +338,14 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "list_tasks",
         title: "Tasks",
-        description: "Tasks as Sioul plans them, in topological order inside the days' room. `now` (the default): the one next step, why, and the one after it. `today`: today's events at their times and the steps the plan gives today. `list`: every open task in the plan's order, a bigger task followed by its steps, grouped by project. Each task has its UID, for complete_task, links and link. Nothing is ever overdue: a date asked is said as time left.",
+        description: "The person's tasks as data (the default, `list`): every open task in the plan's order, a bigger task followed by its steps, grouped by project (or by task list), each with its UID (for get_task, complete_task, links and link), status, day to start and date asked (`start_date`, `due_date`, local dates, \"\" when none), estimate in minutes and task list. Two views, given only when asked by name: `now`, the one next step for this hour, why, and the one after it (filtered by what the hour is for: it may be empty in the evening); `today`, today's events at their times and the steps the plan gives today. Nothing is ever overdue: a date asked is said as time left.",
         writes: false,
         idempotent: true,
         open_world: false,
         schema: || {
             object(
                 json!({
-                    "view": { "type": "string", "enum": ["now", "today", "list"], "description": "now (default), today or list." },
+                    "view": { "type": "string", "enum": ["list", "now", "today"], "description": "list (default): the tasks as data; now or today: views, only when asked." },
                     "query": { "type": "string", "description": "For list: only tasks whose title, notes or tags hold these words." },
                     "done": { "type": "boolean", "description": "For list: also the tasks done in the last two weeks." },
                     "by": { "type": "string", "enum": ["project", "list"], "description": "For list: grouped by project (default) or by task list." },

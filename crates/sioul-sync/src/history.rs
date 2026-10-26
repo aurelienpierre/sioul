@@ -6,7 +6,11 @@
 //! shared: `<state>/share/history/<part>/<file>/<time>`. Of each file, the last
 //! 20 versions are kept, and all those of the last 30 days; of a file no longer
 //! here, those of the last 30 days only; never more than a cap in all, the
-//! oldest going first. A note or a paper whose content a record named is kept
+//! oldest going first; your calendars' and contacts' items set aside by their
+//! sync (`ACCOUNTS`) under a cap of their own (`ACCOUNTS_CAP`). A version kept
+//! under the exchanges' lock takes nothing out there: what it makes too many
+//! goes once the lock is let go (`tidy_file`, `prune`, `Prepared::keep`). A
+//! note or a paper whose content a record named is kept
 //! by reference (`<time>.sealed`), 12 days: its content is sealed in the
 //! sharing folder already, and stays there longer than that. Any version can be put back
 //! (`share::put_back`): the file as it is then is kept first, and the next
@@ -96,9 +100,11 @@ fn new_stamp(dir: &Path, now_ms: i64) -> String {
 }
 
 /// A file as it is now, copied before another device's change is written over
-/// it, or takes it out; then the oldest versions past what is kept go. Refused
-/// when the copy would leave the disk short (`disk::kept_free`): nothing is
-/// written over a file whose copy could not be kept.
+/// it, or takes it out. Refused when the copy would leave the disk short
+/// (`disk::kept_free`): nothing is written over a file whose copy could not be
+/// kept. Under the exchanges' lock, it takes nothing out: the versions past
+/// what is kept go once the lock is let go (the exchange's `prune`, or
+/// `tidy_file`; the check of ef8c0ca, low 24).
 pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<(), String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
     let size = std::fs::metadata(path).map_or(0, |m| m.len());
@@ -114,8 +120,16 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
         let _ = std::fs::remove_file(&temporary);
         format!("{}: {e}", target.display())
     })?;
-    prune_file(&dir, now_ms, false);
     Ok(())
+}
+
+/// A file's versions past what is kept taken out (`prune`'s rule for one
+/// file still here): after a version kept under the exchanges' lock, once
+/// the lock is let go (`share::put_back`).
+pub fn tidy_file(root: &Path, part: &str, file: &str, now_ms: i64) {
+    if let Some(dir) = below(root, part, file) {
+        prune_file(&dir, now_ms, false);
+    }
 }
 
 /// A file as it stands, to tell whether it changed: its size, its time and,
@@ -141,11 +155,13 @@ pub struct Prepared {
     temporary: PathBuf,
     path: PathBuf,
     copied: Option<(u64, Option<std::time::SystemTime>, u64)>,
+    /// The versions a newer one makes too many, listed with the copy, outside the lock.
+    too_many: Vec<PathBuf>,
 }
 
-/// The copy `Prepared` holds, of `path` as it is now. Refused as `keep`
-/// refuses: no room for it.
-pub fn prepare(root: &Path, part: &str, file: &str, path: &Path) -> Result<Prepared, String> {
+/// The copy `Prepared` holds, of `path` as it is now (`now_ms`: the put
+/// back's time). Refused as `keep` refuses: no room for it.
+pub fn prepare(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<Prepared, String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
     let size = std::fs::metadata(path).map_or(0, |m| m.len());
     if !crate::disk::fits(root, size) {
@@ -164,7 +180,9 @@ pub fn prepare(root: &Path, part: &str, file: &str, path: &Path) -> Result<Prepa
     // check of 36002ea, low 22; a write handle: Windows flushes no other).
     let _ = std::fs::OpenOptions::new().write(true).open(&temporary).and_then(|copy| copy.sync_all());
     let _ = crate::share::set_time(&temporary, std::time::SystemTime::now());
-    Ok(Prepared { dir, temporary, path: path.to_path_buf(), copied })
+    // What one more version makes too many, listed here, outside the lock (the check of ef8c0ca, low 24).
+    let too_many = to_prune_with(&dir, now_ms, false, 1);
+    Ok(Prepared { dir, temporary, path: path.to_path_buf(), copied, too_many })
 }
 
 impl Prepared {
@@ -191,11 +209,12 @@ impl Prepared {
     }
 
     /// Kept as the file's version at `now_ms` by a rename, when the file is
-    /// still as it was copied: the versions it then makes too many, to take
-    /// out once the lock is let go, never under it (the check of 36002ea, low
-    /// 22); None when it was not kept (the caller keeps the file as it is
-    /// now, `keep`). Under the exchanges' lock.
-    pub fn keep(self, now_ms: i64) -> Option<Vec<PathBuf>> {
+    /// still as it was copied: the versions it then makes too many, as listed
+    /// with the copy, to take out once the lock is let go, never under it
+    /// (the check of 36002ea, low 22), nor listed under it (the check of
+    /// ef8c0ca, low 24); None when it was not kept (the caller keeps the file
+    /// as it is now, `keep`). Under the exchanges' lock.
+    pub fn keep(mut self, now_ms: i64) -> Option<Vec<PathBuf>> {
         if self.copied.is_none() || standing(&self.path) != self.copied {
             return None;
         }
@@ -203,7 +222,7 @@ impl Prepared {
         if std::fs::rename(&self.temporary, &target).is_err() {
             return None;
         }
-        Some(to_prune(&self.dir, now_ms, false))
+        Some(std::mem::take(&mut self.too_many))
     }
 }
 
@@ -281,10 +300,20 @@ pub fn keep_moved(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64)
 /// named by their place in the data folder (`data/calendars/<account>/…`).
 pub const ACCOUNTS: &str = "accounts";
 
+/// What your calendars' and contacts' items set aside by their sync may hold
+/// in all (`ACCOUNTS`), the oldest going first past it: they are small (an
+/// event, a contact with its photo), and a server that sets thousands aside
+/// never fills the disk with them (the check of ef8c0ca, low 25).
+pub const ACCOUNTS_CAP: u64 = 64 << 20;
+
 /// Bytes kept as a version of `file` (a calendar's item set aside, `ACCOUNTS`),
-/// as `keep` keeps a file: under a hidden name, then renamed. Returns where.
+/// as `keep` keeps a file: under a hidden name, then renamed; refused, as
+/// `keep` is, when it would leave the disk short. Returns where.
 pub fn keep_bytes(root: &Path, part: &str, file: &str, bytes: &[u8], now_ms: i64) -> Result<PathBuf, String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
+    if !crate::disk::fits(root, bytes.len() as u64) {
+        return Err(format!("share-no-room:{file}"));
+    }
     crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let target = dir.join(new_stamp(&dir, now_ms));
     crate::share::write_atomically(&target, bytes)?;
@@ -314,12 +343,17 @@ fn prune_file(dir: &Path, now_ms: i64, gone: bool) {
 
 /// The versions `prune_file` takes out, named, nothing taken out yet.
 fn to_prune(dir: &Path, now_ms: i64, gone: bool) -> Vec<PathBuf> {
+    to_prune_with(dir, now_ms, gone, 0)
+}
+
+/// As `to_prune`, with `ahead` newer versions still to come (`prepare`: the one it is about to keep).
+fn to_prune_with(dir: &Path, now_ms: i64, gone: bool, ahead: usize) -> Vec<PathBuf> {
     versions_in(dir)
         .into_iter()
         .enumerate()
         .filter(|(i, version)| {
             let old = now_ms - version.at > DAYS * DAY;
-            (old && (*i >= VERSIONS || gone)) || (version.sealed.is_some() && now_ms - version.at > SEALED_DAYS * DAY)
+            (old && (*i + ahead >= VERSIONS || gone)) || (version.sealed.is_some() && now_ms - version.at > SEALED_DAYS * DAY)
         })
         .map(|(_, version)| dir.join(name_of(&version)))
         .collect()
@@ -421,6 +455,7 @@ pub fn version(root: &Path, part: &str, file: &str, stamp: &str) -> Option<Kept>
 /// of a file still here: the last 20, and all those of the last 30 days.
 pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bool) {
     let mut copies: Vec<(i64, PathBuf, u64)> = Vec::new();
+    let mut set_aside: Vec<(i64, PathBuf, u64)> = Vec::new();
     for entry in std::fs::read_dir(root).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
         let part = entry.file_name().to_string_lossy().to_string();
         let mut listed = Vec::new();
@@ -434,21 +469,25 @@ pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bo
             prune_file(&dir, now_ms, part != ACCOUNTS && !here(&part, &file));
             // Your calendars' and contacts' items set aside by their sync are
             // kept on this device alone, and small: never swept by the cap,
-            // only by their own twenty and thirty days (the check of 36002ea, low 24).
+            // only by their own twenty and thirty days (the check of 36002ea,
+            // low 24), and a cap of their own (`ACCOUNTS_CAP`).
             if part == ACCOUNTS {
+                set_aside.extend(versions_in(&dir).into_iter().filter(|v| v.sealed.is_none()).map(|v| (v.at, dir.join(&v.stamp), v.size)));
                 continue;
             }
             copies.extend(versions_in(&dir).into_iter().filter(|v| v.sealed.is_none()).map(|v| (v.at, dir.join(&v.stamp), v.size)));
         }
     }
-    let mut total: u64 = copies.iter().map(|(_, _, size)| size).sum();
-    copies.sort_by_key(|(at, _, _)| *at);
-    for (_, path, size) in copies {
-        if total <= cap {
-            break;
-        }
-        if std::fs::remove_file(&path).is_ok() {
-            total -= size;
+    for (mut copies, cap) in [(copies, cap), (set_aside, ACCOUNTS_CAP)] {
+        let mut total: u64 = copies.iter().map(|(_, _, size)| size).sum();
+        copies.sort_by_key(|(at, _, _)| *at);
+        for (_, path, size) in copies {
+            if total <= cap {
+                break;
+            }
+            if std::fs::remove_file(&path).is_ok() {
+                total -= size;
+            }
         }
     }
 }
@@ -480,6 +519,9 @@ mod tests {
             std::fs::write(&file, format!("version {n}")).unwrap();
             keep(&root, "notes", "files/notes/admin/lease.md", &file, start + n * DAY).unwrap();
         }
+        // Kept under the exchanges' lock, nothing taken out there: once it is let go (`tidy_file`).
+        assert_eq!(versions(&root, "notes", "files/notes/admin/lease.md").len(), 40);
+        tidy_file(&root, "notes", "files/notes/admin/lease.md", start + 39 * DAY);
         let kept = versions(&root, "notes", "files/notes/admin/lease.md");
         assert_eq!(kept.len(), 31, "{kept:?}");
         assert_eq!(std::fs::read_to_string(root.join("notes/files/notes/admin/lease.md").join(&kept[0].stamp)).unwrap(), "version 39");
@@ -487,6 +529,7 @@ mod tests {
         for n in 0..25 {
             keep(&root, "settings", "config/config.toml", &file, start + n * 100 * DAY).unwrap();
         }
+        tidy_file(&root, "settings", "config/config.toml", start + 24 * 100 * DAY);
         assert_eq!(versions(&root, "settings", "config/config.toml").len(), VERSIONS);
         let listed = files(&root, "notes");
         assert_eq!(listed.len(), 1);
@@ -516,8 +559,8 @@ mod tests {
             keep(&root, "notes", "files/notes/lease.md", &file, start + n * DAY).unwrap();
         }
         std::fs::write(&file, "now").unwrap();
-        let prepared = prepare(&root, "notes", "files/notes/lease.md", &file).unwrap();
         let now = start + 400 * DAY;
+        let prepared = prepare(&root, "notes", "files/notes/lease.md", &file, now).unwrap();
         let gone = prepared.keep(now).expect("kept by its rename");
         assert!(gone.len() == 1 && gone.iter().all(|p| p.exists()), "named, not taken out yet: {gone:?}");
         for version in &gone {

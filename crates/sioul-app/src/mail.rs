@@ -64,7 +64,7 @@ enum Work {
     /// An invitation's event its organizer cancelled, taken out as your answer
     /// to it (`pim::answer`, the one path that writes a meeting with others):
     /// from a calendar that can be written only.
-    RemoveCancelled { account: String, file: PathBuf },
+    RemoveCancelled { account: String, file: PathBuf, cancel: String },
     /// One occurrence of a repeating event left out (EXDATE).
     Skip { account: String, file: PathBuf, start: i64 },
     /// The day closed, already in effect: "Undo" puts the time back as it was.
@@ -156,7 +156,6 @@ pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathB
     (files, skipped)
 }
 
-/// Whether a work deletes a contact, an event or a task, or leaves an occurrence out: the pages follow at once.
 /// How many delayed works on calendars' and contacts' files ended (done or
 /// undone): a page that keeps what it read of the calendars a while (Health's
 /// week) reads them again once it changed (the check of 36002ea, low 23).
@@ -173,6 +172,7 @@ pub(crate) fn pim_work_ended() {
     PIM_ENDED.fetch_add(1, Ordering::Relaxed);
 }
 
+/// Whether a work deletes a contact, an event or a task, or leaves an occurrence out: the pages follow at once.
 fn touches_pim(work: &Work) -> bool {
     match work {
         Work::Remove { .. } | Work::RemoveCancelled { .. } | Work::Skip { .. } => true,
@@ -197,9 +197,10 @@ pub(crate) fn schedule_removal(qt: &QtThread, shared: &Arc<Shared>, account: &st
 }
 
 /// Takes out an invitation's event its organizer cancelled, as your answer
-/// to the cancellation (`pim::answer`), after ten seconds to undo.
-pub(crate) fn schedule_cancelled_removal(qt: &QtThread, shared: &Arc<Shared>, account: &str, file: PathBuf, line: String) {
-    schedule(qt, shared, Work::RemoveCancelled { account: account.to_string(), file }, line);
+/// to the cancellation (`pim::answer`, `cancel` its message's calendar),
+/// after ten seconds to undo.
+pub(crate) fn schedule_cancelled_removal(qt: &QtThread, shared: &Arc<Shared>, account: &str, file: PathBuf, cancel: String, line: String) {
+    schedule(qt, shared, Work::RemoveCancelled { account: account.to_string(), file, cancel }, line);
 }
 
 /// Runs your mail filters on the inboxes as their preview said, after ten
@@ -799,9 +800,19 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             }
             Err(e) => Some(e),
         },
-        Work::RemoveCancelled { account, file } => {
+        Work::RemoveCancelled { account, file, cancel } => {
             if sioul_core::vdir::calendar_read_only(file) == Some(true) {
                 return Some(tr().text("agenda-read-only", None));
+            }
+            // The file as it is now, read again: still the meeting its organizer
+            // cancelled whole, or nothing is taken out (the check of ef8c0ca, low 27).
+            let now = match std::fs::read_to_string(file) {
+                Ok(now) => now,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+                Err(e) => return Some(format!("{}: {e}", file.display())),
+            };
+            if !matches!(sioul_core::agenda::cancellation(&now, cancel, &sioul_core::agenda::own_addresses()), sioul_core::agenda::Cancellation::Whole) {
+                return Some(tr().text("invitation-cancel-changed", None));
             }
             match std::fs::remove_file(file) {
                 Ok(()) => {

@@ -255,8 +255,13 @@ fn sync_list(api: &Api, account: &str, id: &str, local: &str, title: &str, zone:
         // The errands' tasks by their id here, beside Sioul's UID in the doses'
         // record: your other devices know them by that id alone, and keep them
         // from agents too (review of 36002ea, can-wait 10). Written only when new.
+        // Not written (the record does not read, a full disk): said, and tried
+        // again at the next sync, which names every task's id anew (the check
+        // of ef8c0ca, item 2).
         let record = sioul_core::health::HealthState::default_path();
-        let _ = sioul_core::health::HealthState::note_elsewhere(&record, Timestamp::now().as_second(), &ids);
+        if let Err(e) = sioul_core::health::HealthState::note_elsewhere(&record, Timestamp::now().as_second(), &ids) {
+            eprintln!("sioul: google tasks: the errands' ids on this list could not be noted ({e:?}): tried again at the next sync");
+        }
         pull(api, id, &dir, &mut state, report)
     });
     if synced.is_ok() {

@@ -2169,3 +2169,36 @@ fn a_background_exchange_sweeps_once_the_reader_read() {
     assert!(!sealed(&folder, &a), "swept at the first exchange after it read so");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The versions a put back makes too many leave once the exchanges' lock is
+/// let go, listed outside it with the copy (`history::Prepared`), none taken
+/// out nor listed under it; the history holds its twenty and the file comes
+/// back (the check of ef8c0ca, low 26).
+#[test]
+fn a_put_back_takes_out_the_versions_too_many_after_the_lock() {
+    let base = scratch("gc-put-back-prunes");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let dn = base.join("desk-notes");
+    put(&dn, "plans.md", b"# Plans, now\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    let root = crate::history::root(&desk.memory);
+    // Twenty versions, kept 41 to 60 days ago, each a copy.
+    let old = base.join("old-plans");
+    for n in 0..20 {
+        std::fs::write(&old, format!("# Plans, version {n}\n")).unwrap();
+        crate::history::keep(&root, "notes", "files/notes/plans.md", &old, NOW - (60 - n) * DAY_MS).unwrap();
+    }
+    let versions = crate::history::versions(&root, "notes", "files/notes/plans.md");
+    assert_eq!(versions.len(), 20, "{versions:?}");
+    let oldest = versions.iter().min_by_key(|v| v.at).unwrap().stamp.clone();
+    let newest = versions.iter().max_by_key(|v| v.at).unwrap().stamp.clone();
+    put_back(&desk.memory, Some((&folder, &key)), &stores_with(&desk, &dn, false), "notes", "files/notes/plans.md", &newest, NOW + MINUTE).unwrap();
+    assert_eq!(std::fs::read_to_string(dn.join("plans.md")).unwrap(), "# Plans, version 19\n");
+    let after = crate::history::versions(&root, "notes", "files/notes/plans.md");
+    assert_eq!(after.len(), 20, "the file as it was kept, the oldest gone: {after:?}");
+    assert!(after.iter().all(|v| v.stamp != oldest), "the oldest taken out");
+    assert!(after.iter().any(|v| std::fs::read(root.join("notes/files/notes/plans.md").join(&v.stamp)).is_ok_and(|b| b == b"# Plans, now\n")), "the file as it was, kept");
+    let _ = std::fs::remove_dir_all(&base);
+}

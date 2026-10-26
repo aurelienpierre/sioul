@@ -582,12 +582,13 @@ fn theirs(text: &str) -> Vec<String> {
 /// event, before and after, is asked nothing more than its read: no sync
 /// state parsed, no address asked (review of 36002ea, can-wait 13).
 pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
+    // A file of no calendar's folder (a contact): nothing read (the check of ef8c0ca, low 21).
+    let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
     let old = std::fs::read_to_string(path).ok().filter(|text| holds_event(text));
     let new_event = matches!(change, Change::Write(new) if holds_event(new));
     if old.is_none() && !new_event {
         return Ok(());
     }
-    let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
     match (old, change) {
         (Some(text), change) => may_change(&text, read_only, &own_addresses(), change),
         (None, Change::Write(_)) if read_only => Err(Refusal::ReadOnly),
@@ -2281,107 +2282,133 @@ mod tests {
 
     /// Over the programs' sources, tests aside: every writer of an event goes
     /// through the one rule, since the doors of a calendar's files call it
-    /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`); what
+    /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`), each
+    /// with the change it makes and its `?`, before what it lets through; what
     /// goes in without it (`vdir::store_item`) is a server's copy or an
-    /// invitation's answer alone; and in every source, no file is removed,
-    /// renamed, copied or written otherwise (eight ways) in the collections'
-    /// modules or in a function that names a calendar, a collection, an
-    /// item's file or a door, except the lines named below with why (review
-    /// of 36002ea, can-wait 14). A new one fails until it goes through a
-    /// door or is named here; a name that matches nothing fails too. What it
-    /// cannot see: a writer handed any path, the sharing's copy of another
-    /// device's local calendars among them (its writers asked the rule there).
+    /// invitation's answer alone; and every other raw write of every source
+    /// (the standard library's writers and removers, Sioul's own byte
+    /// writers) is named in `tests/raw-writers.txt` by its file, its function,
+    /// how many of its lines it covers and its words, under why it may go
+    /// around the rule (review of 36002ea, can-wait 14; check of ef8c0ca, 8
+    /// and 28: wherever it is, a one-line function's too, whatever its
+    /// function names). A new one fails until it goes through a door or is
+    /// named there, and the failure gives the line to add; a name that covers
+    /// more lines or fewer than it says fails too.
     #[test]
     fn no_writer_of_an_event_goes_around_the_rule() {
         let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let doors = ["vdir::write_item(", "vdir::remove_item(", "vdir::move_item(", "vdir::replace_items("];
         let vdir_source = std::fs::read_to_string(crates.join("sioul-core/src/vdir.rs")).unwrap();
-        for door in ["pub fn write_item(", "pub fn remove_item(", "pub fn move_item(", "pub fn replace_items("] {
-            let body = vdir_source.split(door).nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap_or_default();
-            assert!(body.contains("guarded("), "{door} keeps the rule");
+        // Each door: its guard calls, with the change each makes and the `?` that stops it, before what it lets through.
+        let doors: [(&str, &[&str], &str); 5] = [
+            ("pub fn write_item(", &["guarded(path, crate::agenda::Change::Write(text))?;"], "store_item(path, text)"),
+            ("pub fn remove_item(", &["guarded(path, crate::agenda::Change::Delete)?;"], "std::fs::remove_file(path)"),
+            ("pub fn move_item(", &["guarded(from, crate::agenda::Change::Move)?;", "guarded(to, crate::agenda::Change::Write(&text))?;"], "replace_locked(from, &[], &[], to, &text)"),
+            (
+                "pub fn replace_items(",
+                &["guarded(path, crate::agenda::Change::Delete)?;", "guarded(path, crate::agenda::Change::Write(made))?;", "guarded(to, crate::agenda::Change::Write(text))?;"],
+                "replace_locked(from, also, made, to, text)",
+            ),
+            // The rule's refusal given back, never dropped.
+            ("fn guarded(", &["crate::agenda::guard(path, change).map_err(|refusal| crate::agenda::said(refusal, &change))\n"], ""),
+        ];
+        for (door, guards, write) in doors {
+            let body = vdir_source.split(door).nth(1).and_then(|rest| rest.split("\n}\n").next()).map(|b| format!("{b}\n")).unwrap_or_default();
+            let at = if write.is_empty() { body.len() } else { body.find(write).unwrap_or_else(|| panic!("{door} lets through {write}")) };
+            for guard in guards {
+                assert!(body.find(guard).is_some_and(|g| g < at), "{door}: {guard} comes before {write}:\n{body}");
+            }
         }
-        // Each line of a source outside its tests: the function it is in (by its first line, and its name), the line.
+        // Each line of a source outside its tests (each `#[cfg(test)]` item
+        // left out wherever it stands, the rest read on): the function it is
+        // in (by its first line, and its name) and its code (a function's
+        // first line by what follows its `{`: a one-line function's body).
         fn lines_of(text: &str) -> Vec<(usize, String, String)> {
             let (mut out, mut start, mut function) = (Vec::new(), 0usize, String::new());
             let all: Vec<&str> = text.lines().collect();
-            for (n, line) in all.iter().enumerate() {
-                let code = line.trim_start();
-                if code.starts_with("#[cfg(test)]") && all.get(n + 1).is_some_and(|next| next.trim_start().starts_with("mod ")) {
-                    break;
+            let mut n = 0;
+            while n < all.len() {
+                let code = all[n].trim_start();
+                if code.starts_with("#[cfg(test)]") {
+                    // The item it marks, past its other attributes: to the line closing it at its indent.
+                    let mut item = n + 1;
+                    while all.get(item).is_some_and(|l| l.trim_start().starts_with("#[")) {
+                        item += 1;
+                    }
+                    let Some(head) = all.get(item) else { break };
+                    let closing = format!("{}}}", &head[..head.len() - head.trim_start().len()]);
+                    n = if head.trim_end().ends_with('{') { all.iter().skip(item + 1).position(|l| l.trim_end() == closing).map_or(all.len(), |p| item + 2 + p) } else { item + 1 };
+                    continue;
                 }
                 let head = ["pub(crate) ", "pub(super) ", "pub ", "const ", "async ", "unsafe ", "extern \"C\" "].iter().fold(code, |c, p| c.strip_prefix(p).unwrap_or(c));
+                let mut text = code;
                 if let Some(name) = head.strip_prefix("fn ") {
                     function = name.split(['(', '<']).next().unwrap_or("").to_string();
                     start = n;
+                    text = code.split_once('{').map_or("", |(_, body)| body);
                 }
                 if !code.starts_with("//") {
-                    out.push((start, function.clone(), code.to_string()));
+                    out.push((start, function.clone(), text.to_string()));
                 }
+                n += 1;
             }
             out
         }
+        // A raw write's words: its call, from its path's first name to its closing parenthesis (or the line's end).
+        fn words_of(line: &str, raw: &[&str]) -> String {
+            let at = raw.iter().filter_map(|r| line.find(r)).min().unwrap_or(0);
+            let begin = line[..at].char_indices().rev().find(|(_, c)| !(c.is_alphanumeric() || *c == '_' || *c == ':')).map_or(0, |(b, c)| b + c.len_utf8());
+            let (mut depth, mut end) = (0i32, line.len());
+            for (i, c) in line[at..].char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = at + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            line[begin..end].to_string()
+        }
         // What goes in as it came: the door itself, the sync's copy of the server, your answer to an invitation.
         let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-app/src/pim.rs", "answer")];
-        // Every source outside the tests is read (review of 36002ea, can-wait 14). A raw write
-        // counts in the modules of the collections (`modules`), and in any function that names a
-        // calendar, a collection, an item's file or a door (`markers`): each one named below by its
-        // file, its function and its line, with why it may go around the rule.
-        let raw = ["remove_file(", "fs::rename(", "fs::write(", "write_atomically(", "filelock::replace(", "fs::copy(", "remove_dir_all(", "write_synced("];
-        let markers = [".ics", "vevent", "vtodo", "account_item(", "collection", "calendar", "vdir::", "kind::calendars", "kind::contacts"];
-        let modules = ["sioul-core/src/vdir.rs", "sioul-sync/src/dav.rs", "sioul-sync/src/google_tasks.rs"];
-        let named: &[(&str, &str, &str)] = &[
-            // The doors themselves, guarded where they begin, and their journal's finish after a crash.
-            ("sioul-core/src/vdir.rs", "remove_item", "std::fs::remove_file(path)"),
-            ("sioul-core/src/vdir.rs", "store_item", "std::fs::write(&temporary, text)"),
-            ("sioul-core/src/vdir.rs", "store_item", "std::fs::rename(&temporary, path)"),
-            ("sioul-core/src/vdir.rs", "replace_locked", "std::fs::remove_file(from)"),
-            ("sioul-core/src/vdir.rs", "replace_locked", "std::fs::remove_file(path)"),
-            ("sioul-core/src/vdir.rs", "finish_moves_now", "std::fs::remove_file(path)"),
-            // Their records, no item: the moves' journal, the items moved, a collection's name,
-            // colour and state, an account's mark of being off.
-            ("sioul-core/src/vdir.rs", "moves_save", "std::fs::remove_file(&path)"),
-            ("sioul-core/src/vdir.rs", "moves_save", "crate::filelock::replace(&path"),
-            ("sioul-core/src/vdir.rs", "moved_change", "std::fs::remove_file(&path)"),
-            ("sioul-core/src/vdir.rs", "moved_change", "crate::filelock::replace(&path"),
-            ("sioul-core/src/vdir.rs", "rename_collection", "join(\"displayname\")"),
-            ("sioul-core/src/vdir.rs", "prepare", "join(\"displayname\")"),
-            ("sioul-core/src/vdir.rs", "prepare", "join(\"color\")"),
-            ("sioul-core/src/vdir.rs", "save", "crate::filelock::replace(path, text.as_bytes())"),
-            ("sioul-core/src/vdir.rs", "set_account_off", "dir.join(OFF)"),
-            ("sioul-sync/src/dav.rs", "save", "std::fs::write(&path, toml::to_string(self)"),
-            // A collection deleted while it holds nothing, or gone from its server (copies).
-            ("sioul-core/src/vdir.rs", "delete_collection", "std::fs::remove_dir_all(&collection.dir)"),
-            ("sioul-core/src/vdir.rs", "delete_collection", "std::fs::remove_file(&path)"),
-            ("sioul-sync/src/dav.rs", "forget_gone", "std::fs::remove_dir_all(&collection.dir)"),
-            ("sioul-sync/src/dav.rs", "forget_gone", "std::fs::remove_file(collection.state_path())"),
-            ("sioul-sync/src/dav.rs", "send_changes", "std::fs::remove_dir_all(&collection.dir)"),
-            ("sioul-sync/src/dav.rs", "send_changes", "std::fs::remove_file(&path)"),
-            ("sioul-sync/src/google_tasks.rs", "send_list_changes", "std::fs::remove_dir_all(&collection.dir)"),
-            ("sioul-sync/src/google_tasks.rs", "send_list_changes", "std::fs::remove_file(&path)"),
-            ("sioul-sync/src/google_tasks.rs", "forget_gone", "std::fs::remove_dir_all(&collection.dir)"),
-            ("sioul-sync/src/google_tasks.rs", "forget_gone", "std::fs::remove_file(collection.state_path())"),
-            // The server's word: an item gone there goes here (yours set aside first, when changed).
-            ("sioul-sync/src/dav.rs", "pull", "std::fs::remove_file(&path)"),
-            ("sioul-sync/src/google_tasks.rs", "pull", "std::fs::remove_file(dir.join("),
-            // The stand-in server's home, made for the tests alone (`dav::stand_in`).
-            ("sioul-sync/src/dav.rs", "home", "std::fs::remove_dir_all(&root)"),
-            ("sioul-sync/src/dav.rs", "forget_old_homes", "std::fs::remove_dir_all(entry.path())"),
-            // No item: a contact's photo, the mail's own id, the calendars waiting to be chosen,
-            // an attachment checked, the health file's last read.
-            ("sioul-core/src/contacts.rs", "photo_in", "std::fs::write(&path, &bytes)"),
-            ("sioul-core/src/config.rs", "sioul_authserv_id", "std::fs::write(&path, &id)"),
-            ("sioul-app/src/join.rs", "defer_agenda", "write_atomically(&pending_path()"),
-            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::write(&file, &bytes)"),
-            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::remove_file(&file)"),
-            ("sioul-app/src/backend.rs", "checked_attachment", "std::fs::copy(&file, &target)"),
-            ("sioul-app/src/health.rs", "keep_last_read", "write_synced(&copy, bytes)"),
-            // A task, a contact moved: written through a door first, its old file then taken out.
-            ("sioul-app/src/work.rs", "move_task", "std::fs::remove_file(from)"),
-            ("sioul-app/src/pim.rs", "move_contact", "std::fs::remove_file(&from)"),
-            // Your answer to a cancellation its organizer sent (`agenda::cancellation`, refused
-            // otherwise): the one removal of a meeting with others.
-            ("sioul-app/src/mail.rs", "perform", "match std::fs::remove_file(file)"),
+        // The raw writers: the standard library's (a file written, renamed, copied, linked,
+        // opened to write or taken out), and Sioul's own byte writers.
+        let raw = [
+            "fs::write(",
+            "fs::rename(",
+            "fs::copy(",
+            "remove_file(",
+            "remove_dir(",
+            "remove_dir_all(",
+            "fs::hard_link(",
+            "fs::soft_link(",
+            "fs::symlink(",
+            "File::create(",
+            "File::create_new(",
+            "File::options(",
+            "OpenOptions::new(",
+            "filelock::replace",
+            "filelock::save_merged",
+            "write_atomically(",
+            "write_synced(",
+            "write_witnessed(",
+            "write_whole(",
         ];
+        // Named: file, function, how many of its lines, the words they hold; `#` lines say why.
+        let list = include_str!("../tests/raw-writers.txt");
+        let named: Vec<(&str, &str, usize, &str, usize)> = list
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| !l.trim().is_empty() && !l.starts_with('#'))
+            .map(|(i, l)| match l.split('\t').collect::<Vec<_>>().as_slice() {
+                [file, function, count, words] => (*file, *function, count.parse().unwrap_or_else(|_| panic!("raw-writers.txt:{}: {count}", i + 1)), *words, i + 1),
+                _ => panic!("raw-writers.txt:{}: file, function, lines, words, by tabs: {l}", i + 1),
+            })
+            .collect();
         let mut sources = Vec::new();
         let mut stack = vec![crates.clone()];
         while let Some(dir) = stack.pop() {
@@ -2395,38 +2422,38 @@ mod tests {
                 }
             }
         }
-        let (mut astray, mut used) = (Vec::new(), std::collections::BTreeSet::new());
+        sources.sort();
+        let (mut astray, mut covered) = (Vec::new(), vec![0usize; named.len()]);
         for path in sources {
             let file = path.strip_prefix(&crates).unwrap_or(&path).to_string_lossy().replace('\\', "/");
             let lines = lines_of(&std::fs::read_to_string(&path).unwrap_or_default());
-            let mut bodies: BTreeMap<usize, String> = BTreeMap::new();
-            for (start, _, line) in &lines {
-                let body = bodies.entry(*start).or_default();
-                body.push_str(&line.to_lowercase());
-                body.push('\n');
-            }
-            for (start, function, line) in &lines {
+            let writes: Vec<(&str, &str)> = lines.iter().filter(|(_, _, line)| raw.iter().any(|r| line.contains(r))).map(|(_, f, l)| (f.as_str(), l.as_str())).collect();
+            for (_, function, line) in &lines {
                 if line.contains("store_item(") && !line.contains("fn store_item(") && !stored.contains(&(file.as_str(), function.as_str())) {
-                    astray.push(format!("{file}: {function}: {line}"));
+                    astray.push(format!("store_item: {file}: {function}: {line}"));
                 }
-                let defined = ["fn ", "pub fn ", "pub(crate) fn "].iter().any(|d| line.starts_with(d));
-                if defined || !raw.iter().any(|r| line.contains(r)) {
-                    continue;
-                }
-                let body = &bodies[start];
-                let near = modules.contains(&file.as_str()) || markers.iter().any(|m| body.contains(m)) || doors.iter().any(|d| body.contains(d));
-                match named.iter().position(|(f, n, l)| *f == file && n == function && line.contains(l)) {
-                    Some(i) => {
-                        used.insert(i);
+            }
+            for (function, line) in &writes {
+                let mut found = false;
+                for (k, (f, n, _, words, _)) in named.iter().enumerate() {
+                    if *f == file && n == function && line.contains(words) {
+                        covered[k] += 1;
+                        found = true;
                     }
-                    None if near => astray.push(format!("{file}: {function}: {line}")),
-                    None => {}
+                }
+                if !found {
+                    let words = words_of(line, &raw);
+                    let count = writes.iter().filter(|(f, l)| f == function && l.contains(&words)).count();
+                    let row = format!("{file}\t{function}\t{count}\t{words}");
+                    if !astray.contains(&row) {
+                        astray.push(row);
+                    }
                 }
             }
         }
-        assert!(astray.is_empty(), "around the one rule of events' writers (agenda::guard):\n{}", astray.join("\n"));
-        let stale: Vec<String> = named.iter().enumerate().filter(|(i, _)| !used.contains(i)).map(|(_, (f, n, l))| format!("{f}: {n}: {l}")).collect();
-        assert!(stale.is_empty(), "named, and found nowhere: take them out\n{}", stale.join("\n"));
+        assert!(astray.is_empty(), "around the one rule of events' writers (agenda::guard): through a door, or named in tests/raw-writers.txt with why:\n{}", astray.join("\n"));
+        let wrong: Vec<String> = named.iter().zip(&covered).filter(|((_, _, count, _, _), found)| count != *found).map(|((f, n, count, words, at), found)| format!("raw-writers.txt:{at}: {f} {n} {words}: {count} named, {found} found")).collect();
+        assert!(wrong.is_empty(), "each name covers the lines it says, no more, no fewer:\n{}", wrong.join("\n"));
     }
 
     /// Your weekly meeting, as your calendar holds it: the series, your own

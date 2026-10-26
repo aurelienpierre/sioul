@@ -460,6 +460,25 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         }
     }
 
+    // What each task waits for, read once a call, by the task that waits (the
+    // check of ef8c0ca, low 16): written in the task that comes first (its
+    // FINISHTOSTART or NEXT names the one that waits, RFC 9253 §4, as
+    // `tasks::set_gap` writes it), or in the one that waits (its DEPENDS-ON),
+    // as the plan reads both (`plan::Graph`); with each wait's gap (0: none).
+    let by_uid: std::collections::HashMap<&str, &Task> = tasks.iter().map(|t| (t.uid.as_str(), t)).collect();
+    let mut waits_for: std::collections::HashMap<&str, Vec<(&Task, i64)>> = std::collections::HashMap::new();
+    for first in tasks {
+        for r in first.relations.iter().filter(|r| matches!(r.kind.to_ascii_uppercase().as_str(), "FINISHTOSTART" | "NEXT")) {
+            waits_for.entry(r.uid.as_str()).or_default().push((first, r.gap));
+        }
+    }
+    for waiting in tasks {
+        for r in waiting.relations.iter().filter(|r| r.kind.eq_ignore_ascii_case("DEPENDS-ON")) {
+            if let Some(first) = by_uid.get(r.uid.as_str()) {
+                waits_for.entry(waiting.uid.as_str()).or_default().push((first, r.gap));
+            }
+        }
+    }
     let open = |t: &&Task| matches!(t.status, Status::NeedsAction | Status::InProcess);
     for task in tasks.iter().filter(open) {
         // A date asked, a few working days before.
@@ -483,34 +502,38 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 names: None,
             });
         }
-        // A wait after a step done: once it is over, when work is there. Written
-        // in the task that comes first (its FINISHTOSTART or NEXT names this one,
-        // RFC 9253 §4, as `tasks::set_gap` writes it), or in this one (its
-        // DEPENDS-ON), as the plan reads both (`plan::Graph`; review of
-        // 36002ea, low 27: it was read in this one alone, the wrong way).
-        if settings.waits {
-            let first: Vec<(&Task, i64)> = tasks
-                .iter()
-                .flat_map(|before| before.relations.iter().filter(|r| matches!(r.kind.to_ascii_uppercase().as_str(), "FINISHTOSTART" | "NEXT") && r.uid == task.uid && r.gap > 0).map(move |r| (before, r.gap)))
-                .chain(task.relations.iter().filter(|r| r.kind.eq_ignore_ascii_case("DEPENDS-ON") && r.gap > 0).filter_map(|r| Some((tasks.iter().find(|t| t.uid == r.uid)?, r.gap))))
-                .collect();
-            for (before, gap) in first {
-                // The gap is the task file's: one too long to be a time waits for nothing.
-                let Some(over) = before.completed.and_then(|done| done.checked_add(gap.checked_mul(60)?)).and_then(at) else { continue };
-                let Some(due) = work_from(&hours, &config.time_off, &over) else { continue };
+        // A wait after a step done: once, when the task is free (every task
+        // it waits for done, `Status::Completed` as the plan takes it) and the
+        // longest of its waits is over, when work is there (review of 36002ea,
+        // low 27; the check of ef8c0ca, low 12). Never one the task, or what it
+        // waits for, was made after: told at once, it would be news of the past
+        // (docs/reminders.md; the check's low 11).
+        let waits = waits_for.get(task.uid.as_str()).map(Vec::as_slice).unwrap_or_default();
+        if settings.waits
+            && waits.iter().any(|(_, gap)| *gap > 0)
+            && waits.iter().all(|(first, _)| first.status == Status::Completed && first.completed.is_some())
+        {
+            // The gap is the task file's: one too long to be a time waits for nothing.
+            let ends: Option<Vec<(i64, &Task)>> = waits.iter().map(|(first, gap)| Some((first.completed?.checked_add((*gap).max(0).checked_mul(60)?)?, *first))).collect();
+            if let Some((end, last)) = ends.and_then(|ends| ends.into_iter().max_by_key(|(end, _)| *end))
+                && task.created <= end
+                && waits.iter().all(|(first, _)| first.created <= end)
+                && let Some(over) = at(end)
+                && let Some(due) = work_from(&hours, &config.time_off, &over)
+            {
                 let mut args = crate::i18n::args();
-                args.set("before", before.title.clone());
+                args.set("before", last.title.clone());
                 out.push(Reminder {
-                    key: format!("wait:{}:{}", task.uid, over.timestamp().as_second()),
+                    key: format!("wait:{}:{}", task.uid, end),
                     kind: Kind::Wait,
                     at: due.timestamp().as_second(),
-                    until: over.timestamp().as_second() + 7 * 86_400,
+                    until: end + 7 * 86_400,
                     title: task.title.clone(),
                     body: tr.text("reminder-wait", Some(&args)),
-                    target: format!("sioul:task/{}", task.uid),
+                    target: crate::links::task_uri(&task.uid),
                     work: !personal(task),
                     starts: None,
-                    names: Some(format!("sioul:task/{}", before.uid)),
+                    names: Some(crate::links::task_uri(&last.uid)),
                 });
             }
         }
@@ -714,18 +737,45 @@ pub fn told(dir: &Path, key: &str) -> bool {
     dir.join(format!("{:016x}", fnv(key))).exists()
 }
 
-/// Marks older than two months forgotten: their dates are past.
+/// Marks older than two months forgotten: their dates are past. The mark of
+/// the waits settled stays (`settle_waits`).
 pub fn forget_old(dir: &Path) {
     let limit = std::time::SystemTime::now() - std::time::Duration::from_secs(60 * 86_400);
     for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
-        if entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
+        if entry.file_name() != WAITS_SETTLED && entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
             let _ = std::fs::remove_file(entry.path());
         }
     }
 }
 
-/// What to tell now, each marked told: those ready, not told yet.
+/// The mark, in the folder of reminders told, that the waits ended before
+/// this Sioul first gathered reminders here were marked told (`settle_waits`).
+const WAITS_SETTLED: &str = "waits-settled";
+
+/// The first time this Sioul gathers reminders on a device: every wait
+/// whose time has come already marked told, without telling it, and the
+/// mark left, so that this runs once. An older Sioul read waits in the
+/// wrong task and told none: told now, every wait of the last week would
+/// come at once, each its own notice, at the first minute after the install
+/// (the check of ef8c0ca, must-fix 1). Only waits that end after it are told.
+fn settle_waits(reminders: &[Reminder], dir: &Path, now: i64) {
+    let mark = dir.join(WAITS_SETTLED);
+    if mark.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    for reminder in reminders.iter().filter(|r| r.kind == Kind::Wait && r.at <= now) {
+        let _ = claim(dir, &reminder.key);
+    }
+    let _ = std::fs::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n");
+}
+
+/// What to tell now, each marked told: those ready, not told yet. The waits
+/// ended before this Sioul first ran here never among them (`settle_waits`).
 pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+    settle_waits(&reminders, dir, now);
     reminders.into_iter().filter(|r| r.ready_in(now, holds) && claim(dir, &r.key)).collect()
 }
 
@@ -776,6 +826,63 @@ mod tests {
 
     fn task(uid: &str, due: &str) -> Task {
         Task { uid: uid.into(), title: format!("Task {uid}"), due: due.into(), created: at("2026-09-01T10:00").timestamp().as_second(), ..Task::default() }
+    }
+
+    /// The check of ef8c0ca, must-fix 1: the first time this Sioul gathers
+    /// reminders on a device, a wait ended before (three days before) is
+    /// marked told and never told; one ending after is told once; the mark
+    /// stays, so that this runs once.
+    #[test]
+    fn waits_ended_before_the_first_run_are_never_told() {
+        let dir = std::env::temp_dir().join(format!("sioul-waits-settled-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let now = at("2026-10-26T15:00").timestamp().as_second();
+        let wait = |key: &str, at: i64| Reminder { key: key.into(), kind: Kind::Wait, at, until: at + 7 * 86_400, title: "Follow-up".into(), body: String::new(), target: crate::links::task_uri("follow"), work: false, starts: None, names: None };
+        let all = vec![wait("wait:old:1", now - 3 * 86_400), wait("wait:new:1", now + 3600)];
+        assert!(to_tell(all.clone(), &dir, now, &Holds::usual(Wait::Nothing)).is_empty(), "the old one marked, not told");
+        assert!(dir.join(WAITS_SETTLED).exists(), "once");
+        let told = to_tell(all.clone(), &dir, now + 7200, &Holds::usual(Wait::Nothing));
+        assert_eq!(told.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["wait:new:1"], "the one ending after: told");
+        assert!(to_tell(all, &dir, now + 7260, &Holds::usual(Wait::Nothing)).is_empty(), "never twice");
+        // The mark kept: a wait whose time came since is told, never settled again.
+        let later = vec![wait("wait:later:1", now + 7300)];
+        assert_eq!(to_tell(later, &dir, now + 7400, &Holds::usual(Wait::Nothing)).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The check of ef8c0ca, lows 11, 12 and 15: a task waiting for two is
+    /// reminded once, when both are done, after the longer wait; never while
+    /// one is still to do, nor one only dated done; never one made after its
+    /// wait ended; its addresses as links write them.
+    #[test]
+    fn a_task_is_reminded_once_free() {
+        let tr = Translator::new("en");
+        let config = config();
+        let now = at("2026-10-05T08:00");
+        let done = |uid: &str, when: &str, gap_days: i64, follow: &str| {
+            let mut t = task(uid, "");
+            t.status = Status::Completed;
+            t.completed = Some(at(when).timestamp().as_second());
+            t.relations = vec![crate::tasks::Relation { kind: "FINISHTOSTART".into(), uid: follow.into(), gap: gap_days * 1440 }];
+            t
+        };
+        let gather = |tasks: &[Task]| all(&config, &tr, &now, &[], tasks, None, &[], &[], None, |_| false).into_iter().filter(|r| r.kind == Kind::Wait).collect::<Vec<_>>();
+        let follow = task("follow up", "");
+        // Two letters, one still to send: none.
+        let mut second = done("second", "2026-10-02T11:00", 1, "follow up");
+        second.status = Status::NeedsAction;
+        assert!(gather(&[done("first", "2026-10-01T11:00", 2, "follow up"), second.clone(), follow.clone()]).is_empty(), "still waiting for the second");
+        // Dated done, not done: none either.
+        second.status = Status::InProcess;
+        assert!(gather(&[done("first", "2026-10-01T11:00", 2, "follow up"), second, follow.clone()]).is_empty());
+        // Both sent: one reminder, after the longer wait, naming its task.
+        let waits = gather(&[done("first", "2026-10-01T11:00", 3, "follow up"), done("second", "2026-10-02T11:00", 1, "follow up"), follow.clone()]);
+        assert_eq!(waits.len(), 1, "{waits:?}");
+        assert_eq!(waits[0].key, format!("wait:follow up:{}", at("2026-10-04T11:00").timestamp().as_second()), "after the longer wait");
+        assert_eq!((waits[0].target.as_str(), waits[0].names.as_deref()), (crate::links::task_uri("follow up").as_str(), Some(crate::links::task_uri("first").as_str())));
+        // Made after its wait ended: never told (docs/reminders.md).
+        let late = Task { created: at("2026-10-04T09:00").timestamp().as_second(), ..follow };
+        assert!(gather(&[done("first", "2026-10-01T11:00", 2, "follow up"), late]).is_empty());
     }
 
     #[test]

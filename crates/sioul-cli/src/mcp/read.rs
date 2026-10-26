@@ -572,6 +572,19 @@ pub(super) fn find_task<'a>(s: &Session, tasks: &'a [Task], wanted: &str) -> Res
     }
 }
 
+/// As `find_task`, among the tasks an agent may name (`open`); asked for by
+/// its UID or address, a task kept from agents (`allows` says no: a closed
+/// project's, health) is refused, saying so (`access::kept`, `what` being it),
+/// as reading it is: every write aimed at health says it is kept (the check
+/// of ef8c0ca, item 4).
+pub(super) fn find_named<'a>(s: &Session, open: &'a [Task], all: &[Task], allows: &dyn Fn(&str) -> bool, wanted: &str, what: &str) -> Result<&'a Task, String> {
+    find_task(s, open, wanted).map_err(|missing| {
+        let wanted = wanted.trim();
+        let kept = all.iter().any(|t| (t.uid == wanted || links::task_uri(&t.uid) == wanted) && !allows(&t.uid));
+        if kept { access::kept(what) } else { missing }
+    })
+}
+
 /// A task in lines, as `sioul tasks` prints it, with its UID.
 fn card_lines(card: &CardView, indent: usize) -> Vec<String> {
     let pad = "  ".repeat(indent);
@@ -591,7 +604,10 @@ fn card_lines(card: &CardView, indent: usize) -> Vec<String> {
 }
 
 pub fn list_tasks(s: &Session, args: &Args) -> Result<Answer, String> {
-    let wanted = args.text("view")?.unwrap_or_else(|| "now".into());
+    // The tasks as data unless a view is asked by name (27 October 2026: the
+    // default was `now`, filtered by the hour, and an agent asking at 22:53
+    // was told nothing waits).
+    let wanted = args.text("view")?.unwrap_or_else(|| "list".into());
     let query = args.text("query")?.unwrap_or_default();
     let done = args.flag("done")?;
     // "case", the word before the one name, reads as "project".
@@ -741,12 +757,19 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
         closed += before - group.rows.len();
     }
     view.groups.retain(|g| !g.rows.is_empty());
+    // Each task's own dates, as data: its day to start and its date asked, local ("" for none).
+    let dates: BTreeMap<&str, (&str, &str)> = desk.loaded.tasks.iter().map(|t| (t.uid.as_str(), (t.start.as_str(), t.due.as_str()))).collect();
     let mut lines = Vec::new();
     for group in &view.groups {
         lines.push(String::new());
         lines.push(group.title.clone());
         for card in &group.rows {
             lines.extend(card_lines(card, card.depth + 1));
+            let (start, due) = dates.get(card.uid.as_str()).copied().unwrap_or_default();
+            let said: Vec<String> = [(!card.list.is_empty()).then(|| format!("List: {}", card.list)), (!start.is_empty()).then(|| format!("Start: {start}")), (!due.is_empty()).then(|| format!("Asked: {due}"))].into_iter().flatten().collect();
+            if !said.is_empty() {
+                lines.push(format!("{}    {}", "  ".repeat(card.depth + 1), said.join("; ")));
+            }
         }
     }
     if lines.is_empty() {
@@ -758,6 +781,11 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
     }
     lines.extend(access::health_doubt(&desk.consent));
     let mut data = serde_json::to_value(&view).unwrap_or(Value::Null);
+    for row in data["groups"].as_array_mut().into_iter().flatten().flat_map(|g| g["rows"].as_array_mut().into_iter().flatten()) {
+        let (start, due) = row["uid"].as_str().and_then(|uid| dates.get(uid).copied()).unwrap_or_default();
+        row["start_date"] = json!(start);
+        row["due_date"] = json!(due);
+    }
     data["kept_from_agents"] = json!(closed);
     Answer { text: rows(&lines).trim().to_string(), data }
 }

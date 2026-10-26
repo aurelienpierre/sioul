@@ -211,7 +211,10 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
     let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
     let in_range: Vec<&timereport::Entry> = entries.iter().filter(|e| e.day >= from && e.day <= to && project.as_ref().is_none_or(|p| &e.project == p)).collect();
     // Time of a project kept from agents, or of a task kept from them; in none, as things outside projects are.
-    let allowed = |e: &timereport::Entry| consent.allows_projects([e.project.as_str()]) && (e.task.is_empty() || consent.allows(&links::task_uri(&e.task)));
+    // The errands' record not read here: a session of a task not known here may be a gone
+    // errand's, its note naming it: left out, the doubt said (the check of ef8c0ca, item 2).
+    let unknown = |uid: &str| consent.health_unread && !loaded.tasks.iter().any(|t| t.uid == uid);
+    let allowed = |e: &timereport::Entry| consent.allows_projects([e.project.as_str()]) && (e.task.is_empty() || (consent.allows(&links::task_uri(&e.task)) && !unknown(&e.task)));
     let shown: Vec<&timereport::Entry> = in_range.iter().copied().filter(|e| allowed(e)).collect();
     let closed = in_range.len() - shown.len();
     let title_of = |id: &str| loaded.projects.iter().find(|c| c.id == id).map_or_else(|| "(no project)".to_string(), |c| c.title.clone());
@@ -263,6 +266,7 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
         }
     }
     lines.extend(access::left_out(closed));
+    lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "from": from.to_string(), "to": to.to_string(), "projects": projects, "sessions": sessions, "kept_from_agents": closed }) })
 }
 

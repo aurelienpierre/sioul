@@ -417,7 +417,8 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
         if from.parent() == Some(target.dir.as_path()) {
             continue;
         }
-        let moved = std::fs::read_to_string(from).map_err(|e| e.to_string()).and_then(|text| vdir::write_item(&target.dir.join(format!("{}.ics", vdir::new_name())), &text)).and_then(|()| std::fs::remove_file(from).map_err(|e| e.to_string()));
+        // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).
+        let moved = vdir::move_item(from, &target.dir.join(format!("{}.ics", vdir::new_name())));
         if let Err(e) = moved {
             return answer(Err(e));
         }

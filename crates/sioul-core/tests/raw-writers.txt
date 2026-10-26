@@ -1,0 +1,705 @@
+# Every raw write of the programs outside their tests, named (agenda.rs,
+# no_writer_of_an_event_goes_around_the_rule): file, function, how many of
+# its lines, the words they hold, separated by tabs. A comment line says why
+# the lines below it may go around the one rule of events' writers
+# (agenda::guard): what they write is no calendar's item, or is written as
+# it came. A new raw write fails the test until it goes through a door
+# (vdir::write_item, remove_item, move_item, replace_items) or is named here.
+
+# sioul-app/src/appnotes.rs: the window's own notes of what it said (state): no item.
+sioul-app/src/appnotes.rs	release_talk	1	sioul_core::filelock::replace(&path, text.as_bytes())
+
+# sioul-app/src/attach.rs: pictures made smaller for a message, in a folder of their own: no item.
+sioul-app/src/attach.rs	reduce_picture	1	std::fs::remove_file(&trying)
+sioul-app/src/attach.rs	make	1	std::fs::rename(&again, out_of(i, "jpg"))
+sioul-app/src/attach.rs	make	1	std::fs::remove_file(&again)
+sioul-app/src/attach.rs	make	1	std::fs::remove_file(out_of(i, "jpg"))
+sioul-app/src/attach.rs	make	1	std::fs::write(&out, &bytes)
+sioul-app/src/attach.rs	make	1	std::fs::remove_file(&out)
+
+# sioul-app/src/attachments.rs: an attachment opened or saved, a temporary file of its own: no item.
+sioul-app/src/attachments.rs	open	1	std::fs::remove_file(file)
+sioul-app/src/attachments.rs	save	1	std::fs::remove_file(file)
+sioul-app/src/attachments.rs	saved	1	std::fs::remove_file(path)
+
+# sioul-app/src/backend.rs: the weather's cache, attachments opened or checked (a temporary file of their own, then copied where you choose), Windows' mark of a file from mail: no item.
+sioul-app/src/backend.rs	update_weather	1	std::fs::write(weather_cache(), text)
+sioul-app/src/backend.rs	forget_opened_attachments	1	std::fs::remove_dir_all(entry.path())
+sioul-app/src/backend.rs	mark_from_mail	1	std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n")
+sioul-app/src/backend.rs	checked_attachment	1	std::fs::write(&file, &bytes)
+sioul-app/src/backend.rs	checked_attachment	4	std::fs::remove_file(&file)
+sioul-app/src/backend.rs	checked_attachment	1	std::fs::copy(&file, &target)
+sioul-app/src/backend.rs	set_weather_place	1	std::fs::remove_file(weather_cache())
+
+# sioul-app/src/calls.rs: the calls' recordings and their own files: no item.
+sioul-app/src/calls.rs	listen	1	std::fs::write(&out, bytes)
+sioul-app/src/calls.rs	listen	1	std::fs::remove_file(old)
+
+# sioul-app/src/crypto.rs: a key exported where you choose: no item.
+sioul-app/src/crypto.rs	export	1	std::fs::write(&path, armored)
+
+# sioul-app/src/dnd.rs: do-not-disturb's own state: no item.
+sioul-app/src/dnd.rs	save	1	std::fs::write(&fresh, text)
+sioul-app/src/dnd.rs	save	1	std::fs::rename(&fresh, path)
+
+# sioul-app/src/everywhere.rs: the cross-device notes of what went: no item.
+sioul-app/src/everywhere.rs	note_gone	1	std::fs::write(&fresh, text)
+sioul-app/src/everywhere.rs	note_gone	1	std::fs::remove_file(&fresh)
+
+# sioul-app/src/health.rs: the doses' last-read copy, its doubt and the devices it heard (state): no item.
+sioul-app/src/health.rs	keep_last_read	1	sioul_core::health::write_synced(&copy, bytes)
+sioul-app/src/health.rs	write_record_doubt	1	std::fs::write(record_doubt_path(), text)
+sioul-app/src/health.rs	save_peers	1	sioul_sync::share::write_atomically(&peers_path(), text.as_bytes())
+
+# sioul-app/src/homecard.rs: the phone's home card text, and its mark of being opened: no item.
+sioul-app/src/homecard.rs	write	1	std::fs::write(&beside, text)
+sioul-app/src/homecard.rs	opened	1	std::fs::remove_file(&path)
+
+# sioul-app/src/join.rs: the calendars waiting to be chosen and the phones asked about (state): no item.
+sioul-app/src/join.rs	defer_agenda	1	sioul_sync::share::write_atomically(&pending_path(), format!("# Sioul: the contacts and calendars of the server signed in to, decided once your other devices' settings came (docs/database.md). Never shared.\n{text}").as_bytes())
+sioul-app/src/join.rs	agenda_later	2	std::fs::remove_file(&path)
+sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(), format!("# Sioul: the phones this one was asked whether it replaces (docs/database.md). Never shared.\n{text}").as_bytes())
+
+# sioul-app/src/letters.rs: a letter's scan copied into the letters' inbox: no item.
+sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
+
+# sioul-app/src/mail.rs: your answer to a cancellation its organizer sent (`agenda::cancellation`, read again just before, refused otherwise): the one removal of a meeting with others.
+sioul-app/src/mail.rs	perform	1	std::fs::remove_file(file)
+
+# sioul-app/src/outside.rs: the outside listener's socket: no item.
+sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
+sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)
+
+# sioul-app/src/projects.rs: a time sheet exported where you choose: no item.
+sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
+
+# sioul-app/src/remind.rs: the reminders' autostart entry and their watcher's own files: no item.
+sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&entry)
+sioul-app/src/remind.rs	set_background	1	std::fs::write(&entry, text)
+sioul-app/src/remind.rs	stop	1	std::fs::OpenOptions::new()
+sioul-app/src/remind.rs	stop	1	std::fs::remove_file(path)
+
+# sioul-app/src/reviews.rs: the weekly review's mark of being said: no item.
+sioul-app/src/reviews.rs	mark_told	1	std::fs::write(told_path(), format!("work = \"{date}\"\n"))
+
+# sioul-app/src/share.rs: the sharing's memory and its copy of the server's folder, as you stop or start them: no item.
+sioul-app/src/share.rs	stop	1	std::fs::remove_dir_all(sioul_sync::remote::mirror_of(&memory))
+sioul-app/src/share.rs	stop	1	std::fs::remove_file(memory.with_file_name("files.json"))
+sioul-app/src/share.rs	stop	1	std::fs::remove_file(&memory)
+sioul-app/src/share.rs	begin_on_server	3	std::fs::remove_dir_all(&mirror)
+sioul-app/src/share.rs	begin_on_server	1	share::write_atomically(&mirror.join("seal.toml"), seal)
+
+# sioul-app/src/sites.rs: the password manager's login chosen (state): no item.
+sioul-app/src/sites.rs	bitwarden_login	1	std::fs::write(chosen_path(), text)
+
+# sioul-app/src/spam.rs: the spam window's lock file: no item.
+sioul-app/src/spam.rs	window_lock	1	std::fs::OpenOptions::new()
+
+# sioul-app/src/texts.rs: the phone's texts: its ledgers, media sealed at rest, messages to send and their copies: no item.
+sioul-app/src/texts.rs	write_whole	1	std::fs::write(&fresh, bytes)
+sioul-app/src/texts.rs	write_whole	1	std::fs::rename(&fresh, path)
+sioul-app/src/texts.rs	write_whole	1	std::fs::remove_file(&fresh)
+sioul-app/src/texts.rs	load_at	1	std::fs::remove_dir_all(dir.join(old))
+sioul-app/src/texts.rs	save_at	1	write_whole(path, serde_json::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+sioul-app/src/texts.rs	bring_media	1	std::fs::remove_file(&copy)
+sioul-app/src/texts.rs	trim_results	1	std::fs::OpenOptions::new()
+sioul-app/src/texts.rs	trim_results	1	std::fs::remove_file(&aside)
+sioul-app/src/texts.rs	trim_results	1	std::fs::rename(&current, &aside)
+sioul-app/src/texts.rs	copy_results	1	std::fs::remove_file(self.pdu_path(&o.key))
+sioul-app/src/texts.rs	prepare	1	std::fs::remove_file(&opened)
+sioul-app/src/texts.rs	decide	1	std::fs::remove_file(self.pdu_path(key))
+sioul-app/src/texts.rs	decide	1	std::fs::remove_file(self.pdu_path(&r.key))
+sioul-app/src/texts.rs	decide	1	std::fs::remove_file(&path)
+sioul-app/src/texts.rs	look_for_lost	1	std::fs::remove_file(self.pdu_path(&claim.key))
+sioul-app/src/texts.rs	sweep_outgoing	1	std::fs::remove_file(entry.path())
+sioul-app/src/texts.rs	write_flushed	1	std::fs::OpenOptions::new()
+sioul-app/src/texts.rs	write_flushed	1	std::fs::rename(&beside, path)
+sioul-app/src/texts.rs	fetch_media	1	std::fs::remove_file(&incoming)
+sioul-app/src/texts.rs	fetch_media	1	write_whole(&media_path(&hash), &seal.seal_bytes(&bytes))
+sioul-app/src/texts.rs	open_media	1	write_whole(&target, &plain)
+sioul-app/src/texts.rs	measure_clock	1	write_whole(&Clock::path(), text.as_bytes())
+sioul-app/src/texts.rs	forget_hidden_media	1	std::fs::remove_file(media_path(hash))
+sioul-app/src/texts.rs	send_mms	2	write_whole(&source, bytes)
+sioul-app/src/texts.rs	send_mms	2	std::fs::remove_file(&source)
+sioul-app/src/texts.rs	send_mms	1	write_whole(&media_path(&medium.hash), &seal.seal_bytes(bytes))
+sioul-app/src/texts.rs	let_attached_go	1	std::fs::remove_dir_all(attached_folder())
+sioul-app/src/texts.rs	attach	1	std::fs::remove_dir_all(attached_folder())
+sioul-app/src/texts.rs	attach_made	1	std::fs::remove_dir_all(&folder)
+sioul-app/src/texts.rs	set_limit	1	write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
+sioul-app/src/texts.rs	set_cap	1	write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
+sioul-app/src/texts.rs	call	1	std::fs::copy(p, &target)
+sioul-app/src/texts.rs	call	1	std::fs::remove_dir_all(opened_folder())
+
+# sioul-app/src/work.rs: the work page's own state: no item.
+sioul-app/src/work.rs	save	1	std::fs::write(&path, text)
+
+# sioul-cli/src/mcp/log.rs: the agents' log: no item.
+sioul-cli/src/mcp/log.rs	open	1	std::fs::OpenOptions::new()
+
+# sioul-cli/src/remind.rs: the reminders' watcher's pid and lock: no item.
+sioul-cli/src/remind.rs	watch	1	std::fs::OpenOptions::new()
+sioul-cli/src/remind.rs	watch	1	std::fs::write(config::state_dir().join("remind.pid"), std::process::id().to_string())
+
+# sioul-cli/src/spam/jobs.rs: the spam filter's jobs, their outputs and stops: no item.
+sioul-cli/src/spam/jobs.rs	private_file	1	std::fs::OpenOptions::new()
+sioul-cli/src/spam/jobs.rs	write	1	std::fs::rename(&beside, &path)
+sioul-cli/src/spam/jobs.rs	held	1	std::fs::OpenOptions::new()
+sioul-cli/src/spam/jobs.rs	prune	1	std::fs::remove_file(file(&job.id, extension))
+sioul-cli/src/spam/jobs.rs	finish	1	std::fs::remove_file(file(&self.job.id, "stop"))
+
+# sioul-core/src/accounts.rs: bank accounts, splits and reserves (money files): no item.
+sioul-core/src/accounts.rs	write	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/accounts.rs	write	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/appnotes.rs: Sioul's own notes of what it said: no item.
+sioul-core/src/appnotes.rs	save	2	write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/appnotes.rs	write_whole	1	std::fs::write(&temporary, text)
+sioul-core/src/appnotes.rs	write_whole	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/attention.rs: the attention model's state: no item.
+sioul-core/src/attention.rs	save	1	std::fs::write(&fresh, toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/attention.rs	save	1	std::fs::rename(&fresh, path)
+
+# sioul-core/src/bank.rs: a bank statement's lines: no item.
+sioul-core/src/bank.rs	write	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/budget.rs: budgets, ledgers and presets (money files): no item.
+sioul-core/src/budget.rs	write_ledger	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/budget.rs	write_ledger	1	std::fs::rename(&temporary, path)
+sioul-core/src/budget.rs	record_line	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/budget.rs	record_line	1	std::fs::rename(&temporary, path)
+sioul-core/src/budget.rs	record_preset	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/budget.rs	record_preset	1	std::fs::rename(&temporary, path)
+sioul-core/src/budget.rs	change_linked	1	std::fs::write(&temporary, changed)
+sioul-core/src/budget.rs	change_linked	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/calls.rs: the calls' log and its lines: no item.
+sioul-core/src/calls.rs	write	1	write_whole(path, &text)
+sioul-core/src/calls.rs	write_whole	1	std::fs::write(&fresh, text)
+sioul-core/src/calls.rs	write_whole	1	std::fs::rename(&fresh, path)
+sioul-core/src/calls.rs	write_whole	1	std::fs::remove_file(&fresh)
+sioul-core/src/calls.rs	prune_called	1	std::fs::remove_file(path)
+sioul-core/src/calls.rs	prune_called	1	std::fs::write(&fresh, serde_json::Value::Object(kept).to_string())
+sioul-core/src/calls.rs	prune_called	1	std::fs::rename(&fresh, path)
+sioul-core/src/calls.rs	append_private	1	std::fs::OpenOptions::new()
+sioul-core/src/calls.rs	rewrite_lines	2	std::fs::remove_file(&fresh)
+sioul-core/src/calls.rs	rewrite_lines	1	std::fs::rename(&fresh, path)
+sioul-core/src/calls.rs	adopt_older_seen	1	std::fs::remove_file(&older)
+
+# sioul-core/src/compose.rs: drafts of mail, and their own copies: no item.
+sioul-core/src/compose.rs	save	1	std::fs::write(&temporary, text)
+sioul-core/src/compose.rs	save	1	std::fs::rename(&temporary, &path)
+sioul-core/src/compose.rs	discard	1	std::fs::remove_file(self.path())
+sioul-core/src/compose.rs	discard	1	std::fs::remove_file(self.original_copy())
+sioul-core/src/compose.rs	keep_original	1	std::fs::copy(&original, &copy)
+sioul-core/src/compose.rs	remove_own_copy_in	1	std::fs::remove_file(path)
+sioul-core/src/compose.rs	remove_own_copy_in	1	std::fs::remove_dir(folder)
+
+# sioul-core/src/config.rs: the configuration and its migrations, the mail's own id: no item.
+sioul-core/src/config.rs	migrate_sites_at_start	1	std::fs::copy(path, &copy)
+sioul-core/src/config.rs	write_document	1	std::fs::write(&temporary, text)
+sioul-core/src/config.rs	write_document	1	std::fs::rename(&temporary, path)
+sioul-core/src/config.rs	sioul_authserv_id	1	std::fs::write(&path, &id)
+
+# sioul-core/src/contacts.rs: a contact's photo, in a cache of its own beside the contact: no item written.
+sioul-core/src/contacts.rs	photo_in	1	std::fs::write(&path, &bytes)
+
+# sioul-core/src/contracts.rs: contracts (a file of their own): no item.
+sioul-core/src/contracts.rs	write	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/dose_reminders.rs: the doses' reminders said (state): no item.
+sioul-core/src/dose_reminders.rs	save	1	crate::health::write_witnessed(path, text.as_bytes())
+
+# sioul-core/src/doses.rs: the doses' record and its set-aside copies: no item.
+sioul-core/src/doses.rs	set_aside	1	std::fs::remove_file(witness)
+sioul-core/src/doses.rs	set_aside	1	std::fs::rename(path, &aside)
+sioul-core/src/doses.rs	save	1	crate::health::write_witnessed(path, text.as_bytes())
+
+# sioul-core/src/draftcopies.rs: the copies beside drafts, sealed: no item.
+sioul-core/src/draftcopies.rs	save	1	crate::filelock::replace(path, &text)
+sioul-core/src/draftcopies.rs	seal_beside	1	std::fs::remove_file(&path)
+
+# sioul-core/src/duplicates.rs: mail duplicates set aside and put back: no item.
+sioul-core/src/duplicates.rs	save	1	std::fs::write(&temporary, text)
+sioul-core/src/duplicates.rs	save	1	std::fs::rename(&temporary, path)
+sioul-core/src/duplicates.rs	apply	1	std::fs::write(&temporary, serde_json::to_string(&done).map_err(|e| e.to_string())?)
+sioul-core/src/duplicates.rs	apply	1	std::fs::rename(&temporary, &record)
+sioul-core/src/duplicates.rs	apply	1	std::fs::remove_file(&record)
+sioul-core/src/duplicates.rs	done	2	std::fs::remove_file(&path)
+sioul-core/src/duplicates.rs	undo	1	std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default())
+sioul-core/src/duplicates.rs	undo	1	std::fs::remove_file(&record)
+
+# sioul-core/src/everywhere.rs: the notes of what went everywhere: no item.
+sioul-core/src/everywhere.rs	save	2	write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
+sioul-core/src/everywhere.rs	write_whole	1	std::fs::rename(&fresh, path)
+sioul-core/src/everywhere.rs	write_whole	1	std::fs::remove_file(&fresh)
+
+# sioul-core/src/filelock.rs: Sioul's own writers themselves (`replace`, `save_merged`): their callers are named where they write.
+sioul-core/src/filelock.rs	replace	1	std::fs::write(&temporary, bytes)
+sioul-core/src/filelock.rs	replace	1	std::fs::remove_file(&temporary)
+sioul-core/src/filelock.rs	rename_over	1	std::fs::rename(from, to)
+sioul-core/src/filelock.rs	new	1	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	place	2	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	place	1	std::fs::rename(&self.temporary, &self.path)
+sioul-core/src/filelock.rs	drop	1	std::fs::remove_file(&self.temporary)
+sioul-core/src/filelock.rs	copy_whole	1	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	drop	1	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	save_merged_by	1	std::fs::write(&temporary, toml::to_string(&table).map_err(|e| e.to_string())?)
+sioul-core/src/filelock.rs	save_merged_by	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/handed.rs: requests handed between Sioul's programs: no item.
+sioul-core/src/handed.rs	hand	1	write_whole(&path, &serde_json::to_string(handed).map_err(|e| e.to_string())?)
+sioul-core/src/handed.rs	waiting	1	std::fs::rename(&path, path.with_extension("unread"))
+sioul-core/src/handed.rs	mark	1	write_whole(&self.named(id, ".draft"), &serde_json::to_string(&mark).map_err(|e| e.to_string())?)
+sioul-core/src/handed.rs	mark	1	std::fs::remove_file(self.named(id, ".json"))
+sioul-core/src/handed.rs	done	1	std::fs::remove_file(self.named(id, suffix))
+sioul-core/src/handed.rs	drop_request	1	std::fs::remove_dir_all(self.files_of(id))
+sioul-core/src/handed.rs	salvage	1	std::fs::remove_file(&path)
+sioul-core/src/handed.rs	tidy	1	std::fs::remove_dir_all(&folder)
+sioul-core/src/handed.rs	write_whole	1	std::fs::write(&temporary, text)
+sioul-core/src/handed.rs	write_whole	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/health.rs: health.toml and the doses' state, written as their own rules say (`write_witnessed`, `write_synced`, set aside when lost): no item.
+sioul-core/src/health.rs	load	1	std::fs::copy(path, path.with_extension("toml.unreadable"))
+sioul-core/src/health.rs	save	2	write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+sioul-core/src/health.rs	write_witnessed	1	write_synced(path, bytes)
+sioul-core/src/health.rs	write_witnessed	1	std::fs::write(&witness, "")
+sioul-core/src/health.rs	write_synced	1	std::fs::File::create(&temporary)
+sioul-core/src/health.rs	write_synced	1	std::fs::rename(&temporary, path)
+sioul-core/src/health.rs	set_aside	1	std::fs::remove_file(witness)
+sioul-core/src/health.rs	set_aside	1	std::fs::rename(path, &aside)
+
+# sioul-core/src/invoice.rs: invoices (a folder of their own): no item.
+sioul-core/src/invoice.rs	save_in	1	std::fs::write(&temporary, toml::to_string(invoice).map_err(|e| e.to_string())?)
+sioul-core/src/invoice.rs	save_in	1	std::fs::rename(&temporary, &path)
+
+# sioul-core/src/letters.rs: letters' texts and their filing: no item.
+sioul-core/src/letters.rs	save_text	1	std::fs::write(folder.join(format!("{id}.txt")), text)
+sioul-core/src/letters.rs	file_away	1	std::fs::rename(&from, &target)
+sioul-core/src/letters.rs	write	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/links.rs: the links between things (a file of its own): no item.
+sioul-core/src/links.rs	save	1	std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/links.rs	save	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/maildir.rs: mail in its maildir: names, flags, folders: no item.
+sioul-core/src/maildir.rs	name_keywords	1	std::fs::write(file, names)
+sioul-core/src/maildir.rs	store	1	std::fs::OpenOptions::new()
+sioul-core/src/maildir.rs	store	1	std::fs::rename(&temporary, &target)
+sioul-core/src/maildir.rs	set_flags	1	std::fs::rename(path, &target)
+sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_dir_all(&folder)
+sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_file(ai_cache)
+
+# sioul-core/src/mailindex.rs: the mail index: no item.
+sioul-core/src/mailindex.rs	build	1	std::fs::write(cache, fresh.join("\n"))
+
+# sioul-core/src/mailnote.rs: notes on mail: no item.
+sioul-core/src/mailnote.rs	save	1	std::fs::write(&temporary, text)
+sioul-core/src/mailnote.rs	save	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/needs.rs: meals, naps and sleep (a file of their own): no item.
+sioul-core/src/needs.rs	load	1	std::fs::copy(path, path.with_extension("toml.unreadable"))
+sioul-core/src/needs.rs	write	1	std::fs::write(&temporary, text)
+sioul-core/src/needs.rs	write	1	std::fs::rename(&temporary, path)
+sioul-core/src/needs.rs	save	1	std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?)
+
+# sioul-core/src/notes.rs: notes in the notes folder: trash, rename, write: no item.
+sioul-core/src/notes.rs	trash	1	std::fs::rename(root.join(&path), &to)
+sioul-core/src/notes.rs	untrash	1	std::fs::rename(root.join(from), &to)
+sioul-core/src/notes.rs	rename	1	std::fs::rename(vault.root.join(path), vault.root.join(&new_path))
+sioul-core/src/notes.rs	rename_folder	1	std::fs::rename(vault.root.join(&path), vault.root.join(&new_path))
+sioul-core/src/notes.rs	remove_folder	1	std::fs::remove_dir(&full)
+sioul-core/src/notes.rs	write	1	std::fs::write(&temporary, text)
+sioul-core/src/notes.rs	write	1	std::fs::rename(&temporary, &target)
+
+# sioul-core/src/overlaps.rs: overlaps said (state): no item.
+sioul-core/src/overlaps.rs	save	1	std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?)
+
+# sioul-core/src/papers.rs: papers in their folder: no item.
+sioul-core/src/papers.rs	keep_file	1	std::fs::copy(source, &target)
+sioul-core/src/papers.rs	write	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/pgp.rs: OpenPGP keys and their copies: no item.
+sioul-core/src/pgp.rs	keep_others_for_their_addresses_at	1	crate::filelock::replace(mark, text.as_bytes())
+sioul-core/src/pgp.rs	write_key	1	std::fs::remove_file(&temporary)
+sioul-core/src/pgp.rs	write_key	1	std::fs::OpenOptions::new()
+sioul-core/src/pgp.rs	write_key	1	std::fs::rename(&temporary, path)
+sioul-core/src/pgp.rs	generate_at	1	std::fs::remove_file(&kept)
+sioul-core/src/pgp.rs	remove_in	1	std::fs::rename(&path, aside.join(format!("{fingerprint}.asc")))
+sioul-core/src/pgp.rs	remove_in	1	std::fs::rename(&revocation, aside.join(format!("{fingerprint}.rev")))
+sioul-core/src/pgp.rs	remove_in	1	std::fs::remove_file(&path)
+sioul-core/src/pgp.rs	remove_in	1	std::fs::remove_file(served_path(&dir, fingerprint))
+
+# sioul-core/src/phonemsgs.rs: the phone's messages (state): no item.
+sioul-core/src/phonemsgs.rs	save	2	std::fs::remove_file(&fresh)
+sioul-core/src/phonemsgs.rs	save	1	std::fs::rename(&fresh, path)
+
+# sioul-core/src/places.rs: places (a file of their own): no item.
+sioul-core/src/places.rs	save	1	std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/places.rs	save	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/porch.rs: the Porch's own lines: no item.
+sioul-core/src/porch.rs	rewrite	1	std::fs::write(&temporary, kept.join("\n") + "\n")
+sioul-core/src/porch.rs	append	1	std::fs::OpenOptions::new()
+
+# sioul-core/src/projects.rs: projects' files and their renames: no item.
+sioul-core/src/projects.rs	write_doc	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/projects.rs	write_doc	1	std::fs::rename(&temporary, file)
+sioul-core/src/projects.rs	rename_file	1	std::fs::write(new.with_extension("toml.new"), &renamed)
+sioul-core/src/projects.rs	rename_file	1	std::fs::rename(new.with_extension("toml.new"), &new)
+sioul-core/src/projects.rs	rename_file	1	std::fs::rename(&old, &kept)
+
+# sioul-core/src/quiet.rs: the hours' overrides (quiet.toml): no item.
+sioul-core/src/quiet.rs	save	1	crate::filelock::save_merged(path, &self.read, self)
+
+# sioul-core/src/reminders.rs: the reminders told (one mark each, and the mark of the first run): no item.
+sioul-core/src/reminders.rs	claim	1	std::fs::OpenOptions::new()
+sioul-core/src/reminders.rs	forget_old	1	std::fs::remove_file(entry.path())
+sioul-core/src/reminders.rs	settle_waits	1	std::fs::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n")
+
+# sioul-core/src/replies.rs: replies due, asked and read (the phone's): no item.
+sioul-core/src/replies.rs	write_due	2	std::fs::remove_file(&fresh)
+sioul-core/src/replies.rs	write_due	1	std::fs::rename(&fresh, &path)
+sioul-core/src/replies.rs	append_flushed	1	std::fs::OpenOptions::new()
+sioul-core/src/replies.rs	append_all_flushed	1	std::fs::OpenOptions::new()
+sioul-core/src/replies.rs	save_read_marks	1	std::fs::remove_file(&fresh)
+sioul-core/src/replies.rs	save_read_marks	1	std::fs::rename(&fresh, folder.join(READ_MARKS))
+sioul-core/src/replies.rs	note_answered	1	std::fs::remove_file(&fresh)
+sioul-core/src/replies.rs	note_answered	1	std::fs::rename(&fresh, folder.join(ANSWERED))
+
+# sioul-core/src/reviews.rs: reviews' state: no item.
+sioul-core/src/reviews.rs	change	1	std::fs::write(&temporary, doc.to_string())
+sioul-core/src/reviews.rs	change	1	std::fs::rename(&temporary, &path)
+
+# sioul-core/src/routines.rs: routines (a file of their own): no item.
+sioul-core/src/routines.rs	save_locked	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/securitykey.rs: security keys known and shared: no item.
+sioul-core/src/securitykey.rs	mark_shared	1	crate::filelock::replace(path, toml::to_string(&marks).map_err(|e| e.to_string())?.as_bytes())
+sioul-core/src/securitykey.rs	set_stopped_in	1	crate::filelock::replace(&root.join("stopped.toml"), text.as_bytes())
+sioul-core/src/securitykey.rs	share_one	1	std::fs::write(&temporary, &text)
+sioul-core/src/securitykey.rs	share_one	1	std::fs::rename(&temporary, &path)
+sioul-core/src/securitykey.rs	unshare_card	1	std::fs::remove_file(shared.join(shared_name(ident)))
+sioul-core/src/securitykey.rs	change_known_at	1	std::fs::write(&temporary, text)
+sioul-core/src/securitykey.rs	change_known_at	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/shield.rs: the shield's state: no item.
+sioul-core/src/shield.rs	save	1	std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/shield.rs	save	1	std::fs::rename(&temporary, &path)
+
+# sioul-core/src/sites.rs: sites (a file of their own): no item.
+sioul-core/src/sites.rs	save	1	std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/sites.rs	save	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/sounds.rs: sounds made for the alarms: no item.
+sioul-core/src/sounds.rs	noise_file	1	std::fs::write(&temporary, bytes(kind))
+sioul-core/src/sounds.rs	noise_file	1	std::fs::rename(&temporary, &path)
+
+# sioul-core/src/spam/labels.rs: the spam filter's labels: no item.
+sioul-core/src/spam/labels.rs	own_log	1	std::fs::rename(&older, &own)
+sioul-core/src/spam/labels.rs	append_to	1	std::fs::OpenOptions::new()
+
+# sioul-core/src/spam/table.rs: the spam filter's tables: no item.
+sioul-core/src/spam/table.rs	write	1	std::fs::File::create(&temporary)
+sioul-core/src/spam/table.rs	write	1	std::fs::File::options()
+sioul-core/src/spam/table.rs	write	1	std::fs::rename(&temporary, path)
+sioul-core/src/spam/table.rs	keep_previous	1	std::fs::copy(path, &temporary)
+sioul-core/src/spam/table.rs	keep_previous	1	std::fs::remove_file(&temporary)
+
+# sioul-core/src/state.rs: the window's state: no item.
+sioul-core/src/state.rs	save	1	crate::filelock::save_merged_by(path, &self.read, self, |merged, before| {
+sioul-core/src/state.rs	save	1	crate::filelock::save_merged(path, &self.read, self)
+
+# sioul-core/src/stopped.rs: what was stopped (state): no item.
+sioul-core/src/stopped.rs	keep	1	std::fs::remove_file(path)
+sioul-core/src/stopped.rs	keep	1	crate::filelock::replace(path, toml::to_string(&stopped).map_err(|e| e.to_string())?.as_bytes())
+
+# sioul-core/src/texts.rs: the texts' logs: no item.
+sioul-core/src/texts.rs	write_flushed	1	std::fs::OpenOptions::new()
+sioul-core/src/texts.rs	replace_flushed	1	std::fs::rename(&beside, path)
+
+# sioul-core/src/timelog.rs: time sessions: no item.
+sioul-core/src/timelog.rs	write_atomically	1	std::fs::write(&temporary, text)
+sioul-core/src/timelog.rs	write_atomically	1	std::fs::rename(&temporary, path)
+sioul-core/src/timelog.rs	record_in	1	write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
+sioul-core/src/timelog.rs	update_in	1	write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
+sioul-core/src/timelog.rs	remove_in	1	write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
+sioul-core/src/timelog.rs	keep_running_in	1	write_atomically(&path, &toml::to_string(r).map_err(|e| e.to_string())?)
+sioul-core/src/timelog.rs	keep_running_in	1	std::fs::remove_file(&path)
+
+# sioul-core/src/today.rs: today's plan (state): no item.
+sioul-core/src/today.rs	save	1	crate::filelock::save_merged(path, &self.read, self)
+
+# sioul-core/src/unsubscribe.rs: unsubscriptions asked: no item.
+sioul-core/src/unsubscribe.rs	add	1	std::fs::write(&temporary, text)
+
+# sioul-core/src/vdir.rs:
+#   set_account_off: an account's mark of being off (no item).
+sioul-core/src/vdir.rs	set_account_off	1	std::fs::write(dir.join(OFF), "Switched off in Sioul's Accounts: these collections wait here.\n")
+sioul-core/src/vdir.rs	set_account_off	1	std::fs::remove_file(dir.join(OFF))
+#   moves_save: the moves' journal, no item.
+sioul-core/src/vdir.rs	moves_save	1	std::fs::remove_file(&path)
+sioul-core/src/vdir.rs	moves_save	1	crate::filelock::replace(&path, toml::to_string(moves).map_err(|e| e.to_string())?.as_bytes())
+#   replace_locked: the doors' moves, guarded before anything is noted, and their journal's finish after a crash.
+sioul-core/src/vdir.rs	replace_locked	1	std::fs::remove_file(from)
+sioul-core/src/vdir.rs	replace_locked	1	std::fs::remove_file(path)
+sioul-core/src/vdir.rs	finish_moves_now	2	std::fs::remove_file(path)
+#   moved_change: the items moved, noted (no item).
+sioul-core/src/vdir.rs	moved_change	1	std::fs::remove_file(&path)
+sioul-core/src/vdir.rs	moved_change	1	crate::filelock::replace(&path, text.as_bytes())
+#   rename_collection: a collection's name (no item).
+sioul-core/src/vdir.rs	rename_collection	1	crate::filelock::replace(&collection.dir.join("displayname"), name.as_bytes())
+#   delete_collection: a collection deleted while it holds nothing (copies).
+sioul-core/src/vdir.rs	delete_collection	1	std::fs::remove_dir_all(&collection.dir)
+sioul-core/src/vdir.rs	delete_collection	1	std::fs::remove_file(&path)
+#   prepare: a collection's name and colour (no item).
+sioul-core/src/vdir.rs	prepare	1	crate::filelock::replace(&dir.join("displayname"), name.as_bytes())
+sioul-core/src/vdir.rs	prepare	1	crate::filelock::replace(&dir.join("color"), color.as_bytes())
+sioul-core/src/vdir.rs	prepare	1	std::fs::remove_file(dir.join("color"))
+#   save: a collection's state (no item).
+sioul-core/src/vdir.rs	save	1	crate::filelock::replace(path, text.as_bytes())
+#   remove_item: the door itself, guarded where it begins.
+sioul-core/src/vdir.rs	remove_item	1	std::fs::remove_file(path)
+#   store_item: the door's own writing: what a server sent, an invitation's answer, and `write_item` once the rule let it through.
+sioul-core/src/vdir.rs	store_item	1	std::fs::write(&temporary, text)
+sioul-core/src/vdir.rs	store_item	1	std::fs::rename(&temporary, path)
+
+# sioul-core/src/words.rs: the words' lists: no item.
+sioul-core/src/words.rs	keep_first_once	1	std::fs::write(marker, b"")
+
+# sioul-learn/src/auto.rs: the spam filter's automatic runs: no item.
+sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Run::path(dirs), text.as_bytes())
+sioul-learn/src/auto.rs	a_job_runs	1	std::fs::OpenOptions::new()
+
+# sioul-learn/src/consent.rs: the spam filter's consent: no item.
+sioul-learn/src/consent.rs	given	1	std::fs::write(&beside, text)
+sioul-learn/src/consent.rs	given	1	std::fs::rename(&beside, &path)
+
+# sioul-learn/src/corpus.rs: the spam filter's corpus: no item.
+sioul-learn/src/corpus.rs	save	1	write_whole(path, text.as_bytes())
+sioul-learn/src/corpus.rs	write_whole	1	std::fs::write(&temporary, bytes)
+sioul-learn/src/corpus.rs	write_whole	1	std::fs::rename(&temporary, path)
+sioul-learn/src/corpus.rs	append	1	std::fs::OpenOptions::new()
+sioul-learn/src/corpus.rs	save_status	1	write_whole(&path, text.as_bytes())
+sioul-learn/src/corpus.rs	update_account	1	std::fs::OpenOptions::new()
+sioul-learn/src/corpus.rs	record_kinds	1	std::fs::OpenOptions::new()
+
+# sioul-learn/src/external.rs: a corpus imported for the spam filter: no item.
+sioul-learn/src/external.rs	import_from	1	std::fs::rename(&temporary, file_of(dirs, &source))
+sioul-learn/src/external.rs	import_from	1	std::fs::rename(&beside, counts_of(dirs, &source))
+sioul-learn/src/external.rs	private_file	1	std::fs::OpenOptions::new()
+sioul-learn/src/external.rs	remove	1	std::fs::remove_file(&path)
+
+# sioul-learn/src/lib.rs: the spam filter's accounts and lock: no item.
+sioul-learn/src/lib.rs	forget_account_within	1	std::fs::remove_dir_all(&folder)
+sioul-learn/src/lib.rs	unlocked	1	std::fs::OpenOptions::new()
+
+# sioul-learn/src/supervised.rs: the spam filter's training files: no item.
+sioul-learn/src/supervised.rs	drop	1	std::fs::remove_file(&self.0)
+sioul-learn/src/supervised.rs	write_learning	1	std::fs::File::create(path)
+sioul-learn/src/supervised.rs	train	1	std::fs::rename(&fresh, dirs.language())
+sioul-learn/src/supervised.rs	train	1	crate::corpus::write_whole(&dirs.trained(), text.as_bytes())
+
+# sioul-learn/src/train.rs: the spam filter's training files: no item.
+sioul-learn/src/train.rs	drop	1	std::fs::remove_file(&self.0)
+sioul-learn/src/train.rs	train_with	1	std::fs::File::create(&token_path)
+sioul-learn/src/train.rs	train_with	1	std::fs::rename(&fresh, dirs.language())
+sioul-learn/src/train.rs	train_with	1	corpus::write_whole(&dirs.trained(), text.as_bytes())
+
+# sioul-sync/src/antivirus.rs: the antivirus's signatures: no item.
+sioul-sync/src/antivirus.rs	refresh_signatures	1	std::fs::write(&settings, format!("DatabaseDirectory {}\nDatabaseMirror database.clamav.net\nNotifyClamd no\n", own.display()))
+
+# sioul-sync/src/bitwarden.rs: the password manager's device id: no item.
+sioul-sync/src/bitwarden.rs	device_id	1	std::fs::write(path, &id)
+
+# sioul-sync/src/blobs.rs: the sharing folder's sealed files (notes, papers): no item.
+sioul-sync/src/blobs.rs	put	1	std::fs::File::options()
+sioul-sync/src/blobs.rs	make_fresh	1	std::fs::File::options()
+sioul-sync/src/blobs.rs	seal_into	1	std::fs::rename(&temporary, &target)
+sioul-sync/src/blobs.rs	seal_into	1	std::fs::remove_file(&temporary)
+sioul-sync/src/blobs.rs	get_unless	1	std::fs::remove_file(path(&fetched, key, hash))
+sioul-sync/src/blobs.rs	get_from	1	std::fs::remove_file(target)
+sioul-sync/src/blobs.rs	sweep_after	1	std::fs::remove_file(path)
+sioul-sync/src/blobs.rs	change	1	std::fs::remove_file(&path)
+sioul-sync/src/blobs.rs	change	1	crate::share::write_atomically(&path, format!("# Sioul: the others' sealed notes and papers this device waits for (docs/database.md). Never shared.\n{text}").as_bytes())
+
+# sioul-sync/src/dav.rs:
+#   save: the sync's state (no item).
+sioul-sync/src/dav.rs	save	1	std::fs::write(&path, toml::to_string(self).map_err(|e| SyncError::Disk(e.to_string()))?)
+#   forget_gone: a collection gone from its server (copies).
+sioul-sync/src/dav.rs	forget_gone	1	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/dav.rs	forget_gone	1	std::fs::remove_file(collection.state_path())
+#   send_changes: a collection or an item deleted on its server: its copy here goes.
+sioul-sync/src/dav.rs	send_changes	1	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/dav.rs	send_changes	1	std::fs::remove_file(&path)
+#   pull: the server's word: an item gone there goes here (yours set aside first, when changed).
+sioul-sync/src/dav.rs	pull	1	std::fs::remove_file(&path)
+
+# sioul-sync/src/devices.rs: the devices' entries in the sharing folder: no item.
+sioul-sync/src/devices.rs	publish	1	crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
+sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(path, format!("# This device, as it tells your other devices (docs/database.md, \"Devices\").\n{text}").as_bytes())
+sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(&published_path(path), text.as_bytes())
+
+# sioul-sync/src/favicon.rs: sites' icons: no item.
+sioul-sync/src/favicon.rs	fetch	1	std::fs::remove_file(old)
+sioul-sync/src/favicon.rs	fetch	1	std::fs::write(&path, bytes)
+
+# sioul-sync/src/fetch.rs: mail fetched, and its lock: no item.
+sioul-sync/src/fetch.rs	save	1	std::fs::write(&temporary, text)
+sioul-sync/src/fetch.rs	save	1	std::fs::rename(&temporary, path)
+sioul-sync/src/fetch.rs	lock	1	std::fs::OpenOptions::new()
+
+# sioul-sync/src/filters.rs: mail filters: no item.
+sioul-sync/src/filters.rs	follow_here	1	std::fs::remove_file(&file)
+sioul-sync/src/filters.rs	note	1	std::fs::write(&path, text)
+
+# sioul-sync/src/github.rs: the GitHub token's place: no item.
+sioul-sync/src/github.rs	save	1	std::fs::write(cache_path(), text)
+
+# sioul-sync/src/google_tasks.rs:
+#   send_list_changes: a list or a task deleted on Google: its copy here goes (tasks, no event).
+sioul-sync/src/google_tasks.rs	send_list_changes	1	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/google_tasks.rs	send_list_changes	1	std::fs::remove_file(&path)
+#   forget_gone: a list gone from Google (copies).
+sioul-sync/src/google_tasks.rs	forget_gone	1	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/google_tasks.rs	forget_gone	1	std::fs::remove_file(collection.state_path())
+#   pull: Google's word: a task gone there goes here (tasks, no event).
+sioul-sync/src/google_tasks.rs	pull	1	std::fs::remove_file(dir.join(&state.items[i].file))
+sioul-sync/src/google_tasks.rs	pull	1	std::fs::remove_file(dir.join(file))
+
+# sioul-sync/src/history.rs: the sharing's earlier versions (state): no item.
+sioul-sync/src/history.rs	keep	1	std::fs::rename(&temporary, &target)
+sioul-sync/src/history.rs	keep	1	std::fs::remove_file(&temporary)
+sioul-sync/src/history.rs	prepare	1	std::fs::remove_file(&temporary)
+sioul-sync/src/history.rs	prepare	1	std::fs::OpenOptions::new()
+sioul-sync/src/history.rs	keep	1	std::fs::rename(&self.temporary, &target)
+sioul-sync/src/history.rs	drop	1	std::fs::remove_file(&self.temporary)
+sioul-sync/src/history.rs	keep_moved	1	std::fs::rename(path, &target)
+sioul-sync/src/history.rs	keep_bytes	1	crate::share::write_atomically(&target, bytes)
+sioul-sync/src/history.rs	keep_sealed	1	crate::share::write_atomically(&target, format!("{hash} {size}\n").as_bytes())
+sioul-sync/src/history.rs	prune_file	1	std::fs::remove_file(path)
+sioul-sync/src/history.rs	prune	1	std::fs::remove_file(&path)
+
+# sioul-sync/src/lease.rs: the sharing's claims: no item.
+sioul-sync/src/lease.rs	write	1	crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
+
+# sioul-sync/src/mailbox.rs: mail folders and their moves: no item.
+sioul-sync/src/mailbox.rs	delete_folder	1	std::fs::remove_dir_all(dir)
+sioul-sync/src/mailbox.rs	forget_folder	1	std::fs::remove_file(entry.path())
+sioul-sync/src/mailbox.rs	save	1	std::fs::write(&path, text)
+sioul-sync/src/mailbox.rs	reconcile	1	std::fs::remove_file(&path)
+sioul-sync/src/mailbox.rs	act	1	std::fs::remove_file(&file)
+sioul-sync/src/mailbox.rs	move_across	1	std::fs::remove_file(&file)
+sioul-sync/src/mailbox.rs	act_many	1	std::fs::remove_file(&file)
+
+# sioul-sync/src/notify.rs: the notifications' relay: no item.
+sioul-sync/src/notify.rs	slow_relay	1	std::fs::remove_file(&socket)
+
+# sioul-sync/src/ocr.rs: a scan's text read: no item.
+sioul-sync/src/ocr.rs	text_of	2	std::fs::remove_dir_all(work)
+
+# sioul-sync/src/remote.rs: Sioul keeping the sharing folder itself: its copy of the server's folder and its state: no item.
+sioul-sync/src/remote.rs	write	1	crate::share::write_atomically(&state_path(memory), format!("# Sioul: the sharing folder fetched from its server too (docs/database.md). Never shared.\n{text}").as_bytes())
+sioul-sync/src/remote.rs	forget	1	std::fs::remove_dir_all(cache_of(memory))
+sioul-sync/src/remote.rs	forget	1	std::fs::remove_file(state_path(memory))
+sioul-sync/src/remote.rs	forget	1	std::fs::remove_file(crate::blobs::Wanted::path(memory))
+sioul-sync/src/remote.rs	forget	1	std::fs::remove_file(Lane::Main.memory(memory))
+sioul-sync/src/remote.rs	forget	1	std::fs::remove_file(Lane::Urgent.memory(memory))
+sioul-sync/src/remote.rs	download	1	std::fs::rename(&temporary, path)
+sioul-sync/src/remote.rs	download	1	std::fs::remove_file(&temporary)
+sioul-sync/src/remote.rs	download_aside	1	std::fs::remove_file(&temporary)
+sioul-sync/src/remote.rs	find_with	1	std::fs::remove_dir_all(cache_of(memory))
+sioul-sync/src/remote.rs	confirm	1	std::fs::remove_dir_all(&cache)
+sioul-sync/src/remote.rs	confirm	1	crate::share::write_atomically(&cache.join("seal.toml"), seal)
+sioul-sync/src/remote.rs	pull_with	1	std::fs::remove_dir_all(&cache)
+sioul-sync/src/remote.rs	tidy_cache	1	std::fs::remove_file(&fetched)
+sioul-sync/src/remote.rs	tidy_cache	1	std::fs::remove_file(entry.path())
+sioul-sync/src/remote.rs	fetch_wanted_with	1	std::fs::remove_file(&path)
+sioul-sync/src/remote.rs	forget_gone	1	std::fs::remove_file(self.into.join(&path))
+sioul-sync/src/remote.rs	small	1	std::fs::remove_file(&into)
+sioul-sync/src/remote.rs	small	1	crate::share::write_atomically(&into, &bytes)
+sioul-sync/src/remote.rs	restore	1	crate::share::write_atomically(&here, &got.bytes[..keep])
+sioul-sync/src/remote.rs	round	1	std::fs::rename(&temporary, &into)
+sioul-sync/src/remote.rs	round	1	std::fs::remove_file(&temporary)
+sioul-sync/src/remote.rs	begin_as	1	std::fs::remove_dir_all(cache_of(memory))
+sioul-sync/src/remote.rs	blobs_looked	1	std::fs::remove_file(&path)
+sioul-sync/src/remote.rs	fetch_wanted_into_copy	1	std::fs::remove_file(temporary)
+sioul-sync/src/remote.rs	fetch_wanted_into_copy	1	std::fs::remove_file(&temporary)
+sioul-sync/src/remote.rs	place_fetched	1	std::fs::rename(temporary, folder.join(relative))
+sioul-sync/src/remote.rs	save	1	crate::share::write_atomically(&lane.memory(memory), format!("# Sioul: this device's files sent to the sharing folder's server beside the sync app (docs/database.md). Never shared.\n{text}").as_bytes())
+sioul-sync/src/remote.rs	place_urgent	1	std::fs::remove_file(&target)
+sioul-sync/src/remote.rs	place_urgent	1	crate::share::write_atomically(&target, &bytes)
+
+# sioul-sync/src/share.rs:
+#   remove_if_old: the sharing's leftovers.
+sioul-sync/src/share.rs	remove_if_old	1	std::fs::remove_file(path)
+#   write_entries: a file of entries put back entry by entry (settings, lists' records, the doses' record by its own rule): never an event's file.
+sioul-sync/src/share.rs	write_entries	1	sioul_core::health::write_witnessed(path, &bytes)
+sioul-sync/src/share.rs	write_entries	1	write_atomically(path, &bytes)
+sioul-sync/src/share.rs	write_entries	1	std::fs::remove_file(path)
+#   write_then_rename: the sharing's own writer, for its records and its files of entries.
+sioul-sync/src/share.rs	write_then_rename	1	std::fs::rename(&temporary, path)
+sioul-sync/src/share.rs	write_then_rename	1	std::fs::remove_file(&temporary)
+#   set_time: a file's time set, through a handle that cannot write it.
+sioul-sync/src/share.rs	set_time	1	std::fs::OpenOptions::new()
+sioul-sync/src/share.rs	set_time	1	std::fs::File::options()
+#   new_private: the sharing's own new files, yours alone.
+sioul-sync/src/share.rs	new_private	1	std::fs::OpenOptions::new()
+#   key_with: the sharing's key file.
+sioul-sync/src/share.rs	key_with	1	write_atomically(&path, text.as_bytes())
+#   save: the sharing's own settings here.
+sioul-sync/src/share.rs	save	1	write_synced(&Here::path(state), toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+#   prune_tables: the spam filter's old tables in the sharing folder.
+sioul-sync/src/share.rs	prune_tables	1	std::fs::remove_file(folder.join("blobs").join(&old))
+#   sweep_theirs: the sharing's sweep of a departed device's sealed files.
+sioul-sync/src/share.rs	sweep_theirs	1	std::fs::remove_file(&path)
+#   prepare_save: the sharing's memory, written ahead.
+sioul-sync/src/share.rs	prepare_save	1	std::fs::remove_file(&temporary)
+sioul-sync/src/share.rs	commit	1	std::fs::rename(&temporary, &target)
+sioul-sync/src/share.rs	commit	1	std::fs::remove_file(&temporary)
+sioul-sync/src/share.rs	drop	1	std::fs::remove_file(temporary)
+#   give_ids: ids given to the lines of a file of entries (money, sessions).
+sioul-sync/src/share.rs	give_ids	1	write_atomically(path, written.as_bytes())
+#   exchange: the sharing's sweep of its sealed files, and its leftovers.
+sioul-sync/src/share.rs	exchange	1	std::fs::remove_file(sharing.folder.join("blobs").join(name))
+sioul-sync/src/share.rs	exchange	1	std::fs::remove_file(path)
+#   receive: another device's version of a shared file, written as it came (a local calendar's event among them: that device's word, as a server's is for its sync, `dav::store`).
+sioul-sync/src/share.rs	receive	1	std::fs::rename(&temporary, path)
+sioul-sync/src/share.rs	receive	1	std::fs::remove_file(path)
+sioul-sync/src/share.rs	receive	1	std::fs::remove_dir(folder)
+sioul-sync/src/share.rs	receive	1	std::fs::remove_file(&temporary)
+#   conflict_copy: a file changed here and on another device: yours kept beside it, as it was.
+sioul-sync/src/share.rs	conflict_copy	1	std::fs::rename(&temporary, &copy)
+sioul-sync/src/share.rs	conflict_copy	1	std::fs::remove_file(&temporary)
+#   put_back: a version put back (a calendar's or a contact's is refused here: it goes through the window's `put_back_item` and the rule).
+sioul-sync/src/share.rs	put_back	5	std::fs::remove_file(&opened)
+sioul-sync/src/share.rs	put_back	1	std::fs::rename(&opened, &beside)
+sioul-sync/src/share.rs	put_back	2	std::fs::remove_file(&beside)
+sioul-sync/src/share.rs	put_back	1	std::fs::rename(&beside, &path)
+sioul-sync/src/share.rs	put_back	1	std::fs::remove_file(version)
+#   on_the_disk: a put back's bytes written to the disk before the lock.
+sioul-sync/src/share.rs	on_the_disk	1	std::fs::OpenOptions::new()
+#   append: the sharing's records.
+sioul-sync/src/share.rs	append	1	write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes())
+sioul-sync/src/share.rs	append	2	std::fs::OpenOptions::new()
+#   put_back_withheld: notes and papers held after going many at once, put back where they were.
+sioul-sync/src/share.rs	put_back_withheld	1	std::fs::remove_file(&opened)
+sioul-sync/src/share.rs	put_back_withheld	1	std::fs::remove_file(opened)
+sioul-sync/src/share.rs	place_put_back	4	std::fs::remove_file(opened)
+sioul-sync/src/share.rs	place_put_back	1	std::fs::rename(opened, &beside)
+sioul-sync/src/share.rs	place_put_back	1	std::fs::remove_file(&beside)
+#   after_prepare: tests' hook after a put back's copy (no writing in the programs).
+sioul-sync/src/share.rs	after_prepare	1	std::fs::OpenOptions::new()
+#   write_seen: the sharing's notes to the other devices.
+sioul-sync/src/share.rs	write_seen	1	write_atomically(&path, text.as_bytes())
+#   remove_old_rounds: the sharing's records past their time.
+sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round))
+sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(&dir, id, *round))
+#   remove_device_files: a removed device's files in the sharing folder.
+sioul-sync/src/share.rs	remove_device_files	1	std::fs::remove_file(path)
+
+# sioul-sync/src/verify.rs: the sharing folder's checks: no item.
+sioul-sync/src/verify.rs	verify_folder	1	std::fs::rename(&temporary, &path)
+sioul-sync/src/verify.rs	verify_folder	1	std::fs::File::options()
+sioul-sync/src/verify.rs	write_private	1	std::fs::OpenOptions::new()

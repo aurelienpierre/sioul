@@ -1129,33 +1129,61 @@ fn account_item(file: &str) -> Option<PathBuf> {
     crate::pim::account_of(&path).map(|_| path)
 }
 
-/// A calendar's item or a contact set aside put back (`history::ACCOUNTS`):
-/// its version written over the item through the agenda's one rule
-/// (`vdir::write_item`), its refusal said: never into a calendar you only
-/// read; onto a meeting with others, the version's own lines of yours alone
-/// (your reminder, the time kept around it, its costs and gain), its
-/// organizer's as they are now (`agenda::with_own_lines_of`; review of
-/// 36002ea, can-wait 6). The item as it is then kept first; its account's
-/// sync sends it, over the server's version. Returns the account to sync, or
-/// what went wrong.
-pub(crate) fn put_back_item(file: &str, stamp: &str) -> Result<String, String> {
+/// Whether a file of the sharing is an item of a calendar or an address
+/// book (the local ones travel whole, part "lists"): put back through the
+/// agenda's one rule as your accounts' items are (`put_back_item`), never
+/// written whole by the sharing (the check of ef8c0ca, item 3).
+pub(crate) fn vdir_item(file: &str) -> bool {
+    file.starts_with("data/calendars/") || file.starts_with("data/contacts/")
+}
+
+/// A calendar's item or a contact set aside put back (`history::ACCOUNTS`,
+/// or a local calendar's file kept by the sharing, `vdir_item`): its version
+/// written over the item through the agenda's one rule (`vdir::write_item`),
+/// asked first so that a refusal leaves no copy more in the list: never into
+/// a calendar you only read; when either copy is a meeting with others, the
+/// version's own lines of yours alone (your reminder, the time kept around
+/// it, its costs and gain), its organizer's as they are now
+/// (`agenda::with_own_lines_of`; review of 36002ea, can-wait 6); a meeting
+/// gone from your calendar never put back whole (its server would tell its
+/// guests); nothing written when your lines already say it. The item as it
+/// is then kept first; its account's sync sends it. Returns the account to
+/// sync ("" when nothing was written) and what to say, or what went wrong
+/// (the check of ef8c0ca, item 3).
+pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(String, String), String> {
     let root = sioul_sync::history::root(&memory_path());
     let path = account_item(file).ok_or_else(|| format!("{file}?"))?;
-    let Some(sioul_sync::history::Kept::Copy(version)) = sioul_sync::history::version(&root, sioul_sync::history::ACCOUNTS, file, stamp) else { return Err(format!("{file}: {stamp}: not kept")) };
+    let Some(sioul_sync::history::Kept::Copy(version)) = sioul_sync::history::version(&root, part, file, stamp) else { return Err(format!("{file}: {stamp}: not kept")) };
     let text = std::fs::read_to_string(&version).map_err(|e| e.to_string())?;
-    let written = match std::fs::read_to_string(&path) {
-        Ok(current) if sioul_core::agenda::meeting_with_others(&current, &sioul_core::agenda::own_addresses()) => sioul_core::agenda::with_own_lines_of(&current, &text),
-        _ => text,
-    };
+    let (shown, kept) = (share::shown(file).to_string(), sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default());
     // Refused (a calendar you only read): nothing kept nor written.
     if sioul_core::vdir::calendar_read_only(&path) == Some(true) {
         return Err(tr().text("agenda-read-only", None));
     }
+    let own = sioul_core::agenda::own_addresses();
+    let meeting = |text: &str| sioul_core::agenda::meeting_with_others(text, &own);
+    let current = std::fs::read_to_string(&path).ok();
+    let (written, theirs_kept) = match &current {
+        Some(current) if meeting(current) || meeting(&text) => (sioul_core::agenda::with_own_lines_of(current, &text), true),
+        Some(_) => (text.clone(), false),
+        None if meeting(&text) => return Err(say("share-put-back-meeting-gone", &[("file", shown)])),
+        None => (text.clone(), false),
+    };
+    if current.as_deref() == Some(written.as_str()) {
+        return Ok((String::new(), say("share-put-back-nothing", &[("file", shown)])));
+    }
+    let change = sioul_core::agenda::Change::Write(&written);
+    sioul_core::agenda::guard(&path, change).map_err(|refusal| sioul_core::agenda::said(refusal, &change))?;
+    let now = jiff::Timestamp::now().as_millisecond();
     if path.is_file() {
-        sioul_sync::history::keep(&root, sioul_sync::history::ACCOUNTS, file, &path, jiff::Timestamp::now().as_millisecond())?;
+        sioul_sync::history::keep(&root, part, file, &path, now)?;
+        // Its versions past what is kept: no exchange's lock held here, taken out now.
+        sioul_sync::history::tidy_file(&root, part, file, now);
     }
     sioul_core::vdir::write_item(&path, &written)?;
-    crate::pim::account_of(&path).ok_or_else(|| format!("{file}?"))
+    let account = crate::pim::account_of(&path).ok_or_else(|| format!("{file}?"))?;
+    let said = if theirs_kept { say("share-put-back-meeting-done", &[("file", shown), ("when", kept)]) } else { put_back_said(file, stamp) };
+    Ok((account, said))
 }
 
 /// A file put back as it was (`stamp`), the one there now kept in the list
@@ -1182,15 +1210,29 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
     let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
     let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
     let shown = share::shown(file).to_string();
-    // Your calendar's item or contact set aside: it goes back whole, sent to its server; onto a
-    // meeting with others, your own lines alone (`put_back_item`); into a calendar you only read, never.
-    if part == sioul_sync::history::ACCOUNTS {
+    // Your calendar's item or contact set aside, or a local calendar's file: it goes back whole,
+    // sent to its server; when either copy is a meeting with others, your own lines alone; a
+    // meeting gone from your calendar, never; into a calendar you only read, never (`put_back_item`).
+    if part == sioul_sync::history::ACCOUNTS || vdir_item(file) {
         let path = account_item(file);
         if path.as_deref().and_then(sioul_core::vdir::calendar_read_only) == Some(true) {
             return tr().text("agenda-read-only", None);
         }
-        let meeting = path.and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|current| sioul_core::agenda::meeting_with_others(&current, &sioul_core::agenda::own_addresses()));
-        return say(if meeting { "share-put-back-meeting" } else { "share-put-back-whole" }, &[("file", shown), ("when", kept)]);
+        let own = sioul_core::agenda::own_addresses();
+        let meeting = |text: &str| sioul_core::agenda::meeting_with_others(text, &own);
+        let root = sioul_sync::history::root(&memory_path());
+        let version = match sioul_sync::history::version(&root, part, file, stamp) {
+            Some(sioul_sync::history::Kept::Copy(copy)) => std::fs::read_to_string(copy).ok(),
+            _ => None,
+        };
+        let current = path.and_then(|p| std::fs::read_to_string(p).ok());
+        let words = match (&current, &version) {
+            (None, Some(version)) if meeting(version) => "share-put-back-meeting-gone",
+            (Some(current), _) if meeting(current) => "share-put-back-meeting",
+            (Some(_), Some(version)) if meeting(version) => "share-put-back-meeting",
+            _ => "share-put-back-whole",
+        };
+        return say(words, &[("file", shown), ("when", kept)]);
     }
     match share::put_back_preview(&memory_path(), &stores, part, file, stamp) {
         Ok(back) if back.whole => say("share-put-back-whole", &[("file", shown), ("when", kept)]),
@@ -3290,12 +3332,21 @@ mod tests {
         };
         assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("review"), &stamps["review"].0), said("share-put-back-meeting", "review"));
         assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("dentist"), &stamps["dentist"].0), said("share-put-back-whole", "dentist"));
-        // The meeting: its time as its organizer has it now, your reminder back.
-        assert_eq!(put_back_item(&file("review"), &stamps["review"].0), Ok(account.to_string()));
+        // The meeting: its time as its organizer has it now, your reminder back, said so (the check of ef8c0ca, item 3).
+        let accounts = sioul_sync::history::ACCOUNTS;
+        assert_eq!(put_back_item(accounts, &file("review"), &stamps["review"].0), Ok((account.to_string(), said("share-put-back-meeting-done", "review"))));
         let review = std::fs::read_to_string(dir.join("review.ics")).unwrap();
         assert!(review.contains("DTSTART:20991023T150000Z") && review.contains("X-SIOUL-REMIND:30"), "{review}");
+        // Again: your lines say it already: nothing kept, nothing written, no sync asked.
+        let versions = sioul_sync::history::versions(&root, accounts, &file("review")).len();
+        assert_eq!(put_back_item(accounts, &file("review"), &stamps["review"].0), Ok((String::new(), say("share-put-back-nothing", &[("file", share::shown(&file("review")).to_string())]))));
+        assert_eq!(sioul_sync::history::versions(&root, accounts, &file("review")).len(), versions, "no copy more");
+        // Gone from your calendar: a meeting's version is never put back whole, said first and after.
+        std::fs::remove_file(dir.join("review.ics")).unwrap();
+        assert_eq!(put_back_preview(accounts, &file("review"), &stamps["review"].0), said("share-put-back-meeting-gone", "review"));
+        assert!(put_back_item(accounts, &file("review"), &stamps["review"].0).is_err() && !dir.join("review.ics").exists());
         // Your own event: back whole.
-        assert_eq!(put_back_item(&file("dentist"), &stamps["dentist"].0), Ok(account.to_string()));
+        assert_eq!(put_back_item(accounts, &file("dentist"), &stamps["dentist"].0), Ok((account.to_string(), put_back_said(&file("dentist"), &stamps["dentist"].0))));
         assert_eq!(std::fs::read_to_string(dir.join("dentist.ics")).unwrap(), stamps["dentist"].1);
         // A calendar you only read: nothing written, said first and after.
         let state = vdir::state_path(account, Kind::Calendars, "mine");
@@ -3305,7 +3356,7 @@ mod tests {
         let before = std::fs::read_to_string(dir.join("dentist.ics")).unwrap();
         let refused = tr().text("agenda-read-only", None);
         assert_eq!(put_back_preview(sioul_sync::history::ACCOUNTS, &file("dentist"), &stamps["dentist"].0), refused);
-        assert_eq!(put_back_item(&file("dentist"), &stamps["dentist"].0), Err(refused));
+        assert_eq!(put_back_item(sioul_sync::history::ACCOUNTS, &file("dentist"), &stamps["dentist"].0), Err(refused));
         assert_eq!(std::fs::read_to_string(dir.join("dentist.ics")).unwrap(), before);
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }

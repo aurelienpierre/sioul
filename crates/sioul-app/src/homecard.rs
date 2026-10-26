@@ -575,12 +575,14 @@ fn today_lines(m: &Moment, weather: &WeatherInput, end: i64) -> TodayLines {
 /// The reminders the card says: those of dates, waits, payments, papers,
 /// contracts and the money watch, from their time while they make sense
 /// (the events' come as Android's notifications, and on the agenda card),
-/// soonest first, in one line each: what, then when or why. Details off,
+/// those that stop making sense soonest first (a week of waits never takes
+/// the lines, oldest first), in one line each: what, then when or why. Details off,
 /// none named. Each with whether it is work's (it waits while work rests).
 fn reminder_lines(tr: &Translator, all: &[Reminder], details: bool, now: i64) -> Vec<(ReminderLine, bool)> {
     use sioul_core::reminders::Kind;
     let mut kept: Vec<&Reminder> = all.iter().filter(|r| !matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm) && r.until > now).collect();
-    kept.sort_by(|a, b| (a.at, &a.key).cmp(&(b.at, &b.key)));
+    // Those that stop making sense soonest first: a week of waits never takes the card's lines, oldest first (the check of ef8c0ca, low 13).
+    kept.sort_by(|a, b| (a.until, a.at, &a.key).cmp(&(b.until, b.at, &b.key)));
     kept.into_iter()
         .take(REMINDERS)
         .map(|r| {
@@ -2538,14 +2540,15 @@ mod tests {
         let card = full("2026-10-08T09:20[Europe/Paris]", true, "en", &[dose("Magnesium · 300 mg", "09:45", "2026-10-08T09:45[Europe/Paris]", 0)]);
         let made = Made { card };
         let card = &made.card;
-        // The reminders of dates, waits, payments and papers, soonest first; never an event's (Android tells those).
+        // The reminders of dates, waits, payments and papers, those that stop making sense
+        // soonest first (the check of ef8c0ca, low 13); never an event's (Android tells those).
         let lines: Vec<&str> = card.reminders.iter().map(|r| r.line.as_str()).collect();
-        assert_eq!(lines, ["Call the CAF about the housing aid · Asked for Friday 30 October", "Rent · €650 · Planned for Friday 9 October; the account will hold it.", "Passport: valid until Sunday 1 November"]);
-        assert_eq!((card.reminders[0].open.as_str(), card.reminders[2].from), ("sioul:task/form", at("2026-10-09T09:00[Europe/Paris]").timestamp().as_millisecond()));
+        assert_eq!(lines, ["Rent · €650 · Planned for Friday 9 October; the account will hold it.", "Call the CAF about the housing aid · Asked for Friday 30 October", "Passport: valid until Sunday 1 November"]);
+        assert_eq!((card.reminders[1].open.as_str(), card.reminders[2].from), ("sioul:task/form", at("2026-10-09T09:00[Europe/Paris]").timestamp().as_millisecond()));
         // At work, all three (Java shows each from its time); in the evening, work's
         // date waits for work; asleep, none; their row says so.
         assert_eq!(made.at("2026-10-08T10:00[Europe/Paris]").reminders, [0, 1, 2]);
-        assert_eq!(made.at("2026-10-08T17:30[Europe/Paris]").reminders, [1, 2]);
+        assert_eq!(made.at("2026-10-08T17:30[Europe/Paris]").reminders, [0, 2]);
         assert!(made.at("2026-10-08T23:30[Europe/Paris]").reminders.is_empty());
         // The call declined, as the Porch lists it, said from each day.
         let work = made.at("2026-10-08T10:00[Europe/Paris]");

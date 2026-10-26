@@ -159,14 +159,14 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let open_tasks: Vec<tasks::Task> = loaded.tasks.iter().filter(|t| consent.allows(&links::task_uri(&t.uid))).cloned().collect();
     let mut projects = edit.projects.clone();
     if let Some(parent) = args.text("parent")? {
-        let parent = read::find_task(s, &open_tasks, &parent)?;
+        let parent = read::find_named(s, &open_tasks, &loaded.tasks, &|uid| consent.allows(&links::task_uri(uid)), &parent, "This task")?;
         edit.parent = parent.uid.clone();
         projects.extend(consent.projects_of(&links::task_uri(&parent.uid)));
         // After the bigger task's other steps, as the window adds one.
         edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&loaded.tasks, &parent.uid), &Zoned::now()));
     }
     for wanted in args.list("after")? {
-        edit.waits_for.push(read::find_task(s, &open_tasks, &wanted)?.uid.clone());
+        edit.waits_for.push(read::find_named(s, &open_tasks, &loaded.tasks, &|uid| consent.allows(&links::task_uri(uid)), &wanted, "This task")?.uid.clone());
     }
     let world = loaded.world();
     if let Some(source) = args.text("source")? {
@@ -192,7 +192,7 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let desk = Desk::read(s);
     // Only the tasks an agent may see are found: one kept from agents is never marked done by one.
     let open = desk.open_tasks();
-    let task = read::find_task(s, &open, &wanted)?;
+    let task = read::find_named(s, &open, &desk.loaded.tasks, &|uid| desk.allows(uid), &wanted, "This task")?;
     if task.read_only {
         return Err(s.tr.text("task-read-only", None));
     }

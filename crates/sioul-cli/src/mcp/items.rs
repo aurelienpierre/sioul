@@ -551,12 +551,8 @@ pub fn set_checklist(s: &Session, args: &Args) -> Result<Answer, String> {
 
 fn find_open_task(s: &Session, desk: &Desk, wanted: &str) -> Result<Task, String> {
     let open = desk.open_tasks();
-    read::find_task(s, &open, wanted).cloned().map_err(|missing| {
-        // Asked for by its address, a task kept from agents (a closed project's, health) is refused, saying so.
-        let wanted = wanted.trim();
-        let kept = desk.loaded.tasks.iter().any(|t| (t.uid == wanted || links::task_uri(&t.uid) == wanted) && !desk.allows(&t.uid));
-        if kept { access::kept("This task") } else { missing }
-    })
+    // Asked for by its address, a task kept from agents (a closed project's, health) is refused, saying so.
+    read::find_named(s, &open, &desk.loaded.tasks, &|uid| desk.allows(uid), wanted, "This task").cloned()
 }
 
 fn task_json(task: &Task) -> Value {
@@ -741,7 +737,25 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
     // Moved to another list, its steps go with it: never one kept from agents
     // (an errand made a step of it), refused before anything is written, as
     // `move_step` refuses it (review of 36002ea, low 27).
-    if args.text("list")?.is_some_and(|l| l != task.list_id) && desk.loaded.tasks.iter().any(|t| t.parent() == Some(task.uid.as_str()) && !desk.allows(&t.uid)) {
+    // Made a step of another (`composed::demote` moves it and its steps into
+    // that task's list) or a task of its own again: the same (the check of
+    // ef8c0ca, item 2).
+    let moves_steps = args.text("list")?.is_some_and(|l| l != task.list_id) || args.has("parent");
+    let kept_below = || {
+        let (mut seen, mut below) = (std::collections::BTreeSet::new(), vec![task.uid.clone()]);
+        while let Some(at) = below.pop() {
+            for step in desk.loaded.tasks.iter().filter(|t| t.parent() == Some(at.as_str())) {
+                if !desk.allows(&step.uid) {
+                    return true;
+                }
+                if seen.insert(step.uid.clone()) {
+                    below.push(step.uid.clone());
+                }
+            }
+        }
+        false
+    };
+    if moves_steps && kept_below() {
         return Err(access::kept("A step of this task"));
     }
     let zone = TimeZone::system();
@@ -851,7 +865,7 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
             (sioul_core::composed::promote(&all, &task.uid, &now), s.say("agent-made-own", &[("title", one_line(&edit.title))]))
         } else {
             let open = desk.open_tasks();
-            let whole = read::find_task(s, &open, &parent)?;
+            let whole = read::find_named(s, &open, &desk.loaded.tasks, &|uid| desk.allows(uid), &parent, "This task")?;
             may_change(&desk.consent, &links::task_uri(&whole.uid))?;
             (sioul_core::composed::demote(&all, &task.uid, &whole.uid, &tasks::lists(), &keeper, args.flag("confirm")?, &now), s.say("agent-made-step", &[("title", one_line(&edit.title)), ("whole", one_line(&whole.title))]))
         };

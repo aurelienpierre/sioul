@@ -1178,7 +1178,15 @@ pub fn is_errand(task: &crate::tasks::Task, recorded: &std::collections::BTreeSe
 /// (`consent::Consent::keep_errands`; review of 36002ea, can-wait 7 and 8).
 pub fn is_errand_title(title: &str) -> bool {
     let title = title.trim();
-    errand_words().titles.iter().any(|(before, after)| title.len() > before.len() + after.len() && title.starts_with(before.as_str()) && title.ends_with(after.as_str()))
+    // Anywhere in the title: after "Prepare: " (a task on its appointment),
+    // after a date (a note made from it), the prescription's title after the
+    // words, and something there (the check of ef8c0ca, item 2).
+    errand_words().titles.iter().any(|(before, after)| {
+        title.match_indices(before.as_str()).any(|(at, _)| {
+            let rest = &title[at + before.len()..];
+            rest.len() > after.len() && rest.ends_with(after.as_str()) && !rest[..rest.len() - after.len()].trim().is_empty()
+        })
+    })
 }
 
 /// What is marked of the doses and done of the errands, kept apart from the

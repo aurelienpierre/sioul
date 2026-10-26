@@ -768,9 +768,20 @@ fn read_only_of(state: &Path) -> bool {
     {
         return *mark;
     }
-    let mark = State::load(state).read_only;
-    seen.insert(state.to_path_buf(), (when, size, mark));
-    mark
+    // A state that does not read now is never kept for its stamp (the check
+    // of ef8c0ca, low 21): the mark last read meanwhile, read again next time.
+    match std::fs::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
+        Some(read) => {
+            seen.insert(state.to_path_buf(), (when, size, read.read_only));
+            read.read_only
+        }
+        // No state at all: a calendar of this device's own, which no server makes read-only.
+        None if meta.is_none() => {
+            seen.insert(state.to_path_buf(), (when, size, false));
+            false
+        }
+        None => seen.get(state).is_some_and(|(_, _, mark)| *mark),
+    }
 }
 
 /// An item written as it came, without `agenda::guard`: what a server sent

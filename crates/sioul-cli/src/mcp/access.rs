@@ -39,11 +39,12 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     consent
 }
 
-/// What an answer listing tasks or events says when the errands' record
-/// does not read here (`Consent::health_unread`): the doubt, never the
-/// record read as empty (review of 36002ea, can-wait 10).
+/// What an answer listing tasks, events or time says when the errands'
+/// record does not read here (`Consent::health_unread`): the doubt, never
+/// the record read as empty (review of 36002ea, can-wait 10), and nothing
+/// of what that record is about (the check of ef8c0ca, item 2).
 pub fn health_doubt(consent: &Consent) -> Option<String> {
-    consent.health_unread.then(|| "(Sioul's record of its health errands could not be read here: an errand renamed on a list that keeps no category may show as a task of its own. If one looks like health, leave it and ask the person.)".to_string())
+    consent.health_unread.then(|| "(A record Sioul keeps could not be read here: what it keeps from agents may not all be left out. If something here looks like it should not be, leave it and ask the person.)".to_string())
 }
 
 /// The accounts whose mail is kept from agents whatever its projects, with

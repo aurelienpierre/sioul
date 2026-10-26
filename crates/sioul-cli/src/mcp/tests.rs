@@ -142,7 +142,7 @@ fn make(root: &Path) -> PathBuf {
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
     closed_project(root, &store, &mail);
-    health_fixture();
+    health_fixture(&store);
     spam_fixture(root, &mail);
     config
 }
@@ -248,7 +248,7 @@ const HEALTH_WORDS: &[&str] = &["Quillaine", "quillanoxate", "Brackenwort", "Mar
 /// Google's id alone, recorded beside), a timer note on an errand, an errand
 /// done this week and a task of yours waiting after it, your own task holding
 /// an errand as its step.
-fn health_fixture() {
+fn health_fixture(store: &Path) {
     let now = Zoned::now();
     let hour = i64::from(now.hour());
     let clock = |h: i64| format!("{:02}:{:02}", h.rem_euclid(24), now.minute());
@@ -337,6 +337,24 @@ fn health_fixture() {
     // A timer note on an errand.
     let stamp = now.timestamp().as_second();
     sioul_core::timelog::record(&sioul_core::timelog::Session { task: "errand-category".into(), start: stamp - 3 * 3600, minutes: 10, note: "ask for the Quillaine generic".into(), ..Default::default() }).unwrap();
+    // The check of ef8c0ca's shapes: an appointment of the errand lying today;
+    // a note made from the errand, one from its appointment (dated, titled as
+    // it); a "Prepare:" task tied to the appointment, due today; a draft tied
+    // to the errand; an appointment renamed, tied to the errand it was (gone,
+    // recorded); a timer session of that gone errand.
+    event("errand-today", &pharmacy, now.date(), 12, "");
+    std::fs::write(store.join("notes/errand-note.md"), "---\nlinks:\n  - sioul:task/errand-category\n---\n\n# Ferngale questions\n\nAsk about the Ferngale card.\n").unwrap();
+    std::fs::write(store.join("notes/appointment-note.md"), format!("---\nlinks:\n  - sioul:event/errand-appointment\n---\n\n# {tomorrow} {pharmacy}\n\nBring the Wyrmroot box.\n")).unwrap();
+    let prepare = tasks::new_task(&TaskEdit { title: format!("Prepare: {pharmacy}"), due: now.date().to_string(), estimate: 10, ..TaskEdit::default() }, "prepare-appointment", &zone, &now).unwrap();
+    let prepare = tasks::add_lines(&prepare, &[format!("LINK;LINKREL=\"{}\";VALUE=URI:sioul:event/errand-appointment", sioul_core::pairs::APPOINTMENT)], &now).unwrap();
+    vdir::write_item(&list.dir.join("prepare-appointment.ics"), &prepare).unwrap();
+    let draft = sioul_core::compose::Draft { subject: "Wyrmroot order".into(), body: "About the Wyrmroot order.".into(), links: vec!["sioul:task/errand-category".into()], ..sioul_core::compose::Draft::new("home") };
+    draft.save().unwrap();
+    let edit = sioul_core::agenda::EventEdit { title: "See Dr Thistlewick at Lafayette".into(), start: format!("{tomorrow}T17:00"), end: format!("{tomorrow}T17:30"), ..Default::default() };
+    let renamed = sioul_core::agenda::add_lines(&sioul_core::agenda::new_event(&edit, &zone).unwrap(), &["LINK;LINKREL=related;VALUE=URI:sioul:task/errand-gone".to_string()]).unwrap();
+    let renamed: String = renamed.lines().map(|l| if l.starts_with("UID:") { "UID:errand-renamed".to_string() } else { l.to_string() }).map(|l| l + "\r\n").collect();
+    vdir::write_item(&calendar.dir.join("errand-renamed.ics"), &renamed).unwrap();
+    sioul_core::timelog::record(&sioul_core::timelog::Session { task: "errand-gone".into(), start: stamp - 26 * 3600, minutes: 15, note: "Wyrmroot pick-up".into(), ..Default::default() }).unwrap();
 }
 
 /// The key the texts of the tests are sealed with (`phone::sealer` takes it in tests: never a keyring).
@@ -721,106 +739,158 @@ fn a_closed_project_is_never_shown() {
 /// address, an errand, its step, its time blocks and the appointment it was
 /// made are refused, and nothing is written into them. `now` says what now is
 /// for by its kind and its end alone (core `quiet`'s test holds that at a meal).
+/// The check of ef8c0ca: the spam and texts tools asked too (texts turned on
+/// here); every write aimed at health refused saying it is kept; what was made
+/// from an errand (a note, a "Prepare:" task, a draft, a renamed appointment,
+/// a gone errand's timer session) kept as the errand is; the agent's own words
+/// said back pass only in the answer to the ask that gave them.
 #[test]
 fn health_never_reaches_an_agent() {
     let home = home();
-    let mut server = server();
     let zone = jiff::tz::TimeZone::system();
     let today = Zoned::now().date();
     let tomorrow = today.tomorrow().unwrap();
     let last_week = today.checked_sub(jiff::Span::new().days(8)).unwrap();
-    // Every tool asked, reads as they list, search and lay out, writes on health's things (each refused).
-    let asks: Vec<(&str, Value)> = vec![
-        ("porch", json!({})),
-        ("porch", json!({ "open": true, "all": true })),
-        ("search_mail", json!({ "query": "Ferngale" })),
-        ("search_mail", json!({ "query": "brackenwort", "in_text": true })),
-        ("read_message", json!({ "message": "mid:letter-1@housing.example" })),
-        ("list_tasks", json!({ "view": "list" })),
-        ("list_tasks", json!({ "view": "list", "done": true })),
-        ("list_tasks", json!({ "view": "list", "query": "Ferngale" })),
-        ("list_tasks", json!({ "view": "list", "by": "list" })),
-        ("list_tasks", json!({ "view": "now" })),
-        ("list_tasks", json!({ "view": "today" })),
-        ("get_task", json!({ "task": "sioul:task/saturday" })),
-        ("get_task", json!({ "task": "sioul:task/receipt-wait" })),
-        ("agenda", json!({ "days": 5 })),
-        ("agenda", json!({ "from": last_week.to_string(), "days": 8 })),
-        ("search_contacts", json!({ "query": "Thistlewick" })),
-        ("budgets", json!({})),
-        ("search_notes", json!({})),
-        ("search_notes", json!({ "query": "Quillaine", "in_text": true })),
-        ("read_note", json!({ "note": "notes/letters.md" })),
-        ("list_projects", json!({})),
-        ("list_projects", json!({ "id": "housing" })),
-        ("links", json!({ "uri": "sioul:project/housing" })),
-        ("links", json!({ "uri": "sioul:task/saturday" })),
-        ("links", json!({ "uri": "sioul:task/receipt-wait" })),
-        ("find", json!({ "query": "Ferngale" })),
-        ("find", json!({ "query": "Pharmacy" })),
-        ("find", json!({ "query": "Doctor" })),
-        ("find", json!({ "query": "Wyrmroot" })),
-        ("find", json!({ "query": "brackenwort" })),
-        ("find", json!({ "query": "Lafayette" })),
-        ("phone_messages", json!({})),
-        ("calls", json!({})),
-        ("papers", json!({})),
-        ("contracts", json!({})),
-        ("letters", json!({})),
-        ("time", json!({})),
-        ("invoices", json!({})),
-        ("reminders", json!({ "days": 30 })),
-        ("now", json!({})),
-        ("get_event", json!({ "event": "sioul:event/errand-block" })),
-        ("add_task", json!({ "title": "A step", "parent": "errand-category" })),
-        ("add_steps", json!({ "task": "errand-category", "title": "A step" })),
-        ("complete_task", json!({ "task": "errand-category" })),
-        ("add_event", json!({ "title": "Check", "start": "not a time", "end": "not a time" })),
-        ("update_event", json!({ "event": "sioul:event/errand-appointment", "title": "Something else" })),
-        ("delete_event", json!({ "event": "sioul:event/errand-gone-block" })),
-        ("update_task", json!({ "task": "sioul:task/errand-title", "title": "Something else" })),
-        ("update_task", json!({ "task": "sioul:task/saturday", "list": "local/nowhere" })),
-        ("move_step", json!({ "step": "errand-in-saturday", "before": "saturday" })),
-        ("check_item", json!({ "of": "sioul:task/errand-category", "item": "1", "state": "done" })),
-        ("set_checklist", json!({ "of": "sioul:task/errand-category", "items": ["Pen"] })),
-        ("convert_item", json!({ "to": "item", "step": "errand-step" })),
-        ("delete_task", json!({ "task": "errand-category" })),
-        ("task_to_event", json!({ "task": "errand-title", "start": format!("{tomorrow}T09:00") })),
-        ("attach_to_event", json!({ "task": "errand-category", "event": "sioul:event/errand-appointment" })),
-        ("detach_from_event", json!({ "task": "errand-category" })),
-        ("event_to_task", json!({ "event": "sioul:event/errand-appointment" })),
-        ("add_note", json!({ "title": "Thoughts", "links": ["sioul:task/errand-category"] })),
-        ("draft_reply", json!({ "message": "mid:letter-1@housing.example", "body": "Thanks.", "links": ["sioul:task/errand-category"] })),
-        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Hello", "body": "Hello.", "links": ["sioul:task/errand-category"] })),
-        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" })),
+    // The texts tools on for this test (`[mcp] texts = true`), the spam tools as they are by default: every tool listed.
+    let texts_on = home.root.join("config/sioul/texts-on-health.toml");
+    std::fs::write(&texts_on, format!("{}\n[mcp]\ntexts = true\n", std::fs::read_to_string(&home.config).unwrap())).unwrap();
+    let mut server = Server::new(&texts_on, "en");
+    // Every tool asked, each with what it must answer: reads as they list,
+    // search and lay out (`Answers`); every write and read aimed at health,
+    // refused, saying it is kept (`Kept`); a few asked with arguments that
+    // start nothing (a job, a draft text, an event), refused (`Refused`).
+    #[derive(Clone, Copy)]
+    enum Expect {
+        Answers,
+        Kept,
+        Refused,
+    }
+    use Expect::{Answers, Kept, Refused};
+    let asks: Vec<(&str, Value, Expect)> = vec![
+        ("porch", json!({}), Answers),
+        ("porch", json!({ "open": true, "all": true }), Answers),
+        ("search_mail", json!({ "query": "Ferngale" }), Answers),
+        ("search_mail", json!({ "query": "brackenwort", "in_text": true }), Answers),
+        ("read_message", json!({ "message": "mid:letter-1@housing.example" }), Answers),
+        ("list_tasks", json!({ "view": "list" }), Answers),
+        ("list_tasks", json!({ "view": "list", "done": true }), Answers),
+        ("list_tasks", json!({ "view": "list", "query": "Ferngale" }), Answers),
+        ("list_tasks", json!({ "view": "list", "by": "list" }), Answers),
+        ("list_tasks", json!({ "view": "now" }), Answers),
+        ("list_tasks", json!({ "view": "today" }), Answers),
+        ("get_task", json!({ "task": "sioul:task/saturday" }), Answers),
+        ("get_task", json!({ "task": "sioul:task/receipt-wait" }), Answers),
+        ("get_task", json!({ "task": "sioul:task/prepare-appointment" }), Kept),
+        ("agenda", json!({ "days": 5 }), Answers),
+        ("agenda", json!({ "from": last_week.to_string(), "days": 8 }), Answers),
+        ("search_contacts", json!({ "query": "Thistlewick" }), Answers),
+        ("budgets", json!({}), Answers),
+        ("search_notes", json!({}), Answers),
+        ("search_notes", json!({ "query": "Quillaine", "in_text": true }), Answers),
+        ("search_notes", json!({ "query": "Ferngale", "in_text": true }), Answers),
+        ("read_note", json!({ "note": "notes/letters.md" }), Answers),
+        ("read_note", json!({ "note": "notes/errand-note.md" }), Kept),
+        ("read_note", json!({ "note": "notes/appointment-note.md" }), Kept),
+        ("list_projects", json!({}), Answers),
+        ("list_projects", json!({ "id": "housing" }), Answers),
+        ("links", json!({ "uri": "sioul:project/housing" }), Answers),
+        ("links", json!({ "uri": "sioul:task/saturday" }), Answers),
+        ("links", json!({ "uri": "sioul:task/receipt-wait" }), Answers),
+        ("find", json!({ "query": "Ferngale" }), Answers),
+        ("find", json!({ "query": "Pharmacy" }), Answers),
+        ("find", json!({ "query": "Prepare" }), Answers),
+        ("find", json!({ "query": "Doctor" }), Answers),
+        ("find", json!({ "query": "Wyrmroot" }), Answers),
+        ("find", json!({ "query": "brackenwort" }), Answers),
+        ("find", json!({ "query": "Lafayette" }), Answers),
+        ("find", json!({ "query": "Thistlewick" }), Answers),
+        ("phone_messages", json!({}), Answers),
+        ("calls", json!({}), Answers),
+        ("texts", json!({}), Answers),
+        ("search_texts", json!({ "query": "Ferngale" }), Answers),
+        ("draft_text", json!({ "to": "not a number", "body": "Hello." }), Refused),
+        ("papers", json!({}), Answers),
+        ("contracts", json!({}), Answers),
+        ("letters", json!({}), Answers),
+        ("time", json!({}), Answers),
+        ("invoices", json!({}), Answers),
+        ("reminders", json!({ "days": 30 }), Answers),
+        ("now", json!({}), Answers),
+        ("spam_status", json!({}), Answers),
+        ("spam_review", json!({}), Answers),
+        ("spam_eval", json!({}), Answers),
+        ("spam_dry_run", json!({}), Answers),
+        ("spam_job", json!({}), Answers),
+        ("spam_label", json!({ "message": "mid:zeugma-1@finances.example", "label": "spam" }), Refused),
+        ("spam_fetch", json!({ "account": "nowhere" }), Refused),
+        ("spam_train", json!({ "threads": 0 }), Refused),
+        ("get_event", json!({ "event": "sioul:event/errand-block" }), Kept),
+        ("get_event", json!({ "event": "sioul:event/errand-today" }), Kept),
+        ("get_event", json!({ "event": "sioul:event/errand-renamed" }), Kept),
+        ("add_task", json!({ "title": "A step", "parent": "errand-category" }), Kept),
+        ("add_steps", json!({ "task": "errand-category", "steps": ["A step"] }), Kept),
+        ("complete_task", json!({ "task": "errand-category" }), Kept),
+        ("complete_task", json!({ "task": "errand-recorded" }), Kept),
+        ("add_event", json!({ "title": "Check", "start": "not a time", "end": "not a time" }), Refused),
+        ("update_event", json!({ "event": "sioul:event/errand-appointment", "title": "Something else" }), Kept),
+        ("update_event", json!({ "event": "sioul:event/errand-renamed", "title": "Something else" }), Kept),
+        ("delete_event", json!({ "event": "sioul:event/errand-gone-block" }), Kept),
+        ("update_task", json!({ "task": "sioul:task/errand-title", "title": "Something else" }), Kept),
+        ("update_task", json!({ "task": "sioul:task/saturday", "list": "local/nowhere" }), Kept),
+        ("update_task", json!({ "task": "sioul:task/saturday", "parent": "receipt" }), Kept),
+        ("update_task", json!({ "task": "sioul:task/prepare-appointment", "title": "Something else" }), Kept),
+        ("move_step", json!({ "step": "errand-in-saturday", "before": "saturday" }), Kept),
+        ("check_item", json!({ "of": "sioul:task/errand-category", "item": "1", "state": "done" }), Kept),
+        ("set_checklist", json!({ "of": "sioul:task/errand-category", "groups": [{ "items": ["Pen"] }] }), Kept),
+        ("convert_item", json!({ "to": "item", "step": "errand-step" }), Kept),
+        ("delete_task", json!({ "task": "errand-category" }), Kept),
+        ("task_to_event", json!({ "task": "errand-title", "start": format!("{tomorrow}T09:00") }), Kept),
+        ("attach_to_event", json!({ "task": "errand-category", "event": "sioul:event/errand-appointment" }), Kept),
+        ("detach_from_event", json!({ "task": "errand-category" }), Kept),
+        ("event_to_task", json!({ "event": "sioul:event/errand-appointment" }), Kept),
+        ("add_note", json!({ "title": "Thoughts", "links": ["sioul:task/errand-category"] }), Kept),
+        ("draft_reply", json!({ "message": "mid:letter-1@housing.example", "body": "Thanks.", "links": ["sioul:task/errand-category"] }), Kept),
+        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Hello", "body": "Hello.", "links": ["sioul:task/errand-category"] }), Kept),
+        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" }), Kept),
     ];
     let listed = ask(&mut server, "tools/list", json!({}));
     let names: Vec<String> = listed["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
-    let writes: std::collections::BTreeSet<String> = listed["result"]["tools"].as_array().unwrap().iter().filter(|t| t["annotations"]["readOnlyHint"] == false).filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
-    let missing: Vec<&String> = names.iter().filter(|name| !name.starts_with("spam_") && !asks.iter().any(|(tool, _)| tool == name)).collect();
+    assert!(names.iter().any(|n| n.starts_with("spam_")) && names.iter().any(|n| n == "texts"), "the spam and texts tools listed: {names:?}");
+    let missing: Vec<&String> = names.iter().filter(|name| !asks.iter().any(|(tool, _, _)| tool == name)).collect();
     assert!(missing.is_empty(), "every tool listed is asked: {missing:?}");
     // Health's words, folded: an id ("quillaine") is a word as its name is.
     let planted: Vec<String> = HEALTH_WORDS.iter().map(|w| sioul_core::words::folded(w)).collect();
-    let holds = |answer: &Value| {
-        // The agent's own words said back ("Nothing matches “Ferngale”") are not health's.
+    // The agent's own words said back ("Nothing matches “Ferngale”") are not
+    // health's: only what its own ask gave, quoted as it gave it.
+    let holds_for = |answer: &Value, asked: &Value| {
         let mut said = answer.to_string();
-        for word in ["Ferngale", "Wyrmroot", "brackenwort", "Quillaine", "Thistlewick"] {
-            said = said.replace(&format!("“{word}”"), "“…”");
+        for given in asked.as_object().into_iter().flat_map(|o| o.values()).filter_map(Value::as_str) {
+            said = said.replace(&format!("“{given}”"), "“…”");
         }
         let said = sioul_core::words::folded(&said);
         planted.iter().find(|w| said.contains(w.as_str())).cloned()
     };
+    let holds = |answer: &Value| holds_for(answer, &Value::Null);
     let list_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap().dir;
     let calendar_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap().dir;
-    let theirs: Vec<PathBuf> = ["errand-category", "errand-recorded", "errand-title", "errand-step", "google-renamed", "errand-in-saturday", "errand-done", "saturday"].iter().map(|u| list_dir.join(format!("{u}.ics"))).chain(["errand-block", "errand-appointment", "errand-gone-block", "errand-phone-block"].iter().map(|u| calendar_dir.join(format!("{u}.ics")))).collect();
+    let theirs: Vec<PathBuf> = ["errand-category", "errand-recorded", "errand-title", "errand-step", "google-renamed", "errand-in-saturday", "errand-done", "saturday", "prepare-appointment"]
+        .iter()
+        .map(|u| list_dir.join(format!("{u}.ics")))
+        .chain(["errand-block", "errand-appointment", "errand-gone-block", "errand-phone-block", "errand-today", "errand-renamed"].iter().map(|u| calendar_dir.join(format!("{u}.ics"))))
+        .chain([home.root.join("store/notes/errand-note.md"), home.root.join("store/notes/appointment-note.md")])
+        .collect();
     let before = snapshot(&theirs);
-    for (tool, arguments) in &asks {
+    // The spam tools beside the spam filter's own tests, one at a time.
+    let _spam = spam_lock();
+    for (tool, arguments, expect) in &asks {
         let answer = call(&mut server, tool, arguments.clone());
-        if let Some(word) = holds(&answer) {
+        if let Some(word) = holds_for(&answer, arguments) {
             panic!("{tool} {arguments} holds {word}: {answer}");
         }
-        if writes.contains(*tool) {
-            assert_eq!(answer["isError"], true, "{tool} {arguments}: refused: {answer}");
+        match expect {
+            Answers => assert!(answer["isError"] != true && answer.get("error").is_none(), "{tool} {arguments}: {answer}"),
+            Kept => assert!(answer["isError"] == true && text(&answer).contains("kept from agents"), "{tool} {arguments}: refused as kept: {answer}"),
+            Refused => assert!(answer["isError"] == true || answer.get("error").is_some(), "{tool} {arguments}: refused: {answer}"),
         }
     }
     assert_eq!(snapshot(&theirs), before, "nothing written into health's things");
@@ -837,6 +907,7 @@ fn health_never_reaches_an_agent() {
     }
     for uri in uris {
         let answer = ask(&mut server, "resources/read", json!({ "uri": uri }));
+        assert!(answer.get("error").is_none(), "{uri}: answers: {answer}");
         if let Some(word) = holds(&answer) {
             panic!("{uri} holds {word}: {answer}");
         }
@@ -847,7 +918,7 @@ fn health_never_reaches_an_agent() {
     assert!(text(&list).contains("Find the rent receipt") && text(&list).contains("Saturday errands"), "the rest still comes");
     let now = call(&mut server, "list_tasks", json!({ "view": "now" }));
     let cards = |field: &str| now["structuredContent"][field].as_array().cloned().unwrap_or_default();
-    assert!(["others", "started", "done_week", "joy"].iter().flat_map(|f| cards(f)).all(|card| card["uid"].as_str().is_some_and(|u| !u.starts_with("errand") && u != "google-renamed")), "no kept card: {now}");
+    assert!(["others", "started", "done_week", "joy"].iter().flat_map(|f| cards(f)).all(|card| card["uid"].as_str().is_some_and(|u| !u.starts_with("errand") && u != "google-renamed" && u != "prepare-appointment")), "no kept card: {now}");
     let reminders = call(&mut server, "reminders", json!({ "days": 30 }));
     assert!(reminders["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "the wait after an errand, left out: {reminders}");
     // Asked for by address: refused, saying so.
@@ -2319,5 +2390,30 @@ fn tasks_are_tied_to_their_appointments() {
     }
     if let Some(path) = made["structuredContent"]["uri"].as_str().and_then(|u| vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| sioul_core::appointments::uid_in(p) == sioul_core::links::id_of(u))) {
         let _ = std::fs::remove_file(path);
+    }
+}
+
+/// `list_tasks` with no view gives the tasks as data (`list`): every open
+/// task, grouped by project, each with its UID, status, day to start and
+/// date asked, estimate and list, in its lines and as data; `now` and
+/// `today` are views, given only when asked (27 October 2026: the default
+/// was `now`, which at 22:53 said nothing waits).
+#[test]
+fn list_tasks_gives_the_tasks_as_data_by_default() {
+    home();
+    let mut server = server();
+    let listed = call(&mut server, "list_tasks", json!({}));
+    assert_eq!(listed["isError"], false, "{listed}");
+    let said = text(&listed);
+    assert!(said.contains("Find the rent receipt  [receipt]") && said.contains("List: "), "the list: {said}");
+    let groups = listed["structuredContent"]["groups"].as_array().expect("grouped, as data");
+    let receipt = groups.iter().flat_map(|g| g["rows"].as_array().unwrap()).find(|r| r["uid"] == "receipt").expect("the receipt, by its UID");
+    for field in ["uid", "title", "status", "start_date", "due_date", "minutes", "list"] {
+        assert!(receipt.get(field).is_some(), "{field}: {receipt}");
+    }
+    // The views, when asked by name: not the list.
+    for view in ["now", "today"] {
+        let shown = call(&mut server, "list_tasks", json!({ "view": view }));
+        assert!(shown["isError"] != true && shown["structuredContent"].get("groups").is_none(), "{view}: {shown}");
     }
 }

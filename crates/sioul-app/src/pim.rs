@@ -353,7 +353,8 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
         return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>() }).to_string();
     }
     let to = contacts::new_path(&target);
-    if let Err(e) = vdir::write_item(&to, &text).and_then(|()| std::fs::remove_file(&from).map_err(|e| e.to_string())) {
+    // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).
+    if let Err(e) = vdir::move_item(&from, &to) {
         return fail(e);
     }
     for account in [account_of(&from), Some(target.account.clone())].into_iter().flatten() {
@@ -784,7 +785,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 agenda::Cancellation::Refused => return Err(tr().text("invitation-cancel-refused", None)),
                 agenda::Cancellation::Whole => {
                     let account = account_of(&file).unwrap_or_default();
-                    mail::schedule_cancelled_removal(qt, shared, &account, file, tr().text("undo-event-deleted", None));
+                    mail::schedule_cancelled_removal(qt, shared, &account, file, text.clone(), tr().text("undo-event-deleted", None));
                 }
                 agenda::Cancellation::Changed(changed) => {
                     if vdir::calendar_read_only(&file) == Some(true) {

@@ -6008,9 +6008,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let removed = &memory.sealed.removed;
     memory.sealed.removed_at.retain(|name, _| removed.contains_key(name));
     memory.leaving = leaving_of(sharing, &memory, &counts, &judged, &current);
-    // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly.
-    if kept || now_ms - memory.tidied >= HOUR {
-        crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
+    // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly,
+    // once the exchanges' lock is let go (it walks the whole history: the check of ef8c0ca, low 24).
+    let tidy = kept || now_ms - memory.tidied >= HOUR;
+    if tidy {
         memory.tidied = now_ms;
     }
     // What a crash left half written among the folder's sealed files, and in
@@ -6165,6 +6166,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
     }
     memory.keep(sharing.memory);
+    drop(_running);
+    if tidy {
+        crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
+    }
     Ok(outcome)
 }
 
@@ -6858,6 +6863,12 @@ fn entries_then_and_now(store: &Store, version: &Path, path: &Path) -> Result<(B
 /// off here is put back here only); `vault` the sharing folder and its key,
 /// for a version kept by reference. Waits for an exchange running.
 pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Store], part: &str, file: &str, stamp: &str, now_ms: i64) -> Result<(), String> {
+    // A calendar's or an address book's item goes back through the agenda's
+    // one rule, in the window (`put_back_item`), never written whole here (the
+    // check of ef8c0ca, item 3).
+    if file.starts_with("data/calendars/") || file.starts_with("data/contacts/") {
+        return Err(format!("{file}: put back through the agenda's rule"));
+    }
     let shaped_stores = shaped(stores, format_of(memory));
     let stores = shaped_stores.as_slice();
     let (store, path) = locate(stores, file).filter(|(store, _)| store.part == part).ok_or_else(|| format!("{file}: not shared"))?;
@@ -6875,7 +6886,11 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         if back.is_empty() {
             return Ok(());
         }
-        return write_entries(store, &path, &back, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
+        let written = write_entries(store, &path, &back, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
+        // The lock let go: the versions too many taken out (`history::keep` takes nothing out under it).
+        drop(_running);
+        crate::history::tidy_file(&root, part, file, now_ms);
+        return written;
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let bring = |to: &Path| match &kept {
@@ -6920,7 +6935,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     // The file as it is now copied into its versions ahead of the lock too, closed there, so that
     // under the lock it is kept by a rename alone, while it is as it was copied (review of part 3, R-7).
     let prepare = || {
-        let prepared = if path.exists() { crate::history::prepare(&root, part, file, &path).map(Some) } else { Ok(None) };
+        let prepared = if path.exists() { crate::history::prepare(&root, part, file, &path, now_ms).map(Some) } else { Ok(None) };
         after_prepare();
         prepared
     };
@@ -7016,12 +7031,14 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         })();
     };
     let _ = std::fs::remove_file(&opened);
-    // The lock let go: the file replaced freed, and the versions too many taken out, now.
+    // The lock let go: the file replaced freed, and the versions too many taken out, now
+    // (those its copy listed outside the lock; a copy made under it, by `tidy_file`).
     placed.map(|(held, gone)| {
         drop(held);
         for version in gone {
             let _ = std::fs::remove_file(version);
         }
+        crate::history::tidy_file(&root, part, file, now_ms);
     })
 }
 

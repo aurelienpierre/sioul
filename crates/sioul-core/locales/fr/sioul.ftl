@@ -2972,6 +2972,8 @@ share-history-more = { $count ->
 share-history-filter = Trouver un fichier par son nom
 share-put-back-whole = { $file } revient comme il était ({ $when }) ; le fichier tel qu’il est maintenant est gardé dans la liste.
 share-put-back-meeting = { $file } est une réunion avec d’autres : seules vos propres lignes de cette version ({ $when }) reviennent, votre temps autour, ses coûts et votre rappel ; son heure, son titre et ses invités restent tels que son organisateur les a mis. La réunion telle qu’elle est maintenant est gardée dans la liste.
+share-put-back-meeting-gone = { $file } est une réunion qui n’est plus dans votre agenda : elle n’est pas remise, son serveur préviendrait chaque invité.
+share-put-back-meeting-done = Vos propres lignes de { $file } sont revenues ({ $when }) : son heure, son titre et ses invités restent tels que son organisateur les a.
 share-put-back-nothing = { $file } contient déjà ce que contenait cette version : rien à remettre.
 share-put-back-entries = { $file } comme il était ({ $when }) : { $changed ->
     [one] une entrée revient à ce qu’elle était
@@ -3262,6 +3264,10 @@ share-format-older = L’un de vos appareils a un Sioul plus ancien, qui ne lit 
 reminder-event = { $when } · { $what }
 reminder-asked = Demandé pour { $date }
 reminder-wait = L’attente après « { $before } » est finie.
+reminder-waits-over = { $n ->
+        [one] Une attente est finie
+       *[other] { $n } attentes sont finies
+    } : { $tasks }.
 reminder-payment = Prévu le { $date }.
 remind-nothing = Rien à rappeler dans les deux semaines qui viennent.
 remind-told = dit
@@ -6268,6 +6274,7 @@ agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » u
 agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.
 event-delete-with-others = Une réunion avec d’autres n’est jamais supprimée ici : son serveur l’annulerait ou la déclinerait pour eux. Répondez-y, ou supprimez-la dans son application d’agenda.
 event-change-with-others = Une réunion avec d’autres garde son heure, son titre, son lieu, ses notes et son agenda tels que son organisateur les a mis : son serveur préviendrait chaque invité d’un changement. Votre temps autour, ses coûts et votre rappel se changent ici.
+invitation-cancel-changed = Il a changé entre-temps : rien n’a été retiré.
 invitation-cancel-refused = Cette annulation ne vient pas de l’organisateur de la réunion, ou la réunion est la vôtre : rien n’a été retiré.
 invitation-older = Cette invitation est plus ancienne que celle de votre agenda, qui reste telle qu’elle est : votre réponse est envoyée.
 invitation-older-added = Cet événement est plus ancien que celui de votre agenda, qui reste tel qu’il est.

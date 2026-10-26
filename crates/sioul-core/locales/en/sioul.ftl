@@ -2954,6 +2954,8 @@ share-history-more = { $count ->
 share-history-filter = Find a file by its name
 share-put-back-whole = { $file } goes back as it was ({ $when }); the file as it is now is kept in the list.
 share-put-back-meeting = { $file } is a meeting with others: only your own lines of that version ({ $when }) come back, your time around it, its costs and your reminder; its time, title and guests stay as its organizer set them. The meeting as it is now is kept in the list.
+share-put-back-meeting-gone = { $file } is a meeting no longer in your calendar: it is not put back, since its server would tell every guest.
+share-put-back-meeting-done = Your own lines of { $file } are back ({ $when }): its time, title and guests stay as its organizer has them.
 share-put-back-nothing = { $file } holds that version's entries already: nothing to put back.
 share-put-back-entries = { $file } as it was ({ $when }): { $changed ->
     [one] one entry goes back to what it was
@@ -3244,6 +3246,10 @@ share-format-older = One of your devices runs an older Sioul, which does not rea
 reminder-event = { $when } · { $what }
 reminder-asked = Asked for { $date }
 reminder-wait = The wait after “{ $before }” is over.
+reminder-waits-over = { $n ->
+        [one] A wait is over
+       *[other] { $n } waits are over
+    }: { $tasks }.
 reminder-payment = Planned for { $date }.
 remind-nothing = Nothing to remind in the next two weeks.
 remind-told = told
@@ -6240,6 +6246,7 @@ agent-task-to-event = An AI agent made the task “{ $title }” an appointment,
 agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.
 event-delete-with-others = A meeting with others is never deleted here: its server would cancel or decline it for them. Answer it, or delete it in its own calendar app.
 event-change-with-others = A meeting with others keeps its time, title, place, notes and calendar as its organizer set them: its server would tell every guest of a change. Your time around it, its costs and your reminder change here.
+invitation-cancel-changed = It changed meanwhile: nothing was taken out.
 invitation-cancel-refused = This cancellation does not come from the meeting's organizer, or the meeting is yours: nothing was taken out.
 invitation-older = This invitation is older than the one in your calendar, which stays as it is: your answer is sent.
 invitation-older-added = This event is older than the one in your calendar, which stays as it is.

@@ -6175,19 +6175,23 @@ impl qobject::Sioul {
         let (part, file, stamp) = (part.to_string(), file.to_string(), stamp.to_string());
         // Off the window's thread: it waits for an exchange running, and copies a file whole.
         std::thread::spawn(move || {
-            // Your calendar's item or contact set aside: written back, then sent by its account's sync.
-            let problem = if part == sioul_sync::history::ACCOUNTS {
-                match crate::share::put_back_item(&file, &stamp) {
-                    Ok(account) => {
-                        crate::pim::nudge(&shared, &account);
-                        String::new()
+            // Your calendar's item or contact set aside, or a local calendar's file: through the
+            // agenda's one rule, then sent by its account's sync (the check of ef8c0ca, item 3).
+            let (problem, said) = if part == sioul_sync::history::ACCOUNTS || crate::share::vdir_item(&file) {
+                match crate::share::put_back_item(&part, &file, &stamp) {
+                    Ok((account, said)) => {
+                        if !account.is_empty() {
+                            crate::pim::nudge(&shared, &account);
+                        }
+                        (String::new(), said)
                     }
-                    Err(e) => e,
+                    Err(e) => (e, String::new()),
                 }
             } else {
-                crate::share::put_back(&part, &file, &stamp)
+                let problem = crate::share::put_back(&part, &file, &stamp);
+                let said = if problem.is_empty() { crate::share::put_back_said(&file, &stamp) } else { String::new() };
+                (problem, said)
             };
-            let said = if problem.is_empty() { crate::share::put_back_said(&file, &stamp) } else { String::new() };
             let store = crate::share::store_of(&file);
             let done = problem.clone();
             let _ = qt.queue(move |mut sioul| {

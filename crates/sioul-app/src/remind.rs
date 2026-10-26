@@ -9,7 +9,7 @@
 //! (`eventalarms`, whose alarms tell them while Sioul is away); the others
 //! wait for a computer.
 
-use crate::backend::{QtThread, load_config, tr};
+use crate::backend::{QtThread, load_config, say, tr};
 use cxx_qt_lib::QString;
 use sioul_core::reminders::{self, Kind};
 use std::path::PathBuf;
@@ -34,7 +34,22 @@ pub(crate) fn tick(qt: &QtThread) {
             all.retain(|r| matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm));
         }
         let events = if phone { all.clone() } else { Vec::new() };
-        for reminder in reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), &holds) {
+        let mut told = reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), &holds);
+        // Waits over in the same minute (the start of work after a weekend):
+        // one notice for them all, as new mail comes, never one each (the
+        // check of ef8c0ca, low 10).
+        let waits: Vec<reminders::Reminder> = if phone { Vec::new() } else { told.iter().filter(|r| r.kind == Kind::Wait).cloned().collect() };
+        if waits.len() > 1 {
+            told.retain(|r| r.kind != Kind::Wait);
+            let tasks: Vec<String> = waits.iter().map(|r| format!("“{}”", r.title)).collect();
+            let title = say("reminder-waits-over", &[("n", waits.len().to_string()), ("tasks", tasks.join(", "))]);
+            let qt = qt.clone();
+            let open: Box<dyn FnOnce() + Send> = Box::new(move || {
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("task"), QString::default(), QString::default()));
+            });
+            let _ = sioul_sync::notify::remind(&title, "", Some((tr().text("reminder-open", None), open)));
+        }
+        for reminder in told {
             if phone {
                 crate::eventalarms::show(&reminder);
                 continue;

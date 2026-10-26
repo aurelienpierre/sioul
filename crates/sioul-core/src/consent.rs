@@ -113,14 +113,39 @@ impl Consent {
         let prepared: BTreeSet<String> = loaded.tasks.iter().filter(|t| kept.contains(&t.uid)).filter_map(crate::pairs::appointment_of).collect();
         let of_errand = |e: &&crate::agenda::EventRef| {
             (!e.task.is_empty() && ours(&e.task))
+                // The record names it (an appointment an errand was made).
+                || ours(&e.uid)
                 || crate::health::is_errand_title(&e.summary)
                 || prepared.contains(&e.uid)
-                || e.links.iter().any(|l| l.uri.starts_with("sioul:task/") && ours(&links::id_of(&l.uri)))
+                // Tied to one, in either form a link takes (`sioul:task/…`, `uid:…`).
+                || e.links.iter().any(|l| {
+                    let uri = l.uri.trim();
+                    (uri.starts_with("sioul:task/") && ours(&links::id_of(uri))) || uri.strip_prefix("uid:").is_some_and(|uid| ours(uid.trim()))
+                })
                 || e.related.iter().any(|r| ours(&r.uid))
         };
         let events: Vec<String> = loaded.events.iter().filter(of_errand).map(|e| links::event_uri(&e.uid)).collect();
-        self.health.extend(kept.iter().map(|uid| links::task_uri(uid)));
-        self.health.extend(events);
+        // Health, to begin with: the errands' tasks and their steps, every
+        // task the record names (gone since, or known here by another id: a
+        // Google id), so that its timer sessions stay out too, and the events
+        // of them (the check of ef8c0ca, item 2).
+        let mut health: BTreeSet<String> = kept.iter().chain(recorded.iter()).map(|uid| links::task_uri(uid)).chain(events).collect();
+        // One tie away from it, a note, a task, a draft or an event is health
+        // too: a note made from an errand or its appointment, the "Prepare:"
+        // task tied to it, a draft, a tie written in the errand itself. Never
+        // through a step's tie or a wait's (a task of yours holding an errand
+        // as its step stays yours), never a project, a contact or mail.
+        let can_hold = |uri: &str| matches!(links::kind_of(uri), Kind::Task | Kind::Event | Kind::Note | Kind::Draft);
+        let seeds = health.clone();
+        for edge in loaded.world().edges().iter().filter(|e| !matches!(e.how.as_str(), "step" | "waits" | "project" | "contact" | "answers")) {
+            if seeds.contains(&edge.from) && can_hold(&edge.to) {
+                health.insert(edge.to.clone());
+            }
+            if seeds.contains(&edge.to) && can_hold(&edge.from) {
+                health.insert(edge.from.clone());
+            }
+        }
+        self.health.extend(health);
     }
 
     /// Whether a thing is health (`keep_errands`): never to an agent.
@@ -440,6 +465,34 @@ mod tests {
             assert!(!consent.allows(&kept) && consent.is_health(&kept), "{kept}");
         }
         assert!(consent.allows(&links::task_uri("t1")) && consent.allows(&links::event_uri("b2")), "the others as they were");
+        // The check of ef8c0ca, item 2: one tie away from health is health (a task
+        // whose LINK names a kept block, in its uid: form; an appointment tied to
+        // an errand by uid:), a title of Sioul's anywhere ("Prepare: Pharmacy: …"),
+        // every task the record names (gone: its timer sessions); never through
+        // a step's tie (a task of yours holding an errand as its step).
+        let pharmacy = crate::i18n::Translator::new("en").text("health-errand-refill", Some(&{
+            let mut args = crate::i18n::args();
+            args.set("title", "Brackenwort 20");
+            args
+        }));
+        let link = |uri: &str| crate::tasks::Link { uri: uri.into(), label: String::new(), rel: "related".into() };
+        let mut tasks = loaded.tasks.clone();
+        tasks.extend([
+            Task { uid: "prep".into(), title: format!("Prepare: {pharmacy}"), ..Task::default() },
+            Task { uid: "mine".into(), title: "Pack the bag".into(), links: vec![link("uid:b1")], ..Task::default() },
+            Task { uid: "saturday".into(), title: "Saturday errands".into(), ..Task::default() },
+            Task { uid: "e5".into(), title: "Its card".into(), categories: vec!["health".into()], relations: vec![Relation { kind: "PARENT".into(), uid: "saturday".into(), gap: 0 }], ..Task::default() },
+        ]);
+        let appointment = crate::agenda::EventRef { key: "/data/calendars/local/agenda/a1.ics".into(), uid: "a1".into(), summary: "Dr Martin".into(), links: vec![link("uid:gone-errand")], ..Default::default() };
+        let mut events = loaded.events.clone();
+        events.push(appointment);
+        let loaded = Loaded { tasks, events, projects: vec![project("lumen", true)], ..Loaded::default() };
+        let mut consent = Consent::of(&loaded, true, None);
+        consent.keep_errands(&loaded, Some(&["e4".to_string(), "gone-errand".to_string()].into()));
+        for kept in [links::task_uri("prep"), links::task_uri("mine"), links::event_uri("a1"), links::task_uri("gone-errand"), links::task_uri("e5")] {
+            assert!(consent.is_health(&kept), "{kept}");
+        }
+        assert!(consent.allows(&links::task_uri("saturday")), "a step's tie keeps nothing");
     }
 
     #[test]

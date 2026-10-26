@@ -257,7 +257,15 @@ pub fn task_to_event(task: &Task, others: &[Task], blocks: &[PathBuf], edit: &Ev
     let text = crate::agenda::new_event(edit, zone)?;
     // What the task was tied to, the event is (its blocks aside: they go).
     // Its tie to an appointment it prepared is the task's, which goes (`pairs`).
-    let links: Vec<String> = task.links.iter().filter(|l| !crate::blocks::is_block_link(l) && !crate::pairs::is_pair_link(l)).map(crate::tasks::link_line).collect();
+    let mut links: Vec<String> = task.links.iter().filter(|l| !crate::blocks::is_block_link(l) && !crate::pairs::is_pair_link(l)).map(crate::tasks::link_line).collect();
+    // An errand made an appointment keeps a tie to the errand it was: the
+    // record still knows that UID once the task is gone, so the appointment
+    // stays health whatever it is renamed (`Consent::keep_errands`; the check
+    // of ef8c0ca, item 2). Its title, which names the prescription, is yours to keep or change.
+    let recorded = crate::health::HealthState::errand_uids(&crate::health::HealthState::default_path()).unwrap_or_default();
+    if crate::health::is_errand(task, &recorded) {
+        links.push(crate::tasks::link_line(&crate::tasks::Link { uri: crate::links::task_uri(&task.uid), label: String::new(), rel: "related".into() }));
+    }
     let text = crate::agenda::add_lines(&text, &links).unwrap_or(text);
     let mut gone = vec![PathBuf::from(&task.key)];
     for path in blocks {
