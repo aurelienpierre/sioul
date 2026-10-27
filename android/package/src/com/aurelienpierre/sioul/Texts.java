@@ -815,22 +815,32 @@ public final class Texts
      * that table (AOSP's SmsProvider asks nothing more of it, android16-release).
      * Each part's sender, text, place and time ({@link #segment}), grouped in
      * Rust ({@code texts::arriving_from}). "raw": null when Android gave
-     * nothing, never "none on their way" taken from "not known".
+     * nothing, never "none on their way" taken from "not known". A table
+     * this phone's provider lacks, or refuses, is asked no more in this
+     * process, and said once (the A5 check, L11: said at every quick step).
      */
     static JSONObject arriving(ContentResolver resolver) throws JSONException
     {
+        if (rawRefused)
+            return new JSONObject().put("raw", JSONObject.NULL);
         JSONArray rows = new JSONArray();
         try (Cursor cursor = resolver.query(Uri.parse(RAW), SEGMENT_COLUMNS, SEGMENTS_WAITING, null, null)) {
-            if (cursor == null)
+            if (cursor == null) {
+                rawRefused = true;
                 return new JSONObject().put("raw", JSONObject.NULL);
+            }
             while (cursor.moveToNext())
                 rows.put(segment(of(cursor)));
         } catch (RuntimeException e) {
-            Log.w(TAG, "Texts: the parts on their way could not be read: " + e.getClass().getSimpleName());
+            rawRefused = true;
+            Log.w(TAG, "Texts: the parts on their way could not be read, and are not asked again until Sioul starts again: " + e.getClass().getSimpleName());
             return new JSONObject().put("raw", JSONObject.NULL);
         }
         return new JSONObject().put("raw", rows);
     }
+
+    /** Whether this process's query of the parts on their way failed once: asked no more until Sioul starts again. */
+    private static volatile boolean rawRefused;
 
     /** One part waiting, as Rust reads it ({@code texts::arriving_from}). Pure: android/jvm-checks/TextsCheck.java. */
     static JSONObject segment(Row row) throws JSONException

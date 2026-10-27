@@ -52,33 +52,95 @@ fn remove_reminder_of(key: &str, reminded: i64) {
     }
 }
 
-/// The zone Android says is in force since a change of zone or of the
-/// clock (`sioul_dose_zone`), and when it said so: the doses' keys are made
-/// in it for a while, since the system's zone as Sioul reads it is kept five
-/// minutes (jiff's own), which a hand made at once would key in the old
-/// zone (the A4 check, #2).
-static ZONE_IN_FORCE: std::sync::Mutex<Option<(String, std::time::Instant)>> = std::sync::Mutex::new(None);
+/// The phone's time zone as Android last said it (`sioul_dose_zone`), kept
+/// for both of its processes, the window's and the `:steps` one
+/// (`$XDG_STATE_HOME/sioul/zone.toml`): the system's zone as each process
+/// reads it is kept five minutes (jiff's own), and a hand made meanwhile
+/// would key set-time doses in the old zone, in the process told (the A4
+/// check, #2) or in the other (the A5 check, L2). With when it last changed,
+/// and from which: a dose keyed in the earlier zone is never taken for one
+/// moved (M3).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ZoneSaid {
+    /// The zone Android said last ("Asia/Tokyo").
+    #[serde(default)]
+    pub zone: String,
+    /// The zone before its last change.
+    #[serde(default)]
+    pub was: String,
+    /// When it last changed (Unix seconds; 0: never seen to change).
+    #[serde(default)]
+    pub changed: i64,
+    /// When Android last said it (Unix seconds).
+    #[serde(default)]
+    pub said: i64,
+}
 
-/// Now, in the zone in force: Android's own just after a change, else the system's.
+/// The zone's file, beside the doses' record.
+fn zone_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join("zone.toml")
+}
+
+/// The zone as Android last said it; none said yet, or its file not readable: nothing.
+pub(crate) fn zone_said() -> ZoneSaid {
+    #[cfg(test)]
+    if let Some(said) = ZONE_SAID.with(|said| said.borrow().clone()) {
+        return said;
+    }
+    read_zone(&zone_path())
+}
+
+fn read_zone(path: &std::path::Path) -> ZoneSaid {
+    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+}
+
+/// Android says its zone, at a change of zone or of the clock: kept, with
+/// when it changed and from which when it is another than the one kept (none
+/// kept yet: the one this process reads, the earlier while its cache lasts);
+/// written whole, its bytes on the disk before its name.
+fn note_zone(path: &std::path::Path, zone: &str, now: i64) -> ZoneSaid {
+    let mut said = read_zone(path);
+    let before = if said.zone.is_empty() { jiff::tz::TimeZone::system().iana_name().unwrap_or_default().to_string() } else { said.zone.clone() };
+    if before != zone {
+        said.was = before;
+        said.changed = now;
+    }
+    said.zone = zone.to_string();
+    said.said = now;
+    if let Ok(text) = toml::to_string(&said) {
+        let _ = sioul_core::health::write_synced(path, format!("# The phone's time zone as Android last said it (docs/android.md).\n{text}").as_bytes());
+    }
+    said
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The zone as Android said it, in a test's thread that says one: never
+    /// the file, which other tests read beside it.
+    pub(crate) static ZONE_SAID: std::cell::RefCell<Option<ZoneSaid>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Now, in the zone in force: Android's own for six minutes after it said it, else the system's.
 pub(crate) fn now_here() -> jiff::Zoned {
-    now_in(ZONE_IN_FORCE.lock().ok().and_then(|z| z.clone()), jiff::Zoned::now())
+    now_in(&zone_said(), jiff::Zoned::now())
 }
 
 /// `now` in the zone Android said, for six minutes after it said it (the
 /// system's zone as Sioul reads it is kept five), else as it is; a zone
 /// that does not read changes nothing.
-fn now_in(said: Option<(String, std::time::Instant)>, now: jiff::Zoned) -> jiff::Zoned {
-    let said = said.filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(6 * 60));
-    match said.and_then(|(zone, _)| jiff::tz::TimeZone::get(&zone).ok()) {
+fn now_in(said: &ZoneSaid, now: jiff::Zoned) -> jiff::Zoned {
+    let fresh = (0..6 * 60).contains(&(now.timestamp().as_second() - said.said));
+    match fresh.then(|| jiff::tz::TimeZone::get(&said.zone).ok()).flatten() {
         Some(zone) => now.with_time_zone(zone),
         None => now,
     }
 }
 
 /// The phone's zone changed, or its clock was set (`WakeReceiver`, at
-/// TIMEZONE_CHANGED and TIME_SET): the doses handed at once, their keys made
-/// in the zone in force, `zone` as Java has it (the A4 check, #2: until
-/// then only an alarm keyed in the old zone handed them, when it rang).
+/// TIMEZONE_CHANGED, TIME_SET and the first unlock): the zone kept for both
+/// processes (`ZoneSaid`), and the doses handed at once, their keys made in
+/// it, `zone` as Java has it (the A4 check, #2: until then only an alarm
+/// keyed in the old zone handed them, when it rang).
 ///
 /// # Safety
 /// `zone` is null, or a zero-terminated text valid for the call.
@@ -87,10 +149,8 @@ fn now_in(said: Option<(String, std::time::Instant)>, now: jiff::Zoned) -> jiff:
 pub unsafe extern "C" fn sioul_dose_zone(zone: *const c_char) {
     // SAFETY: `zone` is null or a C string valid for the call, as this function's contract says.
     let zone = unsafe { key_of(zone) };
-    if !zone.is_empty()
-        && let Ok(mut said) = ZONE_IN_FORCE.lock()
-    {
-        *said = Some((zone, std::time::Instant::now()));
+    if !zone.is_empty() {
+        let _ = std::panic::catch_unwind(|| note_zone(&zone_path(), &zone, jiff::Timestamp::now().as_second()));
     }
     let _ = std::panic::catch_unwind(schedule);
 }
@@ -269,8 +329,7 @@ pub unsafe extern "C" fn sioul_string_free(text: *mut c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::now_in;
-    use std::time::{Duration, Instant};
+    use super::{ZoneSaid, note_zone, now_in, read_zone};
 
     /// The A4 check, #2: just after a change of zone, the doses are keyed in
     /// the zone Android says, for six minutes; then, or with a zone that does
@@ -278,16 +337,38 @@ mod tests {
     #[test]
     fn the_zone_android_says_keys_the_doses_for_six_minutes() {
         let now = jiff::Zoned::now();
+        let stamp = now.timestamp().as_second();
         let far = if now.time_zone().iana_name() == Some("Pacific/Auckland") { "America/Havana" } else { "Pacific/Auckland" };
-        let said = |zone: &str, ago: u64| Instant::now().checked_sub(Duration::from_secs(ago)).map(|at| (zone.to_string(), at));
-        let keyed = now_in(said(far, 0), now.clone());
+        let said = |zone: &str, ago: i64| ZoneSaid { zone: zone.to_string(), said: stamp - ago, ..ZoneSaid::default() };
+        let keyed = now_in(&said(far, 0), now.clone());
         assert_eq!(keyed.time_zone().iana_name(), Some(far));
         assert_eq!(keyed.timestamp(), now.timestamp(), "the same instant, in that zone");
-        assert_eq!(now_in(said(far, 5 * 60), now.clone()).time_zone().iana_name(), Some(far), "still within six minutes");
-        if let Some(old) = said(far, 7 * 60) {
-            assert_eq!(now_in(Some(old), now.clone()).time_zone(), now.time_zone(), "past six minutes: the system's");
-        }
-        assert_eq!(now_in(said("Nowhere/Else", 0), now.clone()).time_zone(), now.time_zone(), "a zone that does not read");
-        assert_eq!(now_in(None, now.clone()).time_zone(), now.time_zone());
+        assert_eq!(now_in(&said(far, 5 * 60), now.clone()).time_zone().iana_name(), Some(far), "still within six minutes");
+        assert_eq!(now_in(&said(far, 7 * 60), now.clone()).time_zone(), now.time_zone(), "past six minutes: the system's");
+        assert_eq!(now_in(&said("Nowhere/Else", 0), now.clone()).time_zone(), now.time_zone(), "a zone that does not read");
+        assert_eq!(now_in(&ZoneSaid::default(), now.clone()).time_zone(), now.time_zone());
+    }
+
+    /// The A5 check, L2 and M3: the zone Android says is kept in one file,
+    /// which the other process reads as it is (its own cache of the system's
+    /// zone never in the way), with when it changed and from which; the same
+    /// zone said again (the clock set) changes nothing but when it was said.
+    #[test]
+    fn the_zone_is_kept_for_both_processes_with_when_it_changed() {
+        sioul_core::config::stand_ins_only();
+        let path = sioul_core::config::state_dir().join(format!("zone-test-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let first = note_zone(&path, "Europe/Paris", 1_000);
+        assert_eq!((first.zone.as_str(), first.said), ("Europe/Paris", 1_000));
+        let flown = note_zone(&path, "Asia/Tokyo", 2_000);
+        assert_eq!(flown, ZoneSaid { zone: "Asia/Tokyo".into(), was: "Europe/Paris".into(), changed: 2_000, said: 2_000 });
+        // Read by the other process: the same, from the file alone.
+        assert_eq!(read_zone(&path), flown);
+        assert_eq!(now_in(&read_zone(&path), jiff::Timestamp::from_second(2_060).unwrap().to_zoned(jiff::tz::TimeZone::UTC)).time_zone().iana_name(), Some("Asia/Tokyo"));
+        // The clock set: the zone said again, no change.
+        let set = note_zone(&path, "Asia/Tokyo", 3_000);
+        assert_eq!((set.was.as_str(), set.changed, set.said), ("Europe/Paris", 2_000, 3_000));
+        let _ = std::fs::remove_file(&path);
     }
 }

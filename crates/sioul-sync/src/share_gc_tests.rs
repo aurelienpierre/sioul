@@ -2768,5 +2768,14 @@ fn the_texts_are_read_once_while_they_do_not_change_and_never_in_a_hurry() {
     with_texts(&desk, &folder, &key, NOW + 45 * DAY_MS, &dn);
     assert!(!sealed(&folder, &names[2]));
     assert_eq!(read(), start + 1, "the logs unchanged: not read again");
+    // The same logs under another key (the folder sealed again under another
+    // passphrase, in this process): read again, never named as the first key
+    // named them (the A5 check, L7).
+    let (stores, memory, other) = (stores_with(&desk, &dn, true), Memory::load_all(&desk.memory, &desk.id), [7u8; 32]);
+    let under = |key| Sharing { folder: &folder, computer: &desk.id, key, memory: &desk.memory, files: true, hurry: None };
+    let _ = texts_media(&under(&key), &stores, &memory, &[]);
+    assert_eq!(read(), start + 1, "the first key's, as read");
+    let _ = texts_media(&under(&other), &stores, &memory, &[]);
+    assert_eq!(read(), start + 2, "read again under another key");
     let _ = std::fs::remove_dir_all(&base);
 }

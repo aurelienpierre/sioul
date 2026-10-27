@@ -74,7 +74,8 @@ public final class WakeReceiver extends BroadcastReceiver
                 WakeAlarms.rang(app, missed);
             }
             WakeAlarms.arm(app, action);
-            ask(app, false, action);
+            // The doses too, once unlocked: a change of zone before the first unlock was handed nothing (the A5 check, L3).
+            ask(app, false, action, true);
             return;
         }
         case Intent.ACTION_MY_PACKAGE_REPLACED:

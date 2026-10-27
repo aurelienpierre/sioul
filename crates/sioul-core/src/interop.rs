@@ -179,7 +179,28 @@ pub fn migrate_text(text: &str) -> Option<(String, Mended)> {
         started_changed |= change.0.as_deref() != Some(start_line.as_str());
         starts.insert(start, change);
     }
-    let present: std::collections::BTreeSet<&String> = source.iter().collect();
+    // Each line's component among the calendar's own (a series and each of its
+    // occurrences moved apart, by RECURRENCE-ID, are one each, an alarm in
+    // its event's): a renamed line is dropped only where its own form stands
+    // in the same one (the A5 check, L13: an occurrence holding its series'
+    // lines, as Sioul copies them, lost them).
+    let mut part = Vec::with_capacity(source.len());
+    let (mut depth, mut current) = (0usize, 0usize);
+    for line in &source {
+        let begins = lines::raw_name(line) == "BEGIN";
+        if begins {
+            depth += 1;
+            if depth == 2 {
+                current += 1;
+            }
+        }
+        part.push(if depth >= 2 { current } else { 0 });
+        if !begins && lines::raw_name(line) == "END" {
+            depth = depth.saturating_sub(1);
+        }
+    }
+    let present: std::collections::BTreeSet<(usize, &str)> = source.iter().enumerate().map(|(i, l)| (part[i], l.as_str())).collect();
+    let mut written: std::collections::BTreeSet<(usize, String)> = std::collections::BTreeSet::new();
     for (i, line) in source.iter().enumerate() {
         if let Some((start, kept)) = starts.get(&i) {
             out.extend(start.iter().cloned());
@@ -190,11 +211,12 @@ pub fn migrate_text(text: &str) -> Option<(String, Mended)> {
         let own = own_form(line);
         if own != *line {
             mended.renamed += 1;
-            // Its own form there already (an older build wrote the standard line again beside it): dropped, never doubled.
-            if present.contains(&own) || out.contains(&own) {
+            // Its own form there already, in its component (an older build wrote the standard line again beside it): dropped, never doubled.
+            if present.contains(&(part[i], own.as_str())) || written.contains(&(part[i], own.clone())) {
                 continue;
             }
         }
+        written.insert((part[i], own.clone()));
         out.push(own);
     }
     if mended == Mended::default() {
@@ -384,6 +406,24 @@ mod tests {
             t
         };
         assert_eq!(sorted(tasks::task_of_text(&after, &zone()).unwrap()), sorted(read));
+    }
+
+    /// A repeating event and one of its times moved apart (RECURRENCE-ID),
+    /// which holds its series' lines as Sioul copies them: each keeps its own
+    /// link and paper, rewritten, whatever the other holds (the A5 check,
+    /// L13: the occurrence's lines were dropped as doubles of the series').
+    #[test]
+    fn each_time_of_a_series_keeps_its_own_lines() {
+        let event = |extra: &str, own: &str| format!("BEGIN:VEVENT\r\nUID:weekly\r\n{extra}DTSTAMP:20261020T080000Z\r\nDTSTART:20261029T090000Z\r\nSUMMARY:Weekly\r\n{own}END:VEVENT\r\n");
+        let old = "LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/form.md\r\nREFID:paperwork\r\n";
+        let new = "X-SIOUL-LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/form.md\r\nX-SIOUL-REFID:paperwork\r\n";
+        let calendar = |series: &str, moved: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\n{}{}END:VCALENDAR\r\n", event("RRULE:FREQ=WEEKLY\r\n", series), event("RECURRENCE-ID:20261105T090000Z\r\n", moved));
+        for (series, moved) in [(old, old), (old, new), (new, old)] {
+            let (after, _) = migrate_text(&calendar(series, moved)).unwrap();
+            let count = |line: &str| lines::unfold(&after).iter().filter(|l| *l == line).count();
+            assert_eq!((count("X-SIOUL-LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/form.md"), count("X-SIOUL-REFID:paperwork")), (2, 2), "{after}");
+            assert!(!lines::unfold(&after).iter().any(|l| l.starts_with("LINK") || l.starts_with("REFID")), "{after}");
+        }
     }
 
     /// A start the phone would drop (the same day as the due) is kept by

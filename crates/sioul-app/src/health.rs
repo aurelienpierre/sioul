@@ -104,14 +104,19 @@ fn load_known() -> Option<(Health, bool)> {
     }
 }
 
-/// Whether the sharing holds this device's medicines from going: its file
-/// emptied though Sioul took none out (`share::medicines_held_here`).
+/// Whether this device's health file, read as no medicines though Sioul took
+/// one of them out with no mark, is held from being trusted as none: the
+/// sharing holds that emptying (`share::medicines_held_here`), or this
+/// device is a phone, where nobody edits the file by hand, from its first
+/// read so (the A5 check, L4: until the exchange that began the hold, a
+/// phone was handed an empty list). "Take them out here too" takes them out
+/// in Sioul, marked (`take_out_in_sioul`): trusted then.
 fn emptying_held() -> bool {
     #[cfg(test)]
     if let Some(held) = HELD.with(std::cell::Cell::get) {
         return held;
     }
-    crate::share::medicines_held_here()
+    cfg!(target_os = "android") || crate::share::medicines_held_here()
 }
 
 #[cfg(test)]
@@ -216,12 +221,12 @@ fn change_health<R>(change: impl FnOnce(&mut Health) -> Result<R, String>) -> Re
 }
 
 /// A medicine at set times whose times changed today, after a dose of
-/// today's was marked (taken, or said not taken): that mark and its
-/// reminder carried to the new time that takes its place, the old times
-/// and the new ones paired in their order, so that a dose taken never rings
-/// again at its new time (20:00 taken, its time moved to 21:00: 21:00 is
-/// taken; the A4 check, #6). A dose not marked carries nothing: its new time
-/// rings.
+/// today's was taken: that mark and its reminder carried to the new time
+/// that takes its place, the old times and the new ones paired in their
+/// order, so that a dose taken never rings again at its new time (20:00
+/// taken, its time moved to 21:00: 21:00 is taken; the A4 check, #6). A dose
+/// said not taken, or not marked, carries nothing: its new time rings, and
+/// nothing says "not taken" of a time not come yet (the A5 check, M2).
 fn carry_marks(before: &Health, after: &Health, now: &Zoned) {
     let midnight = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
     let end = midnight.checked_add(Span::new().days(1)).unwrap_or_else(|_| now.clone());
@@ -242,16 +247,11 @@ fn carry_marks(before: &Health, after: &Health, now: &Zoned) {
     }
     let _ = change(|record| {
         for (from, to) in &pairs {
-            let marked = record.taken.contains_key(from) || record.not_taken.contains_key(from);
-            if !marked || record.taken.contains_key(to) || record.not_taken.contains_key(to) {
+            let Some(at) = record.taken.get(from).copied() else { continue };
+            if record.taken.contains_key(to) || record.not_taken.contains_key(to) {
                 continue;
             }
-            if let Some(at) = record.taken.get(from).copied() {
-                record.taken.insert(to.clone(), at);
-            }
-            if let Some(at) = record.not_taken.get(from).copied() {
-                record.not_taken.insert(to.clone(), at);
-            }
+            record.taken.insert(to.clone(), at);
             if let Some(at) = record.reminded.get(from).copied() {
                 record.reminded.entry(to.clone()).or_insert(at);
             }
@@ -267,6 +267,20 @@ fn carry_marks(before: &Health, after: &Health, now: &Zoned) {
 pub(crate) fn mark_removed(ids: &[String]) {
     let now = Timestamp::now().as_second();
     let _ = change_health(|health| {
+        health.mark_removed(ids, now);
+        Ok(())
+    });
+}
+
+/// Medicines taken out of this device's health file in Sioul, marked as
+/// removed (`Health::mark_removed`): "Take them out here too" for those
+/// another device's records took out with no mark (`share::take_out_medicines`),
+/// so that the file, read as none, is trusted as none and its last read
+/// follows, never given in its place (`emptying_held`; the A5 check, L4).
+pub(crate) fn take_out_in_sioul(ids: &[String]) {
+    let now = Timestamp::now().as_second();
+    let _ = change_health(|health| {
+        health.medicines.retain(|m| !ids.contains(&m.id));
         health.mark_removed(ids, now);
         Ok(())
     });
@@ -1743,12 +1757,16 @@ pub(crate) fn alarms_coming() -> Option<String> {
     for back in doses.iter().filter(|d| state.taken_away.get(&d.key).is_some_and(|at| state.reminded.get(&d.key) == Some(at))) {
         replaces.insert(back.key.as_str(), back.key.as_str());
     }
-    // Gone: out of a schedule that would still hold it (due within the half day listed), never one aged out of it.
-    // What replaced it: the dose of its medicine nearest its time, due by now, rung or marked since or not; rung
-    // once, at once, while it is neither, and never another after it (a noon dose left unanswered never rings at
-    // 20:31 for a 20:00 moved to 19:00, once 19:00 rang or was marked).
+    // Gone: out of a schedule that would still hold it (due within the half day listed), never one aged out of it,
+    // nor one gone with the zone (`gone_with_zone`), nor one answered since (taken away while its gesture was half
+    // written, its file moved before its mark: the A6 dose model). What replaced it: the dose of its medicine
+    // nearest its time, due by now, rung or marked since or not; rung once, at once, while it is neither, and never
+    // another after it (a noon dose left unanswered never rings at 20:31 for a 20:00 moved to 19:00, once 19:00
+    // rang or was marked).
     let from = start.timestamp().as_second();
-    for gone in state.taken_away.iter().filter(|(key, at)| state.reminded.get(*key) == Some(at) && !scheduled.contains(key.as_str()) && due_of(key).is_some_and(|due| due >= from)).map(|(key, _)| key.as_str()) {
+    let zoned = keyed_before_zone(&health, &start, &end);
+    let answered = |key: &str| state.taken.contains_key(key) || state.not_taken.contains_key(key);
+    for gone in state.taken_away.iter().filter(|(key, at)| state.reminded.get(*key) == Some(at) && !scheduled.contains(key.as_str()) && due_of(key).is_some_and(|due| due >= from) && !gone_with_zone(&zoned, key, **at) && !answered(key)).map(|(key, _)| key.as_str()) {
         let (Some((id, _)), Some(due)) = (gone.rsplit_once('@'), due_of(gone)) else { continue };
         let nearest = all.iter().filter(|d| d.key.rsplit_once('@').is_some_and(|(other, _)| other == id) && d.at.timestamp().as_second() <= stamp).min_by_key(|d| ((d.at.timestamp().as_second() - due).abs(), d.at.timestamp().as_second()));
         if let Some(dose) = nearest.filter(|d| open(d)) {
@@ -1794,14 +1812,39 @@ pub(crate) fn reminded_gone() -> Option<Vec<(String, i64)>> {
     let end = now.checked_add(Span::new().hours(ALARMS_AHEAD_HOURS)).unwrap_or_else(|_| now.clone());
     let held: std::collections::BTreeSet<String> = health.doses(&start, &end).into_iter().map(|d| d.key).collect();
     let from = start.timestamp().as_second();
+    // Keyed in the zone before its change, and reminded then: gone with the zone, its reminder left as it is (M3).
+    let zoned = keyed_before_zone(&health, &start, &end);
     Some(
         state
             .reminded
             .iter()
-            .filter(|(key, at)| stamp - **at < 26 * 3600 && due_of(key).is_some_and(|due| due >= from) && !held.contains(*key) && !state.taken.contains_key(*key) && !state.not_taken.contains_key(*key) && state.taken_away.get(*key) != Some(at))
+            .filter(|(key, at)| stamp - **at < 26 * 3600 && due_of(key).is_some_and(|due| due >= from) && !held.contains(*key) && !state.taken.contains_key(*key) && !state.not_taken.contains_key(*key) && state.taken_away.get(*key) != Some(at) && !gone_with_zone(&zoned, key, **at))
             .map(|(key, at)| (key.clone(), *at))
             .collect(),
     )
+}
+
+/// The doses as the schedule keyed them in the zone before its last change
+/// (`alarms::ZoneSaid`), over `start..end`, with when it changed; none when
+/// no change of zone is known. A set time is a time of the day in the zone
+/// in force: its key changes with the zone.
+fn keyed_before_zone(health: &Health, start: &Zoned, end: &Zoned) -> Option<(std::collections::BTreeSet<String>, i64)> {
+    let said = crate::alarms::zone_said();
+    if said.changed == 0 || said.was.is_empty() || said.was == said.zone {
+        return None;
+    }
+    let was = jiff::tz::TimeZone::get(&said.was).ok()?;
+    let keys = health.doses(&start.with_time_zone(was.clone()), &end.with_time_zone(was)).into_iter().map(|d| d.key).collect();
+    Some((keys, said.changed))
+}
+
+/// Whether a dose no longer in the schedule is gone with the zone, not moved:
+/// keyed so in the zone before its change, and reminded before it. Its
+/// reminder stays as it is, and nothing replaces it (the A5 check, M3: at
+/// 18:00 in Tokyo, the 08:00 dose of Tokyo's day rang at once for 08:00 in
+/// Paris, answered there, and 20:00 rang two hours later).
+fn gone_with_zone(zoned: &Option<(std::collections::BTreeSet<String>, i64)>, key: &str, reminded: i64) -> bool {
+    zoned.as_ref().is_some_and(|(keys, changed)| reminded < *changed && keys.contains(key))
 }
 
 /// The reminders a hand took away as gone (`reminded_gone`), noted beside
@@ -1931,7 +1974,9 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     // a reminder"): shown somewhere, a reminder (this alarm silent); this
     // alarm plain only when each other device that could have reminded it is
     // known, by its own word, not to have; else why not, said first.
-    let told_now = told();
+    // A dose back in the schedule after its reminder was taken away: every
+    // `shown` of it is that reminder, passed over (`back`; the A5 check, M1).
+    let told_now = told_here(&state);
     let me = this_device();
     // A computer's "closed" taken as its word only after this alarm's own pull went through (C1).
     let pulled = missed.is_none() && PULLED.load(std::sync::atomic::Ordering::Relaxed);
@@ -1963,6 +2008,7 @@ pub(crate) fn alarm_decide(key: &str) -> String {
         Some(said) => format!("{body} {said}"),
         None => body,
     };
+    let (title, body) = said_back(&dose, &state, &now, title, body);
     remind_shown(key, stamp, _held);
     // Shown: looked at again while it may still be shown (a mark elsewhere takes it away).
     answer(true, &title, &body, stamp + SHOWN_EVERY)
@@ -1993,6 +2039,41 @@ fn remind_shown(key: &str, stamp: i64, held: std::sync::MutexGuard<'static, ()>)
         drop(held);
         let _ = crate::share::exchange_here(false);
     });
+}
+
+/// Whether a dose is back in the schedule after a hand took its reminder
+/// away as gone (`HealthState::taken_away`, still its reminded stamp): a
+/// mark taken back, a time changed back, a pause resumed. Its reminder is
+/// due again, and every `shown` of it is the one taken away (the A5 check,
+/// M1: such a dose rang, then was decided silent).
+fn back(state: &HealthState, key: &str) -> bool {
+    state.taken_away.get(key).is_some_and(|at| state.reminded.get(key) == Some(at))
+}
+
+/// What each device did to remind each dose, as read here, the `shown` of
+/// every dose back in the schedule passed over (`back`): in memory only,
+/// never written. None when the file does not read.
+fn told_here(state: &HealthState) -> Option<DoseReminders> {
+    let mut told = told()?;
+    for (key, devices) in &mut told.dose {
+        if back(state, key) {
+            for tried in devices.values_mut() {
+                tried.shown = 0;
+            }
+        }
+    }
+    Some(told)
+}
+
+/// A dose back in the schedule, reminded again: the doubt said, as it may
+/// have been taken without a press of Taken ("Reminded at 14:00 already:
+/// check before you take it."), under the check title. Other words as they are.
+fn said_back(dose: &sioul_core::health::Dose, state: &HealthState, now: &Zoned, title: String, body: String) -> (String, String) {
+    if !back(state, &dose.key) {
+        return (title, body);
+    }
+    let at = state.reminded.get(&dose.key).and_then(|at| Timestamp::from_second(*at).ok()).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    (say("dose-check-title", &[("dose", named(dose))]), format!("{body} {}", say("dose-reminded-before", &[("time", at)])))
 }
 
 /// Whether a dose was reminded already, here (this process showed it:
@@ -4388,7 +4469,7 @@ fn let_go(key: &str) {
 fn still_to_remind(key: &str) -> bool {
     let _held = state_held();
     let state = record();
-    late_reminder_wanted(&state, &records(), key) && !told().is_some_and(|told| told.shown(key))
+    late_reminder_wanted(&state, &records(), key) && !told_here(&state).is_some_and(|told| told.shown(key))
 }
 
 /// The words of a dose's reminder shown late on this computer, the doubt
@@ -4407,7 +4488,8 @@ fn late_words(key: &str, since: i64, why: Option<sioul_sync::notify::Late>) -> O
     let start = now.checked_sub(Span::new().hours(MISSED_HOURS)).unwrap_or_else(|_| now.clone());
     let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
     let dose = load().doses(&start, &end).into_iter().find(|d| d.key == key)?;
-    Some(late_said(&dose, &know(), stamp, since, why))
+    let (title, body) = late_said(&dose, &know(), stamp, since, why);
+    Some(said_back(&dose, &record(), &now, title, body))
 }
 
 /// A late reminder's words: "Check first: …", then its time and why Sioul
@@ -4630,8 +4712,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let alarms = phone_alarms(&knowledge);
     // The sleep or pause the doses waited for, ended now: their reminders count from waking (`news_from`).
     let woken = crate::hours::woken();
-    // What each device did to remind each dose (none: the file does not read here).
-    let told_now = told();
+    // What each device did to remind each dose (none: the file does not read
+    // here), the `shown` of a dose back in the schedule passed over (`back`).
+    let told_now = told_here(&state);
     let answers = records();
     let me = this_device();
     // The handshake (`first_here`): alone (sharing off, or no other device in
@@ -4662,7 +4745,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         // Those that waited come at waking, once (more than half an hour late, Taken asks when).
         let window = crate::hours::woke_from().map_or(GRACE_MINUTES, |since| GRACE_MINUTES.max((stamp - since) / 60 + 1));
         for dose in state.to_remind(&health, &now, window) {
-            if SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
+            // Shown by this process already, but a dose back in the schedule after its reminder went.
+            if !back(&state, &dose.key) && SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
                 continue;
             }
             let due = dose.at.timestamp().as_second();
@@ -4723,6 +4807,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 Some(said) => format!("{body} {said}"),
                 None => body,
             };
+            let (title, body) = said_back(&dose, &state, &now, title, body);
             if let Ok(mut sent) = SENT.lock() {
                 sent.insert(dose.key.clone());
             }
@@ -4928,6 +5013,7 @@ mod tests {
         }
         DEVICE.with(|device| *device.borrow_mut() = None);
         HELD.with(|held| held.set(None));
+        crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = None);
         held
     }
 
@@ -5204,14 +5290,90 @@ mod tests {
         assert!(!coming.iter().any(|(key, _)| *key == lumiel_now) && coming.iter().any(|(key, _)| *key == corvan_now), "{coming:?}");
     }
 
+    /// The A5 check, M3 and L2: a set-time dose reminded in Paris and left
+    /// unmarked, then the phone's zone changed to Tokyo (Android says it, both
+    /// processes read it at once): its key is gone with the zone, not moved,
+    /// so its reminder stays and no dose of Tokyo's day replaces it, even one
+    /// noted as taken away; the doses are keyed in Tokyo, never in Paris.
+    #[test]
+    fn a_change_of_zone_takes_no_reminder_away_and_rings_no_replacement() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let stamp = Timestamp::now().as_second();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        let (paris, tokyo) = (TimeZone::get("Europe/Paris").unwrap(), TimeZone::get("Asia/Tokyo").unwrap());
+        // Reminded two hours ago in Paris; its second time of the day, twelve hours on.
+        let rang = Timestamp::from_second(stamp - 2 * 3600 - stamp % 60).unwrap().to_zoned(paris);
+        let later = rang.checked_add(Span::new().hours(12)).unwrap();
+        std::fs::write(&health_path, format!("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\", \"{}\"]\n", rang.strftime("%H:%M"), later.strftime("%H:%M"))).unwrap();
+        let in_paris = format!("lumiel@{}", rang.timestamp().as_second());
+        HealthState::update(&state_path, stamp, |state| {
+            state.reminded.insert(in_paris.clone(), rang.timestamp().as_second());
+        })
+        .unwrap();
+        // Landed: Android said Tokyo a minute ago, in the file both processes read.
+        crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = Some(crate::alarms::ZoneSaid { zone: "Asia/Tokyo".into(), was: "Europe/Paris".into(), changed: stamp - 60, said: stamp - 60 }));
+        assert_eq!(crate::alarms::now_here().time_zone().iana_name(), Some("Asia/Tokyo"));
+        assert!(!reminded_gone().unwrap().iter().any(|(key, _)| *key == in_paris), "its reminder stays");
+        // Noted as taken away all the same (an earlier build's hand): nothing replaces it.
+        HealthState::update(&state_path, stamp, |state| {
+            state.taken_away.insert(in_paris.clone(), rang.timestamp().as_second());
+        })
+        .unwrap();
+        let coming = coming_now();
+        assert!(coming.iter().all(|(_, tag)| tag.is_empty()), "no replacement: {coming:?}");
+        // Keyed in Tokyo: its second time there, never Paris's.
+        let now = Timestamp::from_second(stamp).unwrap().to_zoned(tokyo);
+        let in_tokyo = load().doses(&now, &now.checked_add(Span::new().hours(24)).unwrap()).into_iter().find(|d| d.key.starts_with("lumiel@") && d.at.strftime("%H:%M").to_string() == later.strftime("%H:%M").to_string()).unwrap().key;
+        assert!(coming.iter().any(|(key, _)| *key == in_tokyo) && !coming.iter().any(|(key, _)| *key == format!("lumiel@{}", later.timestamp().as_second())), "{coming:?}");
+    }
+
+    /// The A5 check, M2: a medicine at a set time whose dose of today was said
+    /// not taken, then its time moved later the same day (08:00 said not
+    /// taken at 10:00, moved to 21:00 at 10:05): nothing carried, the new time
+    /// rings, and nothing says "not taken" of it before it comes.
+    #[test]
+    fn a_set_time_moved_after_its_dose_was_said_not_taken_still_rings() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let now = Zoned::now();
+        let stamp = now.timestamp().as_second();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        // Both within today, whatever the time: an hour after midnight, and two hours before the next.
+        let midnight = now.date().to_zoned(now.time_zone().clone()).unwrap();
+        let (said_at, moved_to) = (midnight.checked_add(Span::new().hours(1)).unwrap(), midnight.checked_add(Span::new().hours(22)).unwrap());
+        let daily = |at: &Zoned| format!("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\"]\n", at.strftime("%H:%M"));
+        std::fs::write(&health_path, daily(&said_at)).unwrap();
+        let key_at = |at: &Zoned| load().doses(&at.checked_sub(Span::new().minutes(1)).unwrap(), &at.checked_add(Span::new().minutes(1)).unwrap()).into_iter().find(|d| d.key.starts_with("lumiel@")).unwrap().key;
+        let before = key_at(&said_at);
+        HealthState::update(&state_path, stamp, |state| {
+            state.not_taken.insert(before.clone(), stamp - 60);
+            state.reminded.insert(before.clone(), stamp - 120);
+        })
+        .unwrap();
+        change_health(|health| {
+            health.medicines[0].schedule = Schedule::Day { times: vec![moved_to.strftime("%H:%M").to_string()], amounts: Default::default() };
+            Ok(())
+        })
+        .unwrap();
+        let after = key_at(&moved_to);
+        let state = HealthState::read(&state_path).unwrap();
+        assert!(!state.not_taken.contains_key(&after) && !state.reminded.contains_key(&after), "nothing carried: {state:?}");
+        assert!(state.not_taken.contains_key(&before), "the answer stays with its own time");
+        assert!(coming_now().iter().any(|(key, _)| *key == after), "the new time rings: {:?}", coming_now());
+    }
+
     /// The A4 check, #8: a reminder a hand took away because its dose left the
     /// schedule comes back with its dose. Corvan every 6 hours, the 14:00 dose
     /// shown on the phone; the 08:00 one marked taken late at 08:30 on the
     /// computer moves it to 14:30, and the phone's next hand takes its
     /// reminder away, noted; the mark taken back, 14:00 is due again: listed
-    /// for Android again, reminded on the computer, decided as not reminded;
-    /// reminded anew, it is reminded. A daily medicine's time changed and
-    /// changed back, and a pause resumed, the same.
+    /// for Android again, reminded on the computer, decided as not reminded,
+    /// its shown on record (the phone's own) passed over: the phone's alarm
+    /// shows it again, the doubt said ("Reminded at 14:00 already"), and the
+    /// computer reminds it (the A5 check, M1); reminded anew, it is reminded.
+    /// A daily medicine's time changed and changed back, and a pause resumed,
+    /// the same.
     #[test]
     fn a_reminder_taken_away_comes_back_with_its_dose() {
         let _files = health_files();
@@ -5227,6 +5389,22 @@ mod tests {
             state.reminded.insert(shown.clone(), two + 1);
         })
         .unwrap();
+        // Shown on the phone, its own word written as `remind_shown` writes it.
+        DEVICE.with(|device| *device.borrow_mut() = Some("phone-1".into()));
+        let showed = |key: &str, at: i64| {
+            tell_mine(key, |mine| {
+                mine.maybe = at;
+                mine.shown = at;
+            })
+        };
+        assert!(showed(&shown, two + 1));
+        // Its reminder shown again: the doubt said, at its time as reminded first.
+        let again = |key: &str, at: i64, name: &str| {
+            let said: serde_json::Value = serde_json::from_str(&alarm_decide(key)).unwrap();
+            let before = say("dose-reminded-before", &[("time", Timestamp::from_second(at).unwrap().to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string())]);
+            assert!(said["show"] == true && said["body"].as_str().is_some_and(|b| b.ends_with(&before)), "{key}: {said}");
+            assert_eq!(said["title"].as_str(), Some(say("dose-check-title", &[("dose", name.to_string())]).as_str()), "{said}");
+        };
         // Marked late elsewhere: the next dose at 14:30; the hand takes 14:00's reminder away.
         std::fs::write(&health_path, every(eight + 1800 + 6 * 3600)).unwrap();
         HealthState::update(&state_path, stamp, |state| {
@@ -5250,12 +5428,14 @@ mod tests {
         let state = HealthState::read(&state_path).unwrap();
         assert!(!state.reminded_now(&shown) && state.to_remind(&load(), &now, 30).iter().any(|d| d.key == shown), "not reminded: the computer reminds it too");
         assert!(!reminded_already(&state, &shown), "the alarm decides it as not reminded");
-        // Reminded anew: reminded, the note ended.
-        HealthState::update(&state_path, stamp, |state| {
-            state.reminded.insert(shown.clone(), stamp);
-            state.taken_away.remove(&shown);
-        })
-        .unwrap();
+        // Its shown on record is the reminder taken away: passed over by the
+        // computer's tick and its late reminder (the A5 check, M1).
+        assert!(told().is_some_and(|told| told.shown(&shown)) && !told_here(&state).is_some_and(|told| told.shown(&shown)), "passed over");
+        assert!(still_to_remind(&shown), "the computer reminds it");
+        // The phone's alarm shows it, the doubt said; reminded anew, the note ended.
+        again(&shown, two + 1, "Corvan");
+        let state = HealthState::read(&state_path).unwrap();
+        assert!(state.reminded_now(&shown) && !state.taken_away.contains_key(&shown), "reminded anew");
         assert!(!coming_now().iter().any(|(key, _)| *key == shown));
         // A daily medicine's time changed after it rang, then changed back; then paused and resumed.
         let rang = now.checked_sub(Span::new().minutes(10)).unwrap();
@@ -5268,12 +5448,15 @@ mod tests {
                 state.taken_away.remove(&key);
             })
             .unwrap();
+            assert!(showed(&key, stamp - 540));
             std::fs::write(&health_path, &away).unwrap();
             let gone = reminded_gone().unwrap();
             assert!(gone.iter().any(|(k, _)| *k == key), "{away}: {gone:?}");
             note_taken_away(&gone);
             std::fs::write(&health_path, daily(&rang, false)).unwrap();
             assert!(coming_now().iter().any(|(k, _)| *k == key), "{away}, then back: armed again");
+            assert!(still_to_remind(&key), "{away}, then back: the computer reminds it");
+            again(&key, stamp - 540, "Lumiel");
         }
     }
 
@@ -5368,6 +5551,38 @@ mod tests {
         assert!(coming_now().iter().all(|(_, tag)| tag.is_empty()), "{:?}", coming_now());
     }
 
+    /// The A6 dose model: a dose whose reminder a hand took away while its
+    /// late Taken was half written (its file moved before its mark), then
+    /// marked: answered, so nothing replaces it, and its next dose, past its
+    /// half hour, is the late question's, never rung late.
+    #[test]
+    fn a_dose_marked_after_its_reminder_went_is_replaced_by_none() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let stamp = Timestamp::now().as_second();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        let every = |from: i64| format!("[[medicine]]\nid = \"corvan\"\nname = \"Corvan\"\n[medicine.schedule]\nevery = \"hours\"\nhours = 6\nfrom = {from}\n");
+        let eight = stamp - 8 * 3600;
+        let first = format!("corvan@{eight}");
+        std::fs::write(&health_path, every(eight)).unwrap();
+        HealthState::update(&state_path, stamp, |state| {
+            state.reminded.insert(first.clone(), eight + 1);
+        })
+        .unwrap();
+        // Taken at 08:30, typed late: the file moved first, a hand in between takes its reminder away.
+        let taken = eight + 1800;
+        std::fs::write(&health_path, every(taken + 6 * 3600)).unwrap();
+        note_taken_away(&reminded_gone().unwrap());
+        assert!(HealthState::read(&state_path).unwrap().taken_away.contains_key(&first));
+        HealthState::update(&state_path, stamp, |state| {
+            state.taken.insert(first.clone(), taken);
+            state.moved.insert(first.clone(), [eight, taken + 6 * 3600]);
+        })
+        .unwrap();
+        let coming = coming_now();
+        assert!(coming.iter().any(|(key, _)| *key == format!("corvan@{}", taken + 6 * 3600)) && coming.iter().all(|(_, tag)| tag.is_empty()), "{coming:?}");
+    }
+
     /// The A4 check, #12: this device's health file emptied by hand or by a
     /// bug (no removal of Sioul's) is never kept as the last read; while the
     /// sharing holds that emptying, that last read is given, said as last
@@ -5403,6 +5618,29 @@ mod tests {
         let _ = std::fs::remove_file(last_read_path(&health_path));
         std::fs::write(&health_path, "# emptied by hand\n").unwrap();
         assert!(load_known().is_none() && alarms_coming().is_none());
+    }
+
+    /// The A5 check, L4: on a phone (or while the sharing holds it) a health
+    /// file read as no medicines, one gone with no mark, gives its last read;
+    /// "Take them out here too" takes them out here in Sioul, marked
+    /// (`take_out_in_sioul`): the file is trusted as none at once, its last
+    /// read following, and no alarm is handed for them.
+    #[test]
+    fn the_word_here_takes_the_medicines_out_marked_and_the_last_read_follows() {
+        let _files = health_files();
+        let health_path = Health::default_path();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        let soon = Zoned::now().checked_add(Span::new().hours(1)).unwrap();
+        let daily = |id: &str| format!("[[medicine]]\nid = \"{id}\"\nname = \"{id}\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\"]\n", soon.strftime("%H:%M"));
+        std::fs::write(&health_path, daily("lumiel") + &daily("corvan")).unwrap();
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.len() == 2));
+        HELD.with(|held| held.set(Some(true)));
+        take_out_in_sioul(&["lumiel".to_string(), "corvan".to_string()]);
+        let file = Health::read(&health_path).unwrap();
+        assert!(file.medicines.is_empty() && ["lumiel", "corvan"].iter().all(|id| file.removed.contains_key(*id)), "{file:?}");
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.is_empty()), "trusted as none");
+        assert!(last_read(&health_path).is_some_and(|copy| copy.medicines.is_empty()), "the last read follows");
+        assert!(coming_now().is_empty(), "{:?}", coming_now());
     }
 
     /// The chain check of e3505f7, must-fix 1: a dose reminded, then moved

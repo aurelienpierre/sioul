@@ -79,11 +79,17 @@ final class DoseAlarms
     /** An entry asked again later by its receiver (sleep, a pause, news awaited): kept at that time while Rust still lists its dose. */
     static final String AGAIN = "again";
     /**
-     * An entry whose alarm rang (DoseReceiver notes it at the broadcast,
-     * under the record's lock): a process's first hand never arms it again,
-     * so that no dose is decided twice at once (the A4 check, #0 and #22).
+     * When an entry's alarm rang (ms; DoseReceiver notes it at the broadcast,
+     * under the record's lock): for `RANG_HOLDS_MS` a process's first hand
+     * never arms it again, so that no dose is decided twice at once (the A4
+     * check, #0 and #22). Past it and still listed, its decision died with
+     * its process (its deadline is 45 seconds; a decision that ends shows it,
+     * asks again, or leaves it unlisted): any hand arms it again within the
+     * half hour, the mark dropped, so that it still rings (the A5 check, L1).
      */
     static final String RANG = "rang";
+    /** How long a rung entry's decision may run: a minute, past the broadcast's 45 seconds. */
+    static final long RANG_HOLDS_MS = 60 * 1000L;
     /**
      * Rust's tag on the dose that replaced one whose reminder was taken away
      * as gone (its key): armed once, at once if its time is past, even past
@@ -247,7 +253,7 @@ final class DoseAlarms
         FileLock held = null;
         try {
             held = lockRecord(context);
-            keepRecord(context, Plan.rangIn(record(context), key));
+            keepRecord(context, Plan.rangIn(record(context), key, System.currentTimeMillis()));
         } catch (IOException e) {
             Log.e(TAG, "Doses: the alarms' record could not be held; its ring not noted. " + e);
         } finally {
@@ -339,7 +345,10 @@ final class DoseAlarms
                 }
                 if (was == null && when < now - GRACE_MS)
                     continue;
-                boolean rang = was != null && was.optLong("at") == when && was.optBoolean(RANG);
+                long rangAt = was != null && was.optLong("at") == when ? was.optLong(RANG) : 0;
+                // Rung within the minute: decided still; rung earlier and still listed: its decision died.
+                boolean deciding = rangAt > now - RANG_HOLDS_MS;
+                boolean died = rangAt > 0 && !deciding;
                 JSONObject entry = new JSONObject();
                 put(entry, "key", key);
                 put(entry, "at", when);
@@ -348,15 +357,16 @@ final class DoseAlarms
                     put(entry, AGAIN, true);
                 if (replaces && when != at)
                     put(entry, REPLACES, true);
-                if (rang)
-                    put(entry, RANG, true);
+                if (deciding)
+                    put(entry, RANG, rangAt);
                 plan.record.put(entry);
                 // A process's first hand arms again what is to come and what
                 // is due within GRACE_MS, which Rust decides when it rings: a
                 // force stop at 07:55, a dose at 08:00, Sioul opened at 08:10
                 // rings it at once (the chain check of e3505f7, low 24); never
-                // one that rang, whose decision may be running still.
-                if (was == null || was.optLong("at") != when || (!armedHere && when >= now - GRACE_MS && !rang))
+                // one that rang within the minute, whose decision may be
+                // running still; one rung before, its decision dead, at any hand.
+                if (was == null || was.optLong("at") != when || (when >= now - GRACE_MS && (died || (!armedHere && !deciding))))
                     plan.arm.add(entry);
             }
             for (String key : before.keySet())
@@ -365,14 +375,14 @@ final class DoseAlarms
             return plan;
         }
 
-        /** The record with a dose's alarm noted as rung (`RANG`). */
-        static JSONArray rangIn(JSONArray kept, String key)
+        /** The record with a dose's alarm noted as rung at `now` (`RANG`). */
+        static JSONArray rangIn(JSONArray kept, String key, long now)
         {
             JSONArray out = new JSONArray();
             for (int i = 0; i < kept.length(); i++) {
                 JSONObject dose = kept.optJSONObject(i);
                 if (dose != null && key.equals(key(dose)))
-                    put(dose, RANG, true);
+                    put(dose, RANG, now);
                 if (dose != null)
                     out.put(dose);
             }

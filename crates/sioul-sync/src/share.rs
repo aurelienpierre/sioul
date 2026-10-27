@@ -1351,10 +1351,6 @@ fn emptying_removals<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option
     removals.into_iter().filter(|entry| !marked.contains(&entry[mark.len()..])).collect()
 }
 
-/// "Take them out everywhere" (where every medicine went from the health
-/// file `file` though Sioul took none out) or "Take them out here too"
-/// (where another device's records take them out so): no longer held, at
-/// the next exchange; waits for an exchange running.
 /// The medicines whose removal is held going out from here (`Memory::medicines_held`), by id:
 /// "Take them out everywhere" marks them as removed in Sioul first (`Health::mark_removed`),
 /// so that their removals travel with their marks and no other device holds them again
@@ -1364,6 +1360,21 @@ pub fn medicines_held(memory: &Path, computer: &str, file: &str) -> Vec<String> 
     Memory::load(memory, computer).medicines_held.get(file).map(|held| held.iter().filter_map(|key| key.strip_prefix(mark.as_str()).map(str::to_string)).collect()).unwrap_or_default()
 }
 
+/// The medicines whose removal is held come from another device
+/// (`Memory::medicines_held_there`), by id: "Take them out here too" takes
+/// them out here first, in Sioul, marked (`Health::mark_removed`), so that
+/// this device's file, read as none, is trusted as none, as one Sioul
+/// emptied (the A5 check, L4: a phone gives its last read while a medicine
+/// went with no mark).
+pub fn medicines_held_there(memory: &Path, computer: &str, file: &str) -> Vec<String> {
+    let mark = format!("medicine{SEP}{MARK}");
+    Memory::load(memory, computer).medicines_held_there.get(file).map(|held| held.iter().filter_map(|entry| entry.strip_prefix(mark.as_str()).map(str::to_string)).collect()).unwrap_or_default()
+}
+
+/// "Take them out everywhere" (where every medicine went from the health
+/// file `file` though Sioul took none out) or "Take them out here too"
+/// (where another device's records take them out so): no longer held, at
+/// the next exchange; waits for an exchange running.
 pub fn release_medicines(memory: &Path, computer: &str, file: &str) -> Result<(), String> {
     let _running = exchange_lock(memory, true)?;
     let mut state = Memory::load_all(memory, computer);
@@ -3287,11 +3298,14 @@ impl Texts {
     }
 }
 
-/// The texts' logs last read in this process, by folder: each log's size
-/// and time, and what was found, so that a log that has not changed is
-/// never opened again (the A4 check, #19 and #20: until then, a whole
-/// exchange decrypted years of texts again each time a content was due).
-type TextsSeen = BTreeMap<PathBuf, (Vec<(PathBuf, u64, i64)>, Texts)>;
+/// The texts' logs last read in this process, by folder and by the key
+/// they were read with (a tag of it, `blobs::name`: never the key): each
+/// log's size and time, and what was found, so that a log that has not
+/// changed is never opened again (the A4 check, #19 and #20: until then, a
+/// whole exchange decrypted years of texts again each time a content was
+/// due), and a folder sealed again under another passphrase is read again,
+/// never named as the earlier key named it (the A5 check, L7).
+type TextsSeen = BTreeMap<(PathBuf, String), (Vec<(PathBuf, u64, i64)>, Texts)>;
 static TEXTS_SEEN: std::sync::Mutex<TextsSeen> = std::sync::Mutex::new(BTreeMap::new());
 
 /// The sealed files the texts name, by name (`blobs::name`): each part of
@@ -3320,7 +3334,8 @@ fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[
             })
             .collect();
         logs.sort();
-        if let Some((_, texts)) = TEXTS_SEEN.lock().ok().and_then(|seen| seen.get(&store.path).filter(|(was, _)| *was == logs).cloned()) {
+        let seen_as = (store.path.clone(), crate::blobs::name(sharing.key, "the texts' logs, as read"));
+        if let Some((_, texts)) = TEXTS_SEEN.lock().ok().and_then(|seen| seen.get(&seen_as).filter(|(was, _)| *was == logs).cloned()) {
             return texts;
         }
         #[cfg(test)]
@@ -3358,7 +3373,7 @@ fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[
         }
         let texts = if whole { Texts::Known(out) } else { Texts::Partial(out) };
         if let Ok(mut seen) = TEXTS_SEEN.lock() {
-            seen.insert(store.path.clone(), (logs, texts.clone()));
+            seen.insert(seen_as, (logs, texts.clone()));
         }
         return texts;
     }

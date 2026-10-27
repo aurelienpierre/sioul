@@ -3856,6 +3856,7 @@ dose-not-known = This dose is not one Sioul knows here: nothing was marked.
 dose-last-known = Your medicines could not be read here: this dose is as last known, check before taking it.
 dose-next-unmoved = Marked taken. Your medicines could not be read here: if its next doses follow the time it is taken, they could not be moved.
 dose-taken-lately = Last taken at { $time }: the next may be taken from { $next }.
+dose-reminded-before = Reminded at { $time } already: check before you take it.
 dose-last-marked = Last marked taken at { $time }.
 dose-marked-later = A later time moves the next dose to that many hours after it: the hours between two doses are kept. An earlier time leaves the next dose where it is.
 dose-already-marked = Already marked taken at { $time }.

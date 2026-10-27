@@ -3874,6 +3874,7 @@ dose-not-known = Cette prise n’est pas une que Sioul connaît ici : rien n�
 dose-last-known = Vos médicaments n’ont pas pu être lus ici : cette prise est celle connue en dernier, vérifiez avant de la prendre.
 dose-next-unmoved = Marquée prise. Vos médicaments n’ont pas pu être lus ici : si ses prochaines prises suivent l’heure où elle est prise, elles n’ont pas pu être déplacées.
 dose-taken-lately = Dernière prise à { $time } : la suivante peut être prise à partir de { $next }.
+dose-reminded-before = Déjà rappelée à { $time } : vérifiez avant de la prendre.
 dose-last-marked = Dernière prise marquée à { $time }.
 dose-marked-later = Une heure plus tardive décale la prise suivante d’autant d’heures après elle : les heures entre deux prises sont gardées. Une heure plus tôt laisse la prise suivante où elle est.
 dose-already-marked = Déjà marquée prise à { $time }.

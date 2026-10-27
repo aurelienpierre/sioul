@@ -2257,6 +2257,22 @@ mod tests {
         local.to_zoned(TimeZone::get("Europe/Paris").unwrap()).unwrap().timestamp().as_second()
     }
 
+    /// An event's two ratings in one line, as Sioul wrote it before
+    /// (semicolons raw: calcard splits it in two values) and as it writes it
+    /// now, escaped (one value, as a phone's account manager sends it back):
+    /// both read whole, on the agenda and in its form (the A5 check, L15).
+    #[test]
+    fn an_event_s_two_ratings_read_raw_and_escaped() {
+        let rated = |cost: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VEVENT\r\nUID:rated\r\nDTSTAMP:20261020T080000Z\r\nDTSTART:20261021T080000Z\r\nDTEND:20261021T090000Z\r\nSUMMARY:Rated\r\nX-SIOUL-COST:{cost}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        for cost in ["COGNITIVE=3;BODY=5", r"COGNITIVE=3\;BODY=5"] {
+            let path = write_temp("rated.ics", &rated(cost));
+            let found = file_occurrences(&path, &calendar(), at("2026-10-21T00:00"), at("2026-10-22T00:00"), &paris());
+            assert_eq!(found.len(), 1, "{cost}");
+            assert_eq!(found[0].demands.costs(), [Some(3), None, None, Some(5)], "{cost}");
+            assert_eq!(edit_of_text(&rated(cost), &paris()).unwrap().demands.costs(), [Some(3), None, None, Some(5)], "{cost}");
+        }
+    }
+
     #[test]
     fn repeats_with_exceptions_and_changes() {
         let path = write_temp("yoga.ics", WEEKLY);

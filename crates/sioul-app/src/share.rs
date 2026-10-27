@@ -704,7 +704,10 @@ pub(crate) fn medicines_held_here() -> bool {
 /// going out from here are marked as removed in Sioul first, in the health
 /// file (`health::mark_removed`): their removals then travel with their
 /// marks, and no other device holds them again until its own word (the A4
-/// check, #10: until then "everywhere" released this device alone).
+/// check, #10: until then "everywhere" released this device alone). Those
+/// held come from another device are taken out here in Sioul, marked
+/// (`health::take_out_in_sioul`): the file, read as none, is trusted as
+/// none, its last read following (the A5 check, L4).
 pub(crate) fn take_out_medicines(file: &str) -> String {
     if file != "data/health.toml" {
         return format!("{file}?");
@@ -713,6 +716,10 @@ pub(crate) fn take_out_medicines(file: &str) -> String {
     let held = share::medicines_held(&memory_path(), &here.id, file);
     if !held.is_empty() {
         crate::health::mark_removed(&held);
+    }
+    let there = share::medicines_held_there(&memory_path(), &here.id, file);
+    if !there.is_empty() {
+        crate::health::take_out_in_sioul(&there);
     }
     quietly(|| share::release_medicines(&memory_path(), &here.id, file).err().unwrap_or_default())
 }

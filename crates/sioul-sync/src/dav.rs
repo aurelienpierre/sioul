@@ -1062,7 +1062,10 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
         report.problems.extend(done.problems.into_iter().map(SyncError::Disk));
     }
     let synced = both_ways(client, &dir, listed, &mut state, &state_path, report, first, until);
-    if calendar && matches!(synced, Ok(true)) {
+    // Whenever the pull went through whole, a refusal at the push or not: one
+    // item refused at every sync never keeps the others from their rewrite,
+    // nor the form from being said done (the A5 check, L12).
+    if calendar && matches!(synced, Ok((true, _))) {
         let whole = state.interop < sioul_core::interop::FORMAT;
         let brought: BTreeSet<String> = state.items.iter().filter(|i| report.brought.contains(&dir.join(&i.file))).map(|i| i.file.clone()).collect();
         let left = upgrade(client, &dir, listed, &mut state, (!whole).then_some(&brought), report);
@@ -1071,7 +1074,10 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
         }
     }
     state.save(&state_path).map_err(SyncError::Disk)?;
-    synced
+    match synced? {
+        (whole, None) => Ok(whole),
+        (_, Some(refused)) => Err(refused),
+    }
 }
 
 /// A calendar item in the form a phone's account manager can send back
@@ -1080,16 +1086,19 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
 /// from before 27 October 2026, an older Sioul's lines (the interop check
 /// of 49a9978, #1). Never a meeting with others, written as its organizer
 /// has it. The file here written so too (`vdir::write_item`, the one door),
-/// so that what is kept is what is sent; one that door refuses is sent as
-/// it is.
+/// so that what is kept is what is sent, but only while it still holds what
+/// was read: a change saved meanwhile (a task ticked) is never written over,
+/// and goes at the next push (the A5 check, L14); one that door refuses is
+/// sent as it is.
 fn own_form_of(kind: Kind, path: &Path, text: String) -> String {
     if kind != Kind::Calendars || sioul_core::agenda::with_others(&text) {
         return text;
     }
-    match sioul_core::interop::migrate_text(&text) {
-        Some((migrated, _)) if vdir::write_item(path, &migrated).is_ok() => migrated,
-        _ => text,
+    let Some((migrated, _)) = sioul_core::interop::migrate_text(&text) else { return text };
+    if !read_text(path).is_ok_and(|now| now == text) {
+        return migrated;
     }
+    if vdir::write_item(path, &migrated).is_ok() { migrated } else { text }
 }
 
 /// The items of a calendar unchanged here since its last sync that are still
@@ -1156,17 +1165,18 @@ fn upgrade(client: &Client, dir: &Path, listed: &Listed, state: &mut State, only
 /// What changed here, sent (on a collection's first turn); then, unless
 /// nothing changed on either side, what changed there, brought until `until`.
 /// The ctag is kept once both went through whole; what the server refused of
-/// an item is said once the rest is done. Whether it is whole.
+/// an item is said once the rest is done. Whether the pull is whole, and
+/// what the server refused at the push, said by the caller after the rest.
 #[allow(clippy::too_many_arguments)]
-fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report, first: bool, until: Option<Instant>) -> Result<bool, SyncError> {
+fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report, first: bool, until: Option<Instant>) -> Result<(bool, Option<SyncError>), SyncError> {
     let mut refetch: BTreeSet<String> = BTreeSet::new();
     let refused = if listed.read_only || !first { None } else { push(client, listed.kind, dir, listed, state, &mut refetch, report)? };
     let unchanged = state.ctag.is_some() && state.ctag == listed.ctag && refetch.is_empty() && refused.is_none();
     if !unchanged && !pull(client, dir, listed, state, state_path, &refetch, report, until)? {
-        return Ok(false);
+        return Ok((false, None));
     }
     state.ctag = listed.ctag.clone();
-    refused.map_or(Ok(true), Err)
+    Ok((true, refused))
 }
 
 fn has_local_changes(dir: &Path, kind: Kind, state: &State) -> bool {
@@ -3031,6 +3041,25 @@ mod tests {
         assert_eq!(&std::fs::read_to_string(&here).unwrap(), there, "kept so here");
     }
 
+    /// The push's own form (`own_form_of`) writes the file only while it
+    /// holds what the push read: a tick saved in between stays as it is, and
+    /// what goes is the earlier text in Sioul's form (the A5 check, L14).
+    #[test]
+    fn the_push_never_writes_its_own_form_over_a_change_made_meanwhile() {
+        home();
+        let dir = folder("own-form", "tasks");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (path, read, ticked) = (dir.join("t.ics"), old_task("t-1", "Task 1"), old_task("t-1", "Task 1, ticked meanwhile"));
+        std::fs::write(&path, &ticked).unwrap();
+        let sent = own_form_of(Kind::Calendars, &path, read.clone());
+        assert!(!crashes_the_phone(&sent) && sent.contains("SUMMARY:Task 1\r\n"), "{sent}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), ticked, "the change made meanwhile stays");
+        // Unchanged since it was read: written in its own form, as sent.
+        std::fs::write(&path, &read).unwrap();
+        let sent = own_form_of(Kind::Calendars, &path, read);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), sent);
+    }
+
     /// Once the list's form is said done: a task in the earlier form moved in
     /// from a list this device keeps alone, and a version put back from
     /// before 27 October 2026 over a task known there, each reach the server
@@ -3057,6 +3086,38 @@ mod tests {
             assert_eq!(&std::fs::read_to_string(folder("moved-in", "tasks").join(name)).unwrap(), there, "kept so here");
         }
         let _ = std::fs::remove_dir_all(own.dir);
+    }
+
+    /// A calendar whose server refuses one item at every push (a task where
+    /// events only go, another program's file): its pull goes on, its three
+    /// events in the earlier form are rewritten over their copies all the
+    /// same and its form said done; one an earlier Sioul writes there later
+    /// is rewritten as the pull brings it, the refusal still said (the A5
+    /// check, L12: the refusal kept the rewrite from ever running).
+    #[test]
+    fn an_item_refused_at_every_push_never_holds_back_the_others_rewrite() {
+        home();
+        let (dav, home) = Dav::start(&["work"]);
+        dav.holds("work", &["VEVENT"]);
+        let old_event = |uid: &str, summary: &str| event(uid, summary).replace("END:VEVENT", "LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/form.md\r\nREFID:paperwork\r\nEND:VEVENT");
+        for n in 0..3 {
+            dav.put("work", &format!("e{n}.ics"), &old_event(&format!("e-{n}"), &format!("Event {n}")));
+        }
+        let here = folder("held-back", "work");
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::write(here.join("task.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:t-bank\r\nDTSTAMP:20261026T001800Z\r\nSUMMARY:Call the bank\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+        let client = client();
+        let refused = |said: SyncError| matches!(&said, SyncError::Said(code, title) if *code == crate::said::REFUSED_EVENTS_ONLY && title == "Call the bank");
+        assert!(refused(sync_one(&client, "held-back", &home, "work").unwrap_err()));
+        for n in 0..3 {
+            let there = &dav.items("work")[&format!("e{n}.ics")];
+            assert!(!crashes_the_phone(there) && there.contains("X-SIOUL-REFID:paperwork"), "rewritten all the same: {there}");
+        }
+        assert_eq!(state_of("held-back", "work").interop, sioul_core::interop::FORMAT, "its form said done");
+        // An earlier Sioul elsewhere writes one more in the earlier form: rewritten as it comes, still refused beside it.
+        dav.put("work", "e3.ics", &old_event("e-3", "Event 3"));
+        assert!(refused(sync_one(&client, "held-back", &home, "work").unwrap_err()));
+        assert!(!crashes_the_phone(&dav.items("work")["e3.ics"]), "brought and rewritten");
     }
 
     /// What its server refuses is said plainly, its title and why: a task in

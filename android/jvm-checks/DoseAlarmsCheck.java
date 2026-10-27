@@ -75,11 +75,11 @@ public final class DoseAlarmsCheck
         process.armedHere = true;
     }
 
-    /** An alarm that rang: out of Android's hands, noted in the record (DoseReceiver, DoseAlarms.rang). */
-    static void rings(Phone phone, String key) throws Exception
+    /** An alarm that rang at `at`: out of Android's hands, noted in the record (DoseReceiver, DoseAlarms.rang). */
+    static void rings(Phone phone, String key, long at) throws Exception
     {
         phone.android.remove(key);
-        phone.record = DoseAlarms.Plan.rangIn(new JSONArray(phone.record), key).toString();
+        phone.record = DoseAlarms.Plan.rangIn(new JSONArray(phone.record), key, at).toString();
     }
 
     /** Rust's tag on a dose that replaced a gone one (`replaces`). */
@@ -157,12 +157,18 @@ public final class DoseAlarmsCheck
         // Lumiel is not armed again (it would be decided twice, its reminder replaced by the fallback).
         Phone both = new Phone();
         hand(both, new Process(), doses("corvan@0800", h0800, "lumiel@0800", h0800), h0755);
-        rings(both, "corvan@0800");
-        rings(both, "lumiel@0800");
+        rings(both, "corvan@0800", h0800);
+        rings(both, "lumiel@0800", h0800);
         Process fresh = new Process();
         hand(both, fresh, doses("lumiel@0800", h0800), h0800 + 5_000);
         expect("rung, decided still: not armed again by a first hand", both.android, "{}");
         expect("rung, kept in the record until reminded", new JSONArray(both.record).length(), 1);
+        // Lumiel's decision died with its process (a crash, a kill): a hand past the minute a
+        // decision may run, a first one or not, arms it again, its mark dropped, and it rings
+        // (the A5 check, L1).
+        hand(both, fresh, doses("lumiel@0800", h0800), h0800 + 2 * MIN);
+        expect("rung, its decision dead: armed again", both.android.get("lumiel@0800"), h0800);
+        expect("its mark dropped", new JSONArray(both.record).getJSONObject(0).has(DoseAlarms.RANG), false);
         // The force stop's dose, never rung, still rings at once at the next opening (above).
         // A correction typed at 14:50 moves Corvan's 14:00 to 14:10, its reminder taken away as gone:
         // corvan@14:10, past the half hour, armed once at once; the next hand arms it no more.
