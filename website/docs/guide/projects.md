@@ -129,7 +129,7 @@ Others do more for working together: every other app here shares a project with 
 
 ### The file {#the-file}
 
-`sioul-projects.toml`, at the root of your notes folder: TOML, one `[[project]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`, `ai`), each with its `[[project.route]]` lines. The file's first name, `sioul-cases.toml`, with `[[case]]` and `[[case.route]]`, reads the same and keeps its names when Sioul writes it; renaming it checks that nothing changes before it writes, and keeps `sioul-cases.toml.before-rename`. A project's tasks and events carry its `id` in `REFID` (RFC 9253 §8.3), so other CalDAV programs keep the grouping.
+`sioul-projects.toml`, at the root of your notes folder: TOML, one `[[project]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`, `ai`), each with its `[[project.route]]` lines. The file's first name, `sioul-cases.toml`, with `[[case]]` and `[[case.route]]`, reads the same and keeps its names when Sioul writes it; renaming it checks that nothing changes before it writes, and keeps `sioul-cases.toml.before-rename`. A project's tasks and events carry its `id` in `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID` under Sioul's own name, which a phone's account manager can send back; `REFID` is read too), so other CalDAV programs keep the grouping.
 
 ### How routes match {#how-routes-match}
 

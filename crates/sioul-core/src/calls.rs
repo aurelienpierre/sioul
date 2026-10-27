@@ -1127,7 +1127,12 @@ pub fn carry_into(own: &Path, java: &[Held], region: Option<&Region>, now_ms: i6
 }
 
 /// Adds lines at the end of a file of this device's own, made yours alone
-/// (0600, in a 0700 folder, on Unix). The caller holds its lock.
+/// (0600, in a 0700 folder, on Unix). The caller holds its lock. A last line
+/// left half written (an append cut short: a dead battery, Sioul killed) is
+/// cut back first, as the sharing's own records are (`share::append`), so
+/// that the next line is never glued to it into one that never opens: in the
+/// texts' log, such a line held every device's cleanup back (the A4 check,
+/// #19).
 pub fn append_private(path: &Path, text: &str) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
@@ -1138,11 +1143,41 @@ pub fn append_private(path: &Path, text: &str) -> Result<(), String> {
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
         builder.create(folder).map_err(fail)?;
     }
+    if let Some(whole) = unfinished(path) {
+        std::fs::OpenOptions::new().write(true).open(path).and_then(|file| file.set_len(whole)).map_err(fail)?;
+    }
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     options.open(path).and_then(|mut file| file.write_all(text.as_bytes())).map_err(fail)
+}
+
+/// Where a file's last whole line ends, when it does not end one: its end
+/// read back a piece at a time, never the file whole. None when it ends a
+/// line, or is empty or not there.
+fn unfinished(path: &Path) -> Option<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    let mut last = [0u8];
+    file.seek(SeekFrom::Start(size.checked_sub(1)?)).ok()?;
+    file.read_exact(&mut last).ok()?;
+    if last[0] == b'\n' {
+        return None;
+    }
+    let mut end = size;
+    while end > 0 {
+        let from = end.saturating_sub(64 << 10);
+        let mut piece = vec![0u8; (end - from) as usize];
+        file.seek(SeekFrom::Start(from)).ok()?;
+        file.read_exact(&mut piece).ok()?;
+        if let Some(at) = piece.iter().rposition(|b| *b == b'\n') {
+            return Some(from + at as u64 + 1);
+        }
+        end = from;
+    }
+    Some(0)
 }
 
 /// A file of the calls' kept but for the lines `drop` names: written beside

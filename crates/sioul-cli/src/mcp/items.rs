@@ -910,9 +910,16 @@ pub fn delete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "deleted": true, "sent": false }) })
 }
 
-/// The other tasks that name `old`, as they are now: what a conversion's ties change, to undo them.
+/// The other tasks that name `old`, as they are now: what a conversion's
+/// ties change, to undo them. Searched in the lines unfolded: a long line
+/// (a wait under Sioul's own name, `X-SIOUL-RELATED-TO`) may fold inside a
+/// UID (the interop check of 49a9978, #3: Undo then lost the tie).
 fn naming(tasks: &[Task], old: &str) -> Vec<(PathBuf, Option<String>)> {
-    tasks.iter().filter(|t| t.uid != old).filter_map(|t| std::fs::read_to_string(&t.key).ok().filter(|text| text.contains(old)).map(|text| (PathBuf::from(&t.key), Some(text)))).collect()
+    tasks
+        .iter()
+        .filter(|t| t.uid != old)
+        .filter_map(|t| std::fs::read_to_string(&t.key).ok().filter(|text| sioul_core::lines::unfold(text).iter().any(|line| line.contains(old))).map(|text| (PathBuf::from(&t.key), Some(text))))
+        .collect()
 }
 
 /// Every file a replacement touches, before it is written: to say it and undo it.

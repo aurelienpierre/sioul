@@ -179,6 +179,7 @@ pub fn migrate_text(text: &str) -> Option<(String, Mended)> {
         started_changed |= change.0.as_deref() != Some(start_line.as_str());
         starts.insert(start, change);
     }
+    let present: std::collections::BTreeSet<&String> = source.iter().collect();
     for (i, line) in source.iter().enumerate() {
         if let Some((start, kept)) = starts.get(&i) {
             out.extend(start.iter().cloned());
@@ -189,6 +190,10 @@ pub fn migrate_text(text: &str) -> Option<(String, Mended)> {
         let own = own_form(line);
         if own != *line {
             mended.renamed += 1;
+            // Its own form there already (an older build wrote the standard line again beside it): dropped, never doubled.
+            if present.contains(&own) || out.contains(&own) {
+                continue;
+            }
         }
         out.push(own);
     }
@@ -234,8 +239,12 @@ pub struct Migrated {
 /// name kept (`vdir::move_item`: its sync sends it there, then takes it out
 /// of the list); an item of a kind the collection does not hold otherwise
 /// left as it is (`Migrated::stranded`). Its caller keeps that it was done
-/// (`FORMAT`), so that it is never done twice.
-pub fn migrate_folder(dir: &Path, components: &[String], events_to: Option<&vdir::Collection>) -> Migrated {
+/// (`FORMAT`), so that it is never done twice. `rewrite` false: the events
+/// moved out alone, the items left as they are, for a sync that sends each
+/// one rewritten over its server's copy (`dav::upgrade`), never as a change
+/// made here (the interop check of 49a9978, #1: a rewrite here met a change
+/// there as "changed on both sides").
+pub fn migrate_folder(dir: &Path, components: &[String], events_to: Option<&vdir::Collection>, rewrite: bool) -> Migrated {
     let mut done = Migrated::default();
     let holds = |component: &str| components.is_empty() || components.iter().any(|c| c.eq_ignore_ascii_case(component));
     let tasks_only = !holds("VEVENT");
@@ -274,7 +283,7 @@ pub fn migrate_folder(dir: &Path, components: &[String], events_to: Option<&vdir
             done.stranded += 1;
             continue;
         }
-        if let Some((migrated, _)) = migrate_text(&text) {
+        if rewrite && let Some((migrated, _)) = migrate_text(&text) {
             match vdir::write_item(&path, &migrated) {
                 Ok(()) => done.rewritten += 1,
                 Err(e) => done.problems.push(e),
@@ -358,6 +367,25 @@ mod tests {
         assert_eq!(migrate_text(BEFORE).unwrap().0, after, "two devices write the same lines");
     }
 
+    /// A link and a project an older build wrote again in RFC 9253's form,
+    /// beside Sioul's own: read once, and the rewrite keeps one line of each,
+    /// never two (the interop check of 49a9978).
+    #[test]
+    fn both_forms_of_one_line_are_one() {
+        let both = BEFORE.replace("REFID:paperwork\r\n", "REFID:paperwork\r\nX-SIOUL-REFID:paperwork\r\nX-SIOUL-LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/rules.md\r\n");
+        let read = tasks::task_of_text(&both, &zone()).unwrap();
+        assert_eq!((read.projects.len(), read.links.len()), (1, 4), "{read:?}");
+        let (after, _) = migrate_text(&both).unwrap();
+        let count = |line: &str| lines::unfold(&after).iter().filter(|l| *l == line).count();
+        assert_eq!((count("X-SIOUL-REFID:paperwork"), count("X-SIOUL-LINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/rules.md")), (1, 1), "{after}");
+        // The same, the links in another order (the line kept is the later one).
+        let sorted = |mut t: tasks::Task| {
+            t.links.sort_by(|a, b| a.uri.cmp(&b.uri));
+            t
+        };
+        assert_eq!(sorted(tasks::task_of_text(&after, &zone()).unwrap()), sorted(read));
+    }
+
     /// A start the phone would drop (the same day as the due) is kept by
     /// Sioul too; one of another value type than its due (a day to start, a
     /// time due: refused by Murena) is kept by Sioul alone, DTSTART gone and
@@ -426,7 +454,7 @@ mod tests {
     fn a_list_s_folder_is_rewritten_and_its_event_moved_out() {
         crate::config::stand_ins_only();
         let account = format!("interop-{}", std::process::id());
-        let list = vdir::create(Kind::Calendars, &account, "Plan", None, &["VTODO"]).unwrap();
+        let list = vdir::create(Kind::Calendars, &account, "Errands", None, &["VTODO"]).unwrap();
         let calendar = vdir::create(Kind::Calendars, &account, "Personal", None, &["VEVENT"]).unwrap();
         std::fs::write(list.dir.join("task.ics"), BEFORE).unwrap();
         let event = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:wrong-place\r\nDTSTAMP:20261021T080000Z\r\nDTSTART:20261029T090000Z\r\nDTEND:20261029T100000Z\r\nSUMMARY:Dentist\r\nLINK;LINKREL=related;VALUE=URI:sioul:task/stand-in-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
@@ -436,14 +464,14 @@ mod tests {
         // The door: no event where tasks only go, no task where events only go.
         assert!(vdir::write_item(&list.dir.join("new-event.ics"), event).is_err());
         assert!(vdir::write_item(&calendar.dir.join("new-task.ics"), BEFORE).is_err());
-        let done = migrate_folder(&list.dir, &list.components, Some(&calendar));
+        let done = migrate_folder(&list.dir, &list.components, Some(&calendar), true);
         assert!(done.problems.is_empty(), "{:?}", done.problems);
         assert_eq!((done.rewritten, done.moved.len()), (2, 1), "{done:?}");
         assert!(!list.dir.join("wrong-place.ics").exists());
         let moved = std::fs::read_to_string(calendar.dir.join("wrong-place.ics")).unwrap();
         assert!(moved.contains("UID:wrong-place") && moved.contains("X-SIOUL-LINK;LINKREL=related;VALUE=URI:sioul:task/stand-in-1"), "{moved}");
         assert_eq!(migrate_text(&std::fs::read_to_string(list.dir.join("task.ics")).unwrap()), None);
-        let theirs = migrate_folder(&calendar.dir, &calendar.components, None);
+        let theirs = migrate_folder(&calendar.dir, &calendar.components, None, true);
         assert_eq!((theirs.meetings, theirs.rewritten), (1, 0), "the meeting left, the moved event rewritten already: {theirs:?}");
         assert_eq!(std::fs::read_to_string(calendar.dir.join("meeting.ics")).unwrap(), meeting);
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&account));
@@ -506,18 +534,23 @@ mod tests {
             if i % 7 == 3 {
                 l.push("CATEGORIES:admin".into());
             }
+            // Two ratings in one line, raw as written before 27 October 2026, or escaped as since.
+            if i % 9 == 4 {
+                l.push(if i % 2 == 0 { "X-SIOUL-COST:COGNITIVE=3;EMOTIONAL=5".into() } else { "X-SIOUL-COST:COGNITIVE=3\\;EMOTIONAL=5".into() });
+                l.push("X-SIOUL-FELT-COST;X-SIOUL-ON=20261020:ANXIETY=3\\;BODY=1".into());
+            }
             for n in 0..concepts {
                 let uri = if i == 26 { tasks::OFFICE_CONCEPT.to_string() } else { format!("{}{}", tasks::KIND_CONCEPT, kinds[(i + n) % kinds.len()]) };
                 l.push(format!("CONCEPT:{uri}"));
             }
             if i % 4 == 2 && i <= 98 {
-                l.push(format!("RELATED-TO;RELTYPE=DEPENDS-ON:plan-{:03}", (i + 1) % 109));
+                l.push(format!("RELATED-TO;RELTYPE=DEPENDS-ON:task-{:03}", (i + 1) % 109));
             }
             if i == 3 || i == 6 {
-                l.push(format!("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:plan-{:03}", i + 10));
+                l.push(format!("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:task-{:03}", i + 10));
             }
             if i % 7 == 5 && i <= 96 {
-                l.push(format!("RELATED-TO;RELTYPE=PARENT:plan-{:03}", i / 2));
+                l.push(format!("RELATED-TO;RELTYPE=PARENT:task-{:03}", i / 2));
             }
             for _ in 0..link_lines {
                 l.push(match links {
@@ -537,14 +570,14 @@ mod tests {
             if i % 11 == 0 {
                 l.extend(["BEGIN:VALARM".into(), "ACTION:DISPLAY".into(), format!("DESCRIPTION:Task {i}"), "TRIGGER:-PT1H".into(), "END:VALARM".into()]);
             }
-            items.push((format!("plan-{i:03}.ics"), wrap("VTODO", &format!("plan-{i:03}"), &l)));
+            items.push((format!("task-{i:03}.ics"), wrap("VTODO", &format!("task-{i:03}"), &l)));
         }
         for n in 1..=3 {
             let l = [format!("SUMMARY:Imported task {n}"), "STATUS:NEEDS-ACTION".into(), "DTSTART;VALUE=DATE:20261028".into(), "DUE:20261030T150000Z".into(), format!("CONCEPT:{}{}", tasks::KIND_CONCEPT, kinds[n])];
-            items.push((format!("plan-mixed-{n}.ics"), wrap("VTODO", &format!("plan-mixed-{n}"), &l)));
+            items.push((format!("task-mixed-{n}.ics"), wrap("VTODO", &format!("task-mixed-{n}"), &l)));
         }
-        let l = ["DTSTART:20261029T090000Z".to_string(), "DTEND:20261029T100000Z".into(), "SUMMARY:Appointment".into(), "LINK;LINKREL=related;VALUE=UID:plan-001".into()];
-        items.push(("plan-event.ics".into(), wrap("VEVENT", "plan-event", &l)));
+        let l = ["DTSTART:20261029T090000Z".to_string(), "DTEND:20261029T100000Z".into(), "SUMMARY:Appointment".into(), "LINK;LINKREL=related;VALUE=UID:task-001".into()];
+        items.push(("task-event.ics".into(), wrap("VEVENT", "task-event", &l)));
         items
     }
 
@@ -584,7 +617,7 @@ mod tests {
             }
             rewritten.push((name.clone(), before.clone(), after));
         }
-        for (name, _, after) in rewritten.iter().filter(|(n, _, _)| n.starts_with("plan-mixed-")) {
+        for (name, _, after) in rewritten.iter().filter(|(n, _, _)| n.starts_with("task-mixed-")) {
             assert!(!after.contains("DTSTART") && after.contains("X-SIOUL-START;VALUE=DATE:20261028"), "{name}: {after}");
         }
         assert_eq!(rewritten.iter().filter(|(_, _, a)| a.contains("X-SIOUL-START")).count(), 8 + 3, "the same-day starts and the three refused");
@@ -607,7 +640,7 @@ mod tests {
                 let what = |t: &tasks::Task| {
                     let relations = sorted(t.relations.iter().map(|r| format!("{} {} {}", r.kind, r.uid, r.gap)).collect());
                     let links = sorted(t.links.iter().map(|l| format!("{} {} {}", l.rel, l.label, l.uri)).collect());
-                    (t.title.clone(), t.notes.clone(), t.start.clone(), t.due.clone(), t.kind.clone(), t.office_hours, sorted(t.projects.clone()), relations, links, t.contacts.len(), t.estimate, t.categories.clone())
+                    (t.title.clone(), t.notes.clone(), t.start.clone(), t.due.clone(), t.kind.clone(), t.office_hours, sorted(t.projects.clone()), relations, links, t.contacts.len(), t.estimate, (t.categories.clone(), format!("{:?} {:?}", t.demands, t.felt)))
                 };
                 assert_eq!(what(&mine), what(&theirs), "{name}: as the phone sends it back");
                 read += 1;

@@ -2022,6 +2022,33 @@ fn a_jobs_file_from_start_to_end() {
     }
 }
 
+/// The interop check of 49a9978, #3: a task that waits for another with a
+/// gap, its line under Sioul's own name long enough to fold inside the
+/// other's UID; that other made an appointment by an agent: the wait goes
+/// (an appointment holds no wait), and Undo brings it back whole, with its
+/// gap, as it brings the task back.
+#[test]
+fn undo_after_an_agent_s_conversion_brings_back_a_tie_folded_in_a_uid() {
+    home();
+    let mut server = server();
+    let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Folded ties", None, &["VTODO"]).unwrap();
+    let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Folded ties' agenda", None, &["VEVENT"]).unwrap();
+    let first = "folded-tie-0123456789abcdefghijk";
+    let task = |uid: &str, summary: &str, more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VTODO\r\nUID:{uid}\r\nDTSTAMP:20261027T080000Z\r\nSUMMARY:{summary}\r\nSTATUS:NEEDS-ACTION\r\n{more}END:VTODO\r\nEND:VCALENDAR\r\n");
+    std::fs::write(list.dir.join("first.ics"), task(first, "Book the hall", "")).unwrap();
+    let wait = format!("X-SIOUL-RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:{first}");
+    let waiting = sioul_core::lines::fold(&[wait.clone()]);
+    assert!(waiting.contains("\r\n "), "folded: {waiting}");
+    std::fs::write(list.dir.join("after.ics"), task("folded-tie-after", "Send the invitations", &waiting)).unwrap();
+    let before = std::fs::read_to_string(list.dir.join("after.ics")).unwrap();
+    let made = call(&mut server, "task_to_event", json!({ "task": first, "start": "2026-11-26T09:00", "end": "2026-11-26T10:00", "calendar": format!("local/{}", calendar.id) }));
+    assert_eq!(made["isError"], false, "{made}");
+    assert!(!sioul_core::lines::unfold(&std::fs::read_to_string(list.dir.join("after.ics")).unwrap()).contains(&wait), "the wait gone with the task");
+    assert!(said_about("Book the hall").put_back(), "Undo");
+    assert_eq!(std::fs::read_to_string(list.dir.join("after.ics")).unwrap(), before, "the tie back, with its gap");
+    assert!(list.dir.join("first.ics").exists(), "and the task");
+}
+
 /// The last change said with these words: tests running beside each other say theirs too.
 fn said_about(words: &str) -> sioul_core::agentwrites::Said {
     sioul_core::agentwrites::since(0).0.into_iter().rev().find(|s| s.line.contains(words)).unwrap_or_else(|| panic!("nothing said about {words}"))

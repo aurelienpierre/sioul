@@ -173,7 +173,7 @@ sioul-core/src/budget.rs	record_preset	1	std::fs::rename(&temporary, path)
 sioul-core/src/budget.rs	change_linked	1	std::fs::write(&temporary, changed)
 sioul-core/src/budget.rs	change_linked	1	std::fs::rename(&temporary, path)
 
-# sioul-core/src/calls.rs: the calls' log and its lines: no item.
+# sioul-core/src/calls.rs: the calls' log and its lines (an append cutting a half-written last line back first): no item.
 sioul-core/src/calls.rs	write	1	write_whole(path, &text)
 sioul-core/src/calls.rs	write_whole	1	std::fs::write(&fresh, text)
 sioul-core/src/calls.rs	write_whole	1	std::fs::rename(&fresh, path)
@@ -181,7 +181,7 @@ sioul-core/src/calls.rs	write_whole	1	std::fs::remove_file(&fresh)
 sioul-core/src/calls.rs	prune_called	1	std::fs::remove_file(path)
 sioul-core/src/calls.rs	prune_called	1	std::fs::write(&fresh, serde_json::Value::Object(kept).to_string())
 sioul-core/src/calls.rs	prune_called	1	std::fs::rename(&fresh, path)
-sioul-core/src/calls.rs	append_private	1	std::fs::OpenOptions::new()
+sioul-core/src/calls.rs	append_private	2	std::fs::OpenOptions::new()
 sioul-core/src/calls.rs	rewrite_lines	2	std::fs::remove_file(&fresh)
 sioul-core/src/calls.rs	rewrite_lines	1	std::fs::rename(&fresh, path)
 sioul-core/src/calls.rs	adopt_older_seen	1	std::fs::remove_file(&older)

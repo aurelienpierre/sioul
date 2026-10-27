@@ -1059,7 +1059,7 @@ mod tests {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let account = "with-others";
-        let from = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT"]).unwrap();
+        let from = vdir::create(Kind::Calendars, account, "Personal", None, &["VEVENT"]).unwrap();
         let to = vdir::create(Kind::Calendars, vdir::LOCAL, "With others mine", None, &["VEVENT"]).unwrap();
         let path = from.dir.join("meeting.ics");
         let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\nSUMMARY:Meeting\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
@@ -1172,7 +1172,7 @@ mod tests {
         }
     }
 
-    /// An event in a server's "Personnel":
+    /// An event in a server's "Personal":
     /// its form saved with a calendar of this device's own moves it there,
     /// and back, one file each time; saved with its own calendar, it stays.
     #[test]
@@ -1180,20 +1180,20 @@ mod tests {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let account = "saved-moves";
-        let personnel = vdir::create(Kind::Calendars, account, "Personnel", None, &["VEVENT", "VTODO"]).unwrap();
+        let personal = vdir::create(Kind::Calendars, account, "Personal", None, &["VEVENT", "VTODO"]).unwrap();
         let mine = vdir::create(Kind::Calendars, vdir::LOCAL, "Saved moves mine", None, &["VEVENT"]).unwrap();
         let id = |c: &Collection| format!("{}/{}", c.account, c.id);
-        let event = personnel.dir.join("dentist.ics");
+        let event = personal.dir.join("dentist.ics");
         std::fs::write(&event, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:saved-1\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T124000Z\r\nSUMMARY:Dentist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
         let form = serde_json::to_string(&agenda::edit_of(&event).unwrap()).unwrap();
-        let stays = write_event(event.to_str().unwrap(), &form, &id(&personnel)).unwrap();
+        let stays = write_event(event.to_str().unwrap(), &form, &id(&personal)).unwrap();
         assert_eq!(stays.path, event, "its own calendar: it stays");
         let moved = write_event(event.to_str().unwrap(), &form, &id(&mine)).unwrap();
         assert!(moved.path.starts_with(&mine.dir) && !event.exists(), "moved there, gone from here");
         assert_eq!(moved.accounts, [account.to_string(), vdir::LOCAL.to_string()], "both accounts told");
-        assert_eq!(personnel.items().len() + mine.items().len(), 1, "never twice");
-        let back = write_event(moved.path.to_str().unwrap(), &form, &id(&personnel)).unwrap();
-        assert!(back.path.starts_with(&personnel.dir) && !moved.path.exists(), "and back");
+        assert_eq!(personal.items().len() + mine.items().len(), 1, "never twice");
+        let back = write_event(moved.path.to_str().unwrap(), &form, &id(&personal)).unwrap();
+        assert!(back.path.starts_with(&personal.dir) && !moved.path.exists(), "and back");
         assert!(std::fs::read_to_string(&back.path).unwrap().contains("UID:saved-1"));
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&mine.dir);

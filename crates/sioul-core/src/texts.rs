@@ -2316,6 +2316,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The A4 check, #19: an append cut short (a dead battery, Sioul killed)
+    /// leaves a last line with no line break; the next append cuts it back
+    /// first, so that it is never glued to the next line into one that never
+    /// opens, which held every device's cleanup back (`share::texts_media`).
+    #[test]
+    fn an_append_cut_short_is_cut_back_before_the_next() {
+        let dir = scratch("cut-short");
+        let log = dir.join("log").join("phone.jsonl");
+        let text = |id: &str, at: i64| Text { id: id.into(), at, direction: "in".into(), with: vec!["+33600000001".into()], ..Text::default() };
+        append(&log, &[text("sms-1@1", 1_000)], &Stand, None).unwrap();
+        std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(&log).unwrap(), b"sealed:2f3b").unwrap();
+        append(&log, &[text("sms-2@2", 2_000)], &Stand, None).unwrap();
+        let read: Vec<String> = read_file::<Text>(&log, &Stand).into_iter().map(|t| t.id).collect();
+        assert_eq!(read, ["sms-1@1", "sms-2@2"], "both whole, the half line gone");
+        assert!(std::fs::read_to_string(&log).unwrap().lines().all(|l| Stand.open(l).is_some()), "every line opens");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A stand-in for the sealer: reversible, and visibly not plain.
     struct Stand;
 
@@ -3144,15 +3162,21 @@ mod tests {
         same(&mut logs);
         assert!(!logs.refresh(&dir, &seal), "nothing changed");
         assert_eq!(opened(), 0);
-        // Two lines added, then half a line being written: the two alone, then the rest.
+        // Two lines added, then half a line being written: the two alone, then the rest. The
+        // halves written raw, as a writer seen in the middle of its write: Sioul's own append
+        // cuts a half line back first (`calls::append_private`).
         append(&a, &[text(3, "Trois."), Text { deleted: NOW + 9, ..text(1, "") }], &seal, None).unwrap();
         let line = format!("{}\n", seal.seal(&serde_json::to_string(&text(4, "Quatre.")).unwrap()));
         let (half, rest) = line.split_at(line.len() / 2);
-        calls::append_private(&a, half).unwrap();
+        let write_raw = |part: &str| {
+            use std::io::Write;
+            std::fs::OpenOptions::new().append(true).open(&a).and_then(|mut file| file.write_all(part.as_bytes())).unwrap();
+        };
+        write_raw(half);
         assert!(logs.refresh(&dir, &seal));
         assert_eq!(opened(), 2, "the lines added, alone");
         same(&mut logs);
-        calls::append_private(&a, rest).unwrap();
+        write_raw(rest);
         assert!(logs.refresh(&dir, &seal));
         assert_eq!(opened(), 1);
         same(&mut logs);

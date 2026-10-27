@@ -54,6 +54,8 @@ extern "C" void sioul_android_account_chosen(const char *name, const char *kind)
 // to sioul_string_free.
 extern "C" char *sioul_alarm_decide(const char *key);
 extern "C" char *sioul_alarm_taken(const char *key);
+// The phone's zone changed or its clock was set (crates/sioul-app/src/alarms.rs): the doses handed again.
+extern "C" void sioul_dose_zone(const char *zone);
 // A button of the time running (crates/sioul-app/src/timenote.rs): the note
 // shown next, as JSON, also given back to sioul_string_free.
 extern "C" char *sioul_time_action(const char *action);
@@ -939,6 +941,11 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_na
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_nativeTaken(JNIEnv *env, jclass, jstring key)
 {
     return answered(env, sioul_alarm_taken(utf8(env, key).constData()));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_nativeZone(JNIEnv *env, jclass, jstring zone)
+{
+    sioul_dose_zone(utf8(env, zone).constData());
 }
 
 // TimeReceiver.java's side: a button of the time running, after DoseAlarms

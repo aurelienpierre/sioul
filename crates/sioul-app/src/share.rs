@@ -691,14 +691,29 @@ fn medicines_of(code: &str) -> Option<MedicinesHeld> {
     Some(MedicinesHeld { file: file.to_string(), text: problem_text(&format!("{code}:{file}")), button: tr().text(button, None) })
 }
 
+/// Whether the sharing holds this device's health file's medicines from
+/// going: gone here though Sioul took none out (`share::medicines_held`), so
+/// that the file, read as none, is never trusted as none (`health::load_known`).
+pub(crate) fn medicines_held_here() -> bool {
+    !share::medicines_held(&memory_path(), &here().id, "data/health.toml").is_empty()
+}
+
 /// "Take them out everywhere" or "Take them out here too": the health
 /// file's medicines held as gone taken out at the next exchange, as you
-/// said (`share::release_medicines`); "" when said, else why not.
+/// said (`share::release_medicines`); "" when said, else why not. Those held
+/// going out from here are marked as removed in Sioul first, in the health
+/// file (`health::mark_removed`): their removals then travel with their
+/// marks, and no other device holds them again until its own word (the A4
+/// check, #10: until then "everywhere" released this device alone).
 pub(crate) fn take_out_medicines(file: &str) -> String {
     if file != "data/health.toml" {
         return format!("{file}?");
     }
     let here = here();
+    let held = share::medicines_held(&memory_path(), &here.id, file);
+    if !held.is_empty() {
+        crate::health::mark_removed(&held);
+    }
     quietly(|| share::release_medicines(&memory_path(), &here.id, file).err().unwrap_or_default())
 }
 
@@ -934,7 +949,13 @@ fn rows_of(leaving: &share::Leaving, named: &dyn Fn(&str) -> String, heard: &dyn
         rows.push(LeavingRow { text, device });
     }
     if leaving.untold.0 > 0 {
-        rows.push(LeavingRow { text: say("share-leaving-untold", &[("count", leaving.untold.0.to_string()), ("size", size_words(leaving.untold.1))]), device: String::new() });
+        let words = if leaving.untold_why == "unreadable" { "share-leaving-untold-unreadable" } else { "share-leaving-untold" };
+        rows.push(LeavingRow { text: say(words, &[("count", leaving.untold.0.to_string()), ("size", size_words(leaving.untold.1))]), device: String::new() });
+    }
+    // Taken from another device, and the texts not all read here: why, and what to do (the A4 check, #18).
+    if leaving.texts.0 > 0 {
+        let words = if leaving.texts_why == "unreadable" { "share-leaving-texts-unreadable" } else { "share-leaving-texts-off" };
+        rows.push(LeavingRow { text: say(words, &[("count", leaving.texts.0.to_string()), ("size", size_words(leaving.texts.1))]), device: String::new() });
     }
     if leaving.in_time.0 > 0 {
         rows.push(LeavingRow { text: say("share-leaving-in-time", &[("count", leaving.in_time.0.to_string()), ("size", size_words(leaving.in_time.1))]), device: String::new() });

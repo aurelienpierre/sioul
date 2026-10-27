@@ -48,6 +48,9 @@ public final class DoseReceiver extends BroadcastReceiver
         new Thread(() -> {
             String answer = null;
             try {
+                // Rung: a first hand in this process never arms it again while it is decided (DoseAlarms.RANG).
+                if (alarm)
+                    DoseAlarms.rang(app, key);
                 DoseAlarms.load(app);
                 answer = alarm ? DoseAlarms.nativeDecide(key) : DoseAlarms.nativeTaken(key);
             } catch (Throwable e) {
@@ -64,6 +67,8 @@ public final class DoseReceiver extends BroadcastReceiver
     {
         private final PendingResult broadcast;
         private boolean late;
+        /** Whether this broadcast put up the reminder to check in Sioul (over nothing shown for its dose). */
+        private boolean fellBack;
         private boolean finished;
 
         Asked(PendingResult broadcast)
@@ -71,14 +76,20 @@ public final class DoseReceiver extends BroadcastReceiver
             this.broadcast = broadcast;
         }
 
-        /** The deadline: an alarm not answered yet says to check in Sioul; the broadcast goes. */
+        /**
+         * The deadline: an alarm not answered yet says to check in Sioul, never over
+         * a reminder its dose shows already (a second decision of a dose rung
+         * twice: the A4 check, #0); the broadcast goes.
+         */
         synchronized void letGo(Context alarm, String key)
         {
             if (finished)
                 return;
             late = true;
-            if (alarm != null)
+            if (alarm != null && !DoseAlarms.showing(alarm, key)) {
                 DoseAlarms.fallback(alarm, key);
+                fellBack = true;
+            }
             finish();
         }
 
@@ -86,7 +97,7 @@ public final class DoseReceiver extends BroadcastReceiver
         {
             try {
                 if (alarm)
-                    decided(context, intent, key, answer, late);
+                    decided(context, intent, key, answer, late && fellBack);
                 else
                     taken(context, intent, key, answer);
             } catch (RuntimeException e) {
@@ -107,20 +118,24 @@ public final class DoseReceiver extends BroadcastReceiver
     /**
      * Rust's decision at a dose's time: the reminder, as Rust says it; or
      * nothing, maybe asked again later (news from another device awaited).
+     * `fellBack`: this broadcast put up the reminder to check in Sioul at its
+     * deadline, over nothing; a late answer that nothing is to show takes
+     * that away, never a reminder shown before it.
      */
-    private static void decided(Context context, Intent intent, String key, String answer, boolean late)
+    private static void decided(Context context, Intent intent, String key, String answer, boolean fellBack)
     {
         String name = text(intent.getStringExtra(DoseAlarms.NAME));
         JSONObject said = parse(answer);
         if (said == null) {
-            DoseAlarms.fallback(context, key);
+            if (!DoseAlarms.showing(context, key))
+                DoseAlarms.fallback(context, key);
             return;
         }
         if (said.optBoolean("show")) {
             String title = said.optString("title");
             DoseAlarms.remind(context, key, title.isEmpty() ? "Sioul" : title, said.optString("body"), name, said.optString("taken"));
             DoseAlarms.reminded(context, key);
-        } else if (late) {
+        } else if (fellBack) {
             // The reminder to check in Sioul, said for nothing.
             DoseAlarms.dismiss(context, key);
         }

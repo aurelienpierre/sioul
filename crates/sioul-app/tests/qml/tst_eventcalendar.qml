@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // An event's calendar, chosen in its editor (EventDialog.qml), on a stand-in
-// for Sioul: an event of a server's "Personnel" could not be moved
+// for Sioul: an event of a server's "Personal" could not be moved
 // to a calendar of the computer's own, nor back: the
 // chooser was folded under "More details", out of sight. It shows now with
 // the details folded, on an event of a calendar it offers, says where the event
@@ -32,16 +32,16 @@ Item {
         property var saved: null
         // Made up: no real calendar, no real person.
         property var offered: [
-            { id: "murena/personnel", name: "Personnel · example.org · events and tasks", color: null },
+            { id: "murena/personal", name: "Personal · example.org · events and tasks", color: null },
             { id: "local/personal", name: "Personal · on this device only", color: null },
             { id: "local/family", name: "Family · on this device only", color: null }
         ]
         property var forms: ({
-            "/calendars/murena/personnel/dentist.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks" },
+            "/calendars/murena/personal/dentist.ics": { calendar: "murena/personal", calendar_name: "Personal · example.org · events and tasks" },
             "/calendars/local/personal/walk.ics": { calendar: "local/personal", calendar_name: "Personal · on this device only" },
             "/calendars/murena/birthdays/ana.ics": { calendar: "murena/birthdays", calendar_name: "Birthdays · example.org" },
-            "/calendars/murena/personnel/meeting.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks", stays: "A meeting with others stays in its calendar." },
-            "/calendars/murena/personnel/kept.ics": { calendar: "murena/personnel", calendar_name: "Personnel · example.org · events and tasks", margins: { before: 25, after: 60 } }
+            "/calendars/murena/personal/meeting.ics": { calendar: "murena/personal", calendar_name: "Personal · example.org · events and tasks", stays: "A meeting with others stays in its calendar." },
+            "/calendars/murena/personal/kept.ics": { calendar: "murena/personal", calendar_name: "Personal · example.org · events and tasks", margins: { before: 25, after: 60 } }
         })
 
         function text(key) {
@@ -114,10 +114,10 @@ Item {
             dialog.close()
         }
 
-        // An event of the server's "Personnel": shown in its calendar, moved
+        // An event of the server's calendar: shown in its calendar, moved
         // to one of this device's own, and back.
         function test_an_event_moves_to_another_calendar() {
-            dialog.edit("/calendars/murena/personnel/dentist.ics", "")
+            dialog.edit("/calendars/murena/personal/dentist.ics", "")
             tryCompare(dialog, "opened", true)
             const box = chooser()
             verify(box !== null, "the chooser is there")
@@ -128,7 +128,7 @@ Item {
             box.activated(1)
             dialog.save()
             verify(mock.saved !== null, "saved")
-            compare(mock.saved.key, "/calendars/murena/personnel/dentist.ics")
+            compare(mock.saved.key, "/calendars/murena/personal/dentist.ics")
             compare(mock.saved.calendar, "local/personal", "the calendar chosen goes with the save")
 
             mock.saved = null
@@ -138,7 +138,7 @@ Item {
             chooser().currentIndex = 0
             chooser().activated(0)
             dialog.save()
-            compare(mock.saved.calendar, "murena/personnel", "back to the server's")
+            compare(mock.saved.calendar, "murena/personal", "back to the server's")
         }
 
         // Opened twice, the second event's calendar is the one said: the box
@@ -148,11 +148,11 @@ Item {
             tryCompare(dialog, "opened", true)
             chooser().currentIndex = 2
             dialog.close()
-            dialog.edit("/calendars/murena/personnel/dentist.ics", "")
+            dialog.edit("/calendars/murena/personal/dentist.ics", "")
             tryCompare(dialog, "opened", true)
             compare(chooser().currentIndex, 0)
             dialog.save()
-            compare(mock.saved.calendar, "murena/personnel", "unchanged: it stays")
+            compare(mock.saved.calendar, "murena/personal", "unchanged: it stays")
         }
 
         // A calendar not offered (read only): no chooser, the event stays.
@@ -168,7 +168,7 @@ Item {
         // in its form, whatever another program wrote (25 min is not among the
         // usual choices), and is saved as it is: never hidden as "unsaid".
         function test_the_time_an_event_keeps_shows() {
-            dialog.edit("/calendars/murena/personnel/kept.ics", "")
+            dialog.edit("/calendars/murena/personal/kept.ics", "")
             tryCompare(dialog, "opened", true)
             verify(dialog.moreShown, "unfolded: it keeps time")
             const before = find(dialog.contentItem, "event-before")
@@ -182,13 +182,13 @@ Item {
 
         // A meeting with others: no chooser, why said, and it stays (F2, 22 October 2026).
         function test_a_meeting_with_others_says_why_it_stays() {
-            dialog.edit("/calendars/murena/personnel/meeting.ics", "")
+            dialog.edit("/calendars/murena/personal/meeting.ics", "")
             tryCompare(dialog, "opened", true)
             verify(!chooser().visible)
             const why = find(dialog.contentItem, "event-stays")
             verify(why.visible && why.text.indexOf("stays") >= 0)
             dialog.save()
-            compare(mock.saved.calendar, "murena/personnel")
+            compare(mock.saved.calendar, "murena/personal")
         }
 
         // A new event goes into the calendar chosen, the first by default.

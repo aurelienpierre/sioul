@@ -82,7 +82,9 @@ public final class WakeReceiver extends BroadcastReceiver
         case Intent.ACTION_TIMEZONE_CHANGED:
         case AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED:
             WakeAlarms.arm(app, action);
-            ask(app, false, action);
+            // The doses' alarms too, keyed in the new zone or for the clock set, in the same
+            // broadcast held open, once the phone is unlocked (the A4 check, #2).
+            ask(app, false, action, Intent.ACTION_TIME_CHANGED.equals(action) || Intent.ACTION_TIMEZONE_CHANGED.equals(action));
             return;
         default:
             // Nothing else is sent here.
@@ -91,6 +93,12 @@ public final class WakeReceiver extends BroadcastReceiver
 
     /** Rust asked, on a thread of its own, the broadcast held open until it answers or Android's deadline nears. */
     private void ask(Context app, boolean fetch, String why)
+    {
+        ask(app, fetch, why, false);
+    }
+
+    /** The same, the doses handed first when `doses` (the zone or the clock changed: DoseAlarms.zoneChanged). */
+    private void ask(Context app, boolean fetch, String why, boolean doses)
     {
         if (!WakeAlarms.unlocked(app))
             return;
@@ -103,6 +111,8 @@ public final class WakeReceiver extends BroadcastReceiver
         final Handler main = new Handler(Looper.getMainLooper());
         main.postDelayed(letGo, DEADLINE_MS);
         new Thread(() -> {
+            if (doses)
+                DoseAlarms.zoneChanged(app);
             WakeAlarms.ask(app, fetch, why);
             main.removeCallbacks(letGo);
             letGo.run();

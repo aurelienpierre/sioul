@@ -3049,6 +3049,18 @@ share-leaving-untold = { $count ->
     [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: this device does not share your texts, or all of notes, papers and the spam filter, and cannot tell whether another file holds the same bytes.
    *[other] The contents of { $count } notes and papers taken out, { $size }, leave two weeks after their last use: this device does not share your texts, or all of notes, papers and the spam filter, and cannot tell whether another file holds the same bytes.
 }
+share-leaving-untold-unreadable = { $count ->
+    [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: one of your texts here does not open, and this device cannot tell whether a picture in a text holds the same bytes.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave two weeks after their last use: one of your texts here does not open, and this device cannot tell whether a picture in a text holds the same bytes.
+}
+share-leaving-texts-off = { $count ->
+    [one] A content this device took from another one, { $size }, stays while it cannot read your texts: Texts is off on this device, and a picture in a text may be the same file. Switch Texts on for this device, and it leaves in its time.
+   *[other] { $count } contents this device took from another one, { $size }, stay while it cannot read your texts: Texts is off on this device, and a picture in a text may be the same file. Switch Texts on for this device, and they leave in their time.
+}
+share-leaving-texts-unreadable = { $count ->
+    [one] A content this device took from another one, { $size }, stays while it cannot read all your texts: one of your texts here does not open, and a picture in a text may be the same file. It stays so that no picture is lost.
+   *[other] { $count } contents this device took from another one, { $size }, stay while it cannot read all your texts: one of your texts here does not open, and a picture in a text may be the same file. They stay so that no picture is lost.
+}
 share-leaving-in-time = { $count ->
     [one] An earlier version, { $size }, leaves two weeks after its last use.
    *[other] { $count } earlier versions and contents used lately, { $size }, leave two weeks after their last use.

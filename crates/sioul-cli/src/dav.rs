@@ -240,8 +240,14 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
         )
     );
     // Some collections failed, the others synced (a calendar shared with you refusing your login…).
+    // An item refused is said without its title: an agent may read this output, and a task's
+    // title may be a health matter (the interop check of 49a9978).
     for problem in &report.problems {
-        eprintln!("{}", crate::plain_lines(&problem.sentence(&s.tr, &account.id)));
+        let said = match problem {
+            sioul_sync::SyncError::Said(code, _) if code.starts_with("sync-said-refused") => sioul_sync::SyncError::Said(code, "…".into()).sentence(&s.tr, &account.id),
+            _ => problem.sentence(&s.tr, &account.id),
+        };
+        eprintln!("{}", crate::plain_lines(&said));
     }
     for conflict in &report.conflicts {
         println!("{}", s.say("dav-conflict", &[("path", crate::one_line(&conflict.display().to_string()))]));

@@ -78,6 +78,18 @@ final class DoseAlarms
     static final long GRACE_MS = 30 * 60 * 1000L;
     /** An entry asked again later by its receiver (sleep, a pause, news awaited): kept at that time while Rust still lists its dose. */
     static final String AGAIN = "again";
+    /**
+     * An entry whose alarm rang (DoseReceiver notes it at the broadcast,
+     * under the record's lock): a process's first hand never arms it again,
+     * so that no dose is decided twice at once (the A4 check, #0 and #22).
+     */
+    static final String RANG = "rang";
+    /**
+     * Rust's tag on the dose that replaced one whose reminder was taken away
+     * as gone (its key): armed once, at once if its time is past, even past
+     * GRACE_MS, and kept at that time (the A4 check, #1).
+     */
+    static final String REPLACES = "replaces";
     /** A reminder is known by its dose's key (its tag) and this number. */
     private static final int REMINDER = 1;
     /** "Taken at 08:03" stays half a day in the shade. */
@@ -94,6 +106,23 @@ final class DoseAlarms
     static native void nativeInit(Context context);
     static native String nativeDecide(String key);
     static native String nativeTaken(String key);
+    static native void nativeZone(String zone);
+
+    /**
+     * The phone's zone changed, or its clock was set (WakeReceiver, on its
+     * thread, the broadcast held open, the phone unlocked): the doses handed
+     * again at once, their keys made in the zone Java has (Rust's own reading
+     * of it lags minutes).
+     */
+    static void zoneChanged(Context context)
+    {
+        try {
+            load(context);
+            nativeZone(java.time.ZoneId.systemDefault().getId());
+        } catch (Throwable e) {
+            Log.e(TAG, "Doses: not handed again after a change of zone. " + e);
+        }
+    }
 
     /**
      * Sioul's library, loaded and started once per process. Android may start
@@ -161,8 +190,10 @@ final class DoseAlarms
                 cancel(context, key);
             for (JSONObject dose : plan.arm)
                 alarm(context, key(dose), dose.optLong("at"), dose.optString("title"));
-            keepRecord(context, plan.record);
+            // Armed: never a first hand again in this process, the record written or not (a full disk:
+            // until 27 October 2026 each hand then armed the last half hour's doses again, the A4 check, #5).
             armedHere = true;
+            keepRecord(context, plan.record);
         } catch (IOException e) {
             Log.e(TAG, "Doses: the alarms' record could not be held; those given before stay. " + e);
             return;
@@ -210,6 +241,33 @@ final class DoseAlarms
         }
     }
 
+    /** A dose's alarm rang (DoseReceiver, at its broadcast): noted in the record, under its lock (`RANG`). */
+    static synchronized void rang(Context context, String key)
+    {
+        FileLock held = null;
+        try {
+            held = lockRecord(context);
+            keepRecord(context, Plan.rangIn(record(context), key));
+        } catch (IOException e) {
+            Log.e(TAG, "Doses: the alarms' record could not be held; its ring not noted. " + e);
+        } finally {
+            release(held);
+        }
+    }
+
+    /** Whether a dose's reminder (or its fallback) is in the shade now. */
+    static boolean showing(Context context, String key)
+    {
+        try {
+            for (android.service.notification.StatusBarNotification shown : context.getSystemService(NotificationManager.class).getActiveNotifications())
+                if (key.equals(shown.getTag()) && shown.getId() == REMINDER)
+                    return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Doses: the shade could not be read. " + e);
+        }
+        return false;
+    }
+
     /** A dose reminded: out of the record, not to ring again after a restart. */
     static synchronized void reminded(Context context, String key)
     {
@@ -238,9 +296,13 @@ final class DoseAlarms
      * its receiver asked (`AGAIN`: sleep, a pause), kept at that time, never
      * cancelled by a list made from its dose's own time (the check of
      * 1b6795e, M6); new or moved, armed; past by more than `GRACE_MS` and
-     * never armed, left alone. A dose no longer listed (marked, reminded,
-     * gone, half a day past): cancelled. This process's first hand arms
-     * again every one still to come, whatever the record says.
+     * never armed, left alone, unless Rust tags it as the dose that replaced
+     * one whose reminder was taken away as gone (`REPLACES`): armed once, at
+     * once, and kept at that time. A dose no longer listed (marked, reminded,
+     * gone, half a day past): cancelled. This process's first hand arms again
+     * every one still to come or due within `GRACE_MS` (a force stop forgets
+     * Android's alarms), but one whose alarm rang (`RANG`), whose decision may
+     * still be running (the A4 check, #0 and #22).
      */
     static final class Plan
     {
@@ -267,30 +329,54 @@ final class DoseAlarms
                 JSONObject was = before.get(key);
                 long when = at;
                 boolean again = false;
+                boolean replaces = !dose.optString(REPLACES).isEmpty();
                 if (was != null && was.optBoolean(AGAIN) && was.optLong("at") > at) {
                     when = was.optLong("at");
                     again = true;
+                } else if (replaces && at < now - GRACE_MS) {
+                    // Past the half hour, replacing a dose whose reminder went: once, at once.
+                    when = was != null && was.optBoolean(REPLACES) ? was.optLong("at") : now;
                 }
                 if (was == null && when < now - GRACE_MS)
                     continue;
+                boolean rang = was != null && was.optLong("at") == when && was.optBoolean(RANG);
                 JSONObject entry = new JSONObject();
                 put(entry, "key", key);
                 put(entry, "at", when);
                 put(entry, "title", dose.optString("title"));
                 if (again)
                     put(entry, AGAIN, true);
+                if (replaces && when != at)
+                    put(entry, REPLACES, true);
+                if (rang)
+                    put(entry, RANG, true);
                 plan.record.put(entry);
                 // A process's first hand arms again what is to come and what
                 // is due within GRACE_MS, which Rust decides when it rings: a
                 // force stop at 07:55, a dose at 08:00, Sioul opened at 08:10
-                // rings it at once (the chain check of e3505f7, low 24).
-                if (was == null || was.optLong("at") != when || (!armedHere && when >= now - GRACE_MS))
+                // rings it at once (the chain check of e3505f7, low 24); never
+                // one that rang, whose decision may be running still.
+                if (was == null || was.optLong("at") != when || (!armedHere && when >= now - GRACE_MS && !rang))
                     plan.arm.add(entry);
             }
             for (String key : before.keySet())
                 if (!listed.contains(key))
                     plan.cancel.add(key);
             return plan;
+        }
+
+        /** The record with a dose's alarm noted as rung (`RANG`). */
+        static JSONArray rangIn(JSONArray kept, String key)
+        {
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < kept.length(); i++) {
+                JSONObject dose = kept.optJSONObject(i);
+                if (dose != null && key.equals(key(dose)))
+                    put(dose, RANG, true);
+                if (dose != null)
+                    out.put(dose);
+            }
+            return out;
         }
 
         /** The record with a dose asked again at `at` (`AGAIN`), its entry made when it had none. */
@@ -303,6 +389,7 @@ final class DoseAlarms
                 if (dose != null && key.equals(key(dose))) {
                     put(dose, "at", at);
                     put(dose, AGAIN, true);
+                    dose.remove(RANG);
                     found = true;
                 }
                 if (dose != null)

@@ -129,7 +129,7 @@ D’autres en font plus pour le travail à plusieurs : chacune des autres appl
 
 ### Le fichier {#the-file}
 
-`sioul-projects.toml`, à la racine de votre dossier de notes : du TOML, un `[[project]]` par projet (`id`, `title`, `kind = "project"` pour celui d’un client, `client`, `rate`, `budget`, `status`, `ai`), chacun avec ses lignes `[[project.route]]`. Le premier nom du fichier, `sioul-cases.toml`, avec `[[case]]` et `[[case.route]]`, se lit de même et garde ses noms quand Sioul l’écrit ; le renommer vérifie que rien ne change avant d’écrire, et garde `sioul-cases.toml.before-rename`. Les tâches et les événements d’un projet portent son `id` dans `REFID` (RFC 9253 §8.3), pour que les autres programmes CalDAV gardent le regroupement.
+`sioul-projects.toml`, à la racine de votre dossier de notes : du TOML, un `[[project]]` par projet (`id`, `title`, `kind = "project"` pour celui d’un client, `client`, `rate`, `budget`, `status`, `ai`), chacun avec ses lignes `[[project.route]]`. Le premier nom du fichier, `sioul-cases.toml`, avec `[[case]]` et `[[case.route]]`, se lit de même et garde ses noms quand Sioul l’écrit ; le renommer vérifie que rien ne change avant d’écrire, et garde `sioul-cases.toml.before-rename`. Les tâches et les événements d’un projet portent son `id` dans `X-SIOUL-REFID` (le `REFID` de la RFC 9253 §8.3 sous le nom propre à Sioul, qu’un gestionnaire de comptes de téléphone peut renvoyer ; `REFID` est lu aussi), pour que les autres programmes CalDAV gardent le regroupement.
 
 ### Comment les règles correspondent {#how-routes-match}
 

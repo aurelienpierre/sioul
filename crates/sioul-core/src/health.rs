@@ -1280,6 +1280,15 @@ pub struct HealthState {
     /// Doses already reminded, by key; kept a week.
     #[serde(default)]
     pub reminded: BTreeMap<String, i64>,
+    /// Reminders a phone took away because their dose had left the schedule
+    /// (moved by a correction or a late Taken elsewhere, its medicine changed
+    /// or paused), by dose key: the reminded stamp they had then. A dose held
+    /// again and unmarked whose stamp here is still its `reminded` one counts
+    /// as not reminded (`reminded_now`): armed, rung and reminded again, as
+    /// any dose not reminded (the A4 check, #8: until then nothing reminded
+    /// it again once its move was undone). Kept while it is that stamp.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub taken_away: BTreeMap<String, i64>,
     /// Doses whose reminder was not shown, or not known shown, while Sioul
     /// ran, by key, when it was tried; kept a week. Not a reminder: such a
     /// dose is still asked about afterwards, under its own heading, since
@@ -1454,14 +1463,23 @@ impl HealthState {
         self.unshown.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
+        let reminded = &self.reminded;
+        self.taken_away.retain(|key, at| reminded.get(key) == Some(at));
         write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
-    /// The doses to remind now: due in the last `minutes`, not taken, not reminded yet.
+    /// Whether a dose is reminded, here or elsewhere, and its reminder still
+    /// stands: never one a phone took away as gone since (`taken_away`), whose
+    /// dose came back.
+    pub fn reminded_now(&self, key: &str) -> bool {
+        self.reminded.get(key).is_some_and(|at| self.taken_away.get(key) != Some(at))
+    }
+
+    /// The doses to remind now: due in the last `minutes`, not taken, not reminded yet (`reminded_now`).
     pub fn to_remind(&self, health: &Health, now: &Zoned, minutes: i64) -> Vec<Dose> {
         let start = now.checked_sub(Span::new().minutes(minutes)).unwrap_or_else(|_| now.clone());
         let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
-        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key)).collect()
+        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded_now(&d.key)).collect()
     }
 
     /// The doses of the last `hours`, past their time by `grace` minutes,
@@ -1472,7 +1490,7 @@ impl HealthState {
     pub fn unanswered(&self, health: &Health, now: &Zoned, hours: i64, grace: i64) -> Vec<Dose> {
         let start = now.checked_sub(Span::new().hours(hours)).unwrap_or_else(|_| now.clone());
         let end = now.checked_sub(Span::new().minutes(grace)).unwrap_or_else(|_| now.clone());
-        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
+        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded_now(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
     }
 
     /// Whether Sioul ran when `key` fell due but did not show its reminder,

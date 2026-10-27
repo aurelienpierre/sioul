@@ -605,9 +605,10 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "X-SIOUL-AREA" => task.area = crate::areas::Area::parse(value).map(|a| a.id()).unwrap_or_default(),
             crate::demands::BEFORE => task.margins.before = crate::demands::minutes_of(value),
             crate::demands::AFTER => task.margins.after = crate::demands::minutes_of(value),
-            crate::demands::COST => task.demands.read_cost(value),
+            // Escaped (written so since 27 October 2026, and as a phone sends it back) or raw: the same ratings.
+            crate::demands::COST => task.demands.read_cost(&lines::unescape(value)),
             crate::demands::GAIN => task.demands.read_gain(value),
-            name @ (crate::demands::FELT_COST | crate::demands::FELT_GAIN) => felt.push((name.to_string(), lines::param(line, crate::demands::FELT_ON).and_then(|d| crate::demands::felt_date(&d)), value.to_string())),
+            name @ (crate::demands::FELT_COST | crate::demands::FELT_GAIN) => felt.push((name.to_string(), lines::param(line, crate::demands::FELT_ON).and_then(|d| crate::demands::felt_date(&d)), lines::unescape(value))),
             ESTIMATE_FIRST => task.estimate_first = minutes_of(value).and_then(|m| u32::try_from(m).ok()).filter(|m| *m > 0),
             AT => task.at = zoned(line, zone).map(|z| z.strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default(),
             "LINK" => {
@@ -617,10 +618,18 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
                 {
                     task.due_written = day.to_string();
                 }
-                task.links.push(link);
+                // Both forms of one link (an older build wrote RFC 9253's beside Sioul's own): one link.
+                if !task.links.contains(&link) {
+                    task.links.push(link);
+                }
             }
             "CONTACT" => task.contacts.push(contact(line)),
-            "REFID" => task.projects.push(lines::unescape(value.trim())),
+            "REFID" => {
+                let project = lines::unescape(value.trim());
+                if !task.projects.contains(&project) {
+                    task.projects.push(project);
+                }
+            }
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
@@ -1079,8 +1088,10 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
         }
     }
     if changed.demands {
+        // As text, its semicolons escaped: a phone's account manager sends an X- property back
+        // so, and the reader unescapes either (the interop check of 49a9978, #2).
         if edit.demands.has_cost() {
-            out.push(format!("{}:{}", crate::demands::COST, edit.demands.cost_value()));
+            out.push(format!("{}:{}", crate::demands::COST, lines::escape(&edit.demands.cost_value())));
         }
         if let Some(gain) = edit.demands.gain {
             out.push(format!("{}:{gain}", crate::demands::GAIN));
@@ -1275,7 +1286,7 @@ pub fn set_felt(text: &str, felt: &crate::demands::Demands, on: Date, now: &Zone
     let day = on.strftime("%Y%m%d").to_string();
     let mut added = Vec::new();
     if felt.has_cost() {
-        added.push(format!("{FELT_COST};{FELT_ON}={day}:{}", felt.cost_value()));
+        added.push(format!("{FELT_COST};{FELT_ON}={day}:{}", lines::escape(&felt.cost_value())));
     }
     if let Some(gain) = felt.gain {
         added.push(format!("{FELT_GAIN};{FELT_ON}={day}:{gain}"));
@@ -1592,11 +1603,11 @@ mod tests {
         let task = task_of_text(&made, &paris()).unwrap();
         // Body and senses written and read back.
         let body = apply(&made, &TaskEdit { demands: Demands { anxiety: Some(2), body: Some(5), ..Demands::default() }, ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
-        assert!(body.contains("X-SIOUL-COST:ANXIETY=2;BODY=5") && !body.contains("X-SIOUL-ENERGY"), "usual: no line: {body}");
+        assert!(body.contains("X-SIOUL-COST:ANXIETY=2\\;BODY=5") && !body.contains("X-SIOUL-ENERGY"), "usual: no line: {body}");
         let task = task_of_text(&body, &paris()).unwrap();
         assert_eq!((task.demands.body, task.energy.as_str()), (Some(5), ""));
         // A file whose word disagrees with its costs (an older Sioul): set right at the next save.
-        let stale = body.replace("X-SIOUL-COST:ANXIETY=2;BODY=5", "X-SIOUL-COST:ANXIETY=2;BODY=5\r\nX-SIOUL-ENERGY:HEAVY");
+        let stale = body.replace("X-SIOUL-COST:ANXIETY=2\\;BODY=5", "X-SIOUL-COST:ANXIETY=2\\;BODY=5\r\nX-SIOUL-ENERGY:HEAVY");
         let task = task_of_text(&stale, &paris()).unwrap();
         assert_eq!(task.energy, "heavy");
         let fixed = apply(&stale, &TaskEdit::of(&task), &paris(), &now()).unwrap();
@@ -1612,7 +1623,7 @@ mod tests {
         let day = |d: i8| Date::constant(2026, 10, d);
         let felt = Demands { anxiety: Some(3), body: Some(1), gain: Some(6), ..Demands::default() };
         let rated = set_felt(LETTER, &felt, day(6), &now()).unwrap();
-        assert!(rated.contains("X-SIOUL-FELT-COST;X-SIOUL-ON=20261006:ANXIETY=3;BODY=1") && rated.contains("X-SIOUL-FELT-GAIN;X-SIOUL-ON=20261006:6"), "{rated}");
+        assert!(rated.contains("X-SIOUL-FELT-COST;X-SIOUL-ON=20261006:ANXIETY=3\\;BODY=1") && rated.contains("X-SIOUL-FELT-GAIN;X-SIOUL-ON=20261006:6"), "{rated}");
         assert!(rated.contains("X-OTHER-APP:keep me") && rated.contains("BEGIN:VALARM"));
         let task = task_of_text(&rated, &paris()).unwrap();
         assert_eq!(task.felt.len(), 1);

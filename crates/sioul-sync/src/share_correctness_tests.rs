@@ -1592,6 +1592,115 @@ fn the_medicines_removed_in_sioul_go_and_a_hold_ends_when_asked() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The A4 check, #9 and #10: a second emptying while a hold stands holds the
+/// medicines added since too (until A5 their removals went, and they were
+/// lost on both devices); and the word that ends it, "Take them out everywhere", marks
+/// the held ones as removed in Sioul first (`medicines_held`,
+/// `Health::mark_removed`, as the window does), so that the other device
+/// takes them out with no word of its own.
+#[test]
+fn a_second_emptying_is_held_too_and_the_word_takes_them_out_everywhere() {
+    use sioul_core::health::{Health, Medicine, Schedule};
+    let base = scratch("medicines-second-emptying");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let medicine = |id: &str| Medicine { id: id.into(), name: id.into(), dose: "1 tablet".into(), schedule: Schedule::Day { times: vec!["08:00".into()], amounts: Default::default() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+    let ids = |c: &Computer| {
+        let mut ids = Health::read(&c.path("data/health.toml")).map(|h| h.medicines.iter().map(|m| m.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
+        ids.sort();
+        ids
+    };
+    let minute = std::cell::Cell::new(0i64);
+    let round = |c: &Computer| {
+        minute.set(minute.get() + 1);
+        c.exchange(&folder, &key, NOW + minute.get() * MINUTE)
+    };
+    let empty_by_hand = |c: &Computer| {
+        let mut by_hand = Health::read(&c.path("data/health.toml")).unwrap();
+        by_hand.medicines.clear();
+        by_hand.save(&c.path("data/health.toml")).unwrap();
+    };
+    Health { medicines: vec![medicine("lumiel"), medicine("corvan")], ..Health::default() }.save(&desk.path("data/health.toml")).unwrap();
+    round(&desk);
+    round(&phone);
+    empty_by_hand(&desk);
+    round(&desk);
+    round(&phone);
+    assert_eq!(ids(&phone), ["corvan", "lumiel"], "held");
+    // Mirel added on the desk while the hold stands, then the file emptied by hand again.
+    Health::change(&desk.path("data/health.toml"), |h| {
+        h.medicines.push(medicine("mirel"));
+        Ok(())
+    })
+    .unwrap();
+    round(&desk);
+    round(&phone);
+    assert_eq!(ids(&phone), ["corvan", "lumiel", "mirel"]);
+    empty_by_hand(&desk);
+    let said = round(&desk);
+    assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied:")), "{said:?}");
+    round(&phone);
+    assert_eq!(ids(&phone), ["corvan", "lumiel", "mirel"], "the one added since held too");
+    let mut held = medicines_held(&desk.memory, &desk.id, "data/health.toml");
+    held.sort();
+    assert_eq!(held, ["corvan", "lumiel", "mirel"]);
+    // "Take them out everywhere" on the desk, as the window says it: marked first, then released.
+    Health::change(&desk.path("data/health.toml"), |h| {
+        h.mark_removed(&held, NOW / 1000);
+        Ok(())
+    })
+    .unwrap();
+    release_medicines(&desk.memory, &desk.id, "data/health.toml").unwrap();
+    round(&desk);
+    let said = round(&phone);
+    assert!(ids(&phone).is_empty(), "taken out on the phone too, with no word of its own: {said:?}");
+    assert!(!said.problems.iter().any(|p| p.contains("medicines-emptied")), "{said:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The A4 check, #13 and #26: a medicine id typed by hand with a letter
+/// that is not ASCII, its removal's mark going a week later: never cut
+/// inside a letter (until A5, an exchange panicked at every turn).
+#[test]
+fn a_hand_typed_medicine_id_never_cuts_a_letter() {
+    use sioul_core::health::{Health, Medicine, Schedule};
+    let base = scratch("medicines-letters");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let medicine = |id: &str| Medicine { id: id.into(), name: id.into(), dose: "1 tablet".into(), schedule: Schedule::Day { times: vec!["08:00".into()], amounts: Default::default() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+    let minute = std::cell::Cell::new(0i64);
+    let round = |c: &Computer| {
+        minute.set(minute.get() + 1);
+        c.exchange(&folder, &key, NOW + minute.get() * MINUTE)
+    };
+    let odd = ["aé", "aéb", "abé", "aœ", "aê"];
+    Health { medicines: odd.iter().map(|id| medicine(id)).chain([medicine("lumiel")]).collect(), ..Health::default() }.save(&desk.path("data/health.toml")).unwrap();
+    round(&desk);
+    round(&phone);
+    // Taken out in Sioul, marked; then the marks gone (their week over): their removals travel.
+    Health::change(&desk.path("data/health.toml"), |h| {
+        let gone: Vec<String> = odd.iter().map(|id| id.to_string()).collect();
+        h.medicines.retain(|m| m.id == "lumiel");
+        h.mark_removed(&gone, NOW / 1000);
+        Ok(())
+    })
+    .unwrap();
+    round(&desk);
+    round(&phone);
+    Health::change(&desk.path("data/health.toml"), |h| {
+        h.removed.clear();
+        Ok(())
+    })
+    .unwrap();
+    round(&desk);
+    round(&phone);
+    round(&phone);
+    assert_eq!(Health::read(&phone.path("data/health.toml")).unwrap().medicines.len(), 1);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// H5 of the check of 1b6795e, the other way: another device's records take
 /// every medicine out of the health file here though its Sioul took none
 /// out (an older Sioul, a file emptied there by hand): held here, their

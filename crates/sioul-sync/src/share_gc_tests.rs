@@ -2559,3 +2559,214 @@ fn a_text_s_picture_taken_as_a_paper_s_stays_while_a_text_names_it() {
     assert!(sealed(&folder, &medium));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A picture a text brought, sealed by the phone's texts as `texts::store`
+/// seals them (`blobs::put`: no device's own), named by a text in the
+/// phone's log when `text` (its id); its sealed file's name.
+fn texts_picture(base: &Path, folder: &Path, key: &[u8; 32], phone: &Computer, bytes: &[u8], text: Option<&str>) -> String {
+    use sioul_core::texts;
+    let path = base.join("picture");
+    std::fs::write(&path, bytes).unwrap();
+    let (hash, size) = crate::blobs::hash_file(&path).unwrap();
+    crate::blobs::put(folder, key, &path, &hash).unwrap();
+    if let Some(id) = text {
+        let seal = crate::textseal::TextSeal::new(key);
+        let own = texts::own_file(&phone.roots.data.join(texts::FOLDER), texts::LOG, &phone.id);
+        let part = texts::Part { seq: 0, ct: "image/jpeg".into(), hash: hash.clone(), size, state: "here".into(), ..texts::Part::default() };
+        let text = texts::Text { id: id.into(), at: NOW, direction: "in".into(), with: vec!["+33199001234".into()], parts: vec![part], ..texts::Text::default() };
+        let line_id = |t: &texts::Text| t.line_id();
+        texts::append(&own, std::slice::from_ref(&text), &seal, Some(&line_id)).unwrap();
+    }
+    crate::blobs::name(key, &hash)
+}
+
+/// The A4 check, #17, #21 and #23: a desk that shares notes and papers but
+/// not the texts, beside a phone (Texts is off on each device until it is
+/// switched on there, so the desk cannot read them): its own contents go in
+/// their time all the same, a note's earlier version and a recording taken
+/// out of the notes folder (sealed from its own files: no text brought
+/// them), two weeks after their last use, as Settings says; only a content
+/// it took as its own from the phone (a text's picture, kept as a paper here
+/// too) waits for the texts, said with why and what to do, and goes once
+/// Texts is switched on there and no text names it. Until A5 nothing of the
+/// desk's went by time beside a phone without the texts, and every take-out
+/// stayed in the folder, so on the server, for good.
+#[test]
+fn a_desk_without_the_texts_lets_its_own_contents_go_in_their_time() {
+    let base = scratch("gc-desk-no-texts");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    let song = b"a recording, fiction\n".repeat(400);
+    let picture = b"a picture a text brought, fiction\n".repeat(50);
+    put(&dn, "plans.md", b"# Plans, first\n");
+    put(&dn, "scenes/song.mp3", &song);
+    put(&dn, "scenes/kept.txt", b"stays: a folder emptied is unknown, not gone\n");
+    put(&dn, "papers/lease.pdf", b"%PDF-1.4 a lease, fiction\n");
+    put(&dn, "stays.md", b"# Stays\n");
+    put(&pn, "journal.md", b"# The phone's\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    let photo = texts_picture(&base, &folder, &key, &phone, &picture, None);
+    with_texts(&phone, &folder, &key, NOW + MINUTE, &pn);
+    // The text's picture kept as a paper here: the desk takes it as its own (`fresh_again`).
+    put(&dn, "papers/copy.jpg", &picture);
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    let (first, recording) = (content_name(&base, &key, b"# Plans, first\n"), content_name(&base, &key, &song));
+    let sealed_here = Memory::load_all(&desk.memory, &desk.id).sealed;
+    assert!(sealed_here.adopted.contains(&photo) && !sealed_here.adopted.contains(&recording), "only the text's taken as its own: {:?}", sealed_here.adopted);
+    // Replaced, removed, and the copy removed; read on the phone.
+    put(&dn, "plans.md", b"# Plans, second\n");
+    std::fs::remove_file(dn.join("scenes/song.mp3")).unwrap();
+    std::fs::remove_file(dn.join("papers/copy.jpg")).unwrap();
+    for minutes in [3, 14, 15] {
+        with_notes(&desk, &folder, &key, NOW + minutes * MINUTE, &dn);
+    }
+    with_texts(&phone, &folder, &key, NOW + 16 * MINUTE, &pn);
+    with_notes(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    assert!(!dn.join("scenes/song.mp3").exists() && sealed(&folder, &recording) && sealed(&folder, &photo), "the texts not read here: neither at once");
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.untold.0 == 1 && said.texts == (1, sealed_here.mine[&photo].1) && said.texts_why == "off" && said.in_time.0 == 1, "{said:?}");
+    // Two weeks on, their files as old as the sweep's care asks: the desk's own go, the text's waits.
+    for name in [&first, &recording, &photo] {
+        sealed_long_ago(&folder, name);
+    }
+    with_notes(&desk, &folder, &key, NOW + 15 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &first), "an earlier version, in its time");
+    assert!(!sealed(&folder, &recording), "the recording taken out, in its time");
+    assert!(sealed(&folder, &photo), "taken from the phone: may be a text's picture");
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.untold.0 == 0 && said.texts.0 == 1 && said.texts_why == "off" && said.in_time.0 == 0, "{said:?}");
+    // Texts switched on here, and no text names it: it goes.
+    with_texts(&desk, &folder, &key, NOW + 15 * DAY_MS + MINUTE, &dn);
+    assert!(!sealed(&folder, &photo), "the texts read: no text names it");
+    assert_eq!(leaving(&desk.memory, &desk.id).texts.0, 0);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The A4 check, #19 and #23: one line of a phone's texts that does not open
+/// (two lines glued by an append cut short, before A5 cut such a line back)
+/// holds back only what this device took from another one, said so; the
+/// media of the lines that open are known still, and every other content
+/// goes in its time. Until A5, that one line stopped every device's sweep.
+#[test]
+fn a_text_that_does_not_open_holds_back_only_what_was_taken_from_another_device() {
+    use sioul_core::texts;
+    let base = scratch("gc-text-unreadable");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    let (bytes_named, bytes_other) = (b"a picture a text names, fiction\n".repeat(40), b"a picture of the text that does not open\n".repeat(40));
+    put(&dn, "plans.md", b"# Plans, first\n");
+    put(&dn, "papers/lease.pdf", b"%PDF-1.4 a lease, fiction\n");
+    put(&pn, "journal.md", b"# The phone's\n");
+    with_texts(&desk, &folder, &key, NOW, &dn);
+    // A text naming one picture; the other's text a line that does not open.
+    let named = texts_picture(&base, &folder, &key, &phone, &bytes_named, Some("mms-3@1790000000000"));
+    let other = texts_picture(&base, &folder, &key, &phone, &bytes_other, None);
+    let own = texts::own_file(&phone.roots.data.join(texts::FOLDER), texts::LOG, &phone.id);
+    std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(&own).unwrap(), b"x1:not a text that opens\n").unwrap();
+    with_texts(&phone, &folder, &key, NOW + MINUTE, &pn);
+    // The desk keeps both pictures as papers, taken as its own, then lets them go; its note replaced.
+    put(&dn, "papers/named.jpg", &bytes_named);
+    put(&dn, "papers/other.jpg", &bytes_other);
+    with_texts(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    put(&dn, "plans.md", b"# Plans, second\n");
+    std::fs::remove_file(dn.join("papers/named.jpg")).unwrap();
+    std::fs::remove_file(dn.join("papers/other.jpg")).unwrap();
+    for minutes in [3, 14, 15] {
+        with_texts(&desk, &folder, &key, NOW + minutes * MINUTE, &dn);
+    }
+    with_texts(&phone, &folder, &key, NOW + 16 * MINUTE, &pn);
+    with_texts(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    let first = content_name(&base, &key, b"# Plans, first\n");
+    assert!(sealed(&folder, &named) && sealed(&folder, &other));
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.texts.0 == 1 && said.texts_why == "unreadable", "the one a text that does not open may name: {said:?}");
+    for name in [&first, &named, &other] {
+        sealed_long_ago(&folder, name);
+    }
+    with_texts(&desk, &folder, &key, NOW + 15 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &first), "its own earlier version, in its time");
+    assert!(sealed(&folder, &named), "a text that opens names it");
+    assert!(sealed(&folder, &other), "taken from the phone, and a text does not open: it waits");
+    let said = leaving(&desk.memory, &desk.id);
+    assert!(said.texts.0 == 1 && said.texts_why == "unreadable", "{said:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The A4 check, #21 and #23: a phone, the texts shared there, whose
+/// background steps make quick exchanges only (they never read the texts)
+/// between whole ones: its own earlier versions go in their time at a quick
+/// one too. Until A5 they went only at the window's exchanges.
+#[test]
+fn a_phone_s_quick_exchanges_let_its_own_earlier_versions_go() {
+    let base = scratch("gc-phone-quick");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    put(&pn, "journal.md", b"# The phone's note, first\n");
+    with_texts(&phone, &folder, &key, NOW, &pn);
+    with_texts(&desk, &folder, &key, NOW + MINUTE, &dn);
+    put(&pn, "journal.md", b"# The phone's note, second\n");
+    with_texts(&phone, &folder, &key, NOW + 2 * MINUTE, &pn);
+    let first = content_name(&base, &key, b"# The phone's note, first\n");
+    sealed_long_ago(&folder, &first);
+    let quick = Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None };
+    exchange(&quick, &stores_with(&phone, &pn, true), NOW + 13 * DAY_MS).unwrap();
+    assert!(sealed(&folder, &first), "within two weeks of its replacement");
+    exchange(&quick, &stores_with(&phone, &pn, true), NOW + 15 * DAY_MS).unwrap();
+    assert!(!sealed(&folder, &first), "two weeks on, at a quick exchange");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The A4 check, #20: the texts' logs are read once while they do not
+/// change, whatever is due meanwhile, and never by an exchange a dose's
+/// waits for (`Sharing::hurry`), which lets its own go in their time all
+/// the same.
+#[test]
+fn the_texts_are_read_once_while_they_do_not_change_and_never_in_a_hurry() {
+    let base = scratch("gc-texts-once");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    let read = || TEXTS_READ.with(|read| read.get());
+    let versions: [&[u8]; 4] = [b"# A, first\n", b"# A, second\n", b"# A, third\n", b"# A, fourth\n"];
+    put(&dn, "a.md", versions[0]);
+    with_texts(&desk, &folder, &key, NOW, &dn);
+    with_texts(&phone, &folder, &key, NOW + MINUTE, &pn);
+    for (n, version) in versions.iter().enumerate().skip(1) {
+        put(&dn, "a.md", version);
+        with_texts(&desk, &folder, &key, NOW + (2 + n as i64) * MINUTE, &dn);
+    }
+    let names: Vec<String> = versions.iter().map(|v| content_name(&base, &key, v)).collect();
+    let start = read();
+    // A hurried exchange: no text read, its own earlier version gone in its time all the same.
+    sealed_long_ago(&folder, &names[0]);
+    let hurry = std::sync::atomic::AtomicBool::new(true);
+    let hurried = Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: true, hurry: Some(&hurry) };
+    exchange(&hurried, &stores_with(&desk, &dn, true), NOW + 15 * DAY_MS).unwrap();
+    assert_eq!(read(), start, "never in a hurry");
+    assert!(!sealed(&folder, &names[0]));
+    // Whole exchanges: the texts read once, then not again while their logs stay as they are.
+    sealed_long_ago(&folder, &names[1]);
+    with_texts(&desk, &folder, &key, NOW + 30 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &names[1]));
+    assert_eq!(read(), start + 1, "read once");
+    sealed_long_ago(&folder, &names[2]);
+    with_texts(&desk, &folder, &key, NOW + 45 * DAY_MS, &dn);
+    assert!(!sealed(&folder, &names[2]));
+    assert_eq!(read(), start + 1, "the logs unchanged: not read again");
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -18,7 +18,10 @@ import java.util.TreeMap;
  * doubled, none missed. A dose its receiver asked again later (sleep) is kept
  * at that time by a hand that still lists its dose; a dose past, never
  * armed, is left alone; a process's first hand arms again what is to come,
- * and what is due within the half hour (the chain check of e3505f7, low 24).
+ * and what is due within the half hour (the chain check of e3505f7, low 24),
+ * never one that rang, whose decision may be running (the A4 check, #0 and
+ * #22); a dose that replaced one whose reminder was taken away as gone, past
+ * the half hour, is armed once, at once (the A4 check, #1).
  */
 public final class DoseAlarmsCheck
 {
@@ -70,6 +73,22 @@ public final class DoseAlarmsCheck
             phone.android.put(dose.optString("key"), dose.optLong("at"));
         phone.record = plan.record.toString();
         process.armedHere = true;
+    }
+
+    /** An alarm that rang: out of Android's hands, noted in the record (DoseReceiver, DoseAlarms.rang). */
+    static void rings(Phone phone, String key) throws Exception
+    {
+        phone.android.remove(key);
+        phone.record = DoseAlarms.Plan.rangIn(new JSONArray(phone.record), key).toString();
+    }
+
+    /** Rust's tag on a dose that replaced a gone one (`replaces`). */
+    static JSONArray tagged(JSONArray doses, String key, String gone) throws Exception
+    {
+        for (int i = 0; i < doses.length(); i++)
+            if (key.equals(doses.getJSONObject(i).optString("key")))
+                doses.getJSONObject(i).put("replaces", gone);
+        return doses;
     }
 
     /** A receiver's asking again later, as DoseAlarms.again makes it. */
@@ -133,6 +152,30 @@ public final class DoseAlarmsCheck
         longer.android.clear();
         hand(longer, new Process(), doses("corvan@0800", h0800), h0800 + 45 * MIN);
         expect("opened past the half hour: none rings at once", longer.android, "{}");
+        // Corvan and Lumiel both at 08:00, Sioul closed: both alarms ring in a new process; Corvan's
+        // decision shows first and hands (the process's first hand) while Lumiel's is still decided:
+        // Lumiel is not armed again (it would be decided twice, its reminder replaced by the fallback).
+        Phone both = new Phone();
+        hand(both, new Process(), doses("corvan@0800", h0800, "lumiel@0800", h0800), h0755);
+        rings(both, "corvan@0800");
+        rings(both, "lumiel@0800");
+        Process fresh = new Process();
+        hand(both, fresh, doses("lumiel@0800", h0800), h0800 + 5_000);
+        expect("rung, decided still: not armed again by a first hand", both.android, "{}");
+        expect("rung, kept in the record until reminded", new JSONArray(both.record).length(), 1);
+        // The force stop's dose, never rung, still rings at once at the next opening (above).
+        // A correction typed at 14:50 moves Corvan's 14:00 to 14:10, its reminder taken away as gone:
+        // corvan@14:10, past the half hour, armed once at once; the next hand arms it no more.
+        long h1410 = 14 * 60 * MIN + 10 * MIN, h1452 = 14 * 60 * MIN + 52 * MIN;
+        Phone moved = new Phone();
+        Process stepsHand = new Process();
+        hand(moved, stepsHand, tagged(doses("corvan@1410", h1410, "corvan@2010", h1410 + 6 * 60 * MIN), "corvan@1410", "corvan@1400"), h1452);
+        expect("the dose replacing a gone one, past the half hour: armed at once", moved.android.get("corvan@1410"), h1452);
+        moved.android.remove("corvan@1410");
+        hand(moved, stepsHand, tagged(doses("corvan@1410", h1410, "corvan@2010", h1410 + 6 * 60 * MIN), "corvan@1410", "corvan@1400"), h1452 + MIN);
+        expect("armed once: not again at the next hand", moved.android.containsKey("corvan@1410"), false);
+        hand(moved, new Process(), doses("corvan@2010", h1410 + 6 * 60 * MIN), h1452 + 2 * MIN);
+        expect("reminded since (no longer listed): out of the record", new JSONArray(moved.record).length(), 1);
         System.out.println(failed == 0 ? "DoseAlarmsCheck: " + checked + " checks passed." : "DoseAlarmsCheck: " + failed + " of " + checked + " failed.");
         System.exit(failed == 0 ? 0 : 1);
     }

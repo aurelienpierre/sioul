@@ -536,10 +536,11 @@ pub extern "C" fn sioul_dnd_toggle() -> *mut std::ffi::c_char {
 
 /// A background step's exchange, said when it failed. One that brought a
 /// medicine's change, a mark or a take back from another device has handed
-/// Android the doses' alarms anew already, as every exchange without the
-/// window does (`share::exchange_here`, `alarms::health_written`; review of
-/// 36002ea's check, A2): a move made elsewhere rings here at its new time, a
-/// dose marked there rings no more.
+/// Android the doses' alarms anew already, as every exchange that wrote the
+/// health files does, wherever it runs (`share::exchanged`,
+/// `alarms::health_written`; review of 36002ea's check, A2): a move made
+/// elsewhere rings here at its new time, a dose marked there rings no more,
+/// and the reminder of a dose gone is taken away, to come back with it.
 fn rearm_after(exchanged: Option<Result<sioul_sync::share::Outcome, String>>) {
     if let Some(Err(e)) = exchanged {
         eprintln!("sioul: steps: {e}");

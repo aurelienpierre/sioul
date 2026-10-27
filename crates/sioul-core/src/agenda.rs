@@ -129,11 +129,15 @@ fn text_of(component: &ICalendarComponent, property: &ICalendarProperty) -> Stri
 }
 
 /// Its margins, costs and gain, from Sioul's own properties (`demands`).
+/// The costs as one text: calcard splits a raw value at its semicolons into
+/// several, and gives an escaped one whole (the interop check of 49a9978,
+/// #2: only the first rating was read).
 fn demands_of(component: &ICalendarComponent) -> (crate::demands::Margins, crate::demands::Demands) {
     let other = |name: &str| text_of(component, &ICalendarProperty::Other(name.to_string()));
     let margins = crate::demands::Margins { before: crate::demands::minutes_of(&other(crate::demands::BEFORE)), after: crate::demands::minutes_of(&other(crate::demands::AFTER)) };
     let mut demands = crate::demands::Demands::default();
-    demands.read_cost(&other(crate::demands::COST));
+    let cost: Vec<String> = component.property(&ICalendarProperty::Other(crate::demands::COST.to_string())).map(|e| e.values.iter().filter_map(ICalendarValue::as_text).map(|t| t.trim().to_string()).collect()).unwrap_or_default();
+    demands.read_cost(&cost.join(";"));
     let gain = other(crate::demands::GAIN);
     if !gain.is_empty() {
         demands.read_gain(&gain);
@@ -914,7 +918,7 @@ fn content_lines(edit: &EventEdit, changed: Changed) -> Vec<String> {
     }
     if changed.demands {
         if edit.demands.has_cost() {
-            out.push(format!("{}:{}", crate::demands::COST, edit.demands.cost_value()));
+            out.push(format!("{}:{}", crate::demands::COST, crate::lines::escape(&edit.demands.cost_value())));
         }
         if let Some(gain) = edit.demands.gain {
             out.push(format!("{}:{}", crate::demands::GAIN, gain.min(10)));
@@ -2465,7 +2469,7 @@ mod tests {
             line[begin..end].to_string()
         }
         // What goes in as it came: the door itself, the sync's copy of the server, your answer to an invitation.
-        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-app/src/pim.rs", "answer")];
+        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-sync/src/dav.rs", "upgrade"), ("sioul-app/src/pim.rs", "answer")];
         // The raw writers: the standard library's (a file written, renamed, copied, linked,
         // opened to write or taken out), and Sioul's own byte writers.
         let raw = [

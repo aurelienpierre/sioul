@@ -3067,6 +3067,18 @@ share-leaving-untold = { $count ->
     [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : cet appareil ne partage pas vos SMS, ou pas toutes les notes, les papiers et le filtre anti-spam, et ne peut savoir si un autre fichier a les mêmes octets.
    *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent deux semaines après leur dernier usage : cet appareil ne partage pas vos SMS, ou pas toutes les notes, les papiers et le filtre anti-spam, et ne peut savoir si un autre fichier a les mêmes octets.
 }
+share-leaving-untold-unreadable = { $count ->
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : l’un de vos SMS ne s’ouvre pas ici, et cet appareil ne peut savoir si une image d’un SMS a les mêmes octets.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent deux semaines après leur dernier usage : l’un de vos SMS ne s’ouvre pas ici, et cet appareil ne peut savoir si une image d’un SMS a les mêmes octets.
+}
+share-leaving-texts-off = { $count ->
+    [one] Un contenu que cet appareil a pris d’un autre, { $size }, reste tant qu’il ne peut lire vos SMS : les SMS ne sont pas partagés sur cet appareil, et une image d’un SMS peut être le même fichier. Partagez les SMS sur cet appareil, et il partira en son temps.
+   *[other] { $count } contenus que cet appareil a pris d’un autre, { $size }, restent tant qu’il ne peut lire vos SMS : les SMS ne sont pas partagés sur cet appareil, et une image d’un SMS peut être le même fichier. Partagez les SMS sur cet appareil, et ils partiront en leur temps.
+}
+share-leaving-texts-unreadable = { $count ->
+    [one] Un contenu que cet appareil a pris d’un autre, { $size }, reste tant qu’il ne peut lire tous vos SMS : l’un de vos SMS ne s’ouvre pas ici, et une image d’un SMS peut être le même fichier. Il reste, pour qu’aucune image ne se perde.
+   *[other] { $count } contenus que cet appareil a pris d’un autre, { $size }, restent tant qu’il ne peut lire tous vos SMS : l’un de vos SMS ne s’ouvre pas ici, et une image d’un SMS peut être le même fichier. Ils restent, pour qu’aucune image ne se perde.
+}
 share-leaving-in-time = { $count ->
     [one] Une version antérieure, { $size }, part deux semaines après son dernier usage.
    *[other] { $count } versions antérieures et contenus servis récemment, { $size }, partent deux semaines après leur dernier usage.
@@ -3110,7 +3122,7 @@ share-emptied = { $file } est vide ici : rien n’en est retiré sur vos autre
 share-not-medicines = Un changement de vos médicaments venu d’un autre appareil ne se lirait pas ici comme des médicaments : il attend, et { $file } reste tel qu’il est.
 share-medicines-take-out-everywhere = Les retirer partout
 share-medicines-take-out-here = Les retirer ici aussi
-share-medicines-emptied = Les médicaments sont partis d’un coup de { $file } ici, sans que Sioul en retire aucun : vos autres appareils gardent les leurs, et leurs changements arrivent toujours. Si vous le vouliez, retirez-les partout.
+share-medicines-emptied = Les médicaments de { $file } sont partis d’un coup ici, sans que Sioul en retire aucun : vos autres appareils gardent les leurs, et leurs changements arrivent toujours. Si vous le vouliez, retirez-les partout.
 share-medicines-emptied-there = Un autre appareil a retiré d’un coup les médicaments de { $file }, sans que Sioul en ait retiré aucun là-bas : ils restent ici, et le reste de ses changements arrive. Si vous le vouliez, retirez-les ici aussi.
 share-files-unreadable = Les notes et les papiers attendent : sans l’accès d’Android à tous vos fichiers, Sioul ne voit pas ceux faits par d’autres applications, et les croirait partis.
 # Cherché aussi sur le serveur (docs/database.md) : les fichiers des autres appareils lus sur le serveur qui garde le dossier de partage, à côté de l’application de synchronisation.

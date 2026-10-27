@@ -292,7 +292,7 @@ mod tests {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let account = "kinds-stand-in";
-        let list = vdir::create(Kind::Calendars, account, "Plan", None, &["VTODO"]).unwrap();
+        let list = vdir::create(Kind::Calendars, account, "Errands", None, &["VTODO"]).unwrap();
         vdir::prepare(Kind::Calendars, account, "personal", "Personal", None).unwrap();
         let personal = vdir::collections(Kind::Calendars).into_iter().find(|c| c.account == account && c.id == "personal").unwrap();
         let task_path = list.dir.join("t-kinds.ics");

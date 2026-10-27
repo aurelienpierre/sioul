@@ -10,7 +10,8 @@
 //!
 //! - **Written**: the task's title, kept in step; its start and end in UTC;
 //!   busy (`TRANSP:OPAQUE`); `X-SIOUL-TASK:<the task's UID>` and an RFC 9253
-//!   link to it (`LINK;LINKREL="…/block-of";VALUE=UID`). The task links back
+//!   link to it under Sioul's own name (`X-SIOUL-LINK;LINKREL=related;
+//!   X-SIOUL-REL="…/block-of";VALUE=UID`). The task links back
 //!   (`…/time-block`), to its current block only: a task that comes back every
 //!   week would gather a link a week. No alarm unless Tasks ⚙ asks for one:
 //!   Sioul reminds of a block as of any event, and a phone would remind twice.

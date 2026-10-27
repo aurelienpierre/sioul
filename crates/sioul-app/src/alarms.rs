@@ -52,6 +52,57 @@ fn remove_reminder_of(key: &str, reminded: i64) {
     }
 }
 
+/// The zone Android says is in force since a change of zone or of the
+/// clock (`sioul_dose_zone`), and when it said so: the doses' keys are made
+/// in it for a while, since the system's zone as Sioul reads it is kept five
+/// minutes (jiff's own), which a hand made at once would key in the old
+/// zone (the A4 check, #2).
+static ZONE_IN_FORCE: std::sync::Mutex<Option<(String, std::time::Instant)>> = std::sync::Mutex::new(None);
+
+/// Now, in the zone in force: Android's own just after a change, else the system's.
+pub(crate) fn now_here() -> jiff::Zoned {
+    now_in(ZONE_IN_FORCE.lock().ok().and_then(|z| z.clone()), jiff::Zoned::now())
+}
+
+/// `now` in the zone Android said, for six minutes after it said it (the
+/// system's zone as Sioul reads it is kept five), else as it is; a zone
+/// that does not read changes nothing.
+fn now_in(said: Option<(String, std::time::Instant)>, now: jiff::Zoned) -> jiff::Zoned {
+    let said = said.filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(6 * 60));
+    match said.and_then(|(zone, _)| jiff::tz::TimeZone::get(&zone).ok()) {
+        Some(zone) => now.with_time_zone(zone),
+        None => now,
+    }
+}
+
+/// The phone's zone changed, or its clock was set (`WakeReceiver`, at
+/// TIMEZONE_CHANGED and TIME_SET): the doses handed at once, their keys made
+/// in the zone in force, `zone` as Java has it (the A4 check, #2: until
+/// then only an alarm keyed in the old zone handed them, when it rang).
+///
+/// # Safety
+/// `zone` is null, or a zero-terminated text valid for the call.
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_dose_zone(zone: *const c_char) {
+    // SAFETY: `zone` is null or a C string valid for the call, as this function's contract says.
+    let zone = unsafe { key_of(zone) };
+    if !zone.is_empty()
+        && let Ok(mut said) = ZONE_IN_FORCE.lock()
+    {
+        *said = Some((zone, std::time::Instant::now()));
+    }
+    let _ = std::panic::catch_unwind(schedule);
+}
+
+/// A reminder about to be shown again (`health::remind_shown`): never one
+/// this process took away, whatever it took away before (the A4 check, #3).
+pub(crate) fn forget_removed(key: &str) {
+    if let Ok(mut removed) = REMOVED.lock() {
+        removed.remove(key);
+    }
+}
+
 /// Whether reminders can show at all: on a phone, only when Android lets
 /// Sioul's notifications through; elsewhere, always.
 pub(crate) fn notifications_allowed() -> bool {
@@ -91,9 +142,13 @@ pub(crate) fn health_written(outcome: &sioul_sync::share::Outcome) -> bool {
 /// lock (`DoseAlarms.Plan`), never against what this process last handed,
 /// which another process may have changed since (the check of 1b6795e, H1);
 /// a hand arms again only what changed, and at a process's first hand what
-/// is due within the half hour too (`DoseAlarms.Plan`); it ends the
-/// quarter-hour look at a reminder shown of a dose no longer listed: that
-/// reminder is taken away here (`health::reminded_gone`).
+/// is due within the half hour too, never an alarm that rang
+/// (`DoseAlarms.Plan`, `RANG`); every hand ends the quarter-hour look of
+/// every dose reminded already, and takes away here only the reminders of
+/// doses gone or marked: those gone noted so (`health::note_taken_away`),
+/// to be armed and rung again if their dose comes back, and the dose that
+/// replaced one, already past, rung once at once (`REPLACES`). A change of
+/// zone or of the clock hands them at once (`sioul_dose_zone`).
 pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
@@ -109,11 +164,16 @@ pub(crate) fn schedule() {
     // cancels the quarter-hour look at a reminder shown (`DoseAlarms.Plan`),
     // which took them away before (the chain check of e3505f7, must-fix 1);
     // nothing when nothing reads.
-    for (key, reminded) in crate::health::reminded_gone().unwrap_or_default() {
-        if REMOVED.lock().is_ok_and(|removed| removed.get(&key) != Some(&reminded)) {
-            remove_reminder_of(&key, reminded);
+    // Noted as taken away, so that each comes back with its dose, and the
+    // dose that replaced it rings once even past the half hour (the A4
+    // check, #1 and #8).
+    let taken_away = crate::health::reminded_gone().unwrap_or_default();
+    for (key, reminded) in &taken_away {
+        if REMOVED.lock().is_ok_and(|removed| removed.get(key) != Some(reminded)) {
+            remove_reminder_of(key, *reminded);
         }
     }
+    crate::health::note_taken_away(&taken_away);
     // Nothing reads here, the health file nor its last read: Android keeps the alarms it has.
     let Some(coming) = crate::health::alarms_coming() else { return };
     let Ok(text) = CString::new(coming) else { return };
@@ -204,5 +264,30 @@ pub unsafe extern "C" fn sioul_string_free(text: *mut c_char) {
     if !text.is_null() {
         // SAFETY: `text` was made by `handed` (CString::into_raw) and is given back once, as the contract says.
         drop(unsafe { CString::from_raw(text) });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::now_in;
+    use std::time::{Duration, Instant};
+
+    /// The A4 check, #2: just after a change of zone, the doses are keyed in
+    /// the zone Android says, for six minutes; then, or with a zone that does
+    /// not read, in the system's.
+    #[test]
+    fn the_zone_android_says_keys_the_doses_for_six_minutes() {
+        let now = jiff::Zoned::now();
+        let far = if now.time_zone().iana_name() == Some("Pacific/Auckland") { "America/Havana" } else { "Pacific/Auckland" };
+        let said = |zone: &str, ago: u64| Instant::now().checked_sub(Duration::from_secs(ago)).map(|at| (zone.to_string(), at));
+        let keyed = now_in(said(far, 0), now.clone());
+        assert_eq!(keyed.time_zone().iana_name(), Some(far));
+        assert_eq!(keyed.timestamp(), now.timestamp(), "the same instant, in that zone");
+        assert_eq!(now_in(said(far, 5 * 60), now.clone()).time_zone().iana_name(), Some(far), "still within six minutes");
+        if let Some(old) = said(far, 7 * 60) {
+            assert_eq!(now_in(Some(old), now.clone()).time_zone(), now.time_zone(), "past six minutes: the system's");
+        }
+        assert_eq!(now_in(said("Nowhere/Else", 0), now.clone()).time_zone(), now.time_zone(), "a zone that does not read");
+        assert_eq!(now_in(None, now.clone()).time_zone(), now.time_zone());
     }
 }
