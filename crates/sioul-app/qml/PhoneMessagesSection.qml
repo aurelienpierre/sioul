@@ -193,7 +193,10 @@ ColumnLayout {
                     }
                     Accessible.name: notice.said
 
-                    readonly property string said: section.sioul.textArgs(notice.modelData.count > 1 ? "texts-notice-many" : "texts-notice", JSON.stringify({ who: notice.modelData.who, first: notice.modelData.first, time: notice.modelData.when, count: notice.modelData.count }))
+                    // Said on arrival; a text that came 5 minutes or more after it was sent says when it was sent too.
+                    readonly property bool many: notice.modelData.count > 1
+                    readonly property string key: notice.modelData.sent ? (notice.many ? "texts-notice-many-sent" : "texts-notice-sent") : (notice.many ? "texts-notice-many" : "texts-notice")
+                    readonly property string said: section.sioul.textArgs(notice.key, JSON.stringify({ who: notice.modelData.who, first: notice.modelData.first, time: notice.modelData.when, count: notice.modelData.count, sent: notice.modelData.sent || "", late: notice.modelData.late || "" }))
 
                     contentItem: Label {
                         text: notice.said

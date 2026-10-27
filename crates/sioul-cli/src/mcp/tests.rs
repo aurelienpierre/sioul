@@ -225,6 +225,24 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     ];
     let log = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-1");
     sioul_core::texts::append(&log, &texts, &seal, None).unwrap();
+    // A text that reached the phone 3 h 45 after it was written (`late_texts_say_when_written_and_when_arrived`),
+    // with its row's columns as Android gives them, and a reply written on the phone while it was on its way.
+    let arrived = (now - 30 * 60) * 1000;
+    let written = arrived - LATE_BY_MS;
+    let row = |id: i64, date: i64, date_sent: i64, kind: i64, body: &str| sioul_core::texts::Text {
+        id: sioul_core::texts::Row { mms: false, id, date }.name(),
+        at: date,
+        direction: if kind == 1 { "in" } else { "out" }.into(),
+        with: vec!["+33536490042".into()],
+        body: body.into(),
+        fields: [("_id", json!(id)), ("date", json!(date)), ("date_sent", json!(date_sent)), ("type", json!(kind)), ("address", json!("05 36 49 00 42")), ("body", json!(body))].into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        ..Default::default()
+    };
+    sioul_core::texts::append(&log, &[row(30, written + 3_600_000, 0, 2, "Is nine still fine for tomorrow?"), row(31, arrived, written, 1, "See you at ten tomorrow instead of nine.")], &seal, None).unwrap();
+    // A long text of theirs still on its way, 4 of its 9 parts come: the phone's "arriving" line in its outcomes.
+    let arriving = sioul_core::texts::Arriving { from: "+33536490042".into(), parts: 4, count: 9, sent: (now - 10 * 60) * 1000 };
+    let line = sioul_core::texts::Outcome { state: "arriving".into(), at: (now - 2 * 60) * 1000, arriving: vec![arriving], ..Default::default() };
+    sioul_core::texts::append(&sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::OUTCOME, "phone-1"), &[line], &seal, None).unwrap();
     // A new phone that SMS Backup & Restore gave the old history: the same text under its own row, given once.
     let restored = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-2");
     sioul_core::texts::append(&restored, &[sms("sms-902", &["+33199001234"], "See you tomorrow at the market.", 40)], &seal, None).unwrap();
@@ -360,6 +378,9 @@ fn health_fixture(store: &Path) {
 
 /// The key the texts of the tests are sealed with (`phone::sealer` takes it in tests: never a keyring).
 pub(super) const TEXTS_KEY: [u8; 32] = [7; 32];
+
+/// How late the fixture's late text reached the phone: 3 h 45.
+const LATE_BY_MS: i64 = 13_500_000;
 
 /// When the fixture's table was trained: some of the corpus's newest fifth came after.
 const TABLE_TRAINED: i64 = 1_760_000_000;
@@ -1141,6 +1162,52 @@ fn texts_only_when_allowed_and_never_sent() {
         let refused = call(&mut server, "draft_text", json!({ "to": to, "body": "Hello." }));
         assert_eq!(refused["isError"], true, "{why}: {refused}");
     }
+}
+
+/// A text that reached the phone 3 h 45 after it was written: given in the
+/// order written, before the reply written on the phone while it was on its
+/// way; its line says when it arrived, its data gives both times, in `texts`
+/// and `search_texts`; their descriptions say which time is which (27 October 2026).
+#[test]
+fn late_texts_say_when_written_and_when_arrived() {
+    let home = home();
+    let path = home.root.join("config/sioul/texts-late.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&path, format!("{config}\n[mcp]\ntexts = true\n")).unwrap();
+    let mut server = Server::new(&path, "en");
+    let tools = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().clone();
+    for name in ["texts", "search_texts"] {
+        let described = tools.iter().find(|t| t["name"] == name).and_then(|t| t["description"].as_str()).unwrap_or_default().to_string();
+        assert!(described.contains("when it was written (`at`, `when`, `day`, `time`") && described.contains("when it arrived (`arrived`"), "{name}: {described}");
+    }
+    let talk = call(&mut server, "texts", json!({ "conversation": "+33536490042" }));
+    let said = text(&talk);
+    assert_eq!(talk["isError"], false, "{said}");
+    let (late, reply) = (said.find("See you at ten tomorrow").unwrap(), said.find("Is nine still fine").unwrap());
+    assert!(late < reply, "in the order written, the late text first: {said}");
+    // "Yesterday 22:10 · 05 36 49 00 42 · arrived 01:55, 3 h 45 later": when written, who, when arrived.
+    let head: Vec<&str> = said.lines().find(|l| l.contains(" · arrived ")).unwrap_or_default().split(" · ").collect();
+    assert!(head.len() == 3 && head[2].starts_with("arrived ") && head[2].ends_with(", 3 h 45 later"), "its line says when it arrived: {said}");
+    assert_eq!(said.matches(" · arrived ").count(), 1, "the reply says nothing of the kind: {said}");
+    let messages = talk["structuredContent"]["messages"].as_array().unwrap();
+    let (first, second) = (&messages[0], &messages[1]);
+    assert_eq!((first["direction"].as_str(), first["late_minutes"].as_i64()), (Some("in"), Some(225)), "{first}");
+    assert_eq!(first["arrived"].as_i64().unwrap() - first["at"].as_i64().unwrap(), LATE_BY_MS, "written at, arrived at");
+    assert!(first["late"].as_str().unwrap().starts_with("arrived ") && first["when"].as_str().is_some_and(|w| !w.is_empty()));
+    assert_eq!((second["direction"].as_str(), second["arrived"].as_i64(), second["late"].as_str()), (Some("out"), Some(0), Some("")), "{second}");
+    assert!(second["at"].as_i64() > first["at"].as_i64() && second["at"].as_i64() < first["arrived"].as_i64(), "the reply written between the two");
+    let found = call(&mut server, "search_texts", json!({ "query": "instead of nine" }));
+    let message = &found["structuredContent"]["found"][0]["message"];
+    assert_eq!((message["late_minutes"].as_i64(), message["arrived"].as_i64().unwrap() - message["at"].as_i64().unwrap()), (Some(225), LATE_BY_MS), "{found}");
+    assert!(text(&found).contains(", 3 h 45 later"), "{}", text(&found));
+    // A long text of theirs still on its way (the phone's "arriving" line): said after the messages, outside
+    // the frame of their words, in the data too; the description says it.
+    let after = said.rfind("(A long text from this conversation is on its way to the phone: 4 of its 9 parts had come ").unwrap_or_else(|| panic!("{said}"));
+    assert!(after > said.find("See you at ten tomorrow").unwrap() && said[after..].contains("; it was sent ") && said[after..].contains("before its last part comes.)"), "{said}");
+    assert_eq!((talk["structuredContent"]["on_the_way"][0]["parts"].as_i64(), talk["structuredContent"]["on_the_way"][0]["count"].as_i64()), (Some(4), Some(9)), "{talk}");
+    assert!(tools.iter().any(|t| t["name"] == "texts" && t["description"].as_str().is_some_and(|d| d.contains("`on_the_way`"))));
+    let other = call(&mut server, "texts", json!({ "conversation": "+33199001234" }));
+    assert!(!text(&other).contains("on its way") && other["structuredContent"]["on_the_way"].as_array().is_some_and(Vec::is_empty), "another conversation's: {other}");
 }
 
 #[test]

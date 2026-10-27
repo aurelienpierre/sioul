@@ -6234,6 +6234,28 @@ task-done-stays = A task done stays a task: it is the record of work done.
 # A text not read yet, on the Porch: one notice, opening it in Texts (23 October 2026).
 texts-notice = { $time }, a text from { $who }: “{ $first }”
 texts-notice-many = { $time }, { $count } texts from { $who }, the last: “{ $first }”
+# The same notice for a text that reached the phone 5 minutes or more after it was sent (27 October 2026).
+texts-notice-sent = { $time }, a text from { $who }: “{ $first }” (sent at { $sent }, { $late } earlier)
+texts-notice-many-sent = { $time }, { $count } texts from { $who }, the last: “{ $first }” (sent at { $sent }, { $late } earlier)
+
+# A text that reached the phone 5 minutes or more after it was sent (docs/texts.md, "When a text was sent"):
+# the thread places it at its sending time and says beside it "22:10 · arrived 01:55, 3 h 45 later".
+texts-arrived = arrived { $time }, { $late } later
+texts-late-days = { $days ->
+        [one] 1 day
+       *[other] { $days } days
+    }
+texts-late-days-hours = { $days ->
+        [one] 1 day
+       *[other] { $days } days
+    } { $hours } h
+
+# A long text still on its way to the phone, its last parts not come (docs/texts.md, "Parts still on their way"): under its thread.
+texts-on-the-way = A long text is on its way to your phone: { $parts } of its { $count } parts had come { $time }; it was sent { $sent }.
+texts-on-the-way-unsent = A long text is on its way to your phone: { $parts } of its { $count } parts had come { $time }.
+# A moment in a sentence: "at 14:20" today, "yesterday at 14:20"; another day says "on Monday 5 October at 14:20" (when-on).
+texts-at = at { $time }
+texts-at-yesterday = yesterday at { $time }
 
 # A conversation deleted in Sioul (23 October 2026): Sioul is not the phone's SMS app.
 texts-unread = { $count } new

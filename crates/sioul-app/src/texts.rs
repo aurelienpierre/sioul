@@ -432,7 +432,7 @@ fn text_of(raw: &Raw, threads: &BTreeMap<String, Vec<String>>, region: Option<&p
     let thread = int(f, "thread_id").to_string();
     let people: Vec<String> = threads.get(&thread).map(|list| list.iter().map(|a| key(a)).filter(|k| !k.is_empty()).collect()).unwrap_or_default();
     let sub = i32::try_from(int(f, "sub_id")).ok().filter(|_| f.contains_key("sub_id")).unwrap_or(-1);
-    if raw.kind == "mms" {
+    let text = if raw.kind == "mms" {
         let outgoing = matches!(int(f, "msg_box"), 2 | 4);
         let addresses = |kind: i64| -> Vec<String> { raw.addrs.iter().filter(|a| int(a, "type") == kind).map(|a| string(a, "address")).filter(|a| !a.is_empty() && a != OWN_ADDRESS).map(|a| key(&a)).filter(|k| !k.is_empty()).collect() };
         let from = addresses(MMS_FROM).into_iter().next().unwrap_or_default();
@@ -478,7 +478,9 @@ fn text_of(raw: &Raw, threads: &BTreeMap<String, Vec<String>>, region: Option<&p
             fields: f.clone(),
             ..Text::default()
         }
-    }
+    };
+    // Placed in time as every line read is: its sending time from its columns (`Text::placed`).
+    text.placed()
 }
 
 fn raws(answer: &Value) -> Vec<Raw> {
@@ -1366,6 +1368,38 @@ impl Step<'_> {
         }
     }
 
+    /// The long texts still on their way to this phone (docs/texts.md,
+    /// "Parts still on their way"): the parts Android holds of each until its
+    /// last one comes, read by Java (`texts-arriving`: senders, counts and
+    /// times, never words), grouped (`texts::arriving_from`), said in an
+    /// "arriving" line of this phone's outcomes when they changed, and once
+    /// more, with none, when the last parts came. Nothing when Android did
+    /// not answer, nor while nothing was ever on its way.
+    fn publish_arriving(&self, now: i64) -> bool {
+        let answer = self.android.ask("texts-arriving", &json!({}));
+        let Some(rows) = answer["raw"].as_array().filter(|_| answer["allowed"] == true) else { return false };
+        let arriving = rules::arriving_from(rows, self.region);
+        let file = rules::own_file(&self.root, rules::OUTCOME, self.here);
+        let mut said = ARRIVING_SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // What this phone's outcomes said last, read from its file once in this process.
+        let last = said.entry(file.clone()).or_insert_with(|| rules::read_file::<Outcome>(&file, self.seal).into_iter().filter(|o| o.key.is_empty() && o.state == "arriving").max_by_key(|o| o.at).map(|o| o.arriving).unwrap_or_default());
+        if *last == arriving {
+            return false;
+        }
+        let line = Outcome { state: "arriving".into(), at: now, arriving: arriving.clone(), ..Outcome::default() };
+        let id = |o: &Outcome| format!("arriving/{}", o.at);
+        match rules::append(&file, std::slice::from_ref(&line), self.seal, Some(&id)) {
+            Ok(n) => {
+                *last = arriving;
+                n > 0
+            }
+            Err(e) => {
+                eprintln!("sioul: texts: {e}");
+                false
+            }
+        }
+    }
+
     /// A multimedia message's file left behind (a crash before its claim, an
     /// outcome written by another way): gone once its key is done, or an
     /// hour old with no claim.
@@ -1413,6 +1447,10 @@ fn write_flushed(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// When the carriers' limits were last asked in this process (ms): once an hour at most.
 static LIMITS_ASKED: Mutex<i64> = Mutex::new(0);
+/// What each phone's outcomes last said of the long texts on their way to
+/// it, by its file, in this process (`Step::publish_arriving`): its file read
+/// once, never at each step.
+static ARRIVING_SAID: Mutex<BTreeMap<PathBuf, Vec<rules::Arriving>>> = Mutex::new(BTreeMap::new());
 /// When Java's results were last trimmed in this process (ms): once a day.
 static RESULTS_TRIMMED: Mutex<i64> = Mutex::new(0);
 
@@ -1436,8 +1474,9 @@ pub(crate) fn standing_of(folder: &Path, key: &[u8; 32], here: &str, now: i64) -
 
 /// The quick part of the phone's step, at every exchange: Android's words
 /// copied, the requests decided and sent, a lost claim looked for, what the
-/// carriers let it send said (once an hour at most), what a multimedia
-/// message left behind swept. Under one lock for the phone's processes.
+/// carriers let it send said (once an hour at most), the long texts still on
+/// their way said when they changed, what a multimedia message left behind
+/// swept. Under one lock for the phone's processes.
 /// Whether something was written.
 fn light_step(here: &str, seal: &Seal, region: Option<&'static phones::Region>, vault: Option<&Vault>) -> bool {
     // Where the devices stand in the sharing, read only when a request not decided yet asks (`texts::verdict`).
@@ -1472,6 +1511,7 @@ fn light_step(here: &str, seal: &Seal, region: Option<&'static phones::Region>, 
         if due {
             changed |= step.publish_limits(now);
         }
+        changed |= step.publish_arriving(now);
         step.sweep_outgoing(now);
         changed
     })
@@ -2005,8 +2045,11 @@ fn marked(here: &str, seal: &Seal) -> (rules::Marks, std::sync::Arc<Vec<Text>>) 
 }
 
 /// The Porch's notices of texts not read yet (23 October 2026): one per
-/// conversation, its sender and the newest's first words, opening it in
-/// Texts; [] where texts are not read here.
+/// conversation, its sender and the newest's first words, when it came,
+/// opening it in Texts; [] where texts are not read here. A notice comes on
+/// arrival, as the list's new texts do; when the newest reached the phone
+/// `rules::LATE_MS` or more after it was sent, it says when it was sent too
+/// (`sent`, and `late`: how much earlier; "" otherwise).
 pub(crate) fn notices() -> Value {
     if phone() || !readable() {
         return json!([]);
@@ -2024,7 +2067,9 @@ pub(crate) fn notices() -> Value {
             let newest = unread[0];
             let who = newest.with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
             let first: String = if newest.body.is_empty() { tr().text("phonemsgs-picture", None) } else { newest.body.chars().take(80).collect() };
-            (newest.at, json!({ "conversation": id, "who": who, "first": first, "when": rules::time_of_day(newest.at, &now), "count": unread.len() }))
+            let late = newest.late();
+            let (sent, late) = if late > 0 { (rules::time_of_day(newest.time(), &now), rules::late_span(late, tr())) } else { (String::new(), String::new()) };
+            (newest.at, json!({ "conversation": id, "who": who, "first": first, "when": rules::time_of_day(newest.at, &now), "count": unread.len(), "sent": sent, "late": late }))
         })
         .collect();
     list.sort_by(|a, b| b.0.cmp(&a.0));
@@ -2199,9 +2244,10 @@ fn with_drafts(conversations: Vec<rules::Conversation>, drafts: &[sioul_core::te
     Value::Array(out)
 }
 
-/// One conversation (TextsPage.qml): {id, title, messages, can_write, group,
-/// attach (Attach offered: the phone said what its carrier takes), attach_said
-/// (else why not)}.
+/// One conversation (TextsPage.qml): {id, title, messages, on_the_way (its
+/// long texts still on their way to a phone, in words), drafts, can_write,
+/// group, attach (Attach offered: the phone said what its carrier takes),
+/// attach_said (else why not)}.
 fn conversation(id: &str) -> Value {
     let Some((here, seal, _)) = sealed() else { return json!({ "messages": [] }) };
     let (config, senders) = looks();
@@ -2213,6 +2259,8 @@ fn conversation(id: &str) -> Value {
     let v = rules::Viewer { now: &now, tr: tr(), region, name_of: &name_of, phone_shared: shared, media_here: &here_media };
     let (texts, requests, outcomes) = records(&here, &seal);
     let messages = rules::messages(id, &texts, &requests, &outcomes, &v);
+    // A long text still on its way to a phone, its last parts not come: said under the thread.
+    let on_the_way = rules::on_the_way(id, &outcomes, &v);
     // Opened here: read, on every device, and its notices gone from the Porch.
     mark_read(&here, &seal, id, &texts);
     let with: Vec<String> = id.split(',').map(str::to_string).collect();
@@ -2224,6 +2272,7 @@ fn conversation(id: &str) -> Value {
         "id": id,
         "title": title,
         "messages": messages,
+        "on_the_way": on_the_way,
         "drafts": drafts,
         "can_write": with.len() == 1,
         "group": with.len() > 1,
@@ -4188,5 +4237,58 @@ mod tests {
         assert!(desk.step(&changed).publish_limits(NOW + DAY_MS + 3 * 3_600_000), "a day on: said again");
         assert_eq!(lines().len(), 3);
         assert_eq!(rules::state_of("", &desk.outcomes()), None, "no request's state");
+    }
+
+    /// Android, as the phone's quick step asks it about the parts of long
+    /// texts still on their way (`texts-arriving`): the rows Java would read,
+    /// or none when Android refuses or gives nothing.
+    struct Segments {
+        rows: std::cell::RefCell<Value>,
+        allowed: std::cell::Cell<bool>,
+    }
+
+    impl Android for Segments {
+        fn ask(&self, verb: &str, _: &Value) -> Value {
+            match verb {
+                "texts-arriving" if !self.allowed.get() => json!({ "allowed": false }),
+                "texts-arriving" => json!({ "allowed": true, "raw": self.rows.borrow().clone() }),
+                _ => Value::Null,
+            }
+        }
+    }
+
+    /// The long texts still on their way to the phone: said in its outcomes
+    /// when they change, once more with none when their last parts came,
+    /// never the same twice; nothing while nothing came, nor when Android
+    /// refuses or gives nothing; no request's state.
+    #[test]
+    fn a_long_text_on_its_way_is_said_when_it_changes() {
+        let desk = Desk::new("arriving");
+        let android = Segments { rows: std::cell::RefCell::new(json!([])), allowed: std::cell::Cell::new(true) };
+        let step = desk.step(&android);
+        let lines = || desk.outcomes().into_iter().filter(|o| o.state == "arriving").collect::<Vec<_>>();
+        assert!(!step.publish_arriving(NOW), "nothing on its way, nothing ever said: nothing to say");
+        let part = |sequence: i64, date: i64| json!({ "address": "05 36 49 00 42", "reference": 17, "count": 5, "sequence": sequence, "date": date, "sub": 1 });
+        *android.rows.borrow_mut() = json!([part(1, NOW - 9 * MINUTE), part(2, NOW - 9 * MINUTE), part(3, NOW - 8 * MINUTE)]);
+        assert!(step.publish_arriving(NOW));
+        assert!(!step.publish_arriving(NOW + MINUTE), "the same: said once");
+        assert_eq!(lines().len(), 1);
+        assert_eq!((lines()[0].key.as_str(), &lines()[0].arriving), ("", &vec![rules::Arriving { from: "+33536490042".into(), parts: 3, count: 5, sent: NOW - 9 * MINUTE }]));
+        // Android refuses, or gives nothing: nothing said, the word before stays.
+        android.allowed.set(false);
+        assert!(!step.publish_arriving(NOW + 2 * MINUTE));
+        android.allowed.set(true);
+        *android.rows.borrow_mut() = Value::Null;
+        assert!(!step.publish_arriving(NOW + 2 * MINUTE), "not known is not none");
+        // A fourth part came; then the last, and Android handed the text over: none on its way.
+        *android.rows.borrow_mut() = json!([part(1, NOW - 9 * MINUTE), part(2, NOW - 9 * MINUTE), part(3, NOW - 8 * MINUTE), part(4, NOW - 8 * MINUTE)]);
+        assert!(step.publish_arriving(NOW + 3 * MINUTE));
+        *android.rows.borrow_mut() = json!([]);
+        assert!(step.publish_arriving(NOW + 4 * MINUTE), "none any more: said once");
+        assert!(!step.publish_arriving(NOW + 5 * MINUTE));
+        let said: Vec<Vec<u32>> = lines().iter().map(|o| o.arriving.iter().map(|a| a.parts).collect()).collect();
+        assert_eq!(said, [vec![3], vec![4], vec![]]);
+        assert_eq!(rules::state_of("", &desk.outcomes()), None, "no request's state");
+        assert!(rules::arriving_now(&desk.outcomes().into_iter().map(|o| Outcome { device: "phone".into(), ..o }).collect::<Vec<_>>(), NOW + 5 * MINUTE).is_empty(), "a computer reads none on its way");
     }
 }

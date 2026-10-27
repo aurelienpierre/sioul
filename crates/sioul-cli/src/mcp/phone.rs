@@ -249,10 +249,16 @@ fn viewer<'a>(s: &'a Session, now: &'a Zoned, name_of: &'a dyn Fn(&str) -> Optio
     sioul_core::texts::Viewer { now, tr: &s.tr, region: sioul_core::reach::region(&s.config), name_of, phone_shared: None, media_here }
 }
 
-/// A message on its lines: when, who, its words, its parts said, its state.
+/// A message on its lines: when it was written, who, when it reached the
+/// phone when that was 5 minutes or more later ("arrived 01:55, 3 h 45
+/// later": the person could not read it before), its words, its parts said,
+/// its state.
 fn message_lines(m: &sioul_core::texts::Message, title: &str) -> Vec<String> {
     let who = if m.direction == "out" { "You".to_string() } else if m.from.is_empty() { title.to_string() } else { m.from.clone() };
     let mut head = format!("{} · {who}", m.when);
+    if !m.late.is_empty() {
+        head.push_str(&format!(" · {}", m.late));
+    }
     if m.deleted {
         head.push_str(" · (deleted on the phone, kept here)");
     }
@@ -283,6 +289,8 @@ pub fn texts(s: &Session, args: &Args) -> Result<Answer, String> {
     let v = viewer(s, &now, &name_of, &media_here);
     let conversations = texts::conversations(&shelf.texts, &shelf.requests, &v);
     let mut lines = Vec::new();
+    // Sioul's own words after the frame: a long text still on its way to the phone.
+    let mut after = Vec::new();
     let data;
     match wanted {
         None => {
@@ -313,7 +321,14 @@ pub fn texts(s: &Session, args: &Args) -> Result<Answer, String> {
                 lines.insert(0, format!("(the {limit} newest of {})", all.len()));
             }
             let drafts: Vec<sioul_core::textdraft::TextDraft> = sioul_core::textdraft::all(&seal).into_iter().filter(|d| d.conversation == id).collect();
-            data = json!({ "conversation": talk, "messages": shown, "drafts_waiting": drafts.len(), "kept_from_agents": shelf.kept });
+            // A long text whose last parts have not reached the phone (docs/texts.md, "Parts still on their way"): not readable yet.
+            let waiting: Vec<(i64, &texts::Arriving)> = texts::arriving_now(&shelf.outcomes, now.timestamp().as_millisecond()).into_iter().filter(|(_, a)| a.from == id).collect();
+            for (said, a) in &waiting {
+                let sent = if a.sent > 0 { format!("; it was sent {}", texts::at_words(a.sent, &now, &s.tr)) } else { String::new() };
+                after.push(format!("(A long text from this conversation is on its way to the phone: {} of its {} parts had come {}{sent}. Nobody can read it, on the phone or here, before its last part comes.)", a.parts, a.count, texts::at_words(*said, &now, &s.tr)));
+            }
+            let on_the_way: Vec<serde_json::Value> = waiting.iter().map(|(said, a)| json!({ "parts": a.parts, "count": a.count, "sent": a.sent, "said_at": said })).collect();
+            data = json!({ "conversation": talk, "messages": shown, "on_the_way": on_the_way, "drafts_waiting": drafts.len(), "kept_from_agents": shelf.kept });
             if !drafts.is_empty() {
                 lines.push(format!("({} draft{} written by an agent wait{} in the Texts page for the person.)", drafts.len(), if drafts.len() == 1 { "" } else { "s" }, if drafts.len() == 1 { "s" } else { "" }));
             }
@@ -323,6 +338,7 @@ pub fn texts(s: &Session, args: &Args) -> Result<Answer, String> {
     if lines.is_empty() {
         text.push(if shelf.any { "No texts to give here.".into() } else { "No texts here: this computer keeps them once the phone shares the part “Texts”.".into() });
     }
+    text.extend(after);
     text.extend(access::left_out(shelf.kept));
     Ok(Answer { text: text.join("\n"), data })
 }

@@ -45,7 +45,7 @@ Item {
         property string openedTexts: ""
         function textArgs(key, json) {
             const a = JSON.parse(json)
-            return key + ": " + a.time + " " + a.who + " " + a.first
+            return key + ": " + a.time + " " + a.who + " " + a.first + (a.sent ? " (" + a.sent + ", " + a.late + ")" : "")
         }
         readonly property var plain: [
             { ids: ["1-a"], head: "While you slept, Dr Elena Varga wrote:", said: [{ time: "23:10", from: "", text: "Could you call me back tomorrow morning?" }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false },
@@ -224,6 +224,25 @@ Item {
             compare(mock.openedTexts, "+33465714770")
             wait(50)
             compare(walk(section, i => i.visible && i.objectName === "textNotice", []).length, 0, "opened: gone")
+        }
+
+        // A text that reached the phone 5 minutes or more after it was sent: its
+        // notice comes on arrival, and says when it was sent (27 October 2026).
+        function test_a_late_text_s_notice_says_when_it_was_sent() {
+            mock.lines = []
+            mock.notices = [
+                { conversation: "+33465714770", who: "Dr Elena Varga", first: "À demain, 10 h.", when: "01:55", count: 1, sent: "22:10", late: "3 h 45" },
+                { conversation: "+33199001234", who: "01 99 00 12 34", first: "Bien reçu.", when: "02:05", count: 2, sent: "", late: "" },
+                { conversation: "+33536490042", who: "05 36 49 00 42", first: "Merci.", when: "02:20", count: 3, sent: "20:40", late: "5 h 40" }
+            ]
+            section.reload()
+            wait(50)
+            const said = walk(section, i => i.visible && i.objectName === "textNotice", []).map(n => n.said)
+            compare(said, [
+                "texts-notice-sent: 01:55 Dr Elena Varga À demain, 10 h. (22:10, 3 h 45)",
+                "texts-notice-many: 02:05 01 99 00 12 34 Bien reçu.",
+                "texts-notice-many-sent: 02:20 05 36 49 00 42 Merci. (20:40, 5 h 40)"
+            ])
         }
 
         function test_lines_and_their_messages() {

@@ -1155,7 +1155,9 @@ def write_texts(p: Profile):
     the doctor's, a pharmacy's answered and delivered, one deleted on the
     phone, a courier's multimedia message with its picture and a video left
     on the phone, a text that waited too long and one waiting for the phone,
-    and a week's conversation with Priya from the choir.
+    and a week's conversation with Priya from the choir, one of Priya's texts
+    held up by the network for hours (placed when it was written, said when it
+    arrived), and a long text of the courier's still on its way.
     Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
     import hashlib
     c = p.clock
@@ -1214,6 +1216,12 @@ def write_texts(p: Profile):
     ]
     for n, (day, hour, box, english, french) in enumerate(week):
         log.append(text(f"sms-{140 + n}", c.at(c.day(day), hour), box, priya, t(english, french), "9"))
+    # Written last night, it reached the phone this morning (its row's `date_sent` before its `date`):
+    # the thread places it when it was written and says when it arrived (docs/texts.md, "When a text was sent").
+    written, arrived = unix(c.at(c.day(-1), "22:40")) * 1000, unix(c.at(c.today, "06:55")) * 1000
+    late = t("The hall is free from seven on Thursday, we can set up the chairs before.", "La salle est libre dès sept heures jeudi, on peut installer les chaises avant.")
+    log.append(line({"id": f"sms-170@{arrived}", "at": arrived, "thread": "9", "box": "in", "with": [priya], "body": late, "sub": 1,
+                     "fields": {"_id": 170, "thread_id": 9, "address": priya, "date": arrived, "date_sent": written, "type": 1, "read": 1, "body": late}}))
     # SIOUL_DEMO_TEXTS_MANY=N: N older texts with Priya, a picture every fortieth, as a
     # phone's whole history brings them (the page with a long thread: tools/demo, "texts").
     many = int(os.environ.get("SIOUL_DEMO_TEXTS_MANY", "0") or 0)
@@ -1241,6 +1249,8 @@ def write_texts(p: Profile):
         line({"key": answered, "state": "sent", "at": unix(c.at(c.today, "10:03")) * 1000, "row": "sms-104"}),
         line({"key": answered, "state": "delivered", "at": unix(c.at(c.today, "10:04")) * 1000}),
         line({"key": expired, "state": "expired", "at": unix(c.ago(minutes=30)) * 1000}),
+        # A long text of the courier's still on its way, two of its three parts come (docs/texts.md, "Parts still on their way").
+        line({"key": "", "state": "arriving", "at": unix(c.ago(minutes=3)) * 1000, "arriving": [{"from": courier, "parts": 2, "count": 3, "sent": unix(c.ago(minutes=6)) * 1000}]}),
     ]
     p.write(p.data / "texts" / "outcome" / "demo-phone.jsonl", "".join(outcomes))
     # An AI agent's draft for the doctor, waiting in the Texts page, never sent

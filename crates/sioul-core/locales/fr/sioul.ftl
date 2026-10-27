@@ -6259,6 +6259,28 @@ task-done-stays = Une tâche faite reste une tâche : c’est la trace du trav
 # A text not read yet, on the Porch: one notice, opening it in Texts (23 October 2026).
 texts-notice = { $time }, un SMS de { $who } : « { $first } »
 texts-notice-many = { $time }, { $count } SMS de { $who }, le dernier : « { $first } »
+# The same notice for a text that reached the phone 5 minutes or more after it was sent (27 October 2026).
+texts-notice-sent = { $time }, un SMS de { $who } : « { $first } » (envoyé à { $sent }, { $late } plus tôt)
+texts-notice-many-sent = { $time }, { $count } SMS de { $who }, le dernier : « { $first } » (envoyé à { $sent }, { $late } plus tôt)
+
+# A text that reached the phone 5 minutes or more after it was sent (docs/texts.md, "When a text was sent"):
+# the thread places it at its sending time and says beside it "22:10 · arrivé à 01:55, 3 h 45 plus tard".
+texts-arrived = arrivé à { $time }, { $late } plus tard
+texts-late-days = { $days ->
+        [one] 1 jour
+       *[other] { $days } jours
+    }
+texts-late-days-hours = { $days ->
+        [one] 1 jour
+       *[other] { $days } jours
+    } { $hours } h
+
+# A long text still on its way to the phone, its last parts not come (docs/texts.md, "Parts still on their way"): under its thread.
+texts-on-the-way = Un long SMS est en route vers votre téléphone : { $parts } de ses { $count } parties étaient arrivées { $time } ; il a été envoyé { $sent }.
+texts-on-the-way-unsent = Un long SMS est en route vers votre téléphone : { $parts } de ses { $count } parties étaient arrivées { $time }.
+# A moment in a sentence: "at 14:20" today, "yesterday at 14:20"; another day says "on Monday 5 October at 14:20" (when-on).
+texts-at = à { $time }
+texts-at-yesterday = hier à { $time }
 
 # A conversation deleted in Sioul (23 October 2026): Sioul is not the phone's SMS app.
 texts-unread = { $count ->

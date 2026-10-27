@@ -335,6 +335,10 @@ public final class Texts
             if (!allowed(context, Manifest.permission.READ_SMS))
                 return new JSONObject().put("allowed", false).toString();
             return findMms(resolver, context.getPackageName(), asked.optString("key", "")).put("allowed", true).toString();
+        case "texts-arriving":
+            if (!allowed(context, Manifest.permission.READ_SMS))
+                return new JSONObject().put("allowed", false).toString();
+            return arriving(resolver).put("allowed", true).toString();
         case "texts-changes":
             // Watched in this process too (the window's, without steps of its own): a step asks Android only after a change.
             watch(context, StepService.inThisProcess());
@@ -793,6 +797,46 @@ public final class Texts
     {
         return new JSONObject().put("sub", sub).put("max", Math.max(max, 0)).put("width", Math.max(width, 0)).put("height", Math.max(height, 0))
             .put("recipients", recipients < 0 ? Integer.MAX_VALUE : recipients).put("group", group).put("mms", mms);
+    }
+
+    /** Where Android keeps each part of an incoming text until it hands the whole text over (parsed when asked: android.jar's Uri is a stub on a computer's JVM). */
+    static final String RAW = "content://sms/raw";
+    /** A plain text's part carries this flag (AOSP's InboundSmsTracker.DEST_PORT_FLAG_NO_PORT): never a WAP push's, a multimedia message's notice. */
+    static final int NO_PORT = 1 << 16;
+    /** The columns read of each part: who, which text, which part, when. Never its words (`message_body`) nor its PDU. */
+    static final String[] SEGMENT_COLUMNS = { "address", "reference_number", "count", "sequence", "date", "sub_id" };
+    /** The parts of the long texts still on their way: a plain text's, of a text of two parts or more, not handed over yet (InboundSmsTracker.SELECT_BY_REFERENCE's `deleted=0`). */
+    static final String SEGMENTS_WAITING = "deleted = 0 AND count > 1 AND (destination_port & " + NO_PORT + ") != 0";
+
+    /**
+     * The long texts still on their way to this phone (docs/texts.md, "Parts
+     * still on their way"): Android keeps each part of a text in
+     * content://sms/raw until the text's last part comes, and READ_SMS reads
+     * that table (AOSP's SmsProvider asks nothing more of it, android16-release).
+     * Each part's sender, text, place and time ({@link #segment}), grouped in
+     * Rust ({@code texts::arriving_from}). "raw": null when Android gave
+     * nothing, never "none on their way" taken from "not known".
+     */
+    static JSONObject arriving(ContentResolver resolver) throws JSONException
+    {
+        JSONArray rows = new JSONArray();
+        try (Cursor cursor = resolver.query(Uri.parse(RAW), SEGMENT_COLUMNS, SEGMENTS_WAITING, null, null)) {
+            if (cursor == null)
+                return new JSONObject().put("raw", JSONObject.NULL);
+            while (cursor.moveToNext())
+                rows.put(segment(of(cursor)));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Texts: the parts on their way could not be read: " + e.getClass().getSimpleName());
+            return new JSONObject().put("raw", JSONObject.NULL);
+        }
+        return new JSONObject().put("raw", rows);
+    }
+
+    /** One part waiting, as Rust reads it ({@code texts::arriving_from}). Pure: android/jvm-checks/TextsCheck.java. */
+    static JSONObject segment(Row row) throws JSONException
+    {
+        return new JSONObject().put("address", row.text("address")).put("reference", row.number("reference_number")).put("count", row.number("count"))
+            .put("sequence", row.number("sequence")).put("date", row.number("date")).put("sub", row.number("sub_id"));
     }
 
     /**

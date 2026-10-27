@@ -179,15 +179,28 @@ fn is_zero_u64(value: &u64) -> bool {
     *value == 0
 }
 
-/// A text as the phone's provider holds it, as it travels.
+/// A text as the phone's provider holds it, as it travels. Every line read
+/// is placed in time as it is opened (`Text::placed`): its sending time made
+/// from its row's columns, which every line keeps.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(remote = "Self")]
 pub struct Text {
     /// Its row's name on that phone (`Row::name`): `sms-<_id>@<date>`,
     /// `mms-<_id>@<date>`; `sms-<_id>`, `mms-<_id>` for a line written
     /// before 16 October 2026.
     pub id: String,
-    /// When (ms): received, or sent.
+    /// When the phone took it in, or sent it (ms; its row's `date`): its
+    /// arrival, for a text in. What names its row, orders the list of
+    /// conversations and says a text new (`unread`, `TextMark`); a thread
+    /// orders by `Text::time`.
     pub at: i64,
+    /// When its sender sent it (ms): a text in's `date_sent`, the time its
+    /// sender's operator stamped on it, when that time is plausible
+    /// (`sent_time`); 0 for a text out, and for a text in whose time is not
+    /// known or wrong. Made from its row's columns as its line is read
+    /// (`placed`); never written, since every line keeps the column itself.
+    #[serde(skip)]
+    pub sent: i64,
     /// The provider's conversation, on that phone.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub thread: String,
@@ -265,6 +278,73 @@ impl Text {
     pub fn row(&self) -> Option<Row> {
         Row::of(&self.id, self.at)
     }
+
+    /// Its place in time (ms): when it was sent (`sent`), else when the
+    /// phone took it in or sent it (`at`). A thread orders and shows its
+    /// texts by it, and agents read it as the time a text was written: a
+    /// text that reached the phone hours late sits where its sender wrote it,
+    /// before the replies written while it was on its way.
+    pub fn time(&self) -> i64 {
+        if self.sent > 0 { self.sent } else { self.at }
+    }
+
+    /// How long after it was sent it reached the phone (ms), when that is
+    /// `LATE_MS` or more; 0 otherwise (operator clocks drift by seconds).
+    pub fn late(&self) -> i64 {
+        let late = self.at - self.time();
+        if late >= LATE_MS { late } else { 0 }
+    }
+
+    /// The text with its sending time made from its row's columns (`sent_time`).
+    pub fn placed(self) -> Text {
+        let sent = sent_time(&self);
+        Text { sent, ..self }
+    }
+}
+
+/// A line opened is placed in time at once (`Text::placed`), wherever it is
+/// read: the window's logs, the agents' tools, a phone's own log.
+impl<'de> Deserialize<'de> for Text {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Text, D::Error> {
+        Text::deserialize(deserializer).map(Text::placed)
+    }
+}
+
+impl Serialize for Text {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Text::serialize(self, serializer)
+    }
+}
+
+/// A text in's sending time may run ahead of its arrival by this much at most
+/// (two clocks a little apart); more, and the operator's clock is wrong.
+pub const SENT_AHEAD_MS: i64 = 2 * 60_000;
+/// …and come before it by this much at most: beyond any operator's validity
+/// period for a text, a wrong clock too.
+pub const SENT_BEFORE_MS: i64 = 7 * DAY_MS;
+/// A text that reached the phone this long or more after it was sent says
+/// when it arrived, beside its time (`texts-arrived`); under it, nothing:
+/// operator clocks drift by seconds.
+pub const LATE_MS: i64 = 5 * 60_000;
+
+/// When a text in was sent (ms), from its row's columns: its `date_sent`
+/// (seconds in a multimedia message's row, made milliseconds) when it is
+/// above 0, at most `SENT_AHEAD_MS` after the text's arrival (`at`) and at
+/// most `SENT_BEFORE_MS` before it; a sending time after the arrival, within
+/// those two minutes, is the arrival itself, since no text is sent after it
+/// came, so that a reply written at once never shows before the text it
+/// answers. 0 otherwise, and for a text out: its own `date` is when the
+/// phone sent it.
+pub fn sent_time(t: &Text) -> i64 {
+    if t.direction != "in" || t.at <= 0 {
+        return 0;
+    }
+    let column = number(t.fields.get("date_sent"));
+    let sent = if t.id.starts_with("mms-") { column.saturating_mul(1000) } else { column };
+    if sent <= 0 || sent > t.at.saturating_add(SENT_AHEAD_MS) || sent < t.at.saturating_sub(SENT_BEFORE_MS) {
+        return 0;
+    }
+    sent.min(t.at)
 }
 
 /// A text's row in its phone's provider of texts: its table, Android's
@@ -412,12 +492,31 @@ pub struct Limits {
     pub mms: bool,
 }
 
+/// A long text still on its way to a phone (docs/texts.md, "Parts still on
+/// their way"): Android keeps the parts of a long text in `content://sms/raw`
+/// until its last one comes, and shows it to no app before; the phone says
+/// how many came in an "arriving" line of its outcomes (`Outcome::arriving`).
+/// Counts and times only, never words.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Arriving {
+    /// Its sender's number, keyed (`phones::key`): its conversation's id.
+    pub from: String,
+    /// How many of its parts came, and of how many.
+    pub parts: u32,
+    pub count: u32,
+    /// When it was sent (ms): the earliest time its sender's operator
+    /// stamped on the parts that came; 0 unknown.
+    #[serde(default)]
+    pub sent: i64,
+}
+
 /// What became of a request, as its phone says it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Outcome {
     pub key: String,
     /// "taken" (claimed, about to be handed to Android), "handed", "sent",
-    /// "delivered", "failed", "expired", "refused", "clocks", "doubt".
+    /// "delivered", "failed", "expired", "refused", "clocks", "doubt"; and,
+    /// on a line of no request's (its key empty), "limits" and "arriving".
     pub state: String,
     /// When (ms, the phone's clock).
     pub at: i64,
@@ -435,6 +534,12 @@ pub struct Outcome {
     /// of an older Sioul passes it over: no request has its key.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limits: Vec<Limits>,
+    /// An "arriving" line's (its key empty): the long texts on their way to
+    /// the phone when it looked, written when they changed, and once more,
+    /// with none, when their last parts came (`arriving_from`,
+    /// `arriving_now`). A computer of an older Sioul passes it over.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arriving: Vec<Arriving>,
     /// The phone that wrote it. Never written.
     #[serde(skip)]
     pub device: String,
@@ -632,9 +737,10 @@ impl Logs {
 
     /// Every phone's texts, oldest first, each once by phone and row, a
     /// deletion folded into its text (`fold_logs`), without their raw columns
-    /// (`fields`, `addrs`): only the fingerprints read those, and each is made
-    /// as its line is read (review of 16 October 2026, LOW 7: cloning them at
-    /// each refresh cost the window's thread 0.14 s at 20,000 lines).
+    /// (`fields`, `addrs`): only the fingerprints and the sending time read
+    /// those, and both are made as its line is read (`Print`, `Text::placed`;
+    /// review of 16 October 2026, LOW 7: cloning them at each refresh cost
+    /// the window's thread 0.14 s at 20,000 lines).
     pub fn texts(&self) -> Vec<Text> {
         fold_logs(self.files.values().flat_map(|(_, read)| read.lines.iter().cloned()).collect())
     }
@@ -891,7 +997,8 @@ pub fn visible(texts: &[Text], marks: &Marks) -> Vec<Text> {
 }
 
 /// A conversation's unread texts: in, newer than `UNREAD_DAYS`, after its
-/// last read mark, not deleted on the phone; newest first.
+/// last read mark, not deleted on the phone; newest first. All by arrival
+/// (`Text::at`): a text sent hours before it came is new when it comes.
 pub fn unread<'a>(texts: &'a [Text], marks: &Marks, now_ms: i64) -> BTreeMap<String, Vec<&'a Text>> {
     let mut by: BTreeMap<String, Vec<&Text>> = BTreeMap::new();
     for t in texts.iter().filter(|t| t.direction == "in" && t.deleted == 0 && now_ms - t.at <= UNREAD_DAYS * DAY_MS && !marks.hides(t)) {
@@ -1559,6 +1666,58 @@ pub fn limits_of<'a>(outcomes: &'a [Outcome], phone: &str, now_ms: i64) -> Optio
         .map(|o| (o.at, o.limits.as_slice()))
 }
 
+/// A phone's word on the long texts on their way to it is read this long at
+/// most: Android deletes the parts of a long text whose last part never came
+/// 7 days on (`SmsBroadcastUndelivered.DEFAULT_PARTIAL_SEGMENT_EXPIRE_AGE`,
+/// android16-release).
+pub const ARRIVING_KEPT_MS: i64 = 7 * DAY_MS;
+
+/// The long texts on their way, from the rows Java read of Android's
+/// segments (`Texts.arriving`: `address`, `reference`, `count`, `sequence`,
+/// `date`, `sub`; the segments of plain texts alone, none Android marked
+/// done): grouped as Android groups them (its sender, its reference and its
+/// count, `InboundSmsTracker.SELECT_BY_REFERENCE`; and its SIM), each part
+/// once. A text whose parts all came is left out: Android hands it over
+/// then, and it comes as a text. By sender, then sending time.
+pub fn arriving_from(rows: &[Value], region: Option<&Region>) -> Vec<Arriving> {
+    let mut groups: BTreeMap<(String, i64, i64, i64), (BTreeSet<i64>, i64)> = BTreeMap::new();
+    for row in rows {
+        let (count, sequence) = (number(row.get("count")), number(row.get("sequence")));
+        let from = phones::key(row.get("address").and_then(Value::as_str).unwrap_or_default(), region);
+        if from.is_empty() || count < 2 || !(1..=count).contains(&sequence) {
+            continue;
+        }
+        let date = number(row.get("date"));
+        let (parts, sent) = groups.entry((from, number(row.get("reference")), count, number(row.get("sub")))).or_insert_with(|| (BTreeSet::new(), 0));
+        parts.insert(sequence);
+        if date > 0 && (*sent == 0 || date < *sent) {
+            *sent = date;
+        }
+    }
+    let mut out: Vec<Arriving> = groups
+        .into_iter()
+        .filter(|((_, _, count, _), (parts, _))| i64::try_from(parts.len()).unwrap_or(i64::MAX) < *count)
+        .map(|((from, _, count, _), (parts, sent))| Arriving { from, parts: u32::try_from(parts.len()).unwrap_or(u32::MAX), count: u32::try_from(count).unwrap_or(u32::MAX), sent })
+        .collect();
+    out.sort_by(|a, b| (&a.from, a.sent).cmp(&(&b.from, b.sent)));
+    out
+}
+
+/// The long texts on their way to the phones, as each phone said last (its
+/// newest "arriving" line), with when it said so: none from a line older
+/// than `ARRIVING_KEPT_MS`, and a line dated more than `LIMITS_AHEAD_MS` ahead
+/// of `now_ms` passed over (a phone whose clock was once set ahead).
+pub fn arriving_now(outcomes: &[Outcome], now_ms: i64) -> Vec<(i64, &Arriving)> {
+    let mut newest: BTreeMap<&str, &Outcome> = BTreeMap::new();
+    for o in outcomes.iter().filter(|o| o.key.is_empty() && o.state == "arriving" && o.at <= now_ms + LIMITS_AHEAD_MS) {
+        let kept = newest.entry(o.device.as_str()).or_insert(o);
+        if o.at > kept.at {
+            *kept = o;
+        }
+    }
+    newest.into_values().filter(|o| now_ms - o.at <= ARRIVING_KEPT_MS).flat_map(|o| o.arriving.iter().map(move |a| (o.at, a))).collect()
+}
+
 /// A random key, 32 hex digits, from the system's randomness (`/dev/urandom`); the clock's when none.
 pub fn new_key() -> String {
     use std::io::Read;
@@ -1714,7 +1873,7 @@ pub struct Conversation {
     pub with: Vec<String>,
     /// Your address books' names, else the numbers as you write them.
     pub title: String,
-    /// The last message's first words, and when.
+    /// The last message's first words, and when it came (its arrival, `Text::at`; a request, when written).
     pub last: String,
     pub when: String,
     pub at: i64,
@@ -1738,13 +1897,24 @@ pub struct Shown {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Message {
     pub id: String,
+    /// When it was written (ms): a text's place in time (`Text::time`: when
+    /// its sender sent it, else when the phone took it in or sent it); a
+    /// text written here, when it was written.
     pub at: i64,
-    /// "09:41", or "Yesterday 09:41".
+    /// "09:41", or "Yesterday 09:41": `at`, in words.
     pub when: String,
     /// Its day, for the thread's separators: "Today", "Yesterday", "Monday 5
     /// October", the year added when it is another; and its time, "09:41".
     pub day: String,
     pub time: String,
+    /// When it reached the phone (ms), for a text that came `LATE_MS` or
+    /// more after it was sent (`Text::late`); 0 otherwise.
+    pub arrived: i64,
+    /// How late, in whole minutes, then; 0 otherwise.
+    pub late_minutes: i64,
+    /// What the thread says beside its time then: "arrived 01:55, 3 h 45
+    /// later" (`texts-arrived`); "" otherwise.
+    pub late: String,
     /// "in" or "out".
     pub direction: String,
     /// Who wrote it, in a group.
@@ -1811,6 +1981,64 @@ fn when_words(at: i64, v: &Viewer) -> String {
     }
 }
 
+/// How long a text was on its way (ms), in words: "12 min", "3 h 45", "1 day
+/// 3 h" (`texts-late-days`), the minutes left out past a day.
+pub fn late_span(late_ms: i64, tr: &Translator) -> String {
+    let minutes = late_ms.max(0) / 60_000;
+    let (days, hours) = (minutes / (24 * 60), minutes % (24 * 60) / 60);
+    if days == 0 {
+        return crate::timereport::duration(u32::try_from(minutes).unwrap_or(u32::MAX));
+    }
+    let mut args = crate::i18n::args();
+    args.set("days", days);
+    args.set("hours", hours);
+    tr.text(if hours == 0 { "texts-late-days" } else { "texts-late-days-hours" }, Some(&args))
+}
+
+/// A moment in a sentence, with its preposition: "at 14:20" today,
+/// "yesterday at 14:20", "on Monday 5 October at 14:20" ("à 14:20", "hier à
+/// 14:20", "le lundi 5 octobre à 14:20").
+pub fn at_words(at: i64, now: &Zoned, tr: &Translator) -> String {
+    let local = calls::local(at, now);
+    let mut args = crate::i18n::args();
+    args.set("time", local.strftime("%H:%M").to_string());
+    if local.date() == now.date() {
+        tr.text("texts-at", Some(&args))
+    } else if now.date().yesterday().is_ok_and(|y| y == local.date()) {
+        tr.text("texts-at-yesterday", Some(&args))
+    } else {
+        tr.when(&local)
+    }
+}
+
+/// What a conversation's thread says of its long texts still on their way
+/// to a phone, from each phone's last word (`arriving_now`): "A long text is
+/// on its way to your phone: 4 of its 9 parts had come at 14:20; it was sent
+/// at 14:02." One sentence each; none when nothing is on its way.
+pub fn on_the_way(id: &str, outcomes: &[Outcome], v: &Viewer) -> Vec<String> {
+    arriving_now(outcomes, v.now.timestamp().as_millisecond())
+        .into_iter()
+        .filter(|(_, a)| a.from == id)
+        .map(|(said, a)| {
+            let mut args = crate::i18n::args();
+            args.set("parts", a.parts);
+            args.set("count", a.count);
+            args.set("time", at_words(said, v.now, v.tr));
+            args.set("sent", at_words(a.sent, v.now, v.tr));
+            v.tr.text(if a.sent > 0 { "texts-on-the-way" } else { "texts-on-the-way-unsent" }, Some(&args))
+        })
+        .collect()
+}
+
+/// What a thread says beside the time of a text that reached the phone late:
+/// "arrived 01:55, 3 h 45 later". The time of day alone: how much later says the day.
+fn arrived_words(arrived: i64, late: i64, v: &Viewer) -> String {
+    let mut args = crate::i18n::args();
+    args.set("time", time_of_day(arrived, v.now));
+    args.set("late", late_span(late, v.tr));
+    v.tr.text("texts-arrived", Some(&args))
+}
+
 /// What a part is, in a word for the page.
 fn kind_of(ct: &str) -> &'static str {
     match ct.split('/').next().unwrap_or("") {
@@ -1844,7 +2072,10 @@ fn shown(part: &Part, v: &Viewer) -> Option<Shown> {
     Some(Shown { kind: kind.into(), name: part.name.clone(), said, hash, ct: part.ct.clone() })
 }
 
-/// The conversations, newest first: every text's, and those you wrote to from a computer.
+/// The conversations, newest first: every text's, and those you wrote to
+/// from a computer. By arrival (`Text::at`), never by when a text was sent: a
+/// text that comes hours late is new, its conversation comes up with it, and
+/// its words and time are the list's last until a newer one comes.
 pub fn conversations(texts: &[Text], requests: &[Request], v: &Viewer) -> Vec<Conversation> {
     let mut by: BTreeMap<String, Conversation> = BTreeMap::new();
     let mut add = |with: Vec<String>, at: i64, last: String| {
@@ -1894,10 +2125,12 @@ fn row_key(t: &Text, key_of_row: &BTreeMap<String, Vec<(&str, &str, i64, i64)>>)
         .unwrap_or_default()
 }
 
-/// A conversation's messages, oldest first: its texts, deleted ones said, and
-/// the texts you wrote to it from a computer with their states; a request
-/// Android filed is said on its row, once. A row is its phone's own: another
-/// phone's row of the same number is another text (`row_key`).
+/// A conversation's messages, oldest first by when they were written (a
+/// text by its place in time, `Text::time`; a tie by its name): its texts,
+/// deleted ones said, one that reached the phone late said so beside its
+/// time; and the texts you wrote to it from a computer with their states; a
+/// request Android filed is said on its row, once. A row is its phone's own:
+/// another phone's row of the same number is another text (`row_key`).
 pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outcome], v: &Viewer) -> Vec<Message> {
     // A text Android filed for a request is dated no earlier than the
     // request's time on the phone's clock, less what `verdict` lets pass.
@@ -1917,13 +2150,17 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
         if !key.is_empty() {
             shown_keys.insert(key.clone());
         }
-        let (day, time) = day_and_time(t.at, v);
+        let (day, time) = day_and_time(t.time(), v);
+        let late = t.late();
         out.push(Message {
             id: format!("{}/{}", t.device, t.id),
-            at: t.at,
-            when: when_words(t.at, v),
+            at: t.time(),
+            when: when_words(t.time(), v),
             day,
             time,
+            arrived: if late > 0 { t.at } else { 0 },
+            late_minutes: late / 60_000,
+            late: if late > 0 { arrived_words(t.at, late, v) } else { String::new() },
             direction: t.direction.clone(),
             from: if t.with.len() > 1 && t.direction == "in" && !t.from.is_empty() { (v.name_of)(&t.from).unwrap_or_else(|| calls::shown_number(&t.from, v.region)) } else { String::new() },
             body: t.body.clone(),
@@ -1945,6 +2182,9 @@ pub fn messages(id: &str, texts: &[Text], requests: &[Request], outcomes: &[Outc
             when: when_words(r.written, v),
             day,
             time,
+            arrived: 0,
+            late_minutes: 0,
+            late: String::new(),
             direction: "out".into(),
             from: String::new(),
             body: r.said_words().to_string(),
@@ -1973,7 +2213,8 @@ pub struct Found {
 
 /// The texts holding every word of `query`, case and accents aside, in their
 /// words, a part's name, or their people's names or numbers; the newest
-/// first, `limit` at most. For a search of the archive (the MCP server's).
+/// written first (`Text::time`), `limit` at most. For a search of the
+/// archive (the MCP server's).
 pub fn search(query: &str, texts: &[Text], requests: &[Request], outcomes: &[Outcome], v: &Viewer, limit: usize) -> Vec<Found> {
     let words: Vec<String> = crate::rules::fold(query).split(' ').filter(|w| !w.is_empty()).map(str::to_string).collect();
     if words.is_empty() {
@@ -1995,7 +2236,7 @@ pub fn search(query: &str, texts: &[Text], requests: &[Request], outcomes: &[Out
             words.iter().all(|w| own.contains(w.as_str()) || said.contains(w.as_str()))
         })
         .collect();
-    found.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.id.cmp(&b.id)));
+    found.sort_by(|a, b| b.time().cmp(&a.time()).then_with(|| a.id.cmp(&b.id)));
     found.truncate(limit);
     found
         .into_iter()
@@ -2321,6 +2562,255 @@ mod tests {
         assert_eq!(said[1], ("Yesterday".to_string(), "10:00".to_string()));
         assert_eq!(said[2], ("Today".to_string(), "09:59".to_string()));
         assert!(said[0].0.ends_with(" 2025") && said[0].0.contains("September"), "another year said: {:?}", said[0]);
+    }
+
+    /// A plain text as a phone's log holds it, its row's columns as Android
+    /// gives them (`date_sent` beside `date`), opened as every line is
+    /// (`Text::placed`). A fiction number.
+    fn logged(id: i64, date: i64, date_sent: Value, direction: &str, body: &str) -> Text {
+        let kind = if direction == "in" { 1 } else { 2 };
+        let line = serde_json::json!({
+            "id": Row { mms: false, id, date }.name(), "at": date, "box": direction, "with": ["+33536490042"], "body": body,
+            "fields": { "_id": id, "thread_id": 4, "address": "05 36 49 00 42", "date": date, "date_sent": date_sent, "type": kind, "read": 1, "body": body },
+        });
+        Text { device: "phone".into(), ..serde_json::from_value(line).unwrap() }
+    }
+
+    /// Wednesday 7 October 2026, 22:10 in Paris: a text written then…
+    const WRITTEN: i64 = ARRIVED - 13_500_000;
+    /// …reached the phone at 01:55 the next night, 3 h 45 later, its
+    /// parts held up by the network.
+    const ARRIVED: i64 = NOW - 29_100_000;
+
+    /// A text that reached the phone 3 h 45 after its sender wrote it: placed
+    /// in the thread when it was written, before the reply written in
+    /// between, with when it arrived said beside its time, in English and in
+    /// French; what agents read gives both times (27 October 2026).
+    #[test]
+    fn a_late_text_sits_where_it_was_written_and_says_when_it_arrived() {
+        let names = |_: &str| None;
+        let here = |_: &str| false;
+        let now = paris(NOW);
+        let late = logged(412, ARRIVED, Value::from(WRITTEN), "in", "Rendez-vous demain à 9 h, sinon je rappelle.");
+        // Written on the phone at 23:10, while the text was on its way: Android dates it when it went.
+        let reply = logged(413, NOW - 39_000_000, Value::from(0), "out", "Tu es là demain ?");
+        assert_eq!((late.at, late.sent, late.time(), late.late()), (ARRIVED, WRITTEN, WRITTEN, 13_500_000));
+        assert_eq!((reply.sent, reply.time(), reply.late()), (0, reply.at, 0), "a text out keeps its own date");
+        let texts = [reply.clone(), late.clone()];
+        for (language, note) in [("en", "arrived 01:55, 3 h 45 later"), ("fr", "arrivé à 01:55, 3 h 45 plus tard")] {
+            let tr = Translator::new(language);
+            let v = viewer(&now, &tr, &names, &here);
+            let thread = messages("+33536490042", &texts, &[], &[], &v);
+            assert_eq!(thread.iter().map(|m| m.body.as_str()).collect::<Vec<_>>(), [late.body.as_str(), reply.body.as_str()], "{language}: the text first, as written");
+            let (first, second) = (&thread[0], &thread[1]);
+            assert_eq!((first.at, first.time.as_str(), first.arrived, first.late_minutes, first.late.as_str()), (WRITTEN, "22:10", ARRIVED, 225, note), "{language}");
+            assert_eq!(first.day, calls::capitalized(&calls::day_words(&tr, now.date().yesterday().unwrap(), now.date())), "{language}: under yesterday");
+            assert_eq!((second.time.as_str(), second.arrived, second.late.as_str()), ("23:10", 0, ""), "{language}: no note on the reply");
+            // The search gives the same message, both times with it.
+            let found = search("rendez", &texts, &[], &[], &v, 10);
+            assert_eq!((found.len(), found[0].message.at, found[0].message.arrived, found[0].message.late.as_str()), (1, WRITTEN, ARRIVED, note));
+        }
+        // What agents are given: the message as data, both times in it.
+        let tr = Translator::new("en");
+        let v = viewer(&now, &tr, &names, &here);
+        let data = serde_json::to_value(&messages("+33536490042", &texts, &[], &[], &v)[0]).unwrap();
+        assert_eq!((data["at"].as_i64(), data["arrived"].as_i64(), data["late_minutes"].as_i64(), data["when"].as_str()), (Some(WRITTEN), Some(ARRIVED), Some(225), Some("Yesterday 22:10")));
+        // Never written: a line keeps the column itself.
+        assert!(!serde_json::to_string(&late).unwrap().contains("\"sent\""), "the sending time is never written");
+    }
+
+    /// A sending time out of reason is no sending time: none (0, or no
+    /// column), more than 2 minutes after the arrival (an operator's clock
+    /// ahead), more than 7 days before it (beyond any validity period): the
+    /// arrival, with no note. Within 2 minutes after it, the arrival itself: no
+    /// text is sent after it came. A skew of seconds: the sending time, with no
+    /// note. A text out: its own date, whatever its column says.
+    #[test]
+    fn a_sending_time_out_of_reason_is_the_arrival() {
+        let at = NOW - 60 * MINUTE;
+        let time = |date_sent: Value| logged(20, at, date_sent, "in", "Bonjour.");
+        for (date_sent, why) in [(Value::from(0), "none"), (Value::Null, "no column"), (Value::from(at + 3 * MINUTE), "3 minutes after"), (Value::from(at - 8 * DAY_MS), "8 days before"), (Value::from(-5), "below 0")] {
+            let t = time(date_sent);
+            assert_eq!((t.sent, t.time(), t.late()), (0, at, 0), "{why}");
+        }
+        let ahead = time(Value::from(at + 90_000));
+        assert_eq!((ahead.time(), ahead.late()), (at, 0), "90 seconds after: the arrival");
+        let skew = time(Value::from(at - 40_000));
+        assert_eq!((skew.time(), skew.late()), (at - 40_000, 0), "40 seconds: the sending time, no note");
+        let just = time(Value::from(at - 5 * MINUTE));
+        assert_eq!(just.late(), 5 * MINUTE, "5 minutes: said");
+        let under = time(Value::from(at - 5 * MINUTE + 1_000));
+        assert_eq!(under.late(), 0, "under 5 minutes: nothing said");
+        let week = time(Value::from(at - 7 * DAY_MS));
+        assert_eq!(week.time(), at - 7 * DAY_MS, "7 days: still a sending time");
+        assert_eq!(time(Value::from((at - 2 * 60 * MINUTE).to_string())).time(), at - 2 * 60 * MINUTE, "a column given as words");
+        let out = logged(21, at, Value::from(at - 60 * MINUTE), "out", "Bonjour.");
+        assert_eq!((out.sent, out.time()), (0, at), "a text out: its own date");
+        // In a thread: each at its arrival, no note.
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| false;
+        let v = viewer(&now, &tr, &names, &here);
+        for t in [time(Value::from(0)), time(Value::from(at + 3 * MINUTE)), time(Value::from(at - 8 * DAY_MS))] {
+            let m = &messages("+33536490042", std::slice::from_ref(&t), &[], &[], &v)[0];
+            assert_eq!((m.at, m.time.as_str(), m.arrived, m.late.as_str()), (at, "09:00", 0, ""));
+        }
+        let m = &messages("+33536490042", &[skew], &[], &[], &v)[0];
+        assert_eq!((m.time.as_str(), m.late.as_str()), ("08:59", ""), "a skew of seconds: its sending time, nothing said");
+    }
+
+    /// A multimedia message counts in seconds, `date_sent` too: made
+    /// milliseconds before it is weighed; its row's name keeps its date in seconds.
+    #[test]
+    fn a_multimedia_message_s_sending_time_counts_in_seconds() {
+        let date = ARRIVED / 1000;
+        let line = |date_sent: i64| -> Text {
+            let json = serde_json::json!({
+                "id": Row { mms: true, id: 31, date }.name(), "at": date * 1000, "box": "in", "with": ["+33536490042"], "body": "La photo du colis.",
+                "fields": { "_id": 31, "thread_id": 4, "date": date, "date_sent": date_sent, "msg_box": 1, "m_type": 132 },
+            });
+            Text { device: "phone".into(), ..serde_json::from_value(json).unwrap() }
+        };
+        let late = line(WRITTEN / 1000);
+        assert_eq!((late.id.as_str(), late.at, late.sent, late.late()), (format!("mms-31@{date}").as_str(), ARRIVED, WRITTEN, 13_500_000));
+        assert_eq!(late.row(), Some(Row { mms: true, id: 31, date }), "its row: its date in seconds");
+        assert_eq!(line(date - 30).time(), ARRIVED - 30_000, "30 seconds: no note");
+        assert_eq!(line(date - 30).late(), 0);
+        assert_eq!(line(WRITTEN).sent, 0, "milliseconds where seconds are counted: a time far ahead, none");
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| false;
+        let v = viewer(&now, &tr, &names, &here);
+        let m = &messages("+33536490042", std::slice::from_ref(&late), &[], &[], &v)[0];
+        assert_eq!((m.time.as_str(), m.late.as_str()), ("22:10", "arrived 01:55, 3 h 45 later"));
+    }
+
+    /// The late text keeps its name, its row and its arrival everywhere a
+    /// name or a moment points at it: its deletion line, the sharing's read
+    /// and hidden marks, the list of conversations and what is new there
+    /// (all by arrival: a text that comes late is new when it comes).
+    #[test]
+    fn a_late_text_keeps_its_name_its_row_and_its_place_in_the_list() {
+        let late = logged(412, ARRIVED, Value::from(WRITTEN), "in", "Rendez-vous demain à 9 h.");
+        assert_eq!(late.id, format!("sms-412@{ARRIVED}"), "named by its id and its own date, as before");
+        assert_eq!(late.row(), Some(Row { mms: false, id: 412, date: ARRIVED }));
+        // Deleted on the phone: its deletion's line names it, and folds into it.
+        let deletion = Text { deleted: NOW, ..late.clone() };
+        let folded = fold_logs(vec![late.clone(), deletion]);
+        assert_eq!((folded.len(), folded[0].deleted, folded[0].time()), (1, NOW, WRITTEN));
+        // Another conversation's text, written and come at 01:00: after the late one was written, before it came.
+        let other = Text { with: vec!["+33465710042".into()], ..logged(300, NOW - 9 * 60 * MINUTE, Value::from(NOW - 9 * 60 * MINUTE - 2_000), "in", "Colis livré.") };
+        let tr = Translator::new("en");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| false;
+        let v = viewer(&now, &tr, &names, &here);
+        let texts = [late.clone(), other.clone()];
+        let list = conversations(&texts, &[], &v);
+        assert_eq!(list.iter().map(|c| (c.id.as_str(), c.at, c.when.as_str())).collect::<Vec<_>>(), [("+33536490042", ARRIVED, "01:55"), ("+33465710042", other.at, "01:00")], "the list by arrival, its time the arrival");
+        // New until read, by arrival: a mark read up to 01:30 leaves it new; up to its arrival, read.
+        let mut marks = Marks::default();
+        marks.note(&TextMark { at: NOW, conversation: "+33536490042".into(), read: NOW - 510 * MINUTE, ..TextMark::default() });
+        assert_eq!(unread(&texts, &marks, NOW).get("+33536490042").map(Vec::len), Some(1), "read up to 01:30: it came after, new");
+        marks.note(&TextMark { at: NOW, conversation: "+33536490042".into(), read: ARRIVED, ..TextMark::default() });
+        assert!(!unread(&texts, &marks, NOW).contains_key("+33536490042"), "read up to its arrival");
+        // A conversation deleted in Sioul at 01:30 (hidden up to then): the text that came later starts it again.
+        let mut hidden = Marks::default();
+        hidden.note(&TextMark { at: NOW, conversation: "+33536490042".into(), hidden: NOW - 510 * MINUTE, ..TextMark::default() });
+        assert!(!hidden.hides(&late), "hidden by arrival: it came after");
+        // A phone's notification of it (posted on arrival) folds into it, as before.
+        assert_eq!(folded_into("+33536490042", ARRIVED + 30_000, &texts).as_deref(), Some("+33536490042"));
+    }
+
+    /// The window's logs and the agents' read place every line in time as
+    /// it is opened, though the window then keeps it without its columns.
+    #[test]
+    fn every_read_places_a_line_in_time() {
+        let dir = scratch("placed");
+        let log = own_file(&dir, LOG, "phone");
+        let late = logged(412, ARRIVED, Value::from(WRITTEN), "in", "Rendez-vous demain à 9 h.");
+        append(&log, &[Text { sent: 0, ..late.clone() }], &Stand, None).unwrap();
+        let read = read_logs(&dir, &Stand);
+        assert_eq!((read[0].sent, read[0].time(), read[0].late()), (WRITTEN, WRITTEN, 13_500_000), "read_logs");
+        let mut logs = Logs::default();
+        assert!(logs.refresh(&dir, &Stand));
+        let kept = logs.texts();
+        assert!(kept[0].fields.is_empty(), "kept without its columns");
+        assert_eq!((kept[0].sent, kept[0].time()), (WRITTEN, WRITTEN), "placed before they went");
+        assert_eq!(logs.one_each(fr())[0].time(), WRITTEN);
+        assert_eq!(read_file::<Text>(&log, &Stand)[0].sent, WRITTEN, "a phone's own log too");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// How long a text was on its way, in words, in both languages.
+    #[test]
+    fn how_late_is_said_in_minutes_hours_and_days() {
+        let en = Translator::new("en");
+        let fr = Translator::new("fr");
+        for (minutes, english, french) in [(12, "12 min", "12 min"), (225, "3 h 45", "3 h 45"), (125, "2 h 05", "2 h 05"), (180, "3 h", "3 h"), (27 * 60 + 10, "1 day 3 h", "1 jour 3 h"), (48 * 60, "2 days", "2 jours"), (6 * 24 * 60 + 23 * 60 + 59, "6 days 23 h", "6 jours 23 h")] {
+            assert_eq!((late_span(minutes * MINUTE, &en), late_span(minutes * MINUTE, &fr)), (english.to_string(), french.to_string()), "{minutes}");
+        }
+        assert_eq!(late_span(5 * MINUTE + 59_999, &en), "5 min", "whole minutes");
+    }
+
+    /// A long text's parts still on their way, as Java reads them of
+    /// Android's segments: grouped as Android groups them, each part once,
+    /// one whose parts all came left out; what each phone said last, said
+    /// under the conversation's thread, in English and in French; an old
+    /// word, or one of a clock ahead, passed over; no request's state.
+    #[test]
+    fn a_long_text_on_its_way_is_said_by_its_parts() {
+        let segment = |address: &str, reference: i64, count: i64, sequence: i64, date: i64| serde_json::json!({ "address": address, "reference": reference, "count": count, "sequence": sequence, "date": date, "sub": 1 });
+        let rows = [
+            segment("05 36 49 00 42", 17, 9, 2, NOW - 19 * MINUTE),
+            segment("+33536490042", 17, 9, 1, NOW - 29 * MINUTE),
+            segment("05 36 49 00 42", 17, 9, 2, NOW - 19 * MINUTE),
+            segment("05 36 49 00 42", 17, 9, 4, NOW - 18 * MINUTE),
+            segment("05 36 49 00 42", 17, 9, 3, NOW - 18 * MINUTE),
+            // Every part come: Android hands it over, it comes as a text.
+            segment("04 65 71 00 42", 18, 2, 1, NOW - 5 * MINUTE),
+            segment("04 65 71 00 42", 18, 2, 2, NOW - 5 * MINUTE),
+            // Another text of the same sender, its first part alone.
+            segment("05 36 49 00 42", 19, 3, 1, NOW - 2 * MINUTE),
+            // No text of several parts, a place out of its count, no sender: none.
+            segment("05 36 49 00 42", 20, 1, 1, NOW),
+            segment("05 36 49 00 42", 21, 3, 4, NOW),
+            segment("", 22, 3, 1, NOW),
+        ];
+        let arriving = arriving_from(&rows, fr());
+        assert_eq!(arriving, [Arriving { from: "+33536490042".into(), parts: 4, count: 9, sent: NOW - 29 * MINUTE }, Arriving { from: "+33536490042".into(), parts: 1, count: 3, sent: NOW - 2 * MINUTE }]);
+        // What each phone said last: the newest line of each, an empty one saying the last parts came.
+        let line = |device: &str, at: i64, arriving: Vec<Arriving>| Outcome { state: "arriving".into(), at, arriving, device: device.into(), ..Outcome::default() };
+        let earlier = vec![Arriving { from: "+33536490042".into(), parts: 2, count: 9, sent: NOW - 29 * MINUTE }];
+        let outcomes = [line("phone", NOW - 25 * MINUTE, earlier.clone()), line("phone", NOW - 20 * MINUTE, arriving[..1].to_vec()), line("old-phone", NOW - 3 * DAY_MS, earlier.clone()), line("old-phone", NOW - DAY_MS, Vec::new())];
+        assert_eq!(arriving_now(&outcomes, NOW), [(NOW - 20 * MINUTE, &arriving[0])], "the newest word of each phone");
+        assert!(arriving_now(&[line("phone", NOW - 8 * DAY_MS, earlier.clone())], NOW).is_empty(), "past Android's 7 days");
+        assert!(arriving_now(&[line("phone", NOW + 2 * DAY_MS, earlier.clone())], NOW).is_empty(), "a clock ahead");
+        assert_eq!(state_of("", &outcomes), None, "no request's state");
+        let now = paris(NOW);
+        let names = |_: &str| None;
+        let here = |_: &str| false;
+        for (language, said) in [
+            ("en", "A long text is on its way to your phone: 4 of its 9 parts had come at 09:40; it was sent at 09:31."),
+            ("fr", "Un long SMS est en route vers votre téléphone\u{202f}: 4 de ses 9 parties étaient arrivées à 09:40\u{202f}; il a été envoyé à 09:31."),
+        ] {
+            let tr = Translator::new(language);
+            let v = viewer(&now, &tr, &names, &here);
+            assert_eq!(on_the_way("+33536490042", &outcomes, &v), [said], "{language}");
+            assert!(on_the_way("+33465710042", &outcomes, &v).is_empty(), "{language}: another conversation's");
+        }
+        // Said on other days: yesterday, or the day's date; no sending time known, none said.
+        let tr = Translator::new("en");
+        let v = viewer(&now, &tr, &names, &here);
+        let yesterday = [line("phone", NOW - DAY_MS, vec![Arriving { from: "+33536490042".into(), parts: 1, count: 3, sent: 0 }])];
+        assert_eq!(on_the_way("+33536490042", &yesterday, &v), ["A long text is on its way to your phone: 1 of its 3 parts had come yesterday at 10:00."]);
+        let monday = [line("phone", NOW - 3 * DAY_MS, vec![Arriving { from: "+33536490042".into(), parts: 2, count: 3, sent: NOW - 3 * DAY_MS - 5 * MINUTE }])];
+        assert_eq!(on_the_way("+33536490042", &monday, &v), ["A long text is on its way to your phone: 2 of its 3 parts had come on Monday 5 October at 10:00; it was sent on Monday 5 October at 09:55."]);
+        // A computer of an older Sioul reads the line as no request's, its texts passed over.
+        let written = serde_json::to_string(&outcomes[1]).unwrap();
+        assert!(written.contains("\"arriving\"") && !serde_json::to_string(&Outcome::default()).unwrap().contains("arriving"));
     }
 
     #[test]

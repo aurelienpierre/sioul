@@ -927,12 +927,15 @@ Item {
                                         }
                                     }
                                 }
-                                // Its time; for a text sent from here, what became of it, in words.
+                                // Its time (when it was written); for a text that reached the phone
+                                // 5 minutes or more later, when it arrived; for a text sent from here,
+                                // what became of it, in words.
                                 Label {
                                     id: meta
 
+                                    objectName: "textsMeta"
                                     Layout.fillWidth: true
-                                    text: message.modelData.time + (message.modelData.said ? "  ·  " + message.modelData.said.text : "") + (message.modelData.deleted ? "  ·  " + page.sioul.text("texts-deleted-on-phone") : "")
+                                    text: message.modelData.time + (message.modelData.late ? "  ·  " + message.modelData.late : "") + (message.modelData.said ? "  ·  " + message.modelData.said.text : "") + (message.modelData.deleted ? "  ·  " + page.sioul.text("texts-deleted-on-phone") : "")
                                     textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     font.pixelSize: 12
@@ -959,6 +962,25 @@ Item {
                 }
             }
 
+            // A long text still on its way to the phone, its last parts not come
+            // (docs/texts.md, "Parts still on their way"): said quietly under the thread.
+            Repeater {
+                model: page.talk !== null ? (page.talk.on_the_way || []) : []
+
+                delegate: Label {
+                    id: onTheWay
+
+                    required property var modelData
+
+                    objectName: "textsOnTheWay"
+                    Layout.fillWidth: true
+                    text: onTheWay.modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+            }
             Label {
                 visible: page.said !== ""
                 Layout.fillWidth: true

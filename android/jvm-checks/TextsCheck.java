@@ -10,14 +10,15 @@ import org.json.JSONObject;
 
 /**
  * Texts.sms, Texts.mms, Texts.media, Texts.rows, TextSend.line, a multimedia
- * message's word (TextSend.mmsLine), its file's address (Attachments.contentUri)
- * and its SIM's carrier values (Texts.limitsLine) on the JVM, on a
+ * message's word (TextSend.mmsLine), its file's address (Attachments.contentUri),
+ * its SIM's carrier values (Texts.limitsLine) and a long text's parts still on
+ * their way (Texts.segment) on the JVM, on a
  * stand-in provider (rows of `sms`, `mms`, its `addr` and `part` tables, as
  * Texts.copy makes them), as Rust reads them (crates/sioul-app/src/texts.rs,
  * `Raw`, `Result`): every column kept for a later restore, a part's file's
  * place on the phone never; which parts travel as files; which rows a read
  * takes; a part's result.
- * Fiction numbers only (ARCEP's 01 99 00 and 04 65 71).
+ * Fiction numbers only (ARCEP's 01 99 00, 04 65 71 and 05 36 49).
  */
 public final class TextsCheck
 {
@@ -101,6 +102,42 @@ public final class TextsCheck
         expect("answered after a question", !Texts.atOnce(0, 4000));
         expect("something given", !Texts.atOnce(2, 50));
         expect("no time measured", !Texts.atOnce(0, -1));
+
+        // A long text's part still on its way (Texts.segment, Texts.SEGMENTS_WAITING), as Rust reads it
+        // (`texts::arriving_from`): its sender, its text, its place and its time; never its words nor its PDU.
+        Texts.Row waiting = new Texts.Row() {
+            @Override
+            public String text(String column)
+            {
+                return "address".equals(column) ? "+33536490042" : "";
+            }
+
+            @Override
+            public long number(String column)
+            {
+                switch (column) {
+                case "reference_number":
+                    return 17;
+                case "count":
+                    return 9;
+                case "sequence":
+                    return 4;
+                case "date":
+                    return at;
+                case "sub_id":
+                    return 1;
+                default:
+                    return 0;
+                }
+            }
+        };
+        JSONObject segment = Texts.segment(waiting);
+        expect("a part's sender, text, place and time", "+33536490042".equals(segment.getString("address")) && segment.getLong("reference") == 17 && segment.getLong("count") == 9
+                                                         && segment.getLong("sequence") == 4 && segment.getLong("date") == at && segment.getLong("sub") == 1);
+        List<String> columns = java.util.Arrays.asList(Texts.SEGMENT_COLUMNS);
+        expect("never a part's words nor its PDU", !columns.contains("message_body") && !columns.contains("pdu") && !segment.has("message_body"));
+        expect("the parts waiting: not handed over, of a plain text of two parts or more",
+               Texts.SEGMENTS_WAITING.contains("deleted = 0") && Texts.SEGMENTS_WAITING.contains("count > 1") && Texts.SEGMENTS_WAITING.contains("(destination_port & 65536) != 0"));
 
         System.out.println("TextsCheck: " + checked + " checked, " + failed + " failed");
         if (failed > 0)

@@ -36,8 +36,9 @@
 # - MessagesCheck: what the listener says for your computers
 #   (PhoneMessages.notice, PhoneMessages.message), under the names
 #   phonemsgs.rs's `Extra` reads: visibility, times, pictures by their type.
-# - TextsCheck (texts): the texts read from the provider and a part's result
-#   (Texts.sms, Texts.mms, TextSend.line) on stand-in rows, as texts.rs reads them.
+# - TextsCheck (texts): the texts read from the provider, a part's result and
+#   a long text's parts still on their way (Texts.sms, Texts.mms, TextSend.line,
+#   Texts.segment) on stand-in rows, as texts.rs reads them.
 # - AttachmentsCheck: a mail attachment handed to another app (Attachments:
 #   its content:// address and the way back, its type, ACTION_VIEW read
 #   only, the question where to save), and the provider's folders and the

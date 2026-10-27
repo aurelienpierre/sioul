@@ -40,6 +40,8 @@ Item {
         // Made up: fiction numbers only.
         property var conversations: [{ id: "+33199001234", with: ["+33199001234"], title: "01 99 00 12 34", last: "Message 40", when: "09:40", at: 40, group: false, drafts: 0 }]
         property var thread: []
+        // A long text still on its way to the phone, in words (texts.rs, `on_the_way`).
+        property var onTheWay: []
         // Attaching: offered or not (the phone said what its carrier takes), what was asked to be made fit, the counter's word.
         property bool attach: true
         property var attachAsked: []
@@ -66,7 +68,7 @@ Item {
             if (verb === "view")
                 return JSON.stringify({ can: true, phone: { id: "p", name: "", shared: "09:58", said: "" }, conversations: mock.conversations, said: "", never: "", empty: "" })
             if (verb === "conversation")
-                return JSON.stringify({ id: args.id, title: "01 99 00 12 34", messages: mock.thread, drafts: [], can_write: true, group: false, attach: mock.attach, attach_said: mock.attach ? "" : "texts-attach-gate" })
+                return JSON.stringify({ id: args.id, title: "01 99 00 12 34", messages: mock.thread, on_the_way: mock.onTheWay, drafts: [], can_write: true, group: false, attach: mock.attach, attach_said: mock.attach ? "" : "texts-attach-gate" })
             if (verb === "parts" && args.media)
                 return JSON.stringify({ parts: 1, said: "texts-parts-mms", over: mock.over, max: mock.max })
             if (verb === "parts")
@@ -134,6 +136,7 @@ Item {
         function init() {
             mock.conversations = [{ id: "+33199001234", with: ["+33199001234"], title: "01 99 00 12 34", last: "Message 40", when: "09:40", at: 40, group: false, drafts: 0 }]
             mock.thread = mock.grow(1, 40)
+            mock.onTheWay = []
             page.visible = true
             page.close()
             page.reload()
@@ -161,6 +164,40 @@ Item {
             words.selectAll()
             verify(words.selectedText.length > 0, "a span selected")
             page.opener = url => Qt.openUrlExternally(url)
+        }
+
+        // A text that reached the phone late (placed in Rust where it was
+        // written): when it arrived said beside its time; the other texts say
+        // nothing of the kind (27 October 2026).
+        function test_a_late_text_says_when_it_arrived() {
+            const late = Object.assign(mock.message(41), { time: "22:10", late: "arrived 01:55, 3 h 45 later", arrived: 41000, late_minutes: 225 })
+            mock.thread = mock.grow(1, 40).concat([late])
+            page.reload()
+            wait(100)
+            const view = threadView()
+            view.positionViewAtEnd()
+            wait(50)
+            const meta = i => findChild(view.itemAtIndex(i), "textsMeta")
+            compare(meta(40).text, "22:10  ·  arrived 01:55, 3 h 45 later")
+            compare(meta(39).text, "09:40", "no note")
+        }
+
+        // A long text whose last parts have not reached the phone: said quietly under
+        // the thread, in Rust's words; nothing when none is on its way (27 October 2026).
+        function test_a_long_text_on_its_way_is_said_under_the_thread() {
+            compare(findChild(page, "textsOnTheWay"), null, "none on its way")
+            mock.onTheWay = ["A long text is on its way to your phone: 4 of its 9 parts had come at 09:40; it was sent at 09:31."]
+            mock.thread = mock.grow(1, 41)
+            page.reload()
+            wait(100)
+            const said = findChild(page, "textsOnTheWay")
+            verify(said !== null && said.visible)
+            compare(said.text, mock.onTheWay[0])
+            mock.onTheWay = []
+            mock.thread = mock.grow(1, 42)
+            page.reload()
+            wait(100)
+            compare(findChild(page, "textsOnTheWay"), null, "its last parts came: gone")
         }
 
         // Archived: out of the list, a view of their own, put back from there (25 October 2026).
