@@ -3,6 +3,7 @@
 
 package com.aurelienpierre.sioul;
 
+import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -17,6 +18,7 @@ import android.content.pm.PackageManager;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -80,16 +82,24 @@ final class DoseAlarms
     static final String AGAIN = "again";
     /**
      * When an entry's alarm rang (ms; DoseReceiver notes it at the broadcast,
-     * under the record's lock): for `RANG_HOLDS_MS` a process's first hand
-     * never arms it again, so that no dose is decided twice at once (the A4
-     * check, #0 and #22). Past it and still listed, its decision died with
-     * its process (its deadline is 45 seconds; a decision that ends shows it,
-     * asks again, or leaves it unlisted): any hand arms it again within the
-     * half hour, the mark dropped, so that it still rings (the A5 check, L1).
+     * under the record's lock), with the process deciding it (`RANG_BY`, its
+     * pid) and the boot it runs in (`RANG_BOOT`): while that process is there,
+     * no hand arms it again, however long its decision runs, so that no dose
+     * is decided twice (the A4 check, #0 and #22; the A6 check, L2: a minute
+     * passed was taken for a dead decision). Still listed once that process
+     * is gone (a crash, a kill, a restart), its decision died with it: any
+     * hand arms it again within the half hour, the mark dropped, so that it
+     * still rings (the A5 check, L1).
      */
     static final String RANG = "rang";
-    /** How long a rung entry's decision may run: a minute, past the broadcast's 45 seconds. */
-    static final long RANG_HOLDS_MS = 60 * 1000L;
+    static final String RANG_BY = "rangBy";
+    static final String RANG_BOOT = "rangBoot";
+
+    /** Whether the process that decides a dose, by its pid and the boot it ran in, is there still. */
+    interface Deciders
+    {
+        boolean alive(int pid, int boot);
+    }
     /**
      * Rust's tag on the dose that replaced one whose reminder was taken away
      * as gone (its key): armed once, at once if its time is past, even past
@@ -191,7 +201,7 @@ final class DoseAlarms
         final Plan plan;
         try {
             held = lockRecord(context);
-            plan = Plan.of(record(context), doses, System.currentTimeMillis(), armedHere);
+            plan = Plan.of(record(context), doses, System.currentTimeMillis(), armedHere, (pid, boot) -> alive(context, pid, boot));
             for (String key : plan.cancel)
                 cancel(context, key);
             for (JSONObject dose : plan.arm)
@@ -253,12 +263,42 @@ final class DoseAlarms
         FileLock held = null;
         try {
             held = lockRecord(context);
-            keepRecord(context, Plan.rangIn(record(context), key, System.currentTimeMillis()));
+            keepRecord(context, Plan.rangIn(record(context), key, System.currentTimeMillis(), android.os.Process.myPid(), boot(context)));
         } catch (IOException e) {
             Log.e(TAG, "Doses: the alarms' record could not be held; its ring not noted. " + e);
         } finally {
             release(held);
         }
+    }
+
+    /** This boot of the phone (Android's own count of them; -1 when it gives none). */
+    static int boot(Context context)
+    {
+        return Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+    }
+
+    /**
+     * Whether a process of Sioul's that decides a dose is there still: in this
+     * boot, this process or one Android lists as Sioul's running. Not known
+     * (no list): this process alone, so that a dose whose decider may be gone
+     * rings again rather than never.
+     */
+    static boolean alive(Context context, int pid, int boot)
+    {
+        if (boot != boot(context) || pid <= 0)
+            return false;
+        if (pid == android.os.Process.myPid())
+            return true;
+        try {
+            java.util.List<ActivityManager.RunningAppProcessInfo> running = context.getSystemService(ActivityManager.class).getRunningAppProcesses();
+            if (running != null)
+                for (ActivityManager.RunningAppProcessInfo process : running)
+                    if (process.pid == pid)
+                        return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Doses: Sioul's processes could not be listed. " + e);
+        }
+        return false;
     }
 
     /** Whether a dose's reminder (or its fallback) is in the shade now. */
@@ -316,7 +356,7 @@ final class DoseAlarms
         final List<JSONObject> arm = new ArrayList<>();
         final List<String> cancel = new ArrayList<>();
 
-        static Plan of(JSONArray kept, JSONArray doses, long now, boolean armedHere)
+        static Plan of(JSONArray kept, JSONArray doses, long now, boolean armedHere, Deciders deciders)
         {
             Plan plan = new Plan();
             Map<String, JSONObject> before = new HashMap<>();
@@ -346,8 +386,8 @@ final class DoseAlarms
                 if (was == null && when < now - GRACE_MS)
                     continue;
                 long rangAt = was != null && was.optLong("at") == when ? was.optLong(RANG) : 0;
-                // Rung within the minute: decided still; rung earlier and still listed: its decision died.
-                boolean deciding = rangAt > now - RANG_HOLDS_MS;
+                // Rung, its deciding process there still: decided still, however long; gone: its decision died.
+                boolean deciding = rangAt > 0 && deciders.alive(was.optInt(RANG_BY, -1), was.optInt(RANG_BOOT, -1));
                 boolean died = rangAt > 0 && !deciding;
                 JSONObject entry = new JSONObject();
                 put(entry, "key", key);
@@ -357,15 +397,18 @@ final class DoseAlarms
                     put(entry, AGAIN, true);
                 if (replaces && when != at)
                     put(entry, REPLACES, true);
-                if (deciding)
+                if (deciding) {
                     put(entry, RANG, rangAt);
+                    put(entry, RANG_BY, was.optInt(RANG_BY, -1));
+                    put(entry, RANG_BOOT, was.optInt(RANG_BOOT, -1));
+                }
                 plan.record.put(entry);
                 // A process's first hand arms again what is to come and what
                 // is due within GRACE_MS, which Rust decides when it rings: a
                 // force stop at 07:55, a dose at 08:00, Sioul opened at 08:10
                 // rings it at once (the chain check of e3505f7, low 24); never
-                // one that rang within the minute, whose decision may be
-                // running still; one rung before, its decision dead, at any hand.
+                // one that rang while its deciding process is there, its
+                // decision running still; one whose decider is gone, at any hand.
                 if (was == null || was.optLong("at") != when || (when >= now - GRACE_MS && (died || (!armedHere && !deciding))))
                     plan.arm.add(entry);
             }
@@ -375,14 +418,17 @@ final class DoseAlarms
             return plan;
         }
 
-        /** The record with a dose's alarm noted as rung at `now` (`RANG`). */
-        static JSONArray rangIn(JSONArray kept, String key, long now)
+        /** The record with a dose's alarm noted as rung at `now`, decided by the process `pid` in the boot `boot` (`RANG`). */
+        static JSONArray rangIn(JSONArray kept, String key, long now, int pid, int boot)
         {
             JSONArray out = new JSONArray();
             for (int i = 0; i < kept.length(); i++) {
                 JSONObject dose = kept.optJSONObject(i);
-                if (dose != null && key.equals(key(dose)))
+                if (dose != null && key.equals(key(dose))) {
                     put(dose, RANG, now);
+                    put(dose, RANG_BY, pid);
+                    put(dose, RANG_BOOT, boot);
+                }
                 if (dose != null)
                     out.put(dose);
             }
@@ -400,6 +446,8 @@ final class DoseAlarms
                     put(dose, "at", at);
                     put(dose, AGAIN, true);
                     dose.remove(RANG);
+                    dose.remove(RANG_BY);
+                    dose.remove(RANG_BOOT);
                     found = true;
                 }
                 if (dose != null)

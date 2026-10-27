@@ -84,8 +84,10 @@ public final class WakeReceiver extends BroadcastReceiver
         case AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED:
             WakeAlarms.arm(app, action);
             // The doses' alarms too, keyed in the new zone or for the clock set, in the same
-            // broadcast held open, once the phone is unlocked (the A4 check, #2).
-            ask(app, false, action, Intent.ACTION_TIME_CHANGED.equals(action) || Intent.ACTION_TIMEZONE_CHANGED.equals(action));
+            // broadcast held open, once the phone is unlocked (the A4 check, #2); and at an
+            // update, so that the zone in force is written down before any change of it (the
+            // A6 check, M1: the first change after the update was told from no earlier zone).
+            ask(app, false, action, Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) || Intent.ACTION_TIME_CHANGED.equals(action) || Intent.ACTION_TIMEZONE_CHANGED.equals(action));
             return;
         default:
             // Nothing else is sent here.

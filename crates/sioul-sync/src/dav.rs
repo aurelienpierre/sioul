@@ -682,6 +682,19 @@ pub struct Report {
     /// after the pull looks at once the calendar's form is said done
     /// (`upgrade`), never one sent here in its own form a moment before.
     pub brought: BTreeSet<PathBuf>,
+    /// The items a server answered with a passing error (`refused_for_good`
+    /// false: 5xx, 429, 507…): tried again at the next sync, and a calendar's
+    /// form not said done meanwhile (the A6 check, L1).
+    pub passing: usize,
+}
+
+/// Whether a server's answer refuses an item for what it is (its content or
+/// its place: 400, 403, 409, 415, 422), said and not tried again until it
+/// changes; any other (5xx, 429, 507, a status of no such meaning) passes,
+/// and the item is tried again at the next sync (the A6 check, L1: a passing
+/// error was taken for a refusal, and the rewrite said done over it).
+fn refused_for_good(status: u16) -> bool {
+    matches!(status, 400 | 403 | 409 | 415 | 422)
 }
 
 /// An account's client: Google's access token, or its login and the password in the keyring.
@@ -1061,15 +1074,17 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
         report.moved_out.extend(done.moved.iter().filter_map(|(_, to)| std::fs::read_to_string(to).ok()).map(|text| summary_of(&text)));
         report.problems.extend(done.problems.into_iter().map(SyncError::Disk));
     }
+    let passing = report.passing;
     let synced = both_ways(client, &dir, listed, &mut state, &state_path, report, first, until);
     // Whenever the pull went through whole, a refusal at the push or not: one
     // item refused at every sync never keeps the others from their rewrite,
-    // nor the form from being said done (the A5 check, L12).
+    // nor the form from being said done (the A5 check, L12); an item that
+    // met a passing error does (the A6 check, L1).
     if calendar && matches!(synced, Ok((true, _))) {
         let whole = state.interop < sioul_core::interop::FORMAT;
         let brought: BTreeSet<String> = state.items.iter().filter(|i| report.brought.contains(&dir.join(&i.file))).map(|i| i.file.clone()).collect();
         let left = upgrade(client, &dir, listed, &mut state, (!whole).then_some(&brought), report);
-        if whole && left == 0 {
+        if whole && left == 0 && report.passing == passing {
             state.interop = sioul_core::interop::FORMAT;
         }
     }
@@ -1156,7 +1171,11 @@ fn upgrade(client: &Client, dir: &Path, listed: &Listed, state: &mut State, only
                 }
             }
             412 => left += 1,
-            status => report.problems.push(refusal(listed, &migrated, &format!("PUT {url}"), status, &answer.body)),
+            status if refused_for_good(status) => report.problems.push(refusal(listed, &migrated, &format!("PUT {url}"), status, &answer.body)),
+            _ => {
+                report.passing += 1;
+                left += 1;
+            }
         }
     }
     left
@@ -1300,8 +1319,13 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
                 refetch.insert(path_key(&href));
                 state.items.push(ItemState { href: path_key(&href), file, ..ItemState::default() });
             }
-            status => {
+            status if refused_for_good(status) => {
                 refused.get_or_insert(refusal(listed, &text, &format!("PUT {href}"), status, &answer.body));
+            }
+            // Passing (5xx, 429, 507…): not yet known there, sent again at the next sync.
+            status => {
+                report.passing += 1;
+                refused.get_or_insert(SyncError::Server(format!("PUT {href}: {status}")));
             }
         }
     }
@@ -1530,7 +1554,12 @@ fn send_known(client: &Client, kind: Kind, dir: &Path, listed: &Listed, item: &I
             refetch.insert(path_key(&url));
             Sent::Kept
         }
-        status => Sent::Refused(refusal(listed, &text, &format!("PUT {url}"), status, &answer.body)),
+        status if refused_for_good(status) => Sent::Refused(refusal(listed, &text, &format!("PUT {url}"), status, &answer.body)),
+        // Passing (5xx, 429, 507…): changed here still, sent again at the next sync.
+        status => {
+            report.passing += 1;
+            Sent::Refused(SyncError::Server(format!("PUT {url}: {status}")))
+        }
     })
 }
 
@@ -3008,6 +3037,29 @@ mod tests {
         assert_eq!((report.rewritten, report.conflicts.len()), (1, 0), "brought again, rewritten: {report:?}");
         let there = &dav.items("tasks")["t2.ics"];
         assert!(!crashes_the_phone(there) && there.contains("Task 2, changed again"), "{there}");
+    }
+
+    /// A passing error at the rewrite (503: the server busy) refuses
+    /// nothing: the item stays to try again and the form is not said done;
+    /// at the next sync it is rewritten, and the form said done only then
+    /// (the A6 check, L1: a passing error counted as a refusal for good).
+    #[test]
+    fn a_passing_error_at_the_rewrite_is_tried_again_and_holds_the_form_back() {
+        home();
+        let (dav, home) = Dav::start(&["tasks"]);
+        dav.holds("tasks", &["VTODO"]);
+        dav.put("tasks", "t0.ics", &old_task("t-0", "Task 0"));
+        let client = client();
+        let mut once = true;
+        dav.fault(move |r: &stand_in::Request| (r.method == "PUT" && std::mem::take(&mut once)).then_some(Fault::Status(503)));
+        let report = sync_one(&client, "passing", &home, "tasks").unwrap();
+        assert_eq!((report.rewritten, report.passing, report.problems.len()), (0, 1, 0), "{report:?}");
+        assert!(crashes_the_phone(&dav.items("tasks")["t0.ics"]), "not rewritten yet");
+        assert!(state_of("passing", "tasks").interop < sioul_core::interop::FORMAT, "the form not said done");
+        let report = sync_one(&client, "passing", &home, "tasks").unwrap();
+        assert_eq!(report.rewritten, 1, "{report:?}");
+        assert!(!crashes_the_phone(&dav.items("tasks")["t0.ics"]), "rewritten at the next sync");
+        assert_eq!(state_of("passing", "tasks").interop, sioul_core::interop::FORMAT, "said done once rewritten");
     }
 
     /// A change made here while its rewrite is sent (a task ticked during

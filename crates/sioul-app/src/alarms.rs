@@ -62,19 +62,30 @@ fn remove_reminder_of(key: &str, reminded: i64) {
 /// moved (M3).
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ZoneSaid {
-    /// The zone Android said last ("Asia/Tokyo").
+    /// The zone Android said last ("Asia/Tokyo"), or the system's, written
+    /// when the file was missing (`seed_zone`).
     #[serde(default)]
     pub zone: String,
-    /// The zone before its last change.
-    #[serde(default)]
-    pub was: String,
-    /// When it last changed (Unix seconds; 0: never seen to change).
-    #[serde(default)]
-    pub changed: i64,
-    /// When Android last said it (Unix seconds).
+    /// When Android last said it (Unix seconds; 0: seeded, never said).
     #[serde(default)]
     pub said: i64,
+    /// The zones in force before it within the last day, each with when it
+    /// ended: a trip with a stop between two flights keeps them all (the A6
+    /// check, L4: only the last was kept, and a dose keyed two zones back
+    /// was taken for one moved).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub earlier: Vec<EarlierZone>,
 }
+
+/// A zone in force before the one in force now, and when it ended (Unix seconds).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct EarlierZone {
+    pub zone: String,
+    pub until: i64,
+}
+
+/// How long an earlier zone is kept: the day the doses' reminders are judged over (`health::reminded_gone`).
+const EARLIER_KEPT: i64 = 26 * 3600;
 
 /// The zone's file, beside the doses' record.
 fn zone_path() -> std::path::PathBuf {
@@ -94,23 +105,57 @@ fn read_zone(path: &std::path::Path) -> ZoneSaid {
     std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
-/// Android says its zone, at a change of zone or of the clock: kept, with
-/// when it changed and from which when it is another than the one kept (none
-/// kept yet: the one this process reads, the earlier while its cache lasts);
-/// written whole, its bytes on the disk before its name.
-fn note_zone(path: &std::path::Path, zone: &str, now: i64) -> ZoneSaid {
-    let mut said = read_zone(path);
-    let before = if said.zone.is_empty() { jiff::tz::TimeZone::system().iana_name().unwrap_or_default().to_string() } else { said.zone.clone() };
-    if before != zone {
-        said.was = before;
-        said.changed = now;
-    }
-    said.zone = zone.to_string();
-    said.said = now;
-    if let Ok(text) = toml::to_string(&said) {
+/// The system's zone as this process reads it ("" when it has no name).
+fn system_zone() -> String {
+    jiff::tz::TimeZone::system().iana_name().unwrap_or_default().to_string()
+}
+
+fn write_zone(path: &std::path::Path, said: &ZoneSaid) {
+    if let Ok(text) = toml::to_string(said) {
         let _ = sioul_core::health::write_synced(path, format!("# The phone's time zone as Android last said it (docs/android.md).\n{text}").as_bytes());
     }
-    said
+}
+
+/// Android says its zone, at a change of zone or of the clock, at an update
+/// and at the first unlock: kept, the one it replaces kept among the earlier
+/// with when it ended, those older than a day forgotten (none kept yet: the
+/// one this process reads, `system`, which may be the new one already: hence
+/// `seed_zone`); written whole, under the file's lock, its bytes on the disk
+/// before its name (the A6 check, L3: TIME_SET and TIMEZONE_CHANGED together
+/// could cross).
+fn note_zone(path: &std::path::Path, zone: &str, now: i64) -> ZoneSaid {
+    note_zone_with(path, zone, now, &system_zone())
+}
+
+fn note_zone_with(path: &std::path::Path, zone: &str, now: i64, system: &str) -> ZoneSaid {
+    sioul_core::filelock::with_lock(path, || {
+        let mut said = read_zone(path);
+        let before = if said.zone.is_empty() { system.to_string() } else { said.zone.clone() };
+        if !before.is_empty() && before != zone {
+            said.earlier.push(EarlierZone { zone: before, until: now });
+        }
+        said.earlier.retain(|earlier| now - earlier.until < EARLIER_KEPT);
+        said.zone = zone.to_string();
+        said.said = now;
+        write_zone(path, &said);
+        said
+    })
+}
+
+/// zone.toml written with the system's zone when it is missing (an update,
+/// a process's first hand on Android), no change recorded: the first change
+/// of zone after it is then told from the file, never from a zone this
+/// process reads already changed (the A6 check, M1: at the first change
+/// after the update, the false ring of a replacement came back).
+fn seed_zone(path: &std::path::Path, system: &str) {
+    if path.exists() || system.is_empty() {
+        return;
+    }
+    sioul_core::filelock::with_lock(path, || {
+        if !path.exists() {
+            write_zone(path, &ZoneSaid { zone: system.to_string(), ..ZoneSaid::default() });
+        }
+    });
 }
 
 #[cfg(test)]
@@ -213,6 +258,8 @@ pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
     }
+    // The zone in force written down when it never was (an update with no change of zone since).
+    seed_zone(&zone_path(), &system_zone());
     crate::wake::schedule();
     // The reminders of doses marked since (here, or come from another device) taken away.
     let gone: Vec<(String, i64)> = crate::health::marked_lately().into_iter().filter(|(key, reminded)| REMOVED.lock().is_ok_and(|removed| removed.get(key) != Some(reminded))).collect();
@@ -329,7 +376,7 @@ pub unsafe extern "C" fn sioul_string_free(text: *mut c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ZoneSaid, note_zone, now_in, read_zone};
+    use super::{EarlierZone, ZoneSaid, note_zone, note_zone_with, now_in, read_zone, seed_zone};
 
     /// The A4 check, #2: just after a change of zone, the doses are keyed in
     /// the zone Android says, for six minutes; then, or with a zone that does
@@ -349,26 +396,56 @@ mod tests {
         assert_eq!(now_in(&ZoneSaid::default(), now.clone()).time_zone(), now.time_zone());
     }
 
-    /// The A5 check, L2 and M3: the zone Android says is kept in one file,
-    /// which the other process reads as it is (its own cache of the system's
-    /// zone never in the way), with when it changed and from which; the same
-    /// zone said again (the clock set) changes nothing but when it was said.
+    /// The A5 check, L2 and M3, and the A6 check, L3 and L4: the zone Android
+    /// says is kept in one file, under its lock, which the other process reads
+    /// as it is (its own cache of the system's zone never in the way), with
+    /// the zones it replaced within the last day and when each ended (a stop
+    /// at Dubai between Paris and Tokyo); the same zone said again (the clock
+    /// set) changes nothing but when it was said; a day on, the earlier are
+    /// forgotten.
     #[test]
     fn the_zone_is_kept_for_both_processes_with_when_it_changed() {
         sioul_core::config::stand_ins_only();
         let path = sioul_core::config::state_dir().join(format!("zone-test-{}.toml", std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let first = note_zone(&path, "Europe/Paris", 1_000);
-        assert_eq!((first.zone.as_str(), first.said), ("Europe/Paris", 1_000));
-        let flown = note_zone(&path, "Asia/Tokyo", 2_000);
-        assert_eq!(flown, ZoneSaid { zone: "Asia/Tokyo".into(), was: "Europe/Paris".into(), changed: 2_000, said: 2_000 });
+        let first = note_zone_with(&path, "Europe/Paris", 1_000, "Europe/Paris");
+        assert_eq!((first.zone.as_str(), first.said, first.earlier.len()), ("Europe/Paris", 1_000, 0));
+        note_zone(&path, "Asia/Dubai", 2_000);
+        let flown = note_zone(&path, "Asia/Tokyo", 3_000);
+        let earlier = vec![EarlierZone { zone: "Europe/Paris".into(), until: 2_000 }, EarlierZone { zone: "Asia/Dubai".into(), until: 3_000 }];
+        assert_eq!(flown, ZoneSaid { zone: "Asia/Tokyo".into(), said: 3_000, earlier: earlier.clone() });
         // Read by the other process: the same, from the file alone.
         assert_eq!(read_zone(&path), flown);
-        assert_eq!(now_in(&read_zone(&path), jiff::Timestamp::from_second(2_060).unwrap().to_zoned(jiff::tz::TimeZone::UTC)).time_zone().iana_name(), Some("Asia/Tokyo"));
+        assert_eq!(now_in(&read_zone(&path), jiff::Timestamp::from_second(3_060).unwrap().to_zoned(jiff::tz::TimeZone::UTC)).time_zone().iana_name(), Some("Asia/Tokyo"));
         // The clock set: the zone said again, no change.
-        let set = note_zone(&path, "Asia/Tokyo", 3_000);
-        assert_eq!((set.was.as_str(), set.changed, set.said), ("Europe/Paris", 2_000, 3_000));
+        let set = note_zone(&path, "Asia/Tokyo", 4_000);
+        assert_eq!((set.earlier, set.said), (earlier, 4_000));
+        // A day on, the zones before forgotten.
+        assert!(note_zone(&path, "Asia/Tokyo", 3_000 + 26 * 3600).earlier.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The A6 check, M1: with no file, the zone in force is written down
+    /// first (at the update, at a first hand), once, so that the first change
+    /// of zone after it is told from the file; never written down, a process
+    /// whose own reading of the system's zone has the new one already would
+    /// record no change.
+    #[test]
+    fn the_zone_written_down_first_tells_the_first_change() {
+        sioul_core::config::stand_ins_only();
+        let path = sioul_core::config::state_dir().join(format!("zone-seed-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        seed_zone(&path, "Europe/Paris");
+        assert_eq!(read_zone(&path), ZoneSaid { zone: "Europe/Paris".into(), ..ZoneSaid::default() });
+        seed_zone(&path, "Asia/Tokyo");
+        assert_eq!(read_zone(&path).zone, "Europe/Paris", "written down once");
+        let flown = note_zone_with(&path, "Asia/Tokyo", 2_000, "Asia/Tokyo");
+        assert_eq!(flown.earlier, vec![EarlierZone { zone: "Europe/Paris".into(), until: 2_000 }]);
+        // Never written down: the change is lost.
+        std::fs::remove_file(&path).unwrap();
+        assert!(note_zone_with(&path, "Asia/Tokyo", 2_000, "Asia/Tokyo").earlier.is_empty());
         let _ = std::fs::remove_file(&path);
     }
 }

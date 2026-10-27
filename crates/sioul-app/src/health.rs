@@ -62,7 +62,7 @@ fn load_known() -> Option<(Health, bool)> {
         // the medicines taken out in Sioul since (marked: "Take them out
         // everywhere" marks them first), at once. No last read: nothing
         // reads, and Android keeps the alarms it has.
-        Ok((health, _)) if health.medicines.is_empty() && taken_out_in_sioul(&health, &path) != Some(true) && emptying_held() => {
+        Ok((health, _)) if health.medicines.is_empty() && taken_out_in_sioul(&health, &path) != Some(true) && emptying_held(&path) => {
             let mut copy = last_read(&path)?;
             copy.medicines.retain(|m| !health.removed.contains_key(&m.id));
             if let Ok(state) = HealthState::read(&HealthState::default_path()) {
@@ -107,16 +107,34 @@ fn load_known() -> Option<(Health, bool)> {
 /// Whether this device's health file, read as no medicines though Sioul took
 /// one of them out with no mark, is held from being trusted as none: the
 /// sharing holds that emptying (`share::medicines_held_here`), or this
-/// device is a phone, where nobody edits the file by hand, from its first
-/// read so (the A5 check, L4: until the exchange that began the hold, a
-/// phone was handed an empty list). "Take them out here too" takes them out
-/// in Sioul, marked (`take_out_in_sioul`): trusted then.
-fn emptying_held() -> bool {
+/// device is a phone, where nobody edits the file by hand, and its last read
+/// held two or more medicines, the sharing's own threshold, at which it holds
+/// an emptying and offers a word (the A5 check, L4: until the exchange that
+/// began the hold, a phone was handed an empty list; the A6 check, M2: one
+/// medicine removed elsewhere with no mark rang for good, nothing to end it).
+/// "Take them out here too" takes them out in Sioul, marked
+/// (`take_out_in_sioul`), and Remove marks one the last read alone holds:
+/// trusted then.
+fn emptying_held(path: &std::path::Path) -> bool {
+    held_by_sharing() || (is_phone() && last_read(path).is_some_and(|copy| copy.medicines.len() >= 2))
+}
+
+/// Whether the sharing holds this device's health file's emptying.
+fn held_by_sharing() -> bool {
     #[cfg(test)]
     if let Some(held) = HELD.with(std::cell::Cell::get) {
         return held;
     }
-    cfg!(target_os = "android") || crate::share::medicines_held_here()
+    crate::share::medicines_held_here()
+}
+
+/// Whether this device is a phone (Android).
+fn is_phone() -> bool {
+    #[cfg(test)]
+    if let Some(phone) = PHONE.with(std::cell::Cell::get) {
+        return phone;
+    }
+    cfg!(target_os = "android")
 }
 
 #[cfg(test)]
@@ -124,6 +142,8 @@ thread_local! {
     /// The sharing's hold of this device's medicines, in a test's thread that
     /// says one: never the sharing's memory, which other tests read beside it.
     static HELD: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    /// Whether this device is a phone, in a test's thread that says so.
+    static PHONE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
 }
 
 /// Of a read that holds no medicines, whether Sioul took out every medicine
@@ -1595,10 +1615,17 @@ pub(crate) fn for_professional(prescription: &str) -> String {
 }
 
 /// A medicine or a prescription taken out; returns what went wrong, else "".
+/// One the last read alone holds (given in place of a file read as no
+/// medicines, `emptying_held`) is marked all the same, so that it stops
+/// ringing (the A6 check, M2).
 pub(crate) fn remove(id: &str) -> String {
+    let in_last_read = last_read(&Health::default_path()).is_some_and(|copy| copy.medicines.iter().any(|m| m.id == id));
     change_health(|health| {
         // Taken out on purpose: marked, so that your other devices take it out too (the check of 1b6795e, H5).
-        let taken_out: Vec<String> = health.medicines.iter().filter(|m| m.id == id).map(|m| m.id.clone()).collect();
+        let mut taken_out: Vec<String> = health.medicines.iter().filter(|m| m.id == id).map(|m| m.id.clone()).collect();
+        if taken_out.is_empty() && in_last_read {
+            taken_out.push(id.to_string());
+        }
         health.medicines.retain(|m| m.id != id);
         health.mark_removed(&taken_out, Timestamp::now().as_second());
         health.prescriptions.retain(|p| p.id != id);
@@ -1824,27 +1851,31 @@ pub(crate) fn reminded_gone() -> Option<Vec<(String, i64)>> {
     )
 }
 
-/// The doses as the schedule keyed them in the zone before its last change
-/// (`alarms::ZoneSaid`), over `start..end`, with when it changed; none when
-/// no change of zone is known. A set time is a time of the day in the zone
-/// in force: its key changes with the zone.
-fn keyed_before_zone(health: &Health, start: &Zoned, end: &Zoned) -> Option<(std::collections::BTreeSet<String>, i64)> {
+/// The doses as the schedule keyed them in each zone in force before the
+/// one in force now, within the last day (`alarms::ZoneSaid::earlier`), over
+/// `start..end`, each with when that zone ended; none when no change of zone
+/// is known. A set time is a time of the day in the zone in force: its key
+/// changes with the zone.
+fn keyed_before_zone(health: &Health, start: &Zoned, end: &Zoned) -> Vec<(std::collections::BTreeSet<String>, i64)> {
     let said = crate::alarms::zone_said();
-    if said.changed == 0 || said.was.is_empty() || said.was == said.zone {
-        return None;
-    }
-    let was = jiff::tz::TimeZone::get(&said.was).ok()?;
-    let keys = health.doses(&start.with_time_zone(was.clone()), &end.with_time_zone(was)).into_iter().map(|d| d.key).collect();
-    Some((keys, said.changed))
+    said.earlier
+        .iter()
+        .filter(|earlier| earlier.zone != said.zone)
+        .filter_map(|earlier| {
+            let zone = jiff::tz::TimeZone::get(&earlier.zone).ok()?;
+            Some((health.doses(&start.with_time_zone(zone.clone()), &end.with_time_zone(zone)).into_iter().map(|d| d.key).collect(), earlier.until))
+        })
+        .collect()
 }
 
 /// Whether a dose no longer in the schedule is gone with the zone, not moved:
-/// keyed so in the zone before its change, and reminded before it. Its
-/// reminder stays as it is, and nothing replaces it (the A5 check, M3: at
+/// keyed so in a zone in force before, and reminded before that zone ended.
+/// Its reminder stays as it is, and nothing replaces it (the A5 check, M3: at
 /// 18:00 in Tokyo, the 08:00 dose of Tokyo's day rang at once for 08:00 in
-/// Paris, answered there, and 20:00 rang two hours later).
-fn gone_with_zone(zoned: &Option<(std::collections::BTreeSet<String>, i64)>, key: &str, reminded: i64) -> bool {
-    zoned.as_ref().is_some_and(|(keys, changed)| reminded < *changed && keys.contains(key))
+/// Paris, answered there, and 20:00 rang two hours later; the A6 check, L4:
+/// with a stop at Dubai between).
+fn gone_with_zone(zoned: &[(std::collections::BTreeSet<String>, i64)], key: &str, reminded: i64) -> bool {
+    zoned.iter().any(|(keys, until)| reminded < *until && keys.contains(key))
 }
 
 /// The reminders a hand took away as gone (`reminded_gone`), noted beside
@@ -5014,6 +5045,7 @@ mod tests {
         DEVICE.with(|device| *device.borrow_mut() = None);
         HELD.with(|held| held.set(None));
         crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = None);
+        PHONE.with(|phone| phone.set(None));
         held
     }
 
@@ -5312,7 +5344,7 @@ mod tests {
         })
         .unwrap();
         // Landed: Android said Tokyo a minute ago, in the file both processes read.
-        crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = Some(crate::alarms::ZoneSaid { zone: "Asia/Tokyo".into(), was: "Europe/Paris".into(), changed: stamp - 60, said: stamp - 60 }));
+        crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = Some(crate::alarms::ZoneSaid { zone: "Asia/Tokyo".into(), said: stamp - 60, earlier: vec![crate::alarms::EarlierZone { zone: "Europe/Paris".into(), until: stamp - 60 }] }));
         assert_eq!(crate::alarms::now_here().time_zone().iana_name(), Some("Asia/Tokyo"));
         assert!(!reminded_gone().unwrap().iter().any(|(key, _)| *key == in_paris), "its reminder stays");
         // Noted as taken away all the same (an earlier build's hand): nothing replaces it.
@@ -5326,6 +5358,73 @@ mod tests {
         let now = Timestamp::from_second(stamp).unwrap().to_zoned(tokyo);
         let in_tokyo = load().doses(&now, &now.checked_add(Span::new().hours(24)).unwrap()).into_iter().find(|d| d.key.starts_with("lumiel@") && d.at.strftime("%H:%M").to_string() == later.strftime("%H:%M").to_string()).unwrap().key;
         assert!(coming.iter().any(|(key, _)| *key == in_tokyo) && !coming.iter().any(|(key, _)| *key == format!("lumiel@{}", later.timestamp().as_second())), "{coming:?}");
+    }
+
+    /// The A6 check, L4: a set-time dose reminded in Paris, then a stop at
+    /// Dubai, then Tokyo, all within twelve hours: keyed two zones back, it
+    /// is still gone with the zone, its reminder kept and replaced by none.
+    #[test]
+    fn a_trip_with_a_stop_between_replaces_nothing() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let stamp = Timestamp::now().as_second();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        let paris = TimeZone::get("Europe/Paris").unwrap();
+        // Reminded three hours ago in Paris; its second time of the day, twelve hours on.
+        let rang = Timestamp::from_second(stamp - 3 * 3600 - stamp % 60).unwrap().to_zoned(paris);
+        let later = rang.checked_add(Span::new().hours(12)).unwrap();
+        std::fs::write(&health_path, format!("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\", \"{}\"]\n", rang.strftime("%H:%M"), later.strftime("%H:%M"))).unwrap();
+        let in_paris = format!("lumiel@{}", rang.timestamp().as_second());
+        HealthState::update(&state_path, stamp, |state| {
+            state.reminded.insert(in_paris.clone(), rang.timestamp().as_second());
+        })
+        .unwrap();
+        // Paris until two hours ago, then Dubai, then Tokyo since a minute.
+        let earlier = |zone: &str, until: i64| crate::alarms::EarlierZone { zone: zone.into(), until };
+        crate::alarms::ZONE_SAID.with(|said| *said.borrow_mut() = Some(crate::alarms::ZoneSaid { zone: "Asia/Tokyo".into(), said: stamp - 60, earlier: vec![earlier("Europe/Paris", stamp - 2 * 3600), earlier("Asia/Dubai", stamp - 60)] }));
+        assert!(!reminded_gone().unwrap().iter().any(|(key, _)| *key == in_paris), "its reminder stays");
+        HealthState::update(&state_path, stamp, |state| {
+            state.taken_away.insert(in_paris.clone(), rang.timestamp().as_second());
+        })
+        .unwrap();
+        let coming = coming_now();
+        assert!(coming.iter().all(|(_, tag)| tag.is_empty()), "no replacement: {coming:?}");
+    }
+
+    /// The A6 check, M2, on a phone (`is_phone`): with no medicines and no
+    /// last read, its file reads as none (L5); its only medicine taken out
+    /// elsewhere with no mark is trusted as none, nothing handed; two gone
+    /// so give its last read, the sharing's own threshold; Remove of one the
+    /// last read alone holds ends its ringing, and of the other too, the file
+    /// then trusted as none.
+    #[test]
+    fn a_phone_trusts_one_medicine_gone_unmarked_and_holds_two() {
+        let _files = health_files();
+        let health_path = Health::default_path();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        PHONE.with(|phone| phone.set(Some(true)));
+        std::fs::write(&health_path, "# none yet\n").unwrap();
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.is_empty()), "no last read: read as none");
+        let soon = Zoned::now().checked_add(Span::new().hours(1)).unwrap();
+        let daily = |id: &str| format!("[[medicine]]\nid = \"{id}\"\nname = \"{id}\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\"]\n", soon.strftime("%H:%M"));
+        // One medicine, taken out elsewhere with no mark: trusted as none, nothing handed.
+        std::fs::write(&health_path, daily("lumiel")).unwrap();
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.len() == 1));
+        std::fs::write(&health_path, "# emptied elsewhere\n").unwrap();
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.is_empty()), "one gone: trusted as none");
+        assert!(coming_now().is_empty(), "{:?}", coming_now());
+        // Two, gone with no mark: the last read given, said as last known.
+        std::fs::write(&health_path, daily("lumiel") + &daily("corvan")).unwrap();
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.len() == 2));
+        std::fs::write(&health_path, "# emptied elsewhere\n").unwrap();
+        assert!(matches!(load_known(), Some((read, true)) if read.medicines.len() == 2), "two gone: the last read");
+        // Removed on the Health page, one the last read alone holds: it rings no more; then the other.
+        assert_eq!(remove("lumiel"), "");
+        assert!(matches!(load_known(), Some((read, true)) if read.medicines.iter().map(|m| m.id.as_str()).collect::<Vec<_>>() == ["corvan"]));
+        assert!(!coming_now().iter().any(|(key, _)| key.starts_with("lumiel@")), "{:?}", coming_now());
+        assert_eq!(remove("corvan"), "");
+        assert!(matches!(load_known(), Some((read, false)) if read.medicines.is_empty()), "both removed: trusted as none");
+        assert!(coming_now().is_empty(), "{:?}", coming_now());
     }
 
     /// The A5 check, M2: a medicine at a set time whose dose of today was said

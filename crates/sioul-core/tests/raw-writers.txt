@@ -7,7 +7,7 @@
 # (vdir::write_item, remove_item, move_item, replace_items) or is named here.
 
 # sioul-app/src/alarms.rs: the zone Android last said, for both of a phone's processes (state): no item.
-sioul-app/src/alarms.rs	note_zone	1	sioul_core::health::write_synced(path, format!(
+sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, format!(
 
 # sioul-app/src/appnotes.rs: the window's own notes of what it said (state): no item.
 sioul-app/src/appnotes.rs	release_talk	1	sioul_core::filelock::replace(&path, text.as_bytes())

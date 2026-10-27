@@ -45,9 +45,25 @@ public final class DoseAlarmsCheck
         String record = "[]";
     }
 
+    /** The processes of Sioul's that run (their pids), as Android would list them. */
+    static final java.util.Set<Integer> RUNNING = new java.util.HashSet<>();
+    static int pids;
+
     static final class Process
     {
         boolean armedHere;
+        final int pid = ++pids;
+
+        Process()
+        {
+            RUNNING.add(pid);
+        }
+
+        /** Killed, or crashed: its decisions with it. */
+        void dies()
+        {
+            RUNNING.remove(pid);
+        }
     }
 
     static JSONArray doses(Object... keysAndTimes) throws Exception
@@ -66,7 +82,7 @@ public final class DoseAlarmsCheck
     /** A hand, as DoseAlarms.set makes it, the record's lock held. */
     static void hand(Phone phone, Process process, JSONArray doses, long now) throws Exception
     {
-        DoseAlarms.Plan plan = DoseAlarms.Plan.of(new JSONArray(phone.record), doses, now, process.armedHere);
+        DoseAlarms.Plan plan = DoseAlarms.Plan.of(new JSONArray(phone.record), doses, now, process.armedHere, (pid, boot) -> boot == 1 && RUNNING.contains(pid));
         for (String key : plan.cancel)
             phone.android.remove(key);
         for (JSONObject dose : plan.arm)
@@ -75,11 +91,11 @@ public final class DoseAlarmsCheck
         process.armedHere = true;
     }
 
-    /** An alarm that rang at `at`: out of Android's hands, noted in the record (DoseReceiver, DoseAlarms.rang). */
-    static void rings(Phone phone, String key, long at) throws Exception
+    /** An alarm that rang at `at`, decided by `by`: out of Android's hands, noted in the record (DoseReceiver, DoseAlarms.rang). */
+    static void rings(Phone phone, String key, long at, Process by) throws Exception
     {
         phone.android.remove(key);
-        phone.record = DoseAlarms.Plan.rangIn(new JSONArray(phone.record), key, at).toString();
+        phone.record = DoseAlarms.Plan.rangIn(new JSONArray(phone.record), key, at, by.pid, 1).toString();
     }
 
     /** Rust's tag on a dose that replaced a gone one (`replaces`). */
@@ -157,17 +173,21 @@ public final class DoseAlarmsCheck
         // Lumiel is not armed again (it would be decided twice, its reminder replaced by the fallback).
         Phone both = new Phone();
         hand(both, new Process(), doses("corvan@0800", h0800, "lumiel@0800", h0800), h0755);
-        rings(both, "corvan@0800", h0800);
-        rings(both, "lumiel@0800", h0800);
         Process fresh = new Process();
+        rings(both, "corvan@0800", h0800, fresh);
+        rings(both, "lumiel@0800", h0800, fresh);
         hand(both, fresh, doses("lumiel@0800", h0800), h0800 + 5_000);
         expect("rung, decided still: not armed again by a first hand", both.android, "{}");
         expect("rung, kept in the record until reminded", new JSONArray(both.record).length(), 1);
-        // Lumiel's decision died with its process (a crash, a kill): a hand past the minute a
-        // decision may run, a first one or not, arms it again, its mark dropped, and it rings
-        // (the A5 check, L1).
-        hand(both, fresh, doses("lumiel@0800", h0800), h0800 + 2 * MIN);
-        expect("rung, its decision dead: armed again", both.android.get("lumiel@0800"), h0800);
+        // Lumiel's decision runs longer than a minute (a slow pull, the exchange's lock): its
+        // process is there, and no hand arms it again (the A6 check, L2: it was decided twice).
+        hand(both, new Process(), doses("lumiel@0800", h0800), h0800 + 2 * MIN);
+        expect("a decision longer than a minute: not decided twice", both.android, "{}");
+        // Then its process dies (a crash, a kill): the next hand, a first one or not, arms it
+        // again, its mark dropped, and it rings (the A5 check, L1).
+        fresh.dies();
+        hand(both, new Process(), doses("lumiel@0800", h0800), h0800 + 3 * MIN);
+        expect("rung, its decider gone: armed again", both.android.get("lumiel@0800"), h0800);
         expect("its mark dropped", new JSONArray(both.record).getJSONObject(0).has(DoseAlarms.RANG), false);
         // The force stop's dose, never rung, still rings at once at the next opening (above).
         // A correction typed at 14:50 moves Corvan's 14:00 to 14:10, its reminder taken away as gone:
