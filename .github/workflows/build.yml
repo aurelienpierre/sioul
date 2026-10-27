@@ -266,12 +266,23 @@ jobs:
       # The sharing's simulations run every seed the reviews ran on Linux, where
       # they take minutes, and a few on Windows and macOS (SIOUL_SWEEP; the
       # seeds that once found a bug run everywhere).
+      # Folders made for tests, each holding the mark (core
+      # config::STAND_IN_MARK) without which a test that writes Sioul's files
+      # refuses to run.
+      - name: Folders for the tests
+        shell: bash
+        run: |
+          temp="${RUNNER_TEMP//\\//}"
+          for folder in config data state cache; do
+            mkdir -p "$temp/xdg/$folder" && echo "A folder made for Sioul's tests." > "$temp/xdg/$folder/.sioul-stand-in"
+          done
+
       - name: Tests (core, sync, command line)
         env:
           SIOUL_SWEEP: ${{ runner.os == 'Linux' && 'wide' || '' }}
-          # Folders of their own, under the runner's temporary folder: a test
-          # that writes Sioul's files refuses to run without them
-          # (core config::stand_ins_only), CI or not.
+          # Folders of their own, under the runner's temporary folder, marked
+          # above: a test that writes Sioul's files refuses to run without
+          # them (core config::stand_ins_only), CI or not.
           XDG_CONFIG_HOME: ${{ runner.temp }}/xdg/config
           XDG_DATA_HOME: ${{ runner.temp }}/xdg/data
           XDG_STATE_HOME: ${{ runner.temp }}/xdg/state

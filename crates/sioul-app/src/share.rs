@@ -423,6 +423,8 @@ struct Status {
     parts: Vec<Part>,
     /// Folders of notes or papers whose files went at once: held, said, to take out everywhere on a word.
     vanished: Vec<Vanished>,
+    /// The health file's medicines held as gone though Sioul took none out, here or on another device: said, taken out when asked.
+    medicines: Vec<MedicinesHeld>,
     /// Notes and papers gone many at once here, held until they leave by themselves (`withheld`).
     withheld: Vec<WithheldShown>,
     /// The devices that no longer count here and still have files in the folder: "Remove its files".
@@ -495,6 +497,7 @@ pub(crate) fn status(folder: &str) -> String {
     let mut lines = Vec::new();
     let mut problems = Vec::new();
     let mut vanished = Vec::new();
+    let mut medicines = Vec::new();
     // Notes gone many at once and held: said with when they leave (`withheld`),
     // not as a folder held until you say so, which a folder emptied or not
     // readable whole still is (`share-vanished`).
@@ -529,7 +532,8 @@ pub(crate) fn status(folder: &str) -> String {
         }
         if let Some((at, said)) = LAST.lock().ok().and_then(|l| l.clone()) {
             lines.push(say("share-last", &[("when", when(at))]));
-            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:")).map(|p| problem_text(p)));
+            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:") && !p.starts_with("share-medicines-emptied")).map(|p| problem_text(p)));
+            medicines.extend(said.iter().filter_map(|p| medicines_of(p)));
             vanished.extend(said.iter().filter(|p| !p.strip_prefix("share-vanished:").and_then(|rest| rest.rsplit_once(':')).is_some_and(|(folder, _)| held_stores.iter().any(|store| store == folder))).filter_map(|p| vanished_of(p)));
         }
         // The format of what travels (docs/database.md, "The format of what
@@ -611,7 +615,7 @@ pub(crate) fn status(folder: &str) -> String {
     let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
     let leaving = if on { leaving_rows(&path) } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -665,6 +669,39 @@ fn kept_a_day(code: &str) -> bool {
 }
 
 /// `share-vanished:<folder>:<count>`, said with a button: the folder of notes or papers it is in, and the sentence.
+/// The health file's medicines held (`share`'s "share-medicines-emptied"):
+/// gone here though Sioul took none out, or taken out so by another
+/// device's records; said, with the word that ends it.
+#[derive(Serialize)]
+struct MedicinesHeld {
+    /// The file, by its name in the records ("data/health.toml").
+    file: String,
+    text: String,
+    /// The button's words: "Take them out everywhere", "Take them out here too".
+    button: String,
+}
+
+fn medicines_of(code: &str) -> Option<MedicinesHeld> {
+    let (code, file) = code.split_once(':')?;
+    let button = match code {
+        "share-medicines-emptied" => "share-medicines-take-out-everywhere",
+        "share-medicines-emptied-there" => "share-medicines-take-out-here",
+        _ => return None,
+    };
+    Some(MedicinesHeld { file: file.to_string(), text: problem_text(&format!("{code}:{file}")), button: tr().text(button, None) })
+}
+
+/// "Take them out everywhere" or "Take them out here too": the health
+/// file's medicines held as gone taken out at the next exchange, as you
+/// said (`share::release_medicines`); "" when said, else why not.
+pub(crate) fn take_out_medicines(file: &str) -> String {
+    if file != "data/health.toml" {
+        return format!("{file}?");
+    }
+    let here = here();
+    quietly(|| share::release_medicines(&memory_path(), &here.id, file).err().unwrap_or_default())
+}
+
 fn vanished_of(code: &str) -> Option<Vanished> {
     let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
     // That folder, what "Take them out everywhere" confirms: it alone, never a folder beside it (review of 17 October 2026, M1).
@@ -844,14 +881,10 @@ fn size_words(bytes: u64) -> String {
 
 /// What this device takes out of the folder and its server, and why each
 /// waits (docs/database.md, "Old contents go"), as its last exchange found
-/// it (`share::leaving`): the contents of notes and papers taken out that
-/// wait for a device to read so (named, with when it was last heard of when
-/// that is a day or more ago, and "Forget it and remove its files…"), that
-/// go in two weeks while a device runs an earlier Sioul, or while this one
-/// cannot tell; the earlier versions that go in their time; and this
-/// device's sealed files taken out here and still on the server, which
-/// leave it at the next exchange. Sizes, never a file's name. The notes
-/// held after going many at once are said with their own lines (`withheld`).
+/// it (`share::leaving`, `rows_of`), and this device's sealed files taken
+/// out here and still on the server, which leave it at the next exchange.
+/// Sizes, never a file's name. The notes held after going many at once are
+/// said with their own lines (`withheld`).
 fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
     let here = here();
     let memory = memory_path();
@@ -859,16 +892,38 @@ fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
     let key = key();
     let entries = key.map(|key| sioul_sync::devices::all(folder, &key).0).unwrap_or_default();
     let named = |id: &str| entries.iter().find(|e| e.id == id).map_or_else(|| tr().text("share-device-unnamed", None), |e| device_named(&e.name, &e.kind));
+    let heard = |id: &str| key.map_or(0, |key| share::heard_of(folder, &key, &memory, &here.id, id)) / 1000;
+    let mut rows = rows_of(&leaving, &named, &heard, jiff::Timestamp::now().as_second());
+    let (count, bytes) = still_on_the_server(folder, &memory);
+    if count > 0 {
+        rows.push(LeavingRow { text: say("share-leaving-next", &[("count", count.to_string()), ("size", size_words(bytes))]), device: String::new() });
+    }
+    rows
+}
+
+/// The contents of notes and papers taken out that wait for a device to read
+/// so (named; one whose notes say rounds alone, an earlier Sioul, said so:
+/// `Leaving::by_rounds`), that go by rounds or in two weeks while a device
+/// runs an earlier Sioul, or in two weeks while this one cannot tell; the
+/// earlier versions that go in their time. A device silent a day or more
+/// (`health::FORGET_NOW_AFTER`, `heard`: when it was last heard of, seconds,
+/// 0 never) is said so, and its row alone offers "Forget it and remove its
+/// files…" (`device`): never one heard of within the day, which may be in
+/// use (the check of 9684719, must-fix 4).
+fn rows_of(leaving: &share::Leaving, named: &dyn Fn(&str) -> String, heard: &dyn Fn(&str) -> i64, now: i64) -> Vec<LeavingRow> {
     let mut rows = Vec::new();
-    // A device silent a day or more: said, with "Forget it and remove its files…".
     let silent = |id: &str| {
-        let heard = key.map_or(0, |key| share::heard_of(folder, &key, &memory, &here.id, id)) / 1000;
-        (heard > 0 && jiff::Timestamp::now().as_second() - heard >= 86_400).then(|| say("share-leaving-silent", &[("device", named(id)), ("when", when(heard))]))
+        let heard = heard(id);
+        (heard > 0 && now - heard >= crate::health::FORGET_NOW_AFTER).then(|| say("share-leaving-silent", &[("device", named(id)), ("when", when(heard))]))
     };
     for (id, (count, bytes)) in &leaving.unread {
-        let said = say("share-leaving-unread", &[("count", count.to_string()), ("size", size_words(*bytes)), ("device", named(id))]);
-        let text = silent(id).map_or_else(|| said.clone(), |silent| [said.clone(), silent].join(" "));
-        rows.push(LeavingRow { text, device: id.clone() });
+        let words = if leaving.by_rounds.contains(id) { "share-leaving-unread-earlier" } else { "share-leaving-unread" };
+        let said = say(words, &[("count", count.to_string()), ("size", size_words(*bytes)), ("device", named(id))]);
+        let (text, device) = match silent(id) {
+            Some(silent) => ([said, silent].join(" "), id.clone()),
+            None => (said, String::new()),
+        };
+        rows.push(LeavingRow { text, device });
     }
     for (id, (count, bytes)) in &leaving.older {
         let said = say("share-leaving-older", &[("count", count.to_string()), ("size", size_words(*bytes)), ("device", named(id))]);
@@ -883,10 +938,6 @@ fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
     }
     if leaving.in_time.0 > 0 {
         rows.push(LeavingRow { text: say("share-leaving-in-time", &[("count", leaving.in_time.0.to_string()), ("size", size_words(leaving.in_time.1))]), device: String::new() });
-    }
-    let (count, bytes) = still_on_the_server(folder, &memory);
-    if count > 0 {
-        rows.push(LeavingRow { text: say("share-leaving-next", &[("count", count.to_string()), ("size", size_words(bytes))]), device: String::new() });
     }
     rows
 }
@@ -1849,6 +1900,15 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
     let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     if let Ok(outcome) = &outcome {
+        // What it wrote of the doses' files (a mark, a move, a take back, a
+        // medicine come from another device): Android handed the doses anew,
+        // whatever ran it, a dose's own alarm, the waking's, a reminder's
+        // button or the background step (`alarms::schedule`; the A3 dose
+        // model: an alarm whose own exchange brought a move left Android
+        // ringing the old times, and the moved doses nowhere).
+        if crate::alarms::health_written(outcome) {
+            crate::alarms::schedule();
+        }
         crate::devices::exported(outcome);
         // Sioul keeping the folder itself: what it wrote goes up now; off this
         // thread for a quick exchange ("Taken" pressed: Android waits eight
@@ -3087,6 +3147,36 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rows of what waits to leave: "Forget it and remove its files…"
+    /// only under a device silent a day or more, never one heard of within
+    /// the day; a reader on an earlier Sioul said so (the check of 9684719,
+    /// must-fix 4).
+    #[test]
+    fn only_a_silent_device_is_offered_to_forget() {
+        let now = 1_790_000_000;
+        let leaving = share::Leaving {
+            unread: [("live-phone".to_string(), (2, 4_000)), ("old-phone".to_string(), (1, 2_000)), ("older-build".to_string(), (1, 1_000))].into(),
+            by_rounds: ["older-build".to_string()].into(),
+            older: [("old-laptop".to_string(), (1, 1_000))].into(),
+            ..share::Leaving::default()
+        };
+        let named = |id: &str| format!("<{id}>");
+        let heard = |id: &str| match id {
+            "live-phone" | "older-build" => now - 600,
+            "old-phone" => now - crate::health::FORGET_NOW_AFTER - 60,
+            _ => 0,
+        };
+        let rows = rows_of(&leaving, &named, &heard, now);
+        let row = |id: &str| rows.iter().find(|r| r.text.contains(&format!("<{id}>"))).unwrap_or_else(|| panic!("{id}: {:?}", rows.iter().map(|r| &r.text).collect::<Vec<_>>()));
+        assert_eq!(row("live-phone").device, "", "heard of ten minutes ago: no button");
+        assert_eq!(row("old-phone").device, "old-phone", "silent past a day: offered");
+        assert_eq!(row("older-build").device, "");
+        let said = |words: &str, id: &str, count: usize, bytes: u64| say(words, &[("count", count.to_string()), ("size", size_words(bytes)), ("device", format!("<{id}>"))]);
+        assert_eq!(row("older-build").text, said("share-leaving-unread-earlier", "older-build", 1, 1_000), "an earlier Sioul said apart");
+        assert_eq!(row("live-phone").text, said("share-leaving-unread", "live-phone", 2, 4_000));
+        assert_eq!(row("old-laptop").device, "", "never heard of: nothing to offer");
+    }
 
     /// A dose's alarm path measured in a fresh process (review of 19 October
     /// 2026, F9): "Taken"'s exchange (`exchange_here(false)`) with 150 copies

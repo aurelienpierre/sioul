@@ -1295,6 +1295,12 @@ pub mod qobject {
         #[qinvokable]
         fn share_confirm_gone(self: Pin<&mut Sioul>, store: &QString) -> QString;
 
+        /// The health file's medicines held as gone ("data/health.toml")
+        /// taken out, here and everywhere, as you said; returns what went
+        /// wrong, else "".
+        #[qinvokable]
+        fn share_take_out_medicines(self: Pin<&mut Sioul>, file: &QString) -> QString;
+
         /// The notes and papers gone many at once here and held until they
         /// leave by themselves, as the last exchange left them, in words, as
         /// JSON (`share::withheld`): for the Porch to say once.
@@ -6211,6 +6217,14 @@ impl qobject::Sioul {
 
     fn share_confirm_gone(self: Pin<&mut Self>, store: &QString) -> QString {
         let problem = crate::share::confirm_gone(&store.to_string());
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
+    fn share_take_out_medicines(self: Pin<&mut Self>, file: &QString) -> QString {
+        let problem = crate::share::take_out_medicines(&file.to_string());
         if problem.is_empty() {
             crate::share::exchange(&self.qt_thread(), &self.shared());
         }

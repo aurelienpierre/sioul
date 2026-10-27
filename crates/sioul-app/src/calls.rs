@@ -935,8 +935,9 @@ mod tests {
     fn a_gone_device_never_opens_the_screening() {
         let folders = std::env::temp_dir().join(format!("sioul-calls-gone-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folders);
+        // Each marked as made for tests: the case's guard accepts no other (review of 1b6795e, M10).
         for dir in ["config", "data", "state", "cache"] {
-            std::fs::create_dir_all(folders.join(dir)).unwrap();
+            sioul_core::config::mark_stand_in(&folders.join(dir)).unwrap();
         }
         let ran = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "calls::tests::gone_expecting_a_call_in_the_table", "--ignored", "--test-threads=1"])

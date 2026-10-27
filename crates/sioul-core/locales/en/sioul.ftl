@@ -3027,10 +3027,14 @@ share-leaving-unread = { $count ->
     [one] The content of a note or paper taken out, { $size }, leaves once { $device } has read that it was.
    *[other] The contents of { $count } notes and papers taken out, { $size }, leave once { $device } has read that they were.
 }
+share-leaving-unread-earlier = { $count ->
+    [one] The content of a note or paper taken out, { $size }, leaves once { $device } has read that it was: it runs an earlier Sioul, which says so only after this device has written more since (hours or days), or once it is updated.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave once { $device } has read that they were: it runs an earlier Sioul, which says so only after this device has written more since (hours or days), or once it is updated.
+}
 share-leaving-silent = { $device } has been silent since { $when }: if it is no longer in use, “Forget it and remove its files…” lets them go at the next exchange.
 share-leaving-older = { $count ->
-    [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: { $device } runs an earlier Sioul, which keeps it by reference.
-   *[other] The contents of { $count } notes and papers taken out, { $size }, leave two weeks after their last use: { $device } runs an earlier Sioul, which keeps them by reference.
+    [one] The content of a note or paper taken out, { $size }, leaves in its time, two weeks after its last use: { $device } runs an earlier Sioul.
+   *[other] The contents of { $count } notes and papers taken out, { $size }, leave in their time, two weeks after their last use: { $device } runs an earlier Sioul.
 }
 share-leaving-untold = { $count ->
     [one] The content of a note or paper taken out, { $size }, leaves two weeks after its last use: this device does not share your texts, or all of notes, papers and the spam filter, and cannot tell whether another file holds the same bytes.
@@ -3077,8 +3081,10 @@ share-refused = { $file } is not written: its place goes through a link, or into
 share-not-text = { $file } stays here: its name is not text Sioul can carry.
 share-emptied = { $file } is empty here: nothing of it is taken out on your other devices for ten minutes.
 share-not-medicines = A change of your medicines from another device would not read as medicines here: it waits, and { $file } stays as it is.
-share-medicines-emptied = Every medicine went from { $file } here at once: your other devices keep theirs. If you meant it, take them out there too.
-share-medicines-emptied-there = Another device took every medicine out of { $file } at once: they stay here. If you meant it, take them out here too.
+share-medicines-take-out-everywhere = Take them out everywhere
+share-medicines-take-out-here = Take them out here too
+share-medicines-emptied = Every medicine went from { $file } here, though Sioul took none out: your other devices keep theirs, and their changes still come. If you meant it, take them out everywhere.
+share-medicines-emptied-there = Another device takes every medicine out of { $file }, though Sioul took none out there: they stay here, and the rest of its changes come. If you meant it, take them out here too.
 share-files-unreadable = Notes and papers wait: without Android's access to all your files, Sioul cannot see those other apps made, and would take them for gone.
 # Fetched from the server too (docs/database.md): the other devices' files read on the server that holds the sharing folder, beside the sync app.
 share-backup-switch = Also fetch them from the server
@@ -3828,6 +3834,7 @@ dose-last-known = Your medicines could not be read here: this dose is as last kn
 dose-next-unmoved = Marked taken. Your medicines could not be read here: if its next doses follow the time it is taken, they could not be moved.
 dose-taken-lately = Last taken at { $time }: the next may be taken from { $next }.
 dose-last-marked = Last marked taken at { $time }.
+dose-marked-later = A later time moves the next dose to that many hours after it: the hours between two doses are kept. An earlier time leaves the next dose where it is.
 dose-already-marked = Already marked taken at { $time }.
 dose-doubt = Sioul can't tell whether it was taken: { $why }. Check before taking it.
 dose-doubt-now = Doses marked on your other devices may not show here: { $why }.
@@ -6248,8 +6255,8 @@ event-delete-with-others = A meeting with others is never deleted here: its serv
 event-change-with-others = A meeting with others keeps its time, title, place, notes and calendar as its organizer set them: its server would tell every guest of a change. Your time around it, its costs and your reminder change here.
 invitation-cancel-changed = It changed meanwhile: nothing was taken out.
 invitation-cancel-refused = This cancellation does not come from the meeting's organizer, or the meeting is yours: nothing was taken out.
-invitation-older = This invitation is older than the one in your calendar, which stays as it is: your answer is sent.
-invitation-older-added = This event is older than the one in your calendar, which stays as it is.
+invitation-older = Your calendar holds a version of this meeting at least as recent as this invitation: its times stay as they are there, your answer is in it, and sent.
+invitation-older-added = Your calendar holds a version of this event at least as recent: it stays as it is.
 invitation-update-refused = This invitation does not come from its organizer, or it is a meeting you organize: nothing is written, and no answer is sent.
 task-list-would-lose = That list would not keep
 

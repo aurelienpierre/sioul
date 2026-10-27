@@ -60,7 +60,10 @@ pub struct Entry {
     /// points to any more (`blobs::KEEPING`): 1, two weeks, a content used
     /// again made fresh past a week, earlier versions by reference 12 days;
     /// 2, the same, and a file another device took out kept as a copy among
-    /// its earlier versions (`blobs::KEEPING_MOVED`); 0 from an older Sioul
+    /// its earlier versions (`blobs::KEEPING_MOVED`); 3, the same, its notes
+    /// saying each line read, and a content another device sealed that its
+    /// own change names again made fresh whatever its age and taken as its
+    /// own (`blobs::KEEPING_FRESH`); 0 from an older Sioul
     /// (90 days, 30, 60). A device keeps its own two weeks only once every
     /// device that counts says 1 at least (`share::unused_days`).
     /// An older Sioul reads the entry as before, the field unknown to it

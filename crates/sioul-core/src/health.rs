@@ -40,6 +40,13 @@ pub struct Health {
     /// Meals, naps and the night: times kept free, set first (`needs`).
     #[serde(default)]
     pub needs: crate::needs::Needs,
+    /// Medicines you took out in Sioul, by id, and when (Unix seconds); kept
+    /// a week (`mark_removed`). Their marks travel with the file: the
+    /// sharing takes such a removal everywhere, never held as a file emptied
+    /// by a device or a hand (the check of 1b6795e, H5). An older Sioul
+    /// leaves the table aside, as any key it does not know.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub removed: BTreeMap<String, i64>,
 }
 
 /// A prescription: what it is for, who wrote it, until when it is valid,
@@ -418,6 +425,20 @@ impl Health {
         }
     }
 
+    /// Where the file's last good read is kept, beside it (the window keeps
+    /// it: `health.toml.last-read`).
+    pub fn last_read_path(path: &Path) -> PathBuf {
+        path.with_extension("toml.last-read")
+    }
+
+    /// The meals, naps and night as the file says them; when it does not
+    /// read (lost, of no bytes, broken), as its last good read said them;
+    /// none kept either: none (the check of 1b6795e, M1: never the usual
+    /// needs without a night, which would cancel the waking alarm).
+    pub fn needs_known(path: &Path) -> Option<crate::needs::Needs> {
+        crate::needs::Needs::known(path)
+    }
+
     /// Written as the doses' records are (`write_witnessed`): next to its
     /// place, its bytes on the disk before it takes the name, then its
     /// witnesses made, so that a crash after a save leaves a file lost, said,
@@ -443,6 +464,17 @@ impl Health {
             health.save(path)?;
             Ok(out)
         })
+    }
+
+    /// Medicines taken out in Sioul (`ids`, those here before), marked so at
+    /// `now` (`removed`); marks past a week, and those of a medicine here
+    /// again, dropped.
+    pub fn mark_removed(&mut self, ids: &[String], now: i64) {
+        for id in ids {
+            self.removed.insert(id.clone(), now);
+        }
+        let here: std::collections::BTreeSet<&str> = self.medicines.iter().map(|m| m.id.as_str()).collect();
+        self.removed.retain(|id, at| !here.contains(id.as_str()) && *at >= now - 7 * 86_400);
     }
 
     /// A new id among the others, from a name.
@@ -527,27 +559,76 @@ impl Health {
     /// one a mark moved it from goes again where that mark moved it, its
     /// other changes kept. Two moves from one start (the second marked on a
     /// device the first had not reached yet): the latest mark's, by when it
-    /// was taken (review of 10 October 2026, R10). Returns whether one moved.
-    pub fn mend_shifts(&mut self, state: &HealthState) -> bool {
+    /// was taken (review of 10 October 2026, R10). A start to put back
+    /// (`DoseBacks`: a mark taken back, a time corrected later) goes back
+    /// where it was, unless a move still marked ends there: the latest word
+    /// about the start is that move's, never undone by another dose's take
+    /// back (the check of 1b6795e, H3); then on from there, as the moves say.
+    /// Followed until it stands still; then never before the end of a move
+    /// still marked: two devices that each moved it, neither knowing of the
+    /// other, leave the medicine of the one written last everywhere, maybe
+    /// the earlier end, and a dose would come before the interval after the
+    /// other take (the floor of the check of 1b6795e, H2; the A3 dose model).
+    /// Returns whether one moved.
+    pub fn mend_shifts(&mut self, state: &HealthState, backs: &crate::dose_backs::DoseBacks) -> bool {
         let mut mended = false;
         for medicine in &mut self.medicines {
             let Schedule::Hours { from, .. } = &mut medicine.schedule else { continue };
-            // Each move with when its mark was taken (none known: the earliest).
-            let moves: Vec<([i64; 2], i64)> = state.moved.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id)).map(|(key, moved)| (*moved, state.taken.get(key).copied().unwrap_or(i64::MIN))).collect();
-            // Moved several times since: each from where the one before left it.
-            for _ in 0..moves.len() {
-                let Some(([_, after], _)) = moves.iter().filter(|([before, after], _)| *before == *from && after != before).max_by_key(|(_, taken)| *taken) else { break };
-                *from = *after;
-                mended = true;
+            let id = medicine.id.as_str();
+            let mine = |key: &str| key.rsplit_once('@').is_some_and(|(medicine, _)| medicine == id);
+            // Each move, with when its mark was taken (none known: the earliest), and whether that mark is still there.
+            let moves: Vec<([i64; 2], i64, bool)> = state.moved.iter().filter(|(key, _)| mine(key)).map(|(key, moved)| (*moved, state.taken.get(key).copied().unwrap_or(i64::MIN), state.taken.contains_key(key))).collect();
+            let restores: Vec<[i64; 3]> = backs.of(id).collect();
+            let started = *from;
+            for _ in 0..=moves.len() + restores.len() {
+                let standing = *from;
+                // Moved from there since: the latest mark's.
+                if let Some(([_, after], _, _)) = moves.iter().filter(|([before, after], _, _)| *before == *from && after != before).max_by_key(|(_, taken, _)| *taken) {
+                    *from = *after;
+                }
+                // Put back where it was, unless a move still marked ends here.
+                let owned = moves.iter().any(|([before, after], _, marked)| *marked && *after == *from && after != before);
+                if !owned && let Some([before, _, _]) = restores.iter().filter(|[before, after, _]| *after == *from && after != before).max_by_key(|[_, _, at]| *at) {
+                    *from = *before;
+                }
+                if *from == standing {
+                    break;
+                }
             }
-            // A move taken back (`HealthState::back`): its start put back, unless it moved again since.
-            let backs = state.back.iter().filter(|(key, _)| key.rsplit_once('@').is_some_and(|(id, _)| id == medicine.id));
-            if let Some((_, [before, _, _])) = backs.filter(|(_, [before, after, _])| *after == *from && after != before).max_by_key(|(_, [_, _, at])| *at) {
-                *from = *before;
-                mended = true;
+            if let Some(floor) = moves.iter().filter(|([before, after], _, marked)| *marked && after != before).map(|([_, after], _, _)| *after).max()
+                && floor > *from
+            {
+                *from = floor;
             }
+            mended |= *from != started;
         }
         mended
+    }
+
+    /// A dose's move replaced by a time corrected later (the check of
+    /// 1b6795e, H2): the medicine's start, where that move left it
+    /// (`replaced`), set to `after`. Moved again since by another dose: left.
+    /// Returns whether it moved.
+    pub fn moved_on(&mut self, key: &str, replaced: i64, after: i64) -> bool {
+        let Some((id, _)) = key.rsplit_once('@') else { return false };
+        let Some(medicine) = self.medicines.iter_mut().find(|m| m.id == id) else { return false };
+        match &mut medicine.schedule {
+            Schedule::Hours { from, .. } if *from == replaced && replaced != after => {
+                *from = after;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The hours between two doses of a dose's medicine (`key`), in seconds:
+    /// none for a medicine at set times, or one not here.
+    pub fn step_of(&self, key: &str) -> Option<i64> {
+        let (id, _) = key.rsplit_once('@')?;
+        match self.medicines.iter().find(|m| m.id == id)?.schedule {
+            Schedule::Hours { hours, .. } if hours > 0 => Some(i64::from(hours) * 3600),
+            _ => None,
+        }
     }
 
     /// A mark taken back: the doses it moved go back where they were, unless
@@ -1219,13 +1300,6 @@ pub struct HealthState {
     /// before and after (`Health::taken_at`); kept with the mark.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub moved: BTreeMap<String, [i64; 2]>,
-    /// Moves taken back, by key: where the next doses started before and
-    /// after the take, and when it was taken back (Unix seconds); kept a
-    /// week. Every device puts them back from here (`Health::mend_shifts`),
-    /// its health file read or not where it was taken back (review of
-    /// 36002ea's check, A2: a take back there once dropped its restore).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub back: BTreeMap<String, [i64; 3]>,
     /// Errands whose task was made, by key.
     #[serde(default)]
     pub errands: BTreeMap<String, String>,
@@ -1380,7 +1454,6 @@ impl HealthState {
         self.unshown.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
-        self.back.retain(|_, [_, _, at]| *at >= week);
         write_witnessed(path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
@@ -2368,7 +2441,7 @@ mod tests {
 
     /// The check of 36002ea, A2: a health file of no bytes, or gone though
     /// written here, was lost (Sioul never writes it empty): never read as no
-    /// medicines, never written over; a move taken back (`HealthState::back`)
+    /// medicines, never written over; a move taken back (`DoseBacks`)
     /// puts the start back on every device, unless it moved again since; a
     /// witness that cannot be made never says the write failed.
     #[test]
@@ -2394,23 +2467,109 @@ mod tests {
         let after = late + 8 * 3600;
         let mut health = Health { medicines: vec![medicine(after)], ..Health::default() };
         let mut state = HealthState::default();
-        state.back.insert(format!("antibiotic@{start}"), [start, after, late + 600]);
-        assert!(health.mend_shifts(&state));
+        let mut backs = crate::dose_backs::DoseBacks::default();
+        backs.restore(&format!("antibiotic@{start}"), start, after, late + 600);
+        assert!(health.mend_shifts(&state, &backs));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start), "put back");
-        assert!(!health.mend_shifts(&state), "once");
+        assert!(!health.mend_shifts(&state, &backs), "once");
         // Moved again since (the next dose taken late, its move recorded): left where that move put it.
         let mut health = Health { medicines: vec![medicine(after)], ..Health::default() };
         let next = after + 3600 + 8 * 3600;
         state.moved.insert(format!("antibiotic@{after}"), [after, next]);
         state.taken.insert(format!("antibiotic@{after}"), after + 3600);
-        assert!(health.mend_shifts(&state));
+        assert!(health.mend_shifts(&state, &backs));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == next), "the later move holds");
-        // Kept a week, then gone with the marks' week.
-        let mut saved = HealthState::default();
-        saved.back.insert("antibiotic@1".into(), [1, 2, late]);
-        saved.save(&dir.join("health-state.toml"), late + 8 * 86_400).unwrap();
-        assert!(HealthState::read(&dir.join("health-state.toml")).unwrap().back.is_empty());
+        // Kept a week, in a file of its own.
+        let backs_path = dir.join(crate::dose_backs::FILE);
+        crate::dose_backs::DoseBacks::update(&backs_path, late, |b| b.restore("antibiotic@1", 1, 2, late)).unwrap();
+        assert_eq!(crate::dose_backs::DoseBacks::read(&backs_path).unwrap().back.len(), 1);
+        crate::dose_backs::DoseBacks::update(&backs_path, late + 8 * 86_400, |_| ()).unwrap();
+        assert!(crate::dose_backs::DoseBacks::read(&backs_path).unwrap().back.is_empty(), "a week, then gone");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// H3 of the check of 1b6795e: two doses of one medicine taken late at
+    /// the same minute move its start to the same place; the first taken
+    /// back, its restore never undoes the second's move, still marked: the
+    /// next dose comes the hours after its take, on every device, whatever
+    /// its start was; and a time corrected later replaces its dose's move,
+    /// the start it had moved to put back first, then moved on, and taken
+    /// back all the same.
+    #[test]
+    fn a_take_back_never_undoes_another_dose_s_move() {
+        let medicine = |from: i64| Medicine { id: "corvan".into(), name: "Corvan".into(), dose: "1 g".into(), schedule: Schedule::Hours { hours: 6, from }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+        let from_of = |health: &Health| match health.medicines[0].schedule { Schedule::Hours { from, .. } => from, _ => 0 };
+        let day = at("2026-10-05T00:00[Europe/Paris]").timestamp().as_second();
+        let (h20, h02, h08, h10, h16) = (day - 4 * 3600, day + 2 * 3600, day + 8 * 3600, day + 10 * 3600, day + 16 * 3600);
+        let mut state = HealthState::default();
+        let mut backs = crate::dose_backs::DoseBacks::default();
+        // 02:00 marked at 10:00 by mistake, then taken back; 08:00 marked at 10:00.
+        backs.restore(&format!("corvan@{h02}"), h20, h16, h10 + 60);
+        state.taken.insert(format!("corvan@{h08}"), h10);
+        state.moved.insert(format!("corvan@{h08}"), [h20, h16]);
+        for start in [h16, h20] {
+            let mut health = Health { medicines: vec![medicine(start)], ..Health::default() };
+            health.mend_shifts(&state, &backs);
+            assert_eq!(from_of(&health), h16, "from {start}: the 08:00 dose's move holds");
+            assert!(!health.mend_shifts(&state, &backs), "stands still");
+        }
+        // The 08:00 dose's time corrected to 11:30: its move replaced, the start it had moved to put back first.
+        let h1730 = day + 17 * 3600 + 1800;
+        state.taken.insert(format!("corvan@{h08}"), h10 + 5400);
+        state.moved.insert(format!("corvan@{h08}"), [h20, h1730]);
+        backs.restore(&format!("corvan@{h08}"), h20, h16, h10 + 600);
+        for start in [h16, h20, h1730] {
+            let mut health = Health { medicines: vec![medicine(start)], ..Health::default() };
+            health.mend_shifts(&state, &backs);
+            assert_eq!(from_of(&health), h1730, "from {start}: moved from the corrected time");
+        }
+        // Then taken back: where it was, from either start a device holds.
+        state.taken.remove(&format!("corvan@{h08}"));
+        state.moved.remove(&format!("corvan@{h08}"));
+        backs.restore(&format!("corvan@{h08}"), h20, h1730, h10 + 900);
+        for start in [h16, h1730] {
+            let mut health = Health { medicines: vec![medicine(start)], ..Health::default() };
+            health.mend_shifts(&state, &backs);
+            assert_eq!(from_of(&health), h20, "from {start}: put back");
+        }
+        // Taken anew: what was to be put back of that dose is passed.
+        backs.passed(&format!("corvan@{h08}"));
+        assert!(backs.back.keys().all(|name| !name.starts_with(&format!("corvan@{h08}~"))));
+    }
+
+    /// Two devices moved the start from one dose time, neither knowing of
+    /// the other: the desk marks the 14:00 dose at 14:00, the phone the 08:00
+    /// dose at 08:30, said late, and the phone's medicine is written last.
+    /// Whichever version a device holds, the start is never before the end of
+    /// a move still marked: no dose before the interval after a take (the A3
+    /// dose model). The 14:00 dose taken back: the phone's move alone holds.
+    #[test]
+    fn no_start_before_a_marked_take_s_interval_whichever_version_won() {
+        let medicine = |from: i64| Medicine { id: "corvan".into(), name: "Corvan".into(), dose: "1 g".into(), schedule: Schedule::Hours { hours: 6, from }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+        let from_of = |health: &Health| match health.medicines[0].schedule { Schedule::Hours { from, .. } => from, _ => 0 };
+        let day = at("2026-10-05T00:00[Europe/Paris]").timestamp().as_second();
+        let (h08, h0830, h14, h1430, h20) = (day + 8 * 3600, day + 8 * 3600 + 1800, day + 14 * 3600, day + 14 * 3600 + 1800, day + 20 * 3600);
+        let mut state = HealthState::default();
+        let mut backs = crate::dose_backs::DoseBacks::default();
+        state.taken.insert(format!("corvan@{h14}"), h14);
+        state.moved.insert(format!("corvan@{h14}"), [h08, h20]);
+        state.taken.insert(format!("corvan@{h08}"), h0830);
+        state.moved.insert(format!("corvan@{h08}"), [h08, h1430]);
+        for start in [h08, h1430, h20] {
+            let mut health = Health { medicines: vec![medicine(start)], ..Health::default() };
+            health.mend_shifts(&state, &backs);
+            assert_eq!(from_of(&health), h20, "from {start}: six hours after the latest take");
+            assert!(!health.mend_shifts(&state, &backs), "stands still");
+        }
+        // The 14:00 dose taken back: its move put back; the phone's take of 08:30 alone moves it.
+        state.taken.remove(&format!("corvan@{h14}"));
+        state.moved.remove(&format!("corvan@{h14}"));
+        backs.restore(&format!("corvan@{h14}"), h08, h20, h14 + 600);
+        for start in [h1430, h20] {
+            let mut health = Health { medicines: vec![medicine(start)], ..Health::default() };
+            health.mend_shifts(&state, &backs);
+            assert_eq!(from_of(&health), h1430, "from {start}: six hours after the take that holds");
+        }
     }
 
     /// F23: a medicine's start, moved by a dose taken late, put back by an
@@ -2426,14 +2585,14 @@ mod tests {
         let mut state = HealthState::default();
         let late = start + 90 * 60;
         state.moved.insert(format!("antibiotic@{start}"), [start, late + 8 * 3600]);
-        assert!(health.mend_shifts(&state));
+        assert!(health.mend_shifts(&state, &crate::dose_backs::DoseBacks::default()));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == late + 8 * 3600));
         assert_eq!(health.medicines[0].dose, "1 tablet, with food", "its other changes kept");
-        assert!(!health.mend_shifts(&state), "mended once");
+        assert!(!health.mend_shifts(&state, &crate::dose_backs::DoseBacks::default()), "mended once");
         let next = late + 8 * 3600;
         state.moved.insert(format!("antibiotic@{next}"), [next, next + 3600 + 8 * 3600]);
         health.medicines[0].schedule = Schedule::Hours { hours: 8, from: start };
-        assert!(health.mend_shifts(&state));
+        assert!(health.mend_shifts(&state, &crate::dose_backs::DoseBacks::default()));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == next + 3600 + 8 * 3600), "both moves");
     }
 
@@ -2452,15 +2611,18 @@ mod tests {
         state.taken.insert(first, start + 90 * 60);
         state.taken.insert(second, start + 8 * 3600 + 45 * 60);
         let mut health = Health { medicines: vec![medicine.clone()], ..Health::default() };
-        assert!(health.mend_shifts(&state));
+        assert!(health.mend_shifts(&state, &crate::dose_backs::DoseBacks::default()));
         assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start + 8 * 3600 + 45 * 60 + 8 * 3600), "the latest mark's move");
-        // Marked in the other order: the same.
-        let (a, b) = (state.taken.values().copied().min().unwrap(), state.taken.values().copied().max().unwrap());
-        for taken in state.taken.values_mut() {
-            *taken = if *taken == a { b } else { a };
-        }
+        // Marked in the other order, each move its own take's: the same, whatever the keys' order.
+        let (one, two) = (state.taken.keys().next().unwrap().clone(), state.taken.keys().nth(1).unwrap().clone());
+        let (taken_one, taken_two) = (state.taken[&one], state.taken[&two]);
+        let (moved_one, moved_two) = (state.moved[&one], state.moved[&two]);
+        state.taken.insert(one.clone(), taken_two);
+        state.taken.insert(two.clone(), taken_one);
+        state.moved.insert(one, moved_two);
+        state.moved.insert(two, moved_one);
         let mut health = Health { medicines: vec![medicine], ..Health::default() };
-        assert!(health.mend_shifts(&state));
-        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start + 90 * 60 + 8 * 3600), "the latest mark's move, whatever its key");
+        assert!(health.mend_shifts(&state, &crate::dose_backs::DoseBacks::default()));
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { from, .. } if from == start + 8 * 3600 + 45 * 60 + 8 * 3600), "the latest mark's move, whatever its key");
     }
 }

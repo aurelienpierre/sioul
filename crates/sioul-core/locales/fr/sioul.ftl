@@ -3045,10 +3045,14 @@ share-leaving-unread = { $count ->
     [one] Le contenu d’une note ou d’un papier retiré, { $size }, part dès que { $device } a lu qu’il l’était.
    *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent dès que { $device } a lu qu’ils l’étaient.
 }
+share-leaving-unread-earlier = { $count ->
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part dès que { $device } a lu qu’il l’était : il a un Sioul plus ancien, qui ne le dit qu’après que cet appareil a écrit davantage (quelques heures ou jours), ou une fois mis à jour.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent dès que { $device } a lu qu’ils l’étaient : il a un Sioul plus ancien, qui ne le dit qu’après que cet appareil a écrit davantage (quelques heures ou jours), ou une fois mis à jour.
+}
 share-leaving-silent = { $device } est silencieux depuis { $when } : s’il ne sert plus, « L’oublier et retirer ses fichiers… » les laisse partir au prochain échange.
 share-leaving-older = { $count ->
-    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : { $device } a un Sioul plus ancien, qui le garde par référence.
-   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent deux semaines après leur dernier usage : { $device } a un Sioul plus ancien, qui les garde par référence.
+    [one] Le contenu d’une note ou d’un papier retiré, { $size }, part en son temps, deux semaines après son dernier usage : { $device } a un Sioul plus ancien.
+   *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent en leur temps, deux semaines après leur dernier usage : { $device } a un Sioul plus ancien.
 }
 share-leaving-untold = { $count ->
     [one] Le contenu d’une note ou d’un papier retiré, { $size }, part deux semaines après son dernier usage : cet appareil ne partage pas vos SMS, ou pas toutes les notes, les papiers et le filtre anti-spam, et ne peut savoir si un autre fichier a les mêmes octets.
@@ -3095,8 +3099,10 @@ share-refused = { $file } n’est pas écrit : sa place passe par un lien, ou 
 share-not-text = { $file } reste ici : son nom n’est pas un texte que Sioul peut transporter.
 share-emptied = { $file } est vide ici : rien n’en est retiré sur vos autres appareils pendant dix minutes.
 share-not-medicines = Un changement de vos médicaments venu d’un autre appareil ne se lirait pas ici comme des médicaments : il attend, et { $file } reste tel qu’il est.
-share-medicines-emptied = Tous les médicaments sont partis d’un coup de { $file } ici : vos autres appareils gardent les leurs. Si c’était voulu, retirez-les aussi là-bas.
-share-medicines-emptied-there = Un autre appareil a retiré d’un coup tous les médicaments de { $file } : ils restent ici. Si c’était voulu, retirez-les aussi ici.
+share-medicines-take-out-everywhere = Les retirer partout
+share-medicines-take-out-here = Les retirer ici aussi
+share-medicines-emptied = Tous les médicaments sont partis de { $file } ici, sans que Sioul en retire aucun : vos autres appareils gardent les leurs, et leurs changements arrivent toujours. Si vous le vouliez, retirez-les partout.
+share-medicines-emptied-there = Un autre appareil retire tous les médicaments de { $file }, sans que Sioul en ait retiré aucun là-bas : ils restent ici, et le reste de ses changements arrive. Si vous le vouliez, retirez-les ici aussi.
 share-files-unreadable = Les notes et les papiers attendent : sans l’accès d’Android à tous vos fichiers, Sioul ne voit pas ceux faits par d’autres applications, et les croirait partis.
 # Cherché aussi sur le serveur (docs/database.md) : les fichiers des autres appareils lus sur le serveur qui garde le dossier de partage, à côté de l’application de synchronisation.
 share-backup-switch = Aller aussi les chercher sur le serveur
@@ -3846,6 +3852,7 @@ dose-last-known = Vos médicaments n’ont pas pu être lus ici : cette prise 
 dose-next-unmoved = Marquée prise. Vos médicaments n’ont pas pu être lus ici : si ses prochaines prises suivent l’heure où elle est prise, elles n’ont pas pu être déplacées.
 dose-taken-lately = Dernière prise à { $time } : la suivante peut être prise à partir de { $next }.
 dose-last-marked = Dernière prise marquée à { $time }.
+dose-marked-later = Une heure plus tardive décale la prise suivante d’autant d’heures après elle : les heures entre deux prises sont gardées. Une heure plus tôt laisse la prise suivante où elle est.
 dose-already-marked = Déjà marquée prise à { $time }.
 dose-doubt = Sioul ne peut pas savoir si elle a été prise : { $why }. Vérifiez avant de la prendre.
 dose-doubt-now = Des prises notées sur vos autres appareils peuvent manquer ici : { $why }.
@@ -6276,8 +6283,8 @@ event-delete-with-others = Une réunion avec d’autres n’est jamais supprimé
 event-change-with-others = Une réunion avec d’autres garde son heure, son titre, son lieu, ses notes et son agenda tels que son organisateur les a mis : son serveur préviendrait chaque invité d’un changement. Votre temps autour, ses coûts et votre rappel se changent ici.
 invitation-cancel-changed = Il a changé entre-temps : rien n’a été retiré.
 invitation-cancel-refused = Cette annulation ne vient pas de l’organisateur de la réunion, ou la réunion est la vôtre : rien n’a été retiré.
-invitation-older = Cette invitation est plus ancienne que celle de votre agenda, qui reste telle qu’elle est : votre réponse est envoyée.
-invitation-older-added = Cet événement est plus ancien que celui de votre agenda, qui reste tel qu’il est.
+invitation-older = Votre calendrier garde une version de cette réunion au moins aussi récente que cette invitation : ses heures y restent telles quelles, votre réponse y est, et elle est envoyée.
+invitation-older-added = Votre calendrier garde une version de cet événement au moins aussi récente : il reste tel quel.
 invitation-update-refused = Cette invitation ne vient pas de son organisateur, ou c’est une réunion que vous organisez : rien n’est écrit, et aucune réponse n’est envoyée.
 task-list-would-lose = Cette liste ne garderait pas
 

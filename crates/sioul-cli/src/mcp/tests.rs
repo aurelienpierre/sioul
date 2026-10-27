@@ -45,7 +45,8 @@ pub(crate) fn home() -> &'static Home {
         let _ = std::fs::remove_dir_all(&root);
         for (variable, folder) in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"), ("HOME", "home")] {
             let dir = root.join(folder);
-            std::fs::create_dir_all(&dir).unwrap();
+            // Marked as made for tests: the guard accepts no other (review of 1b6795e, M10).
+            sioul_core::config::mark_stand_in(&dir).unwrap();
             // SAFETY: set once, inside this initialiser, before any test of this
             // binary reads the environment: each test asks for the home first
             // and waits here until it is made. Nothing else runs meanwhile.

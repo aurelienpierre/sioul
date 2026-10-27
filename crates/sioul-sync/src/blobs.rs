@@ -46,18 +46,28 @@ pub const UNUSED_DAYS: i64 = 14;
 /// server, would name a content that no device sends again.
 pub const UNUSED_DAYS_BEFORE: i64 = 90;
 /// What a device's sealed entry says of how it keeps sealed files
-/// (`devices::Entry::keeping`), the latest this Sioul says: `KEEPING_MOVED`.
+/// (`devices::Entry::keeping`), the latest this Sioul says: `KEEPING_FRESH`.
 /// 0, unsaid: an older Sioul's 90, 30 and 60.
-pub const KEEPING: u32 = KEEPING_MOVED;
+pub const KEEPING: u32 = KEEPING_FRESH;
 /// From 15 October 2026: two weeks, made fresh past a week, earlier versions
 /// by reference 12 days (`share::unused_days`).
 pub const KEEPING_TWO_WEEKS: u32 = 1;
 /// From 17 October 2026, the same, and a file another device took out kept
 /// among its earlier versions as a copy, never by reference
 /// (`history::keep_moved`): once every device that counts says so, the
-/// content of a note or paper taken out may leave the folder as soon as each
-/// read that it was (`share::stands`).
+/// content of a note or paper taken out leaves once each read past the round
+/// that took it out, with the sweep's care (`share::removed_by_rounds`).
 pub const KEEPING_MOVED: u32 = 2;
+/// From 27 October 2026, the same, and its notes say each line read
+/// (`share::Seen::lines`), and a content another device sealed that its own
+/// change names again is made fresh whatever its age and taken as its own
+/// (`share::fresh_again`), so that it sends it again where the server lost
+/// it: once every device that counts says so, the content of a note or paper
+/// taken out leaves as soon as each read that it was (`share::stands`). A
+/// device saying 2 makes such a content fresh only past a week (`put`): one
+/// it put back the day after its sweep would be sent again by none (the
+/// check of 9684719, must-fix 2).
+pub const KEEPING_FRESH: u32 = 3;
 /// A content sealed in the folder longer ago than this and used again has
 /// its file made fresh (`put`), so that its writer, which may not have read
 /// the record using it again yet, never sweeps it from under that record

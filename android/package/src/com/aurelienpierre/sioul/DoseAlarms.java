@@ -23,8 +23,19 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -51,14 +62,30 @@ final class DoseAlarms
     private static final String SCHEME = "sioul-dose";
     private static final String CHANNEL = "doses";
     private static final String KEPT = "sioul-doses";
+    /** The list kept by a Sioul up to 26 October 2026, in its preferences: read once, then the record's. */
     private static final String LIST = "alarms";
     private static final String OPENED = "opened";
+    /**
+     * What Android holds of the doses' alarms, one record for every process
+     * of Sioul (the window's, and :steps', which hands them too after its
+     * exchanges): read fresh under a lock of the file system both take, so
+     * that none is cancelled, doubled or missed whichever hands them, in
+     * whatever order (the check of 1b6795e, H1). Beside it, its lock.
+     */
+    private static final String RECORD = "dose-alarms.json";
+    private static final String RECORD_LOCK = "dose-alarms.lock";
+    /** A dose past by more than this, never armed here: not armed now (it rang, or is not this device's to say). As Rust's GRACE_MINUTES. */
+    static final long GRACE_MS = 30 * 60 * 1000L;
+    /** An entry asked again later by its receiver (sleep, a pause, news awaited): kept at that time while Rust still lists its dose. */
+    static final String AGAIN = "again";
     /** A reminder is known by its dose's key (its tag) and this number. */
     private static final int REMINDER = 1;
     /** "Taken at 08:03" stays half a day in the shade. */
     private static final long CONFIRMED_MS = 12 * 60 * 60 * 1000L;
 
     private static boolean loaded;
+    /** Whether this process armed the alarms since it began: its first hand arms them all again (a stop by force forgets them). */
+    private static boolean armedHere;
 
     private DoseAlarms() {}
 
@@ -109,8 +136,12 @@ final class DoseAlarms
 
     /**
      * Rust's coming doses (android/main.cpp): JSON [{key, at (Unix
-     * milliseconds), title}]. Their alarms replace those given before, and
-     * the list is kept for Android's restarts. Any thread.
+     * milliseconds), title}], from half a day back (each dose not marked nor
+     * reminded) to two days ahead. What Android is to hold is decided from
+     * the record every process reads fresh (`Plan`), under its lock: those
+     * no longer listed cancelled, those new or moved armed, a dose asked
+     * again later kept at that time, nothing else touched. Any thread, any
+     * process.
      */
     static synchronized void set(Context context, String json)
     {
@@ -121,65 +152,168 @@ final class DoseAlarms
             Log.e(TAG, "Doses: the list of alarms does not read; those given before stay. " + e);
             return;
         }
-        Set<String> coming = new HashSet<>();
-        for (int i = 0; i < doses.length(); i++)
-            coming.add(key(doses.optJSONObject(i)));
-        JSONArray before = list(context);
-        for (int i = 0; i < before.length(); i++) {
-            String key = key(before.optJSONObject(i));
-            if (!key.isEmpty() && !coming.contains(key))
+        FileLock held = null;
+        final Plan plan;
+        try {
+            held = lockRecord(context);
+            plan = Plan.of(record(context), doses, System.currentTimeMillis(), armedHere);
+            for (String key : plan.cancel)
                 cancel(context, key);
+            for (JSONObject dose : plan.arm)
+                alarm(context, key(dose), dose.optLong("at"), dose.optString("title"));
+            keepRecord(context, plan.record);
+            armedHere = true;
+        } catch (IOException e) {
+            Log.e(TAG, "Doses: the alarms' record could not be held; those given before stay. " + e);
+            return;
+        } finally {
+            release(held);
         }
-        schedule(context, doses);
-        keep(context, doses);
         channel(context);
-        Log.i(TAG, "Doses: " + doses.length() + " alarms given, " + (exact(context) ? "on time." : "inexact (no \"Alarms & reminders\")."));
+        if (!plan.arm.isEmpty() || !plan.cancel.isEmpty())
+            Log.i(TAG, "Doses: " + plan.arm.size() + " alarms given, " + plan.cancel.size() + " taken back, " + plan.record.length() + " held, "
+                           + (exact(context) ? "on time." : "inexact (no \"Alarms & reminders\")."));
     }
 
     /**
-     * The alarms given again from the list kept: Android forgets them when it
+     * The alarms given again from the record: Android forgets them when it
      * restarts (DoseBootReceiver). A dose whose time went by rings at once:
      * Rust says whether it is still to remind.
      */
     static synchronized void restore(Context context, String why)
     {
-        JSONArray doses = list(context);
-        schedule(context, doses);
-        Log.i(TAG, "Doses: " + doses.length() + " alarms given again (" + why + ").");
+        FileLock held = null;
+        try {
+            held = lockRecord(context);
+            JSONArray doses = record(context);
+            schedule(context, doses);
+            Log.i(TAG, "Doses: " + doses.length() + " alarms given again (" + why + ").");
+        } catch (IOException e) {
+            Log.e(TAG, "Doses: the alarms' record could not be held; none given again. " + e);
+        } finally {
+            release(held);
+        }
     }
 
-    /** A dose asked about again at `at`, Rust waiting for news from your other devices. */
+    /** A dose asked about again at `at`, Rust waiting for news from your other devices, or for your waking. */
     static synchronized void again(Context context, String key, long at, String name)
     {
         alarm(context, key, at, name);
-        JSONArray doses = list(context);
-        boolean found = false;
-        for (int i = 0; i < doses.length(); i++) {
-            JSONObject dose = doses.optJSONObject(i);
-            if (key.equals(key(dose))) {
-                put(dose, "at", at);
-                found = true;
-            }
+        FileLock held = null;
+        try {
+            held = lockRecord(context);
+            keepRecord(context, Plan.againIn(record(context), key, at, name));
+        } catch (IOException e) {
+            Log.e(TAG, "Doses: the alarms' record could not be held; the alarm is given all the same. " + e);
+        } finally {
+            release(held);
         }
-        if (!found) {
-            JSONObject dose = new JSONObject();
-            put(dose, "key", key);
-            put(dose, "at", at);
-            put(dose, "title", name);
-            doses.put(dose);
-        }
-        keep(context, doses);
     }
 
-    /** A dose reminded: out of the list, not to ring again after a restart. */
+    /** A dose reminded: out of the record, not to ring again after a restart. */
     static synchronized void reminded(Context context, String key)
     {
-        JSONArray doses = list(context);
-        JSONArray left = new JSONArray();
-        for (int i = 0; i < doses.length(); i++)
-            if (!key.equals(key(doses.optJSONObject(i))))
-                left.put(doses.opt(i));
-        keep(context, left);
+        FileLock held = null;
+        try {
+            held = lockRecord(context);
+            JSONArray doses = record(context);
+            JSONArray left = new JSONArray();
+            for (int i = 0; i < doses.length(); i++)
+                if (!key.equals(key(doses.optJSONObject(i))))
+                    left.put(doses.opt(i));
+            keepRecord(context, left);
+        } catch (IOException e) {
+            Log.e(TAG, "Doses: the alarms' record could not be held. " + e);
+        } finally {
+            release(held);
+        }
+    }
+
+    /**
+     * What Android is to hold of the doses' alarms, decided without Android
+     * (checked on the JVM, android/jvm-checks/DoseAlarmsCheck.java): from
+     * what it holds (`kept`, the record), what Rust lists (`doses`), `now`,
+     * and whether this process armed them since it began. Each listed dose:
+     * kept as it is when the record holds it at that time; at a later time
+     * its receiver asked (`AGAIN`: sleep, a pause), kept at that time, never
+     * cancelled by a list made from its dose's own time (the check of
+     * 1b6795e, M6); new or moved, armed; past by more than `GRACE_MS` and
+     * never armed, left alone. A dose no longer listed (marked, reminded,
+     * gone, half a day past): cancelled. This process's first hand arms
+     * again every one still to come, whatever the record says.
+     */
+    static final class Plan
+    {
+        final JSONArray record = new JSONArray();
+        final List<JSONObject> arm = new ArrayList<>();
+        final List<String> cancel = new ArrayList<>();
+
+        static Plan of(JSONArray kept, JSONArray doses, long now, boolean armedHere)
+        {
+            Plan plan = new Plan();
+            Map<String, JSONObject> before = new HashMap<>();
+            for (int i = 0; i < kept.length(); i++) {
+                JSONObject dose = kept.optJSONObject(i);
+                if (!key(dose).isEmpty())
+                    before.put(key(dose), dose);
+            }
+            Set<String> listed = new HashSet<>();
+            for (int i = 0; i < doses.length(); i++) {
+                JSONObject dose = doses.optJSONObject(i);
+                String key = key(dose);
+                long at = dose == null ? 0 : dose.optLong("at");
+                if (key.isEmpty() || at <= 0 || !listed.add(key))
+                    continue;
+                JSONObject was = before.get(key);
+                long when = at;
+                boolean again = false;
+                if (was != null && was.optBoolean(AGAIN) && was.optLong("at") > at) {
+                    when = was.optLong("at");
+                    again = true;
+                }
+                if (was == null && when < now - GRACE_MS)
+                    continue;
+                JSONObject entry = new JSONObject();
+                put(entry, "key", key);
+                put(entry, "at", when);
+                put(entry, "title", dose.optString("title"));
+                if (again)
+                    put(entry, AGAIN, true);
+                plan.record.put(entry);
+                if (was == null || was.optLong("at") != when || (!armedHere && when > now))
+                    plan.arm.add(entry);
+            }
+            for (String key : before.keySet())
+                if (!listed.contains(key))
+                    plan.cancel.add(key);
+            return plan;
+        }
+
+        /** The record with a dose asked again at `at` (`AGAIN`), its entry made when it had none. */
+        static JSONArray againIn(JSONArray kept, String key, long at, String name)
+        {
+            JSONArray out = new JSONArray();
+            boolean found = false;
+            for (int i = 0; i < kept.length(); i++) {
+                JSONObject dose = kept.optJSONObject(i);
+                if (dose != null && key.equals(key(dose))) {
+                    put(dose, "at", at);
+                    put(dose, AGAIN, true);
+                    found = true;
+                }
+                if (dose != null)
+                    out.put(dose);
+            }
+            if (!found) {
+                JSONObject dose = new JSONObject();
+                put(dose, "key", key);
+                put(dose, "at", at);
+                put(dose, "title", name);
+                put(dose, AGAIN, true);
+                out.put(dose);
+            }
+            return out;
+        }
     }
 
     /**
@@ -277,18 +411,60 @@ final class DoseAlarms
         return context.getSharedPreferences(KEPT, Context.MODE_PRIVATE);
     }
 
-    private static JSONArray list(Context context)
+    /** The record's lock, taken by every process of Sioul before it reads or writes the record. */
+    private static FileLock lockRecord(Context context) throws IOException
     {
+        RandomAccessFile file = new RandomAccessFile(new File(context.getFilesDir(), RECORD_LOCK), "rw");
         try {
+            return file.getChannel().lock();
+        } catch (IOException | RuntimeException e) {
+            file.close();
+            throw e;
+        }
+    }
+
+    private static void release(FileLock held)
+    {
+        if (held == null)
+            return;
+        try {
+            held.release();
+            held.channel().close();
+        } catch (IOException e) {
+            // Closed with its process at the latest.
+        }
+    }
+
+    /**
+     * The record, read fresh (its lock held); none yet: the list a Sioul up
+     * to 26 October 2026 kept in its preferences, once.
+     */
+    private static JSONArray record(Context context)
+    {
+        File file = new File(context.getFilesDir(), RECORD);
+        try {
+            if (file.exists())
+                return new JSONArray(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
             return new JSONArray(kept(context).getString(LIST, "[]"));
-        } catch (JSONException e) {
+        } catch (IOException | JSONException e) {
+            Log.w(TAG, "Doses: the alarms' record does not read; taken as none, every dose armed again. " + e);
             return new JSONArray();
         }
     }
 
-    private static void keep(Context context, JSONArray doses)
+    /** The record written whole beside its place, then moved in (its lock held); the old list let go. */
+    private static void keepRecord(Context context, JSONArray doses) throws IOException
     {
-        kept(context).edit().putString(LIST, doses.toString()).commit();
+        File file = new File(context.getFilesDir(), RECORD);
+        File beside = new File(context.getFilesDir(), RECORD + ".new");
+        try (FileOutputStream out = new FileOutputStream(beside)) {
+            out.write(doses.toString().getBytes(StandardCharsets.UTF_8));
+            out.getFD().sync();
+        }
+        if (!beside.renameTo(file))
+            throw new IOException("the alarms' record could not take its place");
+        if (kept(context).contains(LIST))
+            kept(context).edit().remove(LIST).apply();
     }
 
     /** A tapped reminder's dose, kept until Sioul takes it (DoseOpener). */

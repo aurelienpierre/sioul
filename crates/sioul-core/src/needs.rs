@@ -145,12 +145,29 @@ impl Needs {
     /// file becomes a value; one that does not read gives the usual needs, and
     /// is neither copied aside nor changed here (the window says it).
     pub fn read(path: &Path) -> Needs {
+        Needs::known(path).unwrap_or_default()
+    }
+
+    /// The needs as the health file says them, its medicines aside (even
+    /// ones a newer Sioul wrote); a file of no bytes, gone though written
+    /// here before, or that does not read: as its last good read said them
+    /// (`Health::last_read_path`), never the usual needs without a night,
+    /// which would cancel the waking alarm (the check of 1b6795e, M1); none
+    /// kept either: none. A file never written: the usual needs.
+    pub fn known(path: &Path) -> Option<Needs> {
         #[derive(Deserialize)]
         struct Only {
             #[serde(default)]
             needs: Needs,
         }
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<Only>(&text).ok()).map(|only| only.needs).unwrap_or_default()
+        let parse = |text: &str| toml::from_str::<Only>(text).ok().map(|only| only.needs);
+        let last_read = || std::fs::read_to_string(crate::health::Health::last_read_path(path)).ok().filter(|text| !text.trim().is_empty()).and_then(|text| parse(&text));
+        match std::fs::read_to_string(path) {
+            Ok(text) if text.trim().is_empty() => last_read(),
+            Ok(text) => parse(&text).or_else(last_read),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !crate::health::witnessed(path) => Some(Needs::default()),
+            Err(_) => last_read(),
+        }
     }
 
     /// The settings' change, from what the page showed (`shown`) to what it
@@ -974,6 +991,28 @@ mod tests {
         std::fs::write(&path, "[needs\nmeals_on = ").unwrap();
         assert_eq!(Needs::read(&path), Needs::default());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "nothing copied aside");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// M1 of the check of 1b6795e: a health file of no bytes, or gone though
+    /// written here before, never reads as the usual needs without a night
+    /// (the waking alarm would be cancelled): its last good read's needs, or
+    /// none at all; a file never written, the usual needs.
+    #[test]
+    fn a_lost_health_file_keeps_its_night() {
+        let dir = std::env::temp_dir().join(format!("sioul-needs-lost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        assert_eq!(Needs::known(&path), Some(Needs::default()), "never written: the usual needs");
+        let night = "[needs]\nsleep_on = true\n\n[needs.sleep]\nbed = \"22:30\"\nwake = \"06:45\"\n";
+        crate::health::write_witnessed(&path, night.as_bytes()).unwrap();
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(Needs::known(&path), None, "of no bytes, no last read: none, never the usual needs");
+        std::fs::write(crate::health::Health::last_read_path(&path), night).unwrap();
+        assert_eq!(Needs::known(&path).map(|n| (n.sleep_on, n.sleep.wake)), Some((true, "06:45".to_string())), "its last good read's night");
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(Needs::known(&path).map(|n| n.sleep.wake), Some("06:45".to_string()), "gone though witnessed: the same");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

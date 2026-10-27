@@ -823,10 +823,13 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                         match agenda::answered_into(&there, &text, &me, &partstat, &agenda::own_addresses()) {
                             agenda::Answered::Written(changed) => Some((file.clone(), changed)),
                             agenda::Answered::Same => None,
-                            // Older than your copy: nothing written, and said so, never "it is in your calendar" (review of 36002ea's check, must-fix 6).
-                            agenda::Answered::Older => {
+                            // Older than your copy (the organizer's SEQUENCE, then when its
+                            // message was made): its times never written, your answer alone,
+                            // and said so, never "it is in your calendar" (review of 36002ea's
+                            // check, must-fix 6; the check of 1b6795e, M7, M8).
+                            agenda::Answered::Older(answer_alone) => {
                                 older = true;
-                                None
+                                answer_alone.map(|changed| (file.clone(), changed))
                             }
                             // Not from its organizer, or a meeting you organize: nothing written, no answer sent (its check, low 8).
                             agenda::Answered::Refused => return Err(tr().text("invitation-update-refused", None)),

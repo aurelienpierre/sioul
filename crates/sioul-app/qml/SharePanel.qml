@@ -1007,6 +1007,35 @@ ColumnLayout {
             }
         }
     }
+    // The health file's medicines gone though Sioul took none out, here or on
+    // another device: held, said, taken out when asked (the check of 1b6795e, H5).
+    Repeater {
+        model: panel.status.medicines || []
+
+        delegate: ColumnLayout {
+            id: medicines
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: medicines.modelData.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.warm
+            }
+            Button {
+                text: panel.theme.plain(medicines.modelData.button)
+                onClicked: {
+                    panel.problem = panel.sioul.shareTakeOutMedicines(medicines.modelData.file)
+                    panel.reload()
+                }
+            }
+        }
+    }
     // Notes or papers gone at once here: held, said, taken out everywhere on a word.
     Repeater {
         model: panel.status.vanished || []

@@ -1718,15 +1718,58 @@ fn instant_of(value: &str, zone: Option<&str>) -> Option<i64> {
 /// (review of 36002ea's check, must-fix 6).
 pub const ORGANIZER_SEQUENCE: &str = "X-SIOUL-SEQUENCE";
 
+/// Where Sioul keeps, beside the organizer's SEQUENCE, the DTSTAMP of the
+/// message it came with (Unix seconds): when the organizer made it (RFC 5545
+/// §3.8.7.2), what tells apart two messages of one SEQUENCE (RFC 5546
+/// §2.1.5); the copy's own DTSTAMP is written again at each save (the check
+/// of 1b6795e, M7).
+pub const ORGANIZER_DTSTAMP: &str = "X-SIOUL-DTSTAMP";
+
+/// Whether a line is one of the organizer's that Sioul keeps (`ORGANIZER_SEQUENCE`, `ORGANIZER_DTSTAMP`): never yours.
+fn organizers(name: &str) -> bool {
+    name == ORGANIZER_SEQUENCE || name == ORGANIZER_DTSTAMP
+}
+
 /// The organizer's SEQUENCE an event of your copy holds (`ORGANIZER_SEQUENCE`); none written yet.
 fn organizers_sequence(event: &[String]) -> Option<i64> {
     own_lines(event).find(|l| lines::name(l) == ORGANIZER_SEQUENCE).and_then(|l| lines::value(l).trim().parse().ok())
 }
 
-/// An event with the organizer's SEQUENCE kept on its own line (`ORGANIZER_SEQUENCE`), once.
+/// The organizer's message's DTSTAMP an event of your copy keeps (`ORGANIZER_DTSTAMP`).
+fn organizers_stamp(event: &[String]) -> Option<i64> {
+    own_lines(event).find(|l| lines::name(l) == ORGANIZER_DTSTAMP).and_then(|l| lines::value(l).trim().parse().ok())
+}
+
+/// A stamp of an event's own lines (DTSTAMP, LAST-MODIFIED: UTC), in Unix seconds.
+fn stamp_of(event: &[String], name: &str) -> Option<i64> {
+    own_lines(event).find(|l| lines::name(l) == name).and_then(|l| instant_of(lines::value(l).trim(), None))
+}
+
+/// An event with the organizer's SEQUENCE and its message's DTSTAMP kept on lines of their own, once.
 fn with_organizers_sequence(event: &[String]) -> Vec<String> {
-    let kept: Vec<String> = without_own(event, ORGANIZER_SEQUENCE);
-    with_lines(&kept, &[format!("{ORGANIZER_SEQUENCE}:{}", sequence_of(event))])
+    let kept: Vec<String> = without_own(&without_own(event, ORGANIZER_SEQUENCE), ORGANIZER_DTSTAMP);
+    let mut said = vec![format!("{ORGANIZER_SEQUENCE}:{}", sequence_of(event))];
+    if let Some(stamp) = stamp_of(event, "DTSTAMP") {
+        said.push(format!("{ORGANIZER_DTSTAMP}:{stamp}"));
+    }
+    with_lines(&kept, &said)
+}
+
+/// Whether a message's event is older than an event of your copy (RFC 5546
+/// §2.1.5): by the organizer's SEQUENCE and DTSTAMP the copy keeps, the
+/// SEQUENCE first, then the DTSTAMP; a copy that keeps none (one a server
+/// put in your calendar, an older Sioul's): only when the message's
+/// SEQUENCE is below the copy's, and it was made before the copy last
+/// changed (LAST-MODIFIED: a server's is the organizer's change, an older
+/// Sioul's your save); either time unsaid, written as before, since an
+/// older Sioul raised the copy's SEQUENCE at your saves (the check of
+/// 36002ea, must-fix 6; the check of 1b6795e, M7, M8).
+fn older_than(event: &[String], copy: &[String]) -> bool {
+    let (sequence, stamp) = (sequence_of(event), stamp_of(event, "DTSTAMP"));
+    match organizers_sequence(copy) {
+        Some(known) => sequence < known || (sequence == known && stamp.zip(organizers_stamp(copy)).is_some_and(|(made, kept)| made < kept)),
+        None => sequence < sequence_of(copy) && stamp.zip(stamp_of(copy, "LAST-MODIFIED")).is_some_and(|(made, changed)| made < changed),
+    }
 }
 
 /// An event's lines without its own lines of that name (its alarms' kept).
@@ -1781,8 +1824,8 @@ fn without_own_sioul(event: &[String]) -> Vec<String> {
                 nested -= 1;
                 return true;
             }
-            // The organizer's SEQUENCE kept (`ORGANIZER_SEQUENCE`): the organizer's, not yours.
-            !(nested == 0 && name.starts_with("X-SIOUL-") && name != ORGANIZER_SEQUENCE)
+            // The organizer's SEQUENCE and DTSTAMP kept (`ORGANIZER_SEQUENCE`): the organizer's, not yours.
+            !(nested == 0 && name.starts_with("X-SIOUL-") && !organizers(&name))
         })
         .map(|(_, line)| line.clone())
         .collect()
@@ -1830,7 +1873,7 @@ pub fn with_own_lines_of(current: &str, version: &str) -> String {
             let time = which_time(&whole);
             match then.events.iter().find(|e| which_time(e) == time) {
                 Some(old) => {
-                    let ours: Vec<String> = own_lines(old).filter(|l| lines::name(l).starts_with("X-SIOUL-") && lines::name(l) != ORGANIZER_SEQUENCE).cloned().collect();
+                    let ours: Vec<String> = own_lines(old).filter(|l| lines::name(l).starts_with("X-SIOUL-") && !organizers(&lines::name(l))).cloned().collect();
                     out.extend(with_lines(&without_own_sioul(&whole), &ours));
                 }
                 None => out.extend(whole),
@@ -1849,8 +1892,10 @@ pub enum Answered {
     Written(String),
     /// Nothing to change: it holds what the message carries already.
     Same,
-    /// Older than the copy, by the organizer's SEQUENCE: nothing written.
-    Older,
+    /// Older than the copy (the organizer's SEQUENCE, then its message's
+    /// DTSTAMP, `older_than`): its times never written; your answer alone
+    /// written into the copy, to write (none when it said so already).
+    Older(Option<String>),
     /// Not from the copy's organizer, or for a meeting you organize: nothing written.
     Refused,
 }
@@ -1874,21 +1919,34 @@ pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str, o
     if !theirs.is_empty() && (theirs != from || own.contains(&theirs)) {
         return Answered::Refused;
     }
-    let older = |event: &[String], copy: &[String]| organizers_sequence(copy).is_some_and(|known| sequence_of(event) < known);
+    let older = |event: &[String], copy: &[String]| older_than(event, copy);
     let answered = |event: &[String]| -> Vec<String> {
         event.iter().map(|l| if !answer.is_empty() && !me.is_empty() && lines::name(l) == "ATTENDEE" && address(lines::value(l)).eq_ignore_ascii_case(me) { with_answer(l, answer) } else { l.clone() }).collect()
     };
     // Sioul's own lines of the copy's time of the same instant, carried over.
     let carried = |event: Vec<String>, copy: Option<&Vec<String>>| -> Vec<String> {
-        let ours: Vec<String> = copy.map(|c| own_lines(c).filter(|l| lines::name(l).starts_with("X-SIOUL-") && lines::name(l) != ORGANIZER_SEQUENCE).filter(|l| !event.contains(l)).cloned().collect()).unwrap_or_default();
+        let ours: Vec<String> = copy.map(|c| own_lines(c).filter(|l| lines::name(l).starts_with("X-SIOUL-") && !organizers(&lines::name(l))).filter(|l| !event.contains(l)).cloned().collect()).unwrap_or_default();
         with_lines(&event, &ours)
     };
     let series_there = there.events.iter().position(|e| which_time(e).is_empty());
     let series_sent = sent.events.iter().find(|e| which_time(e).is_empty());
+    // The series older than any time the copy holds (an update of one time
+    // accepted since, say): its times never written, your answer alone
+    // (the check of 1b6795e, M7 and M9).
+    if let Some(series) = series_sent
+        && there.events.iter().any(|e| older(series, e))
+    {
+        let answered_copy: Vec<Vec<String>> = there.events.iter().map(|e| answered(e)).collect();
+        if answered_copy == there.events {
+            return Answered::Older(None);
+        }
+        there.events = answered_copy;
+        return Answered::Older(Some(there.text()));
+    }
     let mut skipped = 0usize;
     let new_events: Vec<Vec<String>> = match series_sent {
         // The series, not older: every time of the copy replaced by the message's.
-        Some(series) if !series_there.is_some_and(|i| older(series, &there.events[i])) => sent
+        Some(_) => sent
             .events
             .iter()
             .map(|event| {
@@ -1903,12 +1961,20 @@ pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str, o
             for event in &sent.events {
                 let time = which_time(event);
                 let found = events.iter().position(|e| which_time(e) == time);
-                // Older than the same time there. A time the copy holds no
-                // version of yet is never compared with the series: organizers
-                // number a time's SEQUENCE their own way, and a real update
-                // dropped costs more than an old one written (the check's low
-                // 30, left so on purpose).
-                if found.is_some_and(|i| older(event, &events[i])) {
+                // Older than the same time there: your answer alone into it. A
+                // time the copy holds no version of yet is compared with the
+                // series by when its message was made alone: organizers number
+                // a time's SEQUENCE their own way, and a real update dropped
+                // costs more than an old one written (the check's low 30; the
+                // check of 1b6795e, M7).
+                let stale = match found {
+                    Some(i) => older(event, &events[i]),
+                    None => series_there.is_some_and(|i| stamp_of(event, "DTSTAMP").zip(organizers_stamp(&there.events[i])).is_some_and(|(made, kept)| made < kept)),
+                };
+                if stale {
+                    if let Some(i) = found {
+                        events[i] = answered(&events[i]);
+                    }
                     skipped += 1;
                     continue;
                 }
@@ -1921,11 +1987,13 @@ pub fn answered_into(stored_text: &str, message: &str, me: &str, answer: &str, o
             events
         }
     };
-    if series_sent.is_some() && series_there.is_some_and(|i| series_sent.is_some_and(|s| older(s, &there.events[i]))) {
-        return Answered::Older;
-    }
     if skipped == sent.events.len() && skipped > 0 {
-        return Answered::Older;
+        return if new_events == there.events {
+            Answered::Older(None)
+        } else {
+            there.events = new_events;
+            Answered::Older(Some(there.text()))
+        };
     }
     let changed = new_events != there.events;
     there.events = new_events;
@@ -2465,6 +2533,48 @@ mod tests {
         format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:{sequence}\r\nRECURRENCE-ID:20261111T090000Z\r\nDTSTART:20261111T140000Z\r\nDTEND:20261111T150000Z\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.org\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n")
     }
 
+    /// M7, M8 and M9 of the check of 1b6795e: an older message is judged by
+    /// the organizer's SEQUENCE, then by when it was made (its DTSTAMP, kept
+    /// beside, `ORGANIZER_DTSTAMP`), against every time the copy holds: the
+    /// series' first invitation accepted after an update of one time leaves
+    /// that time as it is, your answer alone written; of two messages of one
+    /// SEQUENCE (an organizer that never raises it), the earlier tapped last
+    /// writes no times; a copy a server put in your calendar (no kept line)
+    /// takes a message below its SEQUENCE only when made after its
+    /// LAST-MODIFIED, else your answer alone.
+    #[test]
+    fn an_older_invitation_writes_your_answer_alone() {
+        let me = "me@example.org";
+        let invite = |sequence: u32, stamp: &str, extra: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:{sequence}\r\nDTSTAMP:{stamp}\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.org\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let written = |answered: Answered| match answered {
+            Answered::Written(text) | Answered::Older(Some(text)) => text,
+            other => panic!("written: {other:?}"),
+        };
+        // The series at SEQUENCE:2, answered Maybe; then one time moved (SEQUENCE:3), accepted.
+        let copy = stored_answered(&invite(2, "20261101T080000Z", ""), me, "TENTATIVE");
+        assert!(copy.contains("X-SIOUL-SEQUENCE:2") && copy.contains("X-SIOUL-DTSTAMP:"), "{copy}");
+        let moved = one_time("REQUEST", 3, "DTSTAMP:20261105T080000Z\r\n");
+        let copy = written(answered_into(&copy, &moved, me, "ACCEPTED", &[]));
+        // The first invitation accepted now: older than the time moved; that time stays, your answer alone written.
+        let answered = answered_into(&copy, &invite(2, "20261101T080000Z", ""), me, "ACCEPTED", &[]);
+        let Answered::Older(Some(text)) = answered else { panic!("older, your answer alone: {answered:?}") };
+        assert!(text.contains("DTSTART:20261111T140000Z"), "the 11 November change kept: {text}");
+        assert_eq!(cut(&text).events.len(), 2);
+        assert!(cut(&text).events.iter().all(|e| e.join("\n").contains("PARTSTAT=ACCEPTED")), "your answer in every time: {text}");
+        // An organizer that never raises SEQUENCE: the later message kept, the earlier tapped last writes no times.
+        let first = invite(0, "20261101T080000Z", "");
+        let later = invite(0, "20261102T080000Z", "").replace("DTSTART:20261104T090000Z", "DTSTART:20261104T100000Z");
+        let copy = stored_answered(&later, me, "ACCEPTED");
+        let answered = answered_into(&copy, &first, me, "ACCEPTED", &[]);
+        assert_eq!(answered, Answered::Older(None), "older by when it was made: {answered:?}");
+        // A copy Google put in your calendar (no kept line), moved to 10:00 at SEQUENCE:1.
+        let server = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:1\r\nLAST-MODIFIED:20261103T080000Z\r\nDTSTART:20261104T100000Z\r\nDTEND:20261104T110000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let text = written(answered_into(server, &invite(0, "20261101T080000Z", ""), me, "ACCEPTED", &[]));
+        assert!(text.contains("DTSTART:20261104T100000Z") && text.contains("PARTSTAT=ACCEPTED"), "made before the copy changed: its times kept, your answer: {text}");
+        let text = written(answered_into(server, &invite(0, "20261104T080000Z", "").replace("SUMMARY:Review", "SUMMARY:Review, moved"), me, "ACCEPTED", &[]));
+        assert!(text.contains("Review\\, moved") || text.contains("Review, moved"), "made after: written: {text}");
+    }
+
     /// Can-wait 4 of the review of 36002ea: accepting the update of one time
     /// of a series writes that time alone beside the series, your answer in it,
     /// the series as it was (its rule, your own line); the answer to it can be
@@ -2498,7 +2608,7 @@ mod tests {
         let kept = stored(&SERIES.replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST"));
         assert!(kept.contains("X-SIOUL-SEQUENCE:2"), "{kept}");
         let older = SERIES.replace("SEQUENCE:2", "SEQUENCE:1").replace("SUMMARY:Review", "SUMMARY:Old review").replace("VERSION:2.0", "VERSION:2.0\r\nMETHOD:REQUEST");
-        assert_eq!(answered_into(&kept, &older, me, "ACCEPTED", &[]), Answered::Older);
+        assert_eq!(answered_into(&kept, &older, me, "ACCEPTED", &[]), Answered::Older(None), "said so already: nothing to write");
         // A copy an older Sioul raised (SEQUENCE:4 by your own lines' saves), none kept: the organizer's update written (must-fix 6).
         let raised = SERIES.replace("SEQUENCE:2", "SEQUENCE:4");
         let moved = SERIES.replace("SEQUENCE:2", "SEQUENCE:3").replace("DTSTART:20261104T090000Z", "DTSTART:20261104T100000Z").replace("X-SIOUL-BEFORE:20\r\n", "");

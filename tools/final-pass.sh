@@ -51,9 +51,14 @@ out=$(cd "$out" && pwd)
 # a test that reads or writes `config::state_dir()` (or the data, the
 # configuration, the caches) never reaches the folders of whoever runs it.
 # Emptied again before each run (`fresh`): no run reads what another left.
+# Each holds the mark of a folder made for tests (core config::STAND_IN_MARK),
+# without which a test that writes Sioul's files refuses to run.
 xdg="$out/xdg"
 fresh() {
-    rm -rf "$xdg" && mkdir -p "$xdg/config" "$xdg/data" "$xdg/state" "$xdg/cache"
+    rm -rf "$xdg" || return 1
+    for folder in config data state cache; do
+        mkdir -p "$xdg/$folder" && echo "A folder made for Sioul's tests." > "$xdg/$folder/.sioul-stand-in" || return 1
+    done
 }
 fresh || exit 1
 apart=(XDG_CONFIG_HOME="$xdg/config" XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache")

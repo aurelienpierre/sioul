@@ -10,9 +10,6 @@
 
 use std::ffi::{CStr, CString, c_char};
 
-/// The doses last given to Android, so that they are given again only when they change.
-static GIVEN: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
-
 #[cfg(target_os = "android")]
 // SAFETY: declared as android/main.cpp defines them: extern "C", the same types.
 unsafe extern "C" {
@@ -28,12 +25,21 @@ unsafe extern "C" {
     fn sioul_android_remove_reminder(key: *const c_char);
 }
 
-/// Doses marked whose reminder was taken away already, in this process.
-static REMOVED: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+/// Doses marked whose reminder was taken away already, in this process,
+/// each with when it had been reminded then (`HealthState::reminded`, 0
+/// none): reminded again since (taken back, then reminded anew), it is taken
+/// away again once marked, whichever process took the first away (the A3
+/// dose model: a dose taken, taken back, reminded and taken again kept its
+/// reminder on the phone).
+static REMOVED: std::sync::Mutex<std::collections::BTreeMap<String, i64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// The reminder shown for a dose taken away: once it is marked, here or on
 /// another device, a reminder left on the phone would say it is still to take.
 pub(crate) fn remove_reminder(key: &str) {
+    remove_reminder_of(key, crate::health::reminded_at(key));
+}
+
+fn remove_reminder_of(key: &str, reminded: i64) {
     let Ok(text) = CString::new(key) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
@@ -42,7 +48,7 @@ pub(crate) fn remove_reminder(key: &str) {
     };
     let _ = text;
     if let Ok(mut removed) = REMOVED.lock() {
-        removed.insert(key.to_string());
+        removed.insert(key.to_string(), reminded);
     }
 }
 
@@ -66,34 +72,42 @@ pub(crate) fn exact() -> bool {
     true
 }
 
-/// The coming doses given to Android's alarm clock, when they changed: at
-/// each minute of the window, when it is put away, and after a dose is marked
-/// or Health's settings saved; the alarm at waking with them (`wake`), which
-/// keeps its own list, codes and receiver.
+/// Whether an exchange wrote the doses' files here (the medicines, the
+/// marks, the moves taken back): what Android is to ring may have changed.
+pub(crate) fn health_written(outcome: &sioul_sync::share::Outcome) -> bool {
+    ["data/health.toml", "state/health-state.toml", "state/health-back.toml"].iter().any(|file| outcome.written.contains(*file))
+}
+
+/// The coming doses given to Android's alarm clock: at each minute of the
+/// window, when it is put away, after a dose is marked or Health's settings
+/// saved, and after every exchange without the window that wrote the doses'
+/// files (`share::exchange_here`, `health_written`: the background step's, a
+/// dose's alarm's, the waking's, a reminder's button's);
+/// the alarm at waking with them (`wake`), which keeps its own list, codes
+/// and receiver. Handed each time: what Android holds is judged on Java's
+/// side against the one record every process of Sioul reads fresh under one
+/// lock (`DoseAlarms.Plan`), never against what this process last handed,
+/// which another process may have changed since (the check of 1b6795e, H1);
+/// nothing changes there when nothing changed.
 pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
     }
     crate::wake::schedule();
     // The reminders of doses marked since (here, or come from another device) taken away.
-    let gone: Vec<String> = crate::health::marked_lately().into_iter().filter(|key| REMOVED.lock().is_ok_and(|removed| !removed.contains(key))).collect();
-    for key in gone {
-        remove_reminder(&key);
+    let gone: Vec<(String, i64)> = crate::health::marked_lately().into_iter().filter(|(key, reminded)| REMOVED.lock().is_ok_and(|removed| removed.get(key) != Some(reminded))).collect();
+    for (key, reminded) in gone {
+        remove_reminder_of(&key, reminded);
     }
     // Nothing reads here, the health file nor its last read: Android keeps the alarms it has.
     let Some(coming) = crate::health::alarms_coming() else { return };
-    let Ok(mut given) = GIVEN.lock() else { return };
-    if *given == coming {
-        return;
-    }
-    let Ok(text) = CString::new(coming.clone()) else { return };
+    let Ok(text) = CString::new(coming) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_set_alarms(text.as_ptr())
     };
     let _ = text;
-    *given = coming;
 }
 
 /// The dose of a reminder tapped while Sioul was away, once.

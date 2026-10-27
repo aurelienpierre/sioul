@@ -198,6 +198,7 @@ pub mod demands;
 pub mod description;
 pub mod doses;
 pub mod draftcopies;
+pub mod dose_backs;
 pub mod dose_reminders;
 pub mod filelock;
 pub mod contacts;

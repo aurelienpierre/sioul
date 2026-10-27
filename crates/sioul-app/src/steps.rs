@@ -534,16 +534,15 @@ pub extern "C" fn sioul_dnd_toggle() -> *mut std::ffi::c_char {
     crate::alarms::handed(answer)
 }
 
-/// A background step's exchange, said when it failed; one that brought a
-/// medicine's change or a mark (a move among them) from another device
-/// hands Android the doses' alarms anew, Sioul in the background
-/// (`alarms::schedule`; review of 36002ea's check, A2): a move made
-/// elsewhere rings here at its new time, a dose marked there rings no more.
+/// A background step's exchange, said when it failed. One that brought a
+/// medicine's change, a mark or a take back from another device has handed
+/// Android the doses' alarms anew already, as every exchange without the
+/// window does (`share::exchange_here`, `alarms::health_written`; review of
+/// 36002ea's check, A2): a move made elsewhere rings here at its new time, a
+/// dose marked there rings no more.
 fn rearm_after(exchanged: Option<Result<sioul_sync::share::Outcome, String>>) {
-    match exchanged {
-        Some(Err(e)) => eprintln!("sioul: steps: {e}"),
-        Some(Ok(outcome)) if ["data/health.toml", "state/health-state.toml"].iter().any(|f| outcome.written.contains(*f)) => crate::alarms::schedule(),
-        _ => {}
+    if let Some(Err(e)) = exchanged {
+        eprintln!("sioul: steps: {e}");
     }
 }
 

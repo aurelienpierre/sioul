@@ -72,6 +72,9 @@
 #   in Java or in main.cpp's bridge, each command and answer wiped; plugged
 #   in: no USB filter, the smart card interface claimed alone, Android asked
 #   once for each plugging, the key powered off and given back.
+# - DoseAlarmsCheck: what Android holds of the doses' alarms (DoseAlarms.Plan):
+#   two processes handing in either order from one record, a dose asked again
+#   at waking kept, a past one never armed left alone, a first hand arming again.
 # - CcidCheck: Ccid.java (the key plugged in) against a stand-in reader: the
 #   messages' bytes and sequence numbers, packets and the zero-length one,
 #   answers across transfers, a key waiting for a touch (time extensions),
@@ -102,7 +105,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

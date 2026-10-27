@@ -2685,8 +2685,11 @@ fn listing_due(state: &State, now: i64) -> bool {
 }
 
 /// The sealed files waited for (`blobs::Wanted`: the others' records name
-/// them; a computer lacks a text's medium) not in the copy and due, never
-/// one swept here as a departed device's (`Departed`).
+/// them; a computer lacks a text's medium) not in the copy and due: one a
+/// record waits for whatever was swept here (put back elsewhere after its
+/// sweep: the check of 9684719, must-fix 5, where it stayed out of reach two
+/// weeks), a text's medium never one swept here as a departed device's
+/// (`Departed`).
 fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Departed, now: i64) -> Vec<(String, crate::blobs::Want)> {
     let blobs = folder.join("blobs");
     let here = |name: &str| std::fs::metadata(blobs.join(name)).is_ok_and(|m| m.len() > 0);
@@ -2694,7 +2697,8 @@ fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Depar
     // texts' page asks for it again (`blobs::Want::since` renewed there):
     // never every few minutes for good (review of 18 October 2026, L-8).
     let fresh = |want: &&crate::blobs::Want| now - want.since < WANTED_KEPT_DAYS as i64 * 86_400;
-    let due: BTreeMap<&String, &crate::blobs::Want> = wanted.blobs.iter().chain(wanted.media.iter().filter(|(_, want)| fresh(want))).filter(|(name, want)| want.again <= now && !here(name) && !departed.swept(name)).collect();
+    let media = wanted.media.iter().filter(|(name, want)| fresh(want) && !departed.swept(name));
+    let due: BTreeMap<&String, &crate::blobs::Want> = wanted.blobs.iter().chain(media).filter(|(name, want)| want.again <= now && !here(name)).collect();
     due.into_iter().map(|(name, want)| (name.clone(), want.clone())).collect()
 }
 
@@ -3606,6 +3610,12 @@ impl Sender<'_> {
         // slow line): its files are sent as when no check lists them.
         let unlisted = std::mem::take(&mut self.unlisted);
         let mut records_held = false;
+        // The server full (`507`): no upload more, each would need room; what
+        // this device takes out there goes all the same, then the full server
+        // is said: freeing space never waits for room (the check of 9684719:
+        // until then a phone beside eDrive freed nothing there through Sioul
+        // while the account was full).
+        let mut full: Option<Stop> = None;
         for relative in files {
             let records = matches!(kind_of(relative), Some((Kind::Round, _)));
             if records && records_held {
@@ -3614,17 +3624,32 @@ impl Sender<'_> {
             let there = listed.as_ref().filter(|_| !unlisted.contains(dir_of(relative))).map(|listed| listed.get(relative).cloned());
             // "Send everything again" while its folder could not be listed: each asked there itself.
             let look = again && listed.is_some() && unlisted.contains(dir_of(relative));
-            let went = self.one(relative, there, again, look)?;
+            let went = match self.one(relative, there, again, look) {
+                Ok(went) => went,
+                Err(Stop::Failed(SyncError::Server(why))) if why == "quota" => {
+                    full = Some(Stop::Failed(SyncError::Server(why)));
+                    break;
+                }
+                Err(stop) => return Err(stop),
+            };
             records_held |= records && went == Went::Held;
         }
-        if self.lane == Lane::Main {
-            self.take_out_gone(check)?;
-            if let (Some(listed), Some(past)) = (&listed, self.past) {
-                self.take_out_past(listed, past)?;
-            }
-            if let Some(listed) = &listed {
-                self.take_out_departed(listed);
-            }
+        let taken = if self.lane == Lane::Main { self.take_outs(check, listed.as_ref()) } else { Ok(()) };
+        match full {
+            Some(full) => Err(full),
+            None => taken,
+        }
+    }
+
+    /// What this device takes out there after its sending (the main lane's):
+    /// its files gone here, its rounds past, the departed devices' files.
+    fn take_outs(&mut self, check: bool, listed: Option<&BTreeMap<String, Item>>) -> Result<(), Stop> {
+        self.take_out_gone(check)?;
+        if let (Some(listed), Some(past)) = (listed, self.past) {
+            self.take_out_past(listed, past)?;
+        }
+        if let Some(listed) = listed {
+            self.take_out_departed(listed);
         }
         Ok(())
     }
@@ -7121,6 +7146,57 @@ mod tests {
         memory["full_round"] = full_round.into();
         std::fs::write(&w.phone.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
         put(&w.phone_folder, &format!("{}.toml", w.desk.id), &format!("at = {at}\nround = 1\n\n[read]\n\"{}\" = {read}\n", w.phone.id));
+    }
+
+    /// The server full (`507`) on an upload: what this device takes out
+    /// there goes all the same, then the sending stops and says so; freeing
+    /// space never waits for room (the check of 9684719: until 27 October
+    /// 2026 a phone beside eDrive freed nothing there through Sioul while the
+    /// account was full).
+    #[test]
+    fn a_full_server_still_takes_out_before_the_sending_stops() {
+        let w = World::new("full-takes-out");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let seal = |text: &str| {
+            let source = w.base.join(format!("{}.md", text.len()));
+            std::fs::write(&source, text.repeat(200)).unwrap();
+            let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+            crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+            let name = crate::blobs::name(&KEY, &hash);
+            let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+            (name, size)
+        };
+        let (swept, swept_size) = seal("a note the phone took out\n");
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &[(swept.clone(), swept_size)].into(), DUE + 10, false, TEST);
+        assert!(sent.problem.is_none() && w.server.join("blobs").join(&swept).exists(), "{sent:?}");
+        // Swept here; a new content to send, which the full server refuses.
+        std::fs::remove_file(w.phone_folder.join("blobs").join(&swept)).unwrap();
+        let (new, new_size) = seal("a new note of the phone's, longer\n");
+        let refused = new.clone();
+        w.fake.fault(move |r| (r.method == "PUT" && r.path.ends_with(&refused)).then_some(Fault::Status(507)));
+        let full = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &[(new.clone(), new_size)].into(), DUE + 20, false, TEST);
+        assert!(full.problem.as_deref().is_some_and(|p| p.contains("quota")), "said: {full:?}");
+        assert!(!w.server.join("blobs").join(&swept).exists(), "taken out there all the same: {:?}", w.fake.seen());
+        assert!(!w.server.join("blobs").join(&new).exists());
+    }
+
+    /// A sealed file a record waits for is fetched whatever this device swept
+    /// as a departed device's (the same bytes put back elsewhere since); a
+    /// text's medium swept here is not asked (the check of 9684719, must-fix 5).
+    #[test]
+    fn a_content_a_record_waits_for_is_fetched_though_swept_here() {
+        let base = std::env::temp_dir().join(format!("sioul-wanted-swept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("blobs")).unwrap();
+        let want = crate::blobs::Want { hash: "h".into(), size: 10, since: DUE, ..Default::default() };
+        let (record, medium) = ("a".repeat(64), "b".repeat(64));
+        let mut wanted = crate::blobs::Wanted::default();
+        wanted.blobs.insert(record.clone(), want.clone());
+        wanted.media.insert(medium.clone(), want);
+        let departed = Departed { rounds: BTreeMap::new(), blobs: [(record.clone(), (DUE * 1000, DUE * 1000)), (medium, (DUE * 1000, DUE * 1000))].into(), devices: BTreeMap::new() };
+        let due: Vec<String> = wanted_in_copy(&wanted, &base, &departed, DUE + 10).into_iter().map(|(name, _)| name).collect();
+        assert_eq!(due, vec![record]);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// eDrive sends again each file Sioul sent, the same bytes, and Nextcloud

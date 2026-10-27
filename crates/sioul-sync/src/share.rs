@@ -630,6 +630,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // What each device did to remind each dose (docs/health.md, "What became of a
         // reminder"): a file of its own too, which an older Sioul leaves alone.
         file("health", "state/health-reminders.toml", s.join(sioul_core::dose_reminders::FILE), Shape::Toml(&REMINDERS_RULES)),
+        // The moves of doses to put back, a take back's or a time corrected's
+        // (docs/health.md, "Taken back"): a file of its own too, which an
+        // older Sioul leaves alone (the check of 1b6795e, M2).
+        file("health", "state/health-back.toml", s.join(sioul_core::dose_backs::FILE), Shape::Toml(&PLAIN_RULES)),
         folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
         // The spam filter's table alone: its language model and its corpus, beside it, stay here.
@@ -849,6 +853,8 @@ fn clock_ms() -> i64 {
 thread_local! {
     /// How long a file sealed apart settles before it is read, in this test's thread: not at all, unless a test says.
     static SETTLE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    /// How many times this test's thread read the texts' log whole for their media (`texts_media`).
+    pub(super) static TEXTS_READ: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// A file sealed apart changed this recently may still be being written (an
@@ -1304,6 +1310,53 @@ fn medicines_in<'a>(entries: impl Iterator<Item = &'a str>) -> usize {
     entries.filter(|entry| entry.starts_with(&mark)).count()
 }
 
+/// Of another device's changes to the health file (`changes`, by entry),
+/// the removals of medicines that would take every one out here (two or
+/// more there now, none left) though its Sioul took none out: those whose
+/// mark of a removal made in Sioul (`removed<SEP><id>`) neither came with
+/// them nor is here. None when the file keeps one, or each is marked.
+fn emptying_removals<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)]) -> BTreeSet<&'a str> {
+    let mark = format!("medicine{SEP}{MARK}");
+    let here: Vec<(String, String)> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    let mut medicines: BTreeSet<String> = here.iter().filter(|(entry, _)| entry.starts_with(&mark)).map(|(entry, _)| entry.clone()).collect();
+    if medicines.len() < 2 {
+        return BTreeSet::new();
+    }
+    let mut marked: BTreeSet<String> = here.iter().filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)).collect();
+    let mut removals = BTreeSet::new();
+    for (entry, value) in changes {
+        if let Some(id) = entry.strip_prefix(&format!("removed{SEP}")) {
+            if value.is_some() {
+                marked.insert(id.to_string());
+            }
+        } else if entry.starts_with(&mark) {
+            if value.is_some() {
+                medicines.insert((*entry).to_string());
+            } else {
+                medicines.remove(*entry);
+                removals.insert(*entry);
+            }
+        }
+    }
+    if !medicines.is_empty() {
+        return BTreeSet::new();
+    }
+    removals.into_iter().filter(|entry| !marked.contains(&entry[mark.len()..])).collect()
+}
+
+/// "Take them out everywhere" (where every medicine went from the health
+/// file `file` though Sioul took none out) or "Take them out here too"
+/// (where another device's records take them out so): no longer held, at
+/// the next exchange; waits for an exchange running.
+pub fn release_medicines(memory: &Path, computer: &str, file: &str) -> Result<(), String> {
+    let _running = exchange_lock(memory, true)?;
+    let mut state = Memory::load_all(memory, computer);
+    state.medicines_released.insert(file.to_string());
+    state.save(memory)?;
+    state.keep(memory);
+    Ok(())
+}
+
 /// A list's or a settings file's text, to write entries into: none there yet
 /// is an empty one; one that cannot be read, or is not text, is an error, and
 /// what came for it waits (never the incoming entries alone written in its place).
@@ -1492,7 +1545,7 @@ fn flatten(path: Vec<String>, value: &toml::Value, rules: &Rules, out: &mut Vec<
 /// under the file's lock, as the window writes some of these files too
 /// (the doses' record: `sioul_core::filelock`). Before the file changes, or
 /// goes, `keep` keeps it as it was (`history`).
-fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], keep: impl FnOnce() -> Result<(), String>) -> Result<BTreeMap<String, String>, String> {
+fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], released: bool, keep: impl FnOnce() -> Result<(), String>) -> Result<BTreeMap<String, String>, String> {
     sioul_core::filelock::with_lock(path, || {
         let new = rewritten(store, path, changes)?;
         // What the file holds once written, entry by entry, by hash: what the next look compares with.
@@ -1509,8 +1562,11 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
             if new.as_deref().is_none_or(|bytes| !reads_as_medicines(bytes)) {
                 return Err(format!("share-not-medicines:{}", store.name));
             }
-            let before = old.as_deref().and_then(|bytes| entries_of(store, bytes)).map_or(0, |entries| medicines_in(entries.iter().map(|(entry, _)| entry.as_str())));
-            if before >= 2 && medicines_in(written.keys().map(String::as_str)) == 0 {
+            // Every medicine out, two or more, none marked as taken out in Sioul (`removed`), and you did not say so here: never written.
+            let mark = format!("medicine{SEP}{MARK}");
+            let before: Vec<String> = old.as_deref().and_then(|bytes| entries_of(store, bytes)).unwrap_or_default().into_iter().filter_map(|(entry, _)| entry.strip_prefix(&mark).map(str::to_string)).collect();
+            let marked = |id: &String| written.contains_key(&format!("removed{SEP}{id}"));
+            if !released && before.len() >= 2 && medicines_in(written.keys().map(String::as_str)) == 0 && !before.iter().all(marked) {
                 return Err(format!("share-medicines-emptied-there:{}", store.name));
             }
         }
@@ -1541,10 +1597,10 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], k
 }
 
 /// The doses' records: the marks (`health-state.toml`), each dose's record
-/// (`health-doses.toml`), and what each device did to remind it
-/// (`health-reminders.toml`).
+/// (`health-doses.toml`), what each device did to remind it
+/// (`health-reminders.toml`), and the moves to put back (`health-back.toml`).
 fn of_the_doses(store: &Store) -> bool {
-    matches!(store.name.as_str(), "state/health-state.toml" | "state/health-doses.toml" | "state/health-reminders.toml")
+    matches!(store.name.as_str(), "state/health-state.toml" | "state/health-doses.toml" | "state/health-reminders.toml" | "state/health-back.toml")
 }
 
 /// What a file holds once entries are written into it; none when it goes.
@@ -1926,6 +1982,17 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
             }
             None => return Ok(()),
         }
+    }
+    // An empty list written inline (`medicine = []`: Sioul's own save writes
+    // a list with nothing in it so) taking a table: a list of tables. Until
+    // 27 October 2026 the table was passed over, and a medicine added on
+    // another device never reached a health file whose medicines were all
+    // taken out (found by the check of 1b6795e's tests, H5).
+    if let Some(toml_edit::Item::Value(toml_edit::Value::Array(elements))) = table.get(name)
+        && elements.is_empty()
+        && news.iter().any(|(_, new)| matches!(new, Some(toml_edit::Item::Table(_))))
+    {
+        table.insert(name, toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
     }
     let mut gone: Vec<usize> = Vec::new();
     match table.get_mut(name) {
@@ -2435,6 +2502,12 @@ struct Memory {
     /// Settings (`withheld`): as the last exchange found them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     withheld: Vec<Withheld>,
+    /// The health files whose medicines you said to take out though they
+    /// went as no removal of Sioul's (`release_medicines`: "Take them out
+    /// everywhere" where they went, "Take them out here too" where another
+    /// device's records take them out): not held then; forgotten once none is.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    medicines_released: BTreeSet<String>,
     /// What this device takes out of the folder, and why it waits, as the
     /// last exchange found it (`Leaving`), for Settings.
     #[serde(default, skip_serializing_if = "Leaving::is_empty")]
@@ -2488,6 +2561,14 @@ struct Sealed {
     /// record last pointed to each (milliseconds), and the size it sealed.
     #[serde(default)]
     mine: BTreeMap<String, (i64, u64)>,
+    /// For each of `mine`: the time its file in the folder had when this
+    /// device last wrote it there (sealed it, sealed it again, or took it as
+    /// its own), in whole seconds. Dated otherwise since, it was made fresh
+    /// by a device using it again (`blobs::make_fresh`), whatever either clock
+    /// says (`stands`; the check of 9684719, must-fix 1). None in an older
+    /// Sioul's memory: a day's margin from the take-out then (`USE_MARGIN`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    stamped: BTreeMap<String, i64>,
     /// Sealed files the others' records named lately, by name: when this
     /// device first read such a record (milliseconds); never from its own
     /// records, nor from a record read again. None is taken out within the
@@ -2516,16 +2597,29 @@ struct Sealed {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     removed: BTreeMap<String, (String, u32)>,
     /// For each of `removed` noted since 26 October 2026: the line of the
-    /// record that took it out, in that round; when this device noted it, by
-    /// the exchanges' clock (for `named_at`) and by the wall clock (for the
-    /// sealed file's own time). It goes as soon as every device that counts
-    /// read that line and nothing used it since (`stands`), whatever its age,
+    /// record that took it out, in that round; from when a use of it counts,
+    /// by the exchanges' clock (for `named_at`) and by the wall clock (for the
+    /// sealed file's own time): a day (`USE_MARGIN`) before that record was
+    /// written, by its writer's clock (`Line::c`), or before this device noted
+    /// it when that clock runs ahead (since 27 October 2026: until then, the
+    /// noting itself, and a put back read before it was missed: the check of
+    /// 9684719, must-fix 1). It goes as soon as every device that counts read
+    /// that line and nothing used it since (`stands`), whatever its age,
     /// rather than once the remover's records went on in a later round and
     /// its file was two weeks old. Any content: this device's (`mine`), or
     /// another's (`theirs`), swept here once its writer no longer counts.
     /// Empty in an older Sioul's files: those go by rounds, as before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     removed_at: BTreeMap<String, (u64, i64, i64)>,
+    /// Another device's take-outs of notes' and papers' files read here and
+    /// waiting to be written (an exchange that does not read the notes, past
+    /// the copies' bound, hurried), by entry: the content its file held, the
+    /// record's writer, round, line and own time. Noted once written
+    /// (`note_removed`), as one written when read is (the check of 9684719:
+    /// until 27 October 2026 those a phone's background step read were never
+    /// noted, and their contents kept their two weeks).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    takes: BTreeMap<String, (String, String, u32, u64, i64)>,
     /// Sealed files found damaged, as they were then (`blobs::fingerprint`):
     /// not opened again until another copy comes.
     #[serde(default)]
@@ -2649,19 +2743,27 @@ fn win(winners: &mut BTreeMap<String, (Option<String>, u64, String)>, theirs_now
     }
 }
 
+/// How long before a take-out was written a use of its content counts
+/// (`Sealed::removed_at`): two devices' clocks never agree, and a put back
+/// made just after a take-out, on a device whose clock runs behind, is dated
+/// before it (the check of 9684719, must-fix 1).
+const USE_MARGIN: i64 = DAY;
+
 /// The contents of notes and papers whose file a record took out in this
 /// exchange (`removed_now`: by this device, or read in another device's
-/// record), each with that record's writer, round and line, and when this
-/// device noted it (`Sealed::removed`, `removed_at`): this device's own
+/// record, or written here from among the changes waiting, `Sealed::takes`),
+/// each with that record's writer, round, line and own time, and from when a
+/// use of it counts (`Sealed::removed`, `removed_at`): this device's own
 /// (`Sealed::mine`) and the others' (`Sealed::theirs`) alike, which the
 /// exchange keeps while it knows them. Those current again are forgotten (put
 /// back, or the same bytes in another file).
-fn note_removed(key: &[u8; 32], sealed: &mut Sealed, removed_now: Vec<(String, String, u32, u64)>, current: &BTreeSet<String>, now_ms: i64) {
+fn note_removed(key: &[u8; 32], sealed: &mut Sealed, removed_now: Vec<(String, String, u32, u64, i64)>, current: &BTreeSet<String>, now_ms: i64) {
     let wall = clock_ms();
-    for (h, writer, round, line) in removed_now.into_iter().filter(|(h, ..)| !current.contains(h)) {
+    for (h, writer, round, line, written) in removed_now.into_iter().filter(|(h, ..)| !current.contains(h)) {
         let name = crate::blobs::name(key, &h);
+        let since = written.min(now_ms) - USE_MARGIN;
         sealed.removed.insert(name.clone(), (writer, round));
-        sealed.removed_at.insert(name, (line, now_ms, wall));
+        sealed.removed_at.insert(name, (line, since, wall - (now_ms - since)));
     }
     let current: BTreeSet<String> = current.iter().map(|h| crate::blobs::name(key, h)).collect();
     sealed.removed.retain(|name, _| !current.contains(name));
@@ -2676,8 +2778,10 @@ enum Stands {
     Due,
     /// A device that counts has not read its take-out yet.
     Unread(String),
-    /// A device that counts keeps a file taken out by reference (a Sioul up
-    /// to 17 October 2026): it goes in its time, two weeks from its last use.
+    /// A device that counts runs an earlier Sioul (`blobs::KEEPING_FRESH`):
+    /// it goes by rounds with the sweep's care when every device keeps such a
+    /// file as a copy (`removed_by_rounds`), else in its time, two weeks from
+    /// its last use.
     Older(String),
     /// Used since it was taken out (a change replaced it lately, a record
     /// named it again, its file was made fresh, a text names it), or a change
@@ -2687,6 +2791,10 @@ enum Stands {
     /// part whose files are sealed apart (notes, papers, the spam filter's
     /// table), or the texts while a phone shares, not shared here. In its time.
     Untold,
+    /// Due but for the texts' media, which an exchange that must be quick (a
+    /// dose's, `Sharing::files` false) never reads: judged again at the next
+    /// whole exchange (the check of 9684719, must-fix 3).
+    Later,
 }
 
 /// The one rule of a content taken out (docs/database.md, "Old contents
@@ -2701,13 +2809,15 @@ enum Stands {
 /// - every device that counts keeps a file taken out as a copy among its
 ///   earlier versions (`blobs::KEEPING_MOVED`, `history::keep_moved`), so
 ///   that none needs it in the folder (else `Older`);
-/// - nothing used it since this device noted the take-out: no change waiting
-///   here names it, no change replaced it lately (`Sealed::replaced`: the same
-///   bytes may be another note's earlier version, kept by reference), no
-///   other device's record named it since (`named_at`), its file was not made
-///   fresh since (another device using it again, `blobs::put`,
-///   `blobs::make_fresh`), and no text names it (`texts_media`) (else
-///   `InTime`);
+/// - nothing used it since a day before the take-out was written
+///   (`USE_MARGIN`, `Sealed::removed_at`): no change waiting here names it, in
+///   this Sioul's format or a newer one held (`Memory::waiting`), no change
+///   replaced it lately (`Sealed::replaced`: the same bytes may be another
+///   note's earlier version, kept by reference), no other device's record
+///   named it since (`named_at`), its file was not made fresh (another device
+///   using it again, `blobs::put`, `blobs::make_fresh`: this device's own file
+///   dated otherwise than when it wrote it, `Sealed::stamped`, another's dated
+///   since), and no text names it (`texts_media`) (else `InTime`);
 /// - this device can tell: every part whose files are sealed apart is shared
 ///   here (`FILE_PARTS`), so that a current paper of the same bytes is known,
 ///   and so are the texts' media (`texts_media`: the texts shared here, or no
@@ -2717,25 +2827,48 @@ enum Stands {
 /// held (`GONE_GRACE`) is taken out by no record until it leaves or you say
 /// so. A device sweeps what it sealed (`Sealed::mine`); the contents of a
 /// device that no longer counts are swept by those that do (`sweep_theirs`).
-/// Each named here once, with where it stands; none for a take-out an
-/// earlier Sioul noted (no line said), which goes by rounds as before
-/// (`removed_by_rounds`). Apart, those a text names: their take-out is
-/// forgotten (they are used, and go in their time), so that the texts are
-/// not read again at each exchange for them.
+/// Only those are judged: the others' take-outs stay noted, unjudged, until
+/// their writer no longer counts, so that no exchange reads the texts for a
+/// content it never sweeps (the check of 9684719, must-fix 3), nor does an
+/// exchange that must be quick (`Stands::Later`). Each named here once, with
+/// where it stands; none for a take-out an earlier Sioul noted (no line
+/// said), which goes by rounds as before (`removed_by_rounds`). Apart, those
+/// a text names: their take-out is forgotten (they are used, and go in their
+/// time), so that the texts are not read again at each exchange for them.
 fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &[(String, Counted)], reading: &BTreeSet<String>) -> (Vec<(String, Stands)>, Vec<String>) {
     let sealed = &memory.sealed;
     if sealed.removed_at.is_empty() {
         return (Vec::new(), Vec::new());
     }
-    let older: Option<&String> = counts.iter().find(|(_, counted)| matches!(counted, Counted::Yes(entry, _) if entry.as_ref().is_none_or(|e| e.keeping < crate::blobs::KEEPING_MOVED))).map(|(id, _)| id);
+    let departed: BTreeSet<&str> = counts.iter().filter(|(_, counted)| counted.departed()).map(|(id, _)| id.as_str()).collect();
+    let ours = |name: &str| sealed.mine.contains_key(name) || sealed.theirs.get(name).is_some_and(|(writer, _)| departed.contains(writer.as_str()));
+    let older: Option<&String> = counts.iter().find(|(_, counted)| matches!(counted, Counted::Yes(entry, _) if entry.as_ref().is_none_or(|e| e.keeping < crate::blobs::KEEPING_FRESH))).map(|(id, _)| id);
     // Each reader's notes read once.
     let notes: BTreeMap<&String, Option<Seen>> = reading.iter().map(|r| (r, read_seen(sharing.folder, r))).collect();
-    let waiting: BTreeSet<String> = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v)))).collect();
+    // What the changes waiting here name, those held in a newer format too
+    // (`Memory::waiting`); one whose content cannot be told holds every one.
+    let named_by_waiting = memory.pending.iter().map(|(key, (value, ..))| (key, value)).chain(memory.waiting.iter().map(|(key, (value, ..))| (key, value))).filter(|(key, value)| key.starts_with(FILES) && value.is_some());
+    let waiting: BTreeSet<String> = named_by_waiting.clone().filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))).filter(|h| !h.is_empty()).map(|h| crate::blobs::name(sharing.key, &h)).collect();
+    let untold_waiting = named_by_waiting.into_iter().any(|(key, value)| value.as_deref().is_some_and(|v| value_hash(key, v).is_empty()));
     let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
     let blobs = sharing.folder.join("blobs");
+    // Its file made fresh since: dated after a day before the take-out
+    // (`USE_MARGIN`, clocks apart). This device's own also when dated after
+    // the time it wrote it there (`Sealed::stamped`), whatever the take-out's
+    // time (a touch read here before the take-out: the check of 9684719,
+    // must-fix 1); dated as it wrote it, never, however recent; dated before
+    // that and before the margin, never either (a copy given an earlier time).
+    let made_fresh = |name: &str, since_wall: i64| {
+        let Some(modified) = std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) else { return false };
+        let (seconds, ms) = (modified.as_secs() as i64, modified.as_millis() as i64);
+        match sealed.stamped.get(name).filter(|_| sealed.mine.contains_key(name)) {
+            Some(stamp) => seconds > *stamp || (seconds != *stamp && ms > since_wall),
+            None => ms > since_wall,
+        }
+    };
     let mut judged: Vec<(String, Stands)> = Vec::new();
-    for (name, (writer, round)) in &sealed.removed {
-        let Some((line, noted, wall)) = sealed.removed_at.get(name).copied() else { continue };
+    for (name, (writer, round)) in sealed.removed.iter().filter(|(name, _)| ours(name)) {
+        let Some((line, since, since_wall)) = sealed.removed_at.get(name).copied() else { continue };
         // A device that has not read it first: forgotten, it no longer holds anything back.
         let stands = if let Some((reader, _)) = notes.iter().filter(|(r, _)| r.as_str() != writer).find(|(_, seen)| {
             !seen.as_ref().is_some_and(|seen| seen.read.get(writer).is_some_and(|r| r > round) || seen.lines.get(writer).is_some_and(|at| *at >= (*round, line)))
@@ -2744,8 +2877,7 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
         } else if let Some(id) = older {
             Stands::Older(id.clone())
         } else {
-            let made_fresh = std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).is_some_and(|t| t.as_millis() as i64 > wall);
-            let used = waiting.contains(name) || sealed.replaced.contains_key(name) || sealed.named_at.get(name).is_some_and(|at| *at > noted) || made_fresh;
+            let used = untold_waiting || waiting.contains(name) || sealed.replaced.contains_key(name) || sealed.named_at.get(name).is_some_and(|at| *at > since) || made_fresh(name, since_wall);
             if used {
                 Stands::InTime
             } else if !every_part {
@@ -2756,8 +2888,14 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
         };
         judged.push((name.clone(), stands));
     }
-    // A text's medium never goes so: the texts read only when one is due.
+    // A text's medium never goes so: the texts read only when one is due,
+    // never by an exchange that must be quick (a dose's: `Later`).
     let mut texts_name = Vec::new();
+    if !sharing.files && texts_shared(stores) {
+        for (_, stands) in judged.iter_mut().filter(|(_, stands)| *stands == Stands::Due) {
+            *stands = Stands::Later;
+        }
+    }
     if judged.iter().any(|(_, stands)| *stands == Stands::Due) {
         let media = texts_media(sharing, stores, memory, counts);
         for (name, stands) in judged.iter_mut().filter(|(_, stands)| *stands == Stands::Due) {
@@ -2775,18 +2913,21 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
 }
 
 /// The contents taken out that an earlier Sioul noted (no line said:
-/// `Sealed::removed` without `removed_at`), as the rule was from 17 to 26
-/// October 2026: once every device that counts read past that record's round
-/// and each keeps such a file as a copy (`early`), their last use counts as
-/// `days` ago, and `blobs::sweep_after` takes them with its care all the
-/// same: never one used again or named lately, never one made fresh within
-/// `days`, never one a change replaced lately.
-fn removed_by_rounds(folder: &Path, sealed: &Sealed, reading: &BTreeSet<String>, last: &mut BTreeMap<String, i64>, days: i64, early: bool, now_ms: i64) {
+/// `Sealed::removed` without `removed_at`), and those judged `Older` (a
+/// device that counts runs an earlier Sioul, `blobs::KEEPING_FRESH`), as the
+/// rule was from 17 to 26 October 2026: once every device that counts read
+/// past that record's round and each keeps such a file as a copy (`early`),
+/// their last use counts as `days` ago, and `blobs::sweep_after` takes them
+/// with its care all the same: never one used again or named lately, never
+/// one made fresh within `days`, never one a change replaced lately.
+#[allow(clippy::too_many_arguments)]
+fn removed_by_rounds(folder: &Path, sealed: &Sealed, judged: &[(String, Stands)], reading: &BTreeSet<String>, last: &mut BTreeMap<String, i64>, days: i64, early: bool, now_ms: i64) {
     if !early {
         return;
     }
     let read_past = |writer: &str, round: u32| reading.iter().filter(|r| r.as_str() != writer).all(|r| read_seen(folder, r).and_then(|s| s.read.get(writer).copied()).unwrap_or(0) > round);
-    for (name, (writer, round)) in sealed.removed.iter().filter(|(name, _)| !sealed.removed_at.contains_key(*name)) {
+    let older: BTreeSet<&String> = judged.iter().filter(|(_, stands)| matches!(stands, Stands::Older(_))).map(|(name, _)| name).collect();
+    for (name, (writer, round)) in sealed.removed.iter().filter(|(name, _)| !sealed.removed_at.contains_key(*name) || older.contains(name)) {
         if read_past(writer, *round)
             && !sealed.replaced.contains_key(name)
             && let Some(at) = last.get_mut(name)
@@ -2807,9 +2948,15 @@ pub struct Leaving {
     /// counts to read so, by that device (the first found that has not).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unread: BTreeMap<String, (usize, u64)>,
+    /// Of `unread`, the devices whose notes say rounds alone (a Sioul before
+    /// 26 October 2026): each counts as having read a take-out once this
+    /// device's records go on in a new round, or once it is updated (the
+    /// check of 9684719, must-fix 4).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub by_rounds: BTreeSet<String>,
     /// Contents of notes and papers taken out that go in their time, two
-    /// weeks from their last use, while a device that counts keeps such a
-    /// file by reference (a Sioul up to 17 October 2026), by that device.
+    /// weeks from their last use, while a device that counts runs an earlier
+    /// Sioul (`blobs::KEEPING_FRESH`), by that device.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub older: BTreeMap<String, (usize, u64)>,
     /// Contents of notes and papers taken out that go in their time because
@@ -2850,10 +2997,15 @@ fn leaving_of(sharing: &Sharing, memory: &Memory, counts: &[(String, Counted)], 
     for (name, stands) in judged.iter().filter(|(name, _)| ours(name)) {
         let Some(bytes) = size(name) else { continue };
         let into = match stands {
-            Stands::Unread(id) => leaving.unread.entry(id.clone()).or_default(),
+            Stands::Unread(id) => {
+                if read_seen(sharing.folder, id).is_some_and(|seen| seen.lines.is_empty()) {
+                    leaving.by_rounds.insert(id.clone());
+                }
+                leaving.unread.entry(id.clone()).or_default()
+            }
             Stands::Older(id) => leaving.older.entry(id.clone()).or_default(),
             Stands::Untold => &mut leaving.untold,
-            Stands::Due | Stands::InTime => continue,
+            Stands::Due | Stands::InTime | Stands::Later => continue,
         };
         into.0 += 1;
         into.1 += bytes;
@@ -2881,7 +3033,18 @@ const FILE_PARTS: [&str; 3] = ["spam", "papers", "notes"];
 
 /// The others' contents of notes and papers that stopped being current in
 /// this exchange (`theirs_now`: replaced, taken out, or passed by a later
-/// change read in it), noted (`Sealed::theirs`); and those whose writer no
+/// change read in it), noted (`Sealed::theirs`), before the take-outs are
+/// judged (`judge_removed`), so that one a departed device wrote goes in the
+/// exchange that reads its take-out.
+fn note_theirs(key: &[u8; 32], memory: &mut Memory, theirs_now: Vec<(String, String)>, now_ms: i64) {
+    let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+    for (h, writer) in theirs_now.into_iter().filter(|(h, _)| !current.contains(h)) {
+        memory.sealed.theirs.insert(crate::blobs::name(key, &h), (writer, now_ms));
+    }
+}
+
+/// The others' contents of notes and papers no longer current here
+/// (`Sealed::theirs`, `note_theirs`) whose writer no
 /// longer counts by a sealed fact (`Counted::departed`: it left, you forgot
 /// it, another replaces it) swept, since that writer never sweeps them again
 /// (a phone dead for good), with the care `blobs::sweep` takes of this
@@ -2898,15 +3061,22 @@ const FILE_PARTS: [&str; 3] = ["spam", "papers", "notes"];
 /// A device that counts sweeps them, each its own folder; two at once find
 /// it gone, and their sending a file gone (`404`) or changed (`412`).
 #[allow(clippy::too_many_arguments)]
-fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counted: &[(String, Counted)], theirs_now: Vec<(String, String)>, current_before: &BTreeSet<String>, judged: &[(String, Stands)], now_ms: i64) {
+fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counted: &[(String, Counted)], current_before: &BTreeSet<String>, judged: &[(String, Stands)], now_ms: i64) {
     let blobs = sharing.folder.join("blobs");
-    memory.taken.retain(|name, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY && !blobs.join(name).exists());
+    let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+    // A content swept here that a current entry or a change waiting here
+    // names again (put back elsewhere): no longer taken out there, and
+    // fetched again where Sioul keeps the folder itself (the check of
+    // 9684719, must-fix 5: until then it stayed out of reach two weeks).
+    let named_here: BTreeSet<String> = current
+        .iter()
+        .cloned()
+        .chain(memory.pending.iter().map(|(key, (value, ..))| (key, value)).chain(memory.waiting.iter().map(|(key, (value, ..))| (key, value))).filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))))
+        .map(|h| crate::blobs::name(sharing.key, &h))
+        .collect();
+    memory.taken.retain(|name, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY && !blobs.join(name).exists() && !named_here.contains(name));
     let taken = &memory.taken;
     memory.taken_since.retain(|name, _| taken.contains_key(name));
-    let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
-    for (h, writer) in theirs_now.into_iter().filter(|(h, _)| !current.contains(h)) {
-        memory.sealed.theirs.insert(crate::blobs::name(sharing.key, &h), (writer, now_ms));
-    }
     if memory.sealed.theirs.is_empty() {
         return;
     }
@@ -2935,29 +3105,33 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
         .filter(|h| !orphaned.contains(h))
         .cloned()
         .chain(memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| value_hash(key, v))))
+        .chain(memory.waiting.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, ..))| value.as_deref().map(|v| value_hash(key, v))))
         .map(|h| crate::blobs::name(sharing.key, &h))
         .chain(memory.sealed.named_at.keys().cloned())
         .chain(memory.sealed.mine.keys().cloned())
         .collect();
     // Taken out by a record that every device that counts read, and used by
     // nothing since (`stands`): at once; its copy on the server when it is no
-    // newer than when this device noted the take-out (`Memory::taken_since`).
+    // newer than from when a use counts, a day before the take-out
+    // (`Sealed::removed_at`, `Memory::taken_since`).
     let early: Vec<String> = judged.iter().filter(|(name, stands)| *stands == Stands::Due && last.contains_key(name) && !memory.sealed.mine.contains_key(name)).map(|(name, _)| name.clone()).collect();
     for name in early {
         let path = blobs.join(&name);
         if std::fs::remove_file(&path).is_ok() || !path.exists() {
-            let noted = memory.sealed.removed_at.get(&name).map_or(now_ms, |(_, _, wall)| *wall);
+            let since = memory.sealed.removed_at.get(&name).map_or(now_ms, |(_, _, since_wall)| *since_wall);
             last.remove(&name);
             memory.sealed.theirs.remove(&name);
             memory.taken.insert(name.clone(), now_ms);
-            memory.taken_since.insert(name, noted);
+            memory.taken_since.insert(name, since);
         }
     }
     let unused = days * DAY;
     let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
     let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
     let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
-    if due && every_part && let Some(media) = texts_media(sharing, stores, memory, counted) {
+    if due && every_part && !sharing.files && texts_shared(stores) {
+        // The texts are read at the next whole exchange, never by one that must be quick (a dose's).
+    } else if due && every_part && let Some(media) = texts_media(sharing, stores, memory, counted) {
         let used: BTreeSet<String> = used.into_iter().chain(media).collect();
         let before: Vec<String> = last.keys().cloned().collect();
         crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
@@ -2980,6 +3154,12 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     }
 }
 
+/// Whether the texts are shared here (their log, `TEXTS_LOG`): to know
+/// their media, a sweep reads it whole (`texts_media`).
+fn texts_shared(stores: &[Store]) -> bool {
+    stores.iter().any(|s| s.name == TEXTS_LOG)
+}
+
 /// The sealed files the texts name, by name (`blobs::name`): each part of
 /// every text in each phone's log as this device holds it (`TEXTS_LOG`, each
 /// line sealed at rest, `textseal`), the texts taken out included. None when
@@ -2992,6 +3172,8 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
 /// one) holds none: only a phone brings the texts' media.
 fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[(String, Counted)]) -> Option<BTreeSet<String>> {
     if let Some(store) = stores.iter().find(|s| s.name == TEXTS_LOG) {
+        #[cfg(test)]
+        TEXTS_READ.with(|read| read.set(read.get() + 1));
         use sioul_core::texts::Sealer;
         #[derive(Deserialize)]
         struct Text {
@@ -5141,20 +5323,30 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     withheld.extend(mass_held.iter().map(|(store, files)| Withheld { bytes: files.keys().filter_map(|file| memory.files.get(file)).map(|stat| stat.size).sum(), ..withheld_of(store, files) }));
     withheld.sort_by(|a, b| a.store.cmp(&b.store));
     memory.withheld = withheld;
-    // The health file here taking every medicine out at once (two or more
-    // known, none now: a device's bug, a list emptied by hand): held, said,
-    // never spread, as a file that does not read; your other devices keep
-    // theirs (review of 36002ea's check, A2).
+    // The health file here taking every medicine out (two or more known,
+    // none now) though Sioul took none out (no mark of its own, `removed`,
+    // for each: a device's bug, a list emptied by hand): their removals held,
+    // said, never spread, until you say ("Take them out everywhere",
+    // `release_medicines`), or another device's records take them out too;
+    // the rest of the file travels, and what comes for them is written, so
+    // that a medicine lost by accident comes back. Taken out in Sioul, each
+    // marked: they go everywhere, as any change (review of 36002ea's check,
+    // A2; the check of 1b6795e, H5).
+    let mut medicines_held = false;
     for store in stores.iter().filter(|s| of_medicines(s)) {
         let file = store.name.clone();
         let mark = format!("{file}#medicine{SEP}{MARK}");
-        let known = memory.entries.iter().filter(|(key, k)| key.starts_with(&mark) && !k.h.is_empty()).count();
+        let known: Vec<(String, String)> = memory.entries.iter().filter(|(key, k)| key.starts_with(&mark) && !k.h.is_empty()).map(|(key, k)| (key.clone(), k.h.clone())).collect();
         let now = found.hashes.keys().filter(|key| key.starts_with(&mark)).count();
-        if known >= 2 && now == 0 && found.files.contains_key(&file) {
-            found.hashes.retain(|key, _| file_of(key) != file);
-            found.values.retain(|key, _| file_of(key) != file);
-            found.unknown.insert(file.clone());
-            outcome.problems.push(format!("share-medicines-emptied:{file}"));
+        if known.len() >= 2 && now == 0 && found.files.contains_key(&file) {
+            let on_purpose = known.iter().all(|(key, _)| found.hashes.contains_key(&format!("{file}#removed{SEP}{}", &key[mark.len()..])));
+            if !on_purpose && !memory.medicines_released.contains(&file) {
+                for (key, h) in known {
+                    found.hashes.insert(key, h);
+                }
+                medicines_held = true;
+                outcome.problems.push(format!("share-medicines-emptied:{file}"));
+            }
         }
     }
     let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
@@ -5168,8 +5360,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // So are the others' contents passed by a later change in this reading.
     let mut theirs_now: Vec<(String, String)> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty() && known.w != sharing.computer).map(|(_, known)| (known.h.clone(), known.w.clone())).collect();
     // The contents of the files sealed apart taken out in this exchange, with
-    // the writer, round and line of the record that took each out (`note_removed`).
-    let mut removed_now: Vec<(String, String, u32, u64)> = Vec::new();
+    // the writer, round, line and own time of the record that took each out
+    // (`note_removed`); another device's read now, by entry, kept beside the
+    // change when it waits (`Sealed::takes`).
+    let mut removed_now: Vec<(String, String, u32, u64, i64)> = Vec::new();
+    let mut takes_read: BTreeMap<String, (String, String, u32, u64, i64)> = BTreeMap::new();
     // Another device's take-out of a note's or a paper's file read in this
     // exchange: how far this device read is said at once (`write_seen`).
     let mut take_outs_read = false;
@@ -5214,7 +5409,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             if !seal_apart(sharing, stores, key, &value, &mut memory.sealed, &mut outcome.problems, now_ms) {
                 continue;
             }
-            fresh_again(sharing, key, &value, &memory.sealed);
+            fresh_again(sharing, key, &value, &mut memory.sealed, now_ms);
             let base = base_of(&memory, key);
             let clock = match memory.held.remove(key) {
                 Some((at, held)) if held == *h => at,
@@ -5605,7 +5800,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                             None => memory.entries.get(&change.k).map(|k| k.h.clone()).unwrap_or_default(),
                         };
                         if !before.is_empty() {
-                            removed_now.push((before, computer.clone(), round, record.n));
+                            let take = (before, computer.clone(), round, record.n, (record.c >> 16) as i64);
+                            takes_read.insert(change.k.clone(), take.clone());
+                            removed_now.push(take);
                         }
                     }
                     bases.insert(change.k.clone(), change.b);
@@ -5776,7 +5973,38 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             outcome.problems.push(format!("share-refused:{file}"));
             continue;
         }
-        let entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (entry_of(key), value.as_deref())).collect();
+        // The health file gone though written here before (its witness says
+        // so: the data folder wiped, or put back without it): never written
+        // from what came alone, which would hold one medicine and take every
+        // other out everywhere at the next look; rebuilt whole from every
+        // device's records at the next exchange (`rebuild`'s way), what came
+        // waiting meanwhile (the check of 1b6795e, M3).
+        if of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file) {
+            outcome.problems.push(format!("share-not-medicines:{file}"));
+            if !memory.rebuild.contains(file.as_str()) {
+                memory.entries.retain(|key, _| file_of(key) != file.as_str());
+                memory.files.remove(file.as_str());
+                memory.rebuild.insert(file.clone());
+                memory.rejoin.insert(file.clone());
+                memory.read.clear();
+            }
+            continue;
+        }
+        let mut entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (entry_of(key), value.as_deref())).collect();
+        // The health file: another device's removals that would take every
+        // medicine out here (two or more, none left) though its Sioul took
+        // none out (no mark came with them, `removed`): held, said, until you
+        // say ("Take them out here too", `release_medicines`); the rest is
+        // written (a medicine added there comes). They wait among what came.
+        let held_there = if of_medicines(store) && !memory.medicines_released.contains(file) { emptying_removals(store, &path, &entries) } else { BTreeSet::new() };
+        if !held_there.is_empty() {
+            entries.retain(|(entry, _)| !held_there.contains(*entry));
+            medicines_held = true;
+            outcome.problems.push(format!("share-medicines-emptied-there:{file}"));
+            if entries.is_empty() {
+                continue;
+            }
+        }
         // The file as it was, kept to be put back; never a log of calls, which
         // has nothing to put back and leaves every device after its month.
         let keep = || {
@@ -5786,11 +6014,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             kept = true;
             crate::history::keep(&history, store.part, file, &path, now_ms)
         };
-        match write_entries(store, &path, &entries, keep) {
+        match write_entries(store, &path, &entries, memory.medicines_released.contains(file), keep) {
             Ok(hashes) => {
                 outcome.written.insert(store.name.clone());
-                outcome.received += changes.len();
-                for (key, _) in changes {
+                for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key))) {
+                    outcome.received += 1;
                     written_keys.insert(key.clone());
                     written_hashes.insert(key.clone(), hashes.get(entry_of(key)).cloned().unwrap_or_default());
                 }
@@ -5799,8 +6027,20 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             Err(e) => outcome.problems.push(e),
         }
     }
+    // Your word to take the medicines out, once nothing of them is held: forgotten.
+    if !medicines_held {
+        memory.medicines_released.clear();
+    }
     for (key, (value, clock, computer)) in winners {
         if written_keys.contains(&key) || settled.contains(&key) {
+            // Another device's take-out written now from among the changes
+            // waiting: noted as one written when read (`Sealed::takes`).
+            if value.is_none()
+                && !takes_read.contains_key(&key)
+                && let Some(take) = memory.sealed.takes.remove(&key)
+            {
+                removed_now.push(take);
+            }
             let h = written_hashes.get(&key).cloned().unwrap_or_else(|| value.as_deref().map(|v| value_hash(&key, v)).unwrap_or_default());
             memory.entries.insert(key, Known { c: clock, w: computer, h, b: String::new() });
         } else {
@@ -5810,9 +6050,18 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             if let Some(contents) = named.remove(&key) {
                 memory.sealed.named.insert(key.clone(), contents);
             }
+            // Another device's take-out that waits: what it took out kept beside it.
+            if value.is_none()
+                && let Some(take) = takes_read.remove(&key)
+            {
+                memory.sealed.takes.insert(key.clone(), take);
+            }
             memory.pending.insert(key, (value, clock, computer));
         }
     }
+    // Those no longer waiting as take-outs (a later change came): forgotten.
+    let pending = &memory.pending;
+    memory.sealed.takes.retain(|key, _| pending.get(key).is_some_and(|(value, ..)| value.is_none()));
     // A session whose id was kept here as format 1 changed it (`translate`):
     // sent again from here, under that id, and the name a device holding none
     // of it would give taken out, so that every device, one joining later
@@ -5915,9 +6164,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     append(sharing, &mut memory, &out)?;
     // This device's own take-outs of files sealed apart, and the round and line they went into (`stands`);
     // the contents its own changes replaced (`Sealed::replaced`).
-    for (at, (key, value, _, base)) in out.iter().enumerate() {
+    for (at, (key, value, clock, base)) in out.iter().enumerate() {
         if value.is_none() && key.starts_with(FILES) && !base.is_empty() {
-            removed_now.push((base.clone(), sharing.computer.to_string(), memory.round, line_before + at as u64 + 1));
+            removed_now.push((base.clone(), sharing.computer.to_string(), memory.round, line_before + at as u64 + 1, (*clock >> 16) as i64));
         }
         if value.is_some() && key.starts_with(FILES) && !base.is_empty() {
             replaced_now.push(base.clone());
@@ -5963,6 +6212,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.sealed.named_at.retain(|_, at| now_ms - *at < days * DAY);
     // The contents taken out in this exchange, noted; where each taken out stands by the one rule (`stands`).
     let current: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(_, known)| known.h.clone()).collect();
+    note_theirs(sharing.key, &mut memory, theirs_now, now_ms);
     note_removed(sharing.key, &mut memory.sealed, std::mem::take(&mut removed_now), &current, now_ms);
     let (judged, texts_name) = judge_removed(sharing, stores, &memory, &counts, &reading);
     for name in texts_name {
@@ -5974,6 +6224,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             .iter()
             .cloned()
             .chain(memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| value_hash(key, v))))
+            .chain(memory.waiting.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, ..))| value.as_deref().map(|v| value_hash(key, v))))
             .map(|h| crate::blobs::name(sharing.key, &h))
             .chain(memory.sealed.named_at.keys().cloned())
             .collect();
@@ -5994,20 +6245,25 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             Counted::Yes(entry, _) => entry.as_ref().is_some_and(|e| e.keeping >= crate::blobs::KEEPING_MOVED),
             _ => true,
         });
-        removed_by_rounds(sharing.folder, &memory.sealed, &reading, &mut last, days, early, now_ms);
+        removed_by_rounds(sharing.folder, &memory.sealed, &judged, &reading, &mut last, days, early, now_ms);
         crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
     // The others' contents that stopped being current here; those of a
     // device that no longer counts swept in time, or at once when taken
     // out and due by the one rule (`sweep_theirs`).
-    sweep_theirs(sharing, stores, &mut memory, &counts, theirs_now, &current_before, &judged, now_ms);
+    sweep_theirs(sharing, stores, &mut memory, &counts, &current_before, &judged, now_ms);
     // A content taken out is remembered while it is this device's to sweep, or another's known here (`theirs`).
     let (mine, theirs) = (&memory.sealed.mine, &memory.sealed.theirs);
     memory.sealed.removed.retain(|name, _| mine.contains_key(name) || theirs.contains_key(name));
     let removed = &memory.sealed.removed;
     memory.sealed.removed_at.retain(|name, _| removed.contains_key(name));
-    memory.leaving = leaving_of(sharing, &memory, &counts, &judged, &current);
+    let mine = &memory.sealed.mine;
+    memory.sealed.stamped.retain(|name, _| mine.contains_key(name));
+    // An exchange that must be quick left some for the next whole one (`Stands::Later`): what it said before stays.
+    if !judged.iter().any(|(_, stands)| *stands == Stands::Later) {
+        memory.leaving = leaving_of(sharing, &memory, &counts, &judged, &current);
+    }
     // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly,
     // once the exchanges' lock is let go (it walks the whole history: the check of ef8c0ca, low 24).
     let tidy = kept || now_ms - memory.tidied >= HOUR;
@@ -6451,7 +6707,8 @@ fn look_after_sealed(sharing: &Sharing, stores: &[Store], memory: &mut Memory, f
         let Some((_, path)) = locate(stores, file_of(&key)) else { continue };
         match crate::blobs::put_again(sharing.folder, sharing.key, &path, &h) {
             Ok(size) => {
-                memory.sealed.mine.insert(name, (now_ms, size));
+                memory.sealed.mine.insert(name.clone(), (now_ms, size));
+                stamp(sharing.folder, &mut memory.sealed, &name);
             }
             Err(e) => problems.push(e),
         }
@@ -6886,7 +7143,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         if back.is_empty() {
             return Ok(());
         }
-        let written = write_entries(store, &path, &back, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
+        let written = write_entries(store, &path, &back, false, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
         // The lock let go: the versions too many taken out (`history::keep` takes nothing out under it).
         drop(_running);
         crate::history::tidy_file(&root, part, file, now_ms);
@@ -7075,16 +7332,38 @@ fn met_draft(memory: &mut Memory, key: &str, versions: [&str; 2]) {
 /// sync app sends it again (a copy taken out of the server meanwhile comes
 /// back, and a take-out there over its earlier ETag is refused, `412`), and
 /// its writer, which may sweep it as taken out before it reads this change,
-/// finds it used since (`stands`) (26 October 2026). A content this device
-/// sealed is its own to keep (`Sealed::mine`).
-fn fresh_again(sharing: &Sharing, key: &str, value: &str, sealed: &Sealed) {
+/// finds it used since (`stands`) (26 October 2026); then this device's own
+/// (`Sealed::mine`, `stamped`), so that its sending and `look_after_sealed`
+/// send it again where the server lost it, and it sweeps it in its time
+/// once nothing names it (the check of 9684719, must-fix 2: a sweep that
+/// read the take-out before the change left a content no device sent again).
+fn fresh_again(sharing: &Sharing, key: &str, value: &str, sealed: &mut Sealed, now_ms: i64) {
     if !key.starts_with(FILES) {
         return;
     }
-    if let Ok(reference) = serde_json::from_str::<Reference>(value)
-        && !sealed.mine.contains_key(&crate::blobs::name(sharing.key, &reference.h))
-    {
+    let Ok(reference) = serde_json::from_str::<Reference>(value) else { return };
+    let name = crate::blobs::name(sharing.key, &reference.h);
+    if !sealed.mine.contains_key(&name) {
         crate::blobs::make_fresh(sharing.folder, sharing.key, &reference.h);
+        take_as_own(sharing.folder, sealed, &name, now_ms);
+    }
+}
+
+/// A sealed file of the folder taken as this device's own (`Sealed::mine`),
+/// with its size there and its time now (`stamped`); nothing when it is not there.
+fn take_as_own(folder: &Path, sealed: &mut Sealed, name: &str, now_ms: i64) {
+    let Ok(meta) = std::fs::metadata(folder.join("blobs").join(name)) else { return };
+    if meta.len() > 0 {
+        sealed.mine.insert(name.to_string(), (now_ms, meta.len()));
+        stamp(folder, sealed, name);
+    }
+}
+
+/// When this device wrote one of its own sealed files into the folder
+/// (`Sealed::stamped`): its file's time now, in whole seconds.
+fn stamp(folder: &Path, sealed: &mut Sealed, name: &str) {
+    if let Some(at) = std::fs::metadata(folder.join("blobs").join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) {
+        sealed.stamped.insert(name.to_string(), at.as_secs() as i64);
     }
 }
 
@@ -7101,6 +7380,7 @@ fn seal_apart(sharing: &Sharing, stores: &[Store], key: &str, value: &str, seale
             let name = crate::blobs::name(sharing.key, &reference.h);
             if let Some(size) = written {
                 sealed.mine.insert(name.clone(), (now_ms, size));
+                stamp(sharing.folder, sealed, &name);
             } else if keeps_itself(sharing) && !sealed.mine.contains_key(&name) {
                 // Sioul keeping the folder itself: a content already in its
                 // copy (fetched there once) is this device's own now that its
@@ -7108,9 +7388,12 @@ fn seal_apart(sharing: &Sharing, stores: &[Store], key: &str, value: &str, seale
                 // no longer has it (its writer took it out meanwhile: a note
                 // put back from its earlier versions). Where the server has
                 // it, the send finds it there and sends nothing (review of 17
-                // October 2026, H1).
-                let size = std::fs::metadata(crate::blobs::path(sharing.folder, sharing.key, &reference.h)).map_or(0, |m| m.len());
-                sealed.mine.insert(name.clone(), (now_ms, size));
+                // October 2026, H1). Made fresh first, so that the copy it
+                // sends is dated by this use, not by when it was fetched,
+                // which a sweeper would take for the copy it swept (the check
+                // of 9684719, must-fix 5).
+                crate::blobs::make_fresh(sharing.folder, sharing.key, &reference.h);
+                take_as_own(sharing.folder, sealed, &name, now_ms);
             }
             // A table of the spam filter this computer sealed: the newest of its own (`prune_tables`).
             if file_of(key) == SPAM_TABLE && sealed.mine.contains_key(&name) {

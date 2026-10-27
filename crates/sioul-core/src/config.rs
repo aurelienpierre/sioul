@@ -2092,17 +2092,40 @@ pub fn default_path() -> PathBuf {
 /// that writes health, state, config or calendars where Sioul reads them asks
 /// it first (`stand_ins_only`; rules.md; review of 36002ea, can-wait 11).
 pub fn stand_in_folders() -> bool {
+    stand_ins(|variable| std::env::var_os(variable))
+}
+
+/// `stand_in_folders` on the variables `var` reads.
+fn stand_ins(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     // As the disk resolves it (a link followed), whole when it is not there yet.
     let resolved = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()));
-    // Each of the four set, and Sioul's folder in it neither the person's own,
+    // Each of the four set and made for tests, holding the runners' mark: a
+    // folder is never taken for a stand-in because it is not the default
+    // (review of 1b6795e, M10), since Sioul reads whatever the variables name.
+    // Then, as a second check, Sioul's folder in it neither the person's own,
     // nor inside it, nor holding it; never `CI=true` alone (review of
     // 36002ea's check, A2): a runner gives its tests folders of their own too
-    // (build.yml: under its temporary folder).
+    // (build.yml: under its temporary folder, marked).
     [("XDG_CONFIG_HOME", "~/.config"), ("XDG_DATA_HOME", "~/.local/share"), ("XDG_STATE_HOME", "~/.local/state"), ("XDG_CACHE_HOME", "~/.cache")].iter().all(|(variable, own)| {
-        let Some(set) = std::env::var_os(variable).filter(|v| !v.is_empty()) else { return false };
-        let (theirs, own) = (resolved(&PathBuf::from(set)).join("sioul"), resolved(&expand_home(own)).join("sioul"));
-        !theirs.starts_with(&own) && !own.starts_with(&theirs)
+        let Some(set) = var(variable).filter(|v| !v.is_empty()).map(PathBuf::from) else { return false };
+        let marked = std::fs::symlink_metadata(set.join(STAND_IN_MARK)).is_ok_and(|m| m.is_file());
+        let (theirs, own) = (resolved(&set).join("sioul"), resolved(&expand_home(own)).join("sioul"));
+        marked && !theirs.starts_with(&own) && !own.starts_with(&theirs)
     })
+}
+
+/// The mark each folder made for tests holds, a file of this name in it:
+/// tools/final-pass.sh, build.yml and the sync and command line tests' own
+/// homes leave it (`mark_stand_in`). `stand_in_folders` accepts no folder
+/// without it, so that a folder the person chose is never taken
+/// for a test's.
+pub const STAND_IN_MARK: &str = ".sioul-stand-in";
+
+/// Makes `folder` and leaves the mark of a folder made for tests in it
+/// (`STAND_IN_MARK`): for a test's own home, which nothing else uses.
+pub fn mark_stand_in(folder: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(folder)?;
+    std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 }
 
 /// For a test that writes Sioul's files where it reads them: refuses to go
@@ -2111,7 +2134,7 @@ pub fn stand_in_folders() -> bool {
 pub fn stand_ins_only() {
     assert!(
         stand_in_folders(),
-        "this test writes Sioul's files: run it with folders of its own (XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME set, as tools/final-pass.sh sets them), never with the person's own"
+        "this test writes Sioul's files: run it with folders of its own (XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME set, each made for tests and holding the file .sioul-stand-in, as tools/final-pass.sh makes them), never with the person's own"
     );
 }
 
@@ -2217,6 +2240,32 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Folders count as a test's only when each of the four holds the
+    /// runners' mark: set and other than the defaults is not enough (review
+    /// of 1b6795e, M10); one unset, or a mark that is no file, and they are
+    /// not stand-ins.
+    #[test]
+    fn only_folders_marked_for_tests_are_stand_ins() {
+        let root = std::env::temp_dir().join(format!("sioul-stand-in-mark-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let four = ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"];
+        let all = |variable: &str| Some(root.join(variable).into_os_string());
+        for variable in four {
+            std::fs::create_dir_all(root.join(variable)).unwrap();
+        }
+        assert!(!stand_ins(all), "set, not the defaults, but made for no test");
+        for variable in four {
+            mark_stand_in(&root.join(variable)).unwrap();
+        }
+        assert!(stand_ins(all));
+        assert!(!stand_ins(|variable: &str| (variable != "XDG_CACHE_HOME").then(|| root.join(variable).into_os_string())), "one unset");
+        assert!(!stand_ins(|variable: &str| Some(if variable == "XDG_DATA_HOME" { std::ffi::OsString::new() } else { root.join(variable).into_os_string() })), "one empty");
+        std::fs::remove_file(root.join("XDG_STATE_HOME").join(STAND_IN_MARK)).unwrap();
+        std::fs::create_dir(root.join("XDG_STATE_HOME").join(STAND_IN_MARK)).unwrap();
+        assert!(!stand_ins(all), "a mark that is a folder");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A message found by the path the system resolves (macOS's /var is
     /// /private/var) still has its account, the account's folder named

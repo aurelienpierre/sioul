@@ -195,17 +195,21 @@ sioul-core/src/compose.rs	keep_original	1	std::fs::copy(&original, &copy)
 sioul-core/src/compose.rs	remove_own_copy_in	1	std::fs::remove_file(path)
 sioul-core/src/compose.rs	remove_own_copy_in	1	std::fs::remove_dir(folder)
 
-# sioul-core/src/config.rs: the configuration and its migrations, the mail's own id: no item.
+# sioul-core/src/config.rs: the configuration and its migrations, the mail's own id, the mark of a folder made for tests: no item.
 sioul-core/src/config.rs	migrate_sites_at_start	1	std::fs::copy(path, &copy)
 sioul-core/src/config.rs	write_document	1	std::fs::write(&temporary, text)
 sioul-core/src/config.rs	write_document	1	std::fs::rename(&temporary, path)
 sioul-core/src/config.rs	sioul_authserv_id	1	std::fs::write(&path, &id)
+sioul-core/src/config.rs	mark_stand_in	1	std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 
 # sioul-core/src/contacts.rs: a contact's photo, in a cache of its own beside the contact: no item written.
 sioul-core/src/contacts.rs	photo_in	1	std::fs::write(&path, &bytes)
 
 # sioul-core/src/contracts.rs: contracts (a file of their own): no item.
 sioul-core/src/contracts.rs	write	1	std::fs::write(&temporary, doc.to_string())
+
+# sioul-core/src/dose_backs.rs: the doses' moves to put back (a file of its own, written witnessed): no item.
+sioul-core/src/dose_backs.rs	update	1	crate::health::write_witnessed(path, text.as_bytes())
 
 # sioul-core/src/dose_reminders.rs: the doses' reminders said (state): no item.
 sioul-core/src/dose_reminders.rs	save	1	crate::health::write_witnessed(path, text.as_bytes())

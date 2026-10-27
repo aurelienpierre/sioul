@@ -20,9 +20,10 @@ Dialog {
     property string key: ""
     property var info: null
     property string problem: ""
-    // Marked taken already, when ("08:03"): said, its Taken kept beside it,
-    // which writes the mark again at the time given (a time corrected too),
-    // never a second move (review of 36002ea's check, must-fix 1); "" when not.
+    // Marked taken already, when ("08:03"): said, the time field starting from
+    // it, Cancel the default: pressed as it is, the same take, nothing
+    // rewritten; a later time moves the next doses once, from that time; an
+    // earlier one leaves them (the check of 1b6795e, H2 and M4); "" when not.
     readonly property string marked: dialog.info !== null ? (dialog.info.taken || "") : ""
 
     // Answered, taken or not: the pages showing doses read them again.
@@ -35,7 +36,7 @@ Dialog {
         dialog.key = key
         dialog.info = info
         dialog.problem = ""
-        when.text = info.now
+        when.text = (info.taken_at || "") !== "" ? info.taken_at : info.now
         dialog.open()
         when.forceActiveFocus()
         when.selectAll()
@@ -88,7 +89,8 @@ Dialog {
                 inputMask: "99:99"
                 inputMethodHints: Qt.ImhTime
                 Accessible.name: dialog.sioul.text("dose-taken-when")
-                onAccepted: dialog.taken()
+                // Enter on a dose marked already, its time unchanged: nothing rewritten, closed.
+                onAccepted: dialog.marked !== "" && when.text === (dialog.info.taken_at || "") ? dialog.close() : dialog.taken()
             }
         }
         // Every few hours: the hours between two doses are kept, from the time said.
@@ -96,6 +98,16 @@ Dialog {
             visible: dialog.marked === "" && dialog.info !== null && dialog.info.hours > 0
             Layout.fillWidth: true
             text: dialog.info === null ? "" : dialog.sioul.textWith("dose-next-after", "hours", String(dialog.info.hours))
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: dialog.theme.muted
+        }
+        // Marked already, every few hours: what a time given does to the next doses.
+        Label {
+            visible: dialog.marked !== "" && dialog.info !== null && dialog.info.hours > 0
+            Layout.fillWidth: true
+            text: dialog.sioul.text("dose-marked-later")
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pixelSize: 13
@@ -124,7 +136,7 @@ Dialog {
 
             Button {
                 text: dialog.sioul.text("health-taken")
-                highlighted: true
+                highlighted: dialog.marked === ""
                 onClicked: dialog.taken()
             }
             Button {
@@ -138,7 +150,8 @@ Dialog {
                 }
             }
             Button {
-                flat: true
+                flat: dialog.marked === ""
+                highlighted: dialog.marked !== ""
                 text: dialog.sioul.text("ui-cancel")
                 onClicked: dialog.close()
             }

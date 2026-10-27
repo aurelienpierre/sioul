@@ -50,15 +50,14 @@ const TRY_SECONDS: i64 = 10;
 /// What a desktop answers a try: it never rings.
 const NOT_A_PHONE: i32 = -2;
 
-/// The usual night and its mornings, from Health's file at `path`: none when
-/// the file is there but does not read, so that a file broken (or being
-/// written by hand) never cancels an alarm: Java then keeps what it has.
+/// The usual night and its mornings, from Health's file at `path`, as the
+/// doses read it (`Health::read_bytes`): a file that does not read, of no
+/// bytes, or gone though written here before, gives its last good read's;
+/// none kept either: none, so that a file broken (or being written by hand,
+/// or lost) never cancels an alarm: Java then keeps what it has (the check
+/// of 1b6795e, M1).
 fn read_needs(path: &Path) -> Option<Needs> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => toml::from_str::<Health>(&text).ok().map(|health| health.needs),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Needs::default()),
-        Err(_) => None,
-    }
+    Health::needs_known(path)
 }
 
 /// The words Java says, in the person's language, given ahead with the
