@@ -183,6 +183,12 @@ fn put_back(shared: &Shared, written: &[Written]) -> String {
 /// moved there, or made in the calendar for blocks; the task tied to it, and
 /// to it alone. Told in the status line, "Undo" offered: both put back.
 /// Returns what went wrong, else "".
+/// Whether a step pinned at `start` (Unix seconds) would start before the
+/// five minutes `now` is in: a step is given a time from now on.
+fn before_now(start: i64, now: i64) -> bool {
+    start < now.div_euclid(300) * 300
+}
+
 pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minutes: u32) -> String {
     let zone = TimeZone::system();
     let now = Zoned::now();
@@ -194,6 +200,11 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
         return tr().text("task-read-only", None);
     }
     let Some(start) = at.parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second()) else { return format!("{at}?") };
+    // Never pinned before the current five minutes, whoever asks (the agenda
+    // offers no drag there; the writer says it all the same).
+    if before_now(start, now.timestamp().as_second()) {
+        return tr().text("task-pin-before-now", None);
+    }
     // The block it is pinned to, else none: one is made. One another application made repeat is left as it is.
     let own: Vec<Occurrence> = found_of(uid).into_iter().filter(|b| !b.recurring).collect();
     let current = Blocks::of(&own, std::slice::from_ref(&task), now.timestamp().as_second(), &zone).pins.remove(uid).filter(|p| Path::new(&p.key).is_file());
@@ -460,5 +471,15 @@ mod tests {
         assert!(remove(&shared, &met).is_err() && write(&shared, &met, &meeting.replace("SUMMARY:Guest task", "SUMMARY:Renamed")).is_err());
         assert_eq!(std::fs::read_to_string(&met).unwrap(), meeting, "byte for byte");
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A step is pinned from the current five minutes on, never before them.
+    #[test]
+    fn a_step_is_never_pinned_before_now() {
+        let now: i64 = 1_791_200_000 + 7 * 60;
+        let turn = now.div_euclid(300) * 300;
+        assert!(!before_now(turn, now), "the current five minutes");
+        assert!(!before_now(now + 600, now));
+        assert!(before_now(turn - 1, now), "before them");
     }
 }

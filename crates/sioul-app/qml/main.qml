@@ -1955,9 +1955,9 @@ SioulWindow {
             function eventNamed(words) {
                 const shown = JSON.parse(sioul.agenda || "{}")
                 for (const day of shown.days || [])
-                    for (const event of day.events)
-                        if (event.key.indexOf(words) >= 0)
-                            return event
+                    for (const row of (day.head || []).concat(day.timed || []))
+                        if (row.detail && row.detail.key.indexOf(words) >= 0)
+                            return row.detail
                 return null
             }
             readonly property var checklistSteps: [

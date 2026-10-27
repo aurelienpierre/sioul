@@ -265,6 +265,7 @@ pub mod tasks;
 pub mod text;
 pub mod textdraft;
 pub mod threads;
+pub mod timeline;
 pub mod timelog;
 pub mod timereport;
 pub mod today;

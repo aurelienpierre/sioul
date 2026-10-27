@@ -115,6 +115,7 @@
 
 // What Android withholds from Sioul on a phone, said in the join's result and on the Porch (docs/android.md).
 mod access;
+mod agenda;
 mod agents;
 mod alarms;
 mod appnotes;
@@ -237,7 +238,7 @@ pub(crate) fn timing(what: &str) {
 }
 
 /// Whether the start is timed: always on Android, else with SIOUL_TIMING.
-fn timed() -> bool {
+pub(crate) fn timed() -> bool {
     cfg!(target_os = "android") || std::env::var_os("SIOUL_TIMING").is_some()
 }
 

@@ -63,7 +63,7 @@ pub mod qobject {
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
-        // Two events at once in the next two weeks (`pim::overlaps`), made with the agenda, off the window's thread.
+        // Two events at once in the next two weeks (`pim::overlaps_of`), made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
         // The Health page, the Porch's doses (today's not marked yet, and those due
         // while Sioul was closed: `health::missed`), today's meals and naps
@@ -72,6 +72,13 @@ pub mod qobject {
         #[qproperty(QString, health_view)]
         #[qproperty(QString, missed_view)]
         #[qproperty(QString, needs_view)]
+        // Today's doses as one reading has them (`health::DosesToday`): each
+        // dose's key, its day and minute, its states given ahead and their
+        // words, never a medicine's name; and when it was read (Unix seconds),
+        // apart, so that the marks change only when a row does. The agenda's
+        // views read them.
+        #[qproperty(QString, dose_marks)]
+        #[qproperty(f64, dose_read_at)]
         #[qproperty(QString, tasks)]
         #[qproperty(QString, notes)]
         #[qproperty(QString, focus_session)]
@@ -2142,6 +2149,8 @@ pub struct SioulRust {
     health_view: QString,
     missed_view: QString,
     needs_view: QString,
+    dose_marks: QString,
+    dose_read_at: f64,
     tasks: QString,
     notes: QString,
     focus_session: QString,
@@ -2231,6 +2240,12 @@ pub(crate) struct Shared {
     pub(crate) pim_job: Job,
     pub(crate) work_job: Job,
     pub(crate) health_job: Job,
+    /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
+    pub(crate) agenda_job: Job,
+    pub(crate) agenda_generation: AtomicU64,
+    pub(crate) agenda_shown_generation: AtomicU64,
+    /// The agenda page asked for its days once: from then on the job follows the plan and the calendars.
+    pub(crate) agenda_asked: AtomicBool,
 }
 
 /// The plan is made again every twelve hours, and when the day changes: a task
@@ -4147,7 +4162,7 @@ impl qobject::Sioul {
             state.days = i64::from(days.clamp(1, 366));
             state.upcoming = upcoming;
         }
-        pim::show_pim(&self.qt_thread(), &shared);
+        crate::agenda::asked(&self.qt_thread(), &shared);
     }
 
     fn calendars(&self) -> QString {
@@ -5164,6 +5179,9 @@ impl qobject::Sioul {
         let (qt, shared) = (self.qt_thread(), self.shared());
         if shared.views_job.deferred.swap(false, Ordering::SeqCst) | shared.mail_job.deferred.swap(false, Ordering::SeqCst) {
             show(&qt, &shared);
+        }
+        if shared.agenda_job.deferred.swap(false, Ordering::SeqCst) {
+            crate::agenda::show_agenda(&qt, &shared);
         }
         if shared.pim_job.deferred.swap(false, Ordering::SeqCst) {
             pim::show_pim(&qt, &shared);

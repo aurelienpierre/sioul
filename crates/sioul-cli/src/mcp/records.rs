@@ -333,14 +333,22 @@ pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {
 
 // The moment now.
 
-pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
-    use sioul_core::attention::{self, Attention, Row};
-    use sioul_core::reach::Channel;
-    use sioul_core::everywhere::{self, Why};
+/// What now is for, as the status line says it: its kind ("work",
+/// "leisure", "pause"…) and its line ("Leisure until 07:00."; "" when it says
+/// nothing).
+pub(super) fn moment(s: &Session) -> (String, String) {
+    let (kind, line, ..) = moment_read(s);
+    (kind, line)
+}
+
+/// The moment and what it was read from: its kind and its line, the mode,
+/// the overrides, what the hours hold, and now.
+type Moment = (String, String, sioul_core::quiet::Mode, sioul_core::quiet::Overrides, sioul_core::quiet::Blocks, Zoned);
+
+fn moment_read(s: &Session) -> Moment {
     use sioul_core::quiet::{self, Overrides, Reason};
     let config = &s.config;
     let now = Zoned::now();
-    let stamp = now.timestamp().as_second();
     let overrides = Overrides::load(&Overrides::default_path());
     let blocks = quiet::Blocks::read_now(&now);
     let mode = quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);
@@ -372,6 +380,19 @@ pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
         Reason::FreeTime => "free-time",
         _ => mode.time.id(),
     };
+    (kind.to_string(), line, mode, overrides, blocks, now)
+}
+
+pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
+    use sioul_core::attention::{self, Attention, Row};
+    use sioul_core::reach::Channel;
+    use sioul_core::everywhere::{self, Why};
+    let config = &s.config;
+    let (kind, line, mode, overrides, blocks, now) = moment_read(s);
+    let kind = kind.as_str();
+    let stamp = now.timestamp().as_second();
+    let nothing = sioul_core::pause::nothing_now(&overrides, &config.free_time);
+    let until = mode.until.as_ref().map(|z| sioul_core::quiet::until_text(&s.tr, z, &now)).unwrap_or_default();
     // Do-not-disturb, on every device: why it holds, until when.
     // As the window reads them: the devices gone from the sharing as As usual, the pause ending Reachable (F1, F7).
     let sources = everywhere::sources_at(&overrides, &blocks, &now);

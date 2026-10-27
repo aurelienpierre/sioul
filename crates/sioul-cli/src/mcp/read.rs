@@ -34,7 +34,7 @@ use sioul_core::state::PorchState;
 use sioul_core::taskview::{self, CardView, Context, Filter, Offices};
 use sioul_core::tasks::{Status, Task};
 use sioul_core::today::Today;
-use sioul_core::{agenda, bank, budget, contacts, dayview, invoice, maildir, projectview, reading, shield, timelog, timereport, view};
+use sioul_core::{agenda, bank, budget, contacts, dayview, invoice, maildir, projectview, reading, shield, timeline, timelog, timereport, view};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Component, Path, PathBuf};
 
@@ -552,8 +552,76 @@ impl Desk {
     }
 
     pub fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
+        self.context_with(s, &self.filter)
     }
+
+    /// The window's quiet time as the hour `time` has it: what the task
+    /// pages would hide then (tests set the hour this way: the clock is real).
+    #[cfg(test)]
+    pub fn as_if(&mut self, time: sioul_core::areas::Time) {
+        self.filter.quiet = Some(sioul_core::quiet::QuietTasks { time, ..sioul_core::quiet::QuietTasks::default() });
+    }
+
+    /// The task views' context through `filter`: the list takes every task,
+    /// whatever the hour (`tasks_list`).
+    pub fn context_with<'a>(&'a self, s: &'a Session, filter: &'a Filter) -> Context<'a> {
+        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
+    }
+
+    /// The days from `from` to `to` (Unix seconds) as an agent may see them:
+    /// the one model of time (`timeline`) through `ForAgents`. The calendars'
+    /// events and the time blocks of tasks (`agenda::items`); the plan's steps
+    /// of each day it reaches (`dayview::lay_on`, `Drawn::ADMIN`: no meal and
+    /// no nap, kept free all the same), today's as the window lays them (the
+    /// tasks shown now), a day to come with every task the plan gives it; the
+    /// tasks done; a task once a day (`timeline::merge`). Health and your
+    /// hours never; what consent keeps back left out, counted. Laid with every
+    /// event, those kept back included, so that each step sits where the
+    /// person's own day has it. With the occurrences read, marked.
+    pub fn agent_days(&self, from: i64, to: i64) -> (timeline::ForAgents, usize, Vec<agenda::Occurrence>) {
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let today = now.date();
+        let mut occurrences = agenda::occurrences(from, to);
+        agenda::mark_tasks(&mut occurrences, &self.loaded.tasks);
+        let errand = |uid: &str| self.consent.is_health(&links::task_uri(uid));
+        let mut items = agenda::items(&occurrences, &zone, &errand);
+        // The plan's days within its reach (`plan::HORIZON_DAYS`).
+        let day_of = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or(today);
+        let last = today.checked_add(jiff::Span::new().days(plan::HORIZON_DAYS - 1)).unwrap_or(today);
+        let shown: Vec<Task> = self.loaded.tasks.iter().filter(|t| self.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
+        let mut date = day_of(from).max(today);
+        while date <= day_of(to - 1).min(last) {
+            let start = timeline::midnight(date, &zone);
+            let end = date.tomorrow().map_or(start + 86_400, |d| timeline::midnight(d, &zone));
+            let events: Vec<agenda::Occurrence> = occurrences.iter().filter(|o| o.end > start && o.start < end).cloned().collect();
+            let tasks = if date == today { &shown } else { &self.loaded.tasks };
+            let laid = dayview::lay_on(date, &now, &events, &self.plan, tasks, &self.settings, dayview::Drawn::ADMIN);
+            items.extend(timeline::from_day(&laid, date, &self.loaded.tasks));
+            let Ok(next) = date.tomorrow() else { break };
+            date = next;
+        }
+        let open = |uid: &str| self.loaded.tasks.iter().any(|t| t.uid == uid && t.status.is_open());
+        let items = timeline::merge(items, now.timestamp().as_second(), &open);
+        let allows = |item: &timeline::Item| match (item.kind, &item.source) {
+            (timeline::Kind::Event, _) => self.consent.allows(&item.address),
+            (timeline::Kind::Block, timeline::Source::Calendar { uid, .. }) => self.consent.allows(&links::event_uri(uid)) && self.allows(&item.owner),
+            (timeline::Kind::Step | timeline::Kind::Done, _) => self.allows(&item.owner),
+            _ => true,
+        };
+        let (agents, kept) = timeline::ForAgents::of(items, allows);
+        (agents, kept, occurrences)
+    }
+}
+
+/// What now is for, said once where an answer gives the tasks whatever the
+/// hour, quiet time aside (the window hides some then): the agent knows the
+/// hour, and the server's word on hours holds (`now`). None in working time.
+fn hours_line(s: &Session, desk: &Desk) -> Option<String> {
+    desk.filter.quiet.as_ref()?;
+    let (kind, line) = super::records::moment(s);
+    let line = if line.is_empty() { String::new() } else { format!(" {line}") };
+    Some(format!("Now: {kind}.{line} These tasks wait for their own hours."))
 }
 
 /// A task by UID, else by the start of its title, else by a word of it; one only.
@@ -682,73 +750,77 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
     Answer { text: rows(&lines), data }
 }
 
-/// Today laid out, as the Today page shows it: events at their times, the plan's steps in the gaps.
-fn tasks_today(s: &Session, desk: &Desk) -> Answer {
+/// Today laid out, as the Today page shows it: events at their times, the
+/// plan's steps in the gaps, the tasks done; from the one model of time, as
+/// an agent may see it (`Desk::agent_days`). Each thing's lighter ends (an
+/// event's or a step's time kept before and after) are rows of their own,
+/// "margin", as before; the steps of today's plan that find no time left
+/// today are named apart (`planned`), at no time.
+pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let now = Zoned::now();
     let zone = now.time_zone().clone();
-    let day_start = |day: jiff::civil::Date| day.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
-    let midnight = day_start(now.date());
+    let midnight = timeline::midnight(now.date(), &zone);
     // Up to tomorrow's midnight: the day of a clock change has 23 or 25 hours.
-    let mut events = agenda::occurrences(midnight, now.date().tomorrow().map_or(midnight + 86_400, day_start));
-    // Events and steps kept from agents: left out of the day, counted; a
-    // task's block under its task, counted once with its step (review of
-    // 36002ea, low 27).
-    let mut kept_back = std::collections::BTreeSet::new();
-    let mut closed = 0;
-    events.retain(|e| {
-        let shown = desk.consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || desk.allows(&e.task));
-        if !shown && e.task.is_empty() {
-            closed += 1;
-        } else if !shown {
-            kept_back.insert(e.task.clone());
+    let next = now.date().tomorrow().map_or(midnight + 86_400, |d| timeline::midnight(d, &zone));
+    let (agents, closed, occurrences) = desk.agent_days(midnight, next);
+    // A step's weight as the day lays it (`capacity::Planning::rates_of`).
+    let energy: BTreeMap<String, String> = desk.loaded.tasks.iter().map(|t| (t.uid.clone(), desk.settings.capacity.rates_of(t).level().energy().to_string())).collect();
+    let location = |item: &timeline::Item| match &item.source {
+        timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start).map(|o| o.location.clone()).unwrap_or_default(),
+        _ => desk.loaded.tasks.iter().find(|t| t.uid == item.owner).map(|t| t.location.clone()).unwrap_or_default(),
+    };
+    let mut all_day: Vec<String> = Vec::new();
+    let mut planned: Vec<Value> = Vec::new();
+    let mut blocks: Vec<(i64, Value, String)> = Vec::new();
+    let row = |kind: &str, item: &timeline::Item, from: i64, to: i64, uid: &str, energy: &str, location: &str| json!({ "kind": kind, "title": item.title, "start": instant(from), "end": instant(to), "uid": uid, "location": location, "energy": energy });
+    for item in agents.items().iter().filter(|i| i.time.proper(&zone).1 > midnight && i.time.proper(&zone).0 < next) {
+        match (item.kind, item.time) {
+            (timeline::Kind::Event, timeline::Time::Day { .. }) => all_day.push(item.title.clone()),
+            (timeline::Kind::Step, timeline::Time::Day { .. }) => planned.push(json!({ "uid": item.owner, "title": item.title })),
+            (kind, timeline::Time::Span { start, at, until, end }) => {
+                let (name, uid, energy) = match kind {
+                    timeline::Kind::Event => ("event", "", ""),
+                    timeline::Kind::Done => ("done", "", ""),
+                    _ => ("task", item.owner.as_str(), energy.get(&item.owner).map_or("", String::as_str)),
+                };
+                let place = location(item);
+                if start < at {
+                    blocks.push((start, row("margin", item, start, at, "", "", ""), String::new()));
+                }
+                let tail = if name == "task" { format!("  [{uid}]") } else if place.is_empty() { String::new() } else { format!(" · {place}") };
+                blocks.push((at, row(name, item, at, until, uid, energy, &place), format!("  {}  {}{tail}", timeline::range(at, until, &zone), item.title)));
+                if until < end {
+                    blocks.push((until, row("margin", item, until, end, "", "", ""), String::new()));
+                }
+            }
+            _ => {}
         }
-        shown
-    });
-    let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
-    let mut day = dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
-    // Only the events, the steps, the tasks done and their margins, each by
-    // its owner's consent, a thing kept back counted once however many blocks
-    // it has; meals, naps, the time kept free and the time for you never, nor
-    // counted: health and your own time stay out (docs/mcp.md).
-    let own_events: std::collections::BTreeSet<&str> = events.iter().map(|e| e.key.as_str()).collect();
-    day.blocks.retain(|b| match b.kind {
-        "event" => true,
-        "margin" if own_events.contains(b.key.as_str()) => true,
-        "task" | "done" | "margin" if desk.allows(&b.key) => true,
-        "task" | "done" | "margin" => {
-            kept_back.insert(b.key.clone());
-            false
-        }
-        _ => false,
-    });
-    closed += kept_back.len();
-    let hour = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    }
+    blocks.sort_by_key(|(at, _, _)| *at);
     let mut lines = vec![s.tr.text("agenda-today", None)];
-    if !day.all_day.is_empty() {
-        lines.push(format!("  {}", s.say("day-all-day", &[("what", day.all_day.join(", "))])));
+    if !all_day.is_empty() {
+        lines.push(format!("  {}", s.say("day-all-day", &[("what", all_day.join(", "))])));
     }
-    for block in &day.blocks {
-        let tail = if block.kind == "task" { format!("  [{}]", block.key) } else if block.location.is_empty() { String::new() } else { format!(" · {}", block.location) };
-        lines.push(format!("  {}–{}  {}{tail}", hour(block.start), hour(block.end), block.title));
-    }
-    if day.blocks.is_empty() && day.all_day.is_empty() {
+    lines.extend(blocks.iter().filter(|(_, _, line)| !line.is_empty()).map(|(_, _, line)| line.clone()));
+    if blocks.is_empty() && all_day.is_empty() {
         lines.push(format!("  {}", s.tr.text("day-empty", None)));
     }
-    if day.more > 0 {
-        lines.push(s.tr.text("day-more", Some(&s.tr.counted(day.more))));
+    if !planned.is_empty() {
+        let names: Vec<String> = planned.iter().map(|p| format!("{} [{}]", p["title"].as_str().unwrap_or(""), p["uid"].as_str().unwrap_or(""))).collect();
+        lines.push(format!("In today's plan, with no time left for them today: {}.", names.join("; ")));
     }
+    lines.extend(hours_line(s, desk));
     lines.extend(access::left_out(closed));
     lines.extend(access::health_doubt(&desk.consent));
-    let blocks: Vec<Value> = day
-        .blocks
-        .iter()
-        .map(|b| json!({ "kind": b.kind, "title": b.title, "start": instant(b.start), "end": instant(b.end), "uid": if b.kind == "task" { b.key.as_str() } else { "" }, "location": b.location, "energy": b.energy }))
-        .collect();
-    Answer { text: rows(&lines), data: json!({ "all_day": day.all_day, "blocks": blocks, "more": day.more, "kept_from_agents": closed }) }
+    let table: Vec<Value> = blocks.into_iter().map(|(_, row, _)| row).collect();
+    Answer { text: rows(&lines), data: json!({ "all_day": all_day, "blocks": table, "more": planned.len(), "planned": planned, "kept_from_agents": closed }) }
 }
 
-fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> Answer {
-    let mut view = taskview::list(&desk.context(s), by, done, query);
+pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> Answer {
+    // The tasks as data whatever the hour (27 October 2026: in the evening,
+    // the window's quiet time hid the work tasks from agents too).
+    let every = Filter::default();
+    let mut view = taskview::list(&desk.context_with(s, &every), by, done, query);
     // Tasks kept from agents, and a group that held only them: left out, counted.
     let mut closed = 0;
     for group in &mut view.groups {
@@ -775,6 +847,10 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
     if lines.is_empty() {
         lines.push(if query.is_empty() { s.tr.text("task-nothing-ready", None) } else { s.say("task-not-found", &[("what", query.to_string())]) });
     }
+    // The hour, once, when the window would hide some of these now.
+    if let Some(hours) = hours_line(s, desk) {
+        lines.insert(0, hours);
+    }
     if let Some(note) = access::left_out(closed) {
         lines.push(String::new());
         lines.push(note);
@@ -792,43 +868,90 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
 
 // The agenda and contacts.
 
+/// The agenda from `from` for `days` days, as an agent may see it
+/// (`Desk::agent_days`): each day's events, with the same fields as before,
+/// and the steps the plan gives it, within the plan's reach (`steps`: each
+/// task's address, title and time; pinned, done, or of that day's plan with
+/// no time left that day); health and your hours never.
 pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     let zone = TimeZone::system();
-    let from = args.date("from")?.unwrap_or_else(|| Zoned::now().date());
+    let today = Zoned::now().date();
+    let from = args.date("from")?.unwrap_or(today);
     let days = args.number("days", view::AGENDA_DAYS, 1, 92)?;
     let start = from.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
-    let mut events = agenda::occurrences(start, start + days * 86_400 + 3_600);
-    // Events kept from agents (a closed project's, a closed project's step's): left out, counted.
-    let consent = access::of(s, &Loaded::read(&s.config));
-    let before = events.len();
-    events.retain(|e| consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || consent.allows(&links::task_uri(&e.task))));
-    let closed = before - events.len();
-    let shown = view::agenda(&events, from, days, &s.tr, &zone);
+    let desk = Desk::read(s);
+    // Events and steps kept from agents (a closed project's, a closed project's step's): left out, counted.
+    let (agents, closed, occurrences) = desk.agent_days(start, start + days * 86_400 + 3_600);
+    let placed = timeline::days(agents.items(), from, days, today, &zone, &s.tr);
+    let words = sioul_core::words::Words::of(&s.config);
+    let occurrence = |item: &timeline::Item| match &item.source {
+        timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start),
+        _ => None,
+    };
     let mut lines = Vec::new();
     let mut out = Vec::new();
-    for day in shown.days.iter().filter(|d| !d.events.is_empty()) {
+    for day in placed.iter().filter(|d| !d.head.is_empty() || !d.timed.is_empty()) {
         lines.push(day.title.clone());
         let mut events = Vec::new();
-        for event in &day.events {
-            let uri = links::event_uri(&event.uid);
-            let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
-            let gone = if event.cancelled { "× " } else { "" };
-            lines.push(format!("  {}  {gone}{}{place}  <{uri}>", event.when, event.summary));
-            let (_, notes) = mask::message(&sioul_core::words::Words::of(&s.config), "", &event.notes);
-            events.push(json!({
-                "uri": uri, "uid": event.uid, "when": event.when, "start": instant(event.start), "summary": event.summary, "location": event.location,
-                "notes": notes, "calendar": event.calendar, "all_day": event.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
-                "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
-            }));
+        let mut steps = Vec::new();
+        for p in day.head.iter().chain(&day.timed) {
+            let item = &p.item;
+            match item.kind {
+                timeline::Kind::Event | timeline::Kind::Block => {
+                    let Some(event) = occurrence(item) else { continue };
+                    let uri = links::event_uri(&event.uid);
+                    let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
+                    let gone = if event.cancelled { "× " } else { "" };
+                    lines.push(format!("  {}  {gone}{}{place}  <{uri}>", p.when, if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() }));
+                    let (_, notes) = mask::message(&words, "", &event.notes);
+                    events.push(json!({
+                        "uri": uri, "uid": event.uid, "when": p.when, "start": instant(event.start), "summary": event.summary, "location": event.location,
+                        "notes": notes, "calendar": event.calendar, "all_day": p.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
+                        "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
+                    }));
+                }
+                timeline::Kind::Step | timeline::Kind::Done => {
+                    let uri = links::task_uri(&item.owner);
+                    let at_no_time = matches!(item.time, timeline::Time::Day { .. });
+                    let pinned = item.certainty == timeline::Certainty::Held;
+                    let done = item.kind == timeline::Kind::Done;
+                    let said = if done {
+                        "done"
+                    } else if at_no_time {
+                        "in that day's plan, no time left for it that day"
+                    } else if pinned {
+                        "pinned"
+                    } else {
+                        "the plan"
+                    };
+                    let when = if at_no_time { String::new() } else { p.when.clone() };
+                    lines.push(format!("  {}{}  <{uri}>  ({said})", if when.is_empty() { String::new() } else { format!("{when}  ") }, item.title));
+                    let (at, until) = item.time.proper(&zone);
+                    steps.push(json!({ "uri": uri, "uid": item.owner, "title": item.title, "when": when, "start": if at_no_time { String::new() } else { instant(at) }, "end": if at_no_time { String::new() } else { instant(until) }, "done": done, "pinned": pinned, "at_no_time": at_no_time }));
+                }
+                _ => {}
+            }
         }
-        out.push(json!({ "title": day.title, "date": day.date, "events": events }));
+        out.push(json!({ "title": day.title, "date": day.date, "events": events, "steps": steps }));
     }
-    if lines.is_empty() {
-        lines.push(shown.sentence.clone());
+    // Beyond the plan's reach, a day shows its events alone: said once.
+    let last = today.checked_add(jiff::Span::new().days(plan::HORIZON_DAYS - 1)).unwrap_or(today);
+    if from.checked_add(jiff::Span::new().days(days - 1)).is_ok_and(|end| end > last) {
+        lines.push(format!("The plan places steps up to {} ahead: after {last}, each day shows its events alone.", if plan::HORIZON_DAYS == 28 { "four weeks".to_string() } else { format!("{} days", plan::HORIZON_DAYS) }));
     }
+    let sentence = if out.is_empty() {
+        let calendars = agenda::default_calendar().is_some() || !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
+        s.tr.text(if calendars { "agenda-nothing" } else { "agenda-no-calendar" }, None)
+    } else {
+        String::new()
+    };
+    if out.is_empty() {
+        lines.push(sentence.clone());
+    }
+    lines.extend(hours_line(s, &desk));
     lines.extend(access::left_out(closed));
-    lines.extend(access::health_doubt(&consent));
-    Ok(Answer { text: rows(&lines), data: json!({ "from": shown.from, "days": out, "sentence": shown.sentence, "kept_from_agents": closed }) })
+    lines.extend(access::health_doubt(&desk.consent));
+    Ok(Answer { text: rows(&lines), data: json!({ "from": from.to_string(), "days": out, "sentence": sentence, "kept_from_agents": closed }) })
 }
 
 pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {

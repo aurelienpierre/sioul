@@ -47,8 +47,10 @@ impl Default for PimState {
     }
 }
 
-/// Computes both pages on a thread and shows them.
+/// Computes the contacts on a thread and shows them; the agenda follows in
+/// its own job (`agenda::show_agenda`), from the same change.
 pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
+    crate::agenda::show_agenda(qt, shared);
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.pim_job, move |shared| {
         let generation = shared.pim_generation.fetch_add(1, Ordering::Relaxed) + 1;
@@ -58,44 +60,18 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         crate::homecard::agenda_seen(&removed, &skipped);
         let everyone: Vec<contacts::Contact> = contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
         let contacts = json(&view::contacts(&everyone, &state.query, &state.category, tr()));
-        let zone = TimeZone::system();
-        let from = state.from.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
-        let to = from + state.days * 86_400 + 3_600;
-        let now = Zoned::now().timestamp().as_second();
-        let occurrences: Vec<agenda::Occurrence> = agenda_items(from, to, &removed, &skipped, &crate::work::loaded(shared).tasks)
-            .into_iter()
-            // What comes: an event over is the past, shown only when you go back to it.
-            .filter(|o| !state.upcoming || o.end.max(o.start) > now)
-            .collect();
-        let mut shown = view::agenda(&occurrences, state.from, state.days, tr(), &zone);
-        // The planning shows the hours given to something, not the night.
-        view::set_hours(&mut shown, &load_config().week_hours(), &zone);
-        let agenda = json(&shown);
-        let clashes = overlaps(14, &removed, &skipped);
         let _ = qt.queue(move |mut sioul| {
             // Only the newest (see `backend::show`).
             if sioul.shared().pim_generation.load(Ordering::Relaxed) != generation || sioul.shared().pim_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
             sioul.as_mut().set_contacts(QString::from(&contacts));
-            sioul.as_mut().set_agenda(QString::from(&agenda));
-            sioul.as_mut().set_overlaps(QString::from(&clashes));
         });
     });
 }
 
-/// What every agenda shows from `from` to `to` (Unix seconds), the
-/// window's, the phone's and the home card alike (21 October 2026): the
-/// calendars' events, those whose deletion waits ("Undo") aside, a task's
-/// time block marked as the task it is, with its list (`agenda::mark_tasks`).
-pub(crate) fn agenda_items(from: i64, to: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>, tasks: &[sioul_core::tasks::Task]) -> Vec<agenda::Occurrence> {
-    let mut items = agenda_read(from, to, removed, skipped);
-    agenda::mark_tasks(&mut items, tasks);
-    items
-}
-
 /// The calendars' events from `from` to `to`, those whose deletion waits
-/// aside, before their tasks are known (`agenda_items`; the home card marks
+/// aside, before their tasks are known (`agenda::occurrences_between`; the home card marks
 /// them with the tasks of its plan).
 pub(crate) fn agenda_read(from: i64, to: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> Vec<agenda::Occurrence> {
     without_waiting(agenda::occurrences(from, to), removed, skipped)
@@ -417,25 +393,21 @@ struct EventView {
     stays: String,
 }
 
-/// Two events at once in the next `days` days, or closer than a time you set
-/// between them (`overlaps::overlaps`), those set aside left out, as JSON:
+/// Two events at once among `events` (the next two weeks', those whose
+/// deletion waits left out), or closer than a time you set between them
+/// (`overlaps::overlaps`), those set aside left out, as JSON:
 /// [{key, day, today, first, second, gap, needed, at_once, source}], each
 /// event {key, title, from, to} ("09:30"), `gap` and `needed` in minutes,
 /// `source` where that time is set, in words, for the Porch and the agenda.
-pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> String {
+pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
     let now = Zoned::now();
     let zone = now.time_zone().clone();
-    let midnight = now.date().to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
     let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
-    let events: Vec<agenda::Occurrence> = agenda::occurrences(midnight, midnight + days.max(1) * 86_400)
-        .into_iter()
-        .filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start)))
-        .collect();
     let between = load_config().agenda.between();
-    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&events, between)
+    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(events, between)
         .iter()
         // Over already: nothing to do about it.
         .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())

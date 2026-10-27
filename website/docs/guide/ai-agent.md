@@ -58,8 +58,8 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 
 - **The Porch**, lane by lane, in your hours only, unless you ask it to open it. It is told that a code came, never the code.
 - **Your mail**: messages found by their subject, sender or text; one message whole, with who wrote, whether it is genuine or forged and why, and its attachments' names.
-- **Your tasks**: the next step and why, the day laid out, every open task in the plan's order.
-- **Your agenda**, your **contacts**, your **budgets** (each verdict, the reserves, what the money watch noticed), your **notes**, your **projects**.
+- **Your tasks**: the next step and why, the day laid out, every open task in the plan's order, whatever the hour (in your evening it is told first that they wait for their own hours).
+- **Your agenda**, with the steps the plan gives each of the next four weeks' days, your **contacts**, your **budgets** (each verdict, the reserves, what the money watch noticed), your **notes**, your **projects**.
 - **What anything is tied to**, both ways, and anything found by a few words of its title.
 - **Your phone's messages**, as your phone shares them with your computers: who wrote, when, in which app, and the words; a code never, only that one came. And **the calls** your phone screened: who called, when, whether it rang.
 - **Your papers** (what each is, until when it holds, when to renew it), **contracts** (when each renews, the notice it needs), and **paper letters** (who sent each, what it is, the date asked).

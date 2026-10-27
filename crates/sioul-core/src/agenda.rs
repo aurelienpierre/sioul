@@ -633,6 +633,67 @@ pub fn said(refusal: Refusal, change: &Change) -> String {
     crate::i18n::Translator::new(&own().1).text(refusal.word(change), None)
 }
 
+/// The calendars' occurrences as items of the one model of time
+/// (`timeline::Item`): each an event, or a task's time block once its task
+/// is known here (`mark_tasks`; a block given a guest stays an event, a
+/// meeting with others). What may change each is its writers' own rule
+/// (`may_change`): nothing in a calendar you only read, nothing of a meeting
+/// with others but your own lines; a whole day is never dragged; a block is
+/// changed as its task (its Edit is the task's) and never deleted here (its
+/// task lets the plan place it instead). An event's margins are its lighter
+/// ends. `errand` says whether a task (by UID) is a health errand: its block
+/// is health's, never an agent's (`health::is_errand`).
+pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) -> bool) -> Vec<crate::timeline::Item> {
+    use crate::timeline::{Can, Certainty, Form, Item, Kind, Move, Privacy, Source, Time, Tone, block_id, event_id};
+    // Said once for the whole read: a translator is not made per event.
+    let read_only = said(Refusal::ReadOnly, &Change::Move);
+    let with_others = said(Refusal::WithOthers, &Change::Move);
+    let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or_default();
+    occurrences
+        .iter()
+        .map(|o| {
+            let block = !o.task.is_empty() && !o.with_others;
+            let why = if o.read_only {
+                read_only.clone()
+            } else if o.with_others {
+                with_others.clone()
+            } else {
+                String::new()
+            };
+            let free = why.is_empty();
+            let movable = free && !o.all_day;
+            let time = if o.all_day {
+                Time::Day { date: day(o.start), until: day((o.end - 1).max(o.start)) }
+            } else {
+                Time::Span { start: o.start - i64::from(o.margins.before) * 60, at: o.start, until: o.end, end: o.end + i64::from(o.margins.after) * 60 }
+            };
+            Item {
+                id: if block { block_id(&o.key, o.start, o.recurring) } else { event_id(&o.key, o.start, o.recurring) },
+                kind: if block { Kind::Block } else { Kind::Event },
+                time,
+                certainty: if block { Certainty::Held } else { Certainty::Fixed },
+                source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone() },
+                can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free, why },
+                privacy: if block && errand(&o.task) { Privacy::Health } else { Privacy::Admin },
+                title: o.summary.clone(),
+                line: String::new(),
+                said: String::new(),
+                tone: if o.cancelled || o.declined {
+                    Tone::Muted
+                } else if o.tentative {
+                    Tone::Quiet
+                } else {
+                    Tone::Plain
+                },
+                colour: o.color.clone(),
+                address: if block { crate::links::task_uri(&o.task) } else { crate::links::event_uri(&o.uid) },
+                owner: if block { o.task.clone() } else { String::new() },
+                holds_time: o.holds_time(),
+            }
+        })
+        .collect()
+}
+
 /// Time blocks shown as the tasks they are, in every agenda alike (the
 /// window's, the phone's and the home card, 21 October 2026): a block of a
 /// task known here says its task's list; one whose task is not here (deleted,

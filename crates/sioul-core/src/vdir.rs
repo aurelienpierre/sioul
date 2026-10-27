@@ -306,9 +306,11 @@ fn replace_locked(from: &Path, also: &[PathBuf], made: &[(PathBuf, String)], to:
     // of 22 October 2026, F1: both were lost).
     if from != to {
         std::fs::remove_file(from).map_err(|e| e.to_string())?;
+        counted(from);
     }
     for path in also.iter().filter(|p| p.as_path() != to) {
         let _ = std::fs::remove_file(path);
+        counted(path);
     }
     if crashed(4) {
         return Ok(());
@@ -744,7 +746,17 @@ pub fn write_item(path: &Path, text: &str) -> Result<(), String> {
 /// meeting with others (its server would cancel or decline it for them).
 pub fn remove_item(path: &Path) -> Result<(), String> {
     guarded(path, crate::agenda::Change::Delete)?;
-    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    counted(path);
+    Ok(())
+}
+
+/// A write of a task's or an event's file counted (`timeline::written`):
+/// the agenda's layouts made before it are older.
+fn counted(path: &Path) {
+    if path.starts_with(Kind::Calendars.root()) {
+        crate::timeline::note_written();
+    }
 }
 
 /// `agenda::guard` for a file of a collection, its refusal said.
@@ -814,7 +826,9 @@ pub fn store_item(path: &Path, text: &str) -> Result<(), String> {
     }
     let temporary = path.with_extension("tmp");
     std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    std::fs::rename(&temporary, path).map_err(fail)?;
+    counted(path);
+    Ok(())
 }
 
 /// A new item's name: unique, and safe as a file name and in a URL.

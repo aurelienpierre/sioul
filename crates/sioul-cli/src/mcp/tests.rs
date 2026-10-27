@@ -1024,6 +1024,43 @@ fn a_block_given_a_guest_stays_through_every_task_change() {
 
 /// `[mcp] outside_projects = false`: only the projects opened reach an agent;
 /// nothing is written outside them.
+/// The tasks as data whatever the hour (27 October 2026: in the evening,
+/// an agent was told nothing waits): the window's quiet time hides the work
+/// tasks from its pages; an agent's list gives them all the same, and says
+/// once what now is for. Today follows the hour, as the window lays it.
+#[test]
+fn the_list_gives_every_task_whatever_the_hour() {
+    let _home = home();
+    let s = session();
+    let mut desk = super::read::Desk::read(&s);
+    // Asleep, the task pages show no task at all.
+    desk.as_if(sioul_core::areas::Time::Sleep);
+    let list = super::read::tasks_list(&s, &desk, "project", false, "");
+    assert!(list.text.contains("Find the rent receipt"), "{}", list.text);
+    assert!(list.text.starts_with("Now: ") && list.text.contains("These tasks wait for their own hours."), "{}", list.text);
+    let today = super::read::tasks_today(&s, &desk);
+    assert!(today.data["blocks"].as_array().unwrap().iter().all(|b| b["uid"] != "receipt"), "asleep, today lays no step: {}", today.text);
+}
+
+/// The agenda an agent reads holds the plan's steps of each day it reaches,
+/// beside the events (the one model of time, through `ForAgents`): an open
+/// project's task on the day the plan gives it, never a closed project's,
+/// never a meal, a nap or a dose; the days beyond the plan's reach say so.
+#[test]
+fn the_agenda_gives_the_plans_steps() {
+    let _home = home();
+    let mut server = server();
+    let answer = call(&mut server, "agenda", json!({ "days": 35 }));
+    let data = &answer["structuredContent"];
+    let steps: Vec<&Value> = data["days"].as_array().unwrap().iter().flat_map(|d| d["steps"].as_array().unwrap().iter()).collect();
+    assert!(steps.iter().any(|step| step["uid"] == "receipt" && step["uri"] == "sioul:task/receipt"), "{}", text(&answer));
+    assert!(steps.iter().all(|step| step["uri"].as_str().unwrap().starts_with("sioul:task/")));
+    assert!(text(&answer).contains("The plan places steps up to four weeks ahead"), "{}", text(&answer));
+    for word in ["Zeugma", "meal", "nap"] {
+        assert!(!steps.iter().any(|step| step["title"].as_str().unwrap().to_lowercase().contains(&word.to_lowercase())), "{word}");
+    }
+}
+
 #[test]
 fn things_outside_projects_can_be_closed() {
     let home = home();

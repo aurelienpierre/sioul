@@ -58,8 +58,8 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
 
 - **Le Porche**, file par file, seulement dans vos heures, sauf si vous lui demandez de l’ouvrir. On lui dit qu’un code est arrivé, jamais le code.
 - **Vos courriels** : des courriels trouvés par leur objet, leur expéditeur ou leur texte ; un courriel entier, avec qui l’a écrit, s’il est authentique ou falsifié et pourquoi, et le nom de ses pièces jointes.
-- **Vos tâches** : la prochaine étape et pourquoi, le déroulé de la journée, chaque tâche ouverte dans l’ordre du plan.
-- **Votre agenda**, vos **contacts**, vos **budgets** (chaque verdict, les réserves, ce que la veille sur l’argent a remarqué), vos **notes**, vos **projets**.
+- **Vos tâches** : la prochaine étape et pourquoi, le déroulé de la journée, chaque tâche ouverte dans l’ordre du plan, à toute heure (le soir, il lui est d’abord dit qu’elles attendent leurs propres heures).
+- **Votre agenda**, avec les étapes que le plan donne à chaque jour des quatre semaines à venir, vos **contacts**, vos **budgets** (chaque verdict, les réserves, ce que la veille sur l’argent a remarqué), vos **notes**, vos **projets**.
 - **Ce à quoi chaque chose est liée**, dans les deux sens, et toute chose trouvée par quelques mots de son titre.
 - **Les messages de votre téléphone**, tels que votre téléphone les partage avec vos ordinateurs : qui a écrit, quand, dans quelle appli, et les mots ; jamais un code, seulement qu’il en est arrivé un. Et **les appels** que votre téléphone a filtrés : qui a appelé, quand, si ça a sonné.
 - **Vos papiers** (ce qu’est chacun, jusqu’à quand il vaut, quand le renouveler), **vos contrats** (quand chacun se renouvelle, le préavis qu’il demande) et **vos lettres papier** (qui a envoyé chacune, ce que c’est, la date demandée).

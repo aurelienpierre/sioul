@@ -338,7 +338,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "list_tasks",
         title: "Tasks",
-        description: "The person's tasks as data (the default, `list`): every open task in the plan's order, a bigger task followed by its steps, grouped by project (or by task list), each with its UID (for get_task, complete_task, links and link), status, day to start and date asked (`start_date`, `due_date`, local dates, \"\" when none), estimate in minutes and task list. Two views, given only when asked by name: `now`, the one next step for this hour, why, and the one after it (filtered by what the hour is for: it may be empty in the evening); `today`, today's events at their times and the steps the plan gives today. Nothing is ever overdue: a date asked is said as time left.",
+        description: "The person's tasks as data (the default, `list`): every open task in the plan's order, a bigger task followed by its steps, grouped by project (or by task list), each with its UID (for get_task, complete_task, links and link), status, day to start and date asked (`start_date`, `due_date`, local dates, \"\" when none), estimate in minutes and task list, whatever the hour (in a quiet hour its first line says what now is for: those tasks wait for their own hours). Two views, given only when asked by name: `now`, the one next step for this hour, why, and the one after it (filtered by what the hour is for: it may be empty in the evening); `today`, today's events at their times, the steps the plan gives today, and those of today's plan that find no time left today (`planned`). Nothing is ever overdue: a date asked is said as time left.",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -368,7 +368,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "agenda",
         title: "What comes",
-        description: "The events of every calendar, day by day, from a day (today by default) for a number of days (15 by default), each with its sioul:event/ address.",
+        description: "The events of every calendar, day by day, from a day (today by default) for a number of days (15 by default), each with its sioul:event/ address; and, on each day the plan reaches (four weeks), the steps the plan gives it (`steps`: each task's sioul:task/ address, title and time; pinned, done, or in that day's plan with no time left that day). The plan's steps move as the days change: proposals, never promises. Never a meal, a nap or a dose.",
         writes: false,
         idempotent: true,
         open_world: false,

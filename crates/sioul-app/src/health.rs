@@ -733,24 +733,45 @@ fn capitalized(text: &str) -> String {
 /// The health page, as JSON: the week of the day it shows, and what only
 /// today says; the events whose deletion waits (`waiting`) left out.
 pub(crate) fn page(waiting: &Waiting) -> String {
-    let known = load_known();
+    page_of(&Reads::now(), waiting)
+}
+
+/// What the Health job reads once a run (the unified agenda, §8.1): the
+/// health file (or its last read), this device's record of doses, the
+/// records, what your other devices know, and what each device did of a
+/// reminder. The page, the Porch's doses and today's rows are all made from
+/// this one read: what your devices know is taken once (`know`, `KNOWING`).
+pub(crate) struct Reads {
+    known: Option<(Health, bool)>,
+    state: HealthState,
+    records: DoseRecords,
+    knowledge: Knowledge,
+    told: DoseReminders,
+}
+
+impl Reads {
+    pub(crate) fn now() -> Reads {
+        Reads { known: load_known(), state: record(), records: records(), knowledge: know(), told: told().unwrap_or_default() }
+    }
+}
+
+/// The page, from what was read (`Reads`).
+fn page_of(reads: &Reads, waiting: &Waiting) -> String {
     // As last known only when its last read is what is shown (review of 36002ea's check, low 17).
-    let copy = known.as_ref().is_some_and(|(_, last_known)| *last_known);
-    let (health, unreadable) = known.unwrap_or_else(|| (Health::default(), true));
-    let state = record();
-    let knowledge = know();
+    let copy = reads.known.as_ref().is_some_and(|(_, last_known)| *last_known);
+    let (health, unreadable) = reads.known.clone().unwrap_or_else(|| (Health::default(), true));
+    let (state, knowledge, records) = (&reads.state, &reads.knowledge, &reads.records);
     let now = Zoned::now();
     let shown = SHOWN.lock().ok().and_then(|s| *s).unwrap_or(now.date());
-    let records = records();
-    let week = week_view(&health, &state, &records, &knowledge, shown, &now, waiting);
+    let week = week_view(&health, state, records, knowledge, shown, &now, waiting);
     let needs = &health.needs;
     json(&PageView {
         any: unreadable || needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
         // Its medicines as last read, when a copy was kept; else none shown.
         unreadable: if unreadable { tr().text(if copy { "health-last-known" } else { "health-unreadable" }, None) } else { String::new() },
         week,
-        missed: with_lately(missed_rows(&health, &state, &told().unwrap_or_default(), &knowledge, &now, tr()), &health, &state, &now),
-        shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
+        missed: with_lately(missed_rows(&health, state, &reads.told, knowledge, &now, tr()), &health, state, &now),
+        shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(knowledge) },
         reminded_there: [
             REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
             if health.medicines.is_empty() || crate::alarms::notifications_allowed() { String::new() } else { tr().text("dose-notifications-off", None) },
@@ -826,10 +847,13 @@ fn week_view(health: &Health, state: &HealthState, records: &DoseRecords, knowle
     let monday = day.checked_sub(Span::new().days(i64::from(day.weekday().to_monday_zero_offset()))).unwrap_or(day);
     let days = days();
     let events = week_events(monday, &zone, waiting);
-    // Meals move past the events with their margins, as the plan has them.
-    let held = sioul_core::plan::event_spans(&events, 0);
+    // Meals move past the events with their margins, as the plan has them:
+    // today's past this week's events; another day's as the plan placed them
+    // (its own events and the blocks tasks are pinned to: `held_on`).
+    let today_held = sioul_core::plan::event_spans(&events, 0);
+    let held = |date: Date| if date == now.date() { today_held.clone() } else { held_on(date, now) };
     let steps = crate::work::day_steps();
-    let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, records, knowledge, &days, &Around { events: &events, held: &held, steps: &steps }, date, now)).collect();
+    let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, records, knowledge, &days, &Around { events: &events, held: &held(date), steps: &steps }, date, now)).collect();
     // From half an hour before the first thing (waking, the first block or
     // event), to half an hour after the last (bedtime, the last one), whole hours.
     let (mut first, mut last) = (i64::MAX, i64::MIN);
@@ -1215,17 +1239,22 @@ fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, told
 
 /// The Porch's doses, as JSON (`PorchDoses`), made off the window's thread.
 pub(crate) fn missed() -> String {
-    let Some((health, last_known)) = load_known() else {
+    missed_of(&Reads::now())
+}
+
+/// The Porch's doses, from what was read (`Reads`).
+fn missed_of(reads: &Reads) -> String {
+    let Some((health, last_known)) = reads.known.clone() else {
         return json(&PorchDoses { note: tr().text("health-unreadable", None), ..PorchDoses::default() });
     };
     if health.medicines.is_empty() {
         return json(&PorchDoses::default());
     }
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
-    let (state, now) = (record(), Zoned::now());
-    let mut doses = porch_doses(&health, &state, &records(), &told().unwrap_or_default(), &this_device(), &know(), &now, crate::hours::doses_silent(), heard, tr());
-    doses.due = with_lately(doses.due, &health, &state, &now);
-    doses.closed = with_lately(doses.closed, &health, &state, &now);
+    let (state, now) = (&reads.state, Zoned::now());
+    let mut doses = porch_doses(&health, state, &reads.records, &reads.told, &this_device(), &reads.knowledge, &now, crate::hours::doses_silent(), heard, tr());
+    doses.due = with_lately(doses.due, &health, state, &now);
+    doses.closed = with_lately(doses.closed, &health, state, &now);
     // The health file not read here: each dose as last known, to check first (review of 36002ea, can-wait 3).
     if last_known {
         let said = tr().text("dose-last-known", None);
@@ -1719,13 +1748,200 @@ fn shared_note(knowledge: &Knowledge) -> String {
     lines.join(" ")
 }
 
+// ---------------------------------------------------------------- today's doses, one row
+
+/// One dose of today, as every place that shows today's doses reads it (the
+/// unified agenda, §8.1): Health's list, the Porch, the dose card and the
+/// agenda each lay it out their own way, from this one row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct DoseToday {
+    /// `<medicine>@<Unix seconds>`: the key every dose path uses; routing only.
+    pub(crate) key: String,
+    /// Its day: a row of another day is no row of today.
+    pub(crate) day: Date,
+    /// When it is due, Unix seconds.
+    pub(crate) at: i64,
+    /// The medicine's name and the take's amount: for the card, Health's list
+    /// and the Porch, which name the medicine beside its buttons; never the timeline.
+    pub(crate) name: String,
+    pub(crate) amount: String,
+    /// What is known of it, given ahead from the reading to the day's end:
+    /// each state from the moment it holds, in order.
+    pub(crate) states: Vec<GivenState>,
+}
+
+/// A state of a dose from a moment on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct GivenState {
+    /// From when it holds, Unix seconds.
+    pub(crate) from: i64,
+    pub(crate) state: sioul_core::timeline::DoseState,
+    /// The doubt, the question, or the answers that differ, in words; "" for a plain state.
+    pub(crate) words: String,
+}
+
+/// Today's doses as one reading has them (`doses_today`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct DosesToday {
+    /// The day the reading is of.
+    pub(crate) date: Date,
+    /// When it was read, Unix seconds.
+    pub(crate) read_at: i64,
+    /// The health file read here, not as last known: else every open dose
+    /// is to check (`Check`), never plainly due.
+    pub(crate) readable: bool,
+    pub(crate) rows: Vec<DoseToday>,
+}
+
+/// Today's doses from one read (`Reads`), as of `now`: those of the schedule
+/// and those taken today at a time it no longer has, as Health's day lists
+/// them, whatever week the page shows; each with its states given ahead.
+/// Taken, or answered differently on two devices, or due while Sioul was
+/// closed and answered nowhere (the question on the past): so for the day.
+/// Else, before its time, open and not come; from its time, known not
+/// marked on any device from when your devices' news can say so
+/// (`health::known_from`, until `known_until`), open, late past its half
+/// hour; to check while not known. Nothing read here: no row, and the
+/// reading says it (`readable`). No state says "not taken".
+pub(crate) fn doses_today(reads: &Reads, now: &Zoned) -> DosesToday {
+    use sioul_core::timeline::DoseState;
+    let zone = now.time_zone().clone();
+    let today = now.date();
+    let stamp = now.timestamp().as_second();
+    let start = midnight(today, &zone);
+    let next = today.tomorrow().map_or(start + 86_400, |d| midnight(d, &zone));
+    let Some((health, last_known)) = &reads.known else {
+        return DosesToday { date: today, read_at: stamp, readable: false, rows: Vec::new() };
+    };
+    let knowledge = &reads.knowledge;
+    // As last known (the file does not read here): every open dose to check. A record
+    // lost here doubts the doses due before it was found so (`doubts_now`), each said.
+    let readable = !last_known;
+    let (Ok(from_z), Ok(to_z)) = (Timestamp::from_second(start).map(|t| t.to_zoned(zone.clone())), Timestamp::from_second(next).map(|t| t.to_zoned(zone.clone()))) else {
+        return DosesToday { date: today, read_at: stamp, readable, rows: Vec::new() };
+    };
+    // As Health's day lists them (`day_view`): the schedule's, and those taken today at a time it no longer has.
+    let mut doses: Vec<(String, i64, String, String)> = health.doses(&from_z, &to_z).into_iter().map(|d| (d.key, d.at.timestamp().as_second(), d.name, d.dose)).collect();
+    for key in reads.state.taken.keys() {
+        let Some((id, due)) = key.rsplit_once('@') else { continue };
+        let (Some(medicine), Ok(due)) = (health.medicines.iter().find(|m| m.id == id), due.parse::<i64>()) else { continue };
+        if due >= start && due < next && !doses.iter().any(|d| &d.0 == key) {
+            doses.push((key.clone(), due, medicine.short_name(), health.amount_of(key, &zone).unwrap_or_default()));
+        }
+    }
+    doses.sort_by_key(|d| d.1);
+    // Due earlier and answered nowhere: the question on the past.
+    let asked: std::collections::BTreeMap<String, String> = missed_rows(health, &reads.state, &reads.told, knowledge, now, tr()).into_iter().map(|row| (row.key, row.question)).collect();
+    let doubt_at = |due: i64, at: i64| doubt_now_with(knowledge, due, at, tr()).0;
+    let given = |from: i64, state: DoseState, words: String| GivenState { from, state, words };
+    let rows = doses
+        .into_iter()
+        .map(|(key, due, name, amount)| {
+            let states = match sioul_core::doses::answered(&key, &reads.state, &reads.records) {
+                Answered::Taken(answer) => vec![given(stamp, DoseState::Taken { at: answer.at }, String::new())],
+                Answered::Differ(answers) => vec![given(stamp, DoseState::Differ, differ_sentence(&answers, &this_device(), tr()))],
+                // Said not taken: shown as Health's list shows it, open, with the doubt whenever another device may know.
+                _ if asked.contains_key(&key) => vec![given(stamp, DoseState::Asked, asked.get(&key).cloned().unwrap_or_default())],
+                _ => {
+                    let mut out = Vec::new();
+                    if due > stamp {
+                        out.push(given(stamp, DoseState::Open { come: false, late: false }, String::new()));
+                    }
+                    let from = stamp.max(due);
+                    let until = (due + MISSED_HOURS * 3600).min(next).max(from);
+                    let late = due + GRACE_MINUTES * 60;
+                    let known = if readable { sioul_core::health::known_from(due, from, until, knowledge.record_lost, &knowledge.peers) } else { None };
+                    match known {
+                        None => {
+                            // As last known, said; else the doubt that keeps it from being known.
+                            let why = if *last_known { tr().text("dose-last-known", None) } else { doubt_at(due, from) };
+                            out.push(given(from, DoseState::Check { why: why.clone() }, why));
+                        }
+                        Some(known) => {
+                            let known = known.max(from);
+                            if known > from {
+                                let why = doubt_at(due, from);
+                                out.push(given(from, DoseState::Check { why: why.clone() }, why));
+                            }
+                            let ends = sioul_core::health::known_until(due, known, until, knowledge.record_lost, &knowledge.peers).max(known);
+                            out.push(given(known, DoseState::Open { come: true, late: known >= late }, String::new()));
+                            if late > known && late < ends {
+                                out.push(given(late, DoseState::Open { come: true, late: true }, String::new()));
+                            }
+                            if ends < until {
+                                let why = doubt_at(due, ends);
+                                out.push(given(ends, DoseState::Check { why: why.clone() }, why));
+                            }
+                        }
+                    }
+                    out
+                }
+            };
+            DoseToday { key, day: today, at: due, name, amount, states }
+        })
+        .collect();
+    DosesToday { date: today, read_at: stamp, readable, rows }
+}
+
+/// How long a reading of the doses holds what it knows (§8.2): past it,
+/// every open dose is to check, whatever stalls; a dose taken stays taken.
+pub(crate) const READING_HOLDS: i64 = 2 * 60;
+
+/// What a row of today's doses shows at `now` (Unix seconds), on `today`,
+/// read at `read_at`, Sioul back on the screen since `back` (0: never away):
+/// its state given ahead for that moment; a reading of another day, or none
+/// since Sioul came back, is being read (nothing of it carries over, its
+/// "taken" included); an open dose read longer ago than `READING_HOLDS` is to
+/// check. With its words.
+// The dose card reads it in Rust (the unified agenda, part 3); the timeline
+// turns its marks by the same rule from `doseMarks` (`holds`, `old`, `reading`).
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn dose_state(row: &DoseToday, today: Date, now: i64, read_at: i64, back: i64) -> (sioul_core::timeline::DoseState, String) {
+    use sioul_core::timeline::DoseState;
+    if row.day != today || back > read_at {
+        return (DoseState::Reading, tr().text("dose-reading", None));
+    }
+    let Some(given) = row.states.iter().rev().find(|g| g.from <= now).or_else(|| row.states.first()) else {
+        return (DoseState::Reading, tr().text("dose-reading", None));
+    };
+    match &given.state {
+        DoseState::Open { .. } if now - read_at > READING_HOLDS => {
+            let why = tr().text("dose-reading-old", None);
+            (DoseState::Check { why: why.clone() }, why)
+        }
+        state => (state.clone(), given.words.clone()),
+    }
+}
+
+/// The Health page, the Porch's doses and today's meals and naps, from one
+/// read of what is known of the doses (`Reads`).
+fn views(waiting: &Waiting) -> (String, String, String, DosesToday) {
+    let reads = Reads::now();
+    (page_of(&reads, waiting), missed_of(&reads), needs_today(), doses_today(&reads, &Zoned::now()))
+}
+
+/// Today's doses as the timeline marks them (`doseMarks`): each dose's key
+/// (routing only), its day, its minute of the day, its states given ahead
+/// with their words, and the words of "being read" and of a reading grown
+/// old (`dose_state`'s); never a medicine's name.
+fn dose_marks_json(doses: &DosesToday, zone: &TimeZone) -> String {
+    let start = midnight(doses.date, zone);
+    let rows: Vec<serde_json::Value> = doses
+        .rows
+        .iter()
+        .map(|row| serde_json::json!({ "key": row.key, "day": row.day.to_string(), "minute": (row.at - start) / 60, "at": row.at, "states": row.states.iter().map(|g| serde_json::json!({ "from": g.from, "state": g.state, "words": g.words })).collect::<Vec<_>>() }))
+        .collect();
+    json(&serde_json::json!({ "date": doses.date.to_string(), "readable": doses.readable, "holds": READING_HOLDS, "reading": tr().text("dose-reading", None), "old": tr().text("dose-reading-old", None), "rows": rows }))
+}
+
 /// The Health page, the doses due while closed and today's meals and naps,
 /// made on a thread (they read the doses' record and the other devices'
 /// claims, a shared folder that may be slow) and shown.
 pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.health_job, move |shared| {
-        let (view, missed, needs) = (page(&crate::mail::hidden_pim(shared)), missed(), needs_today());
+        let (view, missed, needs, today) = views(&crate::mail::hidden_pim(shared));
+        let (marks, read_at) = (dose_marks_json(&today, &TimeZone::system()), today.read_at);
         if cfg!(target_os = "android") {
             eprintln!("sioul: health: {} medicines, {} prescriptions", load().medicines.len(), load().prescriptions.len());
         }
@@ -1733,6 +1949,8 @@ pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
             sioul.as_mut().set_health_view(QString::from(&view));
             sioul.as_mut().set_missed_view(QString::from(&missed));
             sioul.as_mut().set_needs_view(QString::from(&needs));
+            sioul.as_mut().set_dose_marks(QString::from(&marks));
+            sioul.as_mut().set_dose_read_at(read_at as f64);
         });
     });
 }
@@ -2696,6 +2914,12 @@ pub(crate) struct Knowledge {
 /// One look at a time at the others' claims.
 static KNOWING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread asked what the devices know (`know`): once a Health run.
+    static KNOWN_IN_THREAD: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Whether this device's own pull from the server went through lately, as
 /// `know` last saw it (`share::Others::news`): a phone's alarm takes a
 /// computer's "closed" as its word that it did not remind a dose only then
@@ -2706,6 +2930,8 @@ static PULLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 /// says how far it wrote its records, and whether it closed), set against
 /// what was read of their records here.
 fn know() -> Knowledge {
+    #[cfg(test)]
+    KNOWN_IN_THREAD.with(|n| n.set(n.get() + 1));
     let now = Timestamp::now().as_second();
     let record_lost = record_doubt();
     let Some(others) = crate::share::others_on_health() else {
@@ -3499,6 +3725,14 @@ fn state_held() -> std::sync::MutexGuard<'static, ()> {
     STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// The health locks held at once, as a run of the doses would (`STATE`,
+/// `TICKING`, `KNOWING`): what takes none of them finishes meanwhile (the
+/// agenda's job, a test of it).
+#[cfg(test)]
+pub(crate) fn every_lock_held() -> [std::sync::MutexGuard<'static, ()>; 3] {
+    [state_held(), TICKING.lock().unwrap_or_else(std::sync::PoisonError::into_inner), KNOWING.lock().unwrap_or_else(std::sync::PoisonError::into_inner)]
+}
+
 /// One tick at a time: a slow one (a shared folder) is not overtaken by the next.
 static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -3979,13 +4213,15 @@ fn held_today(now: &Zoned) -> Vec<(i64, i64)> {
     held
 }
 
-/// `date`'s events' held times: today's from the minute's cache, another day's read now.
+/// `date`'s held times, what its meals move past: today's from the minute's
+/// cache; another day's as the plan placed that day's meals (`work::held_on`:
+/// its own events and the blocks tasks are pinned to), so that "15 min later"
+/// moves a meal from where every view shows it.
 fn held_on(date: Date, now: &Zoned) -> Vec<(i64, i64)> {
     if date == now.date() {
         return held_today(now);
     }
-    let start = midnight(date, now.time_zone());
-    sioul_core::plan::event_spans(&sioul_core::agenda::occurrences(start, start + 26 * 3600), 0)
+    crate::work::held_on(date, now)
 }
 
 /// A day's own blocks as they are: its changes, its meals pushed past its events.
@@ -4194,6 +4430,7 @@ fn change_day_seen(date: &str, edit: &DayEdit) -> Result<(Date, Option<sioul_cor
         Err(DayProblem::Times) => Err(tr().text("need-times-wrong", None)),
         Err(DayProblem::TooShort) => Err(tr().text("need-too-short", None)),
         Err(DayProblem::OtherDay) => Err(tr().text("need-other-day", None)),
+        Err(DayProblem::Over) => Err(tr().text("need-over", None)),
         Err(DayProblem::Unknown) => Err(say("setting-unknown-key", &[("key", edit.action.clone())])),
     }
 }
@@ -7680,5 +7917,100 @@ mod tests {
         assert!(row("f-gone").forget && row("f-gone").name == "Another device of yours" && row("f-gone").state.starts_with("Known here by what it shared, last "), "{:?}", row("f-gone"));
         assert!(row("h-after").forget && row("h-after").state.starts_with("An older Sioul: last heard "), "{:?}", row("h-after"));
         assert!(row("g-unknown").forget && row("g-unknown").state == "Known here by what it shared: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.", "{:?}", row("g-unknown"));
+    }
+    /// A Health run reads once what your devices know (`know`, under
+    /// `KNOWING`): its page and its Porch's doses come from one read.
+    #[test]
+    fn a_health_run_reads_what_the_devices_know_once() {
+        let _files = health_files();
+        KNOWN_IN_THREAD.with(|n| n.set(0));
+        let _ = views(&(std::collections::BTreeSet::new(), std::collections::BTreeSet::new()));
+        assert_eq!(KNOWN_IN_THREAD.with(std::cell::Cell::get), 1);
+    }
+
+    /// Today's rows are Health's own day: the doses of the schedule and one
+    /// taken at a time the schedule no longer has, whatever week the page
+    /// shows; each named, with its amount, for the places that name it.
+    #[test]
+    fn today_s_rows_are_health_s_own_day() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        std::fs::write(&health_path, "[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\ndose = \"1 tablet\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n").unwrap();
+        let off = now.date().at(10, 30, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let mut state = HealthState::default();
+        state.taken.insert(format!("lumiel@{off}"), off);
+        std::fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        state.save(&state_path, now.timestamp().as_second()).unwrap();
+        let reads = Reads::now();
+        let rows = doses_today(&reads, &now);
+        let (health, _) = reads.known.clone().unwrap();
+        let day = |shown: Date| {
+            let week = week_view(&health, &reads.state, &reads.records, &reads.knowledge, shown, &now, &(std::collections::BTreeSet::new(), std::collections::BTreeSet::new()));
+            week.days.into_iter().find(|d| d.today).map(|d| d.items.into_iter().filter(|i| i.kind == "dose").map(|i| i.key).collect::<Vec<_>>())
+        };
+        let keys: Vec<String> = rows.rows.iter().map(|r| r.key.clone()).collect();
+        assert_eq!(Some(keys.clone()), day(now.date()), "as Health's day lists them");
+        assert!(keys.contains(&format!("lumiel@{off}")), "the dose taken at a time the schedule no longer has: {keys:?}");
+        let next_week = now.date().checked_add(Span::new().days(7)).unwrap();
+        assert_eq!(day(next_week), None, "the page shows another week: today is not in it");
+        assert_eq!(doses_today(&reads, &now).rows.len(), keys.len(), "the rows are today's all the same");
+        assert!(rows.rows.iter().all(|r| r.name == "Lumiel" && r.amount == "1 tablet" && r.day == now.date()));
+        let taken = rows.rows.iter().find(|r| r.at == off).unwrap();
+        assert_eq!(taken.states.last().map(|g| g.state.clone()), Some(sioul_core::timeline::DoseState::Taken { at: off }));
+        // The timeline's marks name no medicine, nor its amount: the key routes, nothing more.
+        let marks = dose_marks_json(&rows, &zone);
+        assert!(!marks.contains("Lumiel") && !marks.contains("1 tablet") && marks.contains(&format!("lumiel@{off}")), "{marks}");
+    }
+
+    /// A row's states follow the window's clock, given ahead: before its
+    /// time, open; from it, known not marked, then late past its half hour.
+    /// A reading of another day, or none since Sioul came back, is being
+    /// read; one older than two minutes turns an open dose into "check", and
+    /// a dose taken stays taken. Nothing ever says "not taken".
+    #[test]
+    fn a_dose_row_follows_the_clock_and_ages() {
+        use sioul_core::timeline::DoseState;
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let today = jiff::civil::date(2026, 10, 5);
+        let at = |h: i8, m: i8, s: i8| today.at(h, m, s, 0).to_zoned(zone.clone()).unwrap();
+        let health: Health = toml::from_str("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n").unwrap();
+        let reads = |state: HealthState, lost: Option<i64>| Reads { known: Some((health.clone(), false)), state, records: DoseRecords::default(), knowledge: Knowledge { record_lost: lost, peers: Vec::new() }, told: DoseReminders::default() };
+        // Read at 07:59:50, for the 08:00 dose.
+        let read = at(7, 59, 50);
+        let rows = doses_today(&reads(HealthState::default(), None), &read);
+        let row = &rows.rows[0];
+        let stamp = |z: Zoned| z.timestamp().as_second();
+        let (r, today_) = (stamp(read.clone()), today);
+        assert_eq!(dose_state(row, today_, stamp(at(7, 59, 55)), r, 0).0, DoseState::Open { come: false, late: false });
+        assert_eq!(dose_state(row, today_, stamp(at(8, 0, 30)), r, 0).0, DoseState::Open { come: true, late: false }, "its time come, read 40 s ago");
+        assert!(matches!(dose_state(row, today_, stamp(at(8, 2, 0)), r, 0).0, DoseState::Check { .. }), "the reading is older than two minutes");
+        // Late, as given ahead: past its half hour (the reading as fresh as a minute's run keeps it).
+        assert_eq!(dose_state(row, today_, stamp(at(8, 31, 0)), stamp(at(8, 30, 30)), 0).0, DoseState::Open { come: true, late: true });
+        // Read at 08:30, its reminder shown nowhere: the question on the past, never "due" again.
+        let later = doses_today(&reads(HealthState::default(), None), &at(8, 30, 30));
+        assert_eq!(dose_state(&later.rows[0], today_, stamp(at(8, 31, 0)), stamp(at(8, 30, 30)), 0).0, DoseState::Asked);
+        // Read at 23:59 the day before, the window at 00:01: no reading of today.
+        let yesterday = doses_today(&reads(HealthState::default(), None), &today.yesterday().unwrap().at(23, 59, 0, 0).to_zoned(zone.clone()).unwrap());
+        assert!(yesterday.rows.iter().all(|row| dose_state(row, today_, stamp(at(0, 1, 0)), stamp(at(0, 0, 0)) - 60, 0).0 == DoseState::Reading));
+        // Sioul back on the screen after the reading (a phone opened by its alarm at 08:00:10): being read.
+        assert_eq!(dose_state(row, today_, stamp(at(8, 0, 10)), r, stamp(at(8, 0, 10))).0, DoseState::Reading);
+        // Taken stays taken, however old the reading.
+        let mut state = HealthState::default();
+        let key = row.key.clone();
+        state.taken.insert(key, stamp(at(8, 2, 0)));
+        let taken = doses_today(&reads(state, None), &at(9, 0, 0));
+        assert_eq!(dose_state(&taken.rows[0], today_, stamp(at(11, 0, 0)), stamp(at(9, 0, 0)), 0).0, DoseState::Taken { at: stamp(at(8, 2, 0)) });
+        // The health file not read here, its doses as last known: never plainly due, to check, said.
+        let last_known = Reads { known: Some((health.clone(), true)), ..reads(HealthState::default(), None) };
+        let lost = doses_today(&last_known, &read);
+        assert!(!lost.readable);
+        let (state, words) = dose_state(&lost.rows[0], today_, stamp(at(8, 0, 30)), r, 0);
+        assert!(matches!(state, DoseState::Check { .. }) && words == tr().text("dose-last-known", None), "{state:?}");
+        // A record lost here at 06:00 doubts no dose due after it: the 08:00 one is known.
+        let after_loss = doses_today(&reads(HealthState::default(), Some(stamp(at(6, 0, 0)))), &read);
+        assert_eq!(dose_state(&after_loss.rows[0], today_, stamp(at(8, 0, 30)), r, 0).0, DoseState::Open { come: true, late: false });
     }
 }

@@ -1747,11 +1747,11 @@ mod tests {
         assert!(tasks.iter().any(|t| t.uid == "t-agenda" && t.list == "Kinds tasks"));
         let ours = |key: &str| std::path::Path::new(key).starts_with(&calendar.dir) || std::path::Path::new(key).starts_with(&list.dir);
 
-        // The window's and the phone's agenda (`pim::show_pim`).
+        // The window's and the phone's agenda (`agenda::show_agenda`).
         let midnight = now.date().to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let reach = midnight + (HORIZON_DAYS + 1) * 86_400 + 3_600;
         let none = (BTreeSet::new(), BTreeSet::new());
-        let items = crate::pim::agenda_items(midnight, reach, &none.0, &none.1, &tasks);
+        let items = crate::agenda::occurrences_between(midnight, reach, &none.0, &none.1, &tasks);
         let page = sioul_core::view::agenda(&items, now.date(), HORIZON_DAYS + 1, &Translator::new("en"), &zone);
         let mut window: Vec<(String, String, String)> = page.days.iter().flat_map(|d| d.events.iter()).filter(|e| ours(&e.key)).map(|e| (e.summary.clone(), e.task.clone(), e.list.clone())).collect();
         window.sort();

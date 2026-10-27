@@ -93,6 +93,12 @@ pub enum Column {
     Done,
 }
 
+/// How far ahead the plan takes the events into account, in days: four
+/// weeks (the window's and the command line's read of the calendars); beyond,
+/// each day keeps its weekday's whole room. The agenda lays the plan's steps
+/// on these days alone.
+pub const HORIZON_DAYS: i64 = 28;
+
 /// The least a step takes in a day, in minutes: a short one gets air around it.
 pub const SHORTEST: u32 = 15;
 
@@ -344,7 +350,14 @@ impl Settings {
     }
 
     /// The same, another day's meals moved past the events it holds (`held`:
-    /// their times with their margins), as today's are.
+    /// their times with their margins, and the blocks pinned then), as
+    /// today's are: where the plan keeps them, which every view draws and the
+    /// writer of a day's meals moves from (`Needs::change_day`).
+    pub fn needs_on(&self, date: Date, zone: &TimeZone, today: Date, held: &[(i64, i64)]) -> Vec<(i64, i64)> {
+        self.kept_held(date, zone, today, held)
+    }
+
+    /// `needs_on`.
     fn kept_held(&self, date: Date, zone: &TimeZone, today: Date, held: &[(i64, i64)]) -> Vec<(i64, i64)> {
         let pushed = if date == today { self.shifts.clone() } else { self.needs.past_events_on(date, zone, &self.needs_days, held) };
         self.needs.kept_with(date, zone, &self.needs_days, &|key: &str| pushed.get(key).copied().unwrap_or(0)).into_iter().map(|k| (k.start, k.end)).collect()
@@ -453,6 +466,63 @@ impl Settings {
     pub fn rest_days(&self) -> [bool; 7] {
         std::array::from_fn(|d| self.week[d].total() == 0)
     }
+}
+
+/// What the plan's settings are made from, each program reading it its own
+/// way (the window keeps some of it in memory; an agent's server reads it at
+/// each call), then made into settings in one place (`settings_from`), so
+/// that the plan an agent reads is the person's.
+pub struct Inputs<'a> {
+    pub config: &'a crate::config::Config,
+    pub now: &'a Zoned,
+    /// The events from today's midnight, `HORIZON_DAYS` ahead, as read: the
+    /// blocks tasks are pinned to among them.
+    pub read: &'a [Occurrence],
+    /// The blocks tasks are pinned to, sorted out (`blocks::Blocks::of`).
+    pub pins: crate::blocks::Blocks,
+    /// Meals, naps and the night, as usual (`Needs::read`: never a medicine).
+    pub needs: &'a crate::needs::Needs,
+    /// Each day's own meals, naps and nights.
+    pub days: crate::needs::Days,
+    /// What the hours hold now: where the end of work moved by free time starts.
+    pub hour_blocks: crate::quiet::Blocks,
+    pub weather: crate::today::Weather,
+    pub situation: &'a crate::quiet::Situation,
+    pub projects: &'a [crate::projects::Project],
+    pub tasks: &'a [Task],
+    /// The events there are, by UID (`pairs::appointments_here`): what a task
+    /// that prepares one waits for.
+    pub appointments: Option<BTreeMap<String, crate::pairs::Appointment>>,
+}
+
+/// The room for tasks: your hours, each kind for its own tasks, less the
+/// events of the coming weeks and the blocks tasks are pinned to; meals,
+/// naps and the night kept free, today's moved past its events; today's
+/// room from now, scaled by its weather, its end of work moved by free time;
+/// days off closed. What the record says of you (`capacity`) is each
+/// program's to add.
+pub fn settings_from(inputs: Inputs) -> Settings {
+    let Inputs { config, now, read, pins, needs, days, hour_blocks, weather, situation, projects, tasks, appointments } = inputs;
+    // Meals move past the blocks as past any event, as the window moves them.
+    let held = event_spans(read, 0);
+    // A block is its task's time, never an event of its own (docs/tasks.md, "Pinned to a time").
+    let events = crate::blocks::without_blocks(read.to_vec(), tasks);
+    // Today's meals pushed past the events they would fall in (another day's: `with_events`).
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &held);
+    // Today's end of work moved by free time (docs/pauses.md): its room for light steps only.
+    let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
+    let day = crate::pause::Day::of(config, hour_blocks, &events);
+    let extension = crate::pause::moved_today(&overrides, &day.evening(), now, config.free_time.moves);
+    let mut settings = Settings::of_hours(&config.week_hours(), TaskAreas::of_config(config, projects)).with_needs(needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(now, &events);
+    settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
+    // Today by its weather, and no heavier than a hazy day after a pause (docs/pauses.md).
+    (settings.today_percent, settings.heavy_today) = crate::pause::today_level(&overrides, now.date(), weather);
+    settings.closed = situation.closed.clone();
+    settings.office_days = situation.office_days;
+    // A call to an office only while it is open, as the day lays it.
+    settings.office_hours = config.office_hours();
+    settings.appointments = appointments;
+    settings
 }
 
 /// One task in the plan.

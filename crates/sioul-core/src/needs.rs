@@ -336,6 +336,8 @@ impl Days {
             let mut days = Days::load(path);
             let out = change(&mut days);
             days.save(path, today)?;
+            // A day's meals changed: the agenda's layouts made before are older (`timeline::written`).
+            crate::timeline::note_written();
             Ok(out)
         })
     }
@@ -490,6 +492,8 @@ pub enum DayProblem {
     TooShort,
     /// A meal or a nap moved out of its day.
     OtherDay,
+    /// Over already (its end has passed): it no longer moves.
+    Over,
     /// An action this version does not know.
     Unknown,
 }
@@ -845,6 +849,11 @@ impl Needs {
         let pushed = self.past_events_on(date, &zone, days, held);
         let blocks = self.blocks_of(date, &zone, days, &|key: &str| pushed.get(key).copied().unwrap_or(0));
         let current = blocks.iter().find(|k| k.key == edit.key);
+        // Over already: it stays where it was (the window offered no drag; the
+        // writer says it all the same, whoever asks). The night's alarm is no move.
+        if matches!(edit.action.as_str(), "later" | "move" | "times") && current.is_some_and(|k| k.end <= now.timestamp().as_second()) {
+            return Err(DayProblem::Over);
+        }
         let key = edit.key.as_str();
         let night = key == "sleep";
         // A time on that day; the night's before noon, the next morning's.
@@ -992,6 +1001,27 @@ mod tests {
         assert_eq!(Needs::read(&path), Needs::default());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "nothing copied aside");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A meal over no longer moves, whoever asks (the window offers no drag
+    /// for it; the writer refuses it all the same): later, moved, its times;
+    /// what is no move (no notice that day) still goes.
+    #[test]
+    fn a_meal_over_no_longer_moves() {
+        let zone = zone();
+        let now = jiff::civil::date(2026, 10, 5).at(14, 0, 0, 0).to_zoned(zone.clone()).unwrap();
+        let needs = Needs { meals_on: true, ..Needs::default() };
+        let mut days = Days::default();
+        for (action, from, to) in [("later", "", ""), ("move", "13:30", ""), ("times", "12:00", "12:40")] {
+            let edit = DayEdit { key: "meal:1".into(), action: action.into(), from: from.into(), to: to.into(), ..DayEdit::default() };
+            assert_eq!(needs.change_day(&mut days, now.date(), &edit, &now, &[]), Err(DayProblem::Over), "{action}");
+        }
+        assert!(days.0.is_empty(), "nothing written");
+        let quiet = DayEdit { key: "meal:1".into(), action: "quiet".into(), ..DayEdit::default() };
+        assert_eq!(needs.change_day(&mut days, now.date(), &quiet, &now, &[]), Ok(()));
+        // The evening's meal, not over, still moves.
+        let later = DayEdit { key: "meal:2".into(), action: "later".into(), ..DayEdit::default() };
+        assert_eq!(needs.change_day(&mut days, now.date(), &later, &now, &[]), Ok(()));
     }
 
     /// M1 of the check of 1b6795e: a health file of no bytes, or gone though

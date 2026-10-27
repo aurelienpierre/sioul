@@ -25,7 +25,19 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string agendaText: ""
-    readonly property var shown: page.agendaText ? JSON.parse(page.agendaText) : ({ days: [], sentence: "", from: "" })
+    readonly property var shown: page.agendaText ? page.eventsOfDays(JSON.parse(page.agendaText)) : ({ days: [], sentence: "", from: "" })
+
+    // The agenda's days (version 2): each thing an item of the one model of
+    // time as its day places it (`timeline::Placed`), with an event's details.
+    // Drawn as before: each day's events and time blocks, its whole days
+    // first, each with its details, its place in the day and what may change it.
+    function eventOf(row) {
+        return Object.assign({}, row.detail || {}, { id: row.item.id, when: row.when, summary: row.item.title, all_day: row.all_day, from_minute: row.from_minute, to_minute: row.to_minute, column: row.column, columns: row.columns, can: row.item.can })
+    }
+
+    function eventsOfDays(agenda) {
+        return Object.assign({}, agenda, { days: (agenda.days || []).map(day => Object.assign({}, day, { events: (day.head || []).concat(day.timed || []).filter(row => row.detail).map(page.eventOf) })) })
+    }
 
     function takeShown() {
         if (page.visible)
