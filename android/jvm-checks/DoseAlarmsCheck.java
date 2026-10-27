@@ -17,7 +17,8 @@ import java.util.TreeMap;
  * what the last hand listed; none cancelled for another's old list, none
  * doubled, none missed. A dose its receiver asked again later (sleep) is kept
  * at that time by a hand that still lists its dose; a dose past, never
- * armed, is left alone; a process's first hand arms again what is to come.
+ * armed, is left alone; a process's first hand arms again what is to come,
+ * and what is due within the half hour (the chain check of e3505f7, low 24).
  */
 public final class DoseAlarmsCheck
 {
@@ -119,6 +120,19 @@ public final class DoseAlarmsCheck
         stopped.android.clear();
         hand(stopped, new Process(), x, h19 + MIN);
         expect("its first hand: armed again", stopped.android.size(), 2);
+        // A force stop at 07:55, a dose at 08:00, Sioul opened at 08:10: armed again, it rings at once;
+        // opened past the half hour, left to the question on doses due while Sioul was closed.
+        long h0755 = 7 * 60 * MIN + 55 * MIN, h0800 = 8 * 60 * MIN;
+        Phone forced = new Phone();
+        hand(forced, new Process(), doses("corvan@0800", h0800), h0755);
+        forced.android.clear();
+        hand(forced, new Process(), doses("corvan@0800", h0800), h0800 + 10 * MIN);
+        expect("forced to stop, opened within the half hour: armed, it rings at once", forced.android, "{corvan@0800=" + h0800 + "}");
+        Phone longer = new Phone();
+        hand(longer, new Process(), doses("corvan@0800", h0800), h0755);
+        longer.android.clear();
+        hand(longer, new Process(), doses("corvan@0800", h0800), h0800 + 45 * MIN);
+        expect("opened past the half hour: none rings at once", longer.android, "{}");
         System.out.println(failed == 0 ? "DoseAlarmsCheck: " + checked + " checks passed." : "DoseAlarmsCheck: " + failed + " of " + checked + " failed.");
         System.exit(failed == 0 ? 0 : 1);
     }

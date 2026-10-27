@@ -454,6 +454,18 @@ pub fn sweep_after(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTree
     });
 }
 
+/// `sweep_after` taking nothing out: what is used counts as used now (once a
+/// day at most), the rest as it was, for an exchange that cannot tell yet
+/// whether another file or a text holds a content (`share`'s own sweep).
+pub fn keep_used(mine: &mut BTreeMap<String, i64>, used: &BTreeSet<String>, now_ms: i64) {
+    let day = 86_400_000;
+    for (_, last) in mine.iter_mut().filter(|(name, _)| used.contains(*name)) {
+        if now_ms - *last >= day {
+            *last = now_ms;
+        }
+    }
+}
+
 /// The sealed files of the others' notes and papers this device waits for:
 /// their records came, and the files they name are neither in the folder nor
 /// fetched beside it yet (docs/database.md, "Sealed files fetched when

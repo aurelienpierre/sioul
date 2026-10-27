@@ -1627,6 +1627,32 @@ pub(crate) fn marked_lately() -> Vec<(String, i64)> {
     state.taken.keys().chain(state.not_taken.keys()).filter(|key| due_of(key).is_some_and(|due| due >= since)).map(|key| (key.clone(), state.reminded.get(key).copied().unwrap_or(0))).collect()
 }
 
+/// The doses reminded in the last day (here or elsewhere, `HealthState::reminded`)
+/// that the schedule no longer holds, as it reads now, mended from the
+/// record (`load_known`): moved away by a correction, a late Taken or a
+/// change of their medicine on another device, or their medicine taken out
+/// or paused; each with when it was reminded. Their reminders, if shown on a
+/// phone, are taken away (`alarms::schedule`), as an alarm of theirs finds
+/// them (`alarm_decide`). None when nothing reads here: what Android shows
+/// stays, as its alarms do.
+pub(crate) fn reminded_gone() -> Option<Vec<(String, i64)>> {
+    let (health, _) = load_known()?;
+    let state = HealthState::read(&HealthState::default_path()).ok()?;
+    let now = Zoned::now();
+    let stamp = now.timestamp().as_second();
+    let start = now.checked_sub(Span::new().hours(26)).unwrap_or_else(|_| now.clone());
+    let end = now.checked_add(Span::new().hours(ALARMS_AHEAD_HOURS)).unwrap_or_else(|_| now.clone());
+    let held: std::collections::BTreeSet<String> = health.doses(&start, &end).into_iter().map(|d| d.key).collect();
+    Some(
+        state
+            .reminded
+            .iter()
+            .filter(|(key, at)| stamp - **at < 26 * 3600 && !held.contains(*key) && !state.taken.contains_key(*key) && !state.not_taken.contains_key(*key))
+            .map(|(key, at)| (key.clone(), *at))
+            .collect(),
+    )
+}
+
 /// When a dose was last reminded here or elsewhere (`HealthState::reminded`), 0 never or not read.
 pub(crate) fn reminded_at(key: &str) -> i64 {
     HealthState::read(&HealthState::default_path()).ok().and_then(|state| state.reminded.get(key).copied()).unwrap_or(0)
@@ -1689,12 +1715,19 @@ pub(crate) fn alarm_decide(key: &str) -> String {
             return answer(true, "", &format!("{at}. {}{lately}", tr().text("dose-last-known", None)), stamp + SHOWN_EVERY);
         }
         crate::alarms::remove_reminder(key);
+        // Gone (moved, its medicine changed, a change of time zone): Android
+        // handed the doses as they are now, the moved one armed.
+        drop(_held);
+        crate::alarms::schedule();
         return answer(false, "", "", 0);
     };
     let due = dose.at.timestamp().as_second();
-    // Marked, here or on another device: its reminder, if shown, goes.
+    // Marked, here or on another device: its reminder, if shown, goes, and
+    // Android is handed the doses as the mark left them.
     if state.taken.contains_key(key) || state.not_taken.contains_key(key) {
         crate::alarms::remove_reminder(key);
+        drop(_held);
+        crate::alarms::schedule();
         return answer(false, "", "", 0);
     }
     // Reminded already (here, still shown, or on another device): looked at
@@ -3240,7 +3273,11 @@ fn taken_again(key: &str, at: i64) -> String {
     let step = load_known().and_then(|(health, _)| health.step_of(key));
     let again: Option<([i64; 2], Option<i64>)> = match (later, step, state.moved.get(key).copied()) {
         (true, Some(step), Some([before, after])) if at + step != after => {
-            let _ = change_health(|health| Ok(health.moved_on(key, after, at + step)));
+            let backs = backs();
+            let _ = change_health(|health| {
+                health.mend_shifts(&state, &backs);
+                Ok(health.moved_on(key, after, at + step))
+            });
             Some(([before, at + step], Some(after)))
         }
         // Taken at its very time first (nothing moved then): moved now, as a first take moves.
@@ -3391,7 +3428,16 @@ pub(crate) fn taken_late(key: &str, time: &str) -> String {
 /// at its next minute (`Health::mend_shifts`) and this one shows it
 /// (review of 36002ea's check, must-fix 3). Nothing read at all: none.
 fn moved_by(key: &str, at: i64) -> Result<Option<(i64, i64)>, String> {
-    match change_health(|health| Ok(health.taken_at(key, at))) {
+    // Judged on the schedule this device rings by: the file mended first from
+    // the record (a move made on another device whose file did not read lives
+    // there alone), and written so (the chain check of e3505f7, must-fix 2:
+    // a Taken pressed with Sioul closed was checked on the file as written,
+    // and moved nothing).
+    let (state, backs) = (record(), backs());
+    match change_health(|health| {
+        health.mend_shifts(&state, &backs);
+        Ok(health.taken_at(key, at))
+    }) {
         Ok(moved) => Ok(moved),
         Err(_) if Health::read(&Health::default_path()).is_err() => Ok(load_known().and_then(|(mut copy, _)| copy.taken_at(key, at))),
         Err(e) => Err(e),
@@ -4887,6 +4933,95 @@ mod tests {
         let coming: Vec<serde_json::Value> = serde_json::from_str(&alarms_coming().unwrap()).unwrap();
         let at: Vec<i64> = coming.iter().filter_map(|d| d["at"].as_i64()).collect();
         assert!(at.contains(&(replaced * 1000)) && !at.contains(&(moved * 1000)), "the dose of before comes back: {coming:?}");
+    }
+
+    /// The chain check of e3505f7, must-fix 2: a move recorded on another
+    /// device alone (its file did not read there), the phone's file as it
+    /// was: the dose that rings is the moved one, and its Taken, pressed with
+    /// Sioul closed before any minute of the window, moves the next one from
+    /// the press, the file mended and written once.
+    #[test]
+    fn a_taken_with_sioul_closed_is_judged_on_the_moved_schedule() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let stamp = Zoned::now().timestamp().as_second();
+        // Every 6 hours from 7 hours ago; that dose taken an hour later on the
+        // computer: the next one a minute ago, recorded there alone.
+        let (from, due) = (stamp - 7 * 3600, stamp - 60);
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        std::fs::write(&health_path, format!("[[medicine]]\nid = \"corvan\"\nname = \"Corvan\"\n[medicine.schedule]\nevery = \"hours\"\nhours = 6\nfrom = {from}\n")).unwrap();
+        let (first, next) = (format!("corvan@{from}"), format!("corvan@{due}"));
+        HealthState::update(&state_path, stamp, |state| {
+            state.taken.insert(first.clone(), due - 6 * 3600);
+            state.moved.insert(first.clone(), [from, due]);
+        })
+        .unwrap();
+        // The reminder's Taken, Sioul closed: a session of its own, no window (`alarm_taken`).
+        let said: serde_json::Value = serde_json::from_str(&alarm_taken(&next)).unwrap();
+        assert_eq!(said["done"], true, "{said}");
+        let after = Zoned::now().timestamp().as_second();
+        let state = HealthState::read(&state_path).unwrap();
+        let [before, moved] = state.moved.get(&next).copied().expect("the Taken moved the next dose");
+        assert!(before == due && (stamp + 6 * 3600..=after + 6 * 3600).contains(&moved), "{:?}", state.moved);
+        let file = Health::read(&health_path).unwrap();
+        assert!(matches!(file.medicines[0].schedule, Schedule::Hours { from, .. } if from == moved), "the file mended and moved: {:?}", file.medicines[0].schedule);
+    }
+
+    /// The chain check of e3505f7, must-fix 1: a dose reminded, then moved
+    /// away by a change made on another device (a late Taken there, read by
+    /// a background exchange): its reminder is one to take away, at the hand
+    /// that follows; one still due is not; a daily medicine moved from one
+    /// time to another after the first rang leaves the first's to take away;
+    /// nothing reads, nothing taken away.
+    #[test]
+    fn a_reminded_dose_moved_away_is_one_whose_reminder_goes() {
+        let _files = health_files();
+        let (health_path, state_path) = (Health::default_path(), HealthState::default_path());
+        let stamp = Zoned::now().timestamp().as_second();
+        let from = stamp - 10 * 60;
+        std::fs::create_dir_all(health_path.parent().unwrap()).unwrap();
+        let file = |from: i64| format!("[[medicine]]\nid = \"corvan\"\nname = \"Corvan\"\n[medicine.schedule]\nevery = \"hours\"\nhours = 6\nfrom = {from}\n");
+        std::fs::write(&health_path, file(from)).unwrap();
+        let shown = format!("corvan@{from}");
+        HealthState::update(&state_path, stamp, |state| {
+            state.reminded.insert(shown.clone(), stamp - 5 * 60);
+        })
+        .unwrap();
+        assert_eq!(reminded_gone(), Some(Vec::new()), "still due: its reminder stays");
+        // The dose before marked late elsewhere: this one moved half an hour on.
+        std::fs::write(&health_path, file(from + 30 * 60)).unwrap();
+        assert_eq!(reminded_gone(), Some(vec![(shown.clone(), stamp - 5 * 60)]));
+        // Marked: taken away as marked, not as gone.
+        HealthState::update(&state_path, stamp, |state| {
+            state.taken.insert(shown.clone(), stamp);
+        })
+        .unwrap();
+        assert_eq!(reminded_gone(), Some(Vec::new()));
+        // Nothing reads: nothing taken away.
+        std::fs::write(&health_path, "not toml [").unwrap();
+        let _ = std::fs::remove_file(last_read_path(&health_path));
+        assert_eq!(reminded_gone(), None);
+        // A medicine at a set time moved an hour on after it rang (20:00 to
+        // 21:00): the reminder rung goes, and the new time's alarm is the one
+        // to come, one reminder, not two.
+        let now = Zoned::now();
+        let rang = now.checked_sub(Span::new().minutes(10)).unwrap();
+        let later = rang.checked_add(Span::new().hours(1)).unwrap();
+        let day = |at: &Zoned| format!("[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"{}\"]\n", at.strftime("%H:%M"));
+        std::fs::write(&health_path, day(&rang)).unwrap();
+        let near = |health: &Health, at: &Zoned| health.doses(&at.checked_sub(Span::new().minutes(1)).unwrap(), &at.checked_add(Span::new().minutes(1)).unwrap()).into_iter().find(|d| d.key.starts_with("lumiel@")).map(|d| d.key);
+        let rung = near(&load(), &rang).expect("its dose at the time it rang");
+        HealthState::update(&state_path, stamp, |state| {
+            state.reminded.insert(rung.clone(), stamp - 9 * 60);
+        })
+        .unwrap();
+        assert_eq!(reminded_gone(), Some(Vec::new()), "rung, still due: its reminder stays");
+        std::fs::write(&health_path, day(&later)).unwrap();
+        assert_eq!(reminded_gone(), Some(vec![(rung.clone(), stamp - 9 * 60)]), "moved on: the reminder rung goes");
+        let moved = near(&load(), &later).expect("its dose at the new time");
+        let coming: Vec<serde_json::Value> = serde_json::from_str(&alarms_coming().unwrap()).unwrap();
+        let keys: Vec<&str> = coming.iter().filter_map(|a| a["key"].as_str()).collect();
+        assert!(keys.contains(&moved.as_str()) && !keys.contains(&rung.as_str()), "the new time armed, the old one not: {keys:?}");
     }
 
     /// Can-wait 2 and 3 of the review of 36002ea: a health file that does not

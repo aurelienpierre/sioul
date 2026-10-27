@@ -2085,12 +2085,15 @@ pub fn default_path() -> PathBuf {
     config_dir().join("config.toml")
 }
 
-/// Whether this process writes Sioul's files in folders of its own:
-/// XDG_CONFIG_HOME, XDG_DATA_HOME and XDG_STATE_HOME each set, none the
-/// person's own (`~/.config`, `~/.local/share`, `~/.local/state`); or a CI
-/// runner's (`CI=true`), whose home is thrown away after the run. Every test
-/// that writes health, state, config or calendars where Sioul reads them asks
-/// it first (`stand_ins_only`; rules.md; review of 36002ea, can-wait 11).
+/// Whether this process writes Sioul's files in folders of its own: the
+/// four folders XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and
+/// XDG_CACHE_HOME each set, each holding the mark of a folder made for tests
+/// (`STAND_IN_MARK`, which the runners leave), and Sioul's folder in none
+/// the person's own, inside it or holding it (`~/.config`, `~/.local/share`,
+/// `~/.local/state`, `~/.cache`). Every test that writes health, state,
+/// config or calendars where Sioul reads them asks it first
+/// (`stand_ins_only`; rules.md; review of 36002ea, can-wait 11; the check of
+/// 1b6795e, M10).
 pub fn stand_in_folders() -> bool {
     stand_ins(|variable| std::env::var_os(variable))
 }

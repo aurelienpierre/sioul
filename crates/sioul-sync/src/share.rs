@@ -1315,6 +1315,15 @@ fn medicines_in<'a>(entries: impl Iterator<Item = &'a str>) -> usize {
 /// more there now, none left) though its Sioul took none out: those whose
 /// mark of a removal made in Sioul (`removed<SEP><id>`) neither came with
 /// them nor is here. None when the file keeps one, or each is marked.
+/// The medicines whose removal was made in Sioul, by id: their marks
+/// (`removed<SEP><id>`) in the health file here or coming with `changes`.
+fn removal_marks(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> BTreeSet<String> {
+    let here: Vec<(String, String)> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    let mut marked: BTreeSet<String> = here.iter().filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)).collect();
+    marked.extend(changes.iter().filter(|(_, value)| value.is_some()).filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)));
+    marked
+}
+
 fn emptying_removals<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)]) -> BTreeSet<&'a str> {
     let mark = format!("medicine{SEP}{MARK}");
     let here: Vec<(String, String)> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
@@ -1322,13 +1331,11 @@ fn emptying_removals<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option
     if medicines.len() < 2 {
         return BTreeSet::new();
     }
-    let mut marked: BTreeSet<String> = here.iter().filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)).collect();
+    let marked = removal_marks(store, path, changes);
     let mut removals = BTreeSet::new();
     for (entry, value) in changes {
-        if let Some(id) = entry.strip_prefix(&format!("removed{SEP}")) {
-            if value.is_some() {
-                marked.insert(id.to_string());
-            }
+        if entry.starts_with(&format!("removed{SEP}")) {
+            continue;
         } else if entry.starts_with(&mark) {
             if value.is_some() {
                 medicines.insert((*entry).to_string());
@@ -2508,6 +2515,18 @@ struct Memory {
     /// device's records take them out): not held then; forgotten once none is.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     medicines_released: BTreeSet<String>,
+    /// Of each health file, the medicines whose removal is held, by entry:
+    /// going out from here (`medicines_held`, the record's key) or come from
+    /// another device (`medicines_held_there`, the file's entry). Each stays
+    /// held while its removal comes or goes with no mark of Sioul's, until
+    /// you say (`release_medicines`), its mark comes, it is back, or (going
+    /// out) every device took it out: a medicine come back or added beside
+    /// never ends the hold of the others (the chain check of e3505f7,
+    /// can-wait 1: it ended by itself then, and the held removals went).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    medicines_held: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    medicines_held_there: BTreeMap<String, BTreeSet<String>>,
     /// What this device takes out of the folder, and why it waits, as the
     /// last exchange found it (`Leaving`), for Settings.
     #[serde(default, skip_serializing_if = "Leaving::is_empty")]
@@ -5336,19 +5355,32 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     for store in stores.iter().filter(|s| of_medicines(s)) {
         let file = store.name.clone();
         let mark = format!("{file}#medicine{SEP}{MARK}");
+        let removed_of = |key: &str| format!("{file}#removed{SEP}{}", &key[mark.len()..]);
         let known: Vec<(String, String)> = memory.entries.iter().filter(|(key, k)| key.starts_with(&mark) && !k.h.is_empty()).map(|(key, k)| (key.clone(), k.h.clone())).collect();
         let now = found.hashes.keys().filter(|key| key.starts_with(&mark)).count();
-        if known.len() >= 2 && now == 0 && found.files.contains_key(&file) {
-            let on_purpose = known.iter().all(|(key, _)| found.hashes.contains_key(&format!("{file}#removed{SEP}{}", &key[mark.len()..])));
-            if !on_purpose && !memory.medicines_released.contains(&file) {
-                for (key, h) in known {
-                    found.hashes.insert(key, h);
-                }
-                medicines_held = true;
-                outcome.problems.push(format!("share-medicines-emptied:{file}"));
+        let released = memory.medicines_released.contains(&file);
+        let held = memory.medicines_held.entry(file.clone()).or_default();
+        if released {
+            held.clear();
+        } else if held.is_empty() && known.len() >= 2 && now == 0 && found.files.contains_key(&file) {
+            // A hold begins: every medicine gone here, those Sioul did not take out held.
+            held.extend(known.iter().map(|(key, _)| key.clone()).filter(|key| !found.hashes.contains_key(&removed_of(key))));
+        }
+        // Held while it is missing here with no mark, and known as there:
+        // back here, marked, or taken out by the others' records too, it leaves the hold.
+        let entries = &memory.entries;
+        held.retain(|key| !found.hashes.contains_key(key) && !found.hashes.contains_key(&removed_of(key)) && entries.get(key).is_some_and(|k| !k.h.is_empty()));
+        for key in held.iter() {
+            if let Some(k) = entries.get(key) {
+                found.hashes.insert(key.clone(), k.h.clone());
             }
         }
+        if !held.is_empty() {
+            medicines_held = true;
+            outcome.problems.push(format!("share-medicines-emptied:{file}"));
+        }
     }
+    memory.medicines_held.retain(|_, held| !held.is_empty());
     let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
     // The contents of the files sealed apart as this exchange finds them: used
     // in it, so that one replaced in it (here, or by another device's change
@@ -5996,7 +6028,23 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // none out (no mark came with them, `removed`): held, said, until you
         // say ("Take them out here too", `release_medicines`); the rest is
         // written (a medicine added there comes). They wait among what came.
-        let held_there = if of_medicines(store) && !memory.medicines_released.contains(file) { emptying_removals(store, &path, &entries) } else { BTreeSet::new() };
+        let held_there: BTreeSet<&str> = if of_medicines(store) && !memory.medicines_released.contains(file) {
+            let mut held = emptying_removals(store, &path, &entries);
+            // Held before: their removals held still while they come with no
+            // mark, whatever else comes (a medicine added there).
+            let before = memory.medicines_held_there.get(file.as_str()).cloned().unwrap_or_default();
+            let marks = removal_marks(store, &path, &entries);
+            let mark = format!("medicine{SEP}{MARK}");
+            held.extend(entries.iter().filter(|(entry, value)| value.is_none() && before.contains(*entry) && !marks.contains(&entry[mark.len().min(entry.len())..])).map(|(entry, _)| *entry));
+            // What came for one held (a value: it is back) or its mark ends its hold.
+            let came: BTreeSet<&str> = entries.iter().filter(|(entry, value)| value.is_some() || marks.contains(&entry[mark.len().min(entry.len())..])).map(|(entry, _)| *entry).collect();
+            let kept: BTreeSet<String> = before.into_iter().filter(|entry| !came.contains(entry.as_str())).chain(held.iter().map(|e| e.to_string())).collect();
+            memory.medicines_held_there.insert(file.clone(), kept);
+            held
+        } else {
+            memory.medicines_held_there.remove(file.as_str());
+            BTreeSet::new()
+        };
         if !held_there.is_empty() {
             entries.retain(|(entry, _)| !held_there.contains(*entry));
             medicines_held = true;
@@ -6028,7 +6076,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
     }
     // Your word to take the medicines out, once nothing of them is held: forgotten.
-    if !medicines_held {
+    memory.medicines_held_there.retain(|_, held| !held.is_empty());
+    if !medicines_held && memory.medicines_held_there.is_empty() {
         memory.medicines_released.clear();
     }
     for (key, (value, clock, computer)) in winners {
@@ -6246,7 +6295,36 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             _ => true,
         });
         removed_by_rounds(sharing.folder, &memory.sealed, &judged, &reading, &mut last, days, early, now_ms);
-        crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
+        // By time, once no text names it either: a content of its own may be
+        // a text's picture too, one taken as its own when a paper of the same
+        // bytes named it (`fresh_again`), or a paper sealed here that a text
+        // named later, and no device seals a text's picture again (the chain
+        // check of e3505f7, must-fix 3). The texts' media are read only when
+        // one is due, in a whole exchange (one that must be quick leaves it
+        // for the next whole one), and while they are not known here (not
+        // shared on this device while a phone counts) nothing goes by time.
+        // Another device whose own record names the same bytes, in a part not
+        // shared here, seals them again from its file (`look_after_sealed`).
+        let unused = days * DAY;
+        let blobs = sharing.folder.join("blobs");
+        let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+        let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
+        let mut used = used;
+        let by_time = if !due {
+            true
+        } else if !sharing.files && texts_shared(stores) {
+            false
+        } else if let Some(media) = texts_media(sharing, stores, &memory, &counts) {
+            used.extend(media);
+            true
+        } else {
+            false
+        };
+        if by_time {
+            crate::blobs::sweep_after(sharing.folder, &mut last, &used, now_ms, days);
+        } else {
+            crate::blobs::keep_used(&mut last, &used, now_ms);
+        }
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
     // The others' contents that stopped being current here; those of a

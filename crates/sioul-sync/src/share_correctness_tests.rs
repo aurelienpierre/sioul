@@ -1579,6 +1579,11 @@ fn the_medicines_removed_in_sioul_go_and_a_hold_ends_when_asked() {
     round(&phone);
     round(&desk);
     assert!(ids(&desk).contains(&"mirel".to_string()), "a medicine added there comes: {:?}", ids(&desk));
+    // A medicine back in the desk's file never ends the others' hold (the chain check of e3505f7, can-wait 1).
+    let said = round(&desk);
+    assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied:")), "still held: {said:?}");
+    round(&phone);
+    assert_eq!(ids(&phone), ["corvan", "lumiel", "mirel"], "the phone keeps them still");
     // Asked on the desk: taken out everywhere.
     release_medicines(&desk.memory, &desk.id, "data/health.toml").unwrap();
     round(&desk);
@@ -1625,10 +1630,20 @@ fn removals_from_elsewhere_with_no_mark_wait_until_asked_here() {
     assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied-there:")), "held here, said: {said:?}");
     assert_eq!(ids(&phone), ["corvan", "lumiel"], "kept here");
     assert!(phone.read("data/health.toml").contains("heads_up = 20"), "the rest written");
+    // A medicine added on the desk meanwhile comes; the held removals stay held (the chain check of e3505f7, can-wait 1).
+    Health::change(&desk.path("data/health.toml"), |h| {
+        h.medicines.push(medicine("mirel"));
+        Ok(())
+    })
+    .unwrap();
+    round(&desk);
+    let said = round(&phone);
+    assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied-there:")), "still held here: {said:?}");
+    assert_eq!(ids(&phone), ["corvan", "lumiel", "mirel"], "kept here, the new one come");
     // Asked here: taken out here too, and nothing held after.
     release_medicines(&phone.memory, &phone.id, "data/health.toml").unwrap();
     let said = round(&phone);
-    assert!(ids(&phone).is_empty(), "taken out here: {said:?}");
+    assert_eq!(ids(&phone), ["mirel"], "taken out here: {said:?}");
     let said = round(&phone);
     assert!(!said.problems.iter().any(|p| p.contains("medicines-emptied")), "settled: {said:?}");
     let _ = std::fs::remove_dir_all(&base);
@@ -1679,10 +1694,17 @@ fn the_sharing_never_takes_every_medicine_out() {
     assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied:")), "{said:?}");
     round(&phone);
     assert_eq!(held(&phone), 2, "kept on the phone");
-    // One back on the desk: the sharing goes on, from there.
+    // One back on the desk: it goes on from there, and the other's removal,
+    // made with no word of Sioul's, stays held and said until asked (the
+    // chain check of e3505f7, can-wait 1: it went then, nothing said).
     Health { medicines: vec![medicine("lumiel")], ..Health::default() }.save(&desk.path("data/health.toml")).unwrap();
+    let said = round(&desk);
+    assert!(said.problems.iter().any(|p| p.starts_with("share-medicines-emptied:")), "still held: {said:?}");
+    round(&phone);
+    assert_eq!(held(&phone), 2, "the other kept on the phone");
+    release_medicines(&desk.memory, &desk.id, "data/health.toml").unwrap();
     round(&desk);
     round(&phone);
-    assert_eq!(held(&phone), 1, "the change spreads once a medicine is there");
+    assert_eq!(held(&phone), 1, "asked: the change spreads");
     let _ = std::fs::remove_dir_all(&base);
 }

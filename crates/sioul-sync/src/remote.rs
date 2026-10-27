@@ -7540,7 +7540,11 @@ mod tests {
         std::fs::create_dir_all(&pn).unwrap();
         let texts = w.phone.roots.data.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG).join(format!("{}.jsonl", w.phone.id));
         std::fs::create_dir_all(texts.parent().unwrap()).unwrap();
-        let text_line = |n: usize| format!("{{\"n\":{n},\"padded\":\"{}\"}}\n", "x".repeat(230));
+        // Each line sealed at rest, as `texts::append` writes them: a sweep
+        // by time reads the texts' media first, and a line that does not
+        // open keeps every content (the chain check of e3505f7, must-fix 3).
+        let seal = crate::textseal::TextSeal::new(&KEY);
+        let text_line = |n: usize| format!("{}\n", sioul_core::texts::Sealer::seal(&seal, &format!("{{\"n\":{n},\"padded\":\"{}\"}}", "x".repeat(230))));
         std::fs::write(&texts, (0..3_000).map(text_line).collect::<String>()).unwrap();
         let mut texts_made = 3_000;
         // Sealed files dated long ago in real time, the same in every copy:

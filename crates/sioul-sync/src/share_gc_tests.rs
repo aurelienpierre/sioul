@@ -2502,3 +2502,60 @@ fn a_take_out_read_in_a_background_step_is_noted_once_written() {
     assert!(Memory::load_all(&laptop.memory, &laptop.id).sealed.takes.is_empty());
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The chain check of e3505f7, must-fix 3: a text's picture, sealed by the
+/// phone as a text's (no device's own), then kept as a paper of the same
+/// bytes there: the paper's change takes the content as the phone's own
+/// (`fresh_again`). The paper removed, two weeks and a day on, the phone's
+/// own sweep by time reads the texts first: the picture stays in the folder,
+/// so on the server too, while a text names it.
+#[test]
+fn a_text_s_picture_taken_as_a_paper_s_stays_while_a_text_names_it() {
+    use sioul_core::texts;
+    let base = scratch("gc-text-picture-own");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    put(&pn, "b.md", b"# A note that stays\n");
+    with_texts(&phone, &folder, &key, NOW, &pn);
+    with_texts(&desk, &folder, &key, NOW + MINUTE, &dn);
+    // The picture a text brought, sealed by the phone's texts (`texts::store`'s way: `blobs::put`).
+    let picture = b"a photograph, fiction\n".repeat(60);
+    let path = base.join("photo");
+    std::fs::write(&path, &picture).unwrap();
+    let (hash, size) = crate::blobs::hash_file(&path).unwrap();
+    crate::blobs::put(&folder, &key, &path, &hash).unwrap();
+    let seal = crate::textseal::TextSeal::new(&key);
+    let own = texts::own_file(&phone.roots.data.join(texts::FOLDER), texts::LOG, &phone.id);
+    let part = texts::Part { seq: 0, ct: "image/jpeg".into(), hash: hash.clone(), size, state: "here".into(), ..texts::Part::default() };
+    let text = texts::Text { id: "mms-7@1790000000000".into(), at: NOW, direction: "in".into(), with: vec!["+33199001234".into()], parts: vec![part], ..texts::Text::default() };
+    let id = |t: &texts::Text| t.line_id();
+    texts::append(&own, std::slice::from_ref(&text), &seal, Some(&id)).unwrap();
+    let medium = crate::blobs::name(&key, &hash);
+    with_texts(&phone, &folder, &key, NOW + 2 * MINUTE, &pn);
+    assert!(!Memory::load_all(&phone.memory, &phone.id).sealed.mine.contains_key(&medium), "a text's picture is no device's own");
+    // Kept as a paper on the phone: the same bytes, taken as the phone's own.
+    put(&pn, "papers/photo.jpg", &picture);
+    put(&pn, "papers/lease.pdf", b"%PDF-1.4 a lease, fiction\n");
+    with_texts(&phone, &folder, &key, NOW + 3 * MINUTE, &pn);
+    assert!(Memory::load_all(&phone.memory, &phone.id).sealed.mine.contains_key(&medium), "the paper's change took it as its own");
+    with_texts(&desk, &folder, &key, NOW + 4 * MINUTE, &dn);
+    // The paper removed; read on the desk; then two weeks and a day.
+    std::fs::remove_file(pn.join("papers/photo.jpg")).unwrap();
+    with_texts(&phone, &folder, &key, NOW + 5 * MINUTE, &pn);
+    assert_eq!(with_texts(&phone, &folder, &key, NOW + 16 * MINUTE, &pn).sent, 1);
+    with_texts(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    with_texts(&phone, &folder, &key, NOW + 18 * MINUTE, &pn);
+    assert!(sealed(&folder, &medium), "named by a text: never at once");
+    sealed_days_ago(&folder, &medium, 30);
+    with_texts(&phone, &folder, &key, NOW + 15 * DAY_MS, &pn);
+    assert!(sealed(&folder, &medium), "named by a text: never by time either");
+    // The texts not readable in an exchange that must be quick: nothing goes by time then.
+    let quick = Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None };
+    exchange(&quick, &stores_with(&phone, &pn, true), NOW + 16 * DAY_MS).unwrap();
+    assert!(sealed(&folder, &medium));
+    let _ = std::fs::remove_dir_all(&base);
+}

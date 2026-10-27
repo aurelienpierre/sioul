@@ -280,7 +280,11 @@ final class DoseAlarms
                 if (again)
                     put(entry, AGAIN, true);
                 plan.record.put(entry);
-                if (was == null || was.optLong("at") != when || (!armedHere && when > now))
+                // A process's first hand arms again what is to come and what
+                // is due within GRACE_MS, which Rust decides when it rings: a
+                // force stop at 07:55, a dose at 08:00, Sioul opened at 08:10
+                // rings it at once (the chain check of e3505f7, low 24).
+                if (was == null || was.optLong("at") != when || (!armedHere && when >= now - GRACE_MS))
                     plan.arm.add(entry);
             }
             for (String key : before.keySet())

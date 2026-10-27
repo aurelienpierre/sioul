@@ -80,15 +80,20 @@ pub(crate) fn health_written(outcome: &sioul_sync::share::Outcome) -> bool {
 
 /// The coming doses given to Android's alarm clock: at each minute of the
 /// window, when it is put away, after a dose is marked or Health's settings
-/// saved, and after every exchange without the window that wrote the doses'
-/// files (`share::exchange_here`, `health_written`: the background step's, a
-/// dose's alarm's, the waking's, a reminder's button's);
+/// saved, after every exchange that wrote the doses' files, wherever it runs
+/// (`share::exchanged`, `health_written`: the window's, its close's, the
+/// background step's, a dose's alarm's, the waking's, a reminder's
+/// button's), and when a dose's alarm finds its dose gone or marked
+/// (`health::alarm_decide`);
 /// the alarm at waking with them (`wake`), which keeps its own list, codes
 /// and receiver. Handed each time: what Android holds is judged on Java's
 /// side against the one record every process of Sioul reads fresh under one
 /// lock (`DoseAlarms.Plan`), never against what this process last handed,
 /// which another process may have changed since (the check of 1b6795e, H1);
-/// nothing changes there when nothing changed.
+/// a hand arms again only what changed, and at a process's first hand what
+/// is due within the half hour too (`DoseAlarms.Plan`); it ends the
+/// quarter-hour look at a reminder shown of a dose no longer listed: that
+/// reminder is taken away here (`health::reminded_gone`).
 pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
@@ -98,6 +103,16 @@ pub(crate) fn schedule() {
     let gone: Vec<(String, i64)> = crate::health::marked_lately().into_iter().filter(|(key, reminded)| REMOVED.lock().is_ok_and(|removed| removed.get(key) != Some(reminded))).collect();
     for (key, reminded) in gone {
         remove_reminder_of(&key, reminded);
+    }
+    // The reminders of doses the schedule no longer holds (moved away, their
+    // medicine changed, taken out or paused) taken away too: every hand
+    // cancels the quarter-hour look at a reminder shown (`DoseAlarms.Plan`),
+    // which took them away before (the chain check of e3505f7, must-fix 1);
+    // nothing when nothing reads.
+    for (key, reminded) in crate::health::reminded_gone().unwrap_or_default() {
+        if REMOVED.lock().is_ok_and(|removed| removed.get(&key) != Some(&reminded)) {
+            remove_reminder_of(&key, reminded);
+        }
     }
     // Nothing reads here, the health file nor its last read: Android keeps the alarms it has.
     let Some(coming) = crate::health::alarms_coming() else { return };

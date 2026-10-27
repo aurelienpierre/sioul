@@ -3083,8 +3083,8 @@ share-emptied = { $file } is empty here: nothing of it is taken out on your othe
 share-not-medicines = A change of your medicines from another device would not read as medicines here: it waits, and { $file } stays as it is.
 share-medicines-take-out-everywhere = Take them out everywhere
 share-medicines-take-out-here = Take them out here too
-share-medicines-emptied = Every medicine went from { $file } here, though Sioul took none out: your other devices keep theirs, and their changes still come. If you meant it, take them out everywhere.
-share-medicines-emptied-there = Another device takes every medicine out of { $file }, though Sioul took none out there: they stay here, and the rest of its changes come. If you meant it, take them out here too.
+share-medicines-emptied = The medicines went from { $file } here all at once, though Sioul took none out: your other devices keep theirs, and their changes still come. If you meant it, take them out everywhere.
+share-medicines-emptied-there = Another device took the medicines out of { $file } all at once, though Sioul took none out there: they stay here, and the rest of its changes come. If you meant it, take them out here too.
 share-files-unreadable = Notes and papers wait: without Android's access to all your files, Sioul cannot see those other apps made, and would take them for gone.
 # Fetched from the server too (docs/database.md): the other devices' files read on the server that holds the sharing folder, beside the sync app.
 share-backup-switch = Also fetch them from the server

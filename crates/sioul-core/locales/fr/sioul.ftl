@@ -3101,8 +3101,8 @@ share-emptied = { $file } est vide ici : rien n’en est retiré sur vos autre
 share-not-medicines = Un changement de vos médicaments venu d’un autre appareil ne se lirait pas ici comme des médicaments : il attend, et { $file } reste tel qu’il est.
 share-medicines-take-out-everywhere = Les retirer partout
 share-medicines-take-out-here = Les retirer ici aussi
-share-medicines-emptied = Tous les médicaments sont partis de { $file } ici, sans que Sioul en retire aucun : vos autres appareils gardent les leurs, et leurs changements arrivent toujours. Si vous le vouliez, retirez-les partout.
-share-medicines-emptied-there = Un autre appareil retire tous les médicaments de { $file }, sans que Sioul en ait retiré aucun là-bas : ils restent ici, et le reste de ses changements arrive. Si vous le vouliez, retirez-les ici aussi.
+share-medicines-emptied = Les médicaments sont partis d’un coup de { $file } ici, sans que Sioul en retire aucun : vos autres appareils gardent les leurs, et leurs changements arrivent toujours. Si vous le vouliez, retirez-les partout.
+share-medicines-emptied-there = Un autre appareil a retiré d’un coup les médicaments de { $file }, sans que Sioul en ait retiré aucun là-bas : ils restent ici, et le reste de ses changements arrive. Si vous le vouliez, retirez-les ici aussi.
 share-files-unreadable = Les notes et les papiers attendent : sans l’accès d’Android à tous vos fichiers, Sioul ne voit pas ceux faits par d’autres applications, et les croirait partis.
 # Cherché aussi sur le serveur (docs/database.md) : les fichiers des autres appareils lus sur le serveur qui garde le dossier de partage, à côté de l’application de synchronisation.
 share-backup-switch = Aller aussi les chercher sur le serveur

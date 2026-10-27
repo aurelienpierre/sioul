@@ -1450,6 +1450,21 @@ static CLAIMING: Mutex<()> = Mutex::new(());
 /// The parts this computer claims (`keeper`): closed together.
 const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 
+/// After every exchange, wherever it runs (the window's, its close, one
+/// without the window: the background step's, a dose's alarm's, the
+/// waking's, a reminder's button's): what it read and wrote said in this
+/// device's entry (`devices::exported`), and Android handed the doses when it
+/// wrote their files (a mark, a move, a take back, a medicine come from
+/// another device: `alarms::health_written`), so that a moved dose rings at
+/// its new time and a gone one at none (the A3 dose model; the chain check
+/// of e3505f7: the close's exchange handed nothing).
+fn exchanged(outcome: &share::Outcome) {
+    crate::devices::exported(outcome);
+    if crate::alarms::health_written(outcome) {
+        crate::alarms::schedule();
+    }
+}
+
 /// Sioul closes, or is put away on a phone: what was marked goes out at once
 /// (an exchange, waiting for one running), then its claims say it closed and
 /// how far it wrote, so the others know it marks nothing until it is back
@@ -1471,7 +1486,7 @@ pub(crate) fn closing() {
         let stores = stores_here(&here);
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
         if let Ok(outcome) = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond()) {
-            crate::devices::exported(&outcome);
+            exchanged(&outcome);
         }
     }
     {
@@ -1900,16 +1915,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
     let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     if let Ok(outcome) = &outcome {
-        // What it wrote of the doses' files (a mark, a move, a take back, a
-        // medicine come from another device): Android handed the doses anew,
-        // whatever ran it, a dose's own alarm, the waking's, a reminder's
-        // button or the background step (`alarms::schedule`; the A3 dose
-        // model: an alarm whose own exchange brought a move left Android
-        // ringing the old times, and the moved doses nowhere).
-        if crate::alarms::health_written(outcome) {
-            crate::alarms::schedule();
-        }
-        crate::devices::exported(outcome);
+        exchanged(outcome);
         // Sioul keeping the folder itself: what it wrote goes up now; off this
         // thread for a quick exchange ("Taken" pressed: Android waits eight
         // seconds for its answer), the background step waiting for it.
@@ -2040,8 +2046,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         let (mut received, mut pending, mut waits, mut no_blob) = (0, 0, String::new(), false);
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
-                // What it read and wrote, said in this device's entry (docs/database.md, "Devices").
-                crate::devices::exported(&outcome);
+                // What it read and wrote, said in this device's entry (docs/database.md, "Devices"); the doses handed.
+                exchanged(&outcome);
                 (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
                 no_blob = outcome.waits.contains_key("no-blob");
                 // The notes and papers held after going many at once, for the Porch and Settings (`withheld`).
