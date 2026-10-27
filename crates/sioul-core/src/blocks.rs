@@ -493,7 +493,7 @@ mod tests {
         let text = new_block(&bank, "block-1", at("2026-10-06T14:00"), at("2026-10-06T14:45"), false, &now()).unwrap();
         // Busy, its task named twice: Sioul's own line and an RFC 9253 link; no alarm unless asked.
         assert!(text.contains("TRANSP:OPAQUE") && text.contains("X-SIOUL-TASK:bank-1") && text.contains("SUMMARY:Call the bank\\, about the loan"), "{text}");
-        assert!(lines::unfold(&text).iter().any(|l| l == "LINK;LINKREL=\"tag:aurelienpierre.com,2026:sioul/rel/block-of\";VALUE=UID:bank-1"), "{text}");
+        assert!(lines::unfold(&text).iter().any(|l| l == "X-SIOUL-LINK;LINKREL=related;X-SIOUL-REL=\"tag:aurelienpierre.com,2026:sioul/rel/block-of\";VALUE=UID:bank-1"), "{text}");
         assert!(!text.contains("VALARM") && !text.contains("X-SIOUL-TURN"), "{text}");
         assert!(agenda::parse(&text).is_some());
         let with_alarm = new_block(&bank, "block-2", at("2026-10-06T14:00"), at("2026-10-06T14:45"), true, &now()).unwrap();
@@ -510,7 +510,7 @@ mod tests {
         let linked = task_pinned(&task_text, Some("block-1"), &now()).unwrap();
         let read = tasks::task_of_text(&linked, &paris()).unwrap();
         assert_eq!(read.links, vec![task_link("block-1")]);
-        assert!(lines::unfold(&linked).iter().any(|l| l == "LINK;LINKREL=\"tag:aurelienpierre.com,2026:sioul/rel/time-block\";VALUE=UID:block-1"), "{linked}");
+        assert!(lines::unfold(&linked).iter().any(|l| l == "X-SIOUL-LINK;LINKREL=related;X-SIOUL-REL=\"tag:aurelienpierre.com,2026:sioul/rel/time-block\";VALUE=UID:block-1"), "{linked}");
         assert_eq!(task_pinned(&linked, Some("block-1"), &now()).unwrap(), linked);
         // Pinned elsewhere: the old link goes; to none: no link to a block left.
         let other = tasks::task_of_text(&task_pinned(&linked, Some("block-9"), &now()).unwrap(), &paris()).unwrap();

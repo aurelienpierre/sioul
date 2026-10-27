@@ -489,16 +489,18 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 | Une étape d’une tâche plus grande | `RELATED-TO;RELTYPE=PARENT:<UID>`, dans l’étape |
 | Sa place parmi les étapes | `X-APPLE-SORT-ORDER`, comme l’écrivent Nextcloud Tasks, Tasks.org et Rappels d’Apple |
 | Une liste à cocher | des lignes d’une liste de tâches GitHub dans ses notes (`DESCRIPTION`) : `- [ ]`, `- [x]`, et `- [-]` pour pas besoin cette fois |
-| Attend une autre tâche | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), dans la tâche qui attend |
-| Attend, avec un délai (« la réponse vient sous deux semaines ») | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import`, et par **Puis attendre** dans le formulaire. Lu de tout programme, `NEXT` aussi |
-| Peut commencer le ; la date demandée | `DTSTART` ; `DUE` |
+| Attend une autre tâche | `X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (le type de la RFC 9253 §5), dans la tâche qui attend |
+| Attend, avec un délai (« la réponse vient sous deux semaines ») | `X-SIOUL-RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import`, et par **Puis attendre** dans le formulaire. Lu de tout programme sous la forme propre à la RFC 9253 aussi (`RELATED-TO`), `NEXT` aussi |
+| Peut commencer le ; la date demandée | `DTSTART` (gardé aussi dans `X-SIOUL-START` là où un téléphone le perdrait : le même jour que sa date demandée) ; `DUE` |
 | Le temps qu’elle prend | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
-| Son type ; « demande un bureau ouvert » | `CONCEPT` avec une URI tag (RFC 9253 §8.1, RFC 4151) |
-| Son projet | `REFID` (RFC 9253 §8.3) |
-| Ses notes, le courriel d’où elle vient, ses brouillons, un événement | `LINK` avec un `LINKREL` `describedby`, `via` ou `related` ; un courriel en `mid:` (RFC 2392) |
+| Son type ; « demande un bureau ouvert » | `X-SIOUL-CONCEPT;VALUE=URI` avec une URI tag (le `CONCEPT` de la RFC 9253 §8.1, RFC 4151) |
+| Son projet | `X-SIOUL-REFID` (le `REFID` de la RFC 9253 §8.3) |
+| Ses notes, le courriel d’où elle vient, ses brouillons, un événement | `X-SIOUL-LINK` (le `LINK` de la RFC 9253) avec un `LINKREL` `describedby`, `via` ou `related` ; un courriel en `mid:` (RFC 2392) |
 | Les personnes et les bureaux concernés | `CONTACT;ALTREP="sioul:contact/<UID>"` |
 | Coûts, apport, notes ressenties, première estimation, temps avant et après, domaine, horaires du bureau, facturé | `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN`, `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-AREA`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-BILLABLE` |
-| Fixée à une heure | un `VEVENT` dans un agenda, lié dans les deux sens : un `LINK` avec un `LINKREL` en URI tag dans chacun, et `X-SIOUL-TASK` dans l’événement |
+| Fixée à une heure | un `VEVENT` dans un agenda, lié dans les deux sens : un `X-SIOUL-LINK` avec une relation en URI tag (`X-SIOUL-REL`) dans chacun, et `X-SIOUL-TASK` dans l’événement |
+
+Les liens, les types, les projets et les attentes de la RFC 9253 sont écrits sous les noms propres à Sioul depuis le 27 octobre 2026 (`X-SIOUL-…`, avec les mêmes paramètres) : le gestionnaire de comptes des téléphones de Murena plante en envoyant ceux du standard, et change les attentes en sous-tâches ([Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts)). Sioul lit les deux formes, et a réécrit une fois, dans la sienne, les tâches et les événements que vos comptes CalDAV synchronisent.
 
 Retirer une attente dans Sioul retire aussi un `FINISHTOSTART` ou un `NEXT` qu’un autre programme a écrit pour la même paire dans l’autre tâche.
 
@@ -506,7 +508,7 @@ Les nouvelles listes se créent avec `MKCALENDAR` (RFC 4791 §5.3.1) et se renom
 
 ### Les attentes dans les autres programmes CalDAV {#waits-in-other-caldav-programs}
 
-La RFC 9253 (août 2022) a ajouté au `RELATED-TO` d’iCalendar le type `DEPENDS-ON` et quatre types de relations temporelles (`FINISHTOSTART` et ses semblables, avec un `GAP` facultatif), ainsi que trois nouvelles propriétés : `LINK`, `CONCEPT` et `REFID`. Peu de programmes de tâches s’en servent encore. cfait, un logiciel libre pour le terminal, le bureau et Android, écrit `DEPENDS-ON` depuis novembre 2025. Aucune des dix-sept applications de tâches CalDAV établies qui ont été vérifiées n’a d’attentes entre tâches, et des demandes restent ouvertes depuis des années : depuis 2003 pour Thunderbird, 2017 pour Nextcloud Tasks, 2020 pour Tasks.org. Ce qui n’a été trouvé que dans Sioul, parmi les projets examinés, c’est l’ensemble : `DEPENDS-ON` et `FINISHTOSTART` avec `GAP`, chacun dans le sens que lui donne la RFC 9253 ; `LINK`, `CONCEPT` et `REFID` ; et un plan qui s’organise autour des attentes.
+La RFC 9253 (août 2022) a ajouté au `RELATED-TO` d’iCalendar le type `DEPENDS-ON` et quatre types de relations temporelles (`FINISHTOSTART` et ses semblables, avec un `GAP` facultatif), ainsi que trois nouvelles propriétés : `LINK`, `CONCEPT` et `REFID`. Peu de programmes de tâches s’en servent encore. cfait, un logiciel libre pour le terminal, le bureau et Android, écrit `DEPENDS-ON` depuis novembre 2025. Aucune des dix-sept applications de tâches CalDAV établies qui ont été vérifiées n’a d’attentes entre tâches, et des demandes restent ouvertes depuis des années : depuis 2003 pour Thunderbird, 2017 pour Nextcloud Tasks, 2020 pour Tasks.org. Ce qui n’a été trouvé que dans Sioul, parmi les projets examinés, c’est l’ensemble : `DEPENDS-ON` et `FINISHTOSTART` avec `GAP`, chacun dans le sens que lui donne la RFC 9253 ; `LINK`, `CONCEPT` et `REFID` ; et un plan qui s’organise autour des attentes. Depuis le 27 octobre 2026, Sioul les écrit sous ses propres noms, pour qu’un gestionnaire de comptes de téléphone puisse les renvoyer (plus haut), et lit les lignes propres à la RFC 9253 des autres programmes.
 
 En octobre 2026, d’après le code et l’outil de suivi de chaque programme, sans essai avec Sioul :
 
@@ -524,7 +526,7 @@ En octobre 2026, d’après le code et l’outil de suivi de chaque programme, s
 | Vikunja | web | ✓ | en partie⁸ |
 | Rappels d’Apple | iOS, iPadOS, macOS | ?⁹ | ✗ |
 
-1. `DEPENDS-ON`, dans la tâche qui attend, comme Sioul l’écrit, depuis la version 0.1.7 (novembre 2025) ; une attente faite dans l’un devrait donc se voir dans l’autre.
+1. `DEPENDS-ON`, dans la tâche qui attend, comme Sioul l’écrivait jusqu’au 27 octobre 2026, depuis la version 0.1.7 (novembre 2025) : Sioul lit une attente faite dans cfait ; une attente faite dans Sioul, sous le nom propre à Sioul depuis, n’en est pas une pour cfait.
 2. Demandé depuis 2020. Par DAVx⁵, un type de relation de la RFC 9253 a été réécrit en parent (signalé en 2023).
 3. Demandé depuis 2017, et `DEPENDS-ON` nommément depuis juin 2026.
 4. Dans son stockage, pas dans ses écrans ; la FAQ de DAVx⁵ dit qu’il ne semble plus développé.
@@ -536,7 +538,7 @@ En octobre 2026, d’après le code et l’outil de suivi de chaque programme, s
 
 Vérifiés aussi, avec au plus des étapes et sans attentes : GNOME Evolution, GNOME Endeavour, Planify, Chiri, 2Do (ses « dépendances » sont des titres de tâches écrits dans une note), Fantastical, todoman et org-caldav. Deux petits outils récents portent aussi des dépendances en CalDAV : caldawarrior, un pont pour Taskwarrior (`DEPENDS-ON`), et tasknotes-caldav, une extension de TaskNotes pour Obsidian, qui écrit les types temporels avec `GAP` dans la tâche qui attend, à l’inverse de la RFC 9253 : Sioul lirait une telle attente à l’envers.
 
-**Ce que les autres programmes font d’une attente.** La RFC 5545 (§3.2.15) demande à un programme qui ne connaît pas un type de relation de le lire comme `PARENT` : c’est pourquoi la plupart des applications montrent une attente comme une sous-tâche. KCalendarCore (sous KOrganizer et Merkuro) et Errands lisent chaque `RELATED-TO` comme le parent. DAVx⁵, le pont habituel sur Android, réécrit les types de la RFC 9253 en `PARENT` (pour OpenTasks et Tasks.org) ou les retire (pour jtx Board) quand il renvoie une tâche. Une attente faite dans Sioul peut donc devenir une sous-tâche, ou disparaître, dès qu’une autre application enregistre cette tâche ([Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts)). Google ne sert aucune tâche en CalDAV.
+**Ce que les autres programmes font d’une attente.** La RFC 5545 (§3.2.15) demande à un programme qui ne connaît pas un type de relation de le lire comme `PARENT` : c’est pourquoi la plupart des applications montrent une attente comme une sous-tâche. KCalendarCore (sous KOrganizer et Merkuro) et Errands lisent chaque `RELATED-TO` comme le parent. DAVx⁵, le pont habituel sur Android, réécrit les types de la RFC 9253 en `PARENT` (pour OpenTasks et Tasks.org) ou les retire (pour jtx Board) quand il renvoie une tâche. Une attente sous la forme propre à la RFC 9253 peut donc devenir une sous-tâche, ou disparaître, dès qu’une autre application enregistre cette tâche. La forme propre à Sioul depuis le 27 octobre 2026 (`X-SIOUL-RELATED-TO`) est gardée telle quelle par DAVx⁵, et lue par aucune autre application ([Fonctionne avec](compatibility.md#other-apps-on-the-same-accounts)). Google ne sert aucune tâche en CalDAV.
 
 ??? info "Sources"
     Toutes lues le 8 octobre 2026, dans le dépôt, la documentation ou l’outil de suivi de chaque programme.

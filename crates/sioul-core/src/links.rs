@@ -812,7 +812,7 @@ impl Loaded {
         let id = id_of(other);
         match kind_of(other) {
             Kind::Contact if in_task => contact_line(&ContactRef { name: self.world().describe(other).title, uri: other.to_string() }),
-            Kind::Project => format!("REFID:{}", crate::lines::escape(&id)),
+            Kind::Project => crate::tasks::project_line(&id),
             Kind::Note => link_line(&Link { uri: other.to_string(), label: String::new(), rel: "describedby".into() }),
             Kind::Task | Kind::Event => link_line(&Link { uri: format!("uid:{id}"), label: String::new(), rel: "related".into() }),
             _ => link_line(&Link { uri: other.to_string(), label: String::new(), rel: "related".into() }),

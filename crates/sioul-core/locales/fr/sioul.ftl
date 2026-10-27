@@ -299,6 +299,10 @@ sync-error-server = { $account } : le serveur a refusé une commande ({ $detai
 sync-error-disk = { $account } : les courriels n’ont pas pu être écrits sur le disque ({ $detail }).
 sync-error-elsewhere = { $account } : le serveur a donné une adresse sur un autre serveur ({ $detail }) ; Sioul n’y est pas allé et n’y a envoyé aucun mot de passe.
 sync-said-folder-name = { $account } : un dossier a besoin d’un nom.
+sync-said-refused-tasks-only = { $account } : « { $detail } » est un événement dans une liste qui ne tient que des tâches, et son serveur le refuse. Déplacez-le dans un calendrier (son menu, Déplacer vers…).
+sync-said-refused-events-only = { $account } : « { $detail } » est une tâche dans un calendrier qui ne tient que des événements, et son serveur la refuse. Déplacez-la dans une liste de tâches (son menu, Déplacer vers…).
+sync-said-refused-dates = { $account } : son serveur refuse « { $detail } » : son début et son échéance ne sont pas d’une même sorte (un jour et une heure), ou son échéance vient d’abord. L’enregistrer à nouveau dans Sioul les écrit pour qu’elle passe.
+sync-said-refused = { $account } : son serveur refuse « { $detail } ». Cet élément reste ici tel quel, et repart à chaque synchronisation.
 sync-said-no-folder = { $account } : il n’y a pas de dossier « { $detail } ».
 sync-said-not-kept = { $account } : Sioul ne garde pas de copie du dossier « { $detail } ».
 sync-said-purpose = { $account } : « { $detail } » est l’un des dossiers propres au compte (réception, envoyés, brouillons, indésirables, corbeille, archives), et il reste.
@@ -800,6 +804,11 @@ dav-found = Contacts : { $contacts } · Agendas : { $calendars }
 dav-none = aucun
 dav-added = Compte « { $id } » ajouté : ses contacts et agendas arrivent.
 dav-report = { $account } : { $sent } envoyés, { $received } reçus, { $removed } retirés.
+dav-rewritten = { $count ->
+    [one] Une tâche ou un événement a été réécrit sous une forme que le gestionnaire de comptes de votre téléphone peut aussi renvoyer ; il se lit de même ici.
+   *[other] { $count } tâches et événements ont été réécrits sous une forme que le gestionnaire de comptes de votre téléphone peut aussi renvoyer ; ils se lisent de même ici.
+}
+dav-moved-out = « { $summary } », un événement dans une liste de tâches, a été déplacé dans votre calendrier des nouveaux événements.
 dav-conflict = Modifié des deux côtés : la version du serveur est gardée ; la vôtre est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre si vous la préférez.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -3501,6 +3510,8 @@ drag-done-plain = C’est fait.
 day-let-plan = Laisser le plan la placer
 day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.
+agenda-tasks-only = Cette liste ne tient que des tâches : un événement ne peut y aller.
+agenda-events-only = Ce calendrier ne tient que des événements : une tâche ne peut y aller.
 agenda-move-which = Déplacé à { $time } : cette fois seulement, ou toutes les fois ?
 agenda-move-set-days = Sa règle fixe ses jours : déplacez cette fois seulement, ou changez sa répétition dans son formulaire.
 health-readable-done = Terminé

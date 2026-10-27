@@ -46,6 +46,6 @@ Before projects and cases became one thing, the file was `sioul-cases.toml` and 
 - **Routes are edited** on the project's page ("Mail that comes here by itself") or in the Porch's lane for the project.
 
 ## In the standards
-- A project's tasks and events carry its id in `REFID` (RFC 9253), so other CalDAV clients keep the grouping.
+- A project's tasks and events carry its id in `X-SIOUL-REFID` (RFC 9253's `REFID` under Sioul's own name, which a phone's account manager can send back: [compatibility.md](compatibility.md), "A phone's ical4j"; `REFID` is read too), so other CalDAV clients keep the grouping.
 - Notes refer to messages by `mid:` URIs (RFC 2392) and to tasks, events, contacts, projects and drafts by `sioul:` addresses (`sioul:task/<UID>`), in a Markdown link or the front matter ([tasks.md](tasks.md)). Sioul reads the folder as a vault: wikilinks, links back, tags.
 - `sioul projects` lists the projects and flags files the manifest names but that are not there (`sioul cases`, its first name, still works).

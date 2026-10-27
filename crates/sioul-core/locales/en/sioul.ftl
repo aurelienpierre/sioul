@@ -284,6 +284,10 @@ sync-error-server = { $account }: the server refused a command ({ $detail }).
 sync-error-disk = { $account }: the mail could not be written to disk ({ $detail }).
 sync-error-elsewhere = { $account }: the server named an address on another server ({ $detail }); Sioul did not go there, and sent no password.
 sync-said-folder-name = { $account }: a folder needs a name.
+sync-said-refused-tasks-only = { $account }: “{ $detail }” is an event in a list that holds tasks only, and its server refuses it. Move it to a calendar (its menu, Move to…).
+sync-said-refused-events-only = { $account }: “{ $detail }” is a task in a calendar that holds events only, and its server refuses it. Move it to a task list (its menu, Move to…).
+sync-said-refused-dates = { $account }: its server refuses “{ $detail }”: its start and its due date are not of one kind (a day and a time), or its due comes first. Saving it again in Sioul writes them so that it goes.
+sync-said-refused = { $account }: its server refuses “{ $detail }”. It stays here as it is, and is sent again at each sync.
 sync-said-no-folder = { $account }: there is no folder “{ $detail }”.
 sync-said-not-kept = { $account }: Sioul keeps no copy of the folder “{ $detail }”.
 sync-said-purpose = { $account }: “{ $detail }” is one of the account's own folders (inbox, sent, drafts, junk, trash, archive), and stays.
@@ -779,6 +783,11 @@ dav-found = Contacts: { $contacts } · Calendars: { $calendars }
 dav-none = none
 dav-added = Account “{ $id }” added: its contacts and calendars come now.
 dav-report = { $account }: { $sent } sent, { $received } received, { $removed } removed.
+dav-rewritten = { $count ->
+    [one] One task or event was rewritten in a form your phone’s account manager can send back too; it reads the same here.
+   *[other] { $count } tasks and events were rewritten in a form your phone’s account manager can send back too; they read the same here.
+}
+dav-moved-out = “{ $summary }”, an event in a list of tasks only, was moved to your calendar for new events.
 dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -3483,6 +3492,8 @@ drag-done-plain = Moved.
 day-let-plan = Let the plan place it
 day-let-plan-done = The plan places “{ $title }” again.
 agenda-read-only = This calendar can only be read.
+agenda-tasks-only = This list holds tasks only: an event cannot go into it.
+agenda-events-only = This calendar holds events only: a task cannot go into it.
 agenda-move-which = Moved to { $time }: only this time, or every time?
 agenda-move-set-days = Its rule sets its days: move only this time, or change how it repeats in its form.
 health-readable-done = Done

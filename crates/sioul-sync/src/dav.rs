@@ -672,6 +672,12 @@ pub struct Report {
     /// one's title, and the answer the server holds and this device now keeps
     /// ("ACCEPTED", "TENTATIVE", "DECLINED"), yours replaced by it (`adopt`).
     pub answered: Vec<(String, String)>,
+    /// Tasks and events rewritten once in the form a phone's account manager
+    /// can send back (`sioul_core::interop`, at a collection's first sync with
+    /// this Sioul), and the titles of the events moved out of a list of tasks
+    /// only into the calendar for new events: said once.
+    pub rewritten: usize,
+    pub moved_out: Vec<String>,
 }
 
 /// An account's client: Google's access token, or its login and the password in the keyring.
@@ -1032,9 +1038,42 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
     state.url = listed.url.clone();
     state.read_only = listed.read_only;
     state.components = listed.components.clone();
+    // Its tasks and events in the form a phone's account manager can send
+    // back (`sioul_core::interop`), before what changed here is sent: never
+    // in a calendar you only read. Then again on what the pull brought (an
+    // item changed there meanwhile comes back as its writer wrote it, yours
+    // set aside), sent at the next sync. Kept as done (`State::interop`)
+    // once a whole sync leaves nothing to rewrite; until then each sync's
+    // first turn does it again, which changes nothing twice.
+    let migrating = first && kind == Kind::Calendars && !listed.read_only && state.interop < sioul_core::interop::FORMAT;
+    let mut clean = true;
+    if migrating {
+        // Its state as the guard reads it first: what the calendar may hold.
+        state.save(&state_path).map_err(SyncError::Disk)?;
+        clean = migrate(&dir, listed, report) == 0;
+    }
     let synced = both_ways(client, &dir, listed, &mut state, &state_path, report, first, until);
+    if migrating {
+        let left = migrate(&dir, listed, report);
+        if clean && left == 0 && matches!(synced, Ok(true)) {
+            state.interop = sioul_core::interop::FORMAT;
+        }
+    }
     state.save(&state_path).map_err(SyncError::Disk)?;
     synced
+}
+
+/// A calendar's folder rewritten in the form a phone's account manager can
+/// send back (`sioul_core::interop::migrate_folder`), what it did told
+/// (`Report::rewritten`, `moved_out`, its problems): how many items it
+/// rewrote, moved or could not write.
+fn migrate(dir: &Path, listed: &Listed, report: &mut Report) -> usize {
+    let done = sioul_core::interop::migrate_folder(dir, &listed.components, sioul_core::agenda::default_calendar().as_ref());
+    report.rewritten += done.rewritten;
+    report.moved_out.extend(done.moved.iter().filter_map(|(_, to)| std::fs::read_to_string(to).ok()).map(|text| summary_of(&text)));
+    let changed = done.rewritten + done.moved.len() + done.problems.len();
+    report.problems.extend(done.problems.into_iter().map(SyncError::Disk));
+    changed
 }
 
 /// What changed here, sent (on a collection's first turn); then, unless
@@ -1175,11 +1214,54 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
                 state.items.push(ItemState { href: path_key(&href), file, ..ItemState::default() });
             }
             status => {
-                refused.get_or_insert(SyncError::Server(format!("PUT {href}: {status}")));
+                refused.get_or_insert(refusal(listed, &text, &format!("PUT {href}"), status, &answer.body));
             }
         }
     }
     Ok(refused)
+}
+
+/// What the server refused of an item, said plainly (never "the server
+/// refused a command"): its title and why, as Sioul can tell it from the
+/// item and its collection, an event where tasks only go, a task where
+/// events only go, a start and a due of two kinds or the due first; else
+/// the server's own words, or its status.
+fn refusal(listed: &Listed, text: &str, request: &str, status: u16, body: &str) -> SyncError {
+    let title = summary_of(text);
+    let title = if title.is_empty() { uid_of(text).unwrap_or_default() } else { title };
+    let component = component_of(text);
+    let holds = |c: &str| listed.components.is_empty() || listed.components.iter().any(|h| h.eq_ignore_ascii_case(c));
+    if !holds(&component) {
+        let said = if component == "VEVENT" { crate::said::REFUSED_TASKS_ONLY } else { crate::said::REFUSED_EVENTS_ONLY };
+        return SyncError::Said(said, title);
+    }
+    if component == "VTODO" && dates_refused(text) {
+        return SyncError::Said(crate::said::REFUSED_DATES, title);
+    }
+    let words = server_words(body).unwrap_or_else(|| format!("{request}: {status}"));
+    SyncError::Said(crate::said::REFUSED, format!("{title} ({words})"))
+}
+
+/// Whether a task's start and due are what a CalDAV server refuses (RFC
+/// 5545 §3.8.2.3): of two value types (a day, a time), or the due before the start.
+fn dates_refused(text: &str) -> bool {
+    let source = sioul_core::lines::unfold(text);
+    let find = |name: &str| source.iter().find(|l| sioul_core::lines::raw_name(l) == name);
+    let (Some(start), Some(due)) = (find("DTSTART"), find("DUE")) else { return false };
+    let is_date = |l: &str| sioul_core::lines::param(l, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE")) || sioul_core::lines::value(l).trim().len() == 8;
+    let (s, d) = (sioul_core::lines::value(start).trim(), sioul_core::lines::value(due).trim());
+    is_date(start) != is_date(due) || (s.len() == d.len() && s > d)
+}
+
+/// The words a server's refusal gives (WebDAV's error body: Sabre's
+/// `s:message`, else its condition's name), short; none when it gives none.
+fn server_words(body: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(body).ok()?;
+    let error = doc.descendants().find(|n| n.tag_name().name() == "error")?;
+    let message = error.descendants().find(|n| n.tag_name().name() == "message").and_then(|n| n.text()).map(str::trim).filter(|m| !m.is_empty());
+    let condition = error.children().find(|n| n.is_element() && !matches!(n.tag_name().name(), "message" | "exception" | "sabredav-version")).map(|n| n.tag_name().name().to_string());
+    let words = message.map(str::to_string).or(condition)?;
+    Some(words.chars().take(160).collect())
 }
 
 /// The item the server holds under the UID of `text`, a new item it refused
@@ -1358,7 +1440,7 @@ fn send_known(client: &Client, kind: Kind, dir: &Path, listed: &Listed, item: &I
             refetch.insert(path_key(&url));
             Sent::Kept
         }
-        status => Sent::Refused(SyncError::Server(format!("PUT {url}: {status}"))),
+        status => Sent::Refused(refusal(listed, &text, &format!("PUT {url}"), status, &answer.body)),
     })
 }
 
@@ -1840,6 +1922,9 @@ pub(crate) mod stand_in {
         /// names as a hostile one would: a calendar "theirs" there among its
         /// own, and an item there in each of its calendars (`name_elsewhere`).
         elsewhere: Option<String>,
+        /// What a calendar may hold, said in its supported-calendar-component-set
+        /// and kept as Murena's server keeps it: another kind of item refused.
+        components: BTreeMap<String, Vec<String>>,
     }
 
     impl Dav {
@@ -1893,6 +1978,23 @@ pub(crate) mod stand_in {
         pub(crate) fn name_elsewhere(&self, base: &str) {
             self.held().elsewhere = Some(base.to_string());
         }
+
+        /// A calendar that holds these kinds of items only ("VTODO"), and says so.
+        pub(crate) fn holds(&self, calendar: &str, components: &[&str]) {
+            self.held().components.insert(calendar.to_string(), components.iter().map(|c| c.to_string()).collect());
+        }
+    }
+
+    /// Sabre's words for a refused item (Nextcloud, Murena), with the CalDAV
+    /// condition it names (RFC 4791 §5.3.2.1).
+    fn refused_with(condition: &str, message: &str) -> Reply {
+        Reply::new(403, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:error xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav"><cal:{condition}/><s:exception>Sabre\DAV\Exception\Forbidden</s:exception><s:message>{message}</s:message></d:error>"#))
+    }
+
+    /// Whether a task's DTSTART and DUE are of two value types (a day, a time), as Sabre refuses them.
+    fn mixed_dates(text: &str) -> bool {
+        let is_date = |name: &str| text.lines().find(|l| l.starts_with(name)).map(|l| l.contains("VALUE=DATE") && !l.contains("VALUE=DATE-TIME"));
+        matches!((is_date("DTSTART"), is_date("DUE")), (Some(a), Some(b)) if a != b)
     }
 
     /// An item's UID line, as the tests write them.
@@ -1957,7 +2059,8 @@ pub(crate) mod stand_in {
 
         fn calendar_props(&self, calendar: &str) -> String {
             let last = self.last(calendar);
-            format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>")
+            let set = self.components.get(calendar).map(|comps| format!("<c:supported-calendar-component-set>{}</c:supported-calendar-component-set>", comps.iter().map(|c| format!(r#"<c:comp name="{c}"/>"#)).collect::<String>())).unwrap_or_default();
+            format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>{set}")
         }
 
         fn answer(&mut self, request: &Request) -> Reply {
@@ -1997,6 +2100,16 @@ pub(crate) mod stand_in {
                     };
                     if refused {
                         return Reply::new(412, "");
+                    }
+                    // Of a kind this calendar does not hold, or a task's dates of two kinds: refused, as Murena does.
+                    let kind = ["VEVENT", "VTODO"].into_iter().find(|c| request.body.contains(&format!("BEGIN:{c}")));
+                    if let (Some(held), Some(kind)) = (self.components.get(*calendar), kind)
+                        && !held.iter().any(|c| c == kind)
+                    {
+                        return refused_with("supported-calendar-component", &format!("Calendar objects must be of a type this calendar holds, not {kind}"));
+                    }
+                    if kind == Some("VTODO") && mixed_dates(&request.body) {
+                        return refused_with("valid-calendar-data", "DTSTART and DUE must be of the same value type");
                     }
                     let holder = uid_line(&request.body).and_then(|uid| self.calendars[*calendar].iter().find(|(name, (_, text))| name.as_str() != *item && uid_line(text) == Some(uid))).map(|(name, _)| name.clone());
                     if current.is_none()
@@ -2718,6 +2831,113 @@ mod tests {
             assert_eq!(Some(now.hash.clone()), hash_of(&dir.join(&now.file)));
         }
         assert_eq!(state.items[2..], before[2..]);
+    }
+
+    /// A task as Sioul wrote them up to 27 October 2026 (fiction): the RFC
+    /// 9253 lines a phone's account manager on ical4j 3.2.13 crashes on, and
+    /// a wait it would turn into a parent.
+    fn old_task(uid: &str, summary: &str) -> String {
+        format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VTODO\r\nUID:{uid}\r\nDTSTAMP:20261020T080000Z\r\nSEQUENCE:2\r\nSUMMARY:{summary}\r\nDTSTART;VALUE=DATE:20261028\r\nDUE;VALUE=DATE:20261030\r\nCONCEPT:tag:aurelienpierre.com,2026:sioul/task-type/online\r\nRELATED-TO;RELTYPE=DEPENDS-ON:papers\r\nLINK;LINKREL=describedby;VALUE=URI:sioul:note/admin/form.md\r\nREFID:paperwork\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+        )
+    }
+
+    /// Whether an item holds a line a phone's account manager cannot send back.
+    fn crashes_the_phone(text: &str) -> bool {
+        sioul_core::lines::unfold(text).iter().any(|l| ["LINK", "CONCEPT", "REFID"].contains(&sioul_core::lines::raw_name(l).as_str()) || l.starts_with("RELATED-TO;RELTYPE=DEPENDS-ON"))
+    }
+
+    /// The tasks a list on the server holds in the earlier form, as an
+    /// earlier Sioul wrote them: rewritten here once they came, sent at the
+    /// next sync, each once, their SEQUENCE kept; then the list is said done
+    /// (`State::interop`), and nothing is sent again.
+    #[test]
+    fn a_list_s_earlier_forms_are_rewritten_and_sent_once() {
+        home();
+        let (dav, home) = Dav::start(&["plan"]);
+        dav.holds("plan", &["VTODO"]);
+        for n in 0..3 {
+            dav.put("plan", &format!("t{n}.ics"), &old_task(&format!("t-{n}"), &format!("Task {n}")));
+        }
+        let client = client();
+        let report = sync_one(&client, "rewritten", &home, "plan").unwrap();
+        assert_eq!((report.received, report.rewritten), (3, 3), "{report:?}");
+        assert!(puts(&dav).is_empty(), "nothing sent before it was pulled: {:?}", dav.seen());
+        assert_eq!(state_of("rewritten", "plan").interop, 0, "not done until sent");
+        let report = sync_one(&client, "rewritten", &home, "plan").unwrap();
+        assert_eq!((report.sent, report.rewritten, report.conflicts.len()), (3, 0, 0), "{report:?}");
+        for (name, text) in dav.items("plan") {
+            assert!(!crashes_the_phone(&text) && text.contains("X-SIOUL-LINK;LINKREL=describedby") && text.contains("SEQUENCE:2"), "{name}: {text}");
+        }
+        assert_eq!(state_of("rewritten", "plan").interop, sioul_core::interop::FORMAT);
+        let sent = puts(&dav).len();
+        let report = sync_one(&client, "rewritten", &home, "plan").unwrap();
+        assert_eq!((report.sent, report.rewritten, puts(&dav).len()), (0, 0, sent), "{report:?}");
+    }
+
+    /// Two devices rewriting the same list at once write the same lines: the
+    /// second's sends find the first's, the same, and nothing is set aside.
+    /// A task changed there meanwhile by an earlier Sioul comes back in its
+    /// form, yours set aside as any change on both sides, and is rewritten
+    /// in turn and sent at the next sync.
+    #[test]
+    fn two_devices_rewriting_at_once_and_a_task_changed_meanwhile() {
+        home();
+        let (dav, home) = Dav::start(&["plan"]);
+        dav.holds("plan", &["VTODO"]);
+        for n in 0..3 {
+            dav.put("plan", &format!("t{n}.ics"), &old_task(&format!("t-{n}"), &format!("Task {n}")));
+        }
+        let client = client();
+        sync_one(&client, "desk", &home, "plan").unwrap();
+        sync_one(&client, "phone", &home, "plan").unwrap();
+        let report = sync_one(&client, "desk", &home, "plan").unwrap();
+        assert_eq!((report.sent, report.conflicts.len()), (3, 0), "{report:?}");
+        let report = sync_one(&client, "phone", &home, "plan").unwrap();
+        assert_eq!((report.sent, report.conflicts.len(), report.rewritten), (0, 0, 0), "the same lines: {report:?}");
+        assert_eq!(std::fs::read_to_string(folder("phone", "plan").join("t1.ics")).unwrap(), dav.items("plan")["t1.ics"]);
+        assert_eq!(state_of("phone", "plan").interop, sioul_core::interop::FORMAT);
+
+        // A third device, its list rewritten here, and the task changed there before it sends.
+        dav.put("plan", "t2.ics", &old_task("t-2", "Task 2"));
+        sync_one(&client, "laptop", &home, "plan").unwrap();
+        dav.put("plan", "t2.ics", &old_task("t-2", "Task 2, changed"));
+        let report = sync_one(&client, "laptop", &home, "plan").unwrap();
+        assert_eq!(report.conflicts.len(), 1, "{report:?}");
+        let here = std::fs::read_to_string(folder("laptop", "plan").join("t2.ics")).unwrap();
+        assert!(here.contains("SUMMARY:Task 2, changed") && !crashes_the_phone(&here), "theirs, rewritten here: {here}");
+        assert!(crashes_the_phone(&dav.items("plan")["t2.ics"]), "not sent yet");
+        assert_eq!(state_of("laptop", "plan").interop, 0);
+        sync_one(&client, "laptop", &home, "plan").unwrap();
+        assert!(!crashes_the_phone(&dav.items("plan")["t2.ics"]) && dav.items("plan")["t2.ics"].contains("Task 2, changed"));
+        assert_eq!(state_of("laptop", "plan").interop, sioul_core::interop::FORMAT);
+    }
+
+    /// What its server refuses is said plainly, its title and why: a task in
+    /// a calendar of events only, a task whose start and due are of two kinds
+    /// (written by another application); and the refusal never stops the
+    /// pull: what changed there comes all the same.
+    #[test]
+    fn a_refused_item_is_said_and_the_pull_goes_on() {
+        home();
+        let (dav, home) = Dav::start(&["work", "plan"]);
+        dav.holds("work", &["VEVENT"]);
+        dav.holds("plan", &["VTODO"]);
+        let client = client();
+        sync_one(&client, "refused", &home, "work").unwrap();
+        sync_one(&client, "refused", &home, "plan").unwrap();
+        let task = |uid: &str, summary: &str, dates: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:{uid}\r\nDTSTAMP:20261026T001800Z\r\nSUMMARY:{summary}\r\n{dates}END:VTODO\r\nEND:VCALENDAR\r\n");
+        // Another program's files, beside Sioul's writers (which refuse them).
+        std::fs::write(folder("refused", "work").join("task.ics"), task("t-bank", "Call the bank", "")).unwrap();
+        std::fs::write(folder("refused", "plan").join("mixed.ics"), task("t-mixed", "Send the form", "DTSTART;VALUE=DATE:20261028\r\nDUE:20261030T150000Z\r\n")).unwrap();
+        dav.put("work", "new.ics", &event("new", "Dentist"));
+        let refused = sync_one(&client, "refused", &home, "work").unwrap_err();
+        assert!(matches!(&refused, SyncError::Said(code, title) if *code == crate::said::REFUSED_EVENTS_ONLY && title == "Call the bank"), "{refused:?}");
+        assert!(folder("refused", "work").join("new.ics").exists(), "the pull went on");
+        let refused = sync_one(&client, "refused", &home, "plan").unwrap_err();
+        assert!(matches!(&refused, SyncError::Said(code, title) if *code == crate::said::REFUSED_DATES && title == "Send the form"), "{refused:?}");
+        let said = refused.sentence(&sioul_core::i18n::Translator::new("fr"), "Murena");
+        assert!(said.contains("«\u{202f}Send the form\u{202f}»") && !said.contains("sync-said"), "{said}");
     }
 
     #[test]

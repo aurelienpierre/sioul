@@ -43,11 +43,34 @@ pub fn fold(lines: &[String]) -> String {
     out
 }
 
-/// A line's property name, uppercase, without its group: "item1.EMAIL;TYPE=…" → "EMAIL".
+/// A line's property name, uppercase, without its group: "item1.EMAIL;TYPE=…"
+/// → "EMAIL". Sioul's own names for what a phone's account manager cannot
+/// upload (`OWN_NAMES`: `X-SIOUL-LINK` and the others) read as the properties
+/// they stand for, so that every reader takes both forms, another client's,
+/// an older Sioul's and this one's alike; `raw_name` tells them apart.
 pub fn name(line: &str) -> String {
+    let raw = raw_name(line);
+    OWN_NAMES.iter().find(|(own, _)| *own == raw).map_or(raw, |(_, standard)| (*standard).to_string())
+}
+
+/// A line's property name as written, uppercase, without its group.
+pub fn raw_name(line: &str) -> String {
     let head = line.split([';', ':']).next().unwrap_or("");
     head.rsplit('.').next().unwrap_or(head).to_ascii_uppercase()
 }
+
+/// Sioul's own names for four properties, each with the one it stands for
+/// (27 October 2026). The phone's account manager (Murena's DAVx⁵, ical4j
+/// 3.2.13 with ical4android 1.1.2) validates each task and event before it
+/// uploads it, and ical4j 3.2.13's `Link`, `Concept` and `RefId` answer that
+/// validation with nothing: the upload crashes, and while one such task waits
+/// on the phone its whole list syncs neither way (docs/compatibility.md,
+/// "A phone's ical4j"). It keeps an X- property whole. It also turns every
+/// RELATED-TO other than a parent, a child or a sibling into a parent, and
+/// drops its GAP: Sioul's waits travel as `X-SIOUL-RELATED-TO`. Sioul writes
+/// these names (`tasks::LINK`, `CONCEPT`, `REFID`, `RELATED_TO_OTHER`) and
+/// reads both forms.
+pub const OWN_NAMES: [(&str, &str); 4] = [("X-SIOUL-LINK", "LINK"), ("X-SIOUL-CONCEPT", "CONCEPT"), ("X-SIOUL-REFID", "REFID"), ("X-SIOUL-RELATED-TO", "RELATED-TO")];
 
 /// Where a line's value starts: its first colon outside quotes.
 fn colon(line: &str) -> Option<usize> {

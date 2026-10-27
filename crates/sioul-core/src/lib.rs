@@ -211,6 +211,7 @@ pub mod headers;
 pub mod health;
 pub mod i18n;
 pub mod ids;
+pub mod interop;
 pub mod invoice;
 pub mod lines;
 pub mod letters;

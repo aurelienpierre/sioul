@@ -332,7 +332,8 @@ mod tests {
         assert_eq!(waiting_for(std::slice::from_ref(&waiting), "t-kinds"), 1);
         let (gone, made, _) = make_event(&task, std::slice::from_ref(&task), block_path.to_str().unwrap(), &edit, &calendar).unwrap();
         assert_eq!(appointments::retie(std::slice::from_ref(&waiting), "t-kinds", &appointments::uid_in(&made), true, &Zoned::now()), [waiting_path.clone()]);
-        let retied = std::fs::read_to_string(&waiting_path).unwrap();
+        // Unfolded: a link under Sioul's own name may pass a line's 75 octets.
+        let retied = sioul_core::lines::unfold(&std::fs::read_to_string(&waiting_path).unwrap()).join("\r\n");
         assert!(!retied.contains("RELATED-TO") && retied.contains(&format!("sioul:event/{}", appointments::uid_in(&made))), "{retied}");
         std::fs::remove_file(&waiting_path).unwrap();
         assert_eq!(gone, [task_path.clone(), block_path.clone()]);

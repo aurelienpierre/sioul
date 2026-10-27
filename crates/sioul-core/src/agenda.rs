@@ -529,6 +529,11 @@ pub enum Refusal {
     ReadOnly,
     /// A meeting with others (`meeting_with_others`): its organizer's.
     WithOthers,
+    /// An event where tasks only go (a task list): its server refuses it at
+    /// every sync (27 October 2026: an event written into a task list).
+    TasksOnly,
+    /// A task where events only go.
+    EventsOnly,
 }
 
 impl Refusal {
@@ -538,6 +543,8 @@ impl Refusal {
             (Refusal::ReadOnly, _) => "agenda-read-only",
             (Refusal::WithOthers, Change::Delete) => "event-delete-with-others",
             (Refusal::WithOthers, _) => "event-change-with-others",
+            (Refusal::TasksOnly, _) => "agenda-tasks-only",
+            (Refusal::EventsOnly, _) => "agenda-events-only",
         }
     }
 }
@@ -584,6 +591,20 @@ fn theirs(text: &str) -> Vec<String> {
 pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     // A file of no calendar's folder (a contact): nothing read (the check of ef8c0ca, low 21).
     let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
+    // Never an event where tasks only go, nor a task where events only go:
+    // its server would refuse it at every sync, and say it to nobody here.
+    if let Change::Write(new) = change
+        && let Some(components) = vdir::calendar_components(path)
+        && !components.is_empty()
+    {
+        let holds = |component: &str| components.iter().any(|c| c.eq_ignore_ascii_case(component));
+        if holds_event(new) && !holds("VEVENT") {
+            return Err(Refusal::TasksOnly);
+        }
+        if new.lines().any(|line| line.trim().eq_ignore_ascii_case("BEGIN:VTODO")) && !holds("VTODO") {
+            return Err(Refusal::EventsOnly);
+        }
+    }
     let old = std::fs::read_to_string(path).ok().filter(|text| holds_event(text));
     let new_event = matches!(change, Change::Write(new) if holds_event(new));
     if old.is_none() && !new_event {
@@ -1310,7 +1331,9 @@ pub fn moved(text: &str, start: i64, new_start: i64, new_end: i64, only_this: bo
 pub fn add_lines(text: &str, added: &[String]) -> Option<String> {
     let mut source = lines::unfold(text);
     let master = master_range(&source)?;
-    let new: Vec<String> = added.iter().filter(|l| !source[master.clone()].contains(l)).cloned().collect();
+    // A line there in another form (a LINK written before Sioul's own name) is there.
+    let present: Vec<String> = source[master.clone()].iter().map(|l| crate::interop::own_form(l)).collect();
+    let new: Vec<String> = added.iter().filter(|l| !present.contains(&crate::interop::own_form(l))).cloned().collect();
     if new.is_empty() {
         return Some(text.to_string());
     }

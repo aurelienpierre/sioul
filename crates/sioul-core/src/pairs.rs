@@ -11,8 +11,12 @@
 //! other (`VALUE=URI`: RFC 9253 §2 wants a `UID` value in the same
 //! collection, and the pair crosses a calendar and a task list):
 //!
-//! - in the task: `LINK;LINKREL="tag:aurelienpierre.com,2026:sioul/rel/appointment";VALUE=URI:sioul:event/<UID>`
-//! - in the event: `LINK;LINKREL="tag:aurelienpierre.com,2026:sioul/rel/preparation";VALUE=URI:sioul:task/<UID>`
+//! - in the task: `X-SIOUL-LINK;LINKREL=related;X-SIOUL-REL="tag:aurelienpierre.com,2026:sioul/rel/appointment";VALUE=URI:sioul:event/<UID>`
+//! - in the event: `X-SIOUL-LINK;LINKREL=related;X-SIOUL-REL="tag:aurelienpierre.com,2026:sioul/rel/preparation";VALUE=URI:sioul:task/<UID>`
+//!
+//! (RFC 9253's LINK under Sioul's own name, its relation in an X- parameter:
+//! `tasks::link_line`; the form `LINK;LINKREL="tag:…"` written before 27
+//! October 2026 reads the same.)
 //!
 //! An event that cannot be written (a calendar you only read, a meeting with
 //! others, whose server would tell every guest) keeps no line: the task's is
@@ -268,12 +272,12 @@ fn given_back(task: &Task, tie: &Tie) -> bool {
 fn appointment_line(event_uid: &str, due: Option<Date>, was: Option<&str>) -> String {
     let due = due.map(|d| format!(";{DUE_WRITTEN}={}", d.strftime("%Y%m%d"))).unwrap_or_default();
     let was = was.filter(|w| !w.is_empty()).map(|w| format!(";{DUE_WAS}={}", crate::lines::param_value(w))).unwrap_or_default();
-    format!("LINK;LINKREL=\"{APPOINTMENT}\"{due}{was};VALUE=URI:{}", links::event_uri(event_uid))
+    crate::tasks::link_line_with(&crate::tasks::Link { uri: links::event_uri(event_uid), label: String::new(), rel: APPOINTMENT.to_string() }, &format!("{due}{was}"))
 }
 
 /// The event's link to the task that prepares it.
 fn preparation_line(task_uid: &str) -> String {
-    format!("LINK;LINKREL=\"{PREPARATION}\";VALUE=URI:{}", links::task_uri(task_uid))
+    crate::tasks::link_line(&crate::tasks::Link { uri: links::task_uri(task_uid), label: String::new(), rel: PREPARATION.to_string() })
 }
 
 /// An event in a calendar: its file, its text, whether its calendar can be written.

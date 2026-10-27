@@ -68,8 +68,8 @@ Portals are carried as a stopgap, not as the design. Organisations built them be
 As built, with the research it follows: [tasks.md](tasks.md).
 
 - **Tasks are CalDAV tasks (VTODO)** on your server, so they are portable and visible on other devices.
-- **The links use RFC 9253** (iCalendar relationships):
-  - `RELATED-TO;RELTYPE=FINISHTOSTART` for "this waits for that", with `GAP` for "two weeks after";
+- **The links use RFC 9253** (iCalendar relationships), written under Sioul's own names since 27 October 2026 (`X-SIOUL-…`, the same parameters), which a phone's account manager on ical4j 3.2.13 can send back; both forms read ([compatibility.md](compatibility.md), "A phone's ical4j"):
+  - `FINISHTOSTART` for "this waits for that", with `GAP` for "two weeks after";
   - `DEPENDS-ON` for looser dependencies;
   - `REFID` groups a project's tasks and events;
   - `LINK` points to emails (`mid:` URIs, RFC 2392), contacts and notes.

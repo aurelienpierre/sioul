@@ -1283,7 +1283,7 @@ fn writing_round_trip() {
     assert_eq!(tie["isError"], false, "{tie}");
     let event_file = PathBuf::from(event["structuredContent"]["file"].as_str().unwrap());
     let ics = std::fs::read_to_string(&event_file).unwrap().replace("\r\n ", "");
-    assert!(ics.contains("LINK;LINKREL=describedby;VALUE=URI:sioul:note/notes/Call%20with%20the%20CAF.md"), "{ics}");
+    assert!(ics.contains("X-SIOUL-LINK;LINKREL=describedby;VALUE=URI:sioul:note/notes/Call%20with%20the%20CAF.md"), "{ics}");
     let edit = sioul_core::agenda::edit_of(&event_file).unwrap();
     assert_eq!((edit.start.as_str(), edit.end.as_str(), edit.all_day), ("2026-10-12T09:30", "2026-10-12T10:00", false));
     // Arguments are checked before anything is written.
@@ -1322,7 +1322,7 @@ fn ties_and_titles_stay_in_their_lines() {
     let lines = ics_lines(&file);
     assert_eq!(lines.iter().filter(|l| l.starts_with("BEGIN:VTODO") || l.starts_with("END:VTODO")).count(), 2, "{lines:?}");
     assert!(lines.contains(&"SUMMARY:Pay END:VTODO BEGIN:VTODO SUMMARY:else".to_string()) && lines.contains(&"CATEGORIES:a b".to_string()), "{lines:?}");
-    assert!(lines.contains(&"LINK;LINKREL=related;VALUE=URI:https://example.org/receipts".to_string()), "{lines:?}");
+    assert!(lines.contains(&"X-SIOUL-LINK;LINKREL=related;VALUE=URI:https://example.org/receipts".to_string()), "{lines:?}");
     assert!(!std::fs::read_to_string(&file).unwrap().replace("\r\n", "").contains('\r'), "no lone CR");
     // An event's title and place too; a time given in UTC is moved to the person's zone.
     let event = call(&mut server, "add_event", json!({ "title": "Visit\nEND:VEVENT", "location": "Hall\r\nB", "start": "2026-11-12T07:30Z", "end": "2026-11-12T08:00Z" }));

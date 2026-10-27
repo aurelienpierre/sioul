@@ -20,7 +20,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Mail](#mail) | any IMAP and SMTP server that takes a password over an encrypted connection; Gmail and Google Workspace with an app password, or by signing in with Google with a key of your own; Outlook.com, Hotmail, Live, MSN and Microsoft 365 by signing in with Microsoft | **Tested** with a test server, and a real mailbox in daily use; **expected** elsewhere. Microsoft: **expected**, tried against stand-ins only. **Limit**: a work or school Microsoft address may need its organisation's approval |
 | [Calendars, tasks and contacts](#calendars-tasks-and-contacts) | any CalDAV and CardDAV server over HTTPS: Nextcloud (Murena's too), Radicale, Fastmail, Posteo, mailbox.org, iCloud, your host's | **Tested** with Radicale, and in daily use with Murena (Nextcloud) since 4 October 2026; **expected** with the others. **Limits**: iCloud's reminders; Baïkal must be set to Basic sign-in |
 | [Google](#google) | calendars, contacts and Google Tasks, signed in on Google's page | **Expected**: tried only against a stand-in of Google Tasks |
-| [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a task tied to another by a wait, changed on a phone through DAVx⁵ |
+| [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a wait another app wrote in RFC 9253's own form, changed on a phone through DAVx⁵ |
 | [Notes](#notes) | Obsidian, Nextcloud Notes, any Markdown editor | **Tested** on files written as each writes them |
 | [Sharing between your devices](#sharing-between-your-devices) | Nextcloud first ([where to get one](#where-to-get-a-nextcloud)); any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
 | [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
@@ -95,15 +95,18 @@ Your tasks, events and contacts are standard: every app on the same server shows
 |---|---|---|---|---|
 | Nextcloud Tasks, on the web | shown as subtasks | kept | kept | **expected** |
 | Tasks.org, with its own CalDAV sync | shown as subtasks | kept | kept | **expected** |
-| Tasks.org or OpenTasks, through DAVx⁵ | shown as subtasks | shown as steps, and written back as steps when the phone changes the task | kept | **limit** |
-| jtx Board, through DAVx⁵ | shown as subtasks | dropped when the phone changes the task | kept | **limit** |
+| Tasks.org or OpenTasks, through DAVx⁵ | shown as subtasks | kept as Sioul writes them since 27 October 2026; a wait in RFC 9253's own form (another app's) shown as a step, and written back as one when the phone changes the task | kept | **expected**; for Murena's account manager, **tested** with a replay of its code (below) |
+| jtx Board, through DAVx⁵ | shown as subtasks | kept as Sioul writes them since 27 October 2026; one in RFC 9253's own form dropped when the phone changes the task | kept | **expected** |
 | Android's calendar, through DAVx⁵ (events) | — | — | kept | **expected** |
 | TaskNotes for Obsidian, through tasknotes-caldav | not checked | **read backwards**: it writes a wait in the task that waits, the other way round from RFC 9253, so Sioul shows the other task as the one waiting ([Tasks](tasks.md#waits-in-other-caldav-programs)) | not checked | **limit** |
 | Thunderbird, Apple's Calendar and Reminders, Evolution, KOrganizer | not checked | not checked | not checked | an app that rewrites a task from only what it understands drops the rest |
 | Google Tasks | one level | not kept | not kept | **limit**: greyed in Sioul, with why |
 
 !!! warning "Waits on a phone, through DAVx⁵"
-    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on the phone a task tied to another by a wait (either of the two), even ticking it done, turns the wait into a step, or drops it. Until that changes, change those tasks in Sioul, in Nextcloud Tasks, or in Tasks.org with its own sync. Only reading tasks on the phone is safe: nothing is written back.
+    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on the phone a task tied to another by a wait in RFC 9253's own form (as another app writes it), even ticking it done, turns the wait into a step, or drops it. Sioul's own waits, as it writes them since 27 October 2026 (and rewrote once those it wrote before), stay as they are.
+
+!!! note "Murena's account manager, on /e/OS"
+    Its version of October 2026 (on ical4j 3.2.13) crashed uploading a task that held a link, a kind or a project as RFC 9253 writes them, then synced that list neither way. Since 27 October 2026 Sioul writes those under its own names, and rewrote once, in its own form, the tasks and events already on your server; they read the same here. Checked with a replay of the account manager's own code on stand-ins of a real list (every task passes, twice), not yet on the phone itself. If a change made on the phone before was stuck there, untick the list in the account manager and tick it again: the list comes down whole, that change lost, so note which task it was and mark it again.
 
 ## Notes
 

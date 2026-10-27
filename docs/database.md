@@ -281,7 +281,7 @@ Do-not-disturb on every device ([do-not-disturb.md](do-not-disturb.md)) adds two
 - The notes travel with their folder's own sync, or, their part switched on, through the log, file by file (Notes and papers in the vault).
 - **A link keeps its file's name** (`sioul:note/admin/lease.md`, relative to the notes folder), so it holds on every computer, wherever the folder is.
 - **A linked note not on this device yet** (its sync not done, or the file removed elsewhere) shows faded, with its name and "Not on this device yet: it may still be syncing (Nextcloud, Dropbox)."
-- A note renamed in Sioul updates its links (tasks' LINK lines, `links.toml`); the other computer gets the new file from the folder, the new links from CalDAV and the log.
+- A note renamed in Sioul updates its links (tasks' link lines, `X-SIOUL-LINK` and RFC 9253's `LINK`; `links.toml`); the other computer gets the new file from the folder, the new links from CalDAV and the log.
 - **One writer at a time**: the window and an agent (`sioul mcp`) read a note again, change it and write it holding one lock, in Sioul's state folder and never in the notes folder (`notes::with_lock`, `.notes.lock`): a tie written into its front matter, a note saved, renamed, or made from a title (a free name found and taken together, `notes::create`). `links.toml` is changed under its own lock (`LocalLinks::change`, `.links.toml.lock`), the one the sharing takes to write it, read again once held. Two writers at once lose nothing (`links::tests::two_writers_at_once_lose_nothing`, the MCP's `writers_at_once_lose_nothing`).
 
 ## Tested

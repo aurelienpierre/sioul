@@ -245,6 +245,14 @@ pub fn learn_provider(config_path: &Path, account: &Account) -> Result<Learned, 
 pub mod said {
     /// A folder made without a name.
     pub const FOLDER_NAME: &str = "sync-said-folder-name";
+    /// An item its server refused because it is an event in a list of tasks only (its title follows).
+    pub const REFUSED_TASKS_ONLY: &str = "sync-said-refused-tasks-only";
+    /// A task in a calendar of events only (its title follows).
+    pub const REFUSED_EVENTS_ONLY: &str = "sync-said-refused-events-only";
+    /// A task whose start and due are not of one value type, or whose due comes before its start (its title follows).
+    pub const REFUSED_DATES: &str = "sync-said-refused-dates";
+    /// Any other item its server refused (its title, then what the server said, follow).
+    pub const REFUSED: &str = "sync-said-refused";
     /// No folder of that name on this account (the name follows).
     pub const NO_FOLDER: &str = "sync-said-no-folder";
     /// A folder Sioul keeps no copy of (the name follows).

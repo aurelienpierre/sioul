@@ -15,6 +15,11 @@
 //!   message (RFC 2392), `sioul:` for the rest (`links`);
 //! - **the people and offices it involves**: `CONTACT`, its `ALTREP` pointing at their card;
 //! - **its project**: `REFID` (docs/notes-folder.md);
+//!
+//! LINK, CONCEPT, REFID and the waits are written under Sioul's own names
+//! (`LINK`, `CONCEPT`, `REFID`, `RELATED_TO_OTHER`: `X-SIOUL-LINK` and the
+//! others, `lines::OWN_NAMES`), which a phone's account manager can upload
+//! (ical4j 3.2.13 crashes on the standard ones), and read in both forms;
 //! - **how long it takes**: `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks).
 //!
 //! `DTSTART` says from when a task can start, `DUE` the date asked from
@@ -110,6 +115,40 @@ pub const KINDS: &[&str] = &["call", "write", "online", "out", "read", "think", 
 /// A task's kind is written as a concept (RFC 9253, CONCEPT), under this
 /// tag (RFC 4151): servers and other applications keep it as it is.
 pub const KIND_CONCEPT: &str = "tag:aurelienpierre.com,2026:sioul/task-type/";
+
+/// What Sioul writes for RFC 9253's LINK, CONCEPT and REFID, and for a
+/// RELATED-TO other than a parent, a child or a sibling (27 October 2026,
+/// `lines::OWN_NAMES`): the same parameters and values under its own names,
+/// read as those properties. A phone's account manager on ical4j 3.2.13
+/// crashes uploading the standard ones, and turns the waits into parents.
+pub const LINK: &str = "X-SIOUL-LINK";
+pub const CONCEPT: &str = "X-SIOUL-CONCEPT";
+pub const REFID: &str = "X-SIOUL-REFID";
+pub const RELATED_TO_OTHER: &str = "X-SIOUL-RELATED-TO";
+
+/// A link's relation when it is a URI (`tag:…`), beside `LINKREL=related`:
+/// ical4j 3.2.13 writes LINKREL back without its quotes, and the next reader
+/// cuts the line at the URI's colon; an X- parameter stays quoted.
+pub const REL: &str = "X-SIOUL-REL";
+
+/// A task's start, kept beside DTSTART when that is not before its DUE (the
+/// same day, the same time), or in its place when their value types differ
+/// (a day to start, a time it is due): the phone's account manager drops a
+/// DTSTART that is not before DUE, and a CalDAV server refuses a DUE of
+/// another type than DTSTART (RFC 5545 §3.8.2.3). Read only when DTSTART is
+/// not there, and never after DUE.
+pub const START: &str = "X-SIOUL-START";
+
+/// A project's line (`REFID`, under Sioul's own name).
+pub fn project_line(project: &str) -> String {
+    format!("{REFID}:{}", lines::escape(project))
+}
+
+/// A concept's line (`CONCEPT`, under Sioul's own name, a URI: ical4j writes
+/// an X- property's value back as text otherwise, its comma escaped).
+pub fn concept_line(uri: &str) -> String {
+    format!("{CONCEPT};VALUE=URI:{}", one_line(uri))
+}
 
 /// A task that can only be done while offices are open (a call to an office, a counter).
 pub const OFFICE_CONCEPT: &str = "tag:aurelienpierre.com,2026:sioul/needs/office-hours";
@@ -503,7 +542,8 @@ pub fn relation_of(line: &str) -> Relation {
 pub fn link_of(line: &str) -> Link {
     let value = lines::value(line).trim().to_string();
     let by_uid = lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID"));
-    Link { uri: if by_uid { format!("uid:{value}") } else { value }, label: lines::param(line, "LABEL").unwrap_or_default(), rel: lines::param(line, "LINKREL").unwrap_or_default() }
+    let rel = lines::param(line, REL).or_else(|| lines::param(line, "LINKREL")).unwrap_or_default();
+    Link { uri: if by_uid { format!("uid:{value}") } else { value }, label: lines::param(line, "LABEL").unwrap_or_default(), rel }
 }
 
 fn contact(line: &str) -> ContactRef {
@@ -525,6 +565,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     let range = master_range(&source)?;
     let mut task = Task::default();
     let (mut duration, mut stamp, mut start_line, mut has_status) = (None, 0, None, false);
+    let mut kept_start: Option<String> = None;
     let mut felt: Vec<(String, Option<Date>, String)> = Vec::new();
     for i in own_lines(&source, &range) {
         let line = &source[i];
@@ -543,6 +584,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
                 start_line = Some(line.clone());
             }
             "DUE" => task.due = moment(line, zone).unwrap_or_default(),
+            START => kept_start = moment(line, zone),
             "DURATION" => duration = minutes_of(value),
             "COMPLETED" => task.completed = zoned(line, zone).map(|z| z.timestamp().as_second()),
             "ESTIMATED-DURATION" => task.estimate = minutes_of(value).map_or(0, |m| u32::try_from(m.max(0)).unwrap_or(u32::MAX)),
@@ -590,6 +632,15 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     }
     if task.created == 0 {
         task.created = stamp;
+    }
+    // The start kept by Sioul (`START`), where DTSTART is gone (a phone
+    // dropped it, or Sioul wrote a due time beside a day to start), never
+    // after the due date.
+    if task.start.is_empty()
+        && let Some(kept) = kept_start
+        && (task.due.is_empty() || kept.get(..10) <= task.due.get(..10))
+    {
+        task.start = kept;
     }
     task.felt = crate::demands::felt_of(&felt);
     // DURATION with DTSTART stands for DUE (RFC 5545 §3.6.2).
@@ -792,6 +843,47 @@ fn date_line(name: &str, text: &str, zone: &TimeZone) -> Result<String, String> 
     Ok(format!("{name}:{}", utc(&local.to_zoned(zone.clone()).map_err(|_| bad())?)))
 }
 
+/// A task's DTSTART and DUE, each as the form has it ("" none), written so
+/// that every server and client keeps both (the one rule of a task's dates,
+/// 27 October 2026; three tasks written with a day to start and a time due
+/// were refused by Murena at every sync): never a DUE before DTSTART (the
+/// start then the due itself); of one value type, else the start is kept
+/// by Sioul alone (`START`) and DTSTART not written; not before its DUE (the
+/// same day, the same time), the start kept by Sioul too, which a phone's
+/// account manager would drop.
+fn dates_lines(start: &str, due: &str, zone: &TimeZone) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    if start.is_empty() {
+        if !due.is_empty() {
+            out.push(date_line("DUE", due, zone)?);
+        }
+        return Ok(out);
+    }
+    if due.is_empty() {
+        out.push(date_line("DTSTART", start, zone)?);
+        return Ok(out);
+    }
+    // After its due (by day when one is a day and the other a time): the due's own day, or time.
+    let after = start.get(..10) > due.get(..10) || (start.len() == due.len() && start > due);
+    let start: String = match (after, start.len() == 10, due.len() == 10) {
+        (false, _, _) => start.to_string(),
+        (true, true, _) => due.get(..10).unwrap_or(due).to_string(),
+        (true, false, true) => format!("{due}T00:00"),
+        (true, false, false) => due.to_string(),
+    };
+    let start = start.as_str();
+    if start.len() != due.len() {
+        out.push(date_line(START, start, zone)?);
+    } else {
+        out.push(date_line("DTSTART", start, zone)?);
+        if start == due {
+            out.push(date_line(START, start, zone)?);
+        }
+    }
+    out.push(date_line("DUE", due, zone)?);
+    Ok(out)
+}
+
 /// A value written as it is (a UID, an address): without line breaks or
 /// other control characters, which would end its line and start another
 /// (an address decoded from `%0D%0A`, a key from an imported file).
@@ -799,10 +891,14 @@ fn one_line(value: &str) -> String {
     value.chars().filter(|c| !c.is_control()).collect()
 }
 
-/// `RELATED-TO;RELTYPE=<kind>[;GAP=…]:<uid>`.
+/// `RELATED-TO;RELTYPE=<kind>[;GAP=…]:<uid>` for a parent, a child or a
+/// sibling; any other kind (DEPENDS-ON, FINISHTOSTART…) under Sioul's own
+/// name, `X-SIOUL-RELATED-TO` (`RELATED_TO_OTHER`): a phone's account manager
+/// keeps only those three, turning the others into a parent and dropping GAP.
 pub fn relation_line(kind: &str, uid: &str, gap_minutes: i64) -> String {
     let gap = if gap_minutes == 0 { String::new() } else { format!(";GAP={}", duration_of(gap_minutes)) };
-    format!("RELATED-TO;RELTYPE={kind}{gap}:{}", one_line(uid))
+    let name = if matches!(kind.to_ascii_uppercase().as_str(), "PARENT" | "CHILD" | "SIBLING") { "RELATED-TO" } else { RELATED_TO_OTHER };
+    format!("{name};RELTYPE={kind}{gap}:{}", one_line(uid))
 }
 
 /// A wait with its gap, written in the task that comes first (`text`), as
@@ -817,14 +913,23 @@ pub fn set_gap(text: &str, successor: &str, gap_minutes: i64, now: &Zoned) -> Re
     add_lines(&without, std::slice::from_ref(&line), now)
 }
 
-/// `LINK;LINKREL=…;LABEL=…;VALUE=URI:<uri>`, or `VALUE=UID` for `uid:<uid>`.
+/// `X-SIOUL-LINK;LINKREL=…;LABEL=…;VALUE=URI:<uri>`, or `VALUE=UID` for
+/// `uid:<uid>`: RFC 9253's LINK under Sioul's own name (`LINK`). A relation
+/// that is a URI goes in `X-SIOUL-REL`, quoted, beside `LINKREL=related`
+/// (`REL`).
 pub fn link_line(link: &Link) -> String {
-    let rel = if link.rel.is_empty() { "related".to_string() } else { lines::param_value(&link.rel) };
+    link_line_with(link, "")
+}
+
+/// `link_line` with more parameters (`;X-SIOUL-DUE=…`), before VALUE.
+pub fn link_line_with(link: &Link, more: &str) -> String {
+    let rel = if link.rel.is_empty() { "related" } else { link.rel.as_str() };
+    let rel = if rel.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') { format!("LINKREL={rel}") } else { format!("LINKREL=related;{REL}=\"{}\"", lines::param_value(rel).trim_matches('"')) };
     let label = if link.label.is_empty() { String::new() } else { format!(";LABEL={}", lines::param_value(&link.label)) };
     let uri = one_line(&link.uri);
     match uri.strip_prefix("uid:") {
-        Some(uid) => format!("LINK;LINKREL={rel}{label};VALUE=UID:{uid}"),
-        None => format!("LINK;LINKREL={rel}{label};VALUE=URI:{uri}"),
+        Some(uid) => format!("{LINK};{rel}{label}{more};VALUE=UID:{uid}"),
+        None => format!("{LINK};{rel}{label}{more};VALUE=URI:{uri}"),
     }
 }
 
@@ -901,7 +1006,7 @@ impl Changed {
             "DESCRIPTION" => self.notes,
             "LOCATION" => self.location,
             "STATUS" | "COMPLETED" | "PERCENT-COMPLETE" => self.status,
-            "DTSTART" => self.start || self.due,
+            "DTSTART" | START => self.start || self.due,
             "DUE" | "DURATION" => self.start || self.due,
             AT => self.at,
             "ESTIMATED-DURATION" => self.estimate,
@@ -934,11 +1039,8 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     if changed.status {
         out.extend(status_lines(edit.status, now));
     }
-    if (changed.start || changed.due) && !edit.start.is_empty() {
-        out.push(date_line("DTSTART", &edit.start, zone)?);
-    }
-    if (changed.start || changed.due) && !edit.due.is_empty() {
-        out.push(date_line("DUE", &edit.due, zone)?);
+    if changed.start || changed.due {
+        out.extend(dates_lines(&edit.start, &edit.due, zone)?);
     }
     // A time given by a drag before blocks (`AT`) is never written: changed, its line only goes.
     if changed.estimate && edit.estimate > 0 {
@@ -951,10 +1053,10 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
         out.push(format!("CATEGORIES:{}", edit.categories.iter().map(|c| lines::escape(c)).collect::<Vec<_>>().join(",")));
     }
     if changed.kind && !edit.kind.is_empty() {
-        out.push(format!("CONCEPT:{KIND_CONCEPT}{}", edit.kind));
+        out.push(concept_line(&format!("{KIND_CONCEPT}{}", edit.kind)));
     }
     if changed.office && edit.office_hours {
-        out.push(format!("CONCEPT:{OFFICE_CONCEPT}"));
+        out.push(concept_line(OFFICE_CONCEPT));
     }
     if changed.office_times && edit.office_hours && !edit.office_times.is_empty() {
         out.push(format!("X-SIOUL-OFFICE-HOURS:{}", lines::escape(&edit.office_times)));
@@ -1009,7 +1111,7 @@ pub fn new_task(edit: &TaskEdit, uid: &str, zone: &TimeZone, now: &Zoned) -> Res
     out.extend(edit.waits_for.iter().filter(|u| edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     out.extend(edit.links.iter().map(link_line));
     out.extend(edit.contacts.iter().map(contact_line));
-    out.extend(edit.projects.iter().map(|c| format!("REFID:{}", lines::escape(c))));
+    out.extend(edit.projects.iter().map(|c| project_line(c)));
     out.extend(["END:VTODO".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
 }
@@ -1074,7 +1176,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     added.extend(edit.waits_for.iter().filter(|u| !old.waits_for.contains(u) && edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     added.extend(edit.links.iter().filter(|l| !old.links.contains(l)).map(link_line));
     added.extend(edit.contacts.iter().filter(|c| !old.contacts.contains(c)).map(contact_line));
-    added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| format!("REFID:{}", lines::escape(c))));
+    added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| project_line(c)));
     let keep = |line: &str| {
         let name = lines::name(line);
         match name.as_str() {
@@ -1200,8 +1302,9 @@ pub fn completed_at(text: &str, at: &Zoned) -> Result<String, String> {
 
 /// The main VTODO with `added` lines, those not there yet; the text as it was when all are.
 pub fn add_lines(text: &str, added: &[String], now: &Zoned) -> Result<String, String> {
-    let present: Vec<String> = lines::unfold(text);
-    let new: Vec<String> = added.iter().filter(|l| !present.contains(l)).cloned().collect();
+    // A line there in another form (a LINK written before Sioul's own name) is there.
+    let present: Vec<String> = lines::unfold(text).iter().map(|l| crate::interop::own_form(l)).collect();
+    let new: Vec<String> = added.iter().filter(|l| !present.contains(&crate::interop::own_form(l))).cloned().collect();
     rewrite(text, |_| true, new, now)
 }
 
@@ -1280,7 +1383,7 @@ mod tests {
         let zone = TimeZone::UTC;
         let now = Zoned::now();
         let made = new_task(&TaskEdit { title: "Call the bank".into(), kind: "call".into(), ..TaskEdit::default() }, "k", &zone, &now).unwrap();
-        assert!(made.contains("CONCEPT:tag:aurelienpierre.com,2026:sioul/task-type/call"), "{made}");
+        assert!(made.contains("X-SIOUL-CONCEPT;VALUE=URI:tag:aurelienpierre.com,2026:sioul/task-type/call"), "{made}");
         let other = made.replace("END:VTODO", "CONCEPT:https://example.org/concepts/money\r\nEND:VTODO");
         let task = task_of_text(&other, &zone).unwrap();
         assert_eq!(task.kind, "call");
@@ -1294,7 +1397,7 @@ mod tests {
         assert_eq!(TaskEdit { kind: "Not a kind!".into(), ..TaskEdit::default() }.tidy().kind, "");
         // A kind of yours is a concept too, read back as it was written.
         let errand = apply(&unsaid, &TaskEdit { kind: "rendez-vous".into(), ..TaskEdit::of(&task_of_text(&unsaid, &zone).unwrap()) }, &zone, &now).unwrap();
-        assert!(errand.contains("task-type/rendez-vous"), "{errand}");
+        assert!(lines::unfold(&errand).iter().any(|l| l.ends_with("task-type/rendez-vous")), "{errand}");
         assert_eq!(task_of_text(&errand, &zone).unwrap().kind, "rendez-vous");
         // Needs an office: a concept of its own, set and taken off without touching the kind.
         let task = task_of_text(&unsaid, &zone).unwrap();
@@ -1364,7 +1467,7 @@ mod tests {
         let gone: Vec<&String> = before.iter().filter(|l| !after.contains(l)).collect();
         let new: Vec<&String> = after.iter().filter(|l| !before.contains(l)).collect();
         assert_eq!(gone.iter().map(|l| lines::name(l)).collect::<Vec<_>>(), vec!["DTSTAMP", "SUMMARY", "RELATED-TO"], "{gone:?}");
-        assert!(new.iter().any(|l| *l == "SUMMARY:Send the registered letter") && new.iter().any(|l| *l == "RELATED-TO;RELTYPE=DEPENDS-ON:photocopies"), "{new:?}");
+        assert!(new.iter().any(|l| *l == "SUMMARY:Send the registered letter") && new.iter().any(|l| *l == "X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:photocopies"), "{new:?}");
         assert!(text.contains("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:wait-answer") && text.contains("X-OTHER-APP:keep me") && text.contains("SEQUENCE:1"), "{text}");
         let again = task_of_text(&text, &paris()).unwrap();
         assert_eq!((again.notes.as_str(), again.estimate, again.title.as_str()), ("With the form and the copy.", 90, "Send the registered letter"));
@@ -1447,7 +1550,7 @@ mod tests {
         };
         let text = new_task(&edit, "certificate", &paris(), &now()).unwrap();
         let written = lines::unfold(&text);
-        assert!(written.iter().any(|l| l == "LINK;LINKREL=describedby;LABEL=\"Outbox: 2\";VALUE=URI:sioul:note/admin/letters.md"), "{text}");
+        assert!(written.iter().any(|l| l == "X-SIOUL-LINK;LINKREL=describedby;LABEL=\"Outbox: 2\";VALUE=URI:sioul:note/admin/letters.md"), "{text}");
         assert!(text.contains("DUE:20261030T160000Z") && text.contains("ESTIMATED-DURATION:PT15M"), "{text}");
         assert_eq!(TaskEdit::of(&task_of_text(&text, &paris()).unwrap()), edit);
     }
@@ -1563,7 +1666,7 @@ mod tests {
         assert_eq!(done.status, Status::Completed);
         // Line breaks in what is written as it is stay out of the file.
         let link = link_line(&Link { uri: "uid:a\r\nATTENDEE:mailto:x@example.org".into(), ..Link::default() });
-        assert!(!link.contains(['\r', '\n']) && relation_line("DEPENDS-ON", "b\nX", 0) == "RELATED-TO;RELTYPE=DEPENDS-ON:bX", "{link}");
+        assert!(!link.contains(['\r', '\n']) && relation_line("DEPENDS-ON", "b\nX", 0) == "X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:bX", "{link}");
     }
 
     #[test]

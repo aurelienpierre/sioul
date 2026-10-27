@@ -489,16 +489,18 @@ Each task is a `VTODO` (RFC 5545 §3.6.2) in a CalDAV task list, one file each, 
 | A step of a bigger task | `RELATED-TO;RELTYPE=PARENT:<UID>`, in the step |
 | Its place among the steps | `X-APPLE-SORT-ORDER`, as Nextcloud Tasks, Tasks.org and Apple Reminders write it |
 | A list to tick | lines of a GitHub task list in its notes (`DESCRIPTION`): `- [ ]`, `- [x]`, and `- [-]` for not needed this time |
-| Waits for another task | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), in the task that waits |
-| Waits, with a gap ("the answer comes within two weeks") | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`, and by the form's **Then wait**. Read from any program, `NEXT` too |
-| Can start from; the date asked | `DTSTART`; `DUE` |
+| Waits for another task | `X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5's type), in the task that waits |
+| Waits, with a gap ("the answer comes within two weeks") | `X-SIOUL-RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`, and by the form's **Then wait**. Read from any program in RFC 9253's own form too (`RELATED-TO`), `NEXT` too |
+| Can start from; the date asked | `DTSTART` (kept in `X-SIOUL-START` too where a phone would drop it: the same day as its date asked); `DUE` |
 | How long it takes | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
-| Its kind; "needs an open office" | `CONCEPT` with a tag URI (RFC 9253 §8.1, RFC 4151) |
-| Its project | `REFID` (RFC 9253 §8.3) |
-| Its notes, the mail it came from, its drafts, an event | `LINK` with `LINKREL` `describedby`, `via` or `related`; a message as `mid:` (RFC 2392) |
+| Its kind; "needs an open office" | `X-SIOUL-CONCEPT;VALUE=URI` with a tag URI (RFC 9253 §8.1's `CONCEPT`, RFC 4151) |
+| Its project | `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID`) |
+| Its notes, the mail it came from, its drafts, an event | `X-SIOUL-LINK` (RFC 9253's `LINK`) with `LINKREL` `describedby`, `via` or `related`; a message as `mid:` (RFC 2392) |
 | The people and offices involved | `CONTACT;ALTREP="sioul:contact/<UID>"` |
 | Costs, gain, felt ratings, first estimate, time before and after, area, office hours, billed | `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN`, `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-AREA`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-BILLABLE` |
-| Pinned to a time | a `VEVENT` in a calendar, tied both ways: `LINK` with a tag-URI `LINKREL` in each, and `X-SIOUL-TASK` in the event |
+| Pinned to a time | a `VEVENT` in a calendar, tied both ways: `X-SIOUL-LINK` with a tag-URI relation (`X-SIOUL-REL`) in each, and `X-SIOUL-TASK` in the event |
+
+RFC 9253's links, kinds, projects and waits are written under Sioul's own names since 27 October 2026 (`X-SIOUL-…`, with the same parameters): the account manager of Murena's phones crashes uploading the standard ones, and turns waits into subtasks ([Works with](compatibility.md#other-apps-on-the-same-accounts)). Sioul reads both forms, and rewrote once, in its own, the tasks and events your CalDAV accounts sync.
 
 Taking a wait away in Sioul also takes away a `FINISHTOSTART` or `NEXT` that another program wrote for the same pair in the other task.
 
@@ -506,7 +508,7 @@ New lists are made with `MKCALENDAR` (RFC 4791 §5.3.1) and renamed with `PROPPA
 
 ### Waits in other CalDAV programs {#waits-in-other-caldav-programs}
 
-RFC 9253 (August 2022) added `DEPENDS-ON` and four temporal relation types (`FINISHTOSTART` and its kin, with an optional `GAP`) to iCalendar's `RELATED-TO`, and three new properties: `LINK`, `CONCEPT` and `REFID`. Few task programs use them yet. cfait, free software for the terminal, the desktop and Android, has written `DEPENDS-ON` since November 2025. None of the seventeen established CalDAV task apps checked has waits between tasks, and requests have stayed open for years: Thunderbird's since 2003, Nextcloud Tasks' since 2017, Tasks.org's since 2020. What was found only in Sioul, among the projects searched, is the combination: `DEPENDS-ON` and `FINISHTOSTART` with `GAP`, each in the direction RFC 9253 gives it; `LINK`, `CONCEPT` and `REFID`; and a planner that schedules around waits.
+RFC 9253 (August 2022) added `DEPENDS-ON` and four temporal relation types (`FINISHTOSTART` and its kin, with an optional `GAP`) to iCalendar's `RELATED-TO`, and three new properties: `LINK`, `CONCEPT` and `REFID`. Few task programs use them yet. cfait, free software for the terminal, the desktop and Android, has written `DEPENDS-ON` since November 2025. None of the seventeen established CalDAV task apps checked has waits between tasks, and requests have stayed open for years: Thunderbird's since 2003, Nextcloud Tasks' since 2017, Tasks.org's since 2020. What was found only in Sioul, among the projects searched, is the combination: `DEPENDS-ON` and `FINISHTOSTART` with `GAP`, each in the direction RFC 9253 gives it; `LINK`, `CONCEPT` and `REFID`; and a planner that schedules around waits. Since 27 October 2026 Sioul writes them under its own names, so that a phone's account manager can send them back (above), and reads RFC 9253's own lines from other programs.
 
 As of October 2026, from each program's own code and issue tracker, not tried with Sioul:
 
@@ -524,7 +526,7 @@ As of October 2026, from each program's own code and issue tracker, not tried wi
 | Vikunja | web | ✓ | partly⁸ |
 | Apple Reminders | iOS, iPadOS, macOS | ?⁹ | ✗ |
 
-1. `DEPENDS-ON`, in the task that waits, as Sioul writes it, since version 0.1.7 (November 2025); so a wait made in one should show in the other.
+1. `DEPENDS-ON`, in the task that waits, as Sioul wrote it until 27 October 2026, since version 0.1.7 (November 2025): Sioul reads a wait made in cfait; one made in Sioul, under Sioul's own name since then, is no wait for cfait.
 2. Requested since 2020. Through DAVx⁵, an RFC 9253 relation type has been rewritten as a parent (reported in 2023).
 3. Requested since 2017, and `DEPENDS-ON` by name since June 2026.
 4. In its storage, not in its screens; DAVx⁵'s FAQ says it no longer seems developed.
@@ -536,7 +538,7 @@ As of October 2026, from each program's own code and issue tracker, not tried wi
 
 Also checked, with steps at most and no waits: GNOME Evolution, GNOME Endeavour, Planify, Chiri, 2Do (its "dependencies" are task titles written in a note), Fantastical, todoman and org-caldav. Two small, recent tools also carry dependencies over CalDAV: caldawarrior, a bridge for Taskwarrior (`DEPENDS-ON`), and tasknotes-caldav, a plugin for Obsidian's TaskNotes, which writes the temporal types with `GAP` in the task that waits, the other way round from RFC 9253: Sioul would read such a wait backwards.
 
-**What other programs do with a wait.** RFC 5545 (§3.2.15) tells a program that does not know a relation type to read it as `PARENT`, which is why most apps show a wait as a subtask. KCalendarCore (under KOrganizer and Merkuro) and Errands read every `RELATED-TO` as the parent. DAVx⁵, the usual bridge on Android, rewrites RFC 9253's types as `PARENT` (for OpenTasks and Tasks.org) or drops them (for jtx Board) when it uploads a task. So a wait made in Sioul can turn into a subtask, or disappear, once another app saves that task ([Works with](compatibility.md#other-apps-on-the-same-accounts)). Google serves no tasks over CalDAV at all.
+**What other programs do with a wait.** RFC 5545 (§3.2.15) tells a program that does not know a relation type to read it as `PARENT`, which is why most apps show a wait as a subtask. KCalendarCore (under KOrganizer and Merkuro) and Errands read every `RELATED-TO` as the parent. DAVx⁵, the usual bridge on Android, rewrites RFC 9253's types as `PARENT` (for OpenTasks and Tasks.org) or drops them (for jtx Board) when it uploads a task. So a wait in RFC 9253's own form can turn into a subtask, or disappear, once another app saves that task. Sioul's own form since 27 October 2026 (`X-SIOUL-RELATED-TO`) is kept by DAVx⁵ as it is, and read by no other app ([Works with](compatibility.md#other-apps-on-the-same-accounts)). Google serves no tasks over CalDAV at all.
 
 ??? info "Sources"
     All read on 8 October 2026, in each program's own repository, documentation or tracker.

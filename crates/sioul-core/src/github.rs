@@ -141,7 +141,7 @@ pub fn new_task(issue: &Issue, project: Option<&str>, now: &Zoned) -> String {
     out.push(format!("{REASON}:{}", issue.reason));
     out.push(link(issue));
     if let Some(project) = project {
-        out.push(format!("REFID:{}", lines::escape(project)));
+        out.push(tasks::project_line(project));
     }
     out.extend(["END:VTODO".to_string(), "END:VCALENDAR".to_string()]);
     lines::fold(&out)
@@ -176,7 +176,7 @@ pub fn updated(text: &str, issue: &Issue, project: Option<&str>, now: &Zoned) ->
     if let Some(project) = project
         && !source.iter().any(|l| lines::name(l) == "REFID")
     {
-        added.push(format!("REFID:{}", lines::escape(project)));
+        added.push(tasks::project_line(project));
     }
     if added.is_empty() {
         return None;

@@ -670,8 +670,16 @@ pub struct State {
     /// server, unless something was put in it there meanwhile.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deleted: bool,
+    /// The form its tasks and events were rewritten in, once
+    /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub interop: u32,
     #[serde(default, rename = "item")]
     pub items: Vec<ItemState>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// One item, as last agreed with the server.
@@ -747,40 +755,51 @@ fn guarded(path: &Path, change: crate::agenda::Change) -> Result<(), String> {
 /// Whether the calendar whose folder holds `path` can only be read; None
 /// when `path` is no file of a calendar's folder.
 pub fn calendar_read_only(path: &Path) -> Option<bool> {
+    calendar_marks(path).map(|(read_only, _)| read_only)
+}
+
+/// What the calendar whose folder holds `path` may hold ("VEVENT", "VTODO";
+/// empty when its server does not say, or a calendar of this device's own
+/// made without saying); None when `path` is no file of a calendar's folder.
+pub fn calendar_components(path: &Path) -> Option<Vec<String>> {
+    calendar_marks(path).map(|(_, components)| components)
+}
+
+fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
     let rest = path.strip_prefix(Kind::Calendars.root()).ok()?;
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
-    Some(read_only_of(&state_path(account, Kind::Calendars, id)))
+    Some(marks_of(&state_path(account, Kind::Calendars, id)))
 }
 
-/// A calendar's read-only mark from its sync state (`State::read_only`),
-/// parsed again only when that file changed (its time or its size), never
-/// at each write: the state holds a row per item its server has (review of
-/// 36002ea, can-wait 13).
-fn read_only_of(state: &Path) -> bool {
-    type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, bool)>;
+/// A calendar's read-only mark and what it may hold, from its sync state
+/// (`State::read_only`, `components`), parsed again only when that file
+/// changed (its time or its size), never at each write: the state holds a
+/// row per item its server has (review of 36002ea, can-wait 13).
+fn marks_of(state: &Path) -> (bool, Vec<String>) {
+    type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, bool, Vec<String>)>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(std::collections::BTreeMap::new());
     let meta = std::fs::metadata(state).ok();
     let (when, size) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, std::fs::Metadata::len));
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((at, length, mark)) = seen.get(state)
+    if let Some((at, length, mark, components)) = seen.get(state)
         && (*at, *length) == (when, size)
     {
-        return *mark;
+        return (*mark, components.clone());
     }
     // A state that does not read now is never kept for its stamp (the check
-    // of ef8c0ca, low 21): the mark last read meanwhile, read again next time.
+    // of ef8c0ca, low 21): the marks last read meanwhile, read again next time.
     match std::fs::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
         Some(read) => {
-            seen.insert(state.to_path_buf(), (when, size, read.read_only));
-            read.read_only
+            seen.insert(state.to_path_buf(), (when, size, read.read_only, read.components.clone()));
+            (read.read_only, read.components)
         }
         // No state at all: a calendar of this device's own, which no server makes read-only.
         None if meta.is_none() => {
-            seen.insert(state.to_path_buf(), (when, size, false));
-            false
+            seen.insert(state.to_path_buf(), (when, size, false, Vec::new()));
+            (false, Vec::new())
         }
-        None => seen.get(state).is_some_and(|(_, _, mark)| *mark),
+        None => seen.get(state).map_or((false, Vec::new()), |(_, _, mark, components)| (*mark, components.clone())),
     }
 }
 

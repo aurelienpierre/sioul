@@ -279,7 +279,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for (summary, kept) in report.answered {
                 tell(qt, shared, say("dav-answered-elsewhere", &[("summary", summary), ("answer", kept.to_ascii_lowercase())]));
             }
-            changed
+            // Its tasks and events rewritten once in the form a phone can send back, said once, calmly, with the count.
+            if report.rewritten > 0 {
+                tell(qt, shared, say("dav-rewritten", &[("count", report.rewritten.to_string())]));
+            }
+            for summary in &report.moved_out {
+                tell(qt, shared, say("dav-moved-out", &[("summary", summary.clone())]));
+            }
+            changed || report.rewritten > 0 || !report.moved_out.is_empty()
         }
         Err(_) => {
             set_status(qt, line);
