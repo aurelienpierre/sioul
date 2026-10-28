@@ -2984,6 +2984,7 @@ share-put-back-whole = { $file } revient comme il était ({ $when }) ; le fich
 share-put-back-meeting = { $file } est une réunion avec d’autres : seules vos propres lignes de cette version ({ $when }) reviennent, votre temps autour, ses coûts et votre rappel ; son heure, son titre et ses invités restent tels que son organisateur les a mis. La réunion telle qu’elle est maintenant est gardée dans la liste.
 share-put-back-meeting-gone = { $file } est une réunion qui n’est plus dans votre agenda : elle n’est pas remise, son serveur préviendrait chaque invité.
 share-put-back-meeting-done = Vos propres lignes de { $file } sont revenues ({ $when }) : son heure, son titre et ses invités restent tels que son organisateur les a.
+share-put-back-was-meeting = { $file } était une réunion avec d’autres dans cette version ({ $when }) : elle n’est pas remise, son serveur préviendrait chaque invité. L’événement reste tel qu’il est maintenant.
 share-put-back-nothing = { $file } contient déjà ce que contenait cette version : rien à remettre.
 share-put-back-entries = { $file } comme il était ({ $when }) : { $changed ->
     [one] une entrée revient à ce qu’elle était
@@ -6331,6 +6332,7 @@ agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » u
 agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.
 event-delete-with-others = Une réunion avec d’autres n’est jamais supprimée ici : son serveur l’annulerait ou la déclinerait pour eux. Répondez-y, ou supprimez-la dans son application d’agenda.
 event-change-with-others = Une réunion avec d’autres garde son heure, son titre, son lieu, ses notes et son agenda tels que son organisateur les a mis : son serveur préviendrait chaque invité d’un changement. Votre temps autour, ses coûts et votre rappel se changent ici.
+agent-meeting-never-written = C’est une réunion avec d’autres : Sioul n’y écrit jamais, son serveur préviendrait chaque invité d’un changement. Le temps gardé autour et le rappel se règlent dans la fenêtre de Sioul.
 invitation-cancel-changed = Il a changé entre-temps : rien n’a été retiré.
 invitation-cancel-refused = Cette annulation ne vient pas de l’organisateur de la réunion, ou la réunion est la vôtre : rien n’a été retiré.
 invitation-older = Votre calendrier garde une version de cette réunion au moins aussi récente que cette invitation : ses heures y restent telles quelles, votre réponse y est, et elle est envoyée.

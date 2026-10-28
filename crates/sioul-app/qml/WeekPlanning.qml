@@ -254,6 +254,12 @@ ColumnLayout {
         }
     }
 
+    // A date asked's words beside its diamond: its title, its hour when it has one, its kind and the time left.
+    function datedWords(row) {
+        const at = row.when !== "" && row.when !== planning.sioul.text("agenda-all-day") ? " · " + row.when : ""
+        return row.title + at + (row.line ? " · " + row.line : "")
+    }
+
     // What Show leaves out on this device.
     function shown(row) {
         const hide = planning.hide || {}
@@ -396,8 +402,11 @@ ColumnLayout {
         for (let i = 0; i < days.length; i++) {
             const day = days[i]
             const line = (kind, title, more) => Object.assign(planning.rowOf({ item: { id: kind, kind: kind, title: title, time: { type: "at", at: day.start }, can: {}, source: {} }, when: "", from_minute: 0, to_minute: 0 }, day, i, ""), { key: kind + "|" + day.date }, more || {})
-            const chips = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(planning.shown).map(r => r.title)
-            out.push(line("day-title", day.title || day.date, { line: chips.join("  ·  ") }))
+            const heads = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(planning.shown)
+            // Whole days under the day's title; a date asked on a line of its own, its diamond and its words (review of part 4, later 2).
+            out.push(line("day-title", day.title || day.date, { line: heads.filter(r => r.kind !== "dated").map(r => r.title).join("  ·  ") }))
+            for (const r of heads.filter(r => r.kind === "dated"))
+                out.push(Object.assign({}, r, { key: r.key + "|list", line: planning.datedWords(r) }))
             if (day.today && marks.some(m => m.date === day.date))
                 out.push(line("doses-line", ""))
             // The night by its part: waking, at its time; winding down, from its start.
@@ -954,7 +963,9 @@ ColumnLayout {
                         // outlined beyond; in the Day its words too ("CAF form · Date
                         // asked · four days left"), in the Week its title alone (§7.3).
                         readonly property bool dated: chip.item.kind === "dated"
-                        readonly property string words: chip.dated && planning.single && chip.item.line ? chip.item.title + " · " + chip.item.line : chip.item.title
+                        // Its hour too, when it has one ("CAF form · 17:00 · Date asked · today"; later 10).
+                        readonly property string hour: chip.dated && chip.item.time && chip.item.time.type === "at" ? chip.modelData.when || "" : ""
+                        readonly property string words: chip.dated && planning.single ? planning.datedWords({ title: chip.item.title, when: chip.hour, line: chip.item.line || "" }) : chip.dated && chip.hour !== "" ? chip.item.title + " · " + chip.hour : chip.item.title
 
                         Layout.fillWidth: true
                         Layout.rightMargin: 3
@@ -1582,6 +1593,7 @@ ColumnLayout {
             required property string location
             required property string list
             required property string fold
+            required property string tone
             readonly property bool isTitle: line.kind === "day-title"
             readonly property bool isLine: line.kind === "doses-line" || line.kind === "plan-line" || line.kind === "more-line" || line.kind === "free"
             readonly property bool quiet: line.isLine || line.kind === "gain" || line.kind === "slack" || line.kind === "night" || line.fold === "band" || line.kind === "done"
@@ -1665,17 +1677,26 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
+                    // Its kind's bar; a date asked's diamond, filled within seven days (one
+                    // object either way: a phone's week list has one per row).
                     Rectangle {
-                        Layout.preferredWidth: 4
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 16
-                        radius: 2
-                        color: line.kind === "step" && line.certainty !== "held" ? "transparent" : planning.kindColor({ kind: line.kind, colour: line.colour })
-                        border.width: line.kind === "step" && line.certainty !== "held" ? 1 : 0
-                        border.color: planning.theme.accent
-                        opacity: line.quiet ? 0.5 : 1
+                        readonly property bool diamond: line.kind === "dated"
+
+                        objectName: diamond ? "listDiamond" : ""
+                        Layout.preferredWidth: diamond ? 7 : 4
+                        Layout.preferredHeight: diamond ? 7 : -1
+                        Layout.fillHeight: !diamond
+                        Layout.minimumHeight: diamond ? 7 : 16
+                        Layout.alignment: Qt.AlignVCenter
+                        rotation: diamond ? 45 : 0
+                        radius: diamond ? 0 : 2
+                        color: diamond ? (line.tone !== "quiet" ? planning.theme.text : "transparent") : line.kind === "step" && line.certainty !== "held" ? "transparent" : planning.kindColor({ kind: line.kind, colour: line.colour })
+                        border.width: diamond || (line.kind === "step" && line.certainty !== "held") ? 1 : 0
+                        border.color: diamond ? planning.theme.text : planning.theme.accent
+                        opacity: !diamond && line.quiet ? 0.5 : 1
                     }
                     Label {
+                        visible: line.kind !== "dated"
                         Layout.preferredWidth: listTimeFont.advanceWidth("00:00 – 00:00") + 4
                         Layout.alignment: Qt.AlignTop
                         text: line.when
@@ -1689,7 +1710,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         // Its words wrap at the row's width: they never widen it.
                         Layout.preferredWidth: 0
-                        text: (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "")
+                        text: line.kind === "dated" ? line.line : (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 14

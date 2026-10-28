@@ -4664,6 +4664,7 @@ mod tests {
             crate::devices::change(&crate::devices::own_path(&self.roots.state), Some((folder, &KEY)), |e| {
                 e.exported(now * 1000, outcome.wrote, now);
                 e.keeping = crate::blobs::KEEPING;
+                e.own_time = crate::share::OWN_TIME_SHARED;
             })
             .unwrap();
             outcome

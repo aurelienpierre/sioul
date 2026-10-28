@@ -566,3 +566,61 @@ fn a_quiet_exchange_is_the_same_as_a_whole_one_through_the_switch() {
     eprintln!("quiet against whole: {quiet} quiet exchanges in world A out of {total} exchanges, outcomes and stores the same");
     assert!(quiet > 20, "the quiet path ran too seldom to mean anything: {quiet}");
 }
+
+/// Your own time around meetings (`data/own-time.toml`, the unified agenda's
+/// part 4) beside a phone on 982d6e5, which has no such store: never offered
+/// while the phone's entry does not say it has it, so the phone holds no
+/// record it could not place and its background steps go quiet again (review
+/// of part 4, M1); the desk's file kept to itself. Once the phone runs a build
+/// that says so, the desk's next exchange sends it, once, and both read the
+/// same own time.
+#[test]
+fn your_own_time_waits_for_a_device_that_has_its_store() {
+    let base = scratch("own-time-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.own_time = OWN_TIME_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    desk.write("data/own-time.toml", "[event.\"board-1\"]\nbefore = 15\n\n[event.\"review-2\"]\nafter = 10\nremind = \"30\"\n");
+    background(&desk, &folder, &key, now);
+    // The phone as 982d6e5: no such store, none known.
+    let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != OWN_TIME).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![OWN_TIME.to_string()]);
+    let older_step = |now: i64| {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let n = quieted();
+        let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &older, now).unwrap();
+        (quieted() > n, outcome)
+    };
+    // Its first steps read the desk's records and then its own once (as any device's: settled
+    // at the second, `an_exchange_with_nothing_new_reads_nothing_and_says_the_same`); the next are quiet.
+    let mut steps = Vec::new();
+    for _ in 0..4 {
+        now += MINUTE;
+        steps.push(older_step(now));
+    }
+    assert!(steps.iter().all(|(_, o)| o.pending == 0), "nothing it cannot place: {steps:?}");
+    assert!(steps[2].0 && steps[3].0, "its background steps quiet again: {steps:?}");
+    assert!(!phone.path("data/own-time.toml").exists(), "nothing written there");
+    // The desk's own exchanges stay quiet too: its file kept to itself.
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    // The phone updated: its entry says it has the store; the desk's next exchange sends it, once.
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    entry(&phone, &folder, &key, |e| e.own_time = OWN_TIME_SHARED);
+    now += MINUTE;
+    let sent = background(&desk, &folder, &key, now);
+    now += MINUTE;
+    let came = background(&phone, &folder, &key, now);
+    assert!(came.written.contains(OWN_TIME), "{sent:?} {came:?}");
+    assert_eq!(phone.read("data/own-time.toml").parse::<toml::Table>().unwrap(), desk.read("data/own-time.toml").parse::<toml::Table>().unwrap(), "the same own time on both");
+    now += MINUTE;
+    let again = background(&desk, &folder, &key, now);
+    assert_eq!(again.sent, 0, "sent once: {again:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}

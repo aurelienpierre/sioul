@@ -378,6 +378,35 @@ Item {
             // The Day: its words too.
             const day = makeWeek({ days: [days[0]] })
             verify(root.all(day, c => c.text !== undefined && typeof c.text === "string" && c.text === "CAF form · Date asked · four days left").length === 1)
+            // With its hour: said in its chip (review of part 4, later 10).
+            const timed = week()
+            const at = placed({ id: "dated:task:form", kind: "dated", time: { type: "at", at: timed[0].start + 17 * 3600 }, source: { type: "dated", kind: "task", key: "form" }, can: { edit: "task", drag: "none" }, title: "Form", line: "Date asked · today", tone: "plain", owner: "form" }, timed[0], 0, 1440)
+            at.when = "17:00"
+            timed[0].head = [at]
+            const hours = makeWeek({ days: timed })
+            verify(root.all(hours, c => c.text !== undefined && typeof c.text === "string" && c.text === "Form · 17:00").length === 1, "the Week: its title and its hour")
+        }
+
+        // On a phone, the Week's list gives a date asked a line of its own, its
+        // diamond and its words, beside two whole days on its day (later 2).
+        function test_agenda_a_phone_s_week_lists_a_date_with_its_words() {
+            const days = week().concat(["2099-01-08", "2099-01-09", "2099-01-10", "2099-01-11"].map(v3day))
+            const whole = (title) => placed({ id: "event:" + title, kind: "event", time: { type: "day", date: days[0].date, until: days[0].date }, source: { type: "calendar", key: title, uid: title, start: days[0].start, recurring: false, calendar: "c", collection: "local/c" }, can: { edit: "event", drag: "none" }, title: title }, days[0], 0, 1440)
+            const date = placed({ id: "dated:task:caf", kind: "dated", time: { type: "day", date: days[0].date, until: days[0].date }, source: { type: "dated", kind: "task", key: "caf" }, can: { edit: "task", drag: "none" }, title: "CAF form", line: "Date asked · four days left", tone: "plain", owner: "caf" }, days[0], 0, 1440)
+            days[0].head = [date, whole("School holidays"), whole("A birthday")]
+            const planning = makeWeek({ width: 412, days: days, today: "2099-01-05" })
+            verify(planning.listed)
+            const list = root.all(planning, c => c.positionViewAtIndex !== undefined && c.visible)[0]
+            const keys = []
+            for (let i = 0; i < list.count; i++)
+                keys.push(list.model.get(i).key)
+            const title = keys.indexOf("day-title|2099-01-05")
+            verify(keys[title + 1].indexOf("dated:task:caf|") === 0, "its own line, right under its day: " + keys.join(", "))
+            wait(50)
+            const diamonds = root.all(list, c => c.objectName === "listDiamond" && c.visible)
+            compare(diamonds.length, 1)
+            verify(root.all(list, c => c.visible && c.text === "CAF form · Date asked · four days left").length === 1, "its words")
+            verify(root.all(list, c => c.visible && c.text === "School holidays  ·  A birthday").length === 1, "the whole days under the day's title")
         }
 
         // What was let go stays drawn where it went while its re-plan is due

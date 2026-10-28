@@ -727,7 +727,9 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
                 edge: "",
             });
         }
-        placed.sort_by(|a, b| (a.item.time.proper(zone).0, !a.all_day, &a.item.title).cmp(&(b.item.time.proper(zone).0, !b.all_day, &b.item.title)));
+        // A date asked first in its day's head: never a "1 more" behind holidays or a trip
+        // (review of part 4, later 2); the rest by when they start.
+        placed.sort_by(|a, b| (a.item.kind != Kind::Dated, a.item.time.proper(zone).0, !a.all_day, &a.item.title).cmp(&(b.item.kind != Kind::Dated, b.item.time.proper(zone).0, !b.all_day, &b.item.title)));
         let (head, mut timed): (Vec<Placed>, Vec<Placed>) = placed.into_iter().partition(|p| p.all_day);
         let spans: Vec<(i64, i64)> = timed.iter().map(|p| (i64::from(p.from_minute), i64::from(p.to_minute.max(p.from_minute + 15)))).collect();
         for (p, (column, columns)) in timed.iter_mut().zip(crate::dayview::side_by_side(&spans)) {
@@ -1080,6 +1082,10 @@ pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
     for (from, until, _) in i.moments {
         bounds.extend([*from, *until]);
     }
+    // With no hours set, the day's work ends at 18:00 for the line (`head_at`).
+    if i.moments.iter().any(|(_, _, mode)| mode.time == crate::areas::Time::Any) {
+        bounds.extend(evening_of(i.now, i.zone));
+    }
     bounds.retain(|b| *b >= i.now && *b <= i.next_midnight);
     bounds.sort_unstable();
     bounds.dedup();
@@ -1094,6 +1100,19 @@ pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
     }
     out.retain(|frame| !frame.text.is_empty());
     out
+}
+
+/// 18:00 of `t`'s day: with no hours set (`Time::Any`, everything comes),
+/// the end of the day's work for the head line (review of part 4, later 8).
+fn evening_of(t: i64, zone: &TimeZone) -> Option<i64> {
+    let day = jiff::Timestamp::from_second(t).ok()?.to_zoned(zone.clone()).date();
+    Some(day.at(18, 0, 0, 0).to_zoned(zone.clone()).ok()?.timestamp().as_second())
+}
+
+/// Work and admin for the head line: their hours, and with no hours set
+/// (`Time::Any`) the whole day, its work until 18:00 (`evening_of`).
+fn works(time: crate::areas::Time) -> bool {
+    matches!(time, crate::areas::Time::Work | crate::areas::Time::Admin | crate::areas::Time::Any)
 }
 
 /// The head line's words at `t` (`head_line`).
@@ -1138,7 +1157,11 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
     let under = i.today.iter().filter(|item| fixed(item) && item.kind != Kind::Night).find(|item| span(item).is_some_and(|(s, e)| s <= t && t < e)).or_else(|| i.today.iter().filter(|item| item.kind == Kind::Gain).find(|item| span(item).is_some_and(|(s, e)| s <= t && t < e)));
     // The next fixed thing, by when it asks you to start: leaving, getting ready, winding down.
     let next = i.today.iter().filter(|item| fixed(item)).filter_map(|item| span(item).map(|(s, _)| (s, item))).filter(|(s, _)| *s > t).min_by_key(|(s, _)| *s).map(|(_, item)| item);
-    let work_left = i.moments.iter().any(|(from, until, mode)| *until > t && *from < i.next_midnight && matches!(mode.time, crate::areas::Time::Work | crate::areas::Time::Admin));
+    let evening = evening_of(t, i.zone).unwrap_or(i.next_midnight);
+    let work_left = i.moments.iter().any(|(from, until, mode)| {
+        let until = if mode.time == crate::areas::Time::Any { (*until).min(evening) } else { *until };
+        until > t && *from < i.next_midnight && works(mode.time)
+    });
     // An appointment or a pinned task still to come or under way: meals, naps and the
     // night keep no evening on today (they show on the timeline all the same).
     let held_left = i.today.iter().filter(|item| fixed(item) && !matches!(item.kind, Kind::Meal | Kind::Nap | Kind::Night)).any(|item| span(item).is_some_and(|(_, e)| e > t));
@@ -1178,7 +1201,7 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
         parts.push(if leaves { say("head-next-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-next", &[("time", clock(if matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) { at } else { start })), ("what", named(item))]) });
     }
     // In work and admin time, the nearest date asked this week, one only.
-    let working = moment.is_some_and(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin));
+    let working = moment.is_some_and(|m| works(m.time));
     if working && let Some((date, item, kind)) = nearest_date(i.dates, t, i.zone) {
         let today = jiff::Timestamp::from_second(t).map_or(date, |s| s.to_zoned(i.zone.clone()).date());
         parts.push(say("head-date", &[("kind", tr.text(kind.word(), None)), ("what", item.title.clone()), ("date", tr.day(date)), ("left", crate::dated::left(tr, today, date))]));
@@ -1607,6 +1630,20 @@ mod tests {
         assert_eq!(frames[0].text, "Free time until 16:00.");
     }
 
+    /// A date asked comes first in its day's head, before a trip begun the
+    /// day before and a whole day (review of part 4, later 2): never a "1 more".
+    #[test]
+    fn a_date_asked_heads_its_day() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let mut trip = thing("Trip", Kind::Event, "2026-10-04T00:00", "2026-10-07T00:00");
+        trip.time = Time::Day { date: day("2026-10-04"), until: day("2026-10-06") };
+        let mut birthday = thing("A birthday", Kind::Event, "2026-10-05T00:00", "2026-10-06T00:00");
+        birthday.time = Time::Day { date: day("2026-10-05"), until: day("2026-10-05") };
+        let caf = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: "caf".into(), address: "sioul:task/caf".into(), title: "CAF form".into(), date: day("2026-10-05"), at: None }, day("2026-10-05"), &tr);
+        let days = days(&[trip, birthday, caf], day("2026-10-05"), 1, day("2026-10-05"), &zone, &tr);
+        assert_eq!(days[0].head.iter().map(|p| p.item.title.as_str()).collect::<Vec<_>>(), ["CAF form", "Trip", "A birthday"]);
+    }
+
     /// The evening with a night set (part 2's open point, decided in part 4):
     /// once no work or admin time and no appointment is left, the line speaks
     /// of tomorrow, dinner and the night still to come; a date asked is said
@@ -1636,5 +1673,12 @@ mod tests {
         assert_eq!(at_("2026-10-05T10:00"), "Work until 17:00. Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.", "the notice day never");
         assert_eq!(at_("2026-10-05T18:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.", "dinner and the night to come: tomorrow, no date");
         assert_eq!(at_("2026-10-05T19:40"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.", "at dinner too");
+        // No hours set (everything comes, all day): the day's line until 18:00, its date
+        // named; tomorrow's after (review of part 4, later 8).
+        let any = vec![(at("2026-10-05T00:00"), at("2026-10-06T00:00"), crate::quiet::Mode { until: None, ..moment(Hours::Any, Reason::NoHours, "2026-10-06T00:00") })];
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
+        assert_eq!(at_("2026-10-05T10:00"), "Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.");
+        assert_eq!(at_("2026-10-05T19:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.");
     }
 }

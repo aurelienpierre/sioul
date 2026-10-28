@@ -130,6 +130,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.format = sioul_sync::share::FORMAT;
         // How it keeps the sealed files no record points to any more: the others keep theirs two weeks once every device says so.
         entry.keeping = sioul_sync::blobs::KEEPING;
+        // It has the store of your own time around meetings: it travels once every device says so.
+        entry.own_time = sioul_sync::share::OWN_TIME_SHARED;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

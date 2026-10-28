@@ -69,23 +69,49 @@ pub fn load(path: &Path) -> OwnTime {
     std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
-/// The file as it is now, read again only when it changed (its time and
-/// size): the expander asks it once per calendar file.
+/// This process's writes of the file (`set`): a write here is never read stale.
+static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// What says the file changed: this process's writes, and the file's time (to
+/// the nanosecond), size and inode (each write replaces it, a new inode: two
+/// writes by another program within one tick of the clock still differ;
+/// review of part 4, later 15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    writes: u64,
+    modified: Option<std::time::SystemTime>,
+    len: u64,
+    inode: u64,
+}
+
+fn stamp_of(meta: Option<&std::fs::Metadata>) -> Stamp {
+    #[cfg(unix)]
+    let inode = meta.map_or(0, std::os::unix::fs::MetadataExt::ino);
+    #[cfg(not(unix))]
+    let inode = 0;
+    Stamp { writes: WRITES.load(std::sync::atomic::Ordering::SeqCst), modified: meta.and_then(|m| m.modified().ok()), len: meta.map_or(0, std::fs::Metadata::len), inode }
+}
+
+/// The file as it is now, read again only when it changed (`Stamp`): the
+/// expander asks it once per calendar file, a stat each time.
 pub fn current() -> Arc<OwnTime> {
-    type Seen = Option<(PathBuf, Option<std::time::SystemTime>, u64, Arc<OwnTime>)>;
+    current_at(&default_path())
+}
+
+fn current_at(path: &Path) -> Arc<OwnTime> {
+    type Seen = Option<(PathBuf, Stamp, Arc<OwnTime>)>;
     static SEEN: Mutex<Seen> = Mutex::new(None);
-    let path = default_path();
-    let meta = std::fs::metadata(&path).ok();
-    let stamp = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, |m| m.len()));
+    let meta = std::fs::metadata(path).ok();
+    let stamp = stamp_of(meta.as_ref());
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((was, modified, len, own)) = seen.as_ref()
-        && *was == path
-        && (*modified, *len) == stamp
+    if let Some((was, at, own)) = seen.as_ref()
+        && was == path
+        && *at == stamp
     {
         return Arc::clone(own);
     }
-    let own = Arc::new(if meta.is_some() { load(&path) } else { OwnTime::default() });
-    *seen = Some((path, stamp.0, stamp.1, Arc::clone(&own)));
+    let own = Arc::new(if meta.is_some() { load(path) } else { OwnTime::default() });
+    *seen = Some((path.to_path_buf(), stamp, Arc::clone(&own)));
     own
 }
 
@@ -113,17 +139,20 @@ pub fn set(path: &Path, uid: &str, own: Option<Own>) -> Result<bool, String> {
         }
         let bytes = format!("# Your own time around meetings with others, by their UID (docs/client.md): kept here, never in the meeting.\n{text}");
         crate::filelock::replace(path, bytes.as_bytes()).map_err(|e| e.to_string())?;
+        WRITES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(true)
     })
 }
 
-/// Each occurrence whose event this file has: its margins, its costs and
-/// gain, and your reminder, as you set them here (this file wins).
+/// Each occurrence of a meeting with others whose event this file has: its
+/// margins, its costs and gain, and your reminder, as you set them here (this
+/// file wins). An event that is no meeting (its guests taken out elsewhere)
+/// reads its own lines again, which its form writes (review of part 4, later 4).
 pub fn apply(occurrences: &mut [crate::agenda::Occurrence], own: &OwnTime) {
     if own.events.is_empty() {
         return;
     }
-    for o in occurrences.iter_mut() {
+    for o in occurrences.iter_mut().filter(|o| o.with_others) {
         if let Some(mine) = own.events.get(&o.uid) {
             o.margins = mine.margins();
             o.demands = mine.demands;
@@ -147,14 +176,34 @@ mod tests {
         assert!(set(&path, "board-1", Some(own.clone())).unwrap());
         assert!(!set(&path, "board-1", Some(own.clone())).unwrap(), "the same again: nothing written");
         assert_eq!(load(&path).events.get("board-1"), Some(&own));
-        let mut seen = vec![crate::agenda::Occurrence { uid: "board-1".into(), margins: Margins { before: 5, after: 0 }, remind: "NONE".into(), ..Default::default() }, crate::agenda::Occurrence { uid: "other".into(), margins: Margins { before: 5, after: 0 }, ..Default::default() }];
+        let meeting = |uid: &str| crate::agenda::Occurrence { uid: uid.into(), margins: Margins { before: 5, after: 0 }, remind: "NONE".into(), with_others: true, ..Default::default() };
+        let mut seen = vec![meeting("board-1"), meeting("other"), crate::agenda::Occurrence { with_others: false, ..meeting("board-1") }];
         apply(&mut seen, &load(&path));
         assert_eq!((seen[0].margins, seen[0].remind.as_str()), (Margins { before: 15, after: 10 }, "30"), "this file wins");
         assert_eq!(seen[1].margins, Margins { before: 5, after: 0 }, "the others as their files say");
+        assert_eq!((seen[2].margins, seen[2].remind.as_str()), (Margins { before: 5, after: 0 }, "NONE"), "no meeting any more: its own lines (later 4)");
         assert!(set(&path, "board-1", None).unwrap());
         assert!(load(&path).events.is_empty());
         std::fs::write(&path, "not toml = [").unwrap();
         assert!(load(&path).events.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two writes of the same size within one tick of the clock: the second
+    /// is read, never the first kept (later 15).
+    #[test]
+    fn the_file_read_again_after_each_write() {
+        let dir = std::env::temp_dir().join(format!("sioul-own-time-tick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join(FILE);
+        set(&path, "a", Some(Own { before: 15, ..Own::default() })).unwrap();
+        let first = std::fs::metadata(&path).unwrap();
+        assert_eq!(current_at(&path).events.get("a").map(|o| o.before), Some(15));
+        set(&path, "a", Some(Own { before: 25, ..Own::default() })).unwrap();
+        // The same size, and its time set back to the first one's, as within one tick.
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), first.len());
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(first.modified().unwrap()).unwrap();
+        assert_eq!(current_at(&path).events.get("a").map(|o| o.before), Some(25), "never stale");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

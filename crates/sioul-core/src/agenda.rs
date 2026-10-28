@@ -2163,81 +2163,6 @@ fn with_lines(event: &[String], extra: &[String]) -> Vec<String> {
     out
 }
 
-/// An event's lines without its own `X-SIOUL-…` lines, its alarms' as they are.
-fn without_own_sioul(event: &[String]) -> Vec<String> {
-    let mut nested = 0usize;
-    event
-        .iter()
-        .enumerate()
-        .filter(|(i, line)| {
-            let name = lines::name(line);
-            if *i > 0 && name == "BEGIN" {
-                nested += 1;
-            } else if name == "END" && nested > 0 {
-                nested -= 1;
-                return true;
-            }
-            // The organizer's SEQUENCE and DTSTAMP kept (`ORGANIZER_SEQUENCE`): the organizer's, not yours.
-            !(nested == 0 && name.starts_with("X-SIOUL-") && !organizers(&name))
-        })
-        .map(|(_, line)| line.clone())
-        .collect()
-}
-
-/// A meeting with others as it is now (`current`), with an earlier version's
-/// own lines of yours instead of its own (`X-SIOUL-…`: your reminder, the
-/// time kept around it, its costs and gain), each time of it from the same
-/// time of the version (its RECURRENCE-ID); the rest as it is, in its order:
-/// its organizer's lines untouched, which the rule lets through
-/// (`may_change`). What putting back a version set aside by the sync does
-/// to a meeting (review of 36002ea, can-wait 6).
-pub fn with_own_lines_of(current: &str, version: &str) -> String {
-    let then = cut(version);
-    let mut out: Vec<String> = Vec::new();
-    let mut event: Vec<String> = Vec::new();
-    let (mut inside, mut nested) = (false, 0usize);
-    for line in lines::unfold(current) {
-        let name = lines::name(&line);
-        if !inside {
-            if name == "BEGIN" && lines::value(&line).trim().eq_ignore_ascii_case("VEVENT") {
-                (inside, nested) = (true, 0);
-                event = vec![line];
-            } else {
-                out.push(line);
-            }
-            continue;
-        }
-        let ends = match name.as_str() {
-            "BEGIN" => {
-                nested += 1;
-                false
-            }
-            "END" if nested > 0 => {
-                nested -= 1;
-                false
-            }
-            "END" => true,
-            _ => false,
-        };
-        event.push(line);
-        if ends {
-            inside = false;
-            let whole = std::mem::take(&mut event);
-            let time = which_time(&whole);
-            match then.events.iter().find(|e| which_time(e) == time) {
-                Some(old) => {
-                    let ours: Vec<String> = own_lines(old).filter(|l| lines::name(l).starts_with("X-SIOUL-") && !organizers(&lines::name(l))).cloned().collect();
-                    out.extend(with_lines(&without_own_sioul(&whole), &ours));
-                }
-                None => out.extend(whole),
-            }
-        }
-    }
-    // An event cut short (no END): as it was.
-    out.extend(event);
-    lines::fold(&out)
-}
-
 /// What an invitation's answer did to the copy your calendar holds (`answered_into`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Answered {
@@ -3091,23 +3016,6 @@ mod tests {
         assert_eq!(cancellation(SERIES, &by_guest, &own), Cancellation::Refused);
         let organized = SERIES.replace("ORGANIZER:mailto:boss@example.org", "ORGANIZER:mailto:me@example.org");
         assert_eq!(cancellation(&organized, &whole.replace("boss@example.org", "me@example.org"), &own), Cancellation::Refused);
-    }
-
-    /// Can-wait 6 of the review of 36002ea: a meeting's version set aside by
-    /// the sync, put back, brings back your own lines alone (your reminder, the
-    /// time kept before it), onto the meeting as its organizer has it now, in
-    /// its order, which the rule lets through; the version whole would not be.
-    #[test]
-    fn a_meeting_put_back_takes_back_only_your_own_lines() {
-        let own = vec!["me@example.org".to_string()];
-        let now = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review-1\r\nDTSTART:20991023T150000Z\r\nDTEND:20991023T160000Z\r\nSEQUENCE:2\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nX-SIOUL-BEFORE:5\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nEND:VTIMEZONE\r\nEND:VCALENDAR\r\n";
-        let then = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review-1\r\nDTSTART:20991023T140000Z\r\nDTEND:20991023T150000Z\r\nSEQUENCE:1\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nX-SIOUL-REMIND:30\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        let back = with_own_lines_of(now, then);
-        assert!(back.contains("DTSTART:20991023T150000Z") && back.contains("SEQUENCE:2") && back.contains("X-SIOUL-REMIND:30") && !back.contains("X-SIOUL-BEFORE"), "{back}");
-        assert!(back.contains("TRIGGER:-PT10M") && back.find("BEGIN:VTIMEZONE") > back.find("END:VEVENT") && back.ends_with("END:VCALENDAR\r\n"), "the rest as it was, in its order: {back}");
-        // No writer writes it into the meeting any more (part 4): the window puts them into your own time.
-        assert_eq!(may_change(now, false, &own, Change::Write(&back)), Err(Refusal::WithOthers));
-        assert_eq!(may_change(now, false, &own, Change::Write(then)), Err(Refusal::WithOthers), "the version whole: refused");
     }
 
     /// Can-wait 13 and low 26 of the review of 36002ea: the guard takes an

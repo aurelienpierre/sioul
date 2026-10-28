@@ -2966,6 +2966,7 @@ share-put-back-whole = { $file } goes back as it was ({ $when }); the file as it
 share-put-back-meeting = { $file } is a meeting with others: only your own lines of that version ({ $when }) come back, your time around it, its costs and your reminder; its time, title and guests stay as its organizer set them. The meeting as it is now is kept in the list.
 share-put-back-meeting-gone = { $file } is a meeting no longer in your calendar: it is not put back, since its server would tell every guest.
 share-put-back-meeting-done = Your own lines of { $file } are back ({ $when }): its time, title and guests stay as its organizer has them.
+share-put-back-was-meeting = { $file } was a meeting with others in that version ({ $when }): it is not put back, since its server would tell every guest. The event stays as it is now.
 share-put-back-nothing = { $file } holds that version's entries already: nothing to put back.
 share-put-back-entries = { $file } as it was ({ $when }): { $changed ->
     [one] one entry goes back to what it was
@@ -6303,6 +6304,7 @@ agent-task-to-event = An AI agent made the task “{ $title }” an appointment,
 agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.
 event-delete-with-others = A meeting with others is never deleted here: its server would cancel or decline it for them. Answer it, or delete it in its own calendar app.
 event-change-with-others = A meeting with others keeps its time, title, place, notes and calendar as its organizer set them: its server would tell every guest of a change. Your time around it, its costs and your reminder change here.
+agent-meeting-never-written = This is a meeting with others: Sioul never writes into it, since its server would tell every guest of a change. The time kept around it and the reminder are set in Sioul's window.
 invitation-cancel-changed = It changed meanwhile: nothing was taken out.
 invitation-cancel-refused = This cancellation does not come from the meeting's organizer, or the meeting is yours: nothing was taken out.
 invitation-older = Your calendar holds a version of this meeting at least as recent as this invitation: its times stay as they are there, your answer is in it, and sent.

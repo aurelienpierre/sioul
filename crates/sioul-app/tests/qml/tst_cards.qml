@@ -54,6 +54,7 @@ Item {
         property string mealTo: "13:00"
         property var events: ({
             "/c/dentist.ics": { id: "event:c/dentist.ics", key: "/c/dentist.ics", uid: "dentist", start: 4000000000, end: 4000003600, all_day: false, summary: "Dentist", when: "Monday · 09:00 – 10:00", before: 15, after: 0, location: "Rue Blanche", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
+            "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "" },
             "/c/holidays.ics": { id: "event:c/holidays.ics", key: "/c/holidays.ics", uid: "holidays", start: 4000086400, end: 4000090000, all_day: false, summary: "Town fair", when: "Tuesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: true, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "This calendar can only be read." }
         })
 
@@ -611,6 +612,23 @@ Item {
             compare(ticked.length, 1, JSON.stringify(mock.calls))
             compare([ticked[0].kind, ticked[0].key, ticked[0].line, ticked[0].state].join(" "), "task prep 3 done")
             verify(!root.find(card, "eventCardAnswer").visible, "no invitation in the mail")
+            // A meeting with others whose invitation is in the mail: Answer… shows, and sends
+            // your answer to that message (review of part 4, later 12).
+            host.show({ kind: "event", srcKey: "/c/board.ics", srcStart: 4000172800 })
+            wait(20)
+            const answer = root.find(host.eventCard, "eventCardAnswer")
+            verify(answer.visible, "its invitation in the mail")
+            answer.clicked()
+            wait(20)
+            const later = root.all(answer, c => typeof c.now === "function")
+            compare(later.length, 1)
+            const menu = later[0].item
+            verify(menu !== null && menu.count === 3, "accept, maybe, decline")
+            menu.itemAt(0).triggered()
+            const answered = mock.calls.filter(c => c.what === "answerInvitation")
+            compare(answered.length, 1, JSON.stringify(mock.calls))
+            compare([answered[0].key, answered[0].answer].join(" "), "/mail/board.eml accepted")
+            menu.close()
         }
 
         // The objects a card keeps alive (Later 9 of the review of 3a2fbd4): the

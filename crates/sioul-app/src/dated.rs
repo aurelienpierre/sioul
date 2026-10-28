@@ -21,14 +21,15 @@ use sioul_core::timeline;
 
 /// Each day's events as a letter's appointment is matched to them
 /// (`dated::letter_event`): its start, whether it is yours (a calendar you
-/// write, no meeting with others), and its file's text, read only for that day.
+/// write, no meeting with others, neither a task's time block nor cancelled:
+/// review of part 4, later 1), and its file's text, read only for that day.
 fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> impl Fn(Date) -> Vec<EventSeen> + 'a {
     let zone = zone.clone();
     move |date: Date| {
         occurrences
             .iter()
             .filter(|o| jiff::Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
-            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
             .collect()
     }
 }
@@ -295,5 +296,24 @@ mod tests {
         assert_ne!(letter_dates_in(&root, "caf-1", r#"{"deadline": "the 3rd"}"#), "", "said");
         assert_eq!(Letters::load(&root).unwrap().get("caf-1").unwrap().reading.deadline, Some("2026-11-03".parse().unwrap()), "nothing written");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A task's time block half an hour before a letter's appointment, or an
+    /// event of yours cancelled at its time, never stands for it: its own mark
+    /// stays (review of part 4, later 1).
+    #[test]
+    fn a_letter_s_appointment_is_never_a_block() {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let today: Date = "2026-10-26".parse().unwrap();
+        let reading = sioul_core::letters::Reading { sender: "CAF".into(), appointment: Some(("2026-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
+        let letters = Letters { root: "/nowhere/Notes".into(), list: vec![Letter { id: "caf-1".into(), status: "new".into(), reading, ..Default::default() }] };
+        let at = |time: &str| format!("2026-10-29T{time}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let block = Occurrence { key: "/nowhere/block.ics".into(), uid: "block".into(), summary: "Gather the papers".into(), task: "gather".into(), start: at("13:30"), end: at("14:00"), ..Occurrence::default() };
+        let cancelled = Occurrence { key: "/nowhere/gone.ics".into(), uid: "gone".into(), summary: "Doctor".into(), cancelled: true, start: at("14:00"), end: at("14:30"), ..Occurrence::default() };
+        let marked = |events: &[Occurrence]| dated::of_letters(&letters, &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
+        assert!(marked(std::slice::from_ref(&block)), "a block is no event of yours");
+        assert!(marked(std::slice::from_ref(&cancelled)), "nor one cancelled");
+        let doctor = Occurrence { cancelled: false, ..cancelled };
+        assert!(!marked(&[block, doctor]), "an event of yours at its time stands for it");
     }
 }

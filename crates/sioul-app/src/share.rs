@@ -1220,13 +1220,15 @@ pub(crate) fn vdir_item(file: &str) -> bool {
 /// or a local calendar's file kept by the sharing, `vdir_item`): its version
 /// written over the item through the agenda's one rule (`vdir::write_item`),
 /// asked first so that a refusal leaves no copy more in the list: never into
-/// a calendar you only read; when either copy is a meeting with others, the
+/// a calendar you only read; when the item is a meeting with others now, the
 /// version's own lines of yours alone (your reminder, the time kept around
 /// it, its costs and gain) put back into your own time around it
 /// (`own_time`), never into the meeting, which no writer writes into (the
-/// unified agenda's part 4; review of 36002ea, can-wait 6); a meeting gone
-/// from your calendar never put back whole (its server would tell its
-/// guests); nothing written when your own time already says it. The item as
+/// unified agenda's part 4; review of 36002ea, can-wait 6); a version that
+/// was a meeting never put back whole, the item gone from your calendar or
+/// yours now (its server would tell its guests; review of part 4, later 4:
+/// your own time is written only about a meeting); nothing written when your
+/// own time already says it. The item as
 /// it is then kept first; its account's sync sends it. Returns the account
 /// to sync ("" when nothing was written there) and what to say, or what went
 /// wrong (the check of ef8c0ca, item 3).
@@ -1245,7 +1247,7 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     let current = std::fs::read_to_string(&path).ok();
     match &current {
         // A meeting: the version's lines of yours into your own time around it, the meeting as it is.
-        Some(current) if meeting(current) || meeting(&text) => {
+        Some(current) if meeting(current) => {
             let zone = jiff::tz::TimeZone::system();
             let uid = sioul_core::lines::unfold(current).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty()).ok_or_else(|| format!("{file}?"))?;
             let yours = sioul_core::agenda::edit_of_text(&text, &zone).ok_or_else(|| format!("{file}?"))?;
@@ -1254,6 +1256,8 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
             return Ok((String::new(), if changed { say("share-put-back-meeting-done", &[("file", shown), ("when", kept)]) } else { say("share-put-back-nothing", &[("file", shown)]) }));
         }
         None if meeting(&text) => return Err(say("share-put-back-meeting-gone", &[("file", shown)])),
+        // Yours now, a meeting then: the meeting never written back.
+        Some(_) if meeting(&text) => return Err(say("share-put-back-was-meeting", &[("file", shown), ("when", kept)])),
         _ => {}
     }
     let written = text.clone();
@@ -1298,8 +1302,8 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
     let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
     let shown = share::shown(file).to_string();
     // Your calendar's item or contact set aside, or a local calendar's file: it goes back whole,
-    // sent to its server; when either copy is a meeting with others, your own lines alone; a
-    // meeting gone from your calendar, never; into a calendar you only read, never (`put_back_item`).
+    // sent to its server; a meeting with others now, your own lines alone; a version that was a
+    // meeting, never; into a calendar you only read, never (`put_back_item`).
     if part == sioul_sync::history::ACCOUNTS || vdir_item(file) {
         let path = account_item(file);
         if path.as_deref().and_then(sioul_core::vdir::calendar_read_only) == Some(true) {
@@ -1316,7 +1320,7 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
         let words = match (&current, &version) {
             (None, Some(version)) if meeting(version) => "share-put-back-meeting-gone",
             (Some(current), _) if meeting(current) => "share-put-back-meeting",
-            (Some(_), Some(version)) if meeting(version) => "share-put-back-meeting",
+            (Some(_), Some(version)) if meeting(version) => "share-put-back-was-meeting",
             _ => "share-put-back-whole",
         };
         return say(words, &[("file", shown), ("when", kept)]);
@@ -3481,6 +3485,14 @@ mod tests {
         std::fs::remove_file(dir.join("review.ics")).unwrap();
         assert_eq!(put_back_preview(accounts, &file("review"), &stamps["review"].0), said("share-put-back-meeting-gone", "review"));
         assert!(put_back_item(accounts, &file("review"), &stamps["review"].0).is_err() && !dir.join("review.ics").exists());
+        // Yours now, a meeting in that version (its guests taken out since): never put back, said
+        // first and after; neither the event nor your own time written (review of part 4, later 4).
+        let alone = event("review", "20991023T150000Z", "");
+        std::fs::write(dir.join("review.ics"), &alone).unwrap();
+        assert_eq!(put_back_preview(accounts, &file("review"), &stamps["review"].0), said("share-put-back-was-meeting", "review"));
+        assert_eq!(put_back_item(accounts, &file("review"), &stamps["review"].0), Err(said("share-put-back-was-meeting", "review")));
+        assert_eq!(std::fs::read_to_string(dir.join("review.ics")).unwrap(), alone, "the event as it is");
+        assert!(!sioul_core::own_time::load(&sioul_core::own_time::default_path()).events.contains_key("review"), "no own time about an event of yours");
         // Your own event: back whole.
         assert_eq!(put_back_item(accounts, &file("dentist"), &stamps["dentist"].0), Ok((account.to_string(), put_back_said(&file("dentist"), &stamps["dentist"].0))));
         assert_eq!(std::fs::read_to_string(dir.join("dentist.ics")).unwrap(), stamps["dentist"].1);

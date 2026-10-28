@@ -274,23 +274,31 @@ pub(crate) fn make_event(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Strin
     let letter = root.as_deref().and_then(|r| Letters::load(r).ok()).and_then(|l| Some((l.get(id)?.clone(), l)));
     let Some((letter, letters)) = letter else { return tr().text("papers-gone", None) };
     let Some((date, time)) = letter.reading.appointment else { return String::new() };
+    crate::pim::save_event(qt, shared, "", &event_of(&letters, &letter, date, time).to_string(), "").err().unwrap_or_default()
+}
+
+/// The event form "Into the agenda" saves for a letter's appointment on
+/// `date` (at `time`): an hour long, or to the end of the day for one at
+/// 23:00 or later, or the whole day; its scan's link, and the letter's
+/// address labelled with its sender ("A letter" without one), so that the
+/// event stands for the letter's appointment on every device
+/// (`dated::letter_event`) and its tie reads by name (review of part 4, later 11).
+pub(crate) fn event_of(letters: &Letters, letter: &Letter, date: jiff::civil::Date, time: Option<(i8, i8)>) -> serde_json::Value {
     let (start, end, all_day) = match time {
-        // An hour long, or to the end of the day for one at 23:00 or later.
         Some((h, m)) if h >= 23 => (format!("{date}T{h:02}:{m:02}"), format!("{date}T23:59"), false),
         Some((h, m)) => (format!("{date}T{h:02}:{m:02}"), format!("{date}T{:02}:{m:02}", h + 1), false),
         None => (date.to_string(), date.to_string(), true),
     };
-    let edit = serde_json::json!({
+    let sender = letter.reading.sender.trim();
+    let label = if sender.is_empty() { tr().text("letter-unknown-sender", None) } else { sender.to_string() };
+    serde_json::json!({
         "title": say("letter-event", &[("sender", letter.reading.sender.clone())]),
         "notes": letter.reading.why,
         "start": start,
         "end": end,
         "all_day": all_day,
-        // The letter's address beside its scan's: the event stands for the
-        // letter's appointment on every device (`dated::letter_event`).
-        "links": [crate::backend::file_url(&letters.file_path(&letter)), sioul_core::links::letter_uri(&letter.id)],
-    });
-    crate::pim::save_event(qt, shared, "", &edit.to_string(), "").err().unwrap_or_default()
+        "links": [crate::backend::file_url(&letters.file_path(letter)), { "uri": sioul_core::links::letter_uri(&letter.id), "label": label }],
+    })
 }
 
 /// Done with it: its project set, its scan filed in `letters/<year>/`.

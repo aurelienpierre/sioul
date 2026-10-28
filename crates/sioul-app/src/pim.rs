@@ -534,10 +534,21 @@ struct SavedEvent {
 /// a new one in `calendar`; an event already there moved to `calendar` when
 /// another is chosen (`move_event_file`).
 fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, String> {
-    // What a new event is made from: a message, a task (`links`).
-    let links: Vec<String> = serde_json::from_str::<serde_json::Value>(edit)
+    // What a new event is made from: a message, a task, a letter (`links`): each an
+    // address, or an address with its label (`{"uri", "label"}`).
+    let links: Vec<(String, String)> = serde_json::from_str::<serde_json::Value>(edit)
         .ok()
-        .and_then(|v| v.get("links").and_then(|l| l.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+        .and_then(|v| {
+            v.get("links").and_then(|l| l.as_array()).map(|a| {
+                a.iter()
+                    .filter_map(|x| match x {
+                        serde_json::Value::String(uri) => Some((uri.clone(), String::new())),
+                        serde_json::Value::Object(link) => Some((link.get("uri")?.as_str()?.to_string(), link.get("label").and_then(|l| l.as_str()).unwrap_or_default().to_string())),
+                        _ => None,
+                    })
+                    .collect()
+            })
+        })
         .unwrap_or_default();
     let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
     let zone = TimeZone::system();
@@ -588,9 +599,9 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
             let text = agenda::new_event(&edit, &zone)?;
             let lines: Vec<String> = links
                 .iter()
-                .map(|uri| {
+                .map(|(uri, label)| {
                     let rel = if uri.starts_with("mid:") { "via" } else { "related" };
-                    sioul_core::tasks::link_line(&sioul_core::tasks::Link { uri: uri.clone(), label: String::new(), rel: rel.into() })
+                    sioul_core::tasks::link_line(&sioul_core::tasks::Link { uri: uri.clone(), label: label.clone(), rel: rel.into() })
                 })
                 .collect();
             (agenda::new_path(&target), agenda::add_lines(&text, &lines).unwrap_or(text))
@@ -767,11 +778,13 @@ fn uid_of(text: &str) -> Option<String> {
 
 /// The form's fields of an event, yours about a meeting with others read
 /// from your own file when it has it (`own_time`), else from the meeting's
-/// lines an older Sioul wrote: what the form and the reminder chooser start from.
+/// lines an older Sioul wrote: what the form and the reminder chooser start
+/// from. An event that is no meeting reads its own lines, whatever your own
+/// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
 pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
     let text = std::fs::read_to_string(path).ok()?;
     let mut edit = agenda::edit_of_text(&text, &TimeZone::system())?;
-    if let Some(own) = uid_of(&text).and_then(|uid| sioul_core::own_time::current().events.get(&uid).cloned()) {
+    if let Some(own) = Some(&text).filter(|text| with_others(text)).and_then(|text| uid_of(text)).and_then(|uid| sioul_core::own_time::current().events.get(&uid).cloned()) {
         (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind);
     }
     Some(edit)
@@ -1215,13 +1228,13 @@ mod tests {
     }
 
     /// Must-fix 2 of the review of 36002ea: a meeting's own fields (the time
-    /// kept before it) are saved from its form however the form gives the
-    /// organizer's back (a notes field turns a no-break space and a line
-    /// separator into plain ones), and a meeting with no title takes them
-    /// too; into your own file since the unified agenda's part 4, the
-    /// meeting's file as it was.
+    /// kept before it) go to your own file (`own_time`), never into the
+    /// meeting, whatever its notes hold and however the form gives them back
+    /// (a notes field turns a no-break space and a line separator into plain
+    /// ones), and a meeting with no title too: the meeting's file stays as it
+    /// was, byte for byte (the unified agenda's part 4).
     #[test]
-    fn a_meeting_s_own_fields_save_whatever_its_notes_hold() {
+    fn a_meeting_s_own_time_goes_to_your_own_file_whatever_its_notes_hold() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Meeting notes", None, &["VEVENT"]).unwrap();
@@ -1244,6 +1257,48 @@ mod tests {
             assert_eq!(own.events.get(&format!("{name}-1")).map(|o| o.before), Some(15), "{name}: in your own file");
             let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &format!("{name}-1"), None);
         }
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// "Into the agenda" (`letters::event_of`): the new event carries the
+    /// letter's address labelled with its sender, and stands for the letter's
+    /// appointment there (review of part 4, later 11).
+    #[test]
+    fn a_letter_s_appointment_carries_its_address_and_its_sender() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Letters' appointments", None, &["VEVENT"]).unwrap();
+        let here = format!("{}/{}", calendar.account, calendar.id);
+        let reading = sioul_core::letters::Reading { sender: "CAF".into(), appointment: Some(("2099-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
+        let letter = sioul_core::letters::Letter { id: "2026-10-28-1a2b".into(), file: "letters/inbox/caf.pdf".into(), status: "new".into(), reading, ..Default::default() };
+        let letters = sioul_core::letters::Letters { root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
+        let edit = crate::letters::event_of(&letters, &letter, "2099-10-29".parse().unwrap(), Some((14, 0)));
+        let saved = write_event("", &edit.to_string(), &here).unwrap();
+        let text = std::fs::read_to_string(&saved.path).unwrap();
+        let tie = sioul_core::lines::unfold(&text).into_iter().find(|l| l.ends_with(":sioul:letter/2026-10-28-1a2b"));
+        assert!(tie.as_deref().is_some_and(|l| sioul_core::lines::name(l).ends_with("LINK") && sioul_core::lines::params(l).iter().any(|(name, value)| name == "LABEL" && value == "CAF")), "{text}");
+        let seen = sioul_core::dated::EventSeen { start: 0, yours: false, text };
+        assert_eq!(sioul_core::dated::letter_event(&letters, &letter, None, &[seen]), Some(0), "it stands for the letter's appointment");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An event of yours that your own file still has (a meeting whose guests
+    /// were taken out elsewhere) reads its own lines, and its form saves into
+    /// it: the change reads back (review of part 4, later 4).
+    #[test]
+    fn an_event_of_yours_reads_its_own_lines_whatever_your_own_file_holds() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Own lines", None, &["VEVENT"]).unwrap();
+        let here = format!("{}/{}", calendar.account, calendar.id);
+        let path = calendar.dir.join("alone.ics");
+        let uid = format!("alone-{}", std::process::id());
+        std::fs::write(&path, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:20991023T120000Z\r\nDTEND:20991023T130000Z\r\nSUMMARY:Alone now\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")).unwrap();
+        sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(sioul_core::own_time::Own { before: 25, remind: "30".into(), ..Default::default() })).unwrap();
+        let mut edit = edit_with_own(&path).unwrap();
+        assert_eq!((edit.margins.before, edit.remind.as_str()), (0, ""), "its own lines, not your own file's");
+        edit.margins.before = 10;
+        write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here).unwrap();
+        assert_eq!(edit_with_own(&path).unwrap().margins.before, 10, "the change reads back");
+        let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, None);
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 

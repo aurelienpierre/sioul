@@ -127,7 +127,14 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
     let found = find_event(&consent, &args.needed("event")?)?;
-    let edit = agenda::edit_of_text(&found.text, &TimeZone::system()).ok_or("This event's file does not read.")?;
+    let mut edit = agenda::edit_of_text(&found.text, &TimeZone::system()).ok_or("This event's file does not read.")?;
+    // A meeting with others: yours about it as your own file keeps it (`own_time`), as the
+    // window, the plan and the reminders read it (review of part 4, later 3).
+    if agenda::with_others(&found.text)
+        && let Some(own) = sioul_core::own_time::current().events.get(&found.uid)
+    {
+        (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind.clone());
+    }
     let mut data = event_json(&found, &edit, s);
     // The task that prepares it, with its steps and list, when the agent may see it (`pairs`).
     let reference = loaded.events.iter().find(|e| e.uid == found.uid);
@@ -148,6 +155,11 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&consent, &links::event_uri(&found.uid))?;
     if found.calendar.read_only {
         return Err(s.tr.text("agenda-read-only", None));
+    }
+    // A meeting with others is never written, moved nor its own time set here: refused before
+    // anything is read of what is given (review of part 4, later 3).
+    if agenda::with_others(&found.text) {
+        return Err(s.tr.text("agent-meeting-never-written", None));
     }
     let zone = TimeZone::system();
     let before = agenda::edit_of_text(&found.text, &zone).ok_or("This event's file does not read.")?;
@@ -195,10 +207,6 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let calendar = args.text("calendar")?;
     let moving = calendar.as_deref().is_some_and(|c| c != format!("{}/{}", found.calendar.account, found.calendar.id));
-    // A meeting with others never moves: its server would cancel it for them, then invite them again.
-    if moving && agenda::with_others(&found.text) {
-        return Err(s.tr.text("event-move-with-others", None));
-    }
     let text = agenda::apply(&found.text, &edit, &zone)?;
     let mut files = Vec::new();
     if text != found.text {

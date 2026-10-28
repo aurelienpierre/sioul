@@ -70,6 +70,16 @@ pub struct Entry {
     /// passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub keeping: u32,
+    /// Whether its Sioul shares your own time around meetings with others
+    /// (`share::OWN_TIME`, the unified agenda's part 4): 1 from a build that
+    /// has that store, 0 from an older one. The store travels only once every
+    /// other device that counts says 1 (`share::own_time_shared`): an older
+    /// Sioul, which has no such store, would keep its records waiting at
+    /// every exchange, never quiet again. An older Sioul reads the entry as
+    /// before, the field unknown to it passed over (982d6e5 reads entries with
+    /// serde, unknown fields left aside, and writes its own entry alone).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub own_time: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]

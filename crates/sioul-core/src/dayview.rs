@@ -462,8 +462,12 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
             placed.push((i, from, end));
             end = from;
         }
-        // Clear of everything kept but the appointment itself (its own span holds its start).
-        let kept: Vec<(i64, i64)> = busy.iter().copied().filter(|&(a, b)| !(a <= event.start && b >= event.start)).collect();
+        // Clear of everything kept but the appointment's own span, as `plan::event_spans` makes
+        // it (another long thing across its start is no part of it: review of part 4, later 6).
+        let mut kept = busy.clone();
+        if let Some(i) = crate::plan::event_spans(std::slice::from_ref(*event), settings.pause).first().and_then(|own| kept.iter().position(|span| span == own)) {
+            kept.remove(i);
+        }
         let clear = end >= start_at && placed.iter().all(|&(_, from, to)| kept.iter().all(|&(a, b)| b <= from || a >= to));
         if !clear {
             continue;
@@ -1169,6 +1173,12 @@ mod tests {
         };
         let t = |text: &str| at(text).timestamp().as_second();
         assert_eq!(laid(std::slice::from_ref(&doctor)), [Some((t("2026-10-06T12:55"), t("2026-10-06T13:15"))), Some((t("2026-10-06T13:15"), t("2026-10-06T13:30")))], "back to back, ending when leaving begins");
+        // A long thing across the appointment's start (12:00 to 15:00): laid as any step, never over it (later 6).
+        let workshop = Occurrence { key: "w.ics".into(), uid: "w".into(), summary: "Workshop".into(), start: t("2026-10-06T12:00"), end: t("2026-10-06T15:00"), ..Occurrence::default() };
+        let long = [doctor.clone(), workshop.clone()];
+        for (from, to) in laid(&long).into_iter().flatten() {
+            assert!(to <= workshop.start || from >= workshop.end, "never over the workshop: {from}–{to}");
+        }
         // Something kept across it (another appointment at 13:00): laid as any step, never over it.
         let call = Occurrence { key: "call.ics".into(), uid: "call".into(), summary: "Call".into(), start: t("2026-10-06T13:00"), end: t("2026-10-06T13:10"), ..Occurrence::default() };
         let both = [doctor.clone(), call.clone()];

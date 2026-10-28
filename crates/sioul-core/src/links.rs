@@ -731,9 +731,18 @@ impl World<'_> {
                     out.found = true;
                 }
             }
-            // A paper of the wallet, a contract, a letter, an invoice: named by
-            // its link's label where the item gives one; its card reads it.
-            Kind::Paper | Kind::Contract | Kind::Letter | Kind::Invoice => {
+            // A letter by its sender, as the letters' file in the notes folder says it
+            // ("Into the agenda" labels its link the same): never by its id (review of
+            // part 4, later 11); its card reads the rest.
+            Kind::Letter => {
+                let sender = self.vault.and_then(|v| crate::letters::Letters::load(&v.root).ok()).and_then(|letters| letters.get(&id).map(|l| l.reading.sender.trim().to_string())).filter(|s| !s.is_empty());
+                out.title = sender.unwrap_or_else(|| id.clone());
+                out.key = id.clone();
+                out.found = true;
+            }
+            // A paper of the wallet, a contract, an invoice: named by its link's
+            // label where the item gives one; its card reads it.
+            Kind::Paper | Kind::Contract | Kind::Invoice => {
                 out.title = id.clone();
                 out.key = id.clone();
                 out.found = true;
@@ -1237,5 +1246,23 @@ mod tests {
         let mut kept = local.clone();
         assert!(kept.untie(&world, "sioul:project/housing", "mid:caf-1@caf.example"));
         assert_eq!(kept.links.len(), 1);
+    }
+    /// A letter named by its sender from the letters' file of the notes
+    /// folder, never by its id; its id when the file has it not (review of
+    /// part 4, later 11).
+    #[test]
+    fn a_letter_is_named_by_its_sender() {
+        let root = std::env::temp_dir().join(format!("sioul-links-letter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let letter = crate::letters::Letter { id: "2026-10-28-1a2b".into(), status: "new".into(), reading: crate::letters::Reading { sender: "CAF".into(), ..Default::default() }, ..Default::default() };
+        crate::letters::Letters::change(&root, |letters| letters.put(letter)).unwrap();
+        let vault = Vault::open(&root);
+        let local = LocalLinks::default();
+        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[] };
+        let named = world.describe("sioul:letter/2026-10-28-1a2b");
+        assert_eq!((named.kind, named.title.as_str(), named.found), (Kind::Letter, "CAF", true));
+        assert_eq!(world.describe("sioul:letter/elsewhere").title, "elsewhere");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

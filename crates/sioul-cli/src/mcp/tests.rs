@@ -2221,6 +2221,18 @@ fn events_and_tasks_are_changed_one_by_one() {
         assert_eq!(refused["isError"], true, "{tool}: {refused}");
     }
     assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept);
+    // Its own time set (the window's "Your time around it"): `get_event` says it, and
+    // `update_event` refuses the meeting before writing, in its own words (review of part 4, later 3).
+    let own_path = sioul_core::own_time::default_path();
+    sioul_core::own_time::set(&own_path, "meeting-1", Some(sioul_core::own_time::Own { before: 25, after: 10, remind: "30".into(), ..Default::default() })).unwrap();
+    let got = call(&mut server, "get_event", json!({ "event": "meeting-1" }));
+    let data = &got["structuredContent"];
+    assert_eq!((data["before"].as_u64(), data["after"].as_u64(), data["remind"].as_str()), (Some(25), Some(10), Some("30")), "{got}");
+    let refused = call(&mut server, "update_event", json!({ "event": "meeting-1", "before": 5 }));
+    assert_eq!((refused["isError"].as_bool(), text(&refused)), (Some(true), session().tr.text("agent-meeting-never-written", None)), "{refused}");
+    assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept, "the meeting byte for byte");
+    assert_eq!(sioul_core::own_time::load(&own_path).events.get("meeting-1").map(|o| o.before), Some(25), "your own time as it was");
+    let _ = sioul_core::own_time::set(&own_path, "meeting-1", None);
     // Deleted, then put back by Undo.
     let gone = call(&mut server, "delete_event", json!({ "event": uri }));
     assert_eq!(gone["isError"], false, "{gone}");
