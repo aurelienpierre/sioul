@@ -226,7 +226,8 @@ ColumnLayout {
             certainty: typeof item.certainty === "string" ? item.certainty : (item.certainty === undefined ? "fixed" : "dose"),
             tone: item.tone || "plain",
             colour: item.colour || "",
-            drag: can.drag || "none",
+            // What a drag does (`can.drag`); not named `drag`, which the cards read as the timeline's TimeDrag.
+            mover: can.drag || "none",
             ends: can.ends === true,
             edit: can.edit || "none",
             why: can.why || "",
@@ -265,13 +266,24 @@ ColumnLayout {
     // `model` changed to hold `rows`, in order, each by its key: what stayed
     // is changed in place (only the roles that differ), what went is taken
     // out, what came is put in. Nothing is made again for nothing.
-    function diff(model, rows) {
+    function diff(model, given) {
+        // One row a key: a second copy, in the rows given or in the model, is dropped, never left as a ghost.
         const wanted = {}
-        for (const row of rows)
+        const rows = []
+        for (const row of given) {
+            if (wanted[row.key])
+                continue
             wanted[row.key] = true
-        for (let i = model.count - 1; i >= 0; i--)
-            if (!wanted[model.get(i).key])
-                model.remove(i)
+            rows.push(row)
+        }
+        const kept = {}
+        for (let i = 0; i < model.count; i++) {
+            const key = model.get(i).key
+            if (!wanted[key] || kept[key])
+                model.remove(i--)
+            else
+                kept[key] = true
+        }
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i]
             if (i < model.count && model.get(i).key === row.key) {
@@ -453,7 +465,8 @@ ColumnLayout {
         const state = given.state.state
         if (state === "taken")
             return { state: "taken", words: given.words }
-        if (planning.backAt > planning.readAt)
+        // Back at or after the reading's start (both to the millisecond): it may be older than the return.
+        if (planning.backAt >= planning.readAt)
             return reading
         if (state === "open" && now - planning.readAt > (marks.holds || 120))
             return { state: "check", words: marks.old || "" }
@@ -477,8 +490,11 @@ ColumnLayout {
             if (byMinute[mark].keys.indexOf(key) < 0)
                 byMinute[mark].keys.push(key)
         }
+        // A day gone by has no mark (none could say what it was); in the seconds after midnight,
+        // before the next publish, yesterday's doses are still in the days.
         for (const row of rows)
-            add(row.day, row.date, row.from, row.srcKey, row.edge)
+            if (row.date >= planning.today)
+                add(row.day, row.date, row.from, row.srcKey, row.edge)
         const today = planning.todayIndex
         if (today >= 0 && planning.marks && !(planning.hide || {}).doses)
             for (const row of planning.marks.rows || [])
@@ -556,7 +572,7 @@ ColumnLayout {
 
     // What the hand may move: what its item says, never over, never a thing at the edge.
     function movable(row) {
-        return row.drag !== "none" && row.edge === "" && row.fold !== "band"
+        return row.mover !== "none" && row.edge === "" && row.fold !== "band"
     }
 
     // What lies at `p` (the hours' content): {row, index, part: "body", "top"
@@ -623,7 +639,7 @@ ColumnLayout {
         const moved = planning.dayStart(column) - planning.dayStart(row.day)
         let start = snap(from + moved + shift)
         // A step is given a time from now on (its writer's rule, `blocks::pin`).
-        if (row.drag === "pin")
+        if (row.mover === "pin")
             start = Math.max(start, Math.ceil(planning.now / 300) * 300)
         return { start: start, end: start + (to - from), column: column }
     }
@@ -668,7 +684,7 @@ ColumnLayout {
             return
         planning.landed = { row: row, part: grab.part, column: to.column, start: to.start, end: to.end, text: planning.said(grab, to) }
         // A repeating event, moved or its end dragged: this time alone, or every time.
-        if (row.drag === "event" && row.recurring) {
+        if (row.mover === "event" && row.recurring) {
             which.now().ask(row.title, planning.sioul.textWith("agenda-move-which", "time", planning.landed.text))
             return
         }
@@ -1170,7 +1186,6 @@ ColumnLayout {
                     required property string certainty
                     required property string tone
                     required property string colour
-                    required property string drag
                     required property bool ends
                     required property bool cancelled
                     required property bool tentative
@@ -1424,13 +1439,13 @@ ColumnLayout {
                 onTapped: position => {
                     planning.forceActiveFocus()
                     const thing = planning.thingAt(position)
-                    if (thing) {
+                    // A dose's mark, over the night's shading too (its lane lies in it): the dose.
+                    const dose = !thing || thing.row.kind === "night" ? planning.markAt(position) : null
+                    if (dose) {
+                        planning.open(dose)
+                    } else if (thing) {
                         planning.focusKey = thing.row.key
                         planning.open(thing.row)
-                    } else {
-                        const dose = planning.markAt(position)
-                        if (dose)
-                            planning.open(dose)
                     }
                 }
                 onDoubleTapped: position => {

@@ -2070,6 +2070,11 @@ fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row],
 /// The slots file, in the state folder: this device's own.
 pub const SLOTS_FILE: &str = "slots.toml";
 
+thread_local! {
+    /// The slots files this thread wrote (`Slots::saved_here`).
+    static SAVED_HERE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 /// Today's slots of time for you (docs/capacity.md, G18b), as the window
 /// that laid out the day wrote them: every process reads them, so that Time
 /// for you holds everywhere.
@@ -2105,7 +2110,15 @@ impl Slots {
         let fresh = path.with_extension(format!("toml.{}", std::process::id()));
         std::fs::write(&fresh, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
         std::fs::rename(&fresh, path).map_err(fail)?;
+        SAVED_HERE.with(|n| n.set(n.get() + 1));
         Ok(true)
+    }
+
+    /// How many times this thread wrote a slots file (`save`): a view's job,
+    /// which only reads them, writes none (the agenda's job's test counts it
+    /// on its own thread, whatever other threads write meanwhile).
+    pub fn saved_here() -> u64 {
+        SAVED_HERE.with(std::cell::Cell::get)
     }
 
     /// Whether `at` is in one of the slots of its own day.

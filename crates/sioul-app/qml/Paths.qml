@@ -28,16 +28,16 @@ QtObject {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes())
     }
 
-    // `thing` (a row of the timeline: its drag, its source, its times in Unix
+    // `thing` (a row of the timeline: its mover, `can.drag`; its source, its times in Unix
     // seconds) moved: `to` is {start, end} of the thing itself in Unix
     // seconds, `part` "body", "top" or "bottom", `onlyThis` for one time of
     // a repeating event. Returns what went wrong, else "".
     function drop(thing, part, to, onlyThis) {
-        if (thing.drag === "event")
+        if (thing.mover === "event")
             return paths.sioul.moveEvent(thing.srcKey, thing.srcStart, to.start, to.end, onlyThis === true)
-        if (thing.drag === "pin")
+        if (thing.mover === "pin")
             return paths.sioul.pinTask(thing.owner, paths.local(to.start), Math.max(5, Math.round((to.end - to.start) / 60)))
-        if (thing.drag === "need")
+        if (thing.mover === "need")
             return paths.sioul.dragNeed(JSON.stringify(paths.needEdit(thing, part, to)))
         return ""
     }

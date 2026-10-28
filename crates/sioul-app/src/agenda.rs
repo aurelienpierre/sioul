@@ -292,11 +292,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         .filter(|o| !state.upcoming || o.end.max(o.start) > stamp)
         .collect();
     let read = started.elapsed();
-    // An errand's block and steps are health: never named by its prescription
-    // on the timeline (decision 7), never given to an agent (the MCP makes its
-    // own items, through `ForAgents`). The record is never read here: an errand
-    // is known by its category or its title.
-    let errand = |uid: &str| tasks.iter().find(|t| t.uid == uid).is_some_and(|t| sioul_core::health::is_errand(t, &Default::default()));
+    // An errand's block and steps are health's (`errand_in`, decision 7).
+    let errand = errand_in(&tasks);
     let mut items = agenda::items(&occurrences, &zone, &errand);
     let mut doses_note = String::new();
     let plan = work::plan_shown().filter(|p| p.made_on == today);
@@ -324,25 +321,10 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
     }
-    for item in items.iter_mut() {
-        // Time for you and the time kept free, by their words, on every day (today's the Tasks job dressed).
-        if item.title.trim().is_empty() && matches!(item.kind, timeline::Kind::Gain | timeline::Kind::Slack) {
-            item.title = tr().text(if item.kind == timeline::Kind::Gain { "capacity-gain-slot" } else { "capacity-slack" }, None);
-        }
-        // An event of no title, said so; an errand by its kind, never its prescription.
-        if item.title.trim().is_empty() && matches!(item.kind, timeline::Kind::Event | timeline::Kind::Block) {
-            item.title = tr().text("agenda-untitled", None);
-        }
-        if item.privacy == timeline::Privacy::Health && matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step | timeline::Kind::Done | timeline::Kind::Event) {
-            item.title = match sioul_core::health::errand_kind_of_title(&item.title) {
-                Some(sioul_core::health::ErrandKind::Renew) => tr().text("agenda-errand-renew", None),
-                _ => tr().text("agenda-errand-refill", None),
-            };
-        }
-    }
+    named(&mut items);
     let mut days = timeline::days(&items, state.from, state.days, today, &zone, tr());
     timeline::set_hours(&mut days, &load_config().week_hours(), &zone);
-    let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &now) } else { (None, Vec::new()) };
+    let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &now) } else { (None, Vec::new()) };
     let detail = |placed: &Placed| match &placed.item.source {
         timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start).map(Detail::of),
         _ => None,
@@ -532,7 +514,7 @@ fn dose_items(health: &sioul_core::health::Health, from: jiff::civil::Date, coun
 /// The days laid for the Day and the Week, dressed (`timeline::dress`): their
 /// hours, the night's edges, the doses' lane, quiet time's bands, the lists'
 /// line, today's lines; the hours shown; and today's head line, given ahead.
-fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), now: &Zoned) -> (Option<timeline::Frame>, Vec<timeline::HeadFrame>) {
+fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], now: &Zoned) -> (Option<timeline::Frame>, Vec<timeline::HeadFrame>) {
     let zone = now.time_zone().clone();
     let today = now.date();
     let config = load_config();
@@ -545,9 +527,9 @@ fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&w
         stretches.into_iter().map(|(start, end, area)| sioul_core::dayview::Stretch { start, end, kind: area.id() }).collect()
     };
     // In quiet time, what the task pages hide now (decision g): a coming day's steps of it make bands.
-    let tasks = plan.map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
+    let planned = plan.map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
     let quiet = plan.and_then(work::PlanShown::quiet);
-    let hidden = |uid: &str| quiet.is_some_and(|q| tasks.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
+    let hidden = |uid: &str| quiet.is_some_and(|q| planned.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
     let horizon = today.checked_add(jiff::Span::new().days(sioul_core::plan::HORIZON_DAYS - 1)).unwrap_or(today);
     let dressing = timeline::Dressing {
         today,
@@ -564,15 +546,47 @@ fn dressed(days: &mut [timeline::Day], items: &[timeline::Item], plan: Option<&w
     if !days.iter().any(|d| d.today) {
         return (Some(frame), Vec::new());
     }
-    (Some(frame), head_frames(items, plan, occurrences, read, now))
+    (Some(frame), head_frames(items, plan, occurrences, read, known, &hidden, now))
+}
+
+/// Whether a task (by UID) is a health errand among `tasks`: its block and
+/// steps are health's, never named by its prescription on the timeline nor in
+/// the head line (decision 7), never given to an agent (the MCP makes its own
+/// items, through `ForAgents`). The record is never read here: an errand is
+/// known by its category or its title.
+fn errand_in(tasks: &[sioul_core::tasks::Task]) -> impl Fn(&str) -> bool + '_ {
+    move |uid: &str| tasks.iter().find(|t| t.uid == uid).is_some_and(|t| sioul_core::health::is_errand(t, &Default::default()))
+}
+
+/// Things named as the timeline and the head line name them, one rule for
+/// both: time for you and the time kept free by their words, an event of no
+/// title said so, an errand by its kind, never by its prescription.
+fn named(items: &mut [timeline::Item]) {
+    for item in items.iter_mut() {
+        if item.title.trim().is_empty() && matches!(item.kind, timeline::Kind::Gain | timeline::Kind::Slack) {
+            item.title = tr().text(if item.kind == timeline::Kind::Gain { "capacity-gain-slot" } else { "capacity-slack" }, None);
+        }
+        if item.title.trim().is_empty() && matches!(item.kind, timeline::Kind::Event | timeline::Kind::Block) {
+            item.title = tr().text("agenda-untitled", None);
+        }
+        if item.privacy == timeline::Privacy::Health && matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step | timeline::Kind::Done | timeline::Kind::Event) {
+            item.title = match sioul_core::health::errand_kind_of_title(&item.title) {
+                Some(sioul_core::health::ErrandKind::Renew) => tr().text("agenda-errand-renew", None),
+                _ => tr().text("agenda-errand-refill", None),
+            };
+        }
+    }
 }
 
 /// Today's head line from now to midnight, given ahead (`timeline::head_line`):
 /// what each moment is for (`quiet::frames`, the home card's), today's things
 /// and tomorrow's first appointment, and tomorrow morning's alarm. Tomorrow's
 /// appointments come from the days' read when it holds tomorrow (`read`, its
-/// span), else are read.
-fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), now: &Zoned) -> Vec<timeline::HeadFrame> {
+/// span), else are read, and are marked with their tasks (`known`). Every
+/// thing is named as the timeline names it (`named`: an errand by its kind,
+/// never by its prescription), a calendar that Show hides is left out, and a
+/// task's block that quiet time hides now (`hidden`) is said as work.
+fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], hidden: &dyn Fn(&str) -> bool, now: &Zoned) -> Vec<timeline::HeadFrame> {
     let zone = now.time_zone().clone();
     let today = now.date();
     let config = load_config();
@@ -588,13 +602,23 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
         .map(|(from, until, mode)| (from.timestamp().as_second(), until.timestamp().as_second(), mode))
         .collect();
     let (start, end) = (midnight(today, &zone), next_midnight.timestamp().as_second());
+    let view = read_view();
+    let shown = |item: &timeline::Item| !matches!(&item.source, timeline::Source::Calendar { calendar, .. } if view.calendars_hidden.iter().any(|c| c == calendar));
+    let worded = |mut item: timeline::Item| {
+        if matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step) && item.privacy != timeline::Privacy::Health && !item.owner.is_empty() && hidden(&item.owner) {
+            item.title = tr().text("head-work", None);
+        }
+        item
+    };
     let today_items: Vec<timeline::Item> = items
         .iter()
         .filter(|item| {
             let (at, until) = item.time.whole(&zone);
             at < end && until > start
         })
+        .filter(|item| shown(item))
         .cloned()
+        .map(worded)
         .collect();
     // Tomorrow's appointments, whether tomorrow is shown or not.
     let next_start = next_midnight.timestamp().as_second();
@@ -602,9 +626,13 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     let tomorrow_events: Vec<Occurrence> = if read.0 <= next_start && read.1 >= after_start {
         occurrences.iter().filter(|o| o.end > next_start && o.start < after_start).cloned().collect()
     } else {
-        read_between(next_start, after_start, &zone)
+        let mut read = read_between(next_start, after_start, &zone);
+        agenda::mark_tasks(&mut read, known);
+        read
     };
-    let tomorrow_items = agenda::items(&tomorrow_events, &zone, &|_| false);
+    let mut tomorrow_items = agenda::items(&tomorrow_events, &zone, &errand_in(known));
+    named(&mut tomorrow_items);
+    let tomorrow_items: Vec<timeline::Item> = tomorrow_items.into_iter().filter(|item| shown(item)).map(worded).collect();
     let alarm = needs.alarm_of(today, &zone, &days).filter(|a| !a.skipped).map(|a| a.at);
     let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, zone: &zone, tr: tr() };
     timeline::head_line(&inputs)
@@ -701,8 +729,15 @@ mod tests {
     /// Show is this device's: everything shown when nothing was said (or the
     /// file does not read), what is said read back, the same said again
     /// written nothing, and nothing but its own file written.
+    /// One test at a time writes Show's file.
+    fn view_held() -> std::sync::MutexGuard<'static, ()> {
+        static VIEW: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        VIEW.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     #[test]
     fn show_is_kept_on_this_device_and_written_only_when_it_changes() {
+        let _view = view_held();
         sioul_core::config::stand_ins_only();
         let path = view_path();
         let _ = std::fs::remove_file(&path);
@@ -750,40 +785,60 @@ mod tests {
         let _health_tests = crate::health::health_files_held();
         let health = sioul_core::health::Health::default_path();
         let watched = [sioul_core::health::Health::last_read_path(&health), health.with_extension("toml.unreadable")];
-        crate::capacity::DRESSED.with(|n| n.set(0));
         let state = |path: &std::path::Path| std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok()));
         let seen = || (watched.iter().map(|p| state(p)).collect::<Vec<_>>(), files(&calendar.dir));
         let before = seen();
+        // A run while another thread holds every health lock, for longer than a run takes.
+        let unlocked = |run: &dyn Fn() -> String| {
+            let (held, release) = std::sync::mpsc::channel::<()>();
+            let (go, ready) = std::sync::mpsc::channel::<()>();
+            let holder = std::thread::spawn(move || {
+                let _locks = crate::health::every_lock_held();
+                let _ = go.send(());
+                let _ = release.recv_timeout(std::time::Duration::from_secs(20));
+            });
+            ready.recv().unwrap();
+            let started = std::time::Instant::now();
+            let shown = run();
+            assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited for a health lock");
+            let _ = held.send(());
+            holder.join().unwrap();
+            shown
+        };
         // With no plan yet, the job reads the tasks alone, never everything, which writes the
         // mail's index (review of 1880bce, L9): counted on this thread, where the job runs.
+        // Today's slots of time for you are written by their one writer (`Slots::save`),
+        // counted on this thread too: other tests lay today and write them meanwhile.
         crate::work::LOADS.with(|n| n.set(0));
-        // Every health lock held on another thread, for longer than a run takes.
-        let (held, release) = std::sync::mpsc::channel::<()>();
-        let (go, ready) = std::sync::mpsc::channel::<()>();
-        let holder = std::thread::spawn(move || {
-            let _locks = crate::health::every_lock_held();
-            let _ = go.send(());
-            let _ = release.recv_timeout(std::time::Duration::from_secs(20));
+        let slots = sioul_core::attention::Slots::saved_here();
+        let shown = unlocked(&|| {
+            let (shown, _) = made(&shared);
+            let _ = overlaps_now(&shared);
+            shown
         });
-        ready.recv().unwrap();
-        let started = std::time::Instant::now();
-        let (shown, _) = made(&shared);
-        let _ = overlaps_now(&shared);
-        assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited for a health lock");
-        let _ = held.send(());
-        holder.join().unwrap();
         assert!(shown.contains("agenda-job-dentist"), "{shown}");
         let parsed: serde_json::Value = serde_json::from_str(&shown).unwrap();
         assert_eq!(parsed["version"], 3);
         assert_eq!(before, seen(), "nothing written");
-        assert_eq!(crate::capacity::DRESSED.with(std::cell::Cell::get), 0, "today never laid nor its slots written");
+        assert_eq!(sioul_core::attention::Slots::saved_here(), slots, "no slots written");
         assert_eq!(crate::work::LOADS.with(std::cell::Cell::get), 0, "the tasks alone read");
+        // With the plan made (its branch: today as the Tasks job laid it, the coming days laid
+        // by the plan, review of 3a2fbd4, later 5): the job still lays nothing, writes nothing.
+        work::publish_now(&shared);
+        crate::capacity::DRESSED.with(|n| n.set(0));
+        let (slots, before) = (sioul_core::attention::Slots::saved_here(), seen());
+        let shown = unlocked(&|| made(&shared).0);
+        assert!(shown.contains("agenda-job-dentist"), "{shown}");
+        assert_eq!(before, seen(), "nothing written, the plan made");
+        assert_eq!(sioul_core::attention::Slots::saved_here(), slots, "no slots written, the plan made");
+        assert_eq!(crate::capacity::DRESSED.with(std::cell::Cell::get), 0, "today never laid again by the agenda");
         // A write after the plan it reads: the calendars read again, the new event there at once.
         let written = sioul_core::timeline::written();
         vdir::write_item(&calendar.dir.join("visit.ics"), &event("agenda-job-visit", 14)).unwrap();
         assert!(sioul_core::timeline::written() > written, "a calendar write is counted");
         let (shown, _) = made(&shared);
         assert!(shown.contains("agenda-job-visit"), "{shown}");
+        work::forget_plan();
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
     /// A time block is marked with its task as it is now: renamed after the
@@ -975,7 +1030,8 @@ mod tests {
         };
         task("kinds-task", "Kinds step");
         task("kinds-errand", "Pharmacy: Kindsoprazole 20 mg");
-        std::fs::write(calendar.dir.join("kinds-errand-block.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:kinds-errand-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Pharmacy: Kindsoprazole 20 mg\r\n{}:kinds-errand\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(15), utc(16), sioul_core::blocks::TASK)).unwrap();
+        // The errand's block is tomorrow's first thing: the head line names it in the evening.
+        std::fs::write(calendar.dir.join("kinds-errand-block.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:kinds-errand-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Pharmacy: Kindsoprazole 20 mg\r\n{}:kinds-errand\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(8), utc(9), sioul_core::blocks::TASK)).unwrap();
         let shared = Arc::new(Shared::default());
         if let Ok(mut state) = shared.pim.lock() {
             state.from = now.date();
@@ -1001,6 +1057,46 @@ mod tests {
         assert!(parsed["head"].as_array().is_none_or(|head| head.iter().all(|f| f["text"].as_str().is_some_and(|t| !t.is_empty()))), "today's head line: {}", parsed["head"]);
         assert!(!shown.contains("Kindsoprazole") && !shown.contains("Lumiel"), "never a prescription's or a medicine's name");
         assert!(shown.contains(&format!("\"{}\"", tr().text("agenda-errand-refill", None))), "the errand by its kind");
+        // The head line in the evening, once today holds nothing more: tomorrow's first thing,
+        // the errand's block, named by its kind as the timeline names it (review of 3a2fbd4, later 1).
+        let evening = now.date().at(21, 0, 0, 0).to_zoned(zone.clone()).unwrap();
+        let known = tasks_known(&shared);
+        let head = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
+        let said = head.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(said.contains(&tr().text("agenda-errand-refill", None)), "tomorrow's errand, said: {said}");
+        assert!(!said.contains("Kindsoprazole") && !said.contains("Lumiel"), "{said}");
+        // In quiet time, a task's block that the task pages hide now is said as work (the proposal, §4.2).
+        let at = evening.timestamp().as_second() + 1800;
+        let quiet_block = timeline::Item {
+            id: "block:quiet".into(),
+            kind: timeline::Kind::Block,
+            time: timeline::Time::span(at, at + 1800),
+            certainty: timeline::Certainty::Held,
+            source: timeline::Source::Calendar { key: "/c/quiet.ics".into(), uid: "quiet".into(), start: at, recurring: false, calendar: "c".into() },
+            can: timeline::Can::nothing(),
+            privacy: timeline::Privacy::Admin,
+            title: "Quarterly report".into(),
+            line: String::new(),
+            said: String::new(),
+            tone: timeline::Tone::Plain,
+            colour: None,
+            address: String::new(),
+            owner: "kinds-task".into(),
+            holds_time: true,
+        };
+        let quiet = head_frames(&[quiet_block], work::plan_shown().as_deref(), &[], (0, 0), &known, &|uid| uid == "kinds-task", &evening);
+        let said = quiet.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(said.contains(&tr().text("head-work", None)) && !said.contains("Quarterly report"), "{said}");
+        // A calendar that Show hides is left out of it, its first appointment with it.
+        {
+            let _view = view_held();
+            let calendar_name = std::fs::read_to_string(calendar.dir.join("displayname")).unwrap();
+            assert_eq!(set_view(&serde_json::json!({ "calendars_hidden": [calendar_name.trim()] }).to_string()), "");
+            let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
+            let _ = std::fs::remove_file(view_path());
+            let said = hidden.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
+            assert!(!said.contains(&tr().text("agenda-errand-refill", None)) && !said.contains("Kinds appointment"), "{said}");
+        }
         work::forget_plan();
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_file(&health);

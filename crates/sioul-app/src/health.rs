@@ -1791,8 +1791,10 @@ pub(crate) struct GivenState {
 pub(crate) struct DosesToday {
     /// The day the reading is of.
     pub(crate) date: Date,
-    /// When it was read, Unix seconds.
+    /// When it was read, Unix seconds; and to the millisecond, as the window's
+    /// marks compare it with when Sioul came back on the screen (`shown_read_at`).
     pub(crate) read_at: i64,
+    pub(crate) read_ms: i64,
     /// The health file read here, not as last known: else every open dose
     /// is to check (`Check`), never plainly due.
     pub(crate) readable: bool,
@@ -1814,17 +1816,18 @@ pub(crate) fn doses_today(reads: &Reads, now: &Zoned) -> DosesToday {
     let zone = now.time_zone().clone();
     let today = now.date();
     let stamp = now.timestamp().as_second();
+    let read_ms = now.timestamp().as_millisecond();
     let start = midnight(today, &zone);
     let next = today.tomorrow().map_or(start + 86_400, |d| midnight(d, &zone));
     let Some((health, last_known)) = &reads.known else {
-        return DosesToday { date: today, read_at: stamp, readable: false, rows: Vec::new() };
+        return DosesToday { date: today, read_at: stamp, read_ms, readable: false, rows: Vec::new() };
     };
     let knowledge = &reads.knowledge;
     // As last known (the file does not read here): every open dose to check. A record
     // lost here doubts the doses due before it was found so (`doubts_now`), each said.
     let readable = !last_known;
     let (Ok(from_z), Ok(to_z)) = (Timestamp::from_second(start).map(|t| t.to_zoned(zone.clone())), Timestamp::from_second(next).map(|t| t.to_zoned(zone.clone()))) else {
-        return DosesToday { date: today, read_at: stamp, readable, rows: Vec::new() };
+        return DosesToday { date: today, read_at: stamp, read_ms, readable, rows: Vec::new() };
     };
     // As Health's day lists them (`day_view`): the schedule's, and those taken today at a time it no longer has.
     let mut doses: Vec<(String, i64, String, String)> = health.doses(&from_z, &to_z).into_iter().map(|d| (d.key, d.at.timestamp().as_second(), d.name, d.dose)).collect();
@@ -1886,7 +1889,7 @@ pub(crate) fn doses_today(reads: &Reads, now: &Zoned) -> DosesToday {
             DoseToday { key, day: today, at: due, name, amount, states }
         })
         .collect();
-    DosesToday { date: today, read_at: stamp, readable, rows }
+    DosesToday { date: today, read_at: stamp, read_ms, readable, rows }
 }
 
 /// How long a reading of the doses holds what it knows (§8.2): past it,
@@ -1915,8 +1918,9 @@ pub(crate) fn dose_state(row: &DoseToday, today: Date, now: i64, read_at: i64, b
     match &given.state {
         // Taken stays taken, being read again or not (§8.2).
         DoseState::Taken { .. } => (given.state.clone(), given.words.clone()),
-        // None since Sioul came back on the screen: being read.
-        _ if back > read_at => (DoseState::Reading, tr().text("dose-reading", None)),
+        // None since Sioul came back on the screen: being read; in the same second, it may be
+        // older than the return, so being read too (review of 3a2fbd4, later 3: towards doubt).
+        _ if back >= read_at => (DoseState::Reading, tr().text("dose-reading", None)),
         DoseState::Open { .. } if now - read_at > READING_HOLDS => {
             let why = tr().text("dose-reading-old", None);
             (DoseState::Check { why: why.clone() }, why)
@@ -1948,6 +1952,14 @@ fn dose_marks_json(doses: &DosesToday, zone: &TimeZone) -> String {
     json(&serde_json::json!({ "date": doses.date.to_string(), "readable": doses.readable, "holds": READING_HOLDS, "reading": tr().text("dose-reading", None), "old": tr().text("dose-reading-old", None), "rows": rows }))
 }
 
+/// When the reading was made, Unix seconds to the millisecond, as the window
+/// compares it with when Sioul came back on the screen (`window.backAt`, to
+/// the millisecond): a reading begun just after a return is not taken for an
+/// older one (review of 3a2fbd4, later 3).
+fn shown_read_at(doses: &DosesToday) -> f64 {
+    doses.read_ms as f64 / 1000.0
+}
+
 /// The Health page, the doses due while closed and today's meals and naps,
 /// made on a thread (they read the doses' record and the other devices'
 /// claims, a shared folder that may be slow) and shown.
@@ -1955,7 +1967,7 @@ pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.health_job, move |shared| {
         let (view, missed, needs, today) = views(&crate::mail::hidden_pim(shared));
-        let (marks, read_at) = (dose_marks_json(&today, &TimeZone::system()), today.read_at);
+        let (marks, read_at) = (dose_marks_json(&today, &TimeZone::system()), shown_read_at(&today));
         if cfg!(target_os = "android") {
             eprintln!("sioul: health: {} medicines, {} prescriptions", load().medicines.len(), load().prescriptions.len());
         }
@@ -1964,7 +1976,7 @@ pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
             sioul.as_mut().set_missed_view(QString::from(&missed));
             sioul.as_mut().set_needs_view(QString::from(&needs));
             sioul.as_mut().set_dose_marks(QString::from(&marks));
-            sioul.as_mut().set_dose_read_at(read_at as f64);
+            sioul.as_mut().set_dose_read_at(read_at);
         });
     });
 }
@@ -8023,6 +8035,13 @@ mod tests {
         assert!(yesterday.rows.iter().all(|row| dose_state(row, today_, stamp(at(0, 1, 0)), stamp(at(0, 0, 0)) - 60, 0).0 == DoseState::Reading));
         // Sioul back on the screen after the reading (a phone opened by its alarm at 08:00:10): being read.
         assert_eq!(dose_state(row, today_, stamp(at(8, 0, 10)), r, stamp(at(8, 0, 10))).0, DoseState::Reading);
+        // Back in the same second as the reading: it may be older than the return, so being read
+        // (review of 3a2fbd4, later 3); a reading a second after the return holds.
+        assert_eq!(dose_state(row, today_, stamp(at(7, 59, 55)), r, r).0, DoseState::Reading, "the same second: towards doubt");
+        assert_eq!(dose_state(row, today_, stamp(at(7, 59, 55)), r, r - 1).0, DoseState::Open { come: false, late: false });
+        // The window's marks get the reading's time to the millisecond, as their return has it.
+        let precise = doses_today(&reads(HealthState::default(), None), &read.checked_add(jiff::Span::new().milliseconds(300)).unwrap());
+        assert!((shown_read_at(&precise) - (r as f64 + 0.3)).abs() < 1e-3, "to the millisecond: {}", shown_read_at(&precise));
         // Taken stays taken, however old the reading, and being read again after Sioul comes back.
         let mut state = HealthState::default();
         let key = row.key.clone();

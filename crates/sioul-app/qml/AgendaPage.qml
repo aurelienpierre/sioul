@@ -276,6 +276,13 @@ Item {
     Connections {
         target: page.window
 
+        // Back on the screen while today is drawn: the doses read again at once, not at the
+        // next minute's turn (until then, their marks say they are being read).
+        function onBackAtChanged() {
+            if (page.visible && page.drawnToday)
+                page.sioul.refreshHealth()
+        }
+
         function onNowChanged() {
             if (!page.visible)
                 return

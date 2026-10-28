@@ -695,16 +695,20 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
         let mut placed: Vec<Placed> = Vec::new();
         for item in items {
             let (at, until) = item.time.proper(zone);
+            // The night on each day it touches, from its winding down: a bedtime after
+            // midnight keeps its evening (review of 3a2fbd4, later 2).
+            let (on, off) = if item.kind == Kind::Night { item.time.whole(zone) } else { (at, until) };
             // Within the day: an instant at its start counts, one ending as it starts does not.
-            if !(at < end && until > start && !(until == start && at < start)) && !(at == until && at >= start && at < end) {
+            if !(on < end && off > start && !(off == start && on < start)) && !(on == off && on >= start && on < end) {
                 continue;
             }
             let whole = matches!(item.time, Time::Day { .. }) || (at <= start && until >= end);
             placed.push(Placed {
                 item: item.clone(),
                 when: when_on(at, until, whole, start, end, zone, tr),
-                from_minute: i32::try_from((at.max(start) - start) / 60).unwrap_or(0),
-                to_minute: i32::try_from((until.min(end) - start) / 60).unwrap_or(1440),
+                // The thing itself within the day: a bedtime past midnight at its end.
+                from_minute: i32::try_from((at.max(start).min(end) - start) / 60).unwrap_or(0),
+                to_minute: i32::try_from((until.min(end).max(start) - start) / 60).unwrap_or(1440),
                 all_day: whole,
                 column: 0,
                 columns: 1,
@@ -1449,6 +1453,22 @@ mod tests {
         assert_eq!(dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &work, &tr, &zone)), Frame { from: 9 * 60, to: 17 * 60 });
         let mut shown = days(&[], monday, 1, monday, &zone, &tr);
         assert_eq!(dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &no_hours, &tr, &zone)), Frame { from: 7 * 60, to: 22 * 60 });
+        // Every bedtime at 00:30 (review of 3a2fbd4, later 2): each evening holds its winding
+        // down at its edge, the hours run to midnight, and the morning still wakes the day.
+        let late_week = [
+            night("2026-10-04T23:45", "2026-10-05T00:30", "2026-10-05T08:00"),
+            night("2026-10-05T23:45", "2026-10-06T00:30", "2026-10-06T08:00"),
+            night("2026-10-06T23:45", "2026-10-07T00:30", "2026-10-07T08:00"),
+        ];
+        let mut shown = days(&late_week, monday, 2, monday, &zone, &tr);
+        let frame = dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &no_hours, &tr, &zone));
+        assert_eq!((frame.from, frame.to), (7 * 60, 24 * 60), "08:00 less half an hour, down to 07:00; a bedtime past midnight: to midnight");
+        for day in &shown {
+            assert_eq!(day.edges.len(), 2, "{}: this morning's part and tonight's", day.date);
+            let evening = day.edges.iter().find(|p| p.from_minute >= 12 * 60).unwrap();
+            assert_eq!(evening.from_minute, 24 * 60, "{}: tonight's bedtime past this day's end", day.date);
+            assert!(matches!(evening.item.time, Time::Span { start, .. } if start == midnight(day.date.parse().unwrap(), &zone) + (23 * 60 + 45) * 60), "{}: its winding down from 23:45", day.date);
+        }
         // Gone to bed after midnight: that night still wakes the day it lies in.
         let tuesday = day("2026-10-06");
         let late = [night("2026-10-05T23:45", "2026-10-06T00:30", "2026-10-06T09:30")];

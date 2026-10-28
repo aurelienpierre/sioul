@@ -502,7 +502,7 @@ Item {
         function test_paths_call_each_kind_s_writer() {
             const paths = createTemporaryObject(pathsComponent, root)
             const day = v3day("2099-01-06")
-            const rowOf = (p, more) => Object.assign({ kind: p.item.kind, drag: p.item.can.drag, owner: p.item.owner || "", srcKey: p.item.source.key || "", srcStart: p.item.source.start || 0, srcDate: p.item.source.date || "", start: p.item.time.start, at: p.item.time.at, until: p.item.time.until, end: p.item.time.end }, more || {})
+            const rowOf = (p, more) => Object.assign({ kind: p.item.kind, mover: p.item.can.drag, owner: p.item.owner || "", srcKey: p.item.source.key || "", srcStart: p.item.source.start || 0, srcDate: p.item.source.date || "", start: p.item.time.start, at: p.item.time.at, until: p.item.time.until, end: p.item.time.end }, more || {})
             const to = { start: day.start + 600 * 60, end: day.start + 660 * 60 }
             compare(paths.drop(rowOf(event("a.ics", day, 540, 600)), "body", to, false), "")
             compare(paths.drop(rowOf(step("letter", day, 540, 600, true)), "body", to, false), "")
@@ -526,6 +526,8 @@ Item {
             days[1].today = true
             days[1].doses = [dose("m@5", days[1], 300, "top"), dose("m@12", days[1], 720), dose("n@12", days[1], 720)]
             days[2].doses = [dose("m@8", days[2], 480)]
+            // Yesterday's, as the days have them in the seconds after midnight, before the next publish.
+            days[0].doses = [dose("y@8", days[0], 480)]
             const open = (from, come) => ({ from: from, state: { state: "open", come: come, late: false }, words: come ? "due" : "later" })
             const marks = { date: "2099-01-06", holds: 120, reading: "reading", old: "old", rows: [
                 { key: "m@5", day: "2099-01-06", minute: 300, at: t(300), states: [open(0, true)] },
@@ -555,6 +557,13 @@ Item {
             planning.backAt = t(725)
             compare(state("m@12"), "reading")
             compare(state("n@12"), "taken")
+            // To the millisecond (review of 3a2fbd4, later 3): a reading begun a moment after the
+            // return holds; one begun as it came back may be older, so being read.
+            planning.readAt = t(725) + 0.3
+            compare(state("m@12"), "come")
+            planning.readAt = t(725)
+            compare(state("m@12"), "reading", "the same moment: towards doubt")
+            planning.readAt = t(724)
             // A reading of another day is no reading, its "taken" included.
             planning.backAt = 0
             planning.marks = Object.assign({}, marks, { rows: marks.rows.map(r => Object.assign({}, r, { day: "2099-01-05" })) })
@@ -580,6 +589,52 @@ Item {
             const ahead = drawn.filter(c => c.date === "2099-01-07")
             compare(ahead.length, 1)
             compare(ahead[0].known.state, "ahead")
+            // A day gone by has no mark (review of 3a2fbd4, later 7).
+            compare(drawn.filter(c => c.date === "2099-01-05").length, 0)
+            // The 05:00 mark lies over the night's shading: a tap opens the dose, not the night
+            // (review of 3a2fbd4, later 16).
+            let opened = null
+            planning.open.connect(row => opened = row)
+            const flick = root.flickIn(planning)
+            flick.contentY = 0
+            wait(20)
+            const mark = flick.contentItem.mapToItem(planning, planning.gutter + planning.dayWidth + 1 + planning.lane / 2, 8)
+            mouseClick(planning, mark.x, mark.y)
+            verify(opened !== null, "opened")
+            compare(opened.kind, "dose")
+            compare(opened.srcKey, "m@5")
+        }
+
+        // A card taken by the hand fades where it was while it moves (review of 3a2fbd4, later 6).
+        function test_agenda_card_fades_while_dragged() {
+            const planning = makeWeek()
+            const card = root.all(planning, c => c.key === "event:a.ics|2099-01-05" && c.away !== undefined)[0]
+            verify(card !== undefined)
+            verify(!card.away)
+            const from = planningPoint(planning, 0, 630)
+            const to = planningPoint(planning, 0, 700)
+            mousePress(planning, from.x, from.y)
+            for (let i = 1; i <= 8; i++)
+                mouseMove(planning, from.x, from.y + (to.y - from.y) * i / 8)
+            verify(card.away, "faded while it moves")
+            compare(card.opacity, 0.3)
+            mouseRelease(planning, to.x, to.y)
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+        }
+
+        // One row a key (review of 3a2fbd4, later 14): a second copy of a key, given or already
+        // in the model, is dropped, never left as a ghost.
+        function test_agenda_one_row_a_key() {
+            const planning = makeWeek()
+            const model = Qt.createQmlObject("import QtQuick; ListModel {}", root)
+            planning.diff(model, [{ key: "a", v: 1 }, { key: "a", v: 2 }, { key: "b", v: 3 }])
+            compare(model.count, 2)
+            compare([model.get(0).key, model.get(0).v, model.get(1).key].join(" "), "a 1 b")
+            model.append({ key: "b", v: 4 })
+            planning.diff(model, [{ key: "a", v: 1 }, { key: "b", v: 3 }])
+            compare(model.count, 2)
+            compare([model.get(0).key, model.get(1).key, model.get(1).v].join(" "), "a b 3")
+            model.destroy()
         }
 
         // Show leaves out what it is told, on this device: the plan's steps,
