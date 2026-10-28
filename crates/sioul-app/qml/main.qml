@@ -267,6 +267,18 @@ SioulWindow {
     }
     property alias now: clock.now
     property alias today: clock.today
+    // When Sioul last came back on the screen (Unix seconds): a dose's mark is
+    // being read until the Health job reads again after it (WeekPlanning.qml).
+    property real backAt: 0
+
+    Connections {
+        target: sioul
+
+        function onAwayChanged() {
+            if (!sioul.away)
+                window.backAt = Date.now() / 1000
+        }
+    }
 
     // Starts a draft ("new", "reply", "reply-all", "forward") and opens its window.
     function compose(kind, key) {
@@ -300,6 +312,12 @@ SioulWindow {
     function openTask(uid) {
         window.page = 1
         tasksPage.open(uid)
+    }
+
+    // Today in the agenda's Day: what Tasks ▸ The day opens (the unified agenda, part 2).
+    function showAgendaDay() {
+        window.page = 4
+        agendaPage.showDay(window.today)
     }
 
     function openNote(path) {
@@ -592,6 +610,27 @@ SioulWindow {
         if (interruption.item === null)
             interruption.setSource("Interruption.qml", { sioul: sioul, theme: theme })
         interruption.item.ask(key)
+    }
+
+    // A thing of the agenda's timeline (a row of WeekPlanning.qml: its kind,
+    // its source's key and date, its task), opened by its kind. Until each
+    // kind has its card where you are, each opens where it opens elsewhere: an
+    // appointment its details in the agenda; a step, a time block or a task
+    // done its task in Tasks; a meal, a nap, the night or a dose its day in
+    // Health, its row lit (where a dose names its medicine); days off where
+    // they are set.
+    function openCard(ref) {
+        if (ref.kind === "event") {
+            window.page = 4
+            agendaPage.openEvent(ref.srcKey)
+        } else if ((ref.kind === "step" || ref.kind === "block" || ref.kind === "done") && ref.owner !== "") {
+            window.openTask(ref.owner)
+        } else if (ref.kind === "meal" || ref.kind === "nap" || ref.kind === "night" || ref.kind === "dose") {
+            window.page = 10
+            healthPage.openRow(ref.kind === "dose" ? ref.date : ref.srcDate, ref.srcKey)
+        } else if (ref.kind === "day-off") {
+            window.showParameters("time_off")
+        }
     }
 
     // Whatever a link leads to, opened where it lives.
@@ -1007,7 +1046,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1031,6 +1070,44 @@ SioulWindow {
                 () => healthPage.showReadable(true),
                 () => {},
                 () => grabber.save("health-week-readable"),
+                () => window.close()
+            ]
+            // The agenda's Day and Week, one timeline of everything with a time
+            // (SIOUL_GRAB_STEPS=agenda; SIOUL_GRAB_PHONE for a phone's, then in
+            // landscape): today's Day, its Show menu, the Week (a phone's: a list of
+            // days), the next week; the items alive in each, said in the log.
+            // Pictures alone: nothing is changed.
+            readonly property var agendaSteps: [
+                () => window.page = 4,
+                () => agendaPage.showDay(window.today),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-day", agendaPage),
+                () => agendaPage.openShow(),
+                () => {},
+                () => grabber.savePopup(agendaPage.openShow(), "agenda-show"),
+                () => agendaPage.closeShow(),
+                () => agendaPage.mode = "week",
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-week", agendaPage),
+                () => agendaPage.move(1),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-next-week", agendaPage),
+                () => {
+                    agendaPage.move(-1)
+                    if (window.phoneGrab) {
+                        window.width = 891
+                        window.height = 412
+                    }
+                },
+                () => {},
+                () => grabber.saveCounted("agenda-week-wide", agendaPage),
+                () => agendaPage.showDay(window.today),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-day-wide", agendaPage),
                 () => window.close()
             ]
             // Leaving a list from a message (SIOUL_GRAB_STEPS=unsubscribe; SIOUL_GRAB_PHONE
@@ -1957,7 +2034,7 @@ SioulWindow {
                 for (const day of shown.days || [])
                     for (const row of (day.head || []).concat(day.timed || []))
                         if (row.detail && row.item.source.key.indexOf(words) >= 0)
-                            return Object.assign({ key: row.item.source.key }, row.detail)
+                            return Object.assign({ key: row.item.source.key, start: row.item.source.start }, row.detail, JSON.parse(sioul.eventDetails(row.item.source.key, row.item.source.start) || "{}"))
                 return null
             }
             readonly property var checklistSteps: [
@@ -3852,6 +3929,19 @@ SioulWindow {
                 frame.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
                 if (window.phoneGrab)
                     grabber.overflow(name)
+            }
+
+            // A picture, and how many items live under `root` (visible or not), said
+            // in the log: what a view costs as it stands (the agenda's budget).
+            function saveCounted(name, root) {
+                grabber.save(name)
+                const count = item => {
+                    let n = 1
+                    for (let i = 0; i < item.children.length; ++i)
+                        n += count(item.children[i])
+                    return n
+                }
+                console.warn("sioul-objects: " + name + " " + count(root))
             }
 
             // texts: a picture and, at any width, what passes the window's edge, said in the log.

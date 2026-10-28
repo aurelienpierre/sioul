@@ -62,11 +62,15 @@ pub struct Item {
     pub id: String,
     pub kind: Kind,
     pub time: Time,
+    /// Fixed unless said (left out of the JSON then).
+    #[serde(skip_serializing_if = "Certainty::is_fixed")]
     pub certainty: Certainty,
     /// Where it lives: what its card reads, and what its own path takes.
     pub source: Source,
     /// What may be done to it here, decided by its writer's own rule.
     pub can: Can,
+    /// Admin unless said (left out of the JSON then).
+    #[serde(skip_serializing_if = "Privacy::is_admin")]
     pub privacy: Privacy,
     /// Its words on the timeline: an event's title, a task's, a meal's name.
     pub title: String,
@@ -76,6 +80,8 @@ pub struct Item {
     /// Its whole name for a screen reader; "" until a view words it.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub said: String,
+    /// Plain unless said (left out of the JSON then).
+    #[serde(skip_serializing_if = "Tone::is_plain")]
     pub tone: Tone,
     /// A calendar's or a list's colour; None for Sioul's own kinds.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -87,7 +93,9 @@ pub struct Item {
     /// meeting with others that is a task's time block); "" for none.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub owner: String,
-    /// It takes time from the plan, the hours and the meals (`Occurrence::holds_time`).
+    /// It takes time from the plan, the hours and the meals (`Occurrence::holds_time`):
+    /// the layouts' own, never drawn (left out of the JSON).
+    #[serde(skip)]
     pub holds_time: bool,
 }
 
@@ -191,6 +199,12 @@ pub enum Certainty {
     Dose(DoseState),
 }
 
+impl Certainty {
+    fn is_fixed(&self) -> bool {
+        *self == Certainty::Fixed
+    }
+}
+
 /// What is known of a dose. No state says "not taken": a dose said not
 /// taken is open, with the doubt whenever another device may know.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -218,14 +232,21 @@ pub struct Can {
     pub edit: Form,
     /// What a drag does.
     pub drag: Move,
-    /// Its end can be dragged.
+    /// Its end can be dragged (each of these left out of the JSON when false).
+    #[serde(skip_serializing_if = "is_false")]
     pub ends: bool,
+    #[serde(skip_serializing_if = "is_false")]
     pub delete: bool,
     /// Its checklist can be ticked here.
+    #[serde(skip_serializing_if = "is_false")]
     pub tick: bool,
     /// Why it cannot be changed here, in words; "" when it can.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub why: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl Can {
@@ -278,6 +299,12 @@ pub enum Privacy {
     Frame,
 }
 
+impl Privacy {
+    fn is_admin(&self) -> bool {
+        *self == Privacy::Admin
+    }
+}
+
 /// How a thing is drawn: never red.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -286,6 +313,12 @@ pub enum Tone {
     Quiet,
     Warm,
     Muted,
+}
+
+impl Tone {
+    fn is_plain(&self) -> bool {
+        *self == Tone::Plain
+    }
 }
 
 /// Where a thing lives.
@@ -306,14 +339,25 @@ pub enum Source {
     Frame,
 }
 
-/// An event's id: its file, and for one time of a repeating one, its start.
+/// An event's id: its file (below the calendars' folder: the same file,
+/// a shorter name), and for one time of a repeating one, its start.
 pub fn event_id(key: &str, start: i64, recurring: bool) -> String {
-    if recurring { format!("event:{key}@{start}") } else { format!("event:{key}") }
+    let file = below_calendars(key);
+    if recurring { format!("event:{file}@{start}") } else { format!("event:{file}") }
 }
 
 /// A time block's id: its own file, which its drag moves.
 pub fn block_id(key: &str, start: i64, recurring: bool) -> String {
-    if recurring { format!("block:{key}@{start}") } else { format!("block:{key}") }
+    let file = below_calendars(key);
+    if recurring { format!("block:{file}@{start}") } else { format!("block:{file}") }
+}
+
+/// A calendar's file named below the calendars' folder ("local/work/a.ics"),
+/// as it is when it lies elsewhere.
+fn below_calendars(key: &str) -> &str {
+    static ROOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let root = ROOT.get_or_init(|| format!("{}/", crate::vdir::Kind::Calendars.root().display()));
+    key.strip_prefix(root.as_str()).unwrap_or(key)
 }
 
 /// A step's id: its task and its day, never its time, so that a re-lay that
@@ -582,6 +626,28 @@ pub struct Day {
     pub head: Vec<Placed>,
     /// What happens at a time, side by side where things overlap.
     pub timed: Vec<Placed>,
+    /// Its hours by what they are for (work, admin, leisure), as the plan
+    /// has them (`dress`); none in the views that do not draw them.
+    pub hours: Vec<crate::dayview::Stretch>,
+    /// In quiet time, a coming day's steps of what is hidden now, one band per
+    /// stretch of hours ("Work, 09:00 – 12:00"); those steps in `hidden`, for
+    /// "Show anyway" (decisions g and 11 of the unified agenda).
+    pub bands: Vec<Placed>,
+    pub hidden: Vec<Placed>,
+    /// Its doses: today's by key and time (their state is the window's, from
+    /// the Health job's rows), a day to come's plainly; never a name.
+    pub doses: Vec<Placed>,
+    /// The night's parts on that day: the morning's, to waking, and tonight's,
+    /// from winding down.
+    pub edges: Vec<Placed>,
+    /// Within the plan's reach (`plan::HORIZON_DAYS`): its steps are laid.
+    pub planned: bool,
+    /// The lists' line: "The plan: Call the CAF first"; "" with no step.
+    pub plan: String,
+    /// Today: the steps of today's plan that find no time before the day ends, said.
+    pub more: String,
+    /// Today: why it holds what it holds (`capacity`), in words.
+    pub said: Vec<String>,
 }
 
 /// An item as a day places it.
@@ -593,11 +659,26 @@ pub struct Placed {
     /// The thing itself in that day's hours, in minutes from midnight.
     pub from_minute: i32,
     pub to_minute: i32,
-    /// Whole day, or spanning the whole of that day: at the head.
+    /// Whole day, or spanning the whole of that day: at the head (left out when not).
+    #[serde(skip_serializing_if = "is_false")]
     pub all_day: bool,
-    /// Its column among `columns`, beside what overlaps it.
+    /// Its column among `columns`, beside what overlaps it (left out when alone: 0 of 1).
+    #[serde(skip_serializing_if = "is_zero")]
     pub column: u32,
+    #[serde(skip_serializing_if = "is_one")]
     pub columns: u32,
+    /// Outside the hours the view shows (a dose or a meal inside the night):
+    /// drawn at their top or bottom edge, with its time; "" inside them (`dress`).
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub edge: &'static str,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
+fn is_one(value: &u32) -> bool {
+    *value == 1
 }
 
 /// The days from `from`, `count` of them, each with the items it holds,
@@ -627,6 +708,7 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
                 all_day: whole,
                 column: 0,
                 columns: 1,
+                edge: "",
             });
         }
         placed.sort_by(|a, b| (a.item.time.proper(zone).0, !a.all_day, &a.item.title).cmp(&(b.item.time.proper(zone).0, !b.all_day, &b.item.title)));
@@ -643,7 +725,26 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
         } else {
             tr.day(date)
         };
-        out.push(Day { date: date.to_string(), title, today: date == today, past: date < today, start, hours_from: -1, hours_to: -1, head, timed });
+        out.push(Day {
+            date: date.to_string(),
+            title,
+            today: date == today,
+            past: date < today,
+            start,
+            hours_from: -1,
+            hours_to: -1,
+            head,
+            timed,
+            hours: Vec::new(),
+            bands: Vec::new(),
+            hidden: Vec::new(),
+            doses: Vec::new(),
+            edges: Vec::new(),
+            planned: false,
+            plan: String::new(),
+            more: String::new(),
+            said: Vec::new(),
+        });
     }
     out
 }
@@ -683,6 +784,374 @@ pub fn set_hours(days: &mut [Day], windows: &[crate::window::AdminWindow], zone:
             day.hours_to = minute(&closing);
         }
     }
+}
+
+/// What `dress` needs beyond the items: each day's hours, what is hidden
+/// now, the plan's reach and today's own lines.
+pub struct Dressing<'a> {
+    pub today: Date,
+    /// Now, Unix seconds: today's plan line names the next step from now.
+    pub now: i64,
+    pub zone: &'a TimeZone,
+    pub tr: &'a Translator,
+    /// A day's hours by what they are for (`plan::Settings::hours_on`).
+    pub hours: &'a dyn Fn(Date) -> Vec<crate::dayview::Stretch>,
+    /// The last day the plan lays steps on.
+    pub horizon: Date,
+    /// Whether a task, by UID, is hidden now (quiet time): a coming day's steps of it make bands.
+    pub hidden: &'a dyn Fn(&str) -> bool,
+    /// Why today holds what it holds, as the Tasks job dressed it (`capacity`).
+    pub said: Vec<String>,
+    /// With no night set and no hours: the hour the days start at (`agenda.day_start`).
+    pub day_start: i32,
+}
+
+/// The hours a view shows, in minutes from each day's midnight, whole hours:
+/// the same for every day it shows, so that the hour lines stay in place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Frame {
+    pub from: i32,
+    pub to: i32,
+}
+
+/// Half an hour, around the night: the hours shown start before waking and end after bedtime.
+const AROUND_NIGHT: i32 = 30;
+
+/// A night gone to bed before noon is the morning's part (it wakes that day);
+/// from noon on, the evening's (`frame_of`, and the window's timeline alike).
+const NOON: i32 = 12 * 60;
+
+/// The days laid by `days`, dressed for the window's Day and Week (the
+/// unified agenda, §4.3, §4.4, §4.7): each day's hours by what they are for;
+/// the night's parts as its edges and the doses on their lane, apart from
+/// the cards; a coming day's steps of what quiet time hides now folded into
+/// one band per stretch of hours, those steps kept apart for "Show anyway";
+/// a step at no time said in today's line, never drawn; the lists' line;
+/// today's lines; side by side again where what is left overlaps. Returns
+/// the hours shown (Health's rule, decision 5): from half an hour before
+/// waking to half an hour after bedtime, whole hours, the same for every day,
+/// widened to the appointments and the blocks outside them; with no night
+/// set, the hours given to something; else from the day's start to 22:00.
+/// What else falls outside (a dose, a meal inside the night) is marked to be
+/// drawn at the edge with its time, and never stretches the day.
+pub fn dress(days: &mut [Day], d: &Dressing) -> Frame {
+    for day in days.iter_mut() {
+        let Ok(date) = day.date.parse::<Date>() else { continue };
+        day.planned = date >= d.today && date <= d.horizon;
+        day.hours = (d.hours)(date);
+        let mut head = Vec::new();
+        let mut timed = Vec::new();
+        let mut unlaid = Vec::new();
+        for mut placed in std::mem::take(&mut day.head).into_iter().chain(std::mem::take(&mut day.timed)) {
+            if matches!(placed.item.kind, Kind::Night | Kind::Dose) {
+                (placed.column, placed.columns) = (0, 1);
+            }
+            match placed.item.kind {
+                Kind::Night => day.edges.push(placed),
+                Kind::Dose => day.doses.push(placed),
+                Kind::Step if matches!(placed.item.time, Time::Day { .. }) => unlaid.push(placed),
+                Kind::Step if date > d.today && (d.hidden)(&placed.item.owner) => day.hidden.push(placed),
+                _ if placed.all_day => head.push(placed),
+                _ => timed.push(placed),
+            }
+        }
+        // Side by side again, what overlaps among what is drawn as cards.
+        let spans: Vec<(i64, i64)> = timed.iter().map(|p| (i64::from(p.from_minute), i64::from(p.to_minute.max(p.from_minute + 15)))).collect();
+        for (p, (column, columns)) in timed.iter_mut().zip(crate::dayview::side_by_side(&spans)) {
+            p.column = column;
+            p.columns = columns;
+        }
+        day.head = head;
+        day.timed = timed;
+        day.bands = bands_of(day, d);
+        // The lists' line: the day's first step (today's first from now), never one hidden now.
+        let first = day.timed.iter().filter(|p| p.item.kind == Kind::Step && p.item.time.proper(d.zone).1 > d.now).min_by_key(|p| p.item.time.proper(d.zone).0);
+        if let Some(step) = first {
+            let mut args = crate::i18n::args();
+            args.set("step", step.item.title.clone());
+            day.plan = d.tr.text("agenda-plan-first", Some(&args));
+        }
+        if date == d.today {
+            if !unlaid.is_empty() {
+                let mut args = d.tr.counted(unlaid.len());
+                args.set("steps", unlaid.iter().map(|p| p.item.title.clone()).collect::<Vec<_>>().join(SEPARATOR));
+                day.more = d.tr.text("agenda-more", Some(&args));
+            }
+            day.said = d.said.clone();
+        }
+    }
+    let frame = frame_of(days, d.day_start);
+    // What falls outside the hours shown: at their edge, with its time.
+    for day in days.iter_mut() {
+        for placed in day.timed.iter_mut().chain(day.doses.iter_mut()) {
+            let instant = placed.from_minute == placed.to_minute;
+            placed.edge = if placed.to_minute <= frame.from && !(instant && placed.from_minute == frame.from) {
+                "top"
+            } else if placed.from_minute >= frame.to {
+                "bottom"
+            } else {
+                ""
+            };
+        }
+    }
+    frame
+}
+
+/// A coming day's steps hidden now, one band per stretch of hours that holds
+/// them, named by what the hours are for and their time; those of no stretch
+/// in one band of their own.
+fn bands_of(day: &Day, d: &Dressing) -> Vec<Placed> {
+    let mut groups: Vec<(String, Vec<&Placed>)> = Vec::new();
+    for placed in &day.hidden {
+        let (at, _) = placed.item.time.proper(d.zone);
+        let area = day.hours.iter().find(|h| h.start <= at && at < h.end).map(|h| h.kind.split('+').next().unwrap_or("").to_string()).unwrap_or_default();
+        match groups.iter_mut().find(|(a, _)| *a == area) {
+            Some((_, steps)) => steps.push(placed),
+            None => groups.push((area, vec![placed])),
+        }
+    }
+    groups
+        .into_iter()
+        .enumerate()
+        .map(|(n, (area, steps))| {
+            let from = steps.iter().map(|p| p.item.time.proper(d.zone).0).min().unwrap_or(day.start);
+            let to = steps.iter().map(|p| p.item.time.proper(d.zone).1).max().unwrap_or(from);
+            let mut args = crate::i18n::args();
+            args.set("time", range(from, to, d.zone));
+            let title = if area.is_empty() {
+                d.tr.text("agenda-band-other", Some(&args))
+            } else {
+                args.set("area", d.tr.text(&format!("area-{area}"), None));
+                d.tr.text("agenda-band", Some(&args))
+            };
+            let minute = |t: i64| i32::try_from((t - day.start) / 60).unwrap_or(0).clamp(0, 1440);
+            Placed {
+                item: Item {
+                    id: format!("band:{}/{n}", day.date),
+                    kind: Kind::Step,
+                    time: Time::span(from, to),
+                    certainty: Certainty::Planned,
+                    source: Source::Frame,
+                    can: Can::nothing(),
+                    privacy: Privacy::Frame,
+                    title: title.clone(),
+                    line: String::new(),
+                    said: title,
+                    tone: Tone::Quiet,
+                    colour: None,
+                    address: String::new(),
+                    owner: String::new(),
+                    holds_time: false,
+                },
+                when: range(from, to, d.zone),
+                from_minute: minute(from),
+                to_minute: minute(to),
+                all_day: false,
+                column: 0,
+                columns: 1,
+                edge: "",
+            }
+        })
+        .collect()
+}
+
+/// The hours shown for `days` (`dress`).
+fn frame_of(days: &[Day], day_start: i32) -> Frame {
+    let (mut from, mut to) = (i32::MAX, i32::MIN);
+    for day in days {
+        let minute = |t: i64| i32::try_from((t - day.start) / 60).unwrap_or(0);
+        // Waking: a night gone to bed before noon (last evening, or after
+        // midnight) ends that day; bedtime: one gone to bed from noon on begins it.
+        let wake = day.edges.iter().filter_map(|p| match p.item.time {
+            Time::Span { at, until, .. } if minute(at) < NOON && until > day.start && minute(until) <= 25 * 60 => Some(minute(until)),
+            _ => None,
+        }).min();
+        let bed = day.edges.iter().filter_map(|p| match p.item.time {
+            Time::Span { at, .. } if minute(at) >= NOON => Some(minute(at)),
+            _ => None,
+        }).max();
+        let night = wake.is_some() || bed.is_some();
+        if let Some(wake) = wake {
+            from = from.min((wake - AROUND_NIGHT).div_euclid(60) * 60);
+        }
+        if let Some(bed) = bed {
+            to = to.max(((bed + AROUND_NIGHT) as f64 / 60.0).ceil() as i32 * 60);
+        }
+        if !night {
+            for stretch in &day.hours {
+                from = from.min(minute(stretch.start).div_euclid(60) * 60);
+                to = to.max((minute(stretch.end) as f64 / 60.0).ceil() as i32 * 60);
+            }
+        }
+    }
+    // Nothing said of a day: from its start to 22:00.
+    let first = day_start.clamp(0, 23) * 60;
+    if from == i32::MAX {
+        from = first;
+    }
+    if to == i32::MIN {
+        to = 22 * 60;
+    }
+    if from >= to {
+        (from, to) = (from.min(first), to.max(22 * 60));
+    }
+    // Widened to the appointments and blocks outside them, a pinned step's included.
+    for day in days {
+        for placed in day.timed.iter().filter(|p| matches!(p.item.kind, Kind::Event | Kind::Block) || (p.item.kind == Kind::Step && p.item.certainty == Certainty::Held)) {
+            from = from.min(placed.from_minute.div_euclid(60) * 60);
+            to = to.max((placed.to_minute as f64 / 60.0).ceil() as i32 * 60);
+        }
+    }
+    Frame { from: from.clamp(0, 23 * 60), to: to.clamp(from.clamp(0, 23 * 60) + 60, 24 * 60) }
+}
+
+/// One frame of the head line (the unified agenda, §4.2): its words hold from
+/// `from` until `until` (Unix seconds), by the window's clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeadFrame {
+    pub from: i64,
+    pub until: i64,
+    pub text: String,
+    /// Its words for a screen reader.
+    pub said: String,
+}
+
+/// What the head line is made from.
+pub struct HeadInputs<'a> {
+    pub now: i64,
+    /// The next midnight, Unix seconds: the line is given until then.
+    pub next_midnight: i64,
+    /// What each moment is for, from now on (`quiet::frames`), in Unix seconds.
+    pub moments: &'a [(i64, i64, crate::quiet::Mode)],
+    /// Today's things and tomorrow's (events, time blocks, steps, meals, naps, the night, time for you).
+    pub today: &'a [Item],
+    pub tomorrow: &'a [Item],
+    /// Tomorrow morning's alarm, when it rings.
+    pub alarm: Option<i64>,
+    pub zone: &'a TimeZone,
+    pub tr: &'a Translator,
+}
+
+/// A thing the head line names: an appointment, a pinned task, a meal, a
+/// nap, the winding down; never a proposal of the plan, never a dose.
+fn fixed(item: &Item) -> bool {
+    matches!(item.kind, Kind::Event | Kind::Block | Kind::Meal | Kind::Nap | Kind::Night) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)
+}
+
+/// The head line from now to midnight, as frames given ahead (the unified
+/// agenda, §4.2), each holding while what it says holds: at the end of what
+/// is under way, at a leaving time, when the next thing starts, when the
+/// moment changes, at midnight. In work and admin time: what is under way,
+/// then the next fixed thing with its leaving time. At a meal, or in leisure
+/// while today still holds something: the same. Once today holds nothing
+/// more: tomorrow's first appointment and its leaving time, and the alarm.
+/// In sleep, a pause or Free time: the moment alone, until when. No date
+/// (they come with the dates), no dose, no proposal of the plan.
+pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
+    let mut bounds: Vec<i64> = vec![i.now, i.next_midnight];
+    for item in i.today.iter().filter(|item| fixed(item) || item.kind == Kind::Gain) {
+        if let Time::Span { start, at, end, .. } = item.time {
+            bounds.extend([start, at, end]);
+        }
+    }
+    for (from, until, _) in i.moments {
+        bounds.extend([*from, *until]);
+    }
+    bounds.retain(|b| *b >= i.now && *b <= i.next_midnight);
+    bounds.sort_unstable();
+    bounds.dedup();
+    let mut out: Vec<HeadFrame> = Vec::new();
+    for pair in bounds.windows(2) {
+        let (from, until) = (pair[0], pair[1]);
+        let text = head_at(i, from);
+        match out.last_mut() {
+            Some(last) if last.text == text && last.until == from => last.until = until,
+            _ => out.push(HeadFrame { from, until, said: text.clone(), text }),
+        }
+    }
+    out.retain(|frame| !frame.text.is_empty());
+    out
+}
+
+/// The head line's words at `t` (`head_line`).
+fn head_at(i: &HeadInputs, t: i64) -> String {
+    let tr = i.tr;
+    let clock = |at: i64| clock(at, i.zone);
+    let moment = i.moments.iter().find(|(from, until, _)| *from <= t && t < *until).map(|(_, _, mode)| mode);
+    let until = |mode: &crate::quiet::Mode| mode.until.as_ref().map(|z| z.timestamp().as_second()).filter(|u| *u > t);
+    let say = |id: &str, pairs: &[(&str, String)]| {
+        let mut args = crate::i18n::args();
+        for (name, value) in pairs {
+            args.set(*name, value.clone());
+        }
+        tr.text(id, Some(&args))
+    };
+    // The night by its winding down, as the needs name it (`need-sleep`).
+    let named = |item: &Item| item.title.clone();
+    if let Some(mode) = moment {
+        use crate::quiet::Reason;
+        let held = until(mode).map(clock);
+        match mode.reason {
+            Reason::FreeTime => return held.map_or_else(|| tr.text("head-free-time-now", None), |u| say("head-free-time", &[("until", u)])),
+            Reason::Paused => return held.map_or_else(|| tr.text("head-paused-now", None), |u| say("head-paused", &[("until", u)])),
+            Reason::WindingDown => {
+                let bed = i.today.iter().find(|item| item.kind == Kind::Night && matches!(item.time, Time::Span { start, at, .. } if start <= t && t < at)).map(|item| item.time.proper(i.zone).0);
+                return match (bed, i.alarm) {
+                    (Some(bed), Some(alarm)) => say("head-wind-down-alarm", &[("bed", clock(bed)), ("alarm", clock(alarm))]),
+                    (Some(bed), None) => say("head-wind-down", &[("bed", clock(bed))]),
+                    _ => String::new(),
+                };
+            }
+            Reason::Sleep => return held.map_or_else(String::new, |u| say("head-sleep", &[("until", u)])),
+            Reason::Nap => return held.map_or_else(String::new, |u| say("head-nap", &[("until", u)])),
+            _ => {}
+        }
+    }
+    let span = |item: &Item| match item.time {
+        Time::Span { start, end, .. } => Some((start, end)),
+        _ => None,
+    };
+    // Under way: an appointment, a pinned task, a meal, a nap first; time for you else.
+    let under = i.today.iter().filter(|item| fixed(item) && item.kind != Kind::Night).find(|item| span(item).is_some_and(|(s, e)| s <= t && t < e)).or_else(|| i.today.iter().filter(|item| item.kind == Kind::Gain).find(|item| span(item).is_some_and(|(s, e)| s <= t && t < e)));
+    // The next fixed thing, by when it asks you to start: leaving, getting ready, winding down.
+    let next = i.today.iter().filter(|item| fixed(item)).filter_map(|item| span(item).map(|(s, _)| (s, item))).filter(|(s, _)| *s > t).min_by_key(|(s, _)| *s).map(|(_, item)| item);
+    let work_left = i.moments.iter().any(|(from, until, mode)| *until > t && *from < i.next_midnight && matches!(mode.time, crate::areas::Time::Work | crate::areas::Time::Admin));
+    if under.is_none() && next.is_none() && !work_left {
+        // Today holds nothing more: tomorrow's first appointment or pinned task, and the alarm.
+        let first = i.tomorrow.iter().filter(|item| matches!(item.kind, Kind::Event | Kind::Block) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)).filter(|item| matches!(item.time, Time::Span { .. })).min_by_key(|item| item.time.proper(i.zone).0);
+        let mut parts = Vec::new();
+        if let Some(item) = first
+            && let Time::Span { start, at, .. } = item.time
+        {
+            parts.push(if start < at { say("head-tomorrow-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-tomorrow", &[("time", clock(at)), ("what", named(item))]) });
+        }
+        if let Some(alarm) = i.alarm {
+            parts.push(say("head-alarm", &[("time", clock(alarm))]));
+        }
+        return parts.join(" ");
+    }
+    let mut parts = Vec::new();
+    match under {
+        Some(item) => parts.push(say("head-until", &[("what", named(item)), ("time", clock(span(item).map_or(t, |(_, e)| e)))])),
+        None => {
+            if let Some(mode) = moment.filter(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin))
+                && let Some(u) = until(mode)
+            {
+                let what = if mode.time == crate::areas::Time::Work { tr.text("head-work", None) } else { tr.text("head-admin", None) };
+                parts.push(say("head-until", &[("what", what), ("time", clock(u))]));
+            }
+        }
+    }
+    if let Some(item) = next {
+        let (start, at) = match item.time {
+            Time::Span { start, at, .. } => (start, at),
+            _ => (t, t),
+        };
+        // An appointment or a pinned task: its time, and when to leave; your own times: when they begin.
+        let leaves = matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) && start < at;
+        parts.push(if leaves { say("head-next-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-next", &[("time", clock(if matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) { at } else { start })), ("what", named(item))]) });
+    }
+    parts.join(" ")
 }
 
 #[cfg(test)]
@@ -920,5 +1389,148 @@ mod tests {
         assert_eq!((items[3].can.edit, items[3].owner.as_str(), items[3].address.as_str()), (Form::Task, "t1", "sioul:task/t1"));
         assert_eq!(items[5].address, "sioul:event/own");
         assert_eq!(items[2].time, Time::Day { date: day("2026-10-05"), until: day("2026-10-05") });
+    }
+
+    fn thing(id: &str, kind: Kind, from: &str, to: &str) -> Item {
+        let (at, until) = (at(from), at(to));
+        Item { id: id.into(), kind, time: Time::span(at, until), certainty: Certainty::Fixed, source: Source::Frame, can: Can::nothing(), privacy: Privacy::Admin, title: id.into(), line: String::new(), said: String::new(), tone: Tone::Plain, colour: None, address: String::new(), owner: id.into(), holds_time: true }
+    }
+
+    fn night(evening: &str, bed: &str, wake: &str) -> Item {
+        let mut item = thing("night", Kind::Night, bed, wake);
+        item.time = Time::Span { start: at(evening), at: at(bed), until: at(wake), end: at(wake) };
+        item.title = "Winding down".into();
+        item.privacy = Privacy::Health;
+        item
+    }
+
+    fn dressing<'a>(today: Date, now: &str, hidden: &'a dyn Fn(&str) -> bool, hours: &'a dyn Fn(Date) -> Vec<crate::dayview::Stretch>, tr: &'a Translator, zone: &'a TimeZone) -> Dressing<'a> {
+        Dressing { today, now: at(now), zone, tr, hours, horizon: today.checked_add(jiff::Span::new().days(27)).unwrap(), hidden, said: vec!["Today is a light day.".into()], day_start: 7 }
+    }
+
+    /// The hours a Day or a Week shows (decision 5): from half an hour before
+    /// waking to half an hour after bedtime, whole hours, one frame for every
+    /// day; widened to an appointment outside them; a dose or a meal inside
+    /// the night is drawn at the edge with its time, never stretching the day.
+    /// With no night set: the hours given to something; else from the day's
+    /// start to 22:00.
+    #[test]
+    fn the_hours_shown_follow_the_night() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let monday = day("2026-10-05");
+        let mut dose = thing("dose:a@1", Kind::Dose, "2026-10-06T05:00", "2026-10-06T05:00");
+        dose.time = Time::At { at: at("2026-10-06T05:00") };
+        let items = vec![
+            night("2026-10-04T22:30", "2026-10-04T23:00", "2026-10-05T07:00"),
+            night("2026-10-05T22:30", "2026-10-05T23:00", "2026-10-06T07:30"),
+            night("2026-10-06T22:30", "2026-10-06T23:10", "2026-10-07T07:00"),
+            dose,
+            thing("lunch", Kind::Meal, "2026-10-05T12:30", "2026-10-05T13:00"),
+        ];
+        let none = |_: &str| false;
+        let no_hours = |_: Date| Vec::new();
+        let mut shown = days(&items, monday, 2, monday, &zone, &tr);
+        let frame = dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &no_hours, &tr, &zone));
+        assert_eq!((frame.from, frame.to), (6 * 60, 24 * 60), "06:30 less half an hour, down to 06:00; 23:10 and half an hour, up to midnight");
+        assert_eq!(shown[0].edges.len(), 2, "this morning's part and tonight's");
+        assert!(shown[0].timed.iter().any(|p| p.item.id == "lunch") && shown[0].timed.iter().all(|p| p.item.kind != Kind::Night));
+        let dose = shown[1].doses.iter().find(|p| p.item.kind == Kind::Dose).unwrap();
+        assert_eq!(dose.edge, "top", "05:00, inside the night: at the top, with its time");
+        // An appointment at 05:00 widens the hours; it is never at an edge.
+        let mut early = items.clone();
+        early.push(thing("train", Kind::Event, "2026-10-06T05:00", "2026-10-06T05:30"));
+        let mut shown = days(&early, monday, 2, monday, &zone, &tr);
+        let frame = dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &no_hours, &tr, &zone));
+        assert_eq!(frame.from, 5 * 60);
+        assert!(shown[1].timed.iter().all(|p| p.edge.is_empty()));
+        // No night: the hours given to something; none: from the day's start to 22:00.
+        let work = |date: Date| vec![crate::dayview::Stretch { start: midnight(date, &zone) + 9 * 3600, end: midnight(date, &zone) + 17 * 3600, kind: "work".into() }];
+        let mut shown = days(&[], monday, 1, monday, &zone, &tr);
+        assert_eq!(dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &work, &tr, &zone)), Frame { from: 9 * 60, to: 17 * 60 });
+        let mut shown = days(&[], monday, 1, monday, &zone, &tr);
+        assert_eq!(dress(&mut shown, &dressing(monday, "2026-10-05T10:00", &none, &no_hours, &tr, &zone)), Frame { from: 7 * 60, to: 22 * 60 });
+        // Gone to bed after midnight: that night still wakes the day it lies in.
+        let tuesday = day("2026-10-06");
+        let late = [night("2026-10-05T23:45", "2026-10-06T00:30", "2026-10-06T09:30")];
+        let mut shown = days(&late, tuesday, 1, tuesday, &zone, &tr);
+        assert_eq!(dress(&mut shown, &dressing(tuesday, "2026-10-06T10:00", &none, &no_hours, &tr, &zone)), Frame { from: 9 * 60, to: 22 * 60 });
+    }
+
+    /// Quiet time on a coming day (decisions g and 11): the steps the task
+    /// pages hide now fold into one band per stretch of hours, named by what
+    /// they are for, those steps kept for "Show anyway"; today's never. A step
+    /// of today's plan that found no time is said in today's line, never
+    /// drawn; the lists' line names the day's first step.
+    #[test]
+    fn quiet_time_folds_a_coming_day_s_hidden_steps_into_bands() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let monday = day("2026-10-05");
+        let step = |uid: &str, from: &str, to: &str| {
+            let mut item = thing(uid, Kind::Step, from, to);
+            item.certainty = Certainty::Planned;
+            item
+        };
+        let mut unlaid = step("form", "2026-10-05T00:00", "2026-10-05T00:00");
+        unlaid.time = Time::Day { date: monday, until: monday };
+        let items = vec![step("report", "2026-10-05T09:00", "2026-10-05T10:00"), step("report", "2026-10-06T09:00", "2026-10-06T10:00"), step("slides", "2026-10-06T10:15", "2026-10-06T11:00"), step("tidy", "2026-10-06T18:00", "2026-10-06T18:30"), unlaid];
+        let hidden = |uid: &str| uid == "report" || uid == "slides";
+        let work = |date: Date| vec![crate::dayview::Stretch { start: midnight(date, &zone) + 9 * 3600, end: midnight(date, &zone) + 12 * 3600, kind: "work".into() }];
+        let mut shown = days(&items, monday, 2, monday, &zone, &tr);
+        dress(&mut shown, &dressing(monday, "2026-10-05T08:00", &hidden, &work, &tr, &zone));
+        assert!(shown[0].bands.is_empty() && shown[0].timed.iter().any(|p| p.item.owner == "report"), "today: as the Tasks job laid it");
+        assert_eq!(shown[1].bands.len(), 1);
+        assert_eq!(shown[1].bands[0].item.title, "Work, 09:00 – 11:00");
+        assert_eq!(shown[1].bands[0].item.privacy, Privacy::Frame, "never to an agent");
+        assert_eq!(shown[1].hidden.len(), 2);
+        assert!(shown[1].timed.iter().all(|p| p.item.owner != "report" && p.item.owner != "slides"));
+        assert!(shown[0].head.iter().chain(&shown[0].timed).all(|p| p.item.owner != "form"), "at no time: never drawn");
+        assert!(shown[0].more.contains("form"), "{}", shown[0].more);
+        assert_eq!(shown[0].said, vec!["Today is a light day.".to_string()]);
+        assert_eq!(shown[1].plan, "The plan: tidy first");
+    }
+
+    fn moment(time: crate::areas::Time, reason: crate::quiet::Reason, until: &str) -> crate::quiet::Mode {
+        let until = Timestamp::from_second(at(until)).unwrap().to_zoned(paris());
+        crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(until), back: None, label: String::new() }
+    }
+
+    /// The head line (§4.2), given ahead by the moment: in work time what is
+    /// under way and the next fixed thing with its leaving time; at a meal
+    /// the same; once today holds nothing more, tomorrow's first appointment
+    /// and the alarm; in Free time the moment alone. Never a dose, never a
+    /// proposal of the plan; each frame holds until what it says changes.
+    #[test]
+    fn the_head_line_says_what_is_under_way_and_what_comes() {
+        use crate::areas::Time as Hours;
+        use crate::quiet::Reason;
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let mut doctor = thing("Doctor", Kind::Event, "2026-10-05T14:00", "2026-10-05T14:30");
+        doctor.time = Time::Span { start: at("2026-10-05T13:05"), at: at("2026-10-05T14:00"), until: at("2026-10-05T14:30"), end: at("2026-10-05T14:30") };
+        let mut lunch = thing("Lunch", Kind::Meal, "2026-10-05T12:30", "2026-10-05T13:00");
+        lunch.time = Time::Span { start: at("2026-10-05T12:10"), at: at("2026-10-05T12:30"), until: at("2026-10-05T13:00"), end: at("2026-10-05T13:00") };
+        let mut proposal = thing("Sort the receipts", Kind::Step, "2026-10-05T11:15", "2026-10-05T11:45");
+        proposal.certainty = Certainty::Planned;
+        let mut dose = thing("Dose", Kind::Dose, "2026-10-05T11:30", "2026-10-05T11:30");
+        dose.time = Time::At { at: at("2026-10-05T11:30") };
+        let today = vec![thing("Time for you", Kind::Gain, "2026-10-05T10:30", "2026-10-05T11:00"), proposal, dose, lunch, doctor];
+        let mut dentist = thing("Dentist", Kind::Event, "2026-10-06T09:30", "2026-10-06T10:00");
+        dentist.time = Time::Span { start: at("2026-10-06T09:05"), at: at("2026-10-06T09:30"), until: at("2026-10-06T10:00"), end: at("2026-10-06T10:00") };
+        let moments = vec![
+            (at("2026-10-05T09:00"), at("2026-10-05T17:00"), moment(Hours::Work, Reason::Working, "2026-10-05T17:00")),
+            (at("2026-10-05T17:00"), at("2026-10-06T00:00"), moment(Hours::Leisure, Reason::Evening, "2026-10-06T09:00")),
+        ];
+        let line = |now: &str| head_line(&HeadInputs { now: at(now), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), zone: &zone, tr: &tr });
+        let frames = line("2026-10-05T10:40");
+        assert_eq!(frames[0].text, "Time for you until 11:00. Next: 12:10 Lunch.");
+        assert_eq!((frames[0].from, frames[0].until), (at("2026-10-05T10:40"), at("2026-10-05T11:00")), "it holds until time for you ends");
+        let at_lunch = frames.iter().find(|f| f.from <= at("2026-10-05T12:40") && at("2026-10-05T12:40") < f.until).unwrap();
+        assert_eq!(at_lunch.text, "Lunch until 13:00. Next: 14:00 Doctor, leave at 13:05.");
+        let evening = frames.iter().find(|f| f.from <= at("2026-10-05T18:00") && at("2026-10-05T18:00") < f.until).unwrap();
+        assert_eq!(evening.text, "Tomorrow: 09:30 Dentist, leave at 09:05. Alarm at 07:00.");
+        assert!(frames.iter().all(|f| !f.text.contains("Dose") && !f.text.contains("Sort the receipts")), "{frames:?}");
+        // Free time: the moment alone.
+        let free = vec![(at("2026-10-05T09:00"), at("2026-10-05T16:00"), moment(Hours::Leisure, Reason::FreeTime, "2026-10-05T16:00"))];
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], alarm: None, zone: &zone, tr: &tr });
+        assert_eq!(frames[0].text, "Free time until 16:00.");
     }
 }

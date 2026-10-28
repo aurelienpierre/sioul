@@ -297,6 +297,41 @@ pub fn end_of_next_workday(work: &[AdminWindow], time_off: &[TimeOff], now: &Zon
     now.date().tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).unwrap_or_else(|| now.clone())
 }
 
+/// What each moment is for, from `now` until `horizon`, frame by frame,
+/// given ahead (the home screen's card, the agenda's head line), by the
+/// week's hours (`hours`): a frame ends where the moment may change: its own
+/// end, midnight, the start, the getting ready or the end of a meal, a nap
+/// or the night, the opening and closing of `opens` (the Porch's windows for
+/// the card), or one of `ends` (what the caller knows more of). At most
+/// `most` frames.
+#[allow(clippy::too_many_arguments)]
+pub fn frames(hours: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, blocks: &Blocks, opens: &[AdminWindow], now: &Zoned, horizon: &Zoned, ends: &[Zoned], most: usize) -> Vec<(Zoned, Zoned, Mode)> {
+    let zone = now.time_zone().clone();
+    let instant = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
+    let kept: Vec<Zoned> = blocks.kept.iter().flat_map(|k| [k.start, k.at, k.end]).filter_map(instant).collect();
+    let midnight_after = |at: &Zoned| at.date().tomorrow().ok().and_then(|d| d.to_zoned(at.time_zone().clone()).ok());
+    let mut out = Vec::new();
+    let mut at = now.clone();
+    while at.timestamp() < horizon.timestamp() && out.len() < most {
+        let moment = mode(hours, time_off, overrides, blocks, &at);
+        let mut stops = vec![horizon.clone()];
+        stops.extend(midnight_after(&at));
+        stops.extend(moment.until.clone());
+        stops.extend(kept.iter().cloned());
+        stops.extend(window::current(opens, &at).map(|(_, closing)| closing));
+        stops.extend(window::next_opening(opens, &at));
+        stops.extend(ends.iter().cloned());
+        let end = stops
+            .into_iter()
+            .filter(|e| e.timestamp() > at.timestamp())
+            .min_by_key(Zoned::timestamp)
+            .unwrap_or_else(|| at.checked_add(Span::new().minutes(1)).unwrap_or_else(|_| horizon.clone()));
+        out.push((at.clone(), end.clone(), moment));
+        at = end;
+    }
+    out
+}
+
 /// "17:00", "tomorrow at 9:00", "Monday 5 October at 09:00".
 pub fn until_text(tr: &crate::i18n::Translator, until: &Zoned, now: &Zoned) -> String {
     let mut args = crate::i18n::args();

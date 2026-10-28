@@ -67,7 +67,7 @@ NAMED = {
     "ActionButton": "controls", "AddressField": "controls", "AudioPlayer": "controls",
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",
-    "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls",
+    "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls", "Paths": "parts",
     "WrapCheckBox": "controls", "PlainComboBox": "controls",
 }
 

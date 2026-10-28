@@ -334,10 +334,16 @@ impl Days {
     pub fn change_file<R>(path: &Path, today: Date, change: impl FnOnce(&mut Days) -> R) -> Result<R, String> {
         crate::filelock::with_lock(path, || {
             let mut days = Days::load(path);
+            let before = days.clone();
             let out = change(&mut days);
-            days.save(path, today)?;
-            // A day's meals changed: the agenda's layouts made before are older (`timeline::written`).
-            crate::timeline::note_written();
+            // Nothing changed (a change refused, a block let go where it was):
+            // nothing written, and no layout made before is older for it
+            // (review of 1880bce, later 24).
+            if days != before {
+                days.save(path, today)?;
+                // A day's meals changed: the agenda's layouts made before are older (`timeline::written`).
+                crate::timeline::note_written();
+            }
             Ok(out)
         })
     }
@@ -1018,6 +1024,27 @@ mod tests {
     /// for it; the writer refuses it all the same): moved, its times; what is
     /// no move (no notice that day) still goes; "Later" from its notice
     /// pressed after its end moves it to from now, as long as it was.
+    /// A change that changes nothing (refused, or let go where it was)
+    /// writes nothing, and so counts no write that would make the agenda read
+    /// the calendars again (review of 1880bce, later 24).
+    #[test]
+    fn a_change_that_changes_nothing_writes_nothing() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
+        let path = crate::config::state_dir().join("days-unchanged-test.toml");
+        let _ = std::fs::remove_file(&path);
+        let today = jiff::civil::date(2026, 10, 5);
+        let now = today.at(14, 0, 0, 0).to_zoned(zone()).unwrap();
+        let needs = Needs { meals_on: true, ..Needs::default() };
+        let moved = DayEdit { key: "meal:1".into(), action: "move".into(), from: "13:30".into(), ..DayEdit::default() };
+        assert_eq!(Days::change_file(&path, today, |days| needs.change_day(days, today, &moved, &now, &[])).unwrap(), Err(DayProblem::Over));
+        assert!(!path.exists(), "refused: nothing written");
+        let later = DayEdit { key: "meal:2".into(), action: "later".into(), ..DayEdit::default() };
+        assert_eq!(Days::change_file(&path, today, |days| needs.change_day(days, today, &later, &now, &[])).unwrap(), Ok(()));
+        assert!(path.exists(), "a change: written");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn a_meal_over_no_longer_moves() {
         let zone = zone();

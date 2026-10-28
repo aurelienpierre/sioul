@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The agenda: what comes, from today, as a calm list of days; the week and
-// the month one switch away. Nothing is late or overdue: the past is not
-// shown unless you go back to it. An event opens on the right with its time
-// and place; notes, repetition and guests are folded. Deleting waits ten
-// seconds with "Undo"; a repeating event asks whether it is this time or all.
+// The agenda: what comes, from today, as a calm list of days; the day, the
+// week and the month one switch away. The Day and the Week are one timeline
+// of everything that has a time (WeekPlanning.qml): appointments, the plan's
+// steps, meals, naps, the night, doses. Nothing is late or overdue: the past
+// is not shown unless you go back to it. An event opens on the right with its
+// time and place; notes, repetition and guests are folded; anything else
+// opens where it lives (`window.openCard`). Deleting waits ten seconds with
+// "Undo"; a repeating event asks whether it is this time or all.
 
 pragma ComponentBehavior: Bound
 
@@ -27,16 +30,19 @@ Item {
     property string agendaText: ""
     readonly property var shown: page.agendaText ? page.eventsOfDays(JSON.parse(page.agendaText)) : ({ days: [], sentence: "", from: "" })
 
-    // The agenda's days (version 2): each thing an item of the one model of
+    // The agenda's days (version 3): each thing an item of the one model of
     // time as its day places it (`timeline::Placed`), with an event's details.
-    // Drawn as before: each day's events and time blocks, its whole days
-    // first, each with its details, its place in the day and what may change it.
+    // The list and the month draw each day's events and time blocks, its whole
+    // days first, each with its details, its place in the day and what may
+    // change it; the Day and the Week draw every kind, from the days as they come.
     function eventOf(row) {
         const item = row.item
         const source = item.source || {}
         const time = item.time || {}
         const span = time.type === "span"
-        return Object.assign({}, row.detail || {}, {
+        // What the job leaves out when false or empty, said: every reader finds its field.
+        const detail = Object.assign({ end: span ? time.until : source.start, location: "", cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "" }, row.detail || {})
+        return Object.assign(detail, {
             id: item.id,
             key: source.key,
             uid: source.uid,
@@ -46,11 +52,11 @@ Item {
             color: item.colour || null,
             when: row.when,
             summary: item.title,
-            all_day: row.all_day,
+            all_day: row.all_day === true,
             from_minute: row.from_minute,
             to_minute: row.to_minute,
-            column: row.column,
-            columns: row.columns,
+            column: row.column || 0,
+            columns: row.columns || 1,
             // The time kept before and after it: its lighter ends.
             before: span ? Math.round((time.at - time.start) / 60) : 0,
             after: span ? Math.round((time.end - time.until) / 60) : 0,
@@ -73,6 +79,7 @@ Item {
                 for (const event of day.events)
                     if (event.key === key && event.start === start)
                         page.opened = event
+            page.readDetails()
         }
         // An event asked for by a link, once its days are shown: its details.
         if (page.wanted !== "" && page.showWanted())
@@ -116,8 +123,11 @@ Item {
     }
     onVisibleChanged: {
         page.takeShown()
-        if (page.visible)
+        if (page.visible) {
             page.readAgain()
+            if (page.drawnToday)
+                page.sioul.refreshHealth()
+        }
     }
     // "agenda", "day", "week", "month".
     property string mode: "agenda"
@@ -135,9 +145,73 @@ Item {
     function readReminder() {
         page.reminder = page.opened ? JSON.parse(page.sioul.eventReminder(page.opened.key, page.opened.start) || "{}") : ({})
     }
-    onOpenedChanged: page.readReminder()
+    // Its notes, organizer and guests, read from its file when it opens: the agenda's
+    // days carry none of them, so that a week of long invitations stays light.
+    property var details: ({})
+    function readDetails() {
+        page.details = page.opened ? JSON.parse(page.sioul.eventDetails(page.opened.key, page.opened.start) || "{}") : ({})
+    }
+    onOpenedChanged: {
+        page.readReminder()
+        page.readDetails()
+    }
     // The event the menu or the deletion asks about.
     property var menuTarget: null
+    // The step whose menu is open (a row of the timeline).
+    property var stepTarget: null
+    // "Show anyway": the steps quiet time folds on coming days, drawn.
+    property bool showAnyway: false
+    // What the Day and the Week show on this device ("Show", agenda-view.toml):
+    // {steps, needs, doses, calendars_hidden}; all shown until you say.
+    property var view: JSON.parse(page.sioul.agendaView() || "{}")
+    readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.view.calendars_hidden || [] })
+    // The calendars of the days shown, and those Show hides: Show's list.
+    readonly property var calendarsShown: {
+        const names = (page.view.calendars_hidden || []).slice()
+        for (const day of page.shown.days)
+            for (const row of (day.head || []).concat(day.timed || []))
+                if (row.item.source && row.item.source.type === "calendar" && row.item.source.calendar && names.indexOf(row.item.source.calendar) < 0)
+                    names.push(row.item.source.calendar)
+        return names.sort((a, b) => a.localeCompare(b))
+    }
+    // Whether a day shown has steps quiet time folds: "Show anyway" offered.
+    readonly property bool anyFolded: page.shown.days.some(d => (d.bands || []).length > 0)
+
+    // Show changed: `part` ("steps", "needs", "doses") on or off, kept on this device.
+    function showPart(part, on) {
+        const changed = Object.assign({}, page.view)
+        changed[part] = on
+        page.saveView(changed)
+    }
+
+    function showCalendar(name, on) {
+        const hidden = (page.view.calendars_hidden || []).filter(n => n !== name)
+        if (!on)
+            hidden.push(name)
+        page.saveView(Object.assign({}, page.view, { calendars_hidden: hidden }))
+    }
+
+    function saveView(changed) {
+        const problem = page.sioul.setAgendaView(JSON.stringify(changed))
+        if (problem !== "")
+            page.sioul.status = problem
+        else
+            page.view = changed
+    }
+
+    // Today's head line now (`timeline::head_line`, given ahead to midnight): its
+    // frame by the window's clock, which counts whole minutes (the first frame
+    // starts at the second the job ran).
+    readonly property var headNow: {
+        const now = page.window.now
+        let found = null
+        for (const frame of page.shown.head || [])
+            if (frame.from <= now + 59 && now < frame.until)
+                found = frame
+        return found
+    }
+    // The Day or the Week shows today: the doses' marks and today's steps follow the clock.
+    readonly property bool drawnToday: (page.mode === "day" || page.mode === "week") && page.shown.days.some(d => d.date === page.window.today)
     // On a phone, the event open takes the page; Back closes it (main.qml).
     readonly property bool canGoBack: page.opened !== null
     function back() {
@@ -203,8 +277,20 @@ Item {
         target: page.window
 
         function onNowChanged() {
-            if (page.visible && (page.window.today !== page.readOn || Math.floor(page.window.now / 300) !== Math.floor(page.readAt / 300)))
+            if (!page.visible)
+                return
+            // While today is drawn: the doses' marks read again at each minute (the Health job, one run for all who ask).
+            if (page.drawnToday)
+                page.sioul.refreshHealth()
+            if (page.window.today === page.readOn && Math.floor(page.window.now / 300) === Math.floor(page.readAt / 300))
+                return
+            // Today laid again from now, cheaply (the plan as last made): its publish brings the agenda's days.
+            if (page.drawnToday && page.window.today === page.readOn) {
+                page.readAt = page.window.now
+                page.sioul.relayToday()
+            } else {
                 page.readAgain()
+            }
         }
     }
 
@@ -253,6 +339,19 @@ Item {
     function newEvent(day) {
         const shown = day instanceof Date ? page.iso(day) : day
         eventDialog.now().edit("", shown || page.iso(page.anchor))
+    }
+
+    // For the window's pictures: Show's menu open (it is given back), then closed.
+    function openShow() {
+        const menu = showMenu.now()
+        const under = page.narrow ? showButtonNarrow : showButton
+        if (!menu.opened)
+            menu.popup(under, 0, under.height)
+        return menu
+    }
+
+    function closeShow() {
+        showMenu.close()
     }
 
     // For the window's tests.
@@ -304,6 +403,70 @@ Item {
             page.opened = null
         else
             page.sioul.status = problem
+    }
+
+    // A thing of the timeline tapped (a row: WeekPlanning.qml): an appointment
+    // opens its details here; anything else where it opens elsewhere, until
+    // each has its card (`window.openCard`).
+    function openRow(row) {
+        // A band of steps quiet time folds: those steps, drawn ("Show anyway").
+        if (row.fold === "band") {
+            page.showAnyway = true
+            return
+        }
+        if (row.kind === "event" || (row.kind === "block" && row.owner === "")) {
+            page.opened = page.eventOf(JSON.parse(row.json))
+            return
+        }
+        page.window.openCard(row)
+    }
+
+    // Its menu (a right click, a long press): an appointment's or a block's
+    // here; a step's; for a meal, a nap, the night or a dose, its day in Health.
+    function menuRow(row) {
+        if (row.kind === "event" || row.kind === "block") {
+            page.menuTarget = page.eventOf(JSON.parse(row.json))
+            eventMenu.now().popup()
+        } else if ((row.kind === "step" || row.kind === "done") && row.owner !== "") {
+            page.stepTarget = { owner: row.owner, title: row.title, held: row.certainty === "held" }
+            stepMenu.now().popup()
+        } else if (row.kind !== "gain" && row.kind !== "slack") {
+            page.window.openCard(row)
+        }
+    }
+
+    // Ctrl+E: its form; one that cannot be changed here opens where it lives.
+    function editRow(row) {
+        if ((row.kind === "event" || row.kind === "block") && !row.readOnly)
+            eventDialog.now().edit(row.srcKey, "")
+        else
+            page.openRow(row)
+    }
+
+    // The days shown as one day (a day's title in the week).
+    function showDay(date) {
+        page.anchor = new Date(date + "T12:00:00")
+        if (page.mode === "day")
+            page.load()
+        else
+            page.mode = "day"
+    }
+
+    // Deleted: a repeating event asks whether it is this time or every time; a single one goes at once.
+    function askDelete(target) {
+        page.menuTarget = target
+        if (!target.recurring) {
+            page.deleteNow(false)
+            return
+        }
+        deleteChoice.now().ask(target.summary, "")
+    }
+
+    function deleteNow(onlyThis) {
+        if (page.menuTarget === null)
+            return
+        page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, onlyThis))
+        page.opened = null
     }
 
     // An event by its file, from a link: its details, as from the agenda;
@@ -406,6 +569,8 @@ Item {
                     onClicked: {
                         page.anchor = new Date(page.window.today + "T12:00:00")
                         page.load()
+                        // The same days: back to now all the same.
+                        timeline.scrollToStart(true)
                     }
                 }
                 ToolButton {
@@ -421,6 +586,8 @@ Item {
                 Label {
                     visible: !page.narrow
                     Layout.fillWidth: true
+                    // What is left of the line, its words cut short: it never widens the line.
+                    Layout.preferredWidth: 0
                     text: page.title()
                     textFormat: Text.PlainText
                     font.pixelSize: 19
@@ -435,6 +602,21 @@ Item {
                     model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
                     currentIndex: page.modes.indexOf(page.mode)
                     onActivated: index => page.mode = page.modes[index]
+                }
+                // What the Day and the Week show here: the plan's steps, meals and the night, doses, each calendar.
+                // Words beside its icon on a wide window; on a phone, on the title's line.
+                Button {
+                    id: showButton
+
+                    objectName: "agendaShow"
+                    visible: !page.narrow && (page.mode === "day" || page.mode === "week")
+                    Layout.preferredWidth: page.width < 1000 ? 40 : -1
+                    text: page.sioul.text("agenda-show")
+                    icon.name: "view-filter"
+                    icon.color: page.theme.text
+                    display: page.width < 1000 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                    Accessible.name: page.sioul.text("agenda-show")
+                    onClicked: page.openShow()
                 }
                 Button {
                     visible: page.shown.can_add !== false
@@ -466,11 +648,70 @@ Item {
                     wrapMode: Text.Wrap
                     color: page.theme.text
                 }
+                Button {
+                    id: showButtonNarrow
+
+                    visible: page.mode === "day" || page.mode === "week"
+                    Layout.preferredWidth: 40
+                    text: page.sioul.text("agenda-show")
+                    icon.name: "view-filter"
+                    icon.color: page.theme.text
+                    display: AbstractButton.IconOnly
+                    Accessible.name: page.sioul.text("agenda-show")
+                    onClicked: page.openShow()
+                }
                 SettingsButton {
                     sioul: page.sioul
                     theme: page.theme
                     view: "agenda"
                 }
+            }
+
+            // Today's head line, under the header: what now is for, what comes next.
+            // On a phone's Day, the day's whole days first (it keeps three lines above its hours).
+            RowLayout {
+                id: headLine
+
+                readonly property var day: page.mode === "day" && page.shown.days.length === 1 ? page.shown.days[0] : null
+                readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && (page.view.calendars_hidden || []).indexOf(p.item.source.calendar) >= 0)) : []
+
+                visible: (page.mode === "day" || page.mode === "week") && (page.headNow !== null || headLine.chips.length > 0)
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    objectName: "agendaDayChips"
+                    visible: headLine.chips.length > 0
+                    Layout.maximumWidth: headLine.width * (page.headNow !== null ? 0.4 : 1)
+                    text: headLine.chips.length === 0 ? "" : headLine.chips[0].item.title + (headLine.chips.length > 1 ? "  " + page.sioul.textArgs("agenda-chips-more", JSON.stringify({ n: headLine.chips.length - 1 })) : "")
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: page.theme.muted
+
+                    TapHandler {
+                        onTapped: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0, ""))
+                    }
+                }
+                Label {
+                    objectName: "agendaHeadLine"
+                    visible: page.headNow !== null
+                    Layout.fillWidth: true
+                    text: page.headNow ? page.headNow.text : ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: page.theme.text
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: page.headNow ? page.headNow.said : ""
+                }
+            }
+            // The medicines could not be read here: said where their doses would be.
+            Label {
+                visible: (page.mode === "day" || page.mode === "week") && (page.shown.doses_note || "") !== ""
+                Layout.fillWidth: true
+                text: page.shown.doses_note || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.muted
             }
 
             Label {
@@ -542,24 +783,34 @@ Item {
                 }
             }
 
-            // The week as a planning: the hours down, each event as long as it lasts.
+            // The Day and the Week: one timeline, the hours down, each thing as long as it lasts.
             WeekPlanning {
+                id: timeline
+
                 visible: page.mode === "week" || page.mode === "day"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 sioul: page.sioul
                 theme: page.theme
                 days: page.mode === "week" || page.mode === "day" ? page.shown.days : []
+                frame: page.shown.frame || ({ from: 7 * 60, to: 22 * 60 })
                 locale: page.locale
-                // The window's clock: the line at now and today's column follow it.
+                // The window's clock: the line at now, today's column and its doses' marks follow it.
                 now: page.window.now
                 today: page.window.today
-                opened: page.opened
-                onOpen: event => page.opened = event
-                onMenu: event => {
-                    page.menuTarget = event
-                    eventMenu.now().popup()
-                }
+                marks: page.sioul.doseMarks ? JSON.parse(page.sioul.doseMarks) : null
+                readAt: page.sioul.doseReadAt
+                backAt: page.window.backAt
+                showAnyway: page.showAnyway
+                hide: page.hide
+                // A phone's Day says its whole days on its head line.
+                chipsHere: !(page.narrow && page.mode === "day")
+                chosenId: page.opened ? page.opened.id || "" : ""
+                onOpen: row => page.openRow(row)
+                onMenu: row => page.menuRow(row)
+                onEdit: row => page.editRow(row)
+                onTurn: steps => page.move(steps)
+                onOpenDay: date => page.showDay(date)
                 onNewAt: (day, hour) => eventDialog.now().edit("", day, hour)
             }
 
@@ -760,7 +1011,7 @@ Item {
                     }
                 }
                 Button {
-                    readonly property bool any: page.opened !== null && (page.opened.notes !== "" || page.opened.organizer !== "" || page.opened.attendees.length > 0)
+                    readonly property bool any: page.opened !== null && ((page.details.notes || "") !== "" || (page.details.organizer || "") !== "" || (page.details.attendees || []).length > 0)
 
                     visible: any
                     flat: true
@@ -769,12 +1020,12 @@ Item {
                 }
                 // Its notes, their Markdown drawn: an invitation's are its sender's words.
                 Description {
-                    visible: page.moreShown && page.opened !== null && page.opened.notes !== ""
+                    visible: page.moreShown && page.opened !== null && (page.details.notes || "") !== ""
                     Layout.fillWidth: true
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
-                    markdown: page.opened ? page.opened.notes : ""
+                    markdown: page.details.notes || ""
                     // Its checklist ticked here: a task's that can be changed, an event's of
                     // a calendar you write to, never a meeting with others' (its organizer's words).
                     tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || page.opened.with_others !== true)
@@ -793,15 +1044,15 @@ Item {
                     }
                 }
                 Label {
-                    visible: page.moreShown && page.opened !== null && page.opened.organizer !== ""
+                    visible: page.moreShown && page.opened !== null && (page.details.organizer || "") !== ""
                     Layout.fillWidth: true
-                    text: page.opened ? page.sioul.textWith("agenda-organizer", "name", page.opened.organizer) : ""
+                    text: page.opened ? page.sioul.textWith("agenda-organizer", "name", page.details.organizer || "") : ""
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: page.theme.muted
                 }
                 Repeater {
-                    model: page.moreShown && page.opened ? page.opened.attendees : []
+                    model: page.moreShown && page.opened ? page.details.attendees || [] : []
 
                     delegate: Label {
                         id: guest
@@ -931,10 +1182,7 @@ Item {
                         visible: page.opened !== null && !page.opened.read_only && page.opened.with_others !== true
                         flat: true
                         text: page.sioul.text("ui-delete")
-                        onClicked: {
-                            page.menuTarget = page.opened
-                            deleteChoice.now().open()
-                        }
+                        onClicked: page.askDelete(page.opened)
                     }
                     Button {
                         visible: page.openedTask
@@ -978,7 +1226,7 @@ Item {
                 MenuItem {
                     enabled: page.menuTarget !== null && !page.menuTarget.read_only && page.menuTarget.with_others !== true
                     text: page.sioul.text("ui-delete")
-                    onTriggered: deleteChoice.now().open()
+                    onTriggered: page.askDelete(page.menuTarget)
                 }
                 MenuItem {
                     readonly property bool task: page.menuTarget !== null && (page.menuTarget.task || "") !== ""
@@ -1003,55 +1251,95 @@ Item {
         }
     }
 
-    // A repeating event: this time, or every time. A single one: no question.
+    // Show: what the Day and the Week draw on this device.
+    Later {
+        id: showMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                id: showForm
+
+                MenuItem {
+                    text: page.sioul.text("agenda-show-steps")
+                    checkable: true
+                    checked: page.view.steps !== false
+                    onTriggered: page.showPart("steps", checked)
+                }
+                MenuItem {
+                    text: page.sioul.text("agenda-show-needs")
+                    checkable: true
+                    checked: page.view.needs !== false
+                    onTriggered: page.showPart("needs", checked)
+                }
+                MenuItem {
+                    text: page.sioul.text("agenda-show-doses")
+                    checkable: true
+                    checked: page.view.doses !== false
+                    onTriggered: page.showPart("doses", checked)
+                }
+                // Quiet time's bands on coming days, drawn as the steps they hold: for now, not kept.
+                MenuItem {
+                    visible: page.anyFolded
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("agenda-show-quiet")
+                    checkable: true
+                    checked: page.showAnyway
+                    onTriggered: page.showAnyway = checked
+                }
+                MenuSeparator {
+                    visible: page.calendarsShown.length > 0
+                    height: visible ? implicitHeight : 0
+                }
+                Instantiator {
+                    model: page.calendarsShown
+
+                    delegate: MenuItem {
+                        id: calendarLine
+
+                        required property string modelData
+
+                        // "&" marks a shortcut in a menu: "&&" is one.
+                        text: page.theme.plain(calendarLine.modelData.replace(/&/g, "&&"))
+                        checkable: true
+                        checked: (page.view.calendars_hidden || []).indexOf(calendarLine.modelData) < 0
+                        onTriggered: page.showCalendar(calendarLine.modelData, checked)
+                    }
+                    onObjectAdded: (index, object) => showForm.insertItem(5 + index, object)
+                    onObjectRemoved: (index, object) => showForm.removeItem(object)
+                }
+            }
+        }
+    }
+
+    // A step's menu: open its task; given its time by hand, back to the plan.
+    Later {
+        id: stepMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                MenuItem {
+                    text: page.sioul.text("ui-open")
+                    onTriggered: page.window.openTask(page.stepTarget.owner)
+                }
+                MenuItem {
+                    visible: page.stepTarget !== null && page.stepTarget.held
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("day-let-plan")
+                    onTriggered: page.said(page.sioul.setTaskAt(page.stepTarget.owner, ""))
+                }
+            }
+        }
+    }
+
+    // A repeating event deleted: this time, or every time (WhichTimes.qml, one with moving).
     Later {
         id: deleteChoice
 
         sourceComponent: Component {
-            Dialog {
-                id: deleteChoiceForm
-
-                parent: Overlay.overlay
-                anchors.centerIn: parent
-                modal: true
-                width: Math.min(440, page.width - 2 * page.theme.gap)
-                title: page.menuTarget ? page.theme.plain(page.menuTarget.summary) : ""
-                onAboutToShow: {
-                    if (page.menuTarget && !page.menuTarget.recurring) {
-                        page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false))
-                        page.opened = null
-                        Qt.callLater(() => deleteChoiceForm.close())
-                    }
-                }
-
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 8
-
-                    Button {
-                        Layout.fillWidth: true
-                        text: page.sioul.text("agenda-delete-this")
-                        onClicked: {
-                            page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, true))
-                            page.opened = null
-                            deleteChoiceForm.close()
-                        }
-                    }
-                    Button {
-                        Layout.fillWidth: true
-                        text: page.sioul.text("agenda-delete-all")
-                        onClicked: {
-                            page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false))
-                            page.opened = null
-                            deleteChoiceForm.close()
-                        }
-                    }
-                    Button {
-                        Layout.alignment: Qt.AlignRight
-                        text: page.sioul.text("ui-cancel")
-                        onClicked: deleteChoiceForm.close()
-                    }
-                }
+            WhichTimes {
+                sioul: page.sioul
+                theme: page.theme
+                onChosen: onlyThis => page.deleteNow(onlyThis)
             }
         }
     }

@@ -479,6 +479,26 @@ pub mod qobject {
         #[qinvokable]
         fn event_reminder(self: &Sioul, key: &QString, start: f64) -> QString;
 
+        /// One time of an event (its file, its start): its notes, organizer
+        /// and guests, read when its panel opens, as JSON; "{}" when it is gone.
+        #[qinvokable]
+        fn event_details(self: &Sioul, key: &QString, start: f64) -> QString;
+
+        /// Today laid again from now with what the plan as last made kept
+        /// (`work::relay_today`): while the agenda shows today, at each five
+        /// minutes' turn of the window's clock.
+        #[qinvokable]
+        fn relay_today(self: Pin<&mut Sioul>);
+
+        /// What the agenda's Day and Week show on this device ("Show"), as
+        /// JSON: `{steps, needs, doses, calendars_hidden}` (`agenda::view`).
+        #[qinvokable]
+        fn agenda_view(self: &Sioul) -> QString;
+
+        /// Show changed, on this device alone; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
+
         /// The choices of an event's reminder before it, JSON [{value, label}];
         /// `current` among them when it is another time.
         #[qinvokable]
@@ -2239,14 +2259,21 @@ pub(crate) struct Shared {
     pub(crate) mail_job: Job,
     pub(crate) pim_job: Job,
     pub(crate) work_job: Job,
+    /// What the Tasks job was asked (`work::work_run`): the plan made again, today laid again.
+    pub(crate) work_replan: AtomicBool,
+    pub(crate) work_relay: AtomicBool,
     pub(crate) health_job: Job,
     /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
     pub(crate) agenda_job: Job,
     pub(crate) agenda_generation: AtomicU64,
     pub(crate) agenda_shown_generation: AtomicU64,
+    /// The runs that made days, counted apart: a newer run that made only the
+    /// overlaps never drops them (review of 85da7f0, later 10).
+    pub(crate) agenda_days_generation: AtomicU64,
+    pub(crate) agenda_days_shown_generation: AtomicU64,
     /// The agenda page asked for its days once: from then on the job follows the plan and the calendars.
     pub(crate) agenda_asked: AtomicBool,
-    /// The days made once already from the first plan, before the page asked (`agenda::days_wanted`).
+    /// The days shown once already, made from the first plan before the page asked (`agenda::days_wanted`).
     pub(crate) agenda_prefilled: AtomicBool,
 }
 
@@ -4198,6 +4225,22 @@ impl qobject::Sioul {
 
     fn event_reminder(&self, key: &QString, start: f64) -> QString {
         QString::from(&crate::remind::of_event(&key.to_string(), start as i64))
+    }
+
+    fn event_details(&self, key: &QString, start: f64) -> QString {
+        QString::from(&crate::agenda::event_details(&key.to_string(), start as i64))
+    }
+
+    fn relay_today(self: Pin<&mut Self>) {
+        work::relay_today(&self.qt_thread(), &self.shared());
+    }
+
+    fn agenda_view(&self) -> QString {
+        QString::from(&crate::agenda::view())
+    }
+
+    fn set_agenda_view(self: Pin<&mut Self>, view: &QString) -> QString {
+        QString::from(&crate::agenda::set_view(&view.to_string()))
     }
 
     fn reminder_choices(&self, current: &QString) -> QString {
@@ -6162,8 +6205,9 @@ impl qobject::Sioul {
         // set: no server asked), "tray" the window hidden as to the tray and brought back,
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
-        // its card, each state pressed and back to As usual (docs/do-not-disturb.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair"].contains(&steps.as_str()) && offline()) {
+        // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
+        // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

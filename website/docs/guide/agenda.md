@@ -52,6 +52,20 @@ An event can also be made from a message, from a task, or from a paper letter's 
 
 **Before** is the time to get ready and get there; **After**, the time to come back; from 5 minutes to 2 hours each. Your plan keeps that time free and never counts it as a pause, and the day shows it around the event ("Around: …"). Sioul's reminder comes before it, and two events whose journeys overlap are said to overlap.
 
+## Day and Week: everything at its time {#day-and-week}
+
+**Day** and **Week** show everything that has a time, on one timeline: your appointments, with their calendar's colour; your tasks' times; the steps your plan lays, outlined, the next one filled; what you finished, ticked and dimmed; your meals, naps and night as [Health](health.md#meals-rest-and-sleep) has them (named in the day, as bands in the week); and your doses. The time kept around a thing (getting ready, getting there, coming back, winding down) shows lighter around it. On days to come, during your quiet hours, the steps the Tasks page keeps out of view show as one band per stretch of hours; a tap on a band, or **Show ▸ Steps kept out of view for now**, draws them.
+
+The hours shown start half an hour before you wake and end half an hour after you go to bed, the same for every day, so that the hour lines stay in place. An appointment outside them widens them. Anything else that falls in the night, a dose at 05:00 say, sits at the top or the bottom edge with its time.
+
+While today shows, a line under the header says what now is for and what comes next ("Work until 17:00. Next: 19:00 Dinner."), with the time to leave for an appointment.
+
+**Doses** show as small marks beside each day, never with the medicine's name: an empty ring before its time, a ring once it is due, filled once you took it, dotted while Sioul reads what your devices know, a warm ring when you should check before taking it. Sioul never shows a dose as "not taken": what a device cannot know, it shows as a doubt. Days to come show small ticks, and days gone by show none. Tap a mark to open that day in [Health](health.md), where the medicine is named.
+
+A tap opens what you tapped: an appointment's details here; a step or a task done, its task in [Tasks](tasks.md); a meal, a nap, the night or a dose, that day in [Health](health.md). **Show**, at the top, chooses what the day and the week draw on this device: the plan's steps, meals, naps and the night, doses, each calendar.
+
+With a keyboard, once you clicked the timeline: Up and Down go from thing to thing, Enter opens it, Ctrl+E opens its form, and Page Up and Page Down go to the day or the week before and after.
+
 ## Moving an event by hand
 
 In **Day** and **Week**, drag an event to another time: it keeps its length. In **Week**, drag it to another day too. Drag its bottom edge to change when it ends. While you drag, its new place shows with its times ("Tue 6, 11:15–12:15"), by five minutes.
@@ -59,7 +73,9 @@ In **Day** and **Week**, drag an event to another time: it keeps its length. In 
 Let go, and it is saved and sent to your calendar server; **Undo** waits ten seconds in the status line. Let go where it was, and nothing changes.
 
 - **A repeating event** asks first: **Only this time**, or **Every time**. Every time moves all its days by as much; a weekly event moved to another day comes on that day each week. An event that repeats on set days of the month ("the first Monday") moves only this time: change how it repeats in its form.
-- **A calendar you can only read**, and whole-day events, do not move.
+- **A step of your plan**, dragged, is pinned to its new time, as [Tasks](tasks.md#pinned-to-a-time) pins it; never before now.
+- **A meal, a nap or the night**, dragged, changes for that day only, as on the [Health](health.md#meals-rest-and-sleep) page: the night by its top edge (your bedtime, its winding down with it) or its bottom edge (your waking).
+- **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move.
 - **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the event until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
 - Only within the hours shown; further, use **Edit**.
 - If it now overlaps another event, Sioul says so above the agenda, as for any two events at once. Your plan goes around its new time at once.
@@ -95,6 +111,8 @@ Another, half an hour before work ends, on the last working day before an event:
 
 ## On a phone {#on-a-phone}
 
+**Day** shows one day with taller hours; swipe across it to go to the next day or the one before. **Week** is a list of days: each thing on its line in time order, today's doses on one line.
+
 On Android, Sioul syncs your calendars itself and keeps its own copy of them: your phone's calendar app shows the same events only through its own sync (DAVx⁵, say). Reminders come while Sioul is closed: Sioul hands the coming ones to Android ahead of time, and Android wakes it at each one's time, so that Sioul checks the event still stands. Sioul's agenda card on the home screen ("Sioul — Agenda") lists your coming events; with **Details on the home screen** off, it shows their times without their titles ([Settings](settings.md#display)). If your phone's calendar app also rings an event's own alarms, turn one of the two off, so that you hear them once; Sioul's own reminder before an event never rings there.
 
 ## The Agenda settings
@@ -105,7 +123,7 @@ The ⚙ at the top of the page:
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
 - **Time kept between two events**: 0 at first. Closer than this, two events are said to be too close, never to overlap.
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
-- **The day starts at**: the hour the day and week views open on.
+- **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
 
 **An event's calendar**: its editor says which calendar it is in, and **Calendar** moves it to another you can write to, of any account, on a phone too: written there first, then taken out of the first, never twice and never lost, even when Sioul stops in between; your server gets both at the next sync. An event filed by mistake in a calendar of this device's own reaches your other devices once moved to your server's. A calendar of this device's own that your sharing does not carry stays here: its events' editor says "Only on this computer" (or phone), which is why such an event shows on one device and not the other. A server's calendar is on every device that has its account.
 

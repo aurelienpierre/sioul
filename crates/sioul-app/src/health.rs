@@ -814,14 +814,18 @@ fn week_events(monday: Date, zone: &TimeZone, waiting: &Waiting) -> Vec<sioul_co
 /// deletion written, or undone: `mail::pim_ended`), so that an event deleted
 /// never comes back for those minutes (the check of 36002ea, low 23).
 fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occurrence>> {
-    type Cached = Option<(i64, Date, u64, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
+    type Cached = Option<(i64, Date, u64, sioul_core::timeline::Stamp, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
     static CACHE: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
     let stamp = Timestamp::now().as_second();
     let ended = crate::mail::pim_ended();
+    // Never past a write either, by any program (`timeline::Stamp`): an event
+    // moved or deleted moves the week's meals at once (review of 1880bce, later 4).
+    let written = sioul_core::timeline::Stamp::now();
     let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((at, day, seen, events)) = cache.as_ref()
+    if let Some((at, day, seen, read, events)) = cache.as_ref()
         && *day == monday
         && *seen == ended
+        && *read == written
         && (0..300).contains(&(stamp - at))
     {
         return Arc::clone(events);
@@ -831,7 +835,7 @@ fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occur
     #[cfg(test)]
     WEEK_READS.with(|n| n.set(n.get() + 1));
     let events = Arc::new(sioul_core::agenda::occurrences(from, to));
-    *cache = Some((stamp, monday, ended, Arc::clone(&events)));
+    *cache = Some((stamp, monday, ended, written, Arc::clone(&events)));
     events
 }
 
@@ -849,13 +853,11 @@ fn week_view(health: &Health, state: &HealthState, records: &DoseRecords, knowle
     let monday = day.checked_sub(Span::new().days(i64::from(day.weekday().to_monday_zero_offset()))).unwrap_or(day);
     let days = days();
     let events = week_events(monday, &zone, waiting);
-    // Meals move past the events with their margins, as the plan has them:
-    // today's past this week's events; another day's within the plan's reach
-    // as the plan placed them (its own events and the blocks tasks are pinned
-    // to: `work::held_by_plan`); any other day past this week's events, from
-    // the week's one read (`week_read`), never a read a day (review of 1880bce, M5).
-    let week_held = sioul_core::plan::event_spans(&events, 0);
-    let held = |date: Date| if date == now.date() { week_held.clone() } else { crate::work::held_by_plan(date, now).unwrap_or_else(|| week_held.clone()) };
+    // Meals move past the events with their margins, as the plan has them
+    // (`work::held_from`'s rule): within the plan's reach from its one read
+    // while nothing was written since (`work::held_by_plan`); else from the
+    // week's one read (`week_read`), never a read a day (review of 1880bce, M5).
+    let held = |date: Date| crate::work::held_by_plan(date, now).unwrap_or_else(|| crate::work::held_from(date, now, events.clone()));
     let steps = crate::work::day_steps();
     let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, records, knowledge, &days, &Around { events: &events, held: &held(date), steps: &steps }, date, now)).collect();
     // From half an hour before the first thing (waking, the first block or
@@ -8044,6 +8046,26 @@ mod tests {
         let next = doses_today(&reads(HealthState::default(), lost_at), &next_read);
         assert_eq!(dose_state(&next.rows[0], next_day, stamp(next_read.clone()) + 40, stamp(next_read), 0).0, DoseState::Open { come: true, late: false });
     }
+    /// The week's read is kept a few minutes, never past a write, by this
+    /// program or another (`timeline::Stamp`): an event moved moves the
+    /// week's meals at once (review of 1880bce, later 4).
+    #[test]
+    fn health_s_week_reads_again_after_a_write() {
+        let _files = health_files();
+        let zone = TimeZone::system();
+        let now = Zoned::now();
+        let monday = now.date().checked_sub(Span::new().days(i64::from(now.date().weekday().to_monday_zero_offset()))).unwrap();
+        let _ = week_read(monday, &zone);
+        WEEK_READS.with(|n| n.set(0));
+        let calendar = sioul_core::vdir::create(sioul_core::vdir::Kind::Calendars, sioul_core::vdir::LOCAL, "Week read test", None, &["VEVENT"]).unwrap();
+        let utc = |hour: i8| now.date().at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        sioul_core::vdir::write_item(&calendar.dir.join("w.ics"), &format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:week-read-test\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:week-read-test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(10), utc(11))).unwrap();
+        let read = week_read(monday, &zone);
+        assert_eq!(WEEK_READS.with(std::cell::Cell::get), 1, "read again after the write");
+        assert!(read.iter().any(|o| o.uid == "week-read-test"));
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// Health's week reads the calendars once, its week's read (`week_read`),
     /// never once a day: with no plan yet, a day gone by or beyond the plan's
     /// reach takes the week's held times (review of 1880bce, M5: six full reads

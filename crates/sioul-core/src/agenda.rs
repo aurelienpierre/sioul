@@ -630,7 +630,23 @@ fn holds_event(text: &str) -> bool {
 
 /// A refusal in your language (`own`), by what was asked.
 pub fn said(refusal: Refusal, change: &Change) -> String {
-    crate::i18n::Translator::new(&own().1).text(refusal.word(change), None)
+    // One translator kept for your language: each read of the calendars (the
+    // agenda's, an agent's) asks for these words, and making one reads every message.
+    type Kept = Option<(String, std::sync::Arc<crate::i18n::Translator>)>;
+    static KEPT: std::sync::Mutex<Kept> = std::sync::Mutex::new(None);
+    let language = own().1;
+    let tr = {
+        let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        match kept.as_ref() {
+            Some((had, tr)) if *had == language => std::sync::Arc::clone(tr),
+            _ => {
+                let tr = std::sync::Arc::new(crate::i18n::Translator::new(&language));
+                *kept = Some((language, std::sync::Arc::clone(&tr)));
+                tr
+            }
+        }
+    };
+    tr.text(refusal.word(change), None)
 }
 
 /// The calendars' occurrences as items of the one model of time

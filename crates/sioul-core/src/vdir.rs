@@ -601,13 +601,22 @@ pub fn prepare(kind: Kind, account: &str, id: &str, name: &str, color: Option<&s
     }
     let dir = kind.root().join(account).join(id);
     std::fs::create_dir_all(&dir)?;
-    // Written beside, then renamed: the sharing (local lists) never reads them empty.
-    crate::filelock::replace(&dir.join("displayname"), name.as_bytes())?;
+    // Written beside, then renamed: the sharing (local lists) never reads them
+    // empty. Only when they differ: each sync prepares every collection, and a
+    // name written again would change its folder's time, which says a calendar
+    // changed (`calendars_stamp`: the plan as last made would read as older
+    // after every sync; review of 85da7f0, later 5).
+    let same = |file: &str, value: &str| std::fs::read(dir.join(file)).is_ok_and(|bytes| bytes == value.as_bytes());
+    if !same("displayname", name) {
+        crate::filelock::replace(&dir.join("displayname"), name.as_bytes())?;
+    }
     match color {
-        Some(color) => crate::filelock::replace(&dir.join("color"), color.as_bytes())?,
-        None => {
+        Some(color) if !same("color", color) => crate::filelock::replace(&dir.join("color"), color.as_bytes())?,
+        Some(_) => {}
+        None if dir.join("color").exists() => {
             let _ = std::fs::remove_file(dir.join("color"));
         }
+        None => {}
     }
     Ok(dir)
 }
@@ -877,6 +886,28 @@ pub fn new_name() -> String {
 mod tests {
     use super::*;
 
+    /// A collection prepared again as it is (each sync prepares every one)
+    /// writes nothing: its folder's time, which says a calendar changed
+    /// (`calendars_stamp`), stays; a new name or colour is written (review of
+    /// 85da7f0, later 5).
+    #[test]
+    fn a_collection_prepared_as_it_is_writes_nothing() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        crate::config::stand_ins_only();
+        let dir = prepare(Kind::Calendars, "prepared-again", "cal", "Name", Some("#123456")).unwrap();
+        let time = || std::fs::metadata(&dir).and_then(|m| m.modified()).unwrap();
+        let before = time();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        prepare(Kind::Calendars, "prepared-again", "cal", "Name", Some("#123456")).unwrap();
+        assert_eq!(time(), before, "the same name and colour: nothing written");
+        prepare(Kind::Calendars, "prepared-again", "cal", "Other name", Some("#123456")).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("displayname")).unwrap(), "Other name");
+        assert_ne!(time(), before, "a new name: written, its folder's time with it");
+        prepare(Kind::Calendars, "prepared-again", "cal", "Other name", None).unwrap();
+        assert!(!dir.join("color").exists(), "no colour: none kept");
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join("prepared-again"));
+    }
+
     /// An event moved to another calendar (21 October 2026), cut short after
     /// each step as a crash would cut it: the next look finishes it, never
     /// twice, never lost.
@@ -1004,7 +1035,11 @@ mod tests {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         crate::config::stand_ins_only();
         for step in 0..=4u8 {
-            let dir = prepare(Kind::Calendars, LOCAL, &format!("same-place-{step}"), "Both", None).unwrap();
+            let id = format!("same-place-{step}");
+            // Its kinds said first, both, as `create` says them: else another test's
+            // look meanwhile settles them from what it holds, a task alone (`settle_kinds`).
+            State { components: vec!["VEVENT".into(), "VTODO".into()], ..State::default() }.save(&state_path(LOCAL, Kind::Calendars, &id)).unwrap();
+            let dir = prepare(Kind::Calendars, LOCAL, &id, "Both", None).unwrap();
             let path = dir.join("plan-x.ics");
             std::fs::write(&path, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:plan-x\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
             let event = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:plan-x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";

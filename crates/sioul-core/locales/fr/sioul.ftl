@@ -6348,3 +6348,42 @@ texts-restored = De retour dans la liste.
 texts-archived-empty = Aucune conversation archivée.
 texts-copy = Copier
 texts-copy-all = Copier le SMS
+
+# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
+agenda-plan-first = Le plan : d’abord { $step }
+agenda-more = { $n ->
+    [one] Une étape de plus d’aujourd’hui ne tient pas avant la fin de la journée : { $steps }.
+   *[other] { $Countf } étapes de plus d’aujourd’hui ne tiennent pas avant la fin de la journée : { $steps }.
+}
+agenda-band = { $area }, { $time }
+agenda-band-other = Étapes d’autres heures, { $time }
+# The head line above today (the unified agenda, §4.2): what is under way, what comes next, given ahead.
+head-until = { $what } jusqu’à { $time }.
+head-next = Ensuite : { $time } { $what }.
+head-next-leave = Ensuite : { $time } { $what }, partir à { $leave }.
+head-tomorrow = Demain : { $time } { $what }.
+head-tomorrow-leave = Demain : { $time } { $what }, partir à { $leave }.
+head-alarm = Réveil à { $time }.
+head-wind-down = Avant de dormir : coucher à { $bed }.
+head-wind-down-alarm = Avant de dormir : coucher à { $bed }, réveil à { $alarm }.
+head-sleep = Sommeil jusqu’à { $until }.
+head-nap = Sieste jusqu’à { $until }.
+head-free-time = Temps libre jusqu’à { $until }.
+head-free-time-now = Temps libre.
+head-paused = En pause jusqu’à { $until }.
+head-paused-now = En pause.
+head-work = Travail
+head-admin = Vos démarches
+agenda-dose = Prise
+agenda-dose-at = Prise à { $time }
+agenda-chips-more = { $n } de plus
+agenda-show-not-saved = Ce qu’il faut montrer n’a pas été enregistré.
+agenda-show = Montrer
+agenda-show-steps = Les étapes du plan
+agenda-show-needs = Repas, siestes et nuit
+agenda-show-doses = Prises
+agenda-show-quiet = Les étapes mises de côté pour l’instant
+agenda-wake = Réveil
+agenda-doses-unread = Vos médicaments n’ont pas pu être lus ici : leurs prises ne sont pas montrées.
+agenda-errand-refill = Pharmacie
+agenda-errand-renew = Médecin

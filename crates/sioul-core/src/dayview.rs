@@ -260,6 +260,12 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
     // there (`Blocks::of`, from the day's events, blocks among them): a task
     // pinned on two days is laid in each.
     let day_pins: BTreeMap<String, crate::blocks::Pin> = if is_today { plan.pins.clone() } else { crate::blocks::Blocks::of(events, tasks, real_now, &zone).pins };
+    // What another day's meals move past, by the plan's own rule (`Settings::with_events`):
+    // its events without the blocks of the tasks known here, and the blocks the plan pins
+    // tasks to, so that the plan, this layout, Health's days and the writer of a day's
+    // meals agree (review of 1880bce, later 8).
+    let mut needs_held = crate::plan::event_spans(&crate::blocks::without_blocks(events.to_vec(), tasks), 0);
+    needs_held.extend(plan.pins.values().map(crate::blocks::Pin::span));
     // A task's time block is the task's time, laid as the task (`blocks`): never an event of its own here;
     // one given a guest is a meeting with others, laid as the event it is (the check of 36002ea, low 25).
     let own: Vec<Occurrence> = events.iter().filter(|e| e.task.is_empty() || e.with_others || !plan.items.contains_key(&e.task)).cloned().collect();
@@ -303,8 +309,6 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
     // its events and the blocks pinned then, as the plan keeps them
     // (`Settings::needs_on`). The night is kept free too, but not drawn: the
     // day would run from midnight.
-    let mut needs_held = crate::plan::event_spans(events, 0);
-    needs_held.extend(plan.pins.values().map(crate::blocks::Pin::span));
     let shifts: BTreeMap<String, i64> = if is_today { settings.shifts.clone() } else { settings.needs.past_events_on(date, &zone, &settings.needs_days, &needs_held) };
     let shift = |key: &str| shifts.get(key).copied().unwrap_or(0);
     if drawn.meals_naps {
@@ -1092,6 +1096,28 @@ mod tests {
         let mut far_plan = made.clone();
         far_plan.days.insert(far, vec![("first".into(), 25)]);
         assert!(lay_on(far, &now, &[], &far_plan, &tasks, &settings, Drawn::ALL).blocks.iter().all(|b| b.kind != "task"));
+    }
+
+    /// Another day's meals move past what the plan's own rule says
+    /// (`Settings::with_events`): its events, never the blocks of the tasks
+    /// known here, whether the plan holds those tasks or not, and the blocks
+    /// the plan pins tasks to (review of 1880bce, later 8).
+    #[test]
+    fn a_day_to_come_keeps_its_meals_where_the_plan_keeps_them() {
+        let now = at("2026-10-05T11:30");
+        let hours = vec![window("tuesday", "09:00", "17:00", "work")];
+        let needs = crate::needs::Needs { meals_on: true, ..crate::needs::Needs::default() };
+        let settings = Settings::of_hours(&hours, TaskAreas::usual()).with_needs(&needs, BTreeMap::new()).with_events(&now, &[]);
+        let tasks = vec![task("filed", 30, "")];
+        // Planned without it: a task known here that the plan does not hold.
+        let made = plan(&[], now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let block = block_of("filed", "2026-10-06T12:00", "2026-10-06T13:00");
+        let tuesday = jiff::civil::date(2026, 10, 6);
+        let view = lay_on(tuesday, &now, std::slice::from_ref(&block), &made, &tasks, &settings, Drawn::ALL);
+        let lunch = view.blocks.iter().find(|b| b.key == "meal:1").expect("lunch drawn");
+        let held = crate::plan::event_spans(&crate::blocks::without_blocks(vec![block.clone()], &tasks), 0);
+        assert!(settings.needs_on(tuesday, now.time_zone(), now.date(), &held).contains(&(lunch.start, lunch.end)), "{lunch:?}");
+        assert_eq!(lunch.start, at("2026-10-06T12:10").timestamp().as_second(), "never pushed past a block of a task known here");
     }
 
     /// A day gone by shows what was: its events and the tasks done then,

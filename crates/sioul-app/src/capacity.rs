@@ -63,6 +63,13 @@ pub(crate) fn ratio_line(task: &Task) -> String {
     last().map(|record| record.ratio_line(task, tr())).unwrap_or_default()
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread dressed a day and wrote its slots of time
+    /// for you (`dress`): the Tasks job's alone, never the agenda's job.
+    pub(crate) static DRESSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Today's layout in words: the slots of time for you named, one suggestion
 /// from your own items when there is one (G19), the free time kept named, and
 /// why today holds what it holds. Its slots are written down, when they
@@ -70,6 +77,8 @@ pub(crate) fn ratio_line(task: &Task) -> String {
 /// whichever process decides it (the window, the listener of other apps, a
 /// phone's background step, `sioul remind --watch`, the calls' table).
 pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
+    #[cfg(test)]
+    DRESSED.with(|n| n.set(n.get() + 1));
     let now = Zoned::now();
     let record = last();
     let suggestion = record.as_ref().and_then(|r| capacity::suggestion(tasks, &r.index, now.date()));

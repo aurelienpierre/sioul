@@ -52,6 +52,20 @@ Un événement peut aussi naître d’un courriel, d’une tâche, ou du rendez-
 
 **Avant**, c’est le temps de se préparer et d’y aller ; **Après**, celui d’en revenir ; de 5 minutes à 2 heures chacun. Votre plan garde ce temps libre et ne le compte jamais comme une pause, et la journée le montre autour de l’événement (« Autour : … »). Le rappel de Sioul vient avant lui, et deux événements dont les trajets se chevauchent sont dits se chevaucher.
 
+## Jour et Semaine : chaque chose à son heure {#day-and-week}
+
+**Jour** et **Semaine** montrent tout ce qui a une heure, sur une seule ligne du temps : vos rendez-vous, à la couleur de leur agenda ; les heures de vos tâches ; les étapes que pose votre plan, entourées d’un trait, la suivante remplie ; ce que vous avez fini, coché et estompé ; vos repas, siestes et nuit tels que [Santé](health.md#meals-rest-and-sleep) les a (nommés dans le jour, en bandes dans la semaine) ; et vos prises. Le temps gardé autour d’une chose (se préparer, y aller, en revenir, se préparer à dormir) s’affiche plus clair autour d’elle. Les jours à venir, pendant vos heures calmes, les étapes que la page Tâches met de côté s’affichent en une bande par plage d’heures ; un toucher sur une bande, ou **Montrer ▸ Les étapes mises de côté pour l’instant**, les dessine.
+
+Les heures affichées commencent une demi-heure avant votre réveil et finissent une demi-heure après votre coucher, les mêmes pour chaque jour, pour que les lignes des heures restent en place. Un rendez-vous en dehors les élargit. Le reste de ce qui tombe dans la nuit, une prise à 05:00 par exemple, se place au bord du haut ou du bas avec son heure.
+
+Tant qu’aujourd’hui s’affiche, une ligne sous l’en-tête dit à quoi sert ce moment et ce qui vient ensuite (« Travail jusqu’à 17:00. Ensuite : 19:00 Dîner. »), avec l’heure de partir pour un rendez-vous.
+
+**Les prises** s’affichent en petites marques à côté de chaque jour, jamais avec le nom du médicament : un cercle vide avant son heure, un cercle une fois l’heure venue, plein une fois prise, en pointillés pendant que Sioul lit ce que savent vos appareils, un cercle de couleur chaude quand il vaut mieux vérifier avant de la prendre. Sioul n’affiche jamais une prise comme « non prise » : ce qu’un appareil ne peut pas savoir, il le montre comme un doute. Les jours à venir montrent de petits traits, et les jours passés n’en montrent aucun. Touchez une marque pour ouvrir ce jour dans [Santé](health.md), où le médicament est nommé.
+
+Un toucher ouvre ce que vous avez touché : les détails d’un rendez-vous ici ; une étape ou une tâche faite, sa tâche dans [Tâches](tasks.md) ; un repas, une sieste, la nuit ou une prise, ce jour-là dans [Santé](health.md). **Montrer**, en haut, choisit ce que le jour et la semaine dessinent sur cet appareil : les étapes du plan, les repas, siestes et nuit, les prises, chaque agenda.
+
+Au clavier, une fois la ligne du temps cliquée : Haut et Bas vont d’une chose à l’autre, Entrée l’ouvre, Ctrl+E ouvre son formulaire, et Page précédente et Page suivante vont au jour ou à la semaine d’avant et d’après.
+
 ## Déplacer un événement à la main {#moving-an-event-by-hand}
 
 Dans **Jour** et **Semaine**, faites glisser un événement vers une autre heure : il garde sa durée. Dans **Semaine**, vers un autre jour aussi. Faites glisser son bord du bas pour changer l’heure à laquelle il finit. Pendant que vous le faites glisser, sa nouvelle place s’affiche avec ses heures (« mar. 6, 11:15–12:15 »), de cinq en cinq minutes.
@@ -59,7 +73,9 @@ Dans **Jour** et **Semaine**, faites glisser un événement vers une autre heure
 Lâchez-le : il est enregistré et envoyé à votre serveur d’agenda ; **Annuler** attend dix secondes dans la ligne d’état. Lâché là où il était, rien ne change.
 
 - **Un événement qui se répète** demande d’abord : **Cette fois seulement**, ou **Toutes les fois**. Toutes les fois déplace tous ses jours d’autant ; un événement de chaque semaine glissé vers un autre jour vient ce jour-là chaque semaine. Un événement qui se répète à des jours fixés du mois (« le premier lundi ») ne se déplace que cette fois : changez sa répétition dans son formulaire.
-- **Un agenda que vous ne pouvez que lire**, et les événements de toute la journée, ne bougent pas.
+- **Une étape de votre plan**, glissée, est fixée à sa nouvelle heure, comme [Tâches](tasks.md#pinned-to-a-time) la fixe ; jamais avant maintenant.
+- **Un repas, une sieste ou la nuit**, glissés, changent pour ce jour-là seulement, comme sur la page [Santé](health.md#meals-rest-and-sleep) : la nuit par son bord du haut (votre coucher, avec le temps pour se préparer à dormir) ou son bord du bas (votre réveil).
+- **Un agenda que vous ne pouvez que lire**, une réunion avec d’autres (le serveur de son organisateur préviendrait chaque invité), les événements de toute la journée et les prises ne bougent pas.
 - **À la souris** : appuyez et faites glisser ; la molette fait défiler. **Sur un écran tactile** : gardez le doigt sur l’événement jusqu’à ce qu’il se soulève, puis faites-le glisser ; un simple balayage fait défiler. Gardé puis lâché sans bouger, il ouvre son menu.
 - Seulement dans les heures affichées ; au-delà, **Modifier**.
 - S’il en chevauche un autre, Sioul le dit au-dessus de l’agenda, comme pour deux événements en même temps. Votre plan contourne aussitôt sa nouvelle heure.
@@ -95,6 +111,8 @@ Un autre, une demi-heure avant la fin du travail, le dernier jour travaillé ava
 
 ## Sur un téléphone {#on-a-phone}
 
+**Jour** montre un jour aux heures plus hautes ; balayez-le de côté pour aller au jour suivant ou à celui d’avant. **Semaine** est une liste de jours : chaque chose sur sa ligne dans l’ordre des heures, les prises d’aujourd’hui sur une ligne.
+
 Sous Android, Sioul synchronise lui-même vos agendas et en garde sa propre copie : l’application d’agenda de votre téléphone ne montre les mêmes événements que par sa propre synchronisation (DAVx⁵, par exemple). Les rappels viennent même quand Sioul est fermé : Sioul confie à l’avance les prochains à Android, qui le réveille à l’heure de chacun, pour qu’il vérifie que l’événement tient toujours. La carte d’agenda de Sioul sur l’écran d’accueil (« Sioul — Agenda ») liste vos prochains événements ; avec **Détails sur l’écran d’accueil** désactivé, elle montre leur heure sans leur titre ([Paramètres](settings.md#display)). Si l’application d’agenda de votre téléphone fait aussi sonner les alarmes d’un événement, désactivez l’une des deux, pour ne les entendre qu’une fois ; le rappel de Sioul avant un événement ne sonne jamais là-bas.
 
 ## Les réglages de l’agenda {#the-agenda-settings}
@@ -105,7 +123,7 @@ Le ⚙ en haut de la page :
 - **Les nouveaux événements vont dans** : l’agenda où va un nouvel événement ; tant que vous ne choisissez pas, le premier qui prend des événements.
 - **Temps gardé entre deux événements** : 0 au début. Plus proches que cela, deux événements sont dits trop proches, jamais en même temps.
 - **Ce que prend un agenda** : des événements, des tâches ou les deux, comme le dit votre serveur. L’agenda montre ceux qui prennent des événements, la page Tâches les listes qui prennent des tâches ; un agenda qui prend les deux est dans les deux, et dit « événements et tâches » partout où il est proposé.
-- **La journée commence à** : l’heure sur laquelle s’ouvrent les vues du jour et de la semaine.
+- **La journée commence à** : l’heure à laquelle commencent les vues du jour et de la semaine quand ni vos nuits (réglées dans [Santé](health.md)) ni vos heures ne disent autre chose.
 
 **L’agenda d’un événement** : son éditeur dit dans quel agenda il est, et **Agenda** le déplace vers un autre où vous pouvez écrire, de n’importe quel compte, sur un téléphone aussi : écrit d’abord là-bas, puis retiré du premier, jamais en double et jamais perdu, même si Sioul s’arrête entre les deux ; votre serveur reçoit les deux à la synchronisation suivante. Un événement rangé par erreur dans un agenda propre à cet appareil rejoint vos autres appareils une fois déplacé dans celui de votre serveur. Un agenda propre à cet appareil que votre partage ne transporte pas reste ici : l’éditeur de ses événements dit « Seulement sur cet ordinateur » (ou téléphone), et c’est pourquoi un tel événement s’affiche sur un appareil et pas sur l’autre. Un agenda d’un serveur est sur chaque appareil qui a son compte.
 

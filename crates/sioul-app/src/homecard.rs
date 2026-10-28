@@ -638,33 +638,14 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
 /// words stays true.
 fn timeline(m: &Moment) -> Vec<(Zoned, Zoned, Mode)> {
     let Some(horizon) = midnight_after(m.now).and_then(|z| midnight_after(&z)) else { return Vec::new() };
-    let hours = m.config.week_hours();
     let zone = m.now.time_zone().clone();
     let instant = |seconds: i64| Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
     let rests = m.overrides.porch_rests_until.and_then(instant);
     // The do-not-disturb's end too: its line goes then.
     let quiet_end = m.dnd.and_then(|d| d.until).filter(|until| *until > 0).and_then(instant);
-    let kept: Vec<Zoned> = m.blocks.kept.iter().flat_map(|k| [k.start, k.at, k.end]).filter_map(instant).chain(quiet_end).collect();
-    let mut frames = Vec::new();
-    let mut at = m.now.clone();
-    while at.timestamp() < horizon.timestamp() && frames.len() < FRAMES {
-        let mode = quiet::mode(&hours, &m.config.time_off, m.overrides, m.blocks, &at);
-        let mut ends = vec![horizon.clone()];
-        ends.extend(midnight_after(&at));
-        ends.extend(mode.until.clone());
-        ends.extend(kept.iter().cloned());
-        ends.extend(window::current(&m.config.windows, &at).map(|(_, closing)| closing));
-        ends.extend(window::next_opening(&m.config.windows, &at));
-        ends.extend(rests.clone());
-        let end = ends
-            .into_iter()
-            .filter(|e| e.timestamp() > at.timestamp())
-            .min_by_key(Zoned::timestamp)
-            .unwrap_or_else(|| at.checked_add(Span::new().minutes(1)).unwrap_or_else(|_| horizon.clone()));
-        frames.push((at.clone(), end.clone(), mode));
-        at = end;
-    }
-    frames
+    let ends: Vec<Zoned> = rests.into_iter().chain(quiet_end).collect();
+    // One way of cutting the time ahead, for the card and the agenda's head line (`quiet::frames`).
+    quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.windows, m.now, &horizon, &ends, FRAMES)
 }
 
 /// What a frame is, for Java's colours and tests: the time's word, or the pause's.

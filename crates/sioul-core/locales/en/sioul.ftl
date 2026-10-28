@@ -6320,3 +6320,42 @@ texts-restored = Back in the list.
 texts-archived-empty = No archived conversation.
 texts-copy = Copy
 texts-copy-all = Copy the text
+
+# The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
+agenda-plan-first = The plan: { $step } first
+agenda-more = { $n ->
+    [one] One more step of today does not fit before the end of the day: { $steps }.
+   *[other] { $Count } more steps of today do not fit before the end of the day: { $steps }.
+}
+agenda-band = { $area }, { $time }
+agenda-band-other = Steps of other hours, { $time }
+# The head line above today (the unified agenda, §4.2): what is under way, what comes next, given ahead.
+head-until = { $what } until { $time }.
+head-next = Next: { $time } { $what }.
+head-next-leave = Next: { $time } { $what }, leave at { $leave }.
+head-tomorrow = Tomorrow: { $time } { $what }.
+head-tomorrow-leave = Tomorrow: { $time } { $what }, leave at { $leave }.
+head-alarm = Alarm at { $time }.
+head-wind-down = Winding down: bed at { $bed }.
+head-wind-down-alarm = Winding down: bed at { $bed }, alarm at { $alarm }.
+head-sleep = Sleep until { $until }.
+head-nap = Nap until { $until }.
+head-free-time = Free time until { $until }.
+head-free-time-now = Free time.
+head-paused = Paused until { $until }.
+head-paused-now = Paused.
+head-work = Work
+head-admin = Your admin
+agenda-dose = Dose
+agenda-dose-at = Dose at { $time }
+agenda-chips-more = { $n } more
+agenda-show-not-saved = What to show was not saved.
+agenda-show = Show
+agenda-show-steps = The plan’s steps
+agenda-show-needs = Meals, naps and the night
+agenda-show-doses = Doses
+agenda-show-quiet = Steps kept out of view for now
+agenda-wake = Waking
+agenda-doses-unread = Your medicines could not be read here: their doses are not shown.
+agenda-errand-refill = Pharmacy
+agenda-errand-renew = Doctor

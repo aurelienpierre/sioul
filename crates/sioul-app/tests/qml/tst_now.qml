@@ -213,17 +213,20 @@ Item {
         // Agenda ▸ Week: one line, in today's column; today's title and column
         // move at midnight, before the agenda is read again.
         function test_week() {
-            const day = (date, d) => ({ title: date, date: date, today: false, start: root.sec(2026, 10, d, 0, 0), events: [], hours_from: 420, hours_to: 1320 })
-            const event = { key: "e1", uid: "e1", start: root.sec(2026, 10, 6, 9, 0), end: root.sec(2026, 10, 6, 10, 0), when: "09:00 – 10:00", summary: "Call", location: "", notes: "", calendar: "", color: null, recurring: false, all_day: false, cancelled: false, tentative: false, read_only: false, from_minute: 540, to_minute: 600, column: 0, columns: 1 }
-            const days = [day("2026-10-05", 5), Object.assign(day("2026-10-06", 6), { events: [event] }), day("2026-10-07", 7)]
-            const view = createTemporaryObject(planningComponent, root, { width: 700, height: 700, days: days, today: "2026-10-06", now: root.sec(2026, 10, 6, 10, 0) })
+            // The agenda's days (version 3): the call, a `timeline::Placed` row.
+            const day = (date, d) => ({ title: date, date: date, today: false, past: false, start: root.sec(2026, 10, d, 0, 0), hours_from: -1, hours_to: -1, head: [], timed: [], planned: true })
+            const start = root.sec(2026, 10, 6, 9, 0)
+            const end = root.sec(2026, 10, 6, 10, 0)
+            const event = { item: { id: "event:e1", kind: "event", time: { type: "span", start: start, at: start, until: end, end: end }, source: { type: "calendar", key: "e1", uid: "e1", start: start, recurring: false, calendar: "" }, can: { edit: "event", drag: "event", ends: true }, title: "Call" }, when: "09:00 – 10:00", from_minute: 540, to_minute: 600, detail: { end: end } }
+            const days = [day("2026-10-05", 5), Object.assign(day("2026-10-06", 6), { timed: [event] }), day("2026-10-07", 7)]
+            const view = createTemporaryObject(planningComponent, root, { width: 700, height: 700, days: days, frame: { from: 420, to: 1320 }, today: "2026-10-06", now: root.sec(2026, 10, 6, 10, 0) })
             waitForRendering(view)
             const line = root.find(view, "nowLine")
             verify(line !== null && line.visible)
             compare(view.todayIndex, 1)
             compare(line.x, view.gutter + view.dayWidth)
             compare(line.y, view.yOf(600))
-            const card = root.drawn(view, "e1")
+            const card = root.all(view, c => c.itemId === "event:e1")[0] || null
             verify(card !== null)
             const bold = () => root.all(view, c => c.font !== undefined && c.font.weight === Font.Bold && c.text !== undefined).map(c => c.text)
             compare(bold().length, 1)
@@ -231,7 +234,7 @@ Item {
             // Three quarters of an hour later: lower, the same events.
             view.now = root.sec(2026, 10, 6, 10, 45)
             compare(line.y, view.yOf(645))
-            verify(root.drawn(view, "e1") === card, "the week is not laid again for the line")
+            verify(root.all(view, c => c.itemId === "event:e1")[0] === card, "the week is not laid again for the line")
             // Midnight: today's column is the next one; 00:00 is before the hours shown.
             view.today = "2026-10-07"
             view.now = root.sec(2026, 10, 7, 0, 0)

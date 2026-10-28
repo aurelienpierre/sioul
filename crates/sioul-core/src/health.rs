@@ -1225,7 +1225,8 @@ pub struct Errand {
 /// the prescription's ("Pharmacy: …", "Doctor: renew the prescription for …").
 struct ErrandWords {
     categories: Vec<String>,
-    titles: Vec<(String, String)>,
+    /// The words around a prescription's title in an errand's title, and which errand they make.
+    titles: Vec<(String, String, ErrandKind)>,
 }
 
 fn errand_words() -> &'static ErrandWords {
@@ -1237,12 +1238,12 @@ fn errand_words() -> &'static ErrandWords {
         for (language, _) in crate::i18n::LANGUAGES {
             let tr = crate::i18n::Translator::new(language);
             words.categories.push(tr.text("health-category", None).trim().to_lowercase());
-            for id in ["health-errand-refill", "health-errand-renew"] {
+            for (id, kind) in [("health-errand-refill", ErrandKind::Refill), ("health-errand-renew", ErrandKind::Renew)] {
                 let mut args = crate::i18n::args();
                 args.set("title", MARK);
                 // Words around it, never the title alone: that would be every task.
                 if let Some((before, after)) = tr.text(id, Some(&args)).split_once(MARK).filter(|(before, after)| !before.trim().is_empty() || !after.trim().is_empty()) {
-                    words.titles.push((before.to_string(), after.to_string()));
+                    words.titles.push((before.to_string(), after.to_string(), kind));
                 }
             }
         }
@@ -1269,16 +1270,27 @@ pub fn is_errand(task: &crate::tasks::Task, recorded: &std::collections::BTreeSe
 /// task, its time block (titled as its task) or the appointment it was made
 /// (`consent::Consent::keep_errands`; review of 36002ea, can-wait 7 and 8).
 pub fn is_errand_title(title: &str) -> bool {
+    errand_kind_of_title(title).is_some()
+}
+
+/// Which errand a title is (`is_errand_title`): a pharmacy's or a
+/// renewal's; what the agenda names it by, never by its prescription (the
+/// unified agenda, decision 7).
+pub fn errand_kind_of_title(title: &str) -> Option<ErrandKind> {
     let title = title.trim();
     // Anywhere in the title: after "Prepare: " (a task on its appointment),
     // after a date (a note made from it), the prescription's title after the
     // words, and something there (the check of ef8c0ca, item 2).
-    errand_words().titles.iter().any(|(before, after)| {
-        title.match_indices(before.as_str()).any(|(at, _)| {
-            let rest = &title[at + before.len()..];
-            rest.len() > after.len() && rest.ends_with(after.as_str()) && !rest[..rest.len() - after.len()].trim().is_empty()
+    errand_words()
+        .titles
+        .iter()
+        .find(|(before, after, _)| {
+            title.match_indices(before.as_str()).any(|(at, _)| {
+                let rest = &title[at + before.len()..];
+                rest.len() > after.len() && rest.ends_with(after.as_str()) && !rest[..rest.len() - after.len()].trim().is_empty()
+            })
         })
-    })
+        .map(|(_, _, kind)| *kind)
 }
 
 /// What is marked of the doses and done of the errands, kept apart from the

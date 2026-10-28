@@ -123,6 +123,21 @@ Item {
         page.medicinesWanted()
     }
 
+    // A meal, a nap, the night or a dose of `date` (its key: "meal:1",
+    // "sleep", a dose's), from the agenda: that day shown, its row lit and
+    // brought into view once the day is there.
+    function openRow(date, key) {
+        page.setMode("day")
+        page.goTo(date)
+        page.chosen = date + "|" + key
+        page.reveal = key
+        page.revealOn = date
+        page.pick()
+    }
+
+    // The day a row waits for (`openRow`): revealed when the view has it.
+    property string revealOn: ""
+
     // A block of the day shown: its menu, or its form ("move", "times"); what is open; all closed.
     function showMenu(key) {
         const item = page.day ? page.day.items.find(i => i.key === key) : null
@@ -225,6 +240,11 @@ Item {
                 page.day = found
         } else if (page.day === null && days.length > 0) {
             page.day = days.find(d => d.today) || days[0]
+        }
+        // A row asked for from the agenda, once its day is the one shown: brought into view.
+        if (page.revealOn !== "" && page.day !== null && page.day.date === page.revealOn) {
+            page.revealOn = ""
+            Qt.callLater(page.revealed)
         }
     }
 

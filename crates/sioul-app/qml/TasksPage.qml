@@ -296,8 +296,12 @@ Item {
                         checked: page.mode === modeButton.modelData
                         flat: page.mode !== modeButton.modelData
                         // A click on the way shown unticks it: its binding ticks it again.
+                        // The day is the agenda's Day: everything with a time, in one place.
                         onClicked: {
-                            page.mode = modeButton.modelData
+                            if (modeButton.modelData === "day")
+                                page.window.showAgendaDay()
+                            else
+                                page.mode = modeButton.modelData
                             modeButton.checked = Qt.binding(() => page.mode === modeButton.modelData)
                         }
                     }
