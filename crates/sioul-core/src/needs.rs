@@ -850,8 +850,12 @@ impl Needs {
         let blocks = self.blocks_of(date, &zone, days, &|key: &str| pushed.get(key).copied().unwrap_or(0));
         let current = blocks.iter().find(|k| k.key == edit.key);
         // Over already: it stays where it was (the window offered no drag; the
-        // writer says it all the same, whoever asks). The night's alarm is no move.
-        if matches!(edit.action.as_str(), "later" | "move" | "times") && current.is_some_and(|k| k.end <= now.timestamp().as_second()) {
+        // writer says it all the same, whoever asks). The night's alarm is no
+        // move; "Later" from a notice pressed after the end still moves it, to
+        // from now (below): not had, it is still needed.
+        let stamp = now.timestamp().as_second();
+        let over = current.is_some_and(|k| k.end <= stamp);
+        if over && matches!(edit.action.as_str(), "move" | "times") {
             return Err(DayProblem::Over);
         }
         let key = edit.key.as_str();
@@ -871,7 +875,14 @@ impl Needs {
         match edit.action.as_str() {
             "later" | "move" => {
                 let Some(k) = current else { return Ok(()) };
-                let delta = if edit.action == "later" { 60 * if edit.minutes == 0 { i64::from(self.later) } else { edit.minutes } } else { time(&edit.from, night)? - k.start };
+                let delta = if edit.action == "later" && over {
+                    // Over, not had: from the next five minutes, as long as it was.
+                    (stamp + 299).div_euclid(300) * 300 - k.start
+                } else if edit.action == "later" {
+                    60 * if edit.minutes == 0 { i64::from(self.later) } else { edit.minutes }
+                } else {
+                    time(&edit.from, night)? - k.start
+                };
                 // A meal or a nap stays on its day.
                 if !night && jiff::Timestamp::from_second(k.at + delta).map(|t| t.to_zoned(zone.clone()).date()).ok() != Some(date) {
                     return Err(DayProblem::OtherDay);
@@ -1004,19 +1015,27 @@ mod tests {
     }
 
     /// A meal over no longer moves, whoever asks (the window offers no drag
-    /// for it; the writer refuses it all the same): later, moved, its times;
-    /// what is no move (no notice that day) still goes.
+    /// for it; the writer refuses it all the same): moved, its times; what is
+    /// no move (no notice that day) still goes; "Later" from its notice
+    /// pressed after its end moves it to from now, as long as it was.
     #[test]
     fn a_meal_over_no_longer_moves() {
         let zone = zone();
         let now = jiff::civil::date(2026, 10, 5).at(14, 0, 0, 0).to_zoned(zone.clone()).unwrap();
         let needs = Needs { meals_on: true, ..Needs::default() };
         let mut days = Days::default();
-        for (action, from, to) in [("later", "", ""), ("move", "13:30", ""), ("times", "12:00", "12:40")] {
+        for (action, from, to) in [("move", "13:30", ""), ("times", "12:00", "12:40")] {
             let edit = DayEdit { key: "meal:1".into(), action: action.into(), from: from.into(), to: to.into(), ..DayEdit::default() };
             assert_eq!(needs.change_day(&mut days, now.date(), &edit, &now, &[]), Err(DayProblem::Over), "{action}");
         }
         assert!(days.0.is_empty(), "nothing written");
+        // "Later" from its notice, pressed once it is over: moved to from now, as long as it was.
+        let later = DayEdit { key: "meal:1".into(), action: "later".into(), ..DayEdit::default() };
+        let lunch = needs.blocks_of(now.date(), &zone, &days, &|_| 0).into_iter().find(|k| k.key == "meal:1").unwrap();
+        assert_eq!(needs.change_day(&mut days, now.date(), &later, &now, &[]), Ok(()));
+        let moved = needs.blocks_of(now.date(), &zone, &days, &|_| 0).into_iter().find(|k| k.key == "meal:1").unwrap();
+        assert_eq!((hm(moved.start), moved.end - moved.start), ("05 14:00".to_string(), lunch.end - lunch.start));
+        days.forget(now.date(), "meal:1");
         let quiet = DayEdit { key: "meal:1".into(), action: "quiet".into(), ..DayEdit::default() };
         assert_eq!(needs.change_day(&mut days, now.date(), &quiet, &now, &[]), Ok(()));
         // The evening's meal, not over, still moves.

@@ -687,7 +687,8 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 },
                 colour: o.color.clone(),
                 address: if block { crate::links::task_uri(&o.task) } else { crate::links::event_uri(&o.uid) },
-                owner: if block { o.task.clone() } else { String::new() },
+                // A meeting with others that is a task's time block is its task's too: kept with it, counted once with it.
+                owner: o.task.clone(),
                 holds_time: o.holds_time(),
             }
         })

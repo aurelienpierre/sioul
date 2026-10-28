@@ -65,57 +65,39 @@ struct Row {
     detail: Option<Detail>,
 }
 
-/// What the event's panel says of it, as the occurrence read has it.
+/// What the event's panel says of it, beyond its item (its time, its file,
+/// its calendar and colour are the item's: `timeline::Source`, `Time`).
 #[derive(Serialize)]
 struct Detail {
-    key: String,
-    uid: String,
-    /// This occurrence's start and end, Unix seconds.
-    start: i64,
+    /// This occurrence's end, Unix seconds (an all-day one's included).
     end: i64,
     location: String,
     notes: String,
-    calendar: String,
-    color: Option<String>,
-    recurring: bool,
     cancelled: bool,
     tentative: bool,
     read_only: bool,
     with_others: bool,
     organizer: String,
     attendees: Vec<agenda::Attendee>,
-    all_day: bool,
     /// The task it is the time block of, by UID, known here; "" for an event of its own.
     task: String,
     list: String,
-    /// Minutes it keeps before and after it, its own.
-    before: u32,
-    after: u32,
 }
 
 impl Detail {
     fn of(o: &Occurrence) -> Detail {
         Detail {
-            key: o.key.clone(),
-            uid: o.uid.clone(),
-            start: o.start,
             end: o.end,
             location: o.location.clone(),
             notes: o.notes.clone(),
-            calendar: o.calendar.clone(),
-            color: o.color.clone(),
-            recurring: o.recurring,
             cancelled: o.cancelled,
             tentative: o.tentative,
             read_only: o.read_only,
             with_others: o.with_others,
             organizer: o.organizer.clone(),
             attendees: o.attendees.clone(),
-            all_day: o.all_day,
             task: o.task.clone(),
             list: o.list.clone(),
-            before: o.margins.before,
-            after: o.margins.after,
         }
     }
 }
@@ -159,9 +141,32 @@ pub(crate) fn occurrences_between(from: i64, to: i64, removed: &std::collections
     items
 }
 
+/// The tasks a time block is marked with: the plan's, else those last read,
+/// else the tasks alone, read now: never everything (`Loaded::read`), which
+/// may write the mail's index (review of 1880bce, L9).
+fn tasks_known(shared: &Shared) -> Vec<sioul_core::tasks::Task> {
+    if let Some(plan) = work::plan_shown() {
+        return plan.loaded().tasks.clone();
+    }
+    if let Some(loaded) = shared.loaded.lock().ok().and_then(|l| l.clone()) {
+        return loaded.tasks.clone();
+    }
+    sioul_core::tasks::all(&TimeZone::system())
+}
+
+/// The overlaps of the next two weeks (`pim::overlaps_of`), what waits for
+/// Undo left out: the Porch's, made at every run whether the agenda page has
+/// asked or not (review of 1880bce, M2).
+fn overlaps_now(shared: &Shared) -> String {
+    let zone = TimeZone::system();
+    let reach = midnight(Zoned::now().date(), &zone);
+    let (removed, skipped) = mail::hidden_pim(shared);
+    pim::overlaps_of(&pim::without_waiting(read_between(reach, reach + 14 * 86_400, &zone), &removed, &skipped))
+}
+
 /// The days the page asks for (`pim::PimState`: from, how many, what comes
-/// only), as JSON, and the overlaps of the next two weeks.
-fn made(shared: &Shared) -> (String, String) {
+/// only), as JSON, and how long their read of the calendars took.
+fn made(shared: &Shared) -> (String, std::time::Duration) {
     let state = shared.pim.lock().map(|s| s.clone()).unwrap_or_default();
     let zone = TimeZone::system();
     let now = Zoned::now();
@@ -171,12 +176,14 @@ fn made(shared: &Shared) -> (String, String) {
     let (removed, skipped) = mail::hidden_pim(shared);
     let stamp = now.timestamp().as_second();
     // A task's time block shows as the task it is, with its list (`agenda::mark_tasks`).
-    let tasks = work::plan_shown().map_or_else(|| work::loaded(shared).tasks.clone(), |s| s.loaded().tasks.clone());
+    let tasks = tasks_known(shared);
+    let started = std::time::Instant::now();
     let occurrences: Vec<Occurrence> = occurrences_between(from, to, &removed, &skipped, &tasks)
         .into_iter()
         // What comes: an event over is the past, shown only when you go back to it.
         .filter(|o| !state.upcoming || o.end.max(o.start) > stamp)
         .collect();
+    let read = started.elapsed();
     // The window's own items reach no agent (the MCP makes its own, through
     // `ForAgents`): errands are told apart where they are named (the agenda's
     // next views), not here.
@@ -209,32 +216,39 @@ fn made(shared: &Shared) -> (String, String) {
             .map(|d| DayShown { date: d.date, title: d.title, today: d.today, past: d.past, start: d.start, hours_from: d.hours_from, hours_to: d.hours_to, head: d.head.into_iter().map(row).collect(), timed: d.timed.into_iter().map(row).collect() })
             .collect(),
     };
-    // Two events at once in the next two weeks, from the same read.
-    let reach = midnight(today, &zone);
-    let near: Vec<Occurrence> = pim::without_waiting(read_between(reach, reach + 14 * 86_400, &zone), &removed, &skipped);
-    (json(&shown), pim::overlaps_of(&near))
+    (json(&shown), read)
 }
 
-/// Makes the agenda's days on a thread and shows them: once the page asked
-/// for them (`asked`), whenever the plan or a calendar changes.
+/// Whether a run makes the days: once the page asked for them (`asked`), or
+/// once at start, from the first plan (the Tasks job's first run), so that the
+/// page's first opening never shows an empty week, which would read as
+/// "nothing planned" (review of 1880bce, L18).
+fn days_wanted(shared: &Shared) -> bool {
+    shared.agenda_asked.load(Ordering::Relaxed) || (work::plan_shown().is_some() && !shared.agenda_prefilled.swap(true, Ordering::Relaxed))
+}
+
+/// Makes the overlaps of the next two weeks at every run, for the Porch, and
+/// the agenda's days once they are wanted (`days_wanted`), on a thread, then
+/// shows them: whenever the plan or a calendar changes.
 pub(crate) fn show_agenda(qt: &QtThread, shared: &Arc<Shared>) {
-    if !shared.agenda_asked.load(Ordering::Relaxed) {
-        return;
-    }
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.agenda_job, move |shared| {
         let generation = shared.agenda_generation.fetch_add(1, Ordering::Relaxed) + 1;
         let started = std::time::Instant::now();
-        let (agenda, overlaps) = made(shared);
+        let overlaps = overlaps_now(shared);
+        let days = days_wanted(shared).then(|| made(shared));
         if crate::timed() {
-            eprintln!("sioul-perf: agenda job {} ms, {} bytes", started.elapsed().as_millis(), agenda.len());
+            let (bytes, read) = days.as_ref().map_or((0, 0), |(agenda, read)| (agenda.len(), read.as_millis()));
+            eprintln!("sioul-perf: agenda job {} ms, its calendars read {read} ms, {bytes} bytes", started.elapsed().as_millis());
         }
         let _ = qt.queue(move |mut sioul| {
             // Only the newest (see `backend::show`).
             if sioul.shared().agenda_generation.load(Ordering::Relaxed) != generation || sioul.shared().agenda_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
-            sioul.as_mut().set_agenda(QString::from(&agenda));
+            if let Some((agenda, _)) = &days {
+                sioul.as_mut().set_agenda(QString::from(agenda));
+            }
             sioul.as_mut().set_overlaps(QString::from(&overlaps));
         });
     });
@@ -291,12 +305,17 @@ mod tests {
         }
         // What a layout or a reader of health could write: today's slots of time for you (the Tasks
         // job's alone), the health file's last-read and aside copies; and this test's calendar.
-        // Other tests write elsewhere in the same folders meanwhile.
+        // Other tests write elsewhere in the same folders meanwhile; the health tests, which
+        // write and read these, wait (their own read once came in as this job's write).
+        let _health_tests = crate::health::health_files_held();
         let health = sioul_core::health::Health::default_path();
         let watched = [sioul_core::attention::Slots::default_path(), sioul_core::health::Health::last_read_path(&health), health.with_extension("toml.unreadable")];
         let state = |path: &std::path::Path| std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok()));
         let seen = || (watched.iter().map(|p| state(p)).collect::<Vec<_>>(), files(&calendar.dir));
         let before = seen();
+        // With no plan yet, the job reads the tasks alone, never everything, which writes the
+        // mail's index (review of 1880bce, L9): counted on this thread, where the job runs.
+        crate::work::LOADS.with(|n| n.set(0));
         // Every health lock held on another thread, for longer than a run takes.
         let (held, release) = std::sync::mpsc::channel::<()>();
         let (go, ready) = std::sync::mpsc::channel::<()>();
@@ -308,6 +327,7 @@ mod tests {
         ready.recv().unwrap();
         let started = std::time::Instant::now();
         let (shown, _) = made(&shared);
+        let _ = overlaps_now(&shared);
         assert!(started.elapsed() < std::time::Duration::from_secs(10), "it waited for a health lock");
         let _ = held.send(());
         holder.join().unwrap();
@@ -315,6 +335,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&shown).unwrap();
         assert_eq!(parsed["version"], 2);
         assert_eq!(before, seen(), "nothing written");
+        assert_eq!(crate::work::LOADS.with(std::cell::Cell::get), 0, "the tasks alone read");
         // A write after the plan it reads: the calendars read again, the new event there at once.
         let written = sioul_core::timeline::written();
         vdir::write_item(&calendar.dir.join("visit.ics"), &event("agenda-job-visit", 14)).unwrap();
@@ -323,6 +344,27 @@ mod tests {
         assert!(shown.contains("agenda-job-visit"), "{shown}");
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
+    /// The Porch's overlaps are made at every run, the agenda page never
+    /// opened: two of today's events at once are said from the start (review of
+    /// 1880bce, M2); the days wait for the page's first ask, or the first plan.
+    #[test]
+    fn the_porch_s_overlaps_never_wait_for_the_agenda_page() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Overlaps", None, &["VEVENT"]).unwrap();
+        let now = Zoned::now();
+        let utc = |minutes: i64| now.checked_add(jiff::Span::new().minutes(minutes)).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M00Z").to_string();
+        for (uid, from, to) in [("overlap-dentist", 120, 180), ("overlap-bank", 150, 210)] {
+            std::fs::write(calendar.dir.join(format!("{uid}.ics")), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(from), utc(to))).unwrap();
+        }
+        let shared = Arc::new(Shared::default());
+        assert!(!shared.agenda_asked.load(Ordering::Relaxed));
+        let overlaps = overlaps_now(&shared);
+        assert!(overlaps.contains("overlap-dentist") && overlaps.contains("overlap-bank"), "{overlaps}");
+        assert!(!days_wanted(&shared), "no days made: the page never asked, no plan yet");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// A heavy week (fifteen events a day, each with a few lines of notes)
     /// stays within the phone's budget for the agenda's JSON: under 150 KB
     /// (the unified agenda, §4.9).
@@ -349,11 +391,74 @@ mod tests {
             state.upcoming = false;
         }
         let (shown, _) = made(&shared);
-        let ours = shown.matches("heavy-").count();
+        let ours = shown.matches("\"heavy-").count();
         assert!(ours >= 105, "{ours}");
         eprintln!("sioul-perf: a heavy week's agenda JSON: {} bytes", shown.len());
         assert!(shown.len() < 150_000, "{} bytes", shown.len());
+        // The Month (six weeks from this week's Monday) and the 15-day list, said for the record.
+        for (name, days) in [("month", 42), ("list", 15)] {
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = monday;
+                state.days = days;
+            }
+            eprintln!("sioul-perf: a heavy {name}'s agenda JSON ({days} days, the heavy week in it): {} bytes", made(&shared).0.len());
+        }
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A time block dragged is one write, and the agenda shows it at its new
+    /// time at once and after the plan is made again at that write, never
+    /// back at the old one (unified agenda, plan step 7: a drag published
+    /// once, at its generation; review of 1880bce, L22).
+    #[test]
+    fn a_drag_is_shown_once_at_its_generation() {
+        // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Drag test", None, &["VEVENT", "VTODO"]).unwrap();
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let tomorrow = now.date().tomorrow().unwrap();
+        let utc = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let edit = sioul_core::tasks::TaskEdit { title: "Drag test task".into(), estimate: 30, ..sioul_core::tasks::TaskEdit::default() };
+        vdir::write_item(&calendar.dir.join("drag-task.ics"), &sioul_core::tasks::new_task(&edit, "drag-task", &zone, &now).unwrap()).unwrap();
+        let block = calendar.dir.join("drag-block.ics");
+        let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:drag-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Drag test task\r\n{}:drag-task\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(9), utc(10), sioul_core::blocks::TASK);
+        vdir::write_item(&block, &text).unwrap();
+        let shared = Arc::new(Shared::default());
+        if let Ok(mut state) = shared.pim.lock() {
+            state.from = now.date();
+            state.days = 3;
+            state.upcoming = false;
+        }
+        work::publish_now(&shared);
+        // The block's minute of the day as the agenda shows it.
+        let minute = |shared: &Shared| -> Option<i64> {
+            let shown: serde_json::Value = serde_json::from_str(&made(shared).0).unwrap();
+            let rows: Vec<serde_json::Value> = shown["days"].as_array()?.iter().filter(|d| d["date"] == tomorrow.to_string()).flat_map(|d| d["timed"].as_array().cloned().unwrap_or_default()).collect();
+            rows.iter().find(|r| r["item"]["source"].to_string().contains("\"drag-block\"")).and_then(|r| r["from_minute"].as_i64())
+        };
+        assert_eq!(minute(&shared), Some(9 * 60));
+        // The drag: the block written at 11:00 through the door a drag takes (`blocks::moved`, then `write`).
+        let generation = sioul_core::timeline::written();
+        let at = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let moved = sioul_core::blocks::moved(&text, at(11), at(12), &zone).unwrap();
+        vdir::write_item(&block, &moved).unwrap();
+        // Other tests write beside this one (the count is the process's): counted at least once.
+        assert!(sioul_core::timeline::written() > generation, "the drag is a write, counted");
+        assert!(work::plan_shown().is_some_and(|p| !p.current()), "the plan made before it is older");
+        assert_eq!(minute(&shared), Some(11 * 60), "shown at its new time at once");
+        // The plan made again after it, current (made again while another test wrote meanwhile):
+        // still at its new time, and the block as the drag wrote it.
+        for _ in 0..5 {
+            work::publish_now(&shared);
+            if work::plan_shown().is_some_and(|p| p.current()) {
+                break;
+            }
+        }
+        assert!(work::plan_shown().is_some_and(|p| p.stamp.written > generation), "made at the drag's generation or after");
+        assert_eq!(minute(&shared), Some(11 * 60), "never back at the old one");
+        assert_eq!(std::fs::read_to_string(&block).unwrap(), moved, "shown, never written again");
+        work::forget_plan();
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 }
-

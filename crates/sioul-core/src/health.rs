@@ -902,6 +902,14 @@ pub fn counts(peer: &Peer, now: i64) -> bool {
 /// and for what stays in view hours after it (the Porch, the Health page, a
 /// phone's home screen). A dose taken twice can harm: what is not known is
 /// said, never guessed.
+/// The end of the day the record was found lost on (`since`, Unix seconds),
+/// where this device is: a dose due before it may have been marked before
+/// the loss, whatever its time.
+fn record_day_end(since: i64) -> i64 {
+    let zone = jiff::tz::TimeZone::system();
+    Timestamp::from_second(since).ok().and_then(|t| t.to_zoned(zone.clone()).date().tomorrow().ok()).and_then(|d| d.to_zoned(zone).ok()).map_or(since + 86_400, |z| z.timestamp().as_second())
+}
+
 pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
     doubts_at(due, due, now, record_lost, peers)
 }
@@ -915,8 +923,11 @@ pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) 
 /// the sixth review's M1).
 pub fn doubts_at(due: i64, waking: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
     let mut out = Vec::new();
-    // Doses due before the record was found broken or gone, in the day before.
-    if let Some(since) = record_lost.filter(|since| due <= *since && *since - due < 86_400) {
+    // Doses due before the record was found broken or gone, in the day before;
+    // and the rest of that day's: a dose of today is marked at any hour of
+    // today (`health::may_answer` in the window), so a mark for it may have
+    // been in what was lost, as `BROKEN_SPAN` holds for another device's lost line.
+    if let Some(since) = record_lost.filter(|since| (due <= *since && *since - due < 86_400) || (due > *since && due < record_day_end(*since))) {
         out.push(Doubt::Record { since });
     }
     let phones = phones_counted(peers, now);
@@ -1654,9 +1665,12 @@ mod tests {
         // Silent for over a week: no longer counted (`SILENT_DAYS`).
         let gone = Peer { heard: due - 8 * 86_400, ..peer(0, false, None) };
         assert!(doubts(due, due + 600, None, &[gone]).is_empty());
-        // This device's record was found broken after the dose was due: not known; doses due after are.
+        // This device's record was found broken after the dose was due: not known; nor are the
+        // doses due after it that day (one may have been marked before it); the next day's are.
         assert_eq!(doubts(due, due + 600, Some(due + 300), &[]), vec![Doubt::Record { since: due + 300 }]);
-        assert!(doubts(due + 900, due + 1_000, Some(due + 300), &[]).is_empty());
+        assert_eq!(doubts(due + 900, due + 1_000, Some(due + 300), &[]), vec![Doubt::Record { since: due + 300 }]);
+        let next_day = record_day_end(due + 300) + 900;
+        assert!(doubts(next_day, next_day + 100, Some(due + 300), &[]).is_empty());
         // Heard in full just after the dose, not since (its sync slow, or stopped): known then, not an hour later.
         let then = peer(due + 60, false, Some(40));
         assert!(doubts_now(due, due + 120, None, std::slice::from_ref(&then)).is_empty());
@@ -1907,12 +1921,32 @@ mod tests {
     /// 06:00 leave it not known, as at its time; a phone put away before the
     /// sleep is known only once the news of an opening at waking had the time to come.
     #[test]
+    /// A record found lost at 06:00 doubts every dose of its day, those due
+    /// after it too: an 08:00 dose may have been marked at 05:30, in what was
+    /// lost (today's doses are marked at any hour of today). It doubts the
+    /// day before's as before, and nothing of the next day.
+    fn a_lost_record_doubts_the_rest_of_its_day() {
+        let zone = jiff::tz::TimeZone::system();
+        let day = Timestamp::now().to_zoned(zone.clone()).date();
+        let at = |d: Date, h: i8| d.at(h, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let lost = Some(at(day, 6));
+        let record = |due: i64| doubts_now(due, due + 600, lost, &[]).contains(&Doubt::Record { since: at(day, 6) });
+        assert!(record(at(day, 8)), "an 08:00 dose, maybe marked before 06:00");
+        assert!(record(at(day, 23)), "the evening's");
+        assert!(record(at(day, 5)), "before the loss, as before");
+        assert!(!record(at(day.tomorrow().unwrap(), 8)), "the next day's could not be marked before it");
+        assert!(known_from(at(day, 8), at(day, 8), at(day, 8) + 3600, lost, &[]).is_none(), "never known not marked that day");
+    }
+
+    #[test]
     fn at_waking_what_looks_back_counts_from_the_doses_time() {
         let (due, waking) = (1_800_018_000, 1_800_025_200);
         let now = waking + 30;
-        // This device's record found broken at 06:00, the dose due before it.
+        // This device's record found broken at 06:00, the dose due before it: counted from the
+        // dose's time, never from waking. The next day's dose at waking: nothing of the loss.
         assert_eq!(doubts_at(due, waking, now, Some(due + 3_600), &[]), [Doubt::Record { since: due + 3_600 }]);
-        assert_eq!(doubts_at(waking, waking, now, Some(due + 3_600), &[]), [], "counted from waking, it would be lost");
+        let next = record_day_end(due + 3_600) + (waking - due);
+        assert_eq!(doubts_at(next, next, next + 30, Some(due + 3_600), &[]), [], "the day after the loss");
         // A computer that does not share its doses, open at 05:00, closed at 06:00.
         let apart = Peer {
             name: "desk".into(),

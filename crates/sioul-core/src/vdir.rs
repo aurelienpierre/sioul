@@ -831,6 +831,34 @@ pub fn store_item(path: &Path, text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// What the calendars' folders say of their last change, as one number:
+/// each account's and each collection's folder's time. A file made, replaced
+/// or taken out there changes it, whichever program did it (this window,
+/// `sioul`, `sioul mcp`, the sync, another application), since Sioul writes
+/// each item next to its place and moves it in (`store_item`). A layout made
+/// before such a change is older than it (`timeline::Stamp`).
+pub fn calendars_stamp() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let time = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let sorted = |dir: &Path| {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        entries.sort();
+        entries
+    };
+    let root = Kind::Calendars.root();
+    time(&root).hash(&mut hasher);
+    for account in sorted(&root) {
+        account.hash(&mut hasher);
+        time(&account).hash(&mut hasher);
+        for collection in sorted(&account) {
+            collection.hash(&mut hasher);
+            time(&collection).hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
 /// A new item's name: unique, and safe as a file name and in a URL.
 pub fn new_name() -> String {
     use std::hash::{Hash, Hasher};

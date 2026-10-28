@@ -38,6 +38,22 @@ pub fn note_written() {
     WRITTEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// When a layout was read, as the files say it: this program's own writes
+/// (`written`), and the calendars' folders' last changes, whichever program
+/// made them (`vdir::calendars_stamp`). Taken before anything is read: a
+/// layout whose stamp differs from now's is older than some write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stamp {
+    pub written: u64,
+    pub folders: u64,
+}
+
+impl Stamp {
+    pub fn now() -> Stamp {
+        Stamp { written: written(), folders: crate::vdir::calendars_stamp() }
+    }
+}
+
 /// One thing that has a time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Item {
@@ -54,16 +70,22 @@ pub struct Item {
     pub privacy: Privacy,
     /// Its words on the timeline: an event's title, a task's, a meal's name.
     pub title: String,
-    /// One line under it, worded in Rust; "" when it has none.
+    /// One line under it, worded in Rust; "" when it has none (left out of the JSON then).
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub line: String,
     /// Its whole name for a screen reader; "" until a view words it.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub said: String,
     pub tone: Tone,
     /// A calendar's or a list's colour; None for Sioul's own kinds.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
     /// Its `sioul:` address, for ties and for agents; "" for every health kind.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub address: String,
-    /// What it belongs to: a block's or a step's task, by UID; "" for none.
+    /// What it belongs to: a block's or a step's task, by UID (an event's, a
+    /// meeting with others that is a task's time block); "" for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub owner: String,
     /// It takes time from the plan, the hours and the meals (`Occurrence::holds_time`).
     pub holds_time: bool,
@@ -202,6 +224,7 @@ pub struct Can {
     /// Its checklist can be ticked here.
     pub tick: bool,
     /// Why it cannot be changed here, in words; "" when it can.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub why: String,
 }
 

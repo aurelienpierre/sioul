@@ -96,8 +96,18 @@ pub(crate) fn loaded(shared: &Shared) -> Arc<Loaded> {
     fresh
 }
 
+#[cfg(test)]
+thread_local! {
+    /// The reads of everything made on this thread (`read_loaded`): a job
+    /// that reads the tasks alone is checked by them, never by the files
+    /// other tests write meanwhile (the agenda's job, review of 1880bce, L9).
+    pub(crate) static LOADS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 /// Reads everything again, leaving out what waits ten seconds to be deleted.
 fn read_loaded(shared: &Shared) -> Loaded {
+    #[cfg(test)]
+    LOADS.with(|n| n.set(n.get() + 1));
     let mut fresh = Loaded::read(&load_config());
     let (removed, _) = mail::hidden_pim(shared);
     fresh.tasks.retain(|t| !removed.contains(Path::new(&t.key)));
@@ -156,8 +166,9 @@ pub(crate) struct Desk {
     loaded: Arc<Loaded>,
     /// The calendars from today's midnight, the plan's horizon ahead
     /// (`plan::HORIZON_DAYS`), read once: the plan, today's layout and the
-    /// agenda's coming weeks all read these; those whose deletion waits
-    /// ("Undo") left out, as every agenda leaves them out.
+    /// agenda's coming weeks all read these. Kept as read: those whose
+    /// deletion waits ("Undo") are left out at each use, so that an Undo
+    /// brings them back at once (review of 1880bce, L1).
     read: Arc<Vec<sioul_core::agenda::Occurrence>>,
     filter: Filter,
     offices: taskview::Offices,
@@ -180,12 +191,13 @@ impl Desk {
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|s| !s.note.is_empty()).map(|s| (s.task.clone(), s.note.clone())).collect();
         let situation = situation(&loaded.projects);
-        // The plan's one read of the calendars (`read`): what waits for Undo is gone already.
+        // The plan's one read of the calendars (`read`), kept as read; the plan leaves out what waits for Undo.
         let midnight = date.to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
+        let read = Arc::new(sioul_core::agenda::occurrences(midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400));
         let (removed, skipped) = mail::hidden_pim(shared);
-        let read = Arc::new(pim::without_waiting(sioul_core::agenda::occurrences(midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400), &removed, &skipped));
+        let live = pim::without_waiting(read.as_ref().clone(), &removed, &skipped);
         // What your record says: ratings said after tasks, corrected lengths, what a day holds (docs/capacity.md).
-        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded, shared, &read), &loaded.tasks, &sessions);
+        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded, shared, &live), &loaded.tasks, &sessions);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         // Asleep no task shows, unless the page asked to see them all.
         let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
@@ -316,18 +328,20 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
 /// them plans again (today is laid, and its slots of time for you written, by
 /// the Tasks job alone).
 pub(crate) struct PlanShown {
-    /// The writes counted before it was read (`timeline::written`): a write
-    /// after it makes it older, whatever the clock says.
-    pub(crate) generation: u64,
+    /// The files' stamp taken before it was read (`timeline::Stamp`): a write
+    /// after it, by this program or another, the sync included, makes it older.
+    pub(crate) stamp: sioul_core::timeline::Stamp,
     /// The day it was made on: the plan's today.
     pub(crate) made_on: jiff::civil::Date,
     pub(crate) desk: Arc<Desk>,
 }
 
 impl PlanShown {
-    /// Whether nothing was written since it was read.
+    /// Whether nothing was written since it was read: no write of this
+    /// program's, no file made, replaced or taken out in a calendar's folder by
+    /// any program (`vdir::calendars_stamp`).
     pub(crate) fn current(&self) -> bool {
-        self.generation == sioul_core::timeline::written()
+        self.stamp == sioul_core::timeline::Stamp::now()
     }
 
     /// The plan's one read of the calendars (`Desk::read`), and the plan.
@@ -357,10 +371,27 @@ thread_local! {
 fn publish(shown: PlanShown) {
     #[cfg(not(test))]
     {
-        *PLAN_SHOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(shown));
+        // The old one let go after the lock: a whole Desk, never dropped while the window waits for it (`task()`).
+        let old = std::mem::replace(&mut *PLAN_SHOWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner), Some(Arc::new(shown)));
+        drop(old);
     }
     #[cfg(test)]
     PLAN_SHOWN.with(|plan| *plan.borrow_mut() = Some(Arc::new(shown)));
+}
+
+/// A plan made now and published, as the Tasks job makes it (`show_work`:
+/// the stamp before the read), for the tests of what reads it; `forget_plan`
+/// lets it go. In the test's own thread.
+#[cfg(test)]
+pub(crate) fn publish_now(shared: &Shared) {
+    let stamp = sioul_core::timeline::Stamp::now();
+    let desk = Desk::new(Arc::new(read_loaded(shared)), shared);
+    publish(PlanShown { stamp, made_on: Zoned::now().date(), desk: Arc::new(desk) });
+}
+
+#[cfg(test)]
+pub(crate) fn forget_plan() {
+    PLAN_SHOWN.with(|plan| *plan.borrow_mut() = None);
 }
 
 /// The plan as the Tasks job last made it; none before its first run.
@@ -376,27 +407,44 @@ pub(crate) fn plan_shown() -> Option<Arc<PlanShown>> {
 /// another day within the plan's reach, its own events and the blocks tasks
 /// are pinned to (`Settings::with_events`). What Health's days draw and what
 /// a day's meal is moved from (`health::change_day`), so that the plan, the
-/// Health page and the writer agree. No plan yet, or a day beyond its
-/// reach: that day's events, read now.
-pub(crate) fn held_on(date: jiff::civil::Date, now: &Zoned) -> Vec<(i64, i64)> {
+/// Health page and the writer agree. None with no plan of today yet, or for
+/// a day beyond its reach: each caller then has its own read.
+pub(crate) fn held_by_plan(date: jiff::civil::Date, now: &Zoned) -> Option<Vec<(i64, i64)>> {
     let zone = now.time_zone();
     let start = date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
     let end = date.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(start + 86_400, |z| z.timestamp().as_second());
-    if let Some(shown) = plan_shown().filter(|s| s.made_on == now.date())
-        && let Some(last) = now.date().checked_add(jiff::Span::new().days(sioul_core::plan::HORIZON_DAYS - 1)).ok()
-        && date >= now.date()
-        && date <= last
-    {
-        // A meal can be pushed past an event of the evening before, and up to the next morning.
-        let near: Vec<sioul_core::agenda::Occurrence> = shown.read().iter().filter(|o| o.end > start - 86_400 && o.start < end + 86_400).cloned().collect();
-        if date == now.date() {
-            return sioul_core::plan::event_spans(&near, 0);
-        }
-        let mut held = sioul_core::plan::event_spans(&sioul_core::blocks::without_blocks(near, &shown.loaded().tasks), 0);
-        held.extend(shown.plan().pins.values().map(sioul_core::blocks::Pin::span));
-        return held;
+    let shown = plan_shown().filter(|s| s.made_on == now.date())?;
+    let last = now.date().checked_add(jiff::Span::new().days(sioul_core::plan::HORIZON_DAYS - 1)).ok()?;
+    if date < now.date() || date > last {
+        return None;
     }
-    sioul_core::plan::event_spans(&sioul_core::agenda::occurrences(start - 86_400, end + 86_400), 0)
+    // A meal can be pushed past an event of the evening before, and up to the next morning.
+    let near: Vec<sioul_core::agenda::Occurrence> = shown.read().iter().filter(|o| o.end > start - 86_400 && o.start < end + 86_400).cloned().collect();
+    if date == now.date() {
+        return Some(sioul_core::plan::event_spans(&near, 0));
+    }
+    let mut held = sioul_core::plan::event_spans(&sioul_core::blocks::without_blocks(near, &shown.loaded().tasks), 0);
+    held.extend(shown.plan().pins.values().map(sioul_core::blocks::Pin::span));
+    Some(held)
+}
+
+/// `held_by_plan`, else that day's events, read now: for the writer of a
+/// day's meals alone, which reads once a change (never a view made each minute).
+pub(crate) fn held_on(date: jiff::civil::Date, now: &Zoned) -> Vec<(i64, i64)> {
+    held_by_plan(date, now).unwrap_or_else(|| {
+        #[cfg(test)]
+        HELD_READS.with(|n| n.set(n.get() + 1));
+        let zone = now.time_zone();
+        let start = date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+        let end = date.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(start + 86_400, |z| z.timestamp().as_second());
+        sioul_core::plan::event_spans(&sioul_core::agenda::occurrences(start - 86_400, end + 86_400), 0)
+    })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread read the calendars for a day's held times (`held_on`'s own read).
+    pub(crate) static HELD_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Today's steps as the day's layout last laid them: (start, end, title).
@@ -534,14 +582,15 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         let generation = shared.work_generation.fetch_add(1, Ordering::Relaxed) + 1;
         // Today's steps as laid before: the Health page's day shows them faded.
         let steps_before = day_steps();
+        // The files' stamp before anything is read: what is written after, by any
+        // program, makes this plan older (`PlanShown::current`).
+        let stamp = sioul_core::timeline::Stamp::now();
+        let made_on = Zoned::now().date();
         let fresh = Arc::new(read_loaded(shared));
         if let Ok(mut cache) = shared.loaded.lock() {
             *cache = Some(Arc::clone(&fresh));
         }
         let state = shared.work.lock().map(|s| s.clone()).unwrap_or_default();
-        // The writes counted before anything is read: what is written after makes this plan older.
-        let written_before = sioul_core::timeline::written();
-        let made_on = Zoned::now().date();
         let desk = Desk::new(fresh, &shared);
         // What changed elsewhere in the blocks set right, a time given by a drag before them made one:
         // laid again then, at once (`blocks::upkeep`; nothing written when nothing differs).
@@ -612,7 +661,7 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         // The plan and today as laid, for the agenda, a task's card and `laid`: published before
         // the window hears of the change, so that what it reads then is this plan.
         let desk = Arc::new(desk);
-        publish(PlanShown { generation: written_before, made_on, desk: Arc::clone(&desk) });
+        publish(PlanShown { stamp, made_on, desk: Arc::clone(&desk) });
         crate::agenda::show_agenda(&qt, &shared);
         // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
         if day_steps() != steps_before {
@@ -1097,7 +1146,12 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         None => Arc::new(Desk::new(loaded(shared), shared)),
     };
     let loaded = Arc::clone(&desk.loaded);
-    let Some(task) = desk.task(uid) else { return String::new() };
+    let Some(known) = desk.task(uid) else { return String::new() };
+    // The task's own fields from its file, one read, never an older copy (a
+    // tick elsewhere, a save, a drag, a sync since the plan was made: review of
+    // 1880bce, M1); the plan's numbers (its days, its budget) from the plan as made.
+    let Some(fresh) = from_its_file(known) else { return String::new() };
+    let task = &fresh;
     let related = loaded.world().related(&links::task_uri(uid));
     let mut detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
     detail.ratio_line = crate::capacity::ratio_line(task);
@@ -1150,6 +1204,23 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     };
     let keeps_ties = sioul_core::pairs::links_kept(&config)(&task.list_id);
     crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties })
+}
+
+/// A task read again from its own file, its list's marks kept from `known`
+/// (its list, its colour, whether it can be written); None when the file is
+/// gone or holds no task any more.
+fn from_its_file(known: &Task) -> Option<Task> {
+    let text = std::fs::read_to_string(&known.key).ok()?;
+    if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
+        return None;
+    }
+    let mut task = tasks::task_of_text(&text, &TimeZone::system())?;
+    task.key = known.key.clone();
+    task.list = known.list.clone();
+    task.list_id = known.list_id.clone();
+    task.color = known.color.clone();
+    task.read_only = known.read_only;
+    Some(task)
 }
 
 /// A change of a composed task (`sioul_core::composed`) written and said,
@@ -1280,6 +1351,8 @@ fn notes_fit(task: &Task, notes: &str) -> Result<(), String> {
 
 /// Saves the task form; an empty UID makes a new task in `list`. Returns {"uid"} or {"error"}.
 pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, list: &str) -> String {
+    // The form as it read the task (`read`), when it says it: only what it changed since is written.
+    let read: Option<TaskEdit> = serde_json::from_str::<serde_json::Value>(edit).ok().and_then(|v| v.get("read").cloned()).and_then(|r| serde_json::from_value(r).ok());
     let result = serde_json::from_str::<TaskEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
         if uid.is_empty() {
             return create(qt, shared, &edit, list);
@@ -1290,7 +1363,15 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         {
             notes_fit(&task, &edit.notes)?;
         }
-        change(qt, shared, uid, |text| tasks::apply(text, &edit, &TimeZone::system(), &Zoned::now()))?;
+        change(qt, shared, uid, |text| {
+            let zone = TimeZone::system();
+            // Over the file as it is now: the fields the form changed since it read the task, the rest as the file has them (§5.2).
+            let edit = match (&read, tasks::task_of_text(text, &zone)) {
+                (Some(read), Some(now)) => TaskEdit::of(&now).changed_over(read, &edit),
+                _ => edit.clone(),
+            };
+            tasks::apply(text, &edit, &zone, &Zoned::now())
+        })?;
         write_gaps(qt, shared, uid, &edit);
         // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
         crate::blocks::follow(qt, shared, uid);
@@ -2411,24 +2492,58 @@ mod tests {
         let task_path = calendar.dir.join("snapshot-task.ics");
         sioul_core::vdir::write_item(&task_path, &tasks::new_task(&edit, "snapshot-task", &zone, &now).unwrap()).unwrap();
         std::fs::write(calendar.dir.join("first.ics"), event("snapshot-first", 9)).unwrap();
-        let written_before = sioul_core::timeline::written();
+        let stamp = sioul_core::timeline::Stamp::now();
         let desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
-        publish(PlanShown { generation: written_before, made_on: now.date(), desk: Arc::new(desk) });
+        publish(PlanShown { stamp, made_on: now.date(), desk: Arc::new(desk) });
         assert!(plan_shown().is_some_and(|s| s.current()));
         let midnight = now.date().to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let none = (BTreeSet::new(), BTreeSet::new());
         let seen = |uid: &str| crate::agenda::occurrences_between(midnight, midnight + 3 * 86_400, &none.0, &none.1, &[]).iter().any(|o| o.uid == uid);
         assert!(seen("snapshot-first"));
-        // Written by no door of this program (as if by another): the plan's read stands until its next run.
-        std::fs::write(calendar.dir.join("second.ics"), event("snapshot-second", 11)).unwrap();
-        assert!(!seen("snapshot-second"), "the plan's read, while it is current");
-        // A task's card reads the plan as made, not the file again, nor a new plan.
+        // A task's card takes the task's own fields from its file, never the plan's older copy:
+        // its title rewritten through a door after the plan was made is the card's at once
+        // (review of 1880bce, M1), the plan still the old one.
+        let renamed = TaskEdit { title: "Snapshot task, renamed".into(), estimate: 20, ..TaskEdit::default() };
+        sioul_core::vdir::write_item(&task_path, &tasks::new_task(&renamed, "snapshot-task", &zone, &now).unwrap()).unwrap();
         let shown: serde_json::Value = serde_json::from_str(&task(&shared, "snapshot-task")).unwrap();
-        assert_eq!(shown["edit"]["title"], "Snapshot task");
-        // Written through a door: the plan is older; the agenda reads the calendars.
-        sioul_core::vdir::write_item(&calendar.dir.join("third.ics"), &event("snapshot-third", 13)).unwrap();
-        assert!(plan_shown().is_some_and(|s| !s.current()));
-        assert!(seen("snapshot-second") && seen("snapshot-third"));
+        assert_eq!(shown["edit"]["title"], "Snapshot task, renamed");
+        assert_eq!(plan_shown().and_then(|s| s.desk.task("snapshot-task").map(|t| t.title.clone())).as_deref(), Some("Snapshot task"));
+        assert!(plan_shown().is_some_and(|s| !s.current()), "a write counted here: older");
+        // As another program writes (no count of this one's): older all the same, by the folder's
+        // time; the agenda reads the calendars (review of 1880bce, L3).
+        let stamp = sioul_core::timeline::Stamp::now();
+        let desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
+        publish(PlanShown { stamp, made_on: now.date(), desk: Arc::new(desk) });
+        assert!(plan_shown().is_some_and(|s| s.current()));
+        let written = sioul_core::timeline::written();
+        std::fs::write(calendar.dir.join("second.ics"), event("snapshot-second", 11)).unwrap();
+        assert_eq!(sioul_core::timeline::written(), written, "no door of this program");
+        assert!(plan_shown().is_some_and(|s| !s.current()), "another program's write makes it older");
+        assert!(seen("snapshot-second"));
+        // A deletion waiting for its "Undo": left out by the agenda's read, by the plan's read
+        // and by today's layout; undone, back at once, from the same plan (review of 1880bce, L1).
+        let stamp = sioul_core::timeline::Stamp::now();
+        let desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
+        publish(PlanShown { stamp, made_on: now.date(), desk: Arc::new(desk) });
+        let first = calendar.dir.join("first.ics");
+        // One of today's too, at 00:10: today's layout shows each event of the day.
+        let this_morning = |minute: i64| now.date().at(0, 0, 0, 0).to_zoned(zone.clone()).unwrap().checked_add(jiff::Span::new().minutes(minute)).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let today_event = calendar.dir.join("today.ics");
+        sioul_core::vdir::write_item(&today_event, &format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:snapshot-today\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:snapshot-today\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", this_morning(10), this_morning(40))).unwrap();
+        let stamp = sioul_core::timeline::Stamp::now();
+        let desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
+        assert!(today_laid_out(&desk, &shared).blocks.iter().any(|b| b.key == today_event.display().to_string()), "today's event in today's layout");
+        publish(PlanShown { stamp, made_on: now.date(), desk: Arc::new(desk) });
+        crate::mail::wait_to_remove(&shared, first.clone());
+        crate::mail::wait_to_remove(&shared, today_event.clone());
+        let (removed, skipped) = crate::mail::hidden_pim(&shared);
+        let without = crate::agenda::occurrences_between(midnight, midnight + 3 * 86_400, &removed, &skipped, &[]);
+        assert!(!without.iter().any(|o| o.uid == "snapshot-first"), "waiting for Undo: not in the agenda");
+        let planned = Desk::new(Arc::new(read_loaded(&shared)), &shared);
+        assert!(planned.read.iter().any(|o| o.uid == "snapshot-first"), "the plan's read is kept as read");
+        assert!(!today_laid_out(&planned, &shared).blocks.iter().any(|b| b.key == today_event.display().to_string()), "nor in today's layout");
+        shared.pending.lock().unwrap().clear();
+        assert!(seen("snapshot-first"), "undone: back at once, from the same plan");
         PLAN_SHOWN.with(|plan| *plan.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }

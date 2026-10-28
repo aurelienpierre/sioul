@@ -21,7 +21,7 @@ use crate::{mail, pim, work};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use sioul_core::agenda::Occurrence;
-use sioul_core::blocks::{self, Blocks, Closing, Fix, Place};
+use sioul_core::blocks::{self, Blocks, Closing, Fix, Pin, Place};
 use sioul_core::tasks::Task;
 use sioul_core::vdir::{self, Collection, Kind};
 use std::collections::BTreeSet;
@@ -178,17 +178,24 @@ fn put_back(shared: &Shared, written: &[Written]) -> String {
     String::new()
 }
 
-/// A task pinned to `at` ("2026-10-06T14:30", your time zone) for `minutes`
-/// (0: as long as its block is, else what the plan lays for it): its block
-/// moved there, or made in the calendar for blocks; the task tied to it, and
-/// to it alone. Told in the status line, "Undo" offered: both put back.
-/// Returns what went wrong, else "".
 /// Whether a step pinned at `start` (Unix seconds) would start before the
 /// five minutes `now` is in: a step is given a time from now on.
 fn before_now(start: i64, now: i64) -> bool {
     start < now.div_euclid(300) * 300
 }
 
+/// Whether a pin may start at `start`, `now`, its task's block to come being
+/// `current`: from the current five minutes on, or the block's own start,
+/// under way, its length changed (review of 1880bce, L5).
+fn may_start(start: i64, now: i64, current: Option<&Pin>) -> bool {
+    !before_now(start, now) || current.is_some_and(|pin| pin.start == start)
+}
+
+/// A task pinned to `at` ("2026-10-06T14:30", your time zone) for `minutes`
+/// (0: as long as its block is, else what the plan lays for it): its block
+/// moved there, or made in the calendar for blocks; the task tied to it, and
+/// to it alone. Told in the status line, "Undo" offered: both put back.
+/// Returns what went wrong, else "".
 pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minutes: u32) -> String {
     let zone = TimeZone::system();
     let now = Zoned::now();
@@ -200,14 +207,16 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
         return tr().text("task-read-only", None);
     }
     let Some(start) = at.parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second()) else { return format!("{at}?") };
-    // Never pinned before the current five minutes, whoever asks (the agenda
-    // offers no drag there; the writer says it all the same).
-    if before_now(start, now.timestamp().as_second()) {
-        return tr().text("task-pin-before-now", None);
-    }
     // The block it is pinned to, else none: one is made. One another application made repeat is left as it is.
     let own: Vec<Occurrence> = found_of(uid).into_iter().filter(|b| !b.recurring).collect();
     let current = Blocks::of(&own, std::slice::from_ref(&task), now.timestamp().as_second(), &zone).pins.remove(uid).filter(|p| Path::new(&p.key).is_file());
+    // Never pinned before the current five minutes, whoever asks (the agenda
+    // offers no drag there; the writer says it all the same); but a block under
+    // way keeps its own start as its length changes ("Do at…" prefills it so:
+    // review of 1880bce, L5).
+    if !may_start(start, now.timestamp().as_second(), current.as_ref()) {
+        return tr().text("task-pin-before-now", None);
+    }
     if current.as_ref().is_some_and(|p| p.read_only) {
         return tr().text("task-pinned-read-only", None);
     }
@@ -481,5 +490,10 @@ mod tests {
         assert!(!before_now(turn, now), "the current five minutes");
         assert!(!before_now(now + 600, now));
         assert!(before_now(turn - 1, now), "before them");
+        // A block under way keeps its own start as its length changes from its card; another time before now is refused.
+        let under_way = Pin { key: "b.ics".into(), uid: "b".into(), start: turn - 1_800, end: turn + 1_800, date: jiff::civil::date(2026, 10, 5), before: 0, after: 0, read_only: false };
+        assert!(may_start(turn - 1_800, now, Some(&under_way)));
+        assert!(!may_start(turn - 900, now, Some(&under_way)) && !may_start(turn - 1_800, now, None));
+        assert!(may_start(turn + 600, now, None));
     }
 }

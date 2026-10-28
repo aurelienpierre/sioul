@@ -166,9 +166,18 @@ struct Desk {
 /// events of the coming four weeks and the blocks tasks are pinned to;
 /// today's from now, scaled by the weather.
 pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, projects: &[sioul_core::projects::Project], tasks: &[Task]) -> Settings {
+    settings_read(s, weather, situation, projects, tasks).0
+}
+
+/// `settings`, with the one read of the calendars they were made from and
+/// its bounds: from today's midnight to the plan's reach
+/// (`plan::HORIZON_DAYS`), so that an agent's days read again only what
+/// lies outside it (review of 1880bce, L16).
+pub(crate) fn settings_read(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, projects: &[sioul_core::projects::Project], tasks: &[Task]) -> (Settings, (i64, i64), Vec<sioul_core::agenda::Occurrence>) {
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
-    let read = sioul_core::agenda::occurrences(midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400);
+    let reach = (midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400);
+    let read = sioul_core::agenda::occurrences(reach.0, reach.1);
     // As the window plans: the tasks pinned to a time, their blocks never events of their own (docs/tasks.md, "Pinned to a time").
     let stamp = now.timestamp().as_second();
     let mut found: Vec<sioul_core::agenda::Occurrence> = read.iter().filter(|e| !e.task.is_empty()).cloned().collect();
@@ -180,7 +189,7 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
     let needs = sioul_core::needs::Needs::read(&sioul_core::health::Health::default_path());
     let days = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path());
     // Made as the window makes them, in one place (`plan::settings_from`).
-    sioul_core::plan::settings_from(sioul_core::plan::Inputs {
+    let settings = sioul_core::plan::settings_from(sioul_core::plan::Inputs {
         config: &s.config,
         now: &now,
         read: &read,
@@ -194,7 +203,8 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
         tasks,
         // Set by each caller from the events it loaded (`pairs::appointments_here`).
         appointments: None,
-    })
+    });
+    (settings, reach, read)
 }
 
 impl Desk {

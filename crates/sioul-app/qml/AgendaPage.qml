@@ -32,7 +32,30 @@ Item {
     // Drawn as before: each day's events and time blocks, its whole days
     // first, each with its details, its place in the day and what may change it.
     function eventOf(row) {
-        return Object.assign({}, row.detail || {}, { id: row.item.id, when: row.when, summary: row.item.title, all_day: row.all_day, from_minute: row.from_minute, to_minute: row.to_minute, column: row.column, columns: row.columns, can: row.item.can })
+        const item = row.item
+        const source = item.source || {}
+        const time = item.time || {}
+        const span = time.type === "span"
+        return Object.assign({}, row.detail || {}, {
+            id: item.id,
+            key: source.key,
+            uid: source.uid,
+            start: source.start,
+            recurring: source.recurring === true,
+            calendar: source.calendar || "",
+            color: item.colour || null,
+            when: row.when,
+            summary: item.title,
+            all_day: row.all_day,
+            from_minute: row.from_minute,
+            to_minute: row.to_minute,
+            column: row.column,
+            columns: row.columns,
+            // The time kept before and after it: its lighter ends.
+            before: span ? Math.round((time.at - time.start) / 60) : 0,
+            after: span ? Math.round((time.end - time.until) / 60) : 0,
+            can: item.can
+        })
     }
 
     function eventsOfDays(agenda) {

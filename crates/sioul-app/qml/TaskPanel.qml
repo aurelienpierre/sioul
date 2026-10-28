@@ -28,6 +28,10 @@ Panel {
     required property var window
     property string uid: ""
     property var detail: null
+    // The form as the panel last read or saved the task: each save says it, and
+    // only what was changed since is written over the file as it is then (a
+    // tick or a drag elsewhere meanwhile stays: `TaskEdit::changed_over`).
+    property var readEdit: null
     property bool moreShown: false
     // The projects a task can belong to: [{id, title}].
     property var projects: []
@@ -95,6 +99,7 @@ Panel {
                 read.edit = panel.detail.edit
         }
         panel.detail = read
+        panel.readEdit = read.edit
     }
 
     // A new task's form: blank, or what Add ▾ makes from `source` (a card's
@@ -257,7 +262,7 @@ Panel {
             panel.hold(edit)
             return
         }
-        const answer = JSON.parse(panel.sioul.saveTask(panel.uid, JSON.stringify(edit), ""))
+        const answer = JSON.parse(panel.sioul.saveTask(panel.uid, JSON.stringify(Object.assign({}, edit, { read: panel.readEdit || panel.detail.edit })), ""))
         if (answer.error) {
             error.text = answer.error
             return
@@ -266,6 +271,7 @@ Panel {
         // Kept as saved until it is read again: a second change at once (two
         // ratings given in a breath) goes on from this one, not from before it.
         panel.detail = Object.assign({}, panel.detail, { edit: edit })
+        panel.readEdit = edit
     }
 
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]

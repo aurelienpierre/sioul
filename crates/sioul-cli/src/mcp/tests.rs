@@ -172,6 +172,13 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     let event = sioul_core::agenda::new_event(&edit, &zone).unwrap();
     let event = sioul_core::agenda::add_lines(&event, &["REFID:taxes".to_string()]).unwrap();
     vdir::write_item(&calendar.dir.join("zeugma-event.ics"), &event).unwrap();
+    // The task's time blocks, today and tomorrow, each given a guest on another device: a
+    // meeting with others, still its task's, never named through it (review of 1880bce, M3).
+    for (n, day) in [Zoned::now().date(), tomorrow].into_iter().enumerate() {
+        let at = |hour: i8| day.at(hour, 30, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let block = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:zeugma-block-{n}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Pay the Zeugma tax\r\n{}:zeugma-pay\r\nORGANIZER:mailto:clerk@finances.example\r\nATTENDEE:mailto:helper@finances.example\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", at(7), at(8), sioul_core::blocks::TASK);
+        vdir::store_item(&calendar.dir.join(format!("zeugma-block-{n}.ics")), &block).unwrap();
+    }
     let now = Zoned::now().timestamp().as_second();
     sioul_core::timelog::record(&sioul_core::timelog::Session { project: "taxes".into(), start: now - 2 * 3600, minutes: 45, note: "Zeugma call".into(), ..Default::default() }).unwrap();
     let today = Zoned::now().date().to_string();
@@ -1038,8 +1045,92 @@ fn the_list_gives_every_task_whatever_the_hour() {
     let list = super::read::tasks_list(&s, &desk, "project", false, "");
     assert!(list.text.contains("Find the rent receipt"), "{}", list.text);
     assert!(list.text.starts_with("Now: ") && list.text.contains("These tasks wait for their own hours."), "{}", list.text);
+    // Today laid for agents with every task, whatever the hour (decisions c and e; review of
+    // 1880bce, M4): a task of today's plan comes, at its time or with no time left today,
+    // beside the line on what now is for. In today's plan whatever the clock says now.
+    let date = Zoned::now().date();
+    let planned = desk.plan.items.get_mut("receipt").unwrap();
+    planned.start = Some(date);
+    planned.on_start = planned.on_start.max(10);
     let today = super::read::tasks_today(&s, &desk);
-    assert!(today.data["blocks"].as_array().unwrap().iter().all(|b| b["uid"] != "receipt"), "asleep, today lays no step: {}", today.text);
+    let listed = |field: &str| today.data[field].as_array().unwrap().iter().any(|b| b["uid"] == "receipt");
+    assert!(listed("blocks") || listed("planned"), "asleep, today still lays it: {}", today.text);
+    assert!(today.text.contains("These tasks wait for their own hours."), "{}", today.text);
+    // The agenda's steps of today too, from the same days.
+    let zone = jiff::tz::TimeZone::system();
+    let midnight = sioul_core::timeline::midnight(date, &zone);
+    let (days, _, _) = desk.agent_days(midnight, midnight + 86_400);
+    assert!(days.items().iter().any(|i| i.kind == sioul_core::timeline::Kind::Step && i.owner == "receipt"), "{:?}", days.items());
+}
+
+/// An agent's days take the settings' read of the calendars where it
+/// reaches and read them again only before it and beyond it, each event
+/// found once (review of 1880bce, L16).
+#[test]
+fn an_agents_days_read_the_calendars_only_outside_the_plans_read() {
+    let _home = home();
+    let s = session();
+    let desk = super::read::Desk::read(&s);
+    let zone = jiff::tz::TimeZone::system();
+    let midnight = sioul_core::timeline::midnight(Zoned::now().date(), &zone);
+    let reads = || super::read::DAYS_READS.with(std::cell::Cell::get);
+    let before = reads();
+    let (_, _, within) = desk.agent_days(midnight, midnight + 7 * 86_400);
+    assert_eq!(reads(), before, "within the plan's reach: the settings' read");
+    let (_, _, wide) = desk.agent_days(midnight - 3 * 86_400, midnight + 40 * 86_400);
+    assert_eq!(reads(), before + 2, "before today and beyond the reach, once each");
+    for found in [&within, &wide] {
+        let mut seen = std::collections::BTreeSet::new();
+        assert!(found.iter().all(|o| seen.insert((o.key.clone(), o.uid.clone(), o.start))), "each once");
+        for uid in ["zeugma-block-0", "zeugma-block-1"] {
+            assert_eq!(found.iter().filter(|o| o.uid == uid).count(), 1, "{uid}");
+        }
+    }
+}
+
+/// Every time block keeps an address an agent can use (review of 1880bce,
+/// L14): the agenda's events list each block as before (decision d), the one
+/// a step is laid in and one over of a task still open; the step laid in a
+/// block names the block's address.
+#[test]
+fn the_agenda_keeps_every_block_s_address() {
+    home();
+    let mut server = server();
+    let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let zone = jiff::tz::TimeZone::system();
+    let now = Zoned::now();
+    let edit = TaskEdit { title: "Sort the block papers".into(), estimate: 30, ..TaskEdit::default() };
+    vdir::write_item(&list.dir.join("block-papers.ics"), &tasks::new_task(&edit, "block-papers", &zone, &now).unwrap()).unwrap();
+    let yesterday = now.date().yesterday().unwrap();
+    let ahead = now.date().checked_add(jiff::Span::new().days(3)).unwrap();
+    let block = |uid: &str, day: jiff::civil::Date| {
+        let at = |hour: i8| day.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Sort the block papers\r\n{}:block-papers\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", at(10), at(11), sioul_core::blocks::TASK);
+        vdir::write_item(&calendar.dir.join(format!("{uid}.ics")), &text).unwrap();
+    };
+    block("block-papers-before", yesterday);
+    block("block-papers-ahead", ahead);
+    let answer = call(&mut server, "agenda", json!({ "from": yesterday.to_string(), "days": 5 }));
+    let data = &answer["structuredContent"];
+    let day = |date: jiff::civil::Date| data["days"].as_array().unwrap().iter().find(|d| d["date"] == date.to_string()).cloned().unwrap_or_default();
+    let events = |date: jiff::civil::Date| day(date)["events"].as_array().cloned().unwrap_or_default();
+    // Over, its task still open: an event as before, with its address.
+    assert!(events(yesterday).iter().any(|e| e["uri"] == "sioul:event/block-papers-before"), "{}", text(&answer));
+    // Its step laid in it: the block an event as before, and the step naming it.
+    assert!(events(ahead).iter().any(|e| e["uri"] == "sioul:event/block-papers-ahead"), "{}", text(&answer));
+    let steps = day(ahead)["steps"].as_array().cloned().unwrap_or_default();
+    let step = steps.iter().find(|st| st["uid"] == "block-papers").unwrap_or_else(|| panic!("{}", text(&answer)));
+    assert!(step["pinned"] == true && step["event"] == "sioul:event/block-papers-ahead", "{step}");
+    // Said once in the text, with both its addresses.
+    let said = text(&answer);
+    assert_eq!(said.matches("<sioul:event/block-papers-ahead>").count(), 1, "{said}");
+    assert!(said.lines().any(|l| l.contains("<sioul:task/block-papers>") && l.contains("<sioul:event/block-papers-ahead>")), "{said}");
+    assert!(said.contains("<sioul:event/block-papers-before>"), "{said}");
+    for uid in ["block-papers-before", "block-papers-ahead"] {
+        let _ = std::fs::remove_file(calendar.dir.join(format!("{uid}.ics")));
+    }
+    let _ = std::fs::remove_file(list.dir.join("block-papers.ics"));
 }
 
 /// The agenda an agent reads holds the plan's steps of each day it reaches,

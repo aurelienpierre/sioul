@@ -135,6 +135,15 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
 }
 
 /// Contacts and events deleted, and occurrences left out, while "Undo" is offered.
+/// A deletion of `file` waiting for its "Undo", as `delete_event` leaves it
+/// (tests: what every producer leaves out meanwhile).
+#[cfg(test)]
+pub(crate) fn wait_to_remove(shared: &Shared, file: PathBuf) {
+    if let Ok(mut pending) = shared.pending.lock() {
+        pending.push(Arc::new(Pending { work: Work::Remove { account: String::new(), file }, line: String::new(), taken: AtomicBool::new(false) }));
+    }
+}
+
 pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathBuf, i64)>) {
     fn add(work: &Work, files: &mut BTreeSet<PathBuf>, skipped: &mut BTreeSet<(PathBuf, i64)>) {
         match work {

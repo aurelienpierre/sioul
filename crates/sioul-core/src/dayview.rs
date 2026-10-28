@@ -254,12 +254,17 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
     // That day, and the end of hours that run past midnight: what lasts longer is cut there.
     let day_end = next_midnight.max(closing);
     let mut view = DayView { now: real_now, hours: hours.iter().map(|&(start, end, open)| Stretch { start, end, kind: open.id() }).collect(), ..DayView::default() };
+    // A task pinned to a block that day: laid there, its margins around it,
+    // whatever else is. Today, the plan's (its first block still to come);
+    // another day, that day's own blocks of open tasks, each task's first
+    // there (`Blocks::of`, from the day's events, blocks among them): a task
+    // pinned on two days is laid in each.
+    let day_pins: BTreeMap<String, crate::blocks::Pin> = if is_today { plan.pins.clone() } else { crate::blocks::Blocks::of(events, tasks, real_now, &zone).pins };
     // A task's time block is the task's time, laid as the task (`blocks`): never an event of its own here;
     // one given a guest is a meeting with others, laid as the event it is (the check of 36002ea, low 25).
     let own: Vec<Occurrence> = events.iter().filter(|e| e.task.is_empty() || e.with_others || !plan.items.contains_key(&e.task)).cloned().collect();
     let events = own.as_slice();
-    // A task pinned to a block that day: laid there, its margins around it, whatever else is.
-    let block_today = |uid: &str| plan.pins.get(uid).filter(|pin| pin.end > midnight && pin.start < next_midnight);
+    let block_today = |uid: &str| day_pins.get(uid).filter(|pin| pin.end > midnight && pin.start < next_midnight);
     let mut timed: Vec<&Occurrence> = Vec::new();
     for event in events.iter().filter(|e| !e.cancelled && e.end > midnight && e.start < next_midnight) {
         if event.all_day {
@@ -1129,4 +1134,66 @@ mod tests {
         unlaid.sort();
         assert_eq!((view.more, unlaid), (2, vec!["big".to_string(), "small".to_string()]));
     }
+    /// A laid week, as the agenda and agents read it: each day laid
+    /// (`lay_on`), its events and blocks as items (`agenda::items`), a task
+    /// once over a span (`timeline::merge`). A task pinned on Monday and on
+    /// Wednesday is laid in each of its blocks (each day's own pins), and no
+    /// task shows twice over one span, this morning's blocks included. Every
+    /// item but your own time has a form or a reason.
+    #[test]
+    fn a_laid_week_shows_each_task_once() {
+        use crate::timeline::{Form, Kind, Time};
+        let now = at("2026-10-05T08:00");
+        let zone = now.time_zone().clone();
+        let hours: Vec<AdminWindow> = ["monday", "tuesday", "wednesday", "thursday", "friday"].iter().map(|d| window(d, "09:00", "17:00", "work")).collect();
+        let tasks = vec![task("report", 60, ""), task("bank", 30, ""), task("call", 45, ""), task("letters", 90, "")];
+        let block = |key: &str, from: &str, to: &str| Occurrence { key: format!("{key}.ics"), uid: key.into(), summary: "bank".into(), start: at(from).timestamp().as_second(), end: at(to).timestamp().as_second(), task: "bank".into(), ..Occurrence::default() };
+        let mut events = vec![block("bank-monday", "2026-10-05T10:00", "2026-10-05T10:30"), block("bank-wednesday", "2026-10-07T14:00", "2026-10-07T14:30"), block("bank-early", "2026-10-05T07:00", "2026-10-05T07:30")];
+        events.push(Occurrence { key: "dentist.ics".into(), uid: "dentist".into(), summary: "Dentist".into(), start: at("2026-10-06T11:00").timestamp().as_second(), end: at("2026-10-06T12:00").timestamp().as_second(), ..Occurrence::default() });
+        crate::agenda::mark_tasks(&mut events, &tasks);
+        let blocks = crate::blocks::Blocks::of(&events, &tasks, now.timestamp().as_second(), &zone);
+        let own = crate::blocks::without_blocks(events.clone(), &tasks);
+        let settings = Settings::of_hours(&hours, TaskAreas::usual()).with_pins(blocks).with_events(&now, &own);
+        let mut made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        // The plan gives the bank some time on Wednesday too, where its second block is.
+        let wednesday = jiff::civil::date(2026, 10, 7);
+        let given = made.days.entry(wednesday).or_default();
+        if !given.iter().any(|(uid, _)| uid == "bank") {
+            given.push(("bank".into(), 30));
+        }
+        let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
+        let mut wednesday_bank = false;
+        for offset in 0..7 {
+            let date = now.date().checked_add(jiff::Span::new().days(offset)).unwrap();
+            let start = crate::timeline::midnight(date, &zone);
+            let end = date.tomorrow().map(|d| crate::timeline::midnight(d, &zone)).unwrap();
+            let day_events: Vec<Occurrence> = events.iter().filter(|o| o.end > start && o.start < end).cloned().collect();
+            let laid = lay_on(date, &now, &day_events, &made, &tasks, &settings, Drawn::ALL);
+            let mut items = crate::agenda::items(&day_events, &zone, &|_| false);
+            items.extend(crate::timeline::from_day(&laid, date, &tasks));
+            let items = crate::timeline::merge(items, now.timestamp().as_second(), &open);
+            for (n, one) in items.iter().enumerate() {
+                for other in &items[n + 1..] {
+                    let (a, b) = (one.time.proper(&zone), other.time.proper(&zone));
+                    let timed = |i: &crate::timeline::Item| matches!(i.time, Time::Span { .. });
+                    assert!(one.owner.is_empty() || one.owner != other.owner || !(timed(one) && timed(other) && a.0 < b.1 && b.0 < a.1), "{date}: {} twice", one.owner);
+                }
+                if !matches!(one.kind, Kind::Gain | Kind::Slack) {
+                    assert!(one.can.edit != Form::None || !one.can.why.is_empty(), "{one:?} has neither a form nor a reason");
+                }
+            }
+            if offset == 2 {
+                // Once, in its block: laid there, the block giving way to it.
+                let bank: Vec<&crate::timeline::Item> = items.iter().filter(|i| i.owner == "bank").collect();
+                wednesday_bank = bank.len() == 1 && bank[0].time.proper(&zone).0 == at("2026-10-07T14:00").timestamp().as_second();
+                assert!(wednesday_bank, "{bank:?}");
+            }
+            // This morning's block over, its task still to do: not shown, it pins nothing.
+            if offset == 0 {
+                assert!(!items.iter().any(|i| i.kind == Kind::Block && i.time.proper(&zone).0 == at("2026-10-05T07:00").timestamp().as_second()));
+            }
+        }
+        assert!(wednesday_bank, "Wednesday's block of a task pinned on Monday too shows there");
+    }
 }
+

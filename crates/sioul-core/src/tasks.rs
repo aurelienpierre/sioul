@@ -753,6 +753,29 @@ pub struct TaskEdit {
 }
 
 impl TaskEdit {
+    /// A form's change over the task as its file holds it now (`self`): each
+    /// field the form changed since it read the task (`read`, what it
+    /// showed) as the form has it, every other field as the file has it.
+    /// A form read before a tick in its notes elsewhere, a drag or another
+    /// device's change then writes none of them back, whatever it showed
+    /// (the unified agenda, §5.2; the form saves its whole content).
+    pub fn changed_over(&self, read: &TaskEdit, edit: &TaskEdit) -> TaskEdit {
+        let value = |e: &TaskEdit| serde_json::to_value(e).ok();
+        let (Some(mut now), Some(read), Some(edit_value)) = (value(self), value(read), value(edit)) else { return edit.clone() };
+        if let (Some(now), Some(read), Some(changed)) = (now.as_object_mut(), read.as_object(), edit_value.as_object()) {
+            for (field, value) in changed {
+                if read.get(field) != Some(value) {
+                    now.insert(field.clone(), value.clone());
+                }
+            }
+        }
+        // Never read back from a task: the form's own, whatever it read.
+        let mut merged: TaskEdit = serde_json::from_value(now).unwrap_or_else(|_| edit.clone());
+        merged.wait_gaps = edit.wait_gaps.clone();
+        merged.sort_order = edit.sort_order;
+        merged
+    }
+
     /// The gap the form gave its wait for `uid`, in minutes; 0 without one.
     pub fn gap_of(&self, uid: &str) -> i64 {
         self.wait_gaps.get(uid).copied().unwrap_or(0).max(0)
@@ -1829,5 +1852,30 @@ mod tests {
         let rewritten = task_of_text(&lines::fold(&moved), &paris()).unwrap();
         assert_eq!(crate::checklist::items(&rewritten.notes), crate::checklist::items(&read.notes));
         assert_eq!(rewritten.sort_order, Some(814_579_300));
+    }
+
+    /// A form read before a tick in its notes elsewhere, saved with only a
+    /// rating changed, keeps the tick: only what the form changed since it
+    /// read the task is written, over the file as it is now (§5.2).
+    #[test]
+    fn a_form_writes_back_only_what_it_changed() {
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let now = Zoned::now();
+        let edit = TaskEdit { title: "Sort the papers".into(), notes: "- [ ] the bank's letter\n- [ ] the lease".into(), estimate: 20, ..TaskEdit::default() };
+        let text = new_task(&edit, "sort-papers", &zone, &now).unwrap();
+        let read = TaskEdit::of(&task_of_text(&text, &zone).unwrap());
+        // Ticked on another device meanwhile.
+        let ticked = apply(&text, &TaskEdit { notes: "- [x] the bank's letter\n- [ ] the lease".into(), ..read.clone() }, &zone, &now).unwrap();
+        // The form, read before the tick, gives a rating: its whole content, as it saves.
+        let mut form = read.clone();
+        form.demands.gain = Some(6);
+        let current = TaskEdit::of(&task_of_text(&ticked, &zone).unwrap());
+        let written = apply(&ticked, &current.changed_over(&read, &form), &zone, &now).unwrap();
+        let after = task_of_text(&written, &zone).unwrap();
+        assert!(after.notes.contains("- [x] the bank's letter"), "the tick stays: {}", after.notes);
+        assert_eq!(after.demands.gain, Some(6), "the rating is written");
+        // The whole form over the file, as before: the tick goes (what this replaces).
+        let whole = task_of_text(&apply(&ticked, &form, &zone, &now).unwrap(), &zone).unwrap();
+        assert!(whole.notes.contains("- [ ] the bank's letter"));
     }
 }

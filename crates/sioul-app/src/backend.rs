@@ -2246,6 +2246,8 @@ pub(crate) struct Shared {
     pub(crate) agenda_shown_generation: AtomicU64,
     /// The agenda page asked for its days once: from then on the job follows the plan and the calendars.
     pub(crate) agenda_asked: AtomicBool,
+    /// The days made once already from the first plan, before the page asked (`agenda::days_wanted`).
+    pub(crate) agenda_prefilled: AtomicBool,
 }
 
 /// The plan is made again every twelve hours, and when the day changes: a task

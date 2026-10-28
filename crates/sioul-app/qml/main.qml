@@ -1956,8 +1956,8 @@ SioulWindow {
                 const shown = JSON.parse(sioul.agenda || "{}")
                 for (const day of shown.days || [])
                     for (const row of (day.head || []).concat(day.timed || []))
-                        if (row.detail && row.detail.key.indexOf(words) >= 0)
-                            return row.detail
+                        if (row.detail && row.item.source.key.indexOf(words) >= 0)
+                            return Object.assign({ key: row.item.source.key }, row.detail)
                 return null
             }
             readonly property var checklistSteps: [
@@ -3143,8 +3143,8 @@ SioulWindow {
             ]
             // The calls your phones declined, on a computer's Porch (SIOUL_GRAB_STEPS=calls),
             // on a demo profile made with a phone's log (make-demo.py --calls, or
-            // SIOUL_DEMO_CALLS=1); then the doctor's sheet, opened by her number as from a
-            // call's line, with her calls of the month.
+            // SIOUL_DEMO_CALLS=1); then the doctor's sheet, opened by the doctor's number as
+            // from a call's line, with the doctor's calls of the month.
             readonly property var callsSteps: [
                 () => window.page = 0,
                 () => {},

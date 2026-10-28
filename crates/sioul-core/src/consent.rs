@@ -227,6 +227,13 @@ impl Consent {
                 consent.tie(&links::task_uri(&task.uid), &id);
             }
         }
+        // A task's time block is in its task's projects: it carries the
+        // task's title (`blocks`), a guest's or not, and no project of its own.
+        for event in loaded.events.iter().filter(|e| !e.task.is_empty()) {
+            for id in consent.tied.get(&links::task_uri(&event.task)).cloned().unwrap_or_default() {
+                consent.tie(&links::event_uri(&event.uid), &id);
+            }
+        }
         // Mail: by the routes that read the sender and the subject, and the
         // ties above; then everything in the same conversations.
         consent.gather_mail(loaded, &mail_ties);
@@ -442,6 +449,24 @@ mod tests {
         assert!(!consent.allows_mail(card.message_id.as_deref(), Some(&card)));
         card.path = Some("/data/mail/workshop/new/3".into());
         assert!(consent.allows_mail(card.message_id.as_deref(), Some(&card)), "a folder whose name only begins the same");
+    }
+
+    /// A task's time block is in its task's projects (it carries its title):
+    /// a closed project's task's block reaches no agent, a guest given to it
+    /// or not; an open project's, and one of a task in no project while
+    /// things outside projects are open, do.
+    #[test]
+    fn a_time_block_is_in_its_task_s_projects() {
+        let tasks = vec![
+            Task { uid: "z1".into(), title: "Pay the tax".into(), projects: vec!["closed".into()], ..Task::default() },
+            Task { uid: "o1".into(), title: "Mock-ups".into(), projects: vec!["lumen".into()], ..Task::default() },
+            Task { uid: "n1".into(), title: "Water the plants".into(), ..Task::default() },
+        ];
+        let block = |uid: &str, task: &str| crate::agenda::EventRef { key: format!("/data/calendars/local/blocks/{uid}.ics"), uid: uid.into(), task: task.into(), ..Default::default() };
+        let loaded = Loaded { tasks, events: vec![block("zb", "z1"), block("ob", "o1"), block("nb", "n1")], projects: vec![project("lumen", true), project("closed", false)], ..Loaded::default() };
+        let consent = Consent::of(&loaded, true, None);
+        assert!(!consent.allows(&links::task_uri("z1")) && !consent.allows(&links::event_uri("zb")), "the closed project's task and its block");
+        assert!(consent.allows(&links::event_uri("ob")) && consent.allows(&links::event_uri("nb")));
     }
 
     /// The pharmacy and renewal errands are health, whatever their projects:
