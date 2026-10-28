@@ -434,7 +434,7 @@ pub(crate) fn event(key: &str) -> String {
     let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
     let others = std::fs::read_to_string(&path).is_ok_and(|t| with_others(&t));
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
-    agenda::edit_of(&path)
+    edit_with_own(&path)
         .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays }))
         .unwrap_or_default()
 }
@@ -539,7 +539,7 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
         .ok()
         .and_then(|v| v.get("links").and_then(|l| l.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
         .unwrap_or_default();
-    let mut edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
     let zone = TimeZone::system();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
     let mut renamed: Option<String> = None;
@@ -556,11 +556,16 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
             // taken for yours alone (the time kept around it, its costs and gain, your
             // reminder). Its read-only notes come back from the form changed (a no-break
             // space, a line separator), never as the organizer wrote them (review of 36002ea, must-fix 2).
+            // Yours about it is kept in your own file, never in the meeting's (decision 18,
+            // the unified agenda's part 4): nothing written into it, whose server tells every guest.
             if meeting {
-                let mut kept = agenda::edit_of_text(&current, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
-                (kept.margins, kept.demands, kept.remind) = (edit.margins, edit.demands, edit.remind);
-                edit = kept;
-            } else if edit.title.trim().is_empty() {
+                let uid = uid_of(&current).ok_or_else(|| tr().text("agenda-gone", None))?;
+                let own = sioul_core::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind.clone() };
+                sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(own))?;
+                let title = agenda::edit_of_text(&current, &zone).map(|e| e.title).unwrap_or_default();
+                return Ok(SavedEvent { path, accounts: Vec::new(), renamed: None, title });
+            }
+            if edit.title.trim().is_empty() {
                 return Err(tr().text("event-no-title", None));
             }
             let task = sioul_core::lines::unfold(&current).iter().find(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK).map(|l| sioul_core::lines::value(l).trim().to_string());
@@ -753,6 +758,48 @@ pub(crate) fn invitation(key: &str) -> String {
         _ => String::new(),
     };
     json(&InvitationView { method: asked.method, summary: asked.summary, when, location: asked.location, organizer: asked.organizer, known: find_uid(&asked.uid).is_some() })
+}
+
+/// An event file's UID, its series' (the first one written).
+fn uid_of(text: &str) -> Option<String> {
+    sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty())
+}
+
+/// The form's fields of an event, yours about a meeting with others read
+/// from your own file when it has it (`own_time`), else from the meeting's
+/// lines an older Sioul wrote: what the form and the reminder chooser start from.
+pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut edit = agenda::edit_of_text(&text, &TimeZone::system())?;
+    if let Some(own) = uid_of(&text).and_then(|uid| sioul_core::own_time::current().events.get(&uid).cloned()) {
+        (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind);
+    }
+    Some(edit)
+}
+
+/// The message that brought a meeting's invitation, while it is in your
+/// mail: its file, for the card's Answer… (the unified agenda, part 4); ""
+/// when none is known. The newest of its organizer's messages whose calendar
+/// names this event's UID, among those the last read knows: only those few
+/// messages are opened here, never the stores.
+pub(crate) fn invitation_of(shared: &Shared, key: &str) -> String {
+    let Some(path) = ours(key) else { return String::new() };
+    let Ok(text) = std::fs::read_to_string(&path) else { return String::new() };
+    if !with_others(&text) {
+        return String::new();
+    }
+    let Some(uid) = uid_of(&text) else { return String::new() };
+    let organizer = sioul_core::lines::unfold(&text).iter().find(|l| sioul_core::lines::name(l) == "ORGANIZER").map(|l| sioul_core::lines::value(l).trim().trim_start_matches("mailto:").trim_start_matches("MAILTO:").to_ascii_lowercase()).unwrap_or_default();
+    let Some(loaded) = crate::work::loaded_known(shared) else { return String::new() };
+    let mut theirs: Vec<&sioul_core::mailindex::MailRef> = loaded.mail.iter().map(|(_, m)| m).filter(|m| !organizer.is_empty() && m.address == organizer).collect();
+    theirs.sort_by_key(|m| std::cmp::Reverse(m.date));
+    let zone = TimeZone::system();
+    theirs
+        .into_iter()
+        .take(8)
+        .find(|m| reading::calendar(&m.path).and_then(|ics| agenda::invitation(&ics, &zone)).is_some_and(|asked| asked.uid == uid))
+        .map(|m| m.path.display().to_string())
+        .unwrap_or_default()
 }
 
 /// The event file with this UID, in any calendar.
@@ -1012,6 +1059,45 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
 mod tests {
     use super::*;
 
+    /// Your own time around a meeting with others (decision 18, the unified
+    /// agenda's part 4): the form's time kept before and after it, its costs
+    /// and your reminder go into your own file, by its UID; the meeting's file
+    /// stays byte for byte, and every reader takes your time from your file:
+    /// the expander (the plan, the reminders, the agenda), its form again, and
+    /// when to leave.
+    #[test]
+    fn your_own_time_around_a_meeting_never_writes_into_it() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Own time", None, &["VEVENT"]).unwrap();
+        let file = calendar.dir.join("board.ics");
+        let meeting = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:own-time-board\r\nDTSTART:20991104T130000Z\r\nDTEND:20991104T140000Z\r\nSUMMARY:Board\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:someone@example.org\r\nX-SIOUL-BEFORE:5\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        vdir::store_item(&file, meeting).unwrap();
+        let key = file.display().to_string();
+        let own = sioul_core::own_time::default_path();
+        let _ = sioul_core::own_time::set(&own, "own-time-board", None);
+        // An older Sioul's line read until your file has the meeting.
+        let start = 4_097_480_400; // 2099-11-04 13:00Z
+        let read = || sioul_core::agenda::file_occurrences(&file, &calendar, start - 60, start + 60, &TimeZone::system()).into_iter().next().unwrap();
+        assert_eq!(read().margins.before, 5);
+        let mut edit = edit_with_own(&file).unwrap();
+        edit.margins.before = 25;
+        edit.remind = "15".into();
+        let saved = write_event(&key, &serde_json::to_string(&edit).unwrap(), "").unwrap();
+        assert!(saved.accounts.is_empty(), "nothing to send");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), meeting, "the meeting byte for byte");
+        let kept = sioul_core::own_time::load(&own);
+        assert_eq!(kept.events.get("own-time-board").map(|o| (o.before, o.remind.as_str())), Some((25, "15")));
+        // Read everywhere from your file: the expander, the form, when to leave.
+        let o = read();
+        assert_eq!((o.margins.before, o.remind.as_str()), (25, "15"), "this file wins");
+        assert_eq!(edit_with_own(&file).map(|e| e.margins.before), Some(25));
+        assert_eq!(sioul_core::pairs::appointment_view(&o, &[], &[], tr(), &TimeZone::system()).leave_at, Some(start - 25 * 60));
+        // And no writer writes into it: a raw write through the doors is refused.
+        assert!(vdir::write_item(&file, &meeting.replace("X-SIOUL-BEFORE:5", "X-SIOUL-BEFORE:25")).is_err());
+        let _ = sioul_core::own_time::set(&own, "own-time-board", None);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// An appointment saved from the form (the computer's and the phone's,
     /// one writer) is on the local clock with its zone, and every reader finds
     /// it at the instant typed: the agenda's, the plan's, Health's week's and
@@ -1105,14 +1191,15 @@ mod tests {
         let shown: serde_json::Value = serde_json::from_str(&event(path.to_str().unwrap())).unwrap();
         assert!(!shown["stays"].as_str().unwrap_or_default().is_empty(), "the editor says why");
         assert_eq!(shown["with_others"], true, "and offers none of its organizer's fields");
-        // In its own calendar: its own lines (the time kept before it) change from its
-        // form, no SEQUENCE its server would send on; its organizer's never (`agenda::may_change`).
+        // In its own calendar: the time kept before it changes from its form, kept in your
+        // own file (decision 18, the unified agenda's part 4); the meeting's file, never.
         let here = format!("{}/{}", from.account, from.id);
         let mut edit = agenda::edit_of(&path).unwrap();
         edit.margins.before = 15;
         assert!(write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here).is_ok());
         let kept = std::fs::read_to_string(&path).unwrap();
-        assert!(kept.contains(sioul_core::demands::BEFORE) && !kept.contains("SEQUENCE") && kept.contains("SUMMARY:Meeting"), "{kept}");
+        assert_eq!(kept, text, "the meeting as it was");
+        assert_eq!(sioul_core::own_time::load(&sioul_core::own_time::default_path()).events.get("meeting-1").map(|o| o.before), Some(15));
         // Its organizer's fields typed in its form anyway (they are not offered): never written (must-fix 2).
         let mut theirs = edit.clone();
         theirs.title = "Meeting, moved".into();
@@ -1122,6 +1209,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), kept, "nothing of its organizer's written");
         // And the door refuses it whatever writes it (`agenda::may_change`).
         assert!(vdir::write_item(&path, &kept.replace("SUMMARY:Meeting", "SUMMARY:Meeting, moved")).is_err());
+        let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), "meeting-1", None);
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let _ = std::fs::remove_dir_all(&to.dir);
     }
@@ -1130,7 +1218,8 @@ mod tests {
     /// kept before it) are saved from its form however the form gives the
     /// organizer's back (a notes field turns a no-break space and a line
     /// separator into plain ones), and a meeting with no title takes them
-    /// too; its organizer's lines stay as they were, its SEQUENCE too.
+    /// too; into your own file since the unified agenda's part 4, the
+    /// meeting's file as it was.
     #[test]
     fn a_meeting_s_own_fields_save_whatever_its_notes_hold() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
@@ -1149,8 +1238,11 @@ mod tests {
             let saved = write_event(path.to_str().unwrap(), &serde_json::to_string(&edit).unwrap(), &here);
             assert!(saved.is_ok(), "{name}: {:?}", saved.err());
             let written = std::fs::read_to_string(&path).unwrap();
-            assert!(written.contains(sioul_core::demands::BEFORE), "{name}: {written}");
+            assert_eq!(written, text, "{name}: the meeting as it was");
             assert_eq!(theirs(&written), theirs(&text), "{name}: the organizer's lines as they were");
+            let own = sioul_core::own_time::load(&sioul_core::own_time::default_path());
+            assert_eq!(own.events.get(&format!("{name}-1")).map(|o| o.before), Some(15), "{name}: in your own file");
+            let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &format!("{name}-1"), None);
         }
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }

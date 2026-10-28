@@ -18,6 +18,9 @@
 //! - a task, an event, a contact: `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`;
 //! - a note: `sioul:note/<path in the notes folder>`;
 //! - a draft: `sioul:draft/<id>`; a paper: `sioul:paper/<id>`;
+//! - a contract: `sioul:contract/<id>`; a paper letter: `sioul:letter/<id>`;
+//!   an invoice you issued: `sioul:invoice/<number>` (the unified agenda,
+//!   part 4: each date asked opens the card of what it belongs to by them);
 //! - a project: `sioul:project/<id>`; one written before the name changed,
 //!   `sioul:case/<id>`, still reads as the same project, and always will;
 //! - a budget line: `sioul:budget/<budget>/<position in the file>`;
@@ -47,6 +50,9 @@ pub enum Kind {
     Budget,
     Project,
     Paper,
+    Contract,
+    Letter,
+    Invoice,
     /// A site kept in Sioul's Sites: a bank, a tax office, a chat.
     Site,
     Web,
@@ -70,6 +76,9 @@ pub fn kind_of(uri: &str) -> Kind {
             // A project's address as Sioul wrote it before the name changed.
             "project" | "case" => Kind::Project,
             "paper" => Kind::Paper,
+            "contract" => Kind::Contract,
+            "letter" => Kind::Letter,
+            "invoice" => Kind::Invoice,
             "site" => Kind::Site,
             _ => Kind::Other,
         };
@@ -172,6 +181,21 @@ pub fn contact_uri(uid: &str) -> String {
 
 pub fn paper_uri(id: &str) -> String {
     format!("sioul:paper/{}", encode(id))
+}
+
+/// A contract of Budgets ▸ Contracts, by its id.
+pub fn contract_uri(id: &str) -> String {
+    format!("sioul:contract/{}", encode(id))
+}
+
+/// A paper letter of the Porch's letters, by its id.
+pub fn letter_uri(id: &str) -> String {
+    format!("sioul:letter/{}", encode(id))
+}
+
+/// An invoice you issued, by its number ("2026-002"), as its budget line links it.
+pub fn invoice_uri(number: &str) -> String {
+    format!("sioul:invoice/{}", encode(number))
 }
 
 pub fn draft_uri(id: &str) -> String {
@@ -707,8 +731,9 @@ impl World<'_> {
                     out.found = true;
                 }
             }
-            // A paper of the wallet: named by its link's label where the item gives one.
-            Kind::Paper => {
+            // A paper of the wallet, a contract, a letter, an invoice: named by
+            // its link's label where the item gives one; its card reads it.
+            Kind::Paper | Kind::Contract | Kind::Letter | Kind::Invoice => {
                 out.title = id.clone();
                 out.key = id.clone();
                 out.found = true;

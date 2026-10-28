@@ -165,7 +165,8 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: paperDialog.now().edit(row.modelData)
+                                // Its card first, where you are (the unified agenda, part 4); Edit there opens its form.
+                                onClicked: page.window.openCard({ kind: "dated", datedKind: "paper", srcKey: row.modelData.id, title: row.modelData.title })
                             }
                             // Its buttons beside it, or under it on a phone.
                             GridLayout {

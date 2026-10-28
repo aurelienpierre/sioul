@@ -286,7 +286,9 @@ pub(crate) fn make_event(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Strin
         "start": start,
         "end": end,
         "all_day": all_day,
-        "links": [crate::backend::file_url(&letters.file_path(&letter))],
+        // The letter's address beside its scan's: the event stands for the
+        // letter's appointment on every device (`dated::letter_event`).
+        "links": [crate::backend::file_url(&letters.file_path(&letter)), sioul_core::links::letter_uri(&letter.id)],
     });
     crate::pim::save_event(qt, shared, "", &edit.to_string(), "").err().unwrap_or_default()
 }

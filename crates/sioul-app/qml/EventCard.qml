@@ -57,6 +57,7 @@ CardFrame {
             card.host.named(card.event.id, card.event.summary)
         card.reminder = card.event ? JSON.parse(card.sioul.eventReminder(card.event.key, card.event.start) || "{}") : ({})
         pairing.read()
+        part.read()
     }
 
     function readReminder() {
@@ -83,6 +84,7 @@ CardFrame {
         }
         function onTasksChanged() {
             pairing.read()
+            part.read()
         }
     }
 
@@ -295,6 +297,112 @@ CardFrame {
             }
         }
     }
+    // When to leave, Before and Bring (composed tasks' part F, the unified agenda's
+    // part 4): one next step named, the others folded; nothing asks to tick, and a
+    // step left open costs nothing.
+    ColumnLayout {
+        id: part
+
+        // `appointmentView`: {leave_at, line, preparation, before, more, bring}.
+        property var shown: null
+
+        function read() {
+            part.shown = card.there && !card.isTask ? JSON.parse(card.sioul.appointmentView(card.event.key, card.event.start) || "{}") : null
+        }
+
+        visible: part.shown !== null && ((part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0)
+        Layout.fillWidth: true
+        spacing: 4
+
+        Label {
+            objectName: "eventCardLeave"
+            visible: !!part.shown && (part.shown.line || "") !== ""
+            Layout.fillWidth: true
+            text: part.shown ? part.shown.line || "" : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: card.theme.text
+        }
+        Label {
+            visible: !!part.shown && (part.shown.before || []).length > 0
+            Layout.topMargin: 4
+            text: card.sioul.text("appointment-before")
+            textFormat: Text.PlainText
+            font.bold: true
+            color: card.theme.text
+        }
+        Repeater {
+            model: part.shown ? part.shown.before || [] : []
+
+            delegate: Label {
+                id: step
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                text: "·  " + step.modelData.title
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: card.theme.accent
+
+                TapHandler {
+                    cursorShape: Qt.PointingHandCursor
+                    onTapped: card.host.follow({ kind: "task", owner: step.modelData.uid, title: step.modelData.title })
+                }
+            }
+        }
+        Label {
+            visible: !!part.shown && (part.shown.more || 0) > 0
+            text: card.sioul.textArgs("appointment-more", JSON.stringify({ n: part.shown ? part.shown.more || 0 : 0 }))
+            textFormat: Text.PlainText
+            color: card.theme.muted
+        }
+        Repeater {
+            model: part.shown ? part.shown.bring || [] : []
+
+            delegate: ColumnLayout {
+                id: group
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 2
+
+                Label {
+                    Layout.topMargin: 4
+                    text: group.modelData.name !== "" ? group.modelData.name : card.sioul.text("appointment-bring")
+                    textFormat: Text.PlainText
+                    font.bold: true
+                    color: card.theme.text
+                }
+                Repeater {
+                    model: group.modelData.items
+
+                    delegate: CheckBox {
+                        id: bring
+
+                        required property var modelData
+
+                        objectName: "eventCardBring"
+                        Layout.fillWidth: true
+                        text: card.theme.plain(bring.modelData.text)
+                        checked: bring.modelData.done
+                        // Ticked in its task's notes, through its own writer.
+                        onToggled: {
+                            card.said(card.sioul.checkItem("task", bring.modelData.task, bring.modelData.line, bring.checked ? "done" : "open"))
+                            part.read()
+                        }
+                    }
+                }
+                Label {
+                    visible: group.modelData.more > 0
+                    text: card.sioul.textArgs("appointment-more", JSON.stringify({ n: group.modelData.more }))
+                    textFormat: Text.PlainText
+                    color: card.theme.muted
+                }
+            }
+        }
+    }
     // What it is tied to, and what can be made from it.
     RelatedList {
         visible: card.source !== null
@@ -337,8 +445,42 @@ CardFrame {
             flat: true
             text: card.sioul.text("agenda-open-task")
             onClicked: card.host.follow({ kind: "task", owner: card.event.task, title: card.event.summary })
+        },
+        // A meeting with others whose invitation is still in your mail: your answer, from here.
+        Button {
+            id: answerButton
+
+            objectName: "eventCardAnswer"
+            visible: card.invitation !== ""
+            flat: true
+            text: card.sioul.text("event-answer") + "…"
+            onClicked: answerMenu.now().popup(answerButton, 0, answerButton.height)
+
+            Later {
+                id: answerMenu
+
+                sourceComponent: Component {
+                    SioulMenu {
+                        MenuItem {
+                            text: card.sioul.text("invite-accept")
+                            onTriggered: card.sioul.answerInvitation(card.invitation, "accepted")
+                        }
+                        MenuItem {
+                            text: card.sioul.text("invite-maybe")
+                            onTriggered: card.sioul.answerInvitation(card.invitation, "tentative")
+                        }
+                        MenuItem {
+                            text: card.sioul.text("invite-decline")
+                            onTriggered: card.sioul.answerInvitation(card.invitation, "declined")
+                        }
+                    }
+                }
+            }
         }
     ]
+
+    // The message that brought its invitation, while it is in your mail (`invitationOf`); "" for none.
+    readonly property string invitation: card.there && card.event.with_others === true ? card.sioul.invitationOf(card.event.key) : ""
 
     // A repeating event deleted: this time, or every time.
     Later {

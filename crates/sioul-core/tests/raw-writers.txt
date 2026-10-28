@@ -153,6 +153,9 @@ sioul-cli/src/spam/jobs.rs	held	1	std::fs::OpenOptions::new()
 sioul-cli/src/spam/jobs.rs	prune	1	std::fs::remove_file(file(&job.id, extension))
 sioul-cli/src/spam/jobs.rs	finish	1	std::fs::remove_file(file(&self.job.id, "stop"))
 
+# sioul-core/src/own_time.rs: your own time around meetings with others (data), by their UID: no calendar's item.
+sioul-core/src/own_time.rs	set	1	crate::filelock::replace(path, bytes.as_bytes())
+
 # sioul-core/src/accounts.rs: bank accounts, splits and reserves (money files): no item.
 sioul-core/src/accounts.rs	write	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/accounts.rs	write	1	std::fs::rename(&temporary, path)

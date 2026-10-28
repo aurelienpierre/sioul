@@ -99,6 +99,35 @@ Item {
             return ""
         }
         function eventToTaskLosses(key) { return "" }
+        // Part F's view of an appointment: the dentist's, when to leave and its next step.
+        function appointmentView(key, start) {
+            if (key !== "/c/dentist.ics")
+                return "{}"
+            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }] })
+        }
+        function invitationOf(key) { return key === "/c/board.ics" ? "/mail/board.eml" : "" }
+        function answerInvitation(key, answer) { mock.calls.push({ what: "answerInvitation", key: key, answer: answer }) }
+        function checkItem(kind, key, line, state) {
+            mock.calls.push({ what: "checkItem", kind: kind, key: key, line: line, state: state })
+            return ""
+        }
+        // A date asked's card (`datedCard`): a letter read from its scan, a paper, an invoice.
+        function datedCard(kind, key) {
+            if (kind === "letter" && key === "caf-1")
+                return JSON.stringify({ there: true, kind: kind, key: key, title: "CAF", mark: "Date asked · four days left", when: "Friday 30 October", filled: true, read: true, lines: ["A request", "By Friday 30 October (“within two months”)"], edit: mock.letterTask ? "task" : "letter-dates", task: mock.letterTask, task_open: mock.letterTask !== "", into_agenda: true, can_task: true, file: "/notes/letters/caf.pdf", project: "", item: { deadline: "2096-10-30", appointment: "", time: "" } })
+            if (kind === "invoice" && key === "2026-002")
+                return JSON.stringify({ there: true, kind: kind, key: key, title: "2026-002 · Fernhill · €480", mark: "Invoice due · tomorrow", when: "Tuesday", filled: false, lines: [], edit: "none", why: "dated-invoice-record", number: "2026-002", paid: false })
+            return JSON.stringify({ there: false })
+        }
+        property string letterTask: ""
+        function letterDates(id, edit) {
+            mock.calls.push({ what: "letterDates", id: id, edit: JSON.parse(edit) })
+            return ""
+        }
+        function setInvoicePaid(number, paid) {
+            mock.calls.push({ what: "setInvoicePaid", number: number, paid: paid })
+            return ""
+        }
 
         // Two tasks, as `task(uid)` reads them; a task made from the form is "t9".
         function taskDetail(uid, title) {
@@ -130,7 +159,10 @@ Item {
         property bool compact: false
         property var opened: []
         readonly property var sioulLocale: Qt.locale("en_GB")
+        property int agendaAsked: 0
         function openThing(item, fromCard) { shell.opened.push(item) }
+        function agendaAgain() { shell.agendaAsked += 1 }
+        function openPage(kind, key) { shell.opened.push({ kind: kind, key: key }) }
         function menuAt(menu, item) {}
         function linkFrom(source) {}
         function addLinked(kind, source) {}
@@ -225,6 +257,7 @@ Item {
         when: windowShown
 
         function init() {
+            mock.letterTask = ""
             mock.calls = []
             mock.status = ""
             mock.past = false
@@ -519,6 +552,67 @@ Item {
             verify(!host.ref.making)
         }
 
+        // A date asked's card (the unified agenda, part 4): a letter's, read from
+        // its scan, its mark filled within seven days; Edit opens its own dates'
+        // form while it has neither task nor event, saved by `letterDates`; with
+        // its task, Edit opens the task's card. A task's date opens its task.
+        // An invoice is its own record: no Edit, its reason; Paid by its writer.
+        function test_a_date_asked_s_card() {
+            const host = makeHost()
+            compare(host.cardOf({ kind: "dated", datedKind: "task", owner: "t1", srcKey: "t1" }), "task", "a task's date opens its task")
+            compare(host.cardOf({ kind: "dated", datedKind: "letter", srcKey: "caf-1" }), "dated")
+            verify(host.show({ kind: "dated", datedKind: "letter", srcKey: "caf-1" }))
+            wait(20)
+            const card = host.datedCard
+            verify(card !== null)
+            compare(card.title, "CAF")
+            verify(root.find(card, "datedMark").color !== "transparent", "filled within seven days")
+            verify(root.find(card, "cardEdit").visible)
+            root.find(card, "cardEdit").clicked()
+            wait(20)
+            const form = root.all(card, c => c.letterId !== undefined)[0]
+            verify(form !== undefined && form.opened, "its own dates' form")
+            const deadline = root.all(form.contentItem, c => c.objectName === "letterDeadline")[0]
+            compare(deadline.text, "2096-10-30")
+            deadline.text = "2096-11-03"
+            root.all(form.footer, c => c.objectName === "letterDatesSave")[0].clicked()
+            const asked = mock.calls.filter(c => c.what === "letterDates")
+            compare(asked.length, 1, JSON.stringify(mock.calls))
+            compare(asked[0].id + " " + asked[0].edit.deadline, "caf-1 2096-11-03")
+            verify(shell.agendaAsked > 0, "the agenda's marks follow")
+            // With its task: Edit opens the task's card.
+            mock.letterTask = "t7"
+            card.read()
+            root.find(card, "cardEdit").clicked()
+            compare(host.kind, "task")
+            compare(host.ref.owner, "t7")
+            // An invoice: no Edit, its reason in its place; Paid by its own writer.
+            host.show({ kind: "dated", datedKind: "invoice", srcKey: "2026-002" })
+            wait(20)
+            verify(!root.find(host.datedCard, "cardEdit").visible)
+            compare(root.find(host.datedCard, "cardWhy").text, "dated-invoice-record")
+            verify(root.find(host.datedCard, "datedMark").color === Qt.rgba(0, 0, 0, 0) || String(root.find(host.datedCard, "datedMark").color) === "#00000000", "never filled")
+        }
+
+        // A meeting's card (part F's agenda half): when to leave and its next
+        // step, Before and Bring, a tick by its task's own writer; Answer… while
+        // its invitation is in your mail.
+        function test_an_appointment_s_part_f() {
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const card = host.eventCard
+            compare(root.find(card, "eventCardLeave").text, "Leave at 08:45 · Next: Find the card")
+            const bring = root.all(card, c => c.objectName === "eventCardBring")
+            compare(bring.length, 1)
+            bring[0].toggle()
+            bring[0].toggled()
+            const ticked = mock.calls.filter(c => c.what === "checkItem")
+            compare(ticked.length, 1, JSON.stringify(mock.calls))
+            compare([ticked[0].kind, ticked[0].key, ticked[0].line, ticked[0].state].join(" "), "task prep 3 done")
+            verify(!root.find(card, "eventCardAnswer").visible, "no invitation in the mail")
+        }
+
         // The objects a card keeps alive (Later 9 of the review of 3a2fbd4): the
         // host with an appointment's card open, then a meal's, within the counts
         // measured on 28 October 2026 and a tenth more.
@@ -553,9 +647,11 @@ Item {
     QtObject {
         id: budget
 
-        // Measured on the stand-ins above, 28 October 2026.
-        readonly property int event: 96
-        readonly property int both: 156
-        readonly property int phoneWithTask: 676
+        // Measured on the stand-ins above, 28 October 2026; the appointment's card
+        // with part 4's Leave at, Before (one step), Bring (one group) and Answer…
+        // (its menu made at its first press): 96 before them.
+        readonly property int event: 118
+        readonly property int both: 178
+        readonly property int phoneWithTask: 677
     }
 }

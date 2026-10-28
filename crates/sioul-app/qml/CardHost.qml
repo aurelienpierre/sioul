@@ -10,7 +10,7 @@
 // appointment's and a meal's unloaded once closed): an appointment's
 // (EventCard), a task's (the window's one TaskPanel: a step, a time block
 // and a task done open their task), a meal's, a nap's or the night's
-// (NeedCard). A dose keeps opening its day in Health, where its medicine is
+// (NeedCard), a date asked's (DatedCard; a task's date opens its task). A dose keeps opening its day in Health, where its medicine is
 // named. It keeps the card you came from, one level deep (`follow`,
 // `back`); Back and Escape close it first, and on a phone a place opened
 // closes it (`leave`).
@@ -41,6 +41,7 @@ Item {
     readonly property var taskPanel: taskLoader.item
     readonly property EventCard eventCard: eventLoader.item as EventCard
     readonly property NeedCard needCard: needLoader.item as NeedCard
+    readonly property DatedCard datedCard: datedLoader.item as DatedCard
     // What you typed in a card's form closed without Save, by thing, until you save or cancel.
     readonly property QtObject keeper: QtObject {
         property var forms: ({})
@@ -63,6 +64,9 @@ Item {
             return (ref.owner || "") !== "" || ref.making === true ? "task" : ""
         if (ref.kind === "meal" || ref.kind === "nap" || ref.kind === "night")
             return "need"
+        // A date asked: a task's opens its task; the others their dated card.
+        if (ref.kind === "dated")
+            return ref.datedKind === "task" ? ((ref.owner || "") !== "" ? "task" : "") : ((ref.datedKind || "") !== "" && (ref.srcKey || ref.key || "") !== "" ? "dated" : "")
         return ""
     }
 
@@ -81,6 +85,7 @@ Item {
             when: ref.when || "",
             at: ref.at || 0,
             certainty: ref.certainty || "",
+            datedKind: ref.datedKind || "",
             making: ref.making === true
         }
     }
@@ -107,7 +112,7 @@ Item {
         // the task's card, once made, as the Tasks page kept its panel (made
         // again, some 700 items, at every tap on a step: review of 590eb18, later 1).
         if (host.window.compact) {
-            for (const other of ["event", "need"]) {
+            for (const other of ["event", "need", "dated"]) {
                 if (other !== card && (host.previous === null || host.previous.card !== other))
                     made[other] = false
             }
@@ -360,6 +365,26 @@ Item {
                     if (host.needCard)
                         host.needCard.edit(mode)
                 }
+            }
+        }
+    }
+
+    Loader {
+        id: datedLoader
+
+        anchors.fill: parent
+        anchors.margins: host.window.compact ? 0 : host.theme.gap
+        active: host.made.dated === true
+        visible: host.kind === "dated"
+
+        sourceComponent: Component {
+            DatedCard {
+                sioul: host.sioul
+                theme: host.theme
+                window: host.window
+                host: host
+                kind: host.kind === "dated" ? host.ref.datedKind : ""
+                key: host.kind === "dated" ? host.ref.srcKey : ""
             }
         }
     }

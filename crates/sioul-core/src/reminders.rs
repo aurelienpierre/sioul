@@ -545,7 +545,8 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
     {
         let today = now.date();
         let horizon = today.checked_add(Span::new().days(30)).unwrap_or(today);
-        for line in ledger.lines.iter().filter(|l| l.planned && l.amount.cents() < 0 && l.date >= today && l.date <= horizon) {
+        // Each opens its own line (`budget_uri`, by its place in the file), never the page alone.
+        for (place, line) in ledger.lines.iter().enumerate().filter(|(_, l)| l.planned && l.amount.cents() < 0 && l.date >= today && l.date <= horizon) {
             let Some(due) = working_days_before(&hours, &config.time_off, line.date, settings.payment_days, &zone) else { continue };
             let Some(end) = line.date.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
             let mut args = crate::i18n::args();
@@ -566,7 +567,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 until: end.timestamp().as_second(),
                 title: format!("{} · {}", line.label, tr.money(crate::money::Money(-line.amount.cents()))),
                 body,
-                target: format!("sioul:budget/{}", line.budget),
+                target: crate::links::budget_uri(&line.budget, place),
                 work: false,
                 starts: None,
                 names: None,
@@ -591,7 +592,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             until: end.timestamp().as_second(),
             title: tr.text("paper-reminder", Some(&args)),
             body: tr.text(&format!("paper-renew-{}", paper.kind.family()), None),
-            target: format!("sioul:paper/{}", paper.id),
+            target: crate::links::paper_uri(&paper.id),
             work: false,
             starts: None,
             names: None,
@@ -614,7 +615,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             until: end.timestamp().as_second(),
             title: tr.text("contract-reminder", Some(&args)),
             body: tr.text(if contract.notice_days > 0 { "contract-reminder-notice" } else { "contract-reminder-free" }, Some(&args)),
-            target: format!("sioul:contract/{}", contract.id),
+            target: crate::links::contract_uri(&contract.id),
             work: false,
             starts: None,
             names: None,
@@ -931,6 +932,9 @@ mod tests {
         assert_eq!(find("short:").title, "The account may not hold Water bill on Thursday 15 October");
         assert!(find("short:").body.contains("Savings covers it"), "{}", find("short:").body);
         assert!(find("payment:").body.contains("short then"), "the payment reminder reads the balance: {}", find("payment:").body);
+        // Each opens its own thing by its address (the unified agenda, part 4): a
+        // payment its own line, by its place in the ledger; a contract, a paper.
+        assert_eq!((find("payment:").target.as_str(), find("contract:").target.as_str(), find("paper:").target.as_str()), ("sioul:budget/home/0", "sioul:contract/phone", "sioul:paper/passport"));
 
         // Told once, by whoever comes first; work waits while work rests.
         let dir = std::env::temp_dir().join(format!("sioul-reminded-{}", std::process::id()));

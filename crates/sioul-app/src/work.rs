@@ -290,13 +290,19 @@ fn categories_of(tasks: &[Task]) -> Vec<String> {
     categories.into_iter().map(|(_, c)| c).collect()
 }
 
+/// Everything as the plan last read it, else the last read kept; none before
+/// the first read: what a card reads on the window's thread, never the stores.
+pub(crate) fn loaded_known(shared: &Shared) -> Option<Arc<Loaded>> {
+    plan_shown().map(|p| Arc::clone(&p.desk.loaded)).or_else(|| shared.loaded.lock().ok().and_then(|l| l.clone()))
+}
+
 /// What a task's card offers to choose from, wherever it opens (the card
 /// host, the unified agenda, part 3): `{projects, kinds, categories}`, as the
 /// Tasks page's JSON gives them, from the plan as last made or the last read;
 /// never a read of the stores on the window's thread (empty lists before the
 /// first read).
 pub(crate) fn task_choices(shared: &Shared) -> String {
-    let loaded = plan_shown().map(|p| Arc::clone(&p.desk.loaded)).or_else(|| shared.loaded.lock().ok().and_then(|l| l.clone()));
+    let loaded = loaded_known(shared);
     let (projects, categories) = loaded.as_deref().map_or_else(|| (Vec::new(), Vec::new()), |l| (projects_offered(l), categories_of(&l.tasks)));
     crate::backend::json(&serde_json::json!({ "projects": projects, "kinds": kinds_offered(), "categories": categories }))
 }
@@ -1373,7 +1379,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         proposed: sioul_core::capacity::Proposal,
         /// The title of the task it is a step of; "" for none.
         parent_title: String,
-        /// The appointment it prepares: {uid, key, title, when, here}; null for none (`pairs`).
+        /// The appointment it prepares, typed as part F says it (`pairs::AppointmentView`:
+        /// uid, key, title, when, here, when to leave, Before, Bring, its line); null for none.
         appointment: serde_json::Value,
         /// Its list keeps ties to appointments (not Google Tasks, `pairs::links_kept`): "Its appointment…" offered.
         keeps_ties: bool,
@@ -1399,8 +1406,14 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let appointment = match sioul_core::pairs::appointment_of(task) {
         Some(uid) => match loaded.events.iter().find(|e| e.uid == uid).cloned().or_else(|| sioul_core::pairs::switched_off_events(&zone).into_iter().find(|e| e.uid == uid)) {
             Some(event) => {
-                let when = (event.start > 0).then(|| jiff::Timestamp::from_second(event.start).ok()).flatten().map(|t| tr().when(&t.to_zoned(zone.clone()))).unwrap_or_default();
-                serde_json::json!({ "uid": uid, "key": event.key, "title": event.summary, "when": when, "here": !event.cancelled })
+                // Its next time, as the plan read it (its margins and your own time around it), else its first.
+                let now = Zoned::now().timestamp().as_second();
+                let time = desk.read.iter().filter(|o| o.uid == uid && o.end > now).min_by_key(|o| o.start).cloned().unwrap_or_else(|| sioul_core::agenda::Occurrence { key: event.key.clone(), uid: uid.clone(), summary: event.summary.clone(), start: event.start, end: event.start, cancelled: event.cancelled, ..Default::default() });
+                let mut view = serde_json::to_value(sioul_core::pairs::appointment_view(&time, &event.links, &loaded.tasks, tr(), &zone)).unwrap_or_default();
+                if event.start <= 0 {
+                    view["when"] = serde_json::Value::String(String::new());
+                }
+                view
             }
             None => serde_json::json!({ "uid": uid, "key": "", "title": "", "when": "", "here": false }),
         },

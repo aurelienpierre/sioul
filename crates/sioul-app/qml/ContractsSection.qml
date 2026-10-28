@@ -93,6 +93,12 @@ ColumnLayout {
             radius: 4
             opacity: row.ended ? 0.6 : 1
 
+            // Its card first, where you are (the unified agenda, part 4); its buttons beside.
+            TapHandler {
+                cursorShape: Qt.PointingHandCursor
+                onTapped: section.window.openCard({ kind: "dated", datedKind: "notice", srcKey: row.modelData.id, title: row.modelData.title })
+            }
+
             RowLayout {
                 id: rowLayout
 

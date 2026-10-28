@@ -633,6 +633,48 @@ SioulWindow {
     // done), a meal's, a nap's or the night's, in the card host; a dose its day
     // in Health, its row lit, where its medicine is named; days off where they
     // are set. From a card (`fromCard`): the card it came from kept, one level deep.
+    // A dated thing's card for a link or a reminder: its kind and key from its
+    // address; false when it has none here (a past payment, a paid invoice).
+    function openDated(item, fromCard) {
+        const uri = item.uri || ""
+        const tail = prefix => decodeURIComponent(uri.slice(prefix.length))
+        let kind = "", key = ""
+        if (item.kind === "paper") {
+            kind = "paper"
+            key = item.key || tail("sioul:paper/")
+        } else if (item.kind === "contract") {
+            kind = "notice"
+            key = item.key || tail("sioul:contract/")
+        } else if (item.kind === "letter") {
+            kind = "letter"
+            key = item.key || tail("sioul:letter/")
+        } else if (item.kind === "invoice") {
+            kind = "invoice"
+            key = item.key || tail("sioul:invoice/")
+        } else if (item.kind === "budget" && /^sioul:budget\/[^/]+\/\d+$/.test(uri)) {
+            kind = "payment"
+            key = uri
+        }
+        if (kind === "" || key === "" || JSON.parse(sioul.datedCard(kind, key) || "{}").there !== true)
+            return false
+        window.openCard({ kind: "dated", datedKind: kind, srcKey: key, title: item.title || "" }, fromCard)
+        return true
+    }
+
+    // A contract's page, or a budget's (a dated card's "Its page").
+    function openPage(kind, key) {
+        cardHost.leave()
+        window.page = 9
+        if (kind === "contract")
+            budgetsPage.openContract(key)
+    }
+
+    // The agenda's days read again (a date asked changed in its card: its mark follows).
+    function agendaAgain() {
+        if (window.agendaPage)
+            window.agendaPage.load()
+    }
+
     function openCard(ref, fromCard) {
         if (ref.kind === "dose") {
             window.page = 10
@@ -671,15 +713,19 @@ SioulWindow {
             window.openDraft(item.key)
         else if (item.kind === "contact")
             window.openContact(item.key)
+        // A paper, a contract, a letter, an invoice, a payment's line: its dated card where
+        // you are, when it reads (the unified agenda, part 4); else its page.
+        else if (window.openDated(item, fromCard))
+            return
         else if (item.kind === "budget")
             window.page = 9
         else if (item.kind === "paper") {
             window.page = 13
             papersPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:paper/".length)))
         } else if (item.kind === "contract") {
-            window.page = 9
-            budgetsPage.openContract(item.key || decodeURIComponent(item.uri.slice("sioul:contract/".length)))
-        }
+            window.openPage("contract", item.key || decodeURIComponent(item.uri.slice("sioul:contract/".length)))
+        } else if (item.kind === "letter" || item.kind === "invoice")
+            window.page = item.kind === "letter" ? 0 : 7
         // A project's address, or as it was written before the one name ("sioul:case/").
         else if (item.kind === "project")
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
@@ -1158,6 +1204,14 @@ SioulWindow {
                 () => window.goBack(),
                 () => {},
                 () => grabber.save("card-closed"),
+                // A date asked's card, from the Week's heads (the unified agenda, part 4).
+                () => agendaPage.mode = "week",
+                () => {},
+                () => {},
+                () => grabber.openFirstOf("dated"),
+                () => {},
+                () => grabber.saveCounted("card-dated", cardHost),
+                () => window.goBack(),
                 () => window.page = 1,
                 () => tasksPage.mode = "list",
                 () => {},
@@ -1199,7 +1253,7 @@ SioulWindow {
                             continue
                         const source = item.source || {}
                         const time = item.time || {}
-                        window.openCard({ kind: kind, srcKey: source.key || "", srcStart: source.start || 0, srcDate: source.date || "", owner: item.owner || "", date: day.date, itemId: item.id, title: item.title, when: row.when, at: time.at || 0, certainty: typeof item.certainty === "string" ? item.certainty : "" })
+                        window.openCard({ kind: kind, srcKey: source.key || "", srcStart: source.start || 0, srcDate: source.date || "", owner: item.owner || "", date: day.date, itemId: item.id, title: item.title, when: row.when, at: time.at || 0, certainty: typeof item.certainty === "string" ? item.certainty : "", datedKind: source.type === "dated" ? source.kind || "" : "" })
                         return
                     }
                 }

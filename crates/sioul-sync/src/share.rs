@@ -319,6 +319,11 @@ static QUIET_RULES_2: Rules = Rules { keyed: &[keyed("lighter", &[])], whole: &[
 /// the same one keep the later answer, never a mix of both; the weather field by field.
 static REVIEWS_RULES: Rules = Rules { keyed: &[], whole: &["*.work", "*.night"], local: &[], next: None };
 static PLAIN_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[], next: None };
+/// Your own time around meetings with others (`sioul_core::own_time`, the
+/// unified agenda's part 4): each event's entry whole, by its UID, so that
+/// the time kept before and after, its costs and your reminder never travel
+/// in halves.
+static OWN_TIME_RULES: Rules = Rules { keyed: &[], whole: &["event.*"], local: &[], next: None };
 /// Do-not-disturb's switch (docs/do-not-disturb.md): a table per device, each
 /// written by its own device alone, shared whole.
 static DND_RULES: Rules = Rules { keyed: &[], whole: &["device.*"], local: &[], next: None };
@@ -603,6 +608,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
         file("time", "data/time/running.toml", d.join("time").join("running.toml"), Shape::Whole),
+        // Your own time around meetings with others (the unified agenda's part 4): a file
+        // of its own, beside `data/time/` and not in it, which an older Sioul does not know:
+        // it keeps its changes waiting, writes nothing and takes nothing out (`known_part`).
+        file("time", "data/own-time.toml", d.join(sioul_core::own_time::FILE), Shape::Toml(&OWN_TIME_RULES)),
         folder("time", "data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
         // How each day went, with the plan it is the outcome of (today.toml, quiet.toml, the sessions):
         // every device that plans learns the same (docs/reviews.md).
@@ -11811,6 +11820,37 @@ mod tests {
         let came = phone.exchange(&folder, &key, NOW + 4 * MINUTE);
         assert!(came.written.contains(store) && came.pending == 0, "{came:?}");
         assert_eq!(std::fs::read(phone.roots.data.join("pgp").join("cards").join("0006-12345678.toml")).unwrap(), std::fs::read(&card_file).unwrap());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Your own time around a meeting (`data/own-time.toml`, the unified
+    /// agenda's part 4) reaches a device that knows the store, each event's
+    /// entry whole; an older Sioul (982d6e5, the phone's for days) keeps it
+    /// waiting, writes nothing and takes nothing out, and reads it once updated.
+    #[test]
+    fn an_older_sioul_keeps_your_own_time_waiting() {
+        let base = scratch("own-time-older");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let store = "data/own-time.toml";
+        let own = desk.roots.data.join(sioul_core::own_time::FILE);
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, "[event.\"board-1\"]\nbefore = 15\nafter = 10\nremind = \"30\"\n").unwrap();
+        desk.exchange(&folder, &key, NOW);
+        let older_stores = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != store).collect::<Vec<_>>();
+        OLDER.with(|older| *older.borrow_mut() = vec![store.to_string()]);
+        for n in 1..=2 {
+            let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: true, hurry: None }, &older_stores, NOW + n * MINUTE).unwrap();
+            assert_eq!(outcome.pending, 1, "kept waiting: {outcome:?}");
+        }
+        assert!(!phone.roots.data.join(sioul_core::own_time::FILE).exists(), "nothing written");
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert_eq!(sioul_core::own_time::load(&own).events.get("board-1").map(|o| (o.before, o.after)), Some((15, 10)), "nothing taken out, nothing written over");
+        OLDER.with(|older| older.borrow_mut().clear());
+        let came = phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        assert!(came.written.contains(store) && came.pending == 0, "{came:?}");
+        assert_eq!(sioul_core::own_time::load(&phone.roots.data.join(sioul_core::own_time::FILE)), sioul_core::own_time::load(&own));
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -497,6 +497,9 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
             list: String::new(),
         });
     }
+    // Your own time around a meeting, kept in your own file, wins over the
+    // meeting's lines (decision 18): every reader expands through here.
+    crate::own_time::apply(&mut found, &crate::own_time::current());
     found
 }
 
@@ -661,34 +664,20 @@ impl Refusal {
 
 /// The one rule of every writer of an event's file (the unified agenda's
 /// §3.5), `text` the file as it is now: a calendar you only read refuses
-/// everything; a meeting with others refuses a move and a removal, and a
-/// write that changes anything but Sioul's own lines (`X-SIOUL-…`: the time
-/// kept around it, its costs and gain, your reminder) and the stamps a
-/// writer sets. Answering its invitation is no such writer (`vdir::store_item`).
-pub fn may_change(text: &str, read_only: bool, own: &[String], change: Change) -> Result<(), Refusal> {
+/// everything; a meeting with others refuses every write, its move and its
+/// removal: its server tells every guest of any change to it (RFC 6638),
+/// Sioul's own lines included, which an older Sioul wrote there. What is
+/// yours about it (the time kept around it, its costs and gain, your
+/// reminder) is kept in your own file (`own_time`, decision 18, part 4).
+/// Answering its invitation is no such writer (`vdir::store_item`).
+pub fn may_change(text: &str, read_only: bool, own: &[String], _change: Change) -> Result<(), Refusal> {
     if read_only {
         return Err(Refusal::ReadOnly);
     }
-    if !meeting_with_others(text, own) {
-        return Ok(());
+    if meeting_with_others(text, own) {
+        return Err(Refusal::WithOthers);
     }
-    match change {
-        Change::Write(new) if theirs(text) == theirs(new) => Ok(()),
-        _ => Err(Refusal::WithOthers),
-    }
-}
-
-/// An event's lines as its organizer and its guests read them: all but
-/// Sioul's own (`X-SIOUL-…`) and the stamps a writer sets (DTSTAMP, LAST-MODIFIED).
-fn theirs(text: &str) -> Vec<String> {
-    lines::unfold(text)
-        .into_iter()
-        .filter(|l| {
-            let name = lines::name(l);
-            !name.starts_with("X-SIOUL-") && name != "DTSTAMP" && name != "LAST-MODIFIED"
-        })
-        .map(|l| l.trim_end().to_string())
-        .collect()
+    Ok(())
 }
 
 /// `may_change` for the file at `path` as it is now, its calendar's
@@ -2729,9 +2718,9 @@ mod tests {
     }
 
     /// The one rule (`may_change`): a calendar you only read refuses all; a
-    /// meeting with others refuses a move, a removal and any change of its
-    /// organizer's lines, and takes Sioul's own (the time kept before it),
-    /// its SEQUENCE kept; your own event takes everything.
+    /// meeting with others refuses a move, a removal and every write, Sioul's
+    /// own lines included (yours about it live in your own file since the
+    /// unified agenda's part 4: `own_time`); your own event takes everything.
     #[test]
     fn a_meeting_keeps_everything_of_its_organizer() {
         let own = vec!["me@example.org".to_string()];
@@ -2742,7 +2731,7 @@ mod tests {
         edit.margins.before = 20;
         let margins = apply(&meeting, &edit, &paris()).unwrap();
         assert!(margins.contains("SEQUENCE:3\r\n") && !margins.contains("SEQUENCE:4") && margins.contains(crate::demands::BEFORE), "{margins}");
-        assert_eq!(may_change(&meeting, false, &own, Change::Write(&margins)), Ok(()), "Sioul's own lines stay writable");
+        assert_eq!(may_change(&meeting, false, &own, Change::Write(&margins)), Err(Refusal::WithOthers), "Sioul's own lines too: kept in your own file");
         edit.title = "Review, moved".into();
         let retitled = apply(&meeting, &edit, &paris()).unwrap();
         assert!(retitled.contains("SEQUENCE:4"), "its organizer's kind of change takes the SEQUENCE up");
@@ -2787,7 +2776,7 @@ mod tests {
         assert!(vdir::replace_items(&[dir("mine").join("own.ics"), at.clone()], &[], &dir("other").join("own.ics"), &own).is_err());
         assert_eq!(std::fs::read_to_string(&at).unwrap(), meeting, "the meeting as it was");
         assert!(dir("mine").join("own.ics").exists() && !dir("other").join("own.ics").exists(), "nothing done of the refused replacement");
-        assert!(vdir::write_item(&at, &meeting.replace("SUMMARY:Review\r\n", "SUMMARY:Review\r\nX-SIOUL-BEFORE:20\r\n")).is_ok(), "Sioul's own line");
+        assert!(vdir::write_item(&at, &meeting.replace("SUMMARY:Review\r\n", "SUMMARY:Review\r\nX-SIOUL-BEFORE:20\r\n")).is_err(), "Sioul's own line too: kept in your own file");
         let task = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:t-1\r\nSUMMARY:A task\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
         assert!(vdir::write_item(&dir("mine").join("task.ics"), task).is_ok() && vdir::remove_item(&dir("mine").join("task.ics")).is_ok());
         assert!(vdir::remove_item(&dir("mine").join("own.ics")).is_ok());
@@ -3116,7 +3105,8 @@ mod tests {
         let back = with_own_lines_of(now, then);
         assert!(back.contains("DTSTART:20991023T150000Z") && back.contains("SEQUENCE:2") && back.contains("X-SIOUL-REMIND:30") && !back.contains("X-SIOUL-BEFORE"), "{back}");
         assert!(back.contains("TRIGGER:-PT10M") && back.find("BEGIN:VTIMEZONE") > back.find("END:VEVENT") && back.ends_with("END:VCALENDAR\r\n"), "the rest as it was, in its order: {back}");
-        assert_eq!(may_change(now, false, &own, Change::Write(&back)), Ok(()));
+        // No writer writes it into the meeting any more (part 4): the window puts them into your own time.
+        assert_eq!(may_change(now, false, &own, Change::Write(&back)), Err(Refusal::WithOthers));
         assert_eq!(may_change(now, false, &own, Change::Write(then)), Err(Refusal::WithOthers), "the version whole: refused");
     }
 

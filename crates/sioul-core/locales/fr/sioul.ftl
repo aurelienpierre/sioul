@@ -6364,6 +6364,7 @@ head-next-leave = Ensuite : { $time } { $what }, partir à { $leave }.
 head-tomorrow = Demain : { $time } { $what }.
 head-tomorrow-leave = Demain : { $time } { $what }, partir à { $leave }.
 head-alarm = Réveil à { $time }.
+head-date = { $kind } : { $what }, { $date } : { $left }.
 head-wind-down = Avant de dormir : coucher à { $bed }.
 head-wind-down-alarm = Avant de dormir : coucher à { $bed }, réveil à { $alarm }.
 head-sleep = Sommeil jusqu’à { $until }.
@@ -6392,3 +6393,38 @@ card-typed-back = Vos changements de { $time } sont revenus.
 agenda-doses-unread = Vos médicaments n’ont pas pu être lus ici : leurs prises ne sont pas montrées.
 agenda-errand-refill = Pharmacie
 agenda-errand-renew = Médecin
+
+## Dates demandées, telles que l’agenda les dessine (l’agenda unifié,
+## partie 4) : une seule famille de mots pour les marques, les cartes et
+## les rappels. Une date est du temps qui reste, jamais « en retard ».
+date-asked = Date demandée
+date-letter-appointment = Rendez-vous d’un courrier
+date-notice-by = Dernier jour pour résilier
+date-valid-until = Dernier jour de validité
+date-payment = Paiement
+date-invoice-due = Échéance d’une facture
+date-prescription-ends = Une ordonnance prend fin
+date-runs-out = Un médicament s’épuise
+date-left-today = aujourd’hui
+date-left-tomorrow = demain
+dated-payment-budget = Budget : { $budget }
+dated-invoice-total = Total : { $total }
+dated-invoice-record = Son numéro et ses montants font foi : rien à changer ici.
+dated-in-the-agenda = Dans l’agenda : { $title }, { $time }
+dated-letter-bad-date = Cette date ne se lit pas : écrivez-la comme 2026-11-30.
+dated-letter-bad-time = Cette heure ne se lit pas : écrivez-la comme 14:30.
+dated-letter-dates = Les dates du courrier
+dated-letter-deadline = Date demandée
+dated-letter-appointment = Rendez-vous
+dated-letter-time = À
+dated-letter-dates-why = Lues sur son scan : corrigez-les ici. Une fois qu’il a sa tâche ou son événement, leur propre formulaire les tient.
+dated-open-page = Sa page
+dated-in-health = Dans Santé
+dated-paid = Payée
+event-own-time = Votre temps autour
+event-answer = Répondre
+appointment-leave-at = Partir à { $time }
+appointment-next = Ensuite : { $step }
+appointment-before = Avant
+appointment-bring = À emporter
+appointment-more = et { $n } de plus

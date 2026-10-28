@@ -163,7 +163,8 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
 /// sent, as its form saves it.
 pub(crate) fn set_event(qt: &QtThread, shared: &std::sync::Arc<crate::backend::Shared>, key: &str, value: &str) -> Result<(), String> {
     let path = crate::pim::ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
-    let mut edit = sioul_core::agenda::edit_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+    // A meeting with others: from your own time around it, where its reminder is kept (`pim::write_event`).
+    let mut edit = crate::pim::edit_with_own(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
     edit.remind = remind_word(value);
     let json = serde_json::to_string(&edit).map_err(|e| e.to_string())?;
     crate::pim::save_event(qt, shared, key, &json, "")

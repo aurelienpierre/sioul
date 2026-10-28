@@ -51,6 +51,8 @@ fn main() {
         "qml/EventMenu.qml",
         "qml/NeedCard.qml",
         "qml/NeedMenu.qml",
+        "qml/DatedCard.qml",
+        "qml/LetterDatesForm.qml",
         "qml/TimeDrag.qml",
         "qml/Clock.qml",
         "qml/TasksPage.qml",

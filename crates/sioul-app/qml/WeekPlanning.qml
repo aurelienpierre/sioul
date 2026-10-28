@@ -238,6 +238,8 @@ ColumnLayout {
             srcDate: src.date || "",
             calendar: src.calendar || "",
             collection: src.collection || "",
+            // A date asked: its kind ("letter", "notice"…), which its card reads.
+            datedKind: src.type === "dated" ? src.kind || "" : "",
             cancelled: detail.cancelled === true,
             tentative: detail.tentative === true,
             readOnly: detail.read_only === true,
@@ -948,6 +950,12 @@ ColumnLayout {
                         required property var modelData
                         readonly property var item: chip.modelData.item
 
+                        // A date asked: a diamond, filled within seven days (`tone` plain),
+                        // outlined beyond; in the Day its words too ("CAF form · Date
+                        // asked · four days left"), in the Week its title alone (§7.3).
+                        readonly property bool dated: chip.item.kind === "dated"
+                        readonly property string words: chip.dated && planning.single && chip.item.line ? chip.item.title + " · " + chip.item.line : chip.item.title
+
                         Layout.fillWidth: true
                         Layout.rightMargin: 3
                         implicitHeight: chipLabel.implicitHeight + 6
@@ -955,14 +963,27 @@ ColumnLayout {
                         color: chip.item.kind === "day-off" ? planning.theme.button : planning.theme.surface
                         border.color: chip.item.colour ? chip.item.colour : planning.theme.line
                         Accessible.role: Accessible.Button
-                        Accessible.name: chip.item.title
+                        Accessible.name: chip.words
 
+                        Rectangle {
+                            objectName: "datedDiamond"
+                            visible: chip.dated
+                            x: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 7
+                            height: 7
+                            rotation: 45
+                            color: chip.dated && chip.item.tone !== "quiet" ? planning.theme.text : "transparent"
+                            border.color: planning.theme.text
+                            border.width: 1
+                        }
                         Label {
                             id: chipLabel
 
                             anchors.fill: parent
                             anchors.margins: 3
-                            text: chip.item.title
+                            anchors.leftMargin: chip.dated ? 17 : 3
+                            text: chip.words
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
                             font.pixelSize: 12

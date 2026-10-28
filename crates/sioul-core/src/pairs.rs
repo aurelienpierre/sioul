@@ -588,6 +588,113 @@ pub fn appointment_for(all: &[Task], uid: &str, edit: &agenda::EventEdit, calend
     Ok((change, path))
 }
 
+/// A thing named in an appointment's view: a task or a step, by its UID.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Named {
+    pub uid: String,
+    pub title: String,
+}
+
+/// One item to bring or to check, from the preparation's list (`checklist`):
+/// its task, its line there (what `checkItem` ticks), its words, its mark.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Bring {
+    pub task: String,
+    pub line: usize,
+    pub text: String,
+    pub done: bool,
+}
+
+/// A group of the preparation's list ("Bring", "Check"), five items at most,
+/// and how many more it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BringGroup {
+    pub name: String,
+    pub items: Vec<Bring>,
+    pub more: usize,
+}
+
+/// An appointment as composed tasks' part F says it (the unified agenda,
+/// part 4: its agenda half), typed, the one thing the task's card and the
+/// event's card read: the appointment, when to leave, what prepares it, its
+/// next steps (Before) and what to bring, and its line on the timeline
+/// ("Leave at 13:05 · Next: check the bus schedule"). Read only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AppointmentView {
+    pub uid: String,
+    pub key: String,
+    pub title: String,
+    /// When it is, as the agenda says it.
+    pub when: String,
+    /// Its file is here and it is not cancelled.
+    pub here: bool,
+    /// When to leave, Unix seconds: its start less the time kept before it
+    /// (your own time around a meeting with others, `own_time`); until legs
+    /// exist (part E), none without a time kept before it.
+    pub leave_at: Option<i64>,
+    /// The task that prepares it.
+    pub preparation: Option<Named>,
+    /// Its open steps, the next first, two at most, and how many more.
+    pub before: Vec<Named>,
+    pub more: usize,
+    /// The preparation's lists by group, five items each at most.
+    pub bring: Vec<BringGroup>,
+    /// "Leave at 13:05 · Next: check the bus schedule"; "" when neither is known.
+    pub line: String,
+}
+
+/// The appointment `event` (one time of it) as part F says it, from the
+/// tasks as read: what prepares it (`preparation_of`), its open steps in their
+/// order, its lists; when to leave from the time kept before it. Nothing is
+/// written: a step left open costs nothing, and nothing asks to tick.
+pub fn appointment_view(event: &agenda::Occurrence, links: &[tasks::Link], tasks: &[Task], tr: &crate::i18n::Translator, zone: &TimeZone) -> AppointmentView {
+    let reference = EventRef { key: event.key.clone(), uid: event.uid.clone(), links: links.to_vec(), ..EventRef::default() };
+    let preparation = preparation_of(tasks, &reference).filter(|t| t.status.is_open());
+    let steps: Vec<&Task> = preparation.map(|p| tasks::steps_of(tasks, &p.uid).into_iter().filter(|s| s.status.is_open()).collect()).unwrap_or_default();
+    let before: Vec<Named> = steps.iter().take(2).map(|s| Named { uid: s.uid.clone(), title: s.title.clone() }).collect();
+    let more = steps.len().saturating_sub(before.len());
+    let mut bring: Vec<BringGroup> = Vec::new();
+    for task in preparation.into_iter().chain(steps.iter().copied()) {
+        for item in crate::checklist::items(&task.notes) {
+            let name = item.group.clone();
+            let entry = Bring { task: task.uid.clone(), line: item.line, text: item.text.clone(), done: item.mark != crate::checklist::Mark::Open };
+            match bring.iter_mut().find(|g| g.name == name) {
+                Some(group) if group.items.len() < 5 => group.items.push(entry),
+                Some(group) => group.more += 1,
+                None => bring.push(BringGroup { name, items: vec![entry], more: 0 }),
+            }
+        }
+    }
+    let leave_at = (event.margins.before > 0 && !event.all_day).then(|| event.start - i64::from(event.margins.before) * 60);
+    let clock = |at: i64| jiff::Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let say = |id: &str, name: &str, value: String| {
+        let mut args = crate::i18n::args();
+        args.set(name, value);
+        tr.text(id, Some(&args))
+    };
+    let mut parts = Vec::new();
+    if let Some(at) = leave_at {
+        parts.push(say("appointment-leave-at", "time", clock(at)));
+    }
+    if let Some(next) = before.first() {
+        parts.push(say("appointment-next", "step", next.title.clone()));
+    }
+    let when = jiff::Timestamp::from_second(event.start).map(|t| tr.when(&t.to_zoned(zone.clone()))).unwrap_or_default();
+    AppointmentView {
+        uid: event.uid.clone(),
+        key: event.key.clone(),
+        title: event.summary.clone(),
+        when,
+        here: !event.cancelled,
+        leave_at,
+        preparation: preparation.map(|p| Named { uid: p.uid.clone(), title: p.title.clone() }),
+        before,
+        more,
+        bring,
+        line: parts.join(" · "),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

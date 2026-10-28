@@ -336,6 +336,8 @@ pub enum Source {
     /// `<medicine>@<Unix seconds>`, the key every dose path uses.
     Dose { key: String },
     DayOff { id: String },
+    /// A date asked of you (`dated`): its kind and what its card reads.
+    Dated { kind: crate::dated::Kind, key: String },
     /// Your hours, the time kept for you, the time kept free.
     Frame,
 }
@@ -714,10 +716,12 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
             placed.push(Placed {
                 item: item.clone(),
                 when: when_on(at, until, whole, start, end, zone, tr),
+                // A date asked sits at the head of its day, its hour said when it has one
+                // ("17:00"): a mark, never a card that would seem to take time.
                 // The thing itself within the day: a bedtime past midnight at its end.
                 from_minute: i32::try_from((at.max(start).min(end) - start) / 60).unwrap_or(0),
                 to_minute: i32::try_from((until.min(end).max(start) - start) / 60).unwrap_or(1440),
-                all_day: whole,
+                all_day: whole || item.kind == Kind::Dated,
                 column: 0,
                 columns: 1,
                 edge: "",
@@ -1040,6 +1044,9 @@ pub struct HeadInputs<'a> {
     pub tomorrow: &'a [Item],
     /// Tomorrow morning's alarm, when it rings.
     pub alarm: Option<i64>,
+    /// The dates asked of you this week, today and after (`dated::item`): in
+    /// work and admin time, the nearest is said in a second sentence.
+    pub dates: &'a [Item],
     pub zone: &'a TimeZone,
     pub tr: &'a Translator,
 }
@@ -1054,11 +1061,15 @@ fn fixed(item: &Item) -> bool {
 /// agenda, §4.2), each holding while what it says holds: at the end of what
 /// is under way, at a leaving time, when the next thing starts, when the
 /// moment changes, at midnight. In work and admin time: what is under way,
-/// then the next fixed thing with its leaving time. At a meal, or in leisure
-/// while today still holds something: the same. Once today holds nothing
-/// more: tomorrow's first appointment and its leaving time, and the alarm.
-/// In sleep, a pause or Free time: the moment alone, until when. No date
-/// (they come with the dates), no dose, no proposal of the plan.
+/// then the next fixed thing with its leaving time, then one date asked this
+/// week, the nearest, never a contract's notice day nor health's (one thing at
+/// a time). At a meal, or in leisure while today still holds something: what
+/// is under way and the next fixed thing, no date. Once today holds nothing
+/// more (no work or admin time and no appointment or pinned task left; meals,
+/// naps and the night do not count, so the evening with a night set speaks of
+/// tomorrow: decided in part 4, nothing pressing in the evening): tomorrow's
+/// first appointment and its leaving time, and the alarm. In sleep, a pause
+/// or Free time: the moment alone, until when. No dose, no proposal of the plan.
 pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
     let mut bounds: Vec<i64> = vec![i.now, i.next_midnight];
     for item in i.today.iter().filter(|item| fixed(item) || item.kind == Kind::Gain) {
@@ -1128,7 +1139,10 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
     // The next fixed thing, by when it asks you to start: leaving, getting ready, winding down.
     let next = i.today.iter().filter(|item| fixed(item)).filter_map(|item| span(item).map(|(s, _)| (s, item))).filter(|(s, _)| *s > t).min_by_key(|(s, _)| *s).map(|(_, item)| item);
     let work_left = i.moments.iter().any(|(from, until, mode)| *until > t && *from < i.next_midnight && matches!(mode.time, crate::areas::Time::Work | crate::areas::Time::Admin));
-    if under.is_none() && next.is_none() && !work_left {
+    // An appointment or a pinned task still to come or under way: meals, naps and the
+    // night keep no evening on today (they show on the timeline all the same).
+    let held_left = i.today.iter().filter(|item| fixed(item) && !matches!(item.kind, Kind::Meal | Kind::Nap | Kind::Night)).any(|item| span(item).is_some_and(|(_, e)| e > t));
+    if !held_left && !work_left {
         // Today holds nothing more: tomorrow's first appointment or pinned task, and the alarm.
         let first = i.tomorrow.iter().filter(|item| matches!(item.kind, Kind::Event | Kind::Block) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)).filter(|item| matches!(item.time, Time::Span { .. })).min_by_key(|item| item.time.proper(i.zone).0);
         let mut parts = Vec::new();
@@ -1163,7 +1177,38 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
         let leaves = matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) && start < at;
         parts.push(if leaves { say("head-next-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-next", &[("time", clock(if matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) { at } else { start })), ("what", named(item))]) });
     }
+    // In work and admin time, the nearest date asked this week, one only.
+    let working = moment.is_some_and(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin));
+    if working && let Some((date, item, kind)) = nearest_date(i.dates, t, i.zone) {
+        let today = jiff::Timestamp::from_second(t).map_or(date, |s| s.to_zoned(i.zone.clone()).date());
+        parts.push(say("head-date", &[("kind", tr.text(kind.word(), None)), ("what", item.title.clone()), ("date", tr.day(date)), ("left", crate::dated::left(tr, today, date))]));
+    }
     parts.join(" ")
+}
+
+/// The nearest date asked at `t` or after it among `dates` that asks
+/// something of you: a task's, a letter's, a payment, a paper to renew; never
+/// a contract's notice day (stopping one is a choice, its reminder comes two
+/// weeks before), an invoice owed to you, nor health's. Its day, the item, its kind.
+fn nearest_date<'a>(dates: &'a [Item], t: i64, zone: &TimeZone) -> Option<(Date, &'a Item, crate::dated::Kind)> {
+    use crate::dated::Kind as Dated;
+    let today = jiff::Timestamp::from_second(t).ok()?.to_zoned(zone.clone()).date();
+    dates
+        .iter()
+        .filter(|item| item.kind == Kind::Dated && item.privacy == Privacy::Admin)
+        .filter_map(|item| match &item.source {
+            Source::Dated { kind, .. } if !matches!(kind, Dated::Notice | Dated::Invoice | Dated::PrescriptionEnds | Dated::RunsOut) => {
+                let (date, at) = match item.time {
+                    Time::Day { date, .. } => (date, None),
+                    Time::At { at } => (jiff::Timestamp::from_second(at).ok()?.to_zoned(zone.clone()).date(), Some(at)),
+                    Time::Span { .. } => return None,
+                };
+                (date >= today && at.is_none_or(|a| a >= t)).then_some((date, at.unwrap_or(0), item, *kind))
+            }
+            _ => None,
+        })
+        .min_by_key(|(date, at, item, _)| (*date, *at, item.title.clone()))
+        .map(|(date, _, item, kind)| (date, item, kind))
 }
 
 #[cfg(test)]
@@ -1547,7 +1592,7 @@ mod tests {
             (at("2026-10-05T09:00"), at("2026-10-05T17:00"), moment(Hours::Work, Reason::Working, "2026-10-05T17:00")),
             (at("2026-10-05T17:00"), at("2026-10-06T00:00"), moment(Hours::Leisure, Reason::Evening, "2026-10-06T09:00")),
         ];
-        let line = |now: &str| head_line(&HeadInputs { now: at(now), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), zone: &zone, tr: &tr });
+        let line = |now: &str| head_line(&HeadInputs { now: at(now), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &[], zone: &zone, tr: &tr });
         let frames = line("2026-10-05T10:40");
         assert_eq!(frames[0].text, "Time for you until 11:00. Next: 12:10 Lunch.");
         assert_eq!((frames[0].from, frames[0].until), (at("2026-10-05T10:40"), at("2026-10-05T11:00")), "it holds until time for you ends");
@@ -1558,7 +1603,38 @@ mod tests {
         assert!(frames.iter().all(|f| !f.text.contains("Dose") && !f.text.contains("Sort the receipts")), "{frames:?}");
         // Free time: the moment alone.
         let free = vec![(at("2026-10-05T09:00"), at("2026-10-05T16:00"), moment(Hours::Leisure, Reason::FreeTime, "2026-10-05T16:00"))];
-        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], alarm: None, zone: &zone, tr: &tr });
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], alarm: None, dates: &[], zone: &zone, tr: &tr });
         assert_eq!(frames[0].text, "Free time until 16:00.");
+    }
+
+    /// The evening with a night set (part 2's open point, decided in part 4):
+    /// once no work or admin time and no appointment is left, the line speaks
+    /// of tomorrow, dinner and the night still to come; a date asked is said
+    /// in work and admin time only, the nearest of the week, never a
+    /// contract's notice day, never in the evening.
+    #[test]
+    fn the_head_line_s_evening_and_its_one_date() {
+        use crate::areas::Time as Hours;
+        use crate::quiet::Reason;
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let mut dinner = thing("Dinner", Kind::Meal, "2026-10-05T19:30", "2026-10-05T20:00");
+        dinner.time = Time::Span { start: at("2026-10-05T19:10"), at: at("2026-10-05T19:30"), until: at("2026-10-05T20:00"), end: at("2026-10-05T20:00") };
+        let mut night = thing("Night", Kind::Night, "2026-10-05T23:00", "2026-10-06T07:00");
+        night.time = Time::Span { start: at("2026-10-05T22:30"), at: at("2026-10-05T23:00"), until: at("2026-10-06T07:00"), end: at("2026-10-06T07:00") };
+        let today = vec![dinner, night];
+        let mut dentist = thing("Dentist", Kind::Event, "2026-10-06T09:30", "2026-10-06T10:00");
+        dentist.time = Time::span(at("2026-10-06T09:30"), at("2026-10-06T10:00"));
+        let moments = vec![
+            (at("2026-10-05T09:00"), at("2026-10-05T17:00"), moment(Hours::Work, Reason::Working, "2026-10-05T17:00")),
+            (at("2026-10-05T17:00"), at("2026-10-06T00:00"), moment(Hours::Leisure, Reason::Evening, "2026-10-06T09:00")),
+        ];
+        let caf = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: "caf".into(), address: "sioul:task/caf".into(), title: "CAF form".into(), date: day("2026-10-09"), at: None }, day("2026-10-05"), &tr);
+        let notice = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Notice, key: "box".into(), address: "sioul:contract/box".into(), title: "Internet box".into(), date: day("2026-10-06"), at: None }, day("2026-10-05"), &tr);
+        let dates = vec![notice, caf];
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
+        assert_eq!(at_("2026-10-05T10:00"), "Work until 17:00. Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.", "the notice day never");
+        assert_eq!(at_("2026-10-05T18:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.", "dinner and the night to come: tomorrow, no date");
+        assert_eq!(at_("2026-10-05T19:40"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.", "at dinner too");
     }
 }

@@ -498,6 +498,28 @@ pub mod qobject {
         #[qinvokable]
         fn need_item(self: &Sioul, date: &QString, key: &QString) -> QString;
 
+        /// A date asked's card (the unified agenda, part 4: `dated::card`):
+        /// a letter's, a contract's notice day, a paper's, a payment's, an
+        /// invoice's, a prescription's; in its own page's words, with what its
+        /// form takes. Reads only.
+        #[qinvokable]
+        fn dated_card(self: &Sioul, kind: &QString, key: &QString) -> QString;
+
+        /// An appointment as part F says it, for its card (`agenda::appointment_card`):
+        /// when to leave, what prepares it, Before and Bring. Reads only.
+        #[qinvokable]
+        fn appointment_view(self: &Sioul, key: &QString, start: f64) -> QString;
+
+        /// The message that brought a meeting's invitation, while it is in
+        /// your mail (`pim::invitation_of`): its file, for Answer…; "" for none.
+        #[qinvokable]
+        fn invitation_of(self: &Sioul, key: &QString) -> QString;
+
+        /// A letter's dates put right in its own small form (`dated::letter_dates`);
+        /// returns what went wrong, else "".
+        #[qinvokable]
+        fn letter_dates(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
+
         /// What a task's card offers to choose from, wherever it opens
         /// (`work::task_choices`): projects, kinds, categories.
         #[qinvokable]
@@ -4261,6 +4283,29 @@ impl qobject::Sioul {
 
     fn need_item(&self, date: &QString, key: &QString) -> QString {
         QString::from(&crate::health::need_item(&date.to_string(), &key.to_string()))
+    }
+
+    fn appointment_view(&self, key: &QString, start: f64) -> QString {
+        QString::from(&crate::agenda::appointment_card(&self.shared(), &key.to_string(), start as i64))
+    }
+
+    fn invitation_of(&self, key: &QString) -> QString {
+        QString::from(&crate::pim::invitation_of(&self.shared(), &key.to_string()))
+    }
+
+    fn dated_card(&self, kind: &QString, key: &QString) -> QString {
+        QString::from(&crate::dated::card(&self.shared(), &kind.to_string(), &key.to_string()))
+    }
+
+    fn letter_dates(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
+        let problem = crate::dated::letter_dates(&id.to_string(), &edit.to_string());
+        if problem.is_empty() {
+            // The Porch's letters and the agenda's marks follow.
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            show(&qt, &shared);
+            crate::agenda::show_agenda(&qt, &shared);
+        }
+        QString::from(&problem)
     }
 
     fn task_card_choices(&self) -> QString {

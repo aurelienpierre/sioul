@@ -318,7 +318,8 @@ Dialog {
     width: Math.min(Math.ceil(Math.max(70 * body.averageCharacterWidth, tiles.naturalWidth)) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? parent.width : 800) - 2 * dialog.theme.gap)
     // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
     height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
-    title: dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
+    // A meeting with others: your own time around it alone, kept in your own file (decision 18).
+    title: dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key && dialog.withOthers ? dialog.sioul.text("event-own-time") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
 
     FontMetrics {
         id: body

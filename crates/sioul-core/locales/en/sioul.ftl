@@ -6336,6 +6336,7 @@ head-next-leave = Next: { $time } { $what }, leave at { $leave }.
 head-tomorrow = Tomorrow: { $time } { $what }.
 head-tomorrow-leave = Tomorrow: { $time } { $what }, leave at { $leave }.
 head-alarm = Alarm at { $time }.
+head-date = { $kind }: { $what }, { $date }: { $left }.
 head-wind-down = Winding down: bed at { $bed }.
 head-wind-down-alarm = Winding down: bed at { $bed }, alarm at { $alarm }.
 head-sleep = Sleep until { $until }.
@@ -6364,3 +6365,38 @@ card-typed-back = Your changes from { $time } are back.
 agenda-doses-unread = Your medicines could not be read here: their doses are not shown.
 agenda-errand-refill = Pharmacy
 agenda-errand-renew = Doctor
+
+## Dates asked of you, as the agenda draws them (the unified agenda, part 4):
+## one family of words for marks, cards and reminders. A date is time left,
+## never "late" or "overdue".
+date-asked = Date asked
+date-letter-appointment = Appointment from a letter
+date-notice-by = Last day for notice
+date-valid-until = Last valid day
+date-payment = Payment
+date-invoice-due = Invoice due
+date-prescription-ends = A prescription ends
+date-runs-out = A medicine runs out
+date-left-today = today
+date-left-tomorrow = tomorrow
+dated-payment-budget = Budget: { $budget }
+dated-invoice-total = Total: { $total }
+dated-invoice-record = Its number and amounts are its record: nothing to change here.
+dated-in-the-agenda = In the agenda: { $title }, { $time }
+dated-letter-bad-date = That date does not read: write it as 2026-11-30.
+dated-letter-bad-time = That time does not read: write it as 14:30.
+dated-letter-dates = The letter's dates
+dated-letter-deadline = Date asked
+dated-letter-appointment = Appointment
+dated-letter-time = At
+dated-letter-dates-why = Read from its scan: put them right here. Once it has its task or its event, their own form holds them.
+dated-open-page = Its page
+dated-in-health = In Health
+dated-paid = Paid
+event-own-time = Your time around it
+event-answer = Answer
+appointment-leave-at = Leave at { $time }
+appointment-next = Next: { $step }
+appointment-before = Before
+appointment-bring = Bring
+appointment-more = and { $n } more

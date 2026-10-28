@@ -357,6 +357,29 @@ Item {
             return planning
         }
 
+        // A date asked at the head of its day (the unified agenda, part 4): a
+        // diamond, filled within seven days and outlined beyond; in the Day its
+        // words with it, in the Week its title alone; a tap opens its card.
+        function test_agenda_dates_at_their_day_s_head() {
+            const days = week()
+            const date = (key, tone) => placed({ id: "dated:task:" + key, kind: "dated", time: { type: "day", date: days[0].date, until: days[0].date }, source: { type: "dated", kind: "task", key: key }, can: { edit: "task", drag: "none" }, title: key === "caf" ? "CAF form" : "Insurance", line: "Date asked · four days left", tone: tone, owner: key }, days[0], 0, 1440)
+            days[0].head = [date("caf", "plain"), date("box", "quiet")]
+            const planning = makeWeek({ days: days })
+            const diamonds = root.all(planning, c => c.objectName === "datedDiamond" && c.visible)
+            compare(diamonds.length, 2)
+            verify(String(diamonds[0].color) !== "#00000000", "within seven days: filled")
+            compare(String(diamonds[1].color), "#00000000", "beyond: outlined")
+            const words = () => root.all(planning, c => c.text !== undefined && typeof c.text === "string" && c.text.indexOf("CAF form") === 0).map(c => c.text)
+            compare(words()[0], "CAF form", "the Week: its title alone")
+            let opened = ""
+            planning.open.connect(row => opened = row.kind + " " + row.datedKind + " " + row.srcKey)
+            mouseClick(diamonds[0].parent)
+            compare(opened, "dated task caf", "its card opens by its kind and key")
+            // The Day: its words too.
+            const day = makeWeek({ days: [days[0]] })
+            verify(root.all(day, c => c.text !== undefined && typeof c.text === "string" && c.text === "CAF form · Date asked · four days left").length === 1)
+        }
+
         // What was let go stays drawn where it went while its re-plan is due
         // (the days wait for it), then goes (review of 590eb18, later 2).
         function test_agenda_landed_stays_while_the_replan_is_due() {

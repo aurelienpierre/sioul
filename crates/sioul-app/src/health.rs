@@ -492,6 +492,23 @@ fn coming(errands: &[sioul_core::health::Errand], p: &Prescription, today: Date)
     next
 }
 
+/// A prescription's coming visits in Health's words ("pharmacy from Friday
+/// 30 October", "renew by Sunday 31 January"): its dated card's lines (the
+/// unified agenda, part 4), as Health's list says them.
+pub(crate) fn prescription_next(health: &Health, p: &Prescription, today: Date) -> Vec<String> {
+    coming(&health.errands(), p, today)
+        .into_iter()
+        .map(|(what, day)| {
+            let day = [("day", tr().day_in(day, today))];
+            match what {
+                Coming::Pharmacy => say("health-next-refill", &day),
+                Coming::RenewBy => say("health-renew-by", &day),
+                Coming::ValidUntil => say("health-valid-until", &day),
+            }
+        })
+        .collect()
+}
+
 /// The medicines tied to a prescription (`Medicine::prescription`), in the order they were added.
 fn tied<'a>(health: &'a Health, p: &'a Prescription) -> impl Iterator<Item = &'a Medicine> {
     health.medicines.iter().filter(|m| m.prescription.as_deref() == Some(p.id.as_str()))

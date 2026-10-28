@@ -434,6 +434,53 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
         }
         laid.insert(step.task.uid.as_str(), to);
     }
+    // The day's appointment's run (composed tasks' part F, §7.4; the unified
+    // agenda's part 4): the open steps of what prepares an appointment of that
+    // day, among those the plan gives it, laid back to back, each at its own
+    // length, the last ending when leaving begins (its start less the time kept
+    // before it); no pause inside the run, one before it. Until part E's
+    // anchors say which steps come after the appointment, every open step
+    // counts as before it. A run that would cross something kept, or reach
+    // before now, is laid as any step is.
+    let mut others = others;
+    for event in &timed {
+        let leave = event.start - i64::from(event.margins.before) * 60;
+        if leave <= start_at || event.start >= next_midnight {
+            continue;
+        }
+        let Some(preparation) = tasks.iter().find(|t| t.status.is_open() && crate::pairs::appointment_of(t).as_deref() == Some(event.uid.as_str())) else { continue };
+        let order: Vec<&str> = crate::tasks::steps_of(tasks, &preparation.uid).into_iter().filter(|t| t.status.is_open()).map(|t| t.uid.as_str()).collect();
+        let mut run: Vec<usize> = order.iter().filter_map(|uid| others.iter().position(|s| s.task.uid == *uid)).collect();
+        if run.is_empty() {
+            continue;
+        }
+        // Back to back from leaving: where each would lie.
+        let mut placed: Vec<(usize, i64, i64)> = Vec::new();
+        let mut end = leave;
+        for &i in run.iter().rev() {
+            let from = end - i64::from(others[i].minutes) * 60;
+            placed.push((i, from, end));
+            end = from;
+        }
+        // Clear of everything kept but the appointment itself (its own span holds its start).
+        let kept: Vec<(i64, i64)> = busy.iter().copied().filter(|&(a, b)| !(a <= event.start && b >= event.start)).collect();
+        let clear = end >= start_at && placed.iter().all(|&(_, from, to)| kept.iter().all(|&(a, b)| b <= from || a >= to));
+        if !clear {
+            continue;
+        }
+        for &(i, from, to) in &placed {
+            lay(&mut view, &others[i], from, to, 0, false);
+            laid.insert(others[i].task.uid.as_str(), to);
+            if others[i].level == crate::demands::Level::Heavy {
+                heavy_laid.push((from, to));
+            }
+        }
+        busy.push((end - pause, leave));
+        run.sort_unstable_by(|a, b| b.cmp(a));
+        for i in run {
+            others.remove(i);
+        }
+    }
     // Where the last step laid ends when the next of its run follows it at once (`Planned::run_next`).
     let mut joined: Option<i64> = None;
     for step in spread_out(others) {
@@ -1096,6 +1143,40 @@ mod tests {
         let mut far_plan = made.clone();
         far_plan.days.insert(far, vec![("first".into(), 25)]);
         assert!(lay_on(far, &now, &[], &far_plan, &tasks, &settings, Drawn::ALL).blocks.iter().all(|b| b.kind != "task"));
+    }
+
+    /// The appointment's run (composed tasks' part F, §7.4): its preparation's
+    /// open steps that the plan gives its day are laid back to back, each at
+    /// its own length, the last ending when leaving begins; one that would
+    /// cross something kept is laid as any step.
+    #[test]
+    fn an_appointment_s_run_is_laid_back_from_leaving() {
+        let now = at("2026-10-05T11:30");
+        let hours = vec![window("tuesday", "09:00", "17:00", "work")];
+        let settings = Settings::of_hours(&hours, TaskAreas::usual());
+        let mut doctor = Occurrence { key: "doc.ics".into(), uid: "doc".into(), summary: "Doctor".into(), start: at("2026-10-06T14:00").timestamp().as_second(), end: at("2026-10-06T14:30").timestamp().as_second(), ..Occurrence::default() };
+        doctor.margins = crate::demands::Margins { before: 30, after: 15 };
+        let mut prep = task("prep", 0, "");
+        prep.links = vec![crate::tasks::Link { uri: "sioul:event/doc".into(), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }];
+        let step = |uid: &str, minutes: u32, created: i64| Task { relations: vec![crate::tasks::Relation { kind: "PARENT".into(), uid: "prep".into(), gap: 0 }], created, ..task(uid, minutes, "") };
+        let tasks = vec![prep, step("bus", 20, 1), step("papers", 15, 2)];
+        let mut made = plan(&tasks, now.date(), &settings.clone().with_events(&now, std::slice::from_ref(&doctor)), &BTreeMap::new(), &BTreeSet::new());
+        let tuesday = jiff::civil::date(2026, 10, 6);
+        made.days.insert(tuesday, vec![("bus".into(), 20), ("papers".into(), 15)]);
+        let laid = |events: &[Occurrence]| {
+            let view = lay_on(tuesday, &now, events, &made, &tasks, &settings.clone().with_events(&now, events), Drawn::ALL);
+            ["bus", "papers"].map(|uid| view.blocks.iter().find(|b| b.kind == "task" && b.key == uid).map(|b| (b.start, b.end)))
+        };
+        let t = |text: &str| at(text).timestamp().as_second();
+        assert_eq!(laid(std::slice::from_ref(&doctor)), [Some((t("2026-10-06T12:55"), t("2026-10-06T13:15"))), Some((t("2026-10-06T13:15"), t("2026-10-06T13:30")))], "back to back, ending when leaving begins");
+        // Something kept across it (another appointment at 13:00): laid as any step, never over it.
+        let call = Occurrence { key: "call.ics".into(), uid: "call".into(), summary: "Call".into(), start: t("2026-10-06T13:00"), end: t("2026-10-06T13:10"), ..Occurrence::default() };
+        let both = [doctor.clone(), call.clone()];
+        let elsewhere = laid(&both);
+        assert_ne!(elsewhere[1], Some((t("2026-10-06T13:15"), t("2026-10-06T13:30"))), "not the run's place: {elsewhere:?}");
+        for (from, to) in elsewhere.into_iter().flatten() {
+            assert!(to <= call.start || from >= call.end, "never over the call: {from}–{to}");
+        }
     }
 
     /// Another day's meals move past what the plan's own rule says

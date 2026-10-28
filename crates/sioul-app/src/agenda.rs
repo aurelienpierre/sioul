@@ -432,6 +432,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
     let mut items = agenda::items(&occurrences, &zone, &errand);
+    // Each appointment's line, part F's agenda half: "Leave at 13:05 · Next: …".
+    appointment_lines(&mut items, &occurrences, &tasks, &zone);
     let mut doses_note = String::new();
     let plan = work::plan_shown().filter(|p| p.made_on == today);
     if drawn {
@@ -449,11 +451,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         let days = plan.as_ref().filter(|p| p.current()).map_or_else(|| sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path()), |p| p.settings().needs_days.clone());
         let shifts_today = plan.as_ref().filter(|p| p.current()).map(|p| p.settings().shifts.clone());
         items.extend(needs_items(&needs, &days, shifts_today.as_ref(), &occurrences, state.from, state.days, &now));
-        match sioul_core::health::Health::read(&sioul_core::health::Health::default_path()) {
-            Ok(health) => items.extend(dose_items(&health, state.from, state.days, &now)),
+        let health = sioul_core::health::Health::read(&sioul_core::health::Health::default_path());
+        match &health {
+            Ok(health) => items.extend(dose_items(health, state.from, state.days, &now)),
             Err(_) => doses_note = tr().text("agenda-doses-unread", None),
         }
         items.extend(timeline::days_off(&load_config().time_off));
+        // The dates asked of you on their days, today and after (the unified agenda, part 4).
+        items.extend(crate::dated::items(&tasks, &occurrences, health.as_ref().ok(), state.from, state.days, &now, &errand));
         // A task once a day: a block that holds its step gives way to it (`timeline::merge`).
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
@@ -507,6 +512,37 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             .collect(),
     };
     (json(&shown), read)
+}
+
+/// Each appointment's line on the timeline (composed tasks' part F, the
+/// unified agenda's part 4): when to leave, from the time kept before it
+/// (your own time around a meeting with others), and the next step of what
+/// prepares it (`pairs::appointment_view`); its file's links read with it.
+fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], tasks: &[sioul_core::tasks::Task], zone: &TimeZone) {
+    for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Event) {
+        let timeline::Source::Calendar { key, start, .. } = &item.source else { continue };
+        let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { continue };
+        let links = std::fs::read_to_string(&o.key).ok().and_then(|text| agenda::event_ref(&text, &o.key, zone)).map(|r| r.links).unwrap_or_default();
+        let view = sioul_core::pairs::appointment_view(o, &links, tasks, tr(), zone);
+        if !view.line.is_empty() {
+            item.line = view.line;
+        }
+    }
+}
+
+/// An appointment as part F says it, for its card (`appointmentView(key,
+/// start)`): when to leave, what prepares it, its steps (Before) and its
+/// lists (Bring), as JSON; "{}" when it is gone. Reads its one file, and the
+/// tasks as last read (never the stores on the window's thread).
+pub(crate) fn appointment_card(shared: &Shared, key: &str, start: i64) -> String {
+    let Some(path) = pim::ours(key) else { return "{}".into() };
+    let Some(calendar) = pim::collection_of(&path) else { return "{}".into() };
+    let zone = TimeZone::system();
+    let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
+    let Some(o) = found.into_iter().find(|o| o.start == start) else { return "{}".into() };
+    let links = std::fs::read_to_string(&path).ok().and_then(|text| agenda::event_ref(&text, key, &zone)).map(|r| r.links).unwrap_or_default();
+    let tasks = work::loaded_known(shared).map(|l| l.tasks.clone()).unwrap_or_default();
+    json(&sioul_core::pairs::appointment_view(&o, &links, &tasks, tr(), &zone))
 }
 
 /// The days from `from`, `count` of them: each date.
@@ -706,7 +742,10 @@ fn named(items: &mut [timeline::Item]) {
         if item.title.trim().is_empty() && matches!(item.kind, timeline::Kind::Event | timeline::Kind::Block) {
             item.title = tr().text("agenda-untitled", None);
         }
-        if item.privacy == timeline::Privacy::Health && matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step | timeline::Kind::Done | timeline::Kind::Event) {
+        // An errand's block, step, task done, event, and date asked: by its kind (a prescription's
+        // own dates are named by theirs already: `dated::item`).
+        let errand_date = item.kind == timeline::Kind::Dated && !item.owner.is_empty();
+        if item.privacy == timeline::Privacy::Health && (errand_date || matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step | timeline::Kind::Done | timeline::Kind::Event)) {
             item.title = match sioul_core::health::errand_kind_of_title(&item.title) {
                 Some(sioul_core::health::ErrandKind::Renew) => tr().text("agenda-errand-renew", None),
                 _ => tr().text("agenda-errand-refill", None),
@@ -771,7 +810,11 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     named(&mut tomorrow_items);
     let tomorrow_items: Vec<timeline::Item> = tomorrow_items.into_iter().filter(|item| shown(item)).map(worded).collect();
     let alarm = needs.alarm_of(today, &zone, &days).filter(|a| !a.skipped).map(|a| a.at);
-    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, zone: &zone, tr: tr() };
+    // The dates asked this week, today to Sunday (`dated::items`; health's never: the head
+    // line names none), for its second sentence in work and admin time.
+    let to_sunday = 8 - i64::from(today.weekday().to_monday_one_offset());
+    let dates = crate::dated::items(known, occurrences, None, today, to_sunday, now, &errand_in(known));
+    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, dates: &dates, zone: &zone, tr: tr() };
     timeline::head_line(&inputs)
 }
 

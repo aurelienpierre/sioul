@@ -135,6 +135,7 @@ mod capacity;
 mod colour;
 mod contracts;
 mod crypto;
+mod dated;
 mod desktop;
 mod devices;
 mod dnd;
