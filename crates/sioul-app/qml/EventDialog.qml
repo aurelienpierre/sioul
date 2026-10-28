@@ -60,20 +60,43 @@ Dialog {
     // What you typed, kept when the form closes without Save (Escape, Back, a
     // press outside) and given back at its next Edit, until you save or cancel
     // (the unified agenda, part 3): the card host's, {forms: {key: {form, at}}}.
+    // Only the fields typed, over the event as it is read then: a time moved
+    // since (a drag, the other device, its organizer) stays where it went, but
+    // for times you typed yourself (review of 590eb18, M2).
     property var keeper: null
     property string loadedForm: ""
     property bool closedBySave: false
     property bool cancelled: false
     property string keptLine: ""
 
+    // The fields of `form` that differ from what was read (`loadedForm`); its
+    // start, its end and "all day" one group: one typed, the three kept.
+    function typedFields(form) {
+        const loaded = JSON.parse(dialog.loadedForm || "{}")
+        const typed = {}
+        for (const name in form) {
+            if (JSON.stringify(form[name]) !== JSON.stringify(loaded[name]))
+                typed[name] = form[name]
+        }
+        if (typed.start !== undefined || typed.end !== undefined || typed.all_day !== undefined) {
+            typed.start = form.start
+            typed.end = form.end
+            typed.all_day = form.all_day
+        }
+        return typed
+    }
+
     function keep() {
-        if (!dialog.keeper || dialog.key === "" || dialog.closedBySave || dialog.cancelled)
+        if (!dialog.keeper || dialog.key === "" || dialog.loadedForm === "" || dialog.closedBySave || dialog.cancelled)
             return
-        const form = dialog.form()
-        if (JSON.stringify(form) === dialog.loadedForm)
+        const typed = dialog.typedFields(dialog.form())
+        // Typed back to what it read: nothing kept.
+        if (Object.keys(typed).length === 0) {
+            dialog.forget()
             return
+        }
         const forms = Object.assign({}, dialog.keeper.forms)
-        forms[dialog.key] = { form: form, at: Qt.formatTime(new Date(), "HH:mm") }
+        forms[dialog.key] = { form: typed, at: Qt.formatTime(new Date(), "HH:mm") }
         dialog.keeper.forms = forms
     }
 
@@ -85,8 +108,9 @@ Dialog {
         dialog.keeper.forms = forms
     }
 
-    // A form as `form()` gives it, put back in the fields.
-    function applyForm(f) {
+    // Fields of a form as `form()` gives them, put back over the form as it is.
+    function applyForm(given) {
+        const f = Object.assign(dialog.form(), given)
         title.text = f.title
         place.text = f.location
         notes.text = f.notes
@@ -334,6 +358,7 @@ Dialog {
             TextField {
                 id: title
 
+                objectName: "eventTitle"
                 enabled: !dialog.withOthers
                 Layout.fillWidth: true
                 placeholderText: dialog.sioul.text("event-title")

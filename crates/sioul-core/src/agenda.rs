@@ -10,9 +10,10 @@
 //! "late" or "overdue": the past is simply not shown (docs/client.md, rule 9).
 //!
 //! Events are changed line by line (`lines`): what Sioul does not edit (alarms,
-//! guests, another application's fields) is kept exactly. New events are
-//! written in UTC; a repeating one keeps its local time across the change of
-//! hour with its time zone, written out in a VTIMEZONE.
+//! guests, another application's fields) is kept exactly. An event written
+//! from the form, one-off or repeating, keeps its local time across the
+//! change of hour with its time zone, written out in a VTIMEZONE
+//! (`time_lines`); one moved or answered keeps its own form (`written_like`).
 
 use crate::lines;
 use crate::vdir::{self, Collection, Kind};
@@ -206,12 +207,17 @@ fn alarms_of(ical: &ICalendar, component: &ICalendarComponent, start: i64, lengt
     out
 }
 
-/// The text as calcard should expand it (`utc_series`, `same_sequence`); the file is left as it is.
+/// The text as calcard should expand it (`utc_series`, `until_on_its_clock`,
+/// `same_sequence`); the file is left as it is.
 fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
-    match utc_series(text) {
-        std::borrow::Cow::Borrowed(text) => same_sequence(text),
-        std::borrow::Cow::Owned(text) => std::borrow::Cow::Owned(same_sequence(&text).into_owned()),
+    let steps: [for<'a> fn(&'a str) -> std::borrow::Cow<'a, str>; 3] = [utc_series, until_on_its_clock, same_sequence];
+    let mut changed: Option<String> = None;
+    for step in steps {
+        if let std::borrow::Cow::Owned(next) = step(changed.as_deref().unwrap_or(text)) {
+            changed = Some(next);
+        }
     }
+    changed.map_or(std::borrow::Cow::Borrowed(text), std::borrow::Cow::Owned)
 }
 
 /// A series whose start is written in UTC ("DTSTART:20270205T080000Z"), said
@@ -220,22 +226,90 @@ fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
 /// time in UTC is its default, yours; every time of the series came an hour
 /// or two early (found 28 October 2026, building the event's card). Its
 /// times are the same instants; only the expansion's clock changes.
+/// Its start's parameters kept but for the zone it gains (`VALUE=DATE-TIME`),
+/// its names read in any case, as RFC 5545 §3.1 has them (review of 590eb18,
+/// later 11).
 fn utc_series(text: &str) -> std::borrow::Cow<'_, str> {
-    if !text.contains("RRULE") || !text.contains("DTSTART:") {
+    let upper = text.to_ascii_uppercase();
+    if !upper.contains("RRULE") || !upper.contains("DTSTART") {
         return std::borrow::Cow::Borrowed(text);
     }
     let mut changed = false;
     let out: Vec<String> = lines::unfold(text)
         .into_iter()
-        .map(|line| match line.strip_prefix("DTSTART:").map(str::trim) {
-            Some(value) if value.len() == 16 && value.as_bytes()[8] == b'T' && value.ends_with(['Z', 'z']) => {
-                changed = true;
-                format!("DTSTART;TZID=UTC:{}", &value[..15])
+        .map(|line| {
+            if lines::name(&line) != "DTSTART" {
+                return line;
             }
-            _ => line,
+            let params = lines::params(&line);
+            // In UTC alone: no zone named, a time of day (by its form, and by VALUE when it is said).
+            if params.iter().any(|(name, value)| name == "TZID" || (name == "VALUE" && !value.eq_ignore_ascii_case("DATE-TIME"))) {
+                return line;
+            }
+            let value = lines::value(&line).trim();
+            if value.len() != 16 || !value.as_bytes()[8].eq_ignore_ascii_case(&b'T') || !value.ends_with(['Z', 'z']) {
+                return line;
+            }
+            changed = true;
+            let kept: String = params.iter().map(|(name, value)| format!(";{name}={}", lines::param_value(value))).collect();
+            format!("DTSTART{kept};TZID=UTC:{}", value[..15].to_ascii_uppercase())
         })
         .collect();
     if changed { std::borrow::Cow::Owned(lines::fold(&out)) } else { std::borrow::Cow::Borrowed(text) }
+}
+
+/// A zoned series' UNTIL in UTC, as RFC 5545 §3.3.10 asks of a start with
+/// its zone, said on the series' own clock for its expansion: calcard 0.3.14
+/// compares UNTIL with each time on a floating clock, the series' wall time
+/// (`from_floating_ical`), so that a last time whose instant is the UNTIL
+/// itself was left out east of UTC (Paris: 09:00 against 08:00; review of
+/// 590eb18, later 13, proved by `a_zoned_series_keeps_its_last_time`). The
+/// same instant, said otherwise; only the reading changes, never the file.
+fn until_on_its_clock(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.to_ascii_uppercase().contains("UNTIL=") {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return std::borrow::Cow::Borrowed(text) };
+    // The master's own lines, its alarms left out.
+    let mut own = Vec::new();
+    let mut nested = 0usize;
+    for i in master.start + 1..master.end.saturating_sub(1) {
+        match lines::name(&source[i]).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            _ if nested == 0 => own.push(i),
+            _ => {}
+        }
+    }
+    let Some(start) = own.iter().copied().find(|&i| lines::name(&source[i]) == "DTSTART") else { return std::borrow::Cow::Borrowed(text) };
+    let Some(clock) = lines::param(&source[start], "TZID").and_then(|zone| TimeZone::get(&zone).ok()) else { return std::borrow::Cow::Borrowed(text) };
+    let mut changed = false;
+    for &i in &own {
+        if !matches!(lines::name(&source[i]).as_str(), "RRULE" | "EXRULE") {
+            continue;
+        }
+        let value = lines::value(&source[i]).to_string();
+        let head = source[i][..source[i].len() - value.len() - 1].to_string();
+        let parts: Vec<String> = value
+            .split(';')
+            .map(|part| match part.split_once('=') {
+                Some((name, until)) if name.trim().eq_ignore_ascii_case("UNTIL") && until.trim().len() == 16 && until.trim().ends_with(['Z', 'z']) => {
+                    let wall = DateTime::strptime("%Y%m%dT%H%M%S", until.trim()[..15].to_ascii_uppercase()).ok().and_then(|utc| utc.to_zoned(TimeZone::UTC).ok()).map(|utc| utc.with_time_zone(clock.clone()).strftime("%Y%m%dT%H%M%S").to_string());
+                    match wall {
+                        Some(wall) => {
+                            changed = true;
+                            format!("UNTIL={wall}")
+                        }
+                        None => part.to_string(),
+                    }
+                }
+                _ => part.to_string(),
+            })
+            .collect();
+        source[i] = format!("{head}:{}", parts.join(";"));
+    }
+    if changed { std::borrow::Cow::Owned(lines::fold(&source)) } else { std::borrow::Cow::Borrowed(text) }
 }
 
 /// The text as calcard should expand it. calcard puts a changed occurrence
@@ -899,20 +973,79 @@ fn utc(at: &Zoned) -> String {
     at.timestamp().strftime("%Y%m%dT%H%M%SZ").to_string()
 }
 
-/// DTSTART and DTEND lines for the form's times: dates for whole days; UTC for
-/// one-off events; local time with the zone for repeating ones.
-fn time_lines(edit: &EventEdit, zone: &TimeZone) -> Result<(Vec<String>, Option<String>), String> {
+/// DTSTART and DTEND lines for the form's times, and the zone they name
+/// (its VTIMEZONE written once in the file): dates for whole days; every
+/// timed event, one-off or repeating, on the local clock with its zone
+/// (`DTSTART;TZID=Europe/Paris:20261102T090000`): an appointment is given in
+/// local time, summer or winter, and stays there whatever reads it (28
+/// October 2026, the owner's word: UTC was written for one-off events
+/// until then). The zone is named by the system, else as this device
+/// recorded it (`recorded_zone`). With no name at all, a one-off event is
+/// written at its instant in UTC and a repeating one on its offset's own
+/// clock ("Etc/GMT-1"), never in UTC; an offset that is not whole hours has
+/// no such zone, and the series is written in UTC then.
+fn time_lines(edit: &EventEdit, zone: &TimeZone) -> Result<(Vec<String>, Option<(String, TimeZone)>), String> {
+    let recorded = if zone.iana_name().is_none() { recorded_zone() } else { None };
+    time_lines_with(edit, zone, recorded.as_deref())
+}
+
+fn time_lines_with(edit: &EventEdit, zone: &TimeZone, recorded: Option<&str>) -> Result<(Vec<String>, Option<(String, TimeZone)>), String> {
     let (start, end) = instants(edit, zone)?;
     if edit.all_day {
         return Ok((vec![format!("DTSTART;VALUE=DATE:{}", start.date().strftime("%Y%m%d")), format!("DTEND;VALUE=DATE:{}", end.date().strftime("%Y%m%d"))], None));
     }
-    match zone.iana_name().filter(|_| !edit.repeat.is_empty()) {
-        Some(name) => Ok((
-            vec![format!("DTSTART;TZID={name}:{}", start.strftime("%Y%m%dT%H%M%S")), format!("DTEND;TZID={name}:{}", end.strftime("%Y%m%dT%H%M%S"))],
-            Some(name.to_string()),
-        )),
-        None => Ok((vec![format!("DTSTART:{}", utc(&start)), format!("DTEND:{}", utc(&end))], None)),
+    let on = |name: &str, clock: &TimeZone| {
+        let wall = |at: &Zoned| at.with_time_zone(clock.clone()).strftime("%Y%m%dT%H%M%S").to_string();
+        (vec![format!("DTSTART;TZID={name}:{}", wall(&start)), format!("DTEND;TZID={name}:{}", wall(&end))], Some((name.to_string(), clock.clone())))
+    };
+    if let Some((name, clock)) = named_zone(zone, recorded, &[start.timestamp(), end.timestamp()]) {
+        return Ok(on(&name, &clock));
     }
+    if !edit.repeat.is_empty()
+        && let Some((name, clock)) = offset_zone(zone.to_offset(start.timestamp()))
+    {
+        return Ok(on(&name, &clock));
+    }
+    Ok((vec![format!("DTSTART:{}", utc(&start)), format!("DTEND:{}", utc(&end))], None))
+}
+
+/// The zone's own name ("Europe/Paris"), else the one this device recorded
+/// (`recorded`), when it reads here and agrees with `zone` at each of
+/// `instants`: the same instants, on a clock that has a name.
+fn named_zone(zone: &TimeZone, recorded: Option<&str>, instants: &[Timestamp]) -> Option<(String, TimeZone)> {
+    if let Some(name) = zone.iana_name() {
+        return Some((name.to_string(), zone.clone()));
+    }
+    let name = recorded.map(str::trim).filter(|name| !name.is_empty())?;
+    let clock = TimeZone::get(name).ok()?;
+    instants.iter().all(|&at| clock.to_offset(at) == zone.to_offset(at)).then(|| (name.to_string(), clock))
+}
+
+/// A whole-hour offset's own zone: "Etc/GMT-1" for UTC+1 (POSIX's signs, as
+/// the time zone database names them), "Etc/GMT" for UTC; none for an offset
+/// that is not whole hours.
+fn offset_zone(offset: jiff::tz::Offset) -> Option<(String, TimeZone)> {
+    let seconds = offset.seconds();
+    if seconds % 3_600 != 0 {
+        return None;
+    }
+    let hours = seconds / 3_600;
+    let name = match hours {
+        0 => "Etc/GMT".to_string(),
+        h if h > 0 => format!("Etc/GMT-{h}"),
+        h => format!("Etc/GMT+{}", -h),
+    };
+    TimeZone::get(&name).ok().map(|clock| (name, clock))
+}
+
+/// The time zone this device recorded, by its name: on a phone the one
+/// Android said last, on a computer the system's when the file was made
+/// (the window's `alarms::ZoneSaid`, `$XDG_STATE_HOME/sioul/zone.toml`);
+/// none when there is no such file.
+pub fn recorded_zone() -> Option<String> {
+    let text = std::fs::read_to_string(crate::config::state_dir().join("zone.toml")).ok()?;
+    let table: toml::Table = toml::from_str(&text).ok()?;
+    table.get("zone").and_then(|zone| zone.as_str()).map(str::to_string).filter(|zone| !zone.is_empty())
 }
 
 fn rule_line(repeat: &str) -> Option<String> {
@@ -977,8 +1110,8 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     let zone = zone.clone();
     let (times, tzid) = time_lines(edit, &zone)?;
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "CALSCALE:GREGORIAN".to_string()];
-    if let Some(name) = &tzid {
-        out.extend(vtimezone(&zone, name, Zoned::now().with_time_zone(zone.clone()).year()));
+    if let Some((name, clock)) = &tzid {
+        out.extend(vtimezone(clock, name, Zoned::now().with_time_zone(clock.clone()).year()));
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&Zoned::now()))]);
     out.extend(times);
@@ -1094,7 +1227,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     for line in source {
         let name = lines::name(&line);
         let value = lines::value(&line).trim().to_ascii_uppercase();
-        if name == "BEGIN" && value == "VTIMEZONE" && tzid.as_deref().is_some_and(|z| text.contains(&format!("TZID:{z}"))) {
+        if name == "BEGIN" && value == "VTIMEZONE" && tzid.as_ref().is_some_and(|(z, _)| text.contains(&format!("TZID:{z}"))) {
             has_zone = true;
         }
         if !depth_in_event {
@@ -1143,10 +1276,10 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
         }
         event.push(line);
     }
-    // A repeating event in your zone needs the zone written once.
-    if let (Some(name), false) = (&tzid, has_zone) {
+    // An event on your clock needs its zone written once.
+    if let (Some((name, clock)), false) = (&tzid, has_zone) {
         let at = out.iter().position(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VEVENT")).unwrap_or(out.len());
-        let zone_lines = vtimezone(&zone, name, Zoned::now().year());
+        let zone_lines = vtimezone(clock, name, Zoned::now().with_time_zone(clock.clone()).year());
         out.splice(at..at, zone_lines);
     }
     Ok(lines::fold(&out))
@@ -1375,13 +1508,16 @@ pub fn moved(text: &str, start: i64, new_start: i64, new_end: i64, only_this: bo
         source.splice(master.end..master.end, block);
         return Ok(lines::fold(&source));
     }
-    let mut edit = edit_of_text(text, zone).ok_or(MoveProblem::Gone)?;
-    let local = |at: Timestamp| at.to_zoned(zone.clone()).strftime("%Y-%m-%dT%H:%M").to_string();
+    // Its times written as its DTSTART is, never as the form writes a new
+    // one: an event written in UTC elsewhere stays in UTC, one with its zone
+    // in its zone (item 11 of the review of 590eb18); its other lines kept.
+    let like = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART").cloned().ok_or(MoveProblem::Gone)?;
     if !repeats {
-        edit.start = local(from);
-        edit.end = local(to);
-        return apply(text, &edit, zone).map_err(|e| unreadable(&e));
+        let block = retimed(&source[master.clone()], &like, from, to, None, &[], zone);
+        source.splice(master, block);
+        return Ok(lines::fold(&source));
     }
+    let edit = edit_of_text(text, zone).ok_or(MoveProblem::Gone)?;
     // Every time: by as much on the clock as the one dragged (days, then hours).
     let was = Timestamp::from_second(start).map_err(|e| unreadable(&e))?.to_zoned(zone.clone()).datetime();
     let span = was.until((jiff::Unit::Day, from.to_zoned(zone.clone()).datetime())).map_err(|e| unreadable(&e))?;
@@ -1393,11 +1529,12 @@ pub fn moved(text: &str, start: i64, new_start: i64, new_end: i64, only_this: bo
     let first: DateTime = edit.start.parse().map_err(|e| unreadable(&e))?;
     let first = first.checked_add(span).map_err(|e| unreadable(&e))?;
     let last = first.checked_add(jiff::Span::new().seconds(new_end - new_start)).map_err(|e| unreadable(&e))?;
-    edit.start = first.strftime("%Y-%m-%dT%H:%M").to_string();
-    edit.end = last.strftime("%Y-%m-%dT%H:%M").to_string();
-    // Its first time and its length, as the form writes them; then, around them,
+    let instant = |at: DateTime| at.to_zoned(zone.clone()).map(|z| z.timestamp()).map_err(|e| unreadable(&e));
+    // Its first time and its length, in its own form; then, around them,
     // the rule's days, the times left out and added, the times changed occurrences replace.
-    let written = apply(text, &edit, zone).map_err(|e| unreadable(&e))?;
+    let block = retimed(&source[master.clone()], &like, instant(first)?, instant(last)?, None, &[], zone);
+    source.splice(master, block);
+    let written = lines::fold(&source);
     let mut source = lines::unfold(&written);
     let master = master_range(&source).ok_or(MoveProblem::Gone)?;
     for range in event_ranges(&source) {
@@ -1835,6 +1972,36 @@ fn which_time(event: &[String]) -> String {
     let Some(line) = own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID") else { return String::new() };
     let (value, zone) = (lines::value(line).trim().to_string(), lines::param(line, "TZID"));
     instant_of(&value, zone.as_deref()).map_or_else(|| format!("{}|{value}", zone.unwrap_or_default()), |at| format!("@{at}"))
+}
+
+/// Where one time of a series went: the start, Unix seconds, of the changed
+/// occurrence whose RECURRENCE-ID names the instant `start` (moved "only this
+/// time", here or on another device); none when no changed occurrence names
+/// it. A card open on that time follows it there (review of 590eb18, later
+/// 7). Times without a zone read in `zone`.
+pub fn moved_to(text: &str, start: i64, zone: &TimeZone) -> Option<i64> {
+    cut(text).events.iter().find_map(|event| {
+        let id = own_lines(event).find(|l| lines::name(l) == "RECURRENCE-ID")?;
+        if instant_in(id, zone)? != start {
+            return None;
+        }
+        instant_in(own_lines(event).find(|l| lines::name(l) == "DTSTART")?, zone)
+    })
+}
+
+/// A DATE-TIME line's instant, Unix seconds: in UTC, in the zone it names, or
+/// floating in `zone`; a date alone, its midnight in `zone`.
+fn instant_in(line: &str, zone: &TimeZone) -> Option<i64> {
+    let value = lines::value(line).trim().to_string();
+    let named = lines::param(line, "TZID");
+    if let Some(at) = instant_of(&value, named.as_deref()) {
+        return Some(at);
+    }
+    if named.is_some() || value.ends_with('Z') {
+        return None;
+    }
+    let civil = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", &value).or_else(|_| jiff::civil::Date::strptime("%Y%m%d", &value).map(|d| d.at(0, 0, 0, 0))).ok()?;
+    civil.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
 }
 
 /// A DATE-TIME as an instant, Unix seconds: in UTC (its Z), or in the zone
@@ -2382,6 +2549,52 @@ mod tests {
         assert_eq!(first_times(&zoned, &zone), Some((eight, eight + 3_600)));
     }
 
+    /// The UTC series' other forms and lines (review of 590eb18, later 11):
+    /// one with no end, begun years before, read through `from_window`; an
+    /// UNTIL in UTC keeping its last time; a time changed by its RECURRENCE-ID
+    /// in UTC, at its new time only; `VALUE=DATE-TIME` and names in lower case.
+    #[test]
+    fn a_series_in_utc_keeps_its_hour_in_every_form() {
+        let zone = paris();
+        let eight = 1_801_814_400; // 2027-02-05T08:00Z, 09:00 in Paris
+        let day = 86_400;
+        let times = |text: &str, from: i64, to: i64| -> Vec<i64> {
+            let path = write_temp("utc-forms.ics", text);
+            let mut starts: Vec<i64> = file_occurrences(&path, &calendar(), from, to, &zone).iter().map(|o| o.start).collect();
+            starts.sort();
+            starts
+        };
+        let series = |head: &str, rule: &str, more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:utc-forms\r\n{head}\r\nDTEND:20200103T090000Z\r\nRRULE:{rule}\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n{more}END:VCALENDAR\r\n");
+        // Begun in 2020, no end: the week of 5 February 2027 through `from_window`.
+        let weekly = series("DTSTART:20200103T080000Z", "FREQ=WEEKLY", "");
+        assert_eq!(times(&weekly, eight - day, eight + 6 * day), vec![eight], "Friday at 08:00Z, not 07:00Z");
+        // Its UNTIL in UTC, the last time's own instant: kept.
+        let until = series("DTSTART:20270205T080000Z", "FREQ=DAILY;UNTIL=20270209T080000Z", "").replace("DTEND:20200103T090000Z", "DTEND:20270205T090000Z");
+        assert_eq!(times(&until, eight - day, eight + 10 * day), (0..5).map(|i| eight + i * day).collect::<Vec<_>>(), "five times, the last kept");
+        // One time moved by its RECURRENCE-ID in UTC: at its new time alone.
+        let moved = until.replace("END:VCALENDAR", "BEGIN:VEVENT\r\nUID:utc-forms\r\nRECURRENCE-ID:20270207T080000Z\r\nDTSTART:20270207T100000Z\r\nDTEND:20270207T110000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        assert_eq!(times(&moved, eight - day, eight + 10 * day), vec![eight, eight + day, eight + 2 * day + 7_200, eight + 3 * day, eight + 4 * day], "moved, never twice");
+        // Its start's value said, and names in lower case (RFC 5545 §3.1: names are case-insensitive).
+        let valued = until.replace("DTSTART:20270205T080000Z", "DTSTART;VALUE=DATE-TIME:20270205T080000Z");
+        assert_eq!(times(&valued, eight - day, eight + 2 * day), vec![eight, eight + day], "VALUE=DATE-TIME");
+        assert_eq!(utc_series("BEGIN:VEVENT\r\ndtstart:20270205t080000z\r\nrrule:FREQ=DAILY\r\nEND:VEVENT\r\n").as_ref(), "BEGIN:VEVENT\r\nDTSTART;TZID=UTC:20270205T080000\r\nrrule:FREQ=DAILY\r\nEND:VEVENT\r\n", "lower case");
+    }
+
+    /// A series with its zone whose UNTIL is its last time's exact instant in
+    /// UTC, as RFC 5545 §3.3.10 asks of a zoned start (review of 590eb18,
+    /// later 13): Paris, east of UTC, keeps its last time.
+    #[test]
+    fn a_zoned_series_keeps_its_last_time() {
+        let zone = paris();
+        let nine = 1_801_814_400; // 2027-02-05 09:00 in Paris
+        let day = 86_400;
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:paris-until\r\nDTSTART;TZID=Europe/Paris:20270205T090000\r\nDTEND;TZID=Europe/Paris:20270205T100000\r\nRRULE:FREQ=DAILY;UNTIL=20270209T080000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let path = write_temp("paris-until.ics", text);
+        let mut starts: Vec<i64> = file_occurrences(&path, &calendar(), nine - day, nine + 10 * day, &zone).iter().map(|o| o.start).collect();
+        starts.sort();
+        assert_eq!(starts, (0..5).map(|i| nine + i * day).collect::<Vec<_>>(), "five times, the last kept");
+    }
+
     fn at(text: &str) -> i64 {
         let local: DateTime = text.parse().unwrap();
         local.to_zoned(TimeZone::get("Europe/Paris").unwrap()).unwrap().timestamp().as_second()
@@ -2895,10 +3108,69 @@ mod tests {
         assert!(skipped.contains("EXDATE;TZID=Europe/Paris:20261005T180000"), "{skipped}");
     }
 
+    /// Every timed appointment written from the form is on the local clock
+    /// with its zone, one-off or repeating (28 October 2026, the owner's word:
+    /// appointments are given in local time, winter or summer): it reads back
+    /// at the same instant, whatever zone reads it; 09:00 stays 09:00 on a date
+    /// past the October change, and a series made in winter keeps 09:00 in
+    /// summer. A UTC event moved by a drag stays in UTC.
+    #[test]
+    fn an_appointment_is_written_on_the_local_clock() {
+        let zone = paris();
+        let utc_zone = TimeZone::UTC;
+        let edit = |start: &str, end: &str, repeat: &str| EventEdit { title: "Dentist".into(), start: start.into(), end: end.into(), repeat: repeat.into(), ..EventEdit::default() };
+        let read = |text: &str, from: &str, to: &str, reader: &TimeZone| -> Vec<i64> {
+            let path = write_temp("local-clock.ics", text);
+            file_occurrences(&path, &calendar(), at(from), at(to), reader).iter().map(|o| o.start).collect()
+        };
+        // Made in summer for a day after the change of 25 October: 09:00 on its day, 08:00 in UTC.
+        let after = new_event(&edit("2026-11-02T09:00", "2026-11-02T09:30", ""), &zone).unwrap();
+        assert!(after.contains("DTSTART;TZID=Europe/Paris:20261102T090000") && after.contains("DTEND;TZID=Europe/Paris:20261102T093000") && after.contains("BEGIN:VTIMEZONE"), "{after}");
+        assert!(!after.contains("T080000Z"), "never in UTC: {after}");
+        let nine = at("2026-11-02T09:00");
+        assert_eq!(nine, 1_793_606_400, "08:00Z");
+        assert_eq!(read(&after, "2026-11-01T00:00", "2026-11-03T00:00", &zone), vec![nine], "read here");
+        assert_eq!(read(&after, "2026-11-01T00:00", "2026-11-03T00:00", &utc_zone), vec![nine], "read elsewhere, the same instant");
+        assert_eq!(edit_of_text(&after, &zone).unwrap().start, "2026-11-02T09:00", "its form says 09:00");
+        // Before the change: 09:00 there too, 07:00 in UTC.
+        let before = new_event(&edit("2026-10-20T09:00", "2026-10-20T09:30", ""), &zone).unwrap();
+        assert_eq!(read(&before, "2026-10-19T00:00", "2026-10-21T00:00", &utc_zone), vec![at("2026-10-20T09:00")]);
+        // A weekly series made in winter: 09:00 in July too.
+        let weekly = new_event(&edit("2027-01-04T09:00", "2027-01-04T10:00", "weekly"), &zone).unwrap();
+        assert_eq!(read(&weekly, "2027-07-05T00:00", "2027-07-06T00:00", &utc_zone), vec![at("2027-07-05T09:00")], "09:00 in summer");
+        // A one-off event written in UTC by another program, moved by a drag: still in UTC.
+        let theirs = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:theirs\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nSUMMARY:Call\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let from = at("2026-11-04T10:00");
+        let moved = moved(theirs, from, from + 3_600, from + 7_200, false, &zone).unwrap();
+        assert!(moved.contains("DTSTART:20261104T100000Z") && moved.contains("DTEND:20261104T110000Z") && !moved.contains("TZID"), "its own form kept: {moved}");
+    }
+
+    /// A phone whose system zone has no name writes the same lines, on the
+    /// zone this device recorded (zone.toml); with none recorded, a one-off
+    /// event at its instant in UTC and a series on its offset's own clock,
+    /// never in UTC.
+    #[test]
+    fn a_zone_without_a_name_writes_the_recorded_one() {
+        let paris_rules = TimeZone::posix("CET-1CEST,M3.5.0,M10.5.0/3").unwrap();
+        assert!(paris_rules.iana_name().is_none());
+        let edit = |repeat: &str| EventEdit { title: "Dentist".into(), start: "2026-11-02T09:00".into(), end: "2026-11-02T09:30".into(), repeat: repeat.into(), ..EventEdit::default() };
+        let named = time_lines_with(&edit(""), &paris(), None).unwrap();
+        let recorded = time_lines_with(&edit(""), &paris_rules, Some("Europe/Paris")).unwrap();
+        assert_eq!(recorded.0, named.0, "the same lines");
+        assert_eq!(recorded.1.map(|(name, _)| name), Some("Europe/Paris".to_string()));
+        // A recorded zone that disagrees with the clock at that time is not taken.
+        assert!(time_lines_with(&edit(""), &paris_rules, Some("America/New_York")).unwrap().1.is_none());
+        // None recorded: a one-off in UTC, a series on UTC+1's own clock.
+        assert_eq!(time_lines_with(&edit(""), &paris_rules, None).unwrap().0, vec!["DTSTART:20261102T080000Z".to_string(), "DTEND:20261102T083000Z".to_string()]);
+        let (series, zone) = time_lines_with(&edit("weekly"), &paris_rules, None).unwrap();
+        assert_eq!(series, vec!["DTSTART;TZID=Etc/GMT-1:20261102T090000".to_string(), "DTEND;TZID=Etc/GMT-1:20261102T093000".to_string()]);
+        assert_eq!(zone.map(|(name, _)| name), Some("Etc/GMT-1".to_string()));
+    }
+
     #[test]
     fn new_events_and_answers() {
         let one = new_event(&EventEdit { title: "Dentist".into(), start: "2026-10-07T09:00".into(), end: "2026-10-07T09:30".into(), ..EventEdit::default() }, &paris()).unwrap();
-        assert!(one.contains("SUMMARY:Dentist") && one.contains("DTSTART:20261007T070000Z") && parse(&one).is_some(), "{one}");
+        assert!(one.contains("SUMMARY:Dentist") && one.contains("DTSTART;TZID=Europe/Paris:20261007T090000") && one.contains("TZID:Europe/Paris") && parse(&one).is_some(), "{one}");
         let weekly = new_event(&EventEdit { title: "Choir".into(), start: "2026-10-07T20:00".into(), end: "2026-10-07T22:00".into(), repeat: "weekly".into(), ..EventEdit::default() }, &paris()).unwrap();
         assert!(weekly.contains("DTSTART;TZID=Europe/Paris:20261007T200000") && weekly.contains("BEGIN:VTIMEZONE") && weekly.contains("RRULE:FREQ=WEEKLY"), "{weekly}");
         let day = new_event(&EventEdit { title: "Holidays".into(), start: "2026-12-24".into(), end: "2026-12-26".into(), all_day: true, ..EventEdit::default() }, &paris()).unwrap();

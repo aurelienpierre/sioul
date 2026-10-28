@@ -651,7 +651,8 @@ Item {
                                             required property var modelData
 
                                             text: page.theme.plain(page.sioul.textWith("overlap-open", "title", openOne.modelData.title))
-                                            onClicked: page.window.openThing({ kind: "event", key: openOne.modelData.key, uri: "" })
+                                            // That time of it, a series' Thursday, not its next (review of 590eb18, later 6).
+                                            onClicked: page.window.openThing({ kind: "event", key: openOne.modelData.key, start: openOne.modelData.start || 0, uri: "" })
                                         }
                                     }
                                     Button {

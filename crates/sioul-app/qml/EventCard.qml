@@ -50,10 +50,11 @@ CardFrame {
         if (read.key === undefined && card.event !== null && card.event.recurring === false)
             read = JSON.parse(card.sioul.eventCard(card.key, 0) || "{}")
         card.event = read.key === undefined ? null : read
-        if (card.event !== null) {
-            card.start = card.event.start
+        // The time read stays in `event.start`, which every action uses: `start`
+        // is the host's binding to what was tapped, never assigned here (review
+        // of 590eb18, M1).
+        if (card.event !== null)
             card.host.named(card.event.id, card.event.summary)
-        }
         card.reminder = card.event ? JSON.parse(card.sioul.eventReminder(card.event.key, card.event.start) || "{}") : ({})
         pairing.read()
     }

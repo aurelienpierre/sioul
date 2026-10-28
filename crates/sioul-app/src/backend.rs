@@ -65,6 +65,9 @@ pub mod qobject {
         #[qproperty(QString, agenda)]
         // Two events at once in the next two weeks (`pim::overlaps_of`), made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
+        // A re-plan due after a write (`work::replan_asked`), until its publish or the end of its
+        // run: the timeline keeps what was let go drawn there meanwhile (review of 590eb18, later 2).
+        #[qproperty(bool, replan_due)]
         // The Health page, the Porch's doses (today's not marked yet, and those due
         // while Sioul was closed: `health::missed`), today's meals and naps
         // (`health::show_health`), made off the window's thread: they read the
@@ -2182,6 +2185,7 @@ pub struct SioulRust {
     duplicates: QString,
     agenda: QString,
     overlaps: QString,
+    replan_due: bool,
     health_view: QString,
     missed_view: QString,
     needs_view: QString,

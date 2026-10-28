@@ -54,14 +54,7 @@ pub(crate) fn tick(qt: &QtThread) {
                 crate::eventalarms::show(&reminder);
                 continue;
             }
-            let (kind, uri, key) = match reminder.kind {
-                Kind::Asked | Kind::Wait => ("task", reminder.target.clone(), reminder.target.trim_start_matches("sioul:task/").to_string()),
-                Kind::Event | Kind::Before | Kind::Alarm => ("event", String::new(), reminder.target.clone()),
-                Kind::Payment => ("budget", reminder.target.clone(), String::new()),
-                Kind::Paper => ("paper", reminder.target.clone(), reminder.target.trim_start_matches("sioul:paper/").to_string()),
-                Kind::Contract => ("contract", reminder.target.clone(), reminder.target.trim_start_matches("sioul:contract/").to_string()),
-                Kind::Money => ("budget", reminder.target.clone(), String::new()),
-            };
+            let (kind, uri, key) = opens(&reminder);
             let qt = qt.clone();
             let open: Box<dyn FnOnce() + Send> = Box::new(move || {
                 let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::from(&key)));
@@ -74,6 +67,31 @@ pub(crate) fn tick(qt: &QtThread) {
             crate::eventalarms::schedule_from(&events, &holds, &now);
         }
     });
+}
+
+/// What a reminder's "Open" opens, as the window's `openThing` takes it: its
+/// kind, its address, its key.
+fn opens(reminder: &reminders::Reminder) -> (&'static str, String, String) {
+    match reminder.kind {
+        Kind::Asked | Kind::Wait => ("task", reminder.target.clone(), reminder.target.trim_start_matches("sioul:task/").to_string()),
+        Kind::Event | Kind::Before | Kind::Alarm => ("event", String::new(), event_time(&reminder.target, reminder.starts)),
+        Kind::Payment => ("budget", reminder.target.clone(), String::new()),
+        Kind::Paper => ("paper", reminder.target.clone(), reminder.target.trim_start_matches("sioul:paper/").to_string()),
+        Kind::Contract => ("contract", reminder.target.clone(), reminder.target.trim_start_matches("sioul:contract/").to_string()),
+        Kind::Money => ("budget", reminder.target.clone(), String::new()),
+    }
+}
+
+/// What an event's reminder opens: its file and the time it reminds of
+/// ("…/yoga.ics#1793520000"), so that its card shows that time of a series,
+/// not its next, the meeting over or not (review of 590eb18, later 6); its
+/// file alone when no time is known. The window reads it back
+/// (`CardHost.eventTime`); a file's name never ends in "#" and digits (".ics").
+pub(crate) fn event_time(target: &str, starts: Option<i64>) -> String {
+    match starts {
+        Some(start) if start > 0 => format!("{target}#{start}"),
+        _ => target.to_string(),
+    }
 }
 
 /// An event's own reminder as the form and the details say it: "" as usual,
@@ -234,6 +252,17 @@ fn stop() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An event's reminder opens that time of it, its card on that time of a
+    /// series, not its next (review of 590eb18, later 6); a task's its task.
+    #[test]
+    fn an_event_s_reminder_opens_its_time() {
+        let event = reminders::Reminder { key: "e".into(), kind: Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None };
+        assert_eq!(opens(&event), ("event", String::new(), "/c/yoga.ics#1793520000".to_string()));
+        assert_eq!(opens(&reminders::Reminder { starts: None, ..event.clone() }).2, "/c/yoga.ics", "no time known: its file");
+        let task = reminders::Reminder { kind: Kind::Asked, target: "sioul:task/t1".into(), starts: None, ..event };
+        assert_eq!(opens(&task), ("task", "sioul:task/t1".to_string(), "t1".to_string()));
+    }
 
     #[test]
     fn an_events_reminder_choices() {

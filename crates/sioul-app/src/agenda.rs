@@ -151,8 +151,19 @@ pub(crate) fn event_card(shared: &Shared, key: &str, start: i64) -> String {
     }
     let zone = TimeZone::system();
     let now = Zoned::now().timestamp().as_second();
+    let at = |start: i64| agenda::file_occurrences(&path, &calendar, start, start + 1, &zone).into_iter().filter(|o| o.start == start).collect::<Vec<_>>();
     let mut found = if start > 0 {
-        agenda::file_occurrences(&path, &calendar, start, start + 1, &zone).into_iter().filter(|o| o.start == start).collect::<Vec<_>>()
+        let mut found = at(start);
+        // That time moved "only this time" since it was asked (a drag, the
+        // other device): the changed occurrence its RECURRENCE-ID names (review
+        // of 590eb18, later 7).
+        if found.is_empty()
+            && let Some(moved) = std::fs::read_to_string(&path).ok().and_then(|text| agenda::moved_to(&text, start, &zone))
+            && moved != start
+        {
+            found = at(moved);
+        }
+        found
     } else {
         // The next time it comes, else its last, within a year either way.
         let all = agenda::file_occurrences(&path, &calendar, now - 366 * 86_400, now + 366 * 86_400, &zone);
@@ -861,16 +872,17 @@ mod tests {
         out
     }
 
-    /// Show is this device's: everything shown when nothing was said (or the
-    /// file does not read), what is said read back, the same said again
-    /// written nothing, and nothing but its own file written.
     /// Just after a write, while its re-plan is due, the days wait for it:
     /// today is never drawn from the older plan beside the newer calendars, a
-    /// dragged step at both its times (review of 3a2fbd4, later 4).
+    /// dragged step at both its times (review of 3a2fbd4, later 4). The writer
+    /// itself makes the re-plan due, before any job starts (review of
+    /// 590eb18, later 12): a drag's write, then the agenda's run.
     #[test]
     fn the_days_wait_for_the_replan_after_a_write() {
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Replan wait", None, &["VEVENT"]).unwrap();
+        let file = calendar.dir.join("moved.ics");
+        vdir::write_item(&file, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:replan-wait\r\nDTSTART:20991001T090000Z\r\nDTEND:20991001T100000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
         let shared = Arc::new(Shared::default());
         if let Ok(mut state) = shared.pim.lock() {
             state.from = Zoned::now().date();
@@ -879,10 +891,11 @@ mod tests {
         shared.agenda_asked.store(true, Ordering::Relaxed);
         work::publish_now(&shared);
         assert!(run(&shared).days.is_some(), "no re-plan due: the days");
-        // A write after the plan, its re-plan asked and not published yet.
-        vdir::write_item(&calendar.dir.join("moved.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:replan-wait\r\nDTSTART:20991001T090000Z\r\nDTEND:20991001T100000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        // A drag's write after the plan, by its own writer: its re-plan due, not published yet.
+        let at = |h: i8| jiff::civil::date(2099, 10, 1).at(h, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
+        let key = file.display().to_string();
+        assert!(matches!(crate::pim::move_written(&shared, &key, at(9), at(11), at(12), false), Ok(Some(_))));
         assert!(work::plan_shown().is_some_and(|p| !p.current()));
-        shared.replan_due.store(true, Ordering::SeqCst);
         assert!(run(&shared).days.is_none(), "the re-plan due: the days shown stay");
         shared.replan_due.store(false, Ordering::SeqCst);
         assert!(run(&shared).days.is_some(), "published: drawn again");
@@ -938,6 +951,12 @@ mod tests {
         let next: serde_json::Value = serde_json::from_str(&event_card(&shared, &key, 0)).unwrap();
         assert_eq!(next["start"], at(tomorrow, 9).timestamp().as_second(), "none asked: the next time it comes");
         assert_eq!(event_card(&shared, &key, third + 60), "{}", "no time of it then");
+        // That time moved "only this time" (here or on the other device): its card follows it (review of 590eb18, later 7).
+        let text = std::fs::read_to_string(&file).unwrap();
+        let later = third + 2 * 3_600;
+        std::fs::write(&file, sioul_core::agenda::moved(&text, third, later, later + 3_600, true, &zone).unwrap()).unwrap();
+        let moved: serde_json::Value = serde_json::from_str(&event_card(&shared, &key, third)).unwrap();
+        assert_eq!(moved["start"], later, "the time asked, where it went: {moved}");
         crate::mail::wait_to_remove(&shared, file.clone());
         assert_eq!(event_card(&shared, &key, third), "{}", "its deletion waits for Undo: no card");
         let _ = std::fs::remove_dir_all(&calendar.dir);
@@ -949,6 +968,9 @@ mod tests {
         VIEW.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Show is this device's: everything shown when nothing was said (or the
+    /// file does not read), what is said read back, the same said again
+    /// written nothing, and nothing but its own file written.
     #[test]
     fn show_is_kept_on_this_device_and_written_only_when_it_changes() {
         let _view = view_held();

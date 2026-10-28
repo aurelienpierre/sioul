@@ -643,7 +643,8 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
 
 /// Reads everything again, computes the task and notes pages on a thread, and shows them.
 pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
-    shared.replan_due.store(true, Ordering::SeqCst);
+    replan_asked(shared);
+    tell_replan_due(qt);
     shared.work_replan.store(true, Ordering::SeqCst);
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.work_job, move |shared| work_run(&qt, shared));
@@ -699,22 +700,62 @@ fn relaid(shared: &Shared) -> bool {
     true
 }
 
-/// A re-plan due until its publish, or until its run ends however it ends
-/// (`Shared::replan_due`).
-struct ReplanDue<'a>(&'a Shared);
+/// A write the plan must follow (an event moved or saved, a task pinned, a
+/// meal moved): its re-plan due from now, before any job is started, so that
+/// the agenda's job started next waits for it rather than drawing today from
+/// the older plan (`agenda::waits_for_replan`; review of 590eb18, later 12).
+/// The writers call it as they write; `show_work` too.
+pub(crate) fn replan_asked(shared: &Shared) {
+    shared.replan_due.store(true, Ordering::SeqCst);
+}
 
-impl ReplanDue<'_> {
-    /// Done, unless another re-plan is already asked (it keeps it due until its own publish).
-    fn done(&self) {
-        if !self.0.work_replan.load(Ordering::SeqCst) {
-            self.0.replan_due.store(false, Ordering::SeqCst);
+/// The window told whether a re-plan is due (`Sioul::replan_due`), as it is
+/// when the window's thread reads it: what was let go on the timeline stays
+/// drawn there until the re-plan brings it (review of 590eb18, later 2).
+fn tell_replan_due(qt: &QtThread) {
+    let _ = qt.queue(|mut sioul| {
+        let due = sioul.shared().replan_due.load(Ordering::SeqCst);
+        sioul.as_mut().set_replan_due(due);
+    });
+}
+
+/// A re-plan due until its publish, or until its run ends however it ends
+/// (`Shared::replan_due`). `ended` hears it stop being due, with whether it
+/// was published: the window is told, and a run ended without a publish (a
+/// failure, a panic) starts the agenda's job again, whose days waited for it
+/// (review of 590eb18, later 4).
+struct ReplanDue<'a> {
+    shared: &'a Shared,
+    ended: Box<dyn FnMut(bool) + 'a>,
+    published: bool,
+}
+
+impl<'a> ReplanDue<'a> {
+    fn new(shared: &'a Shared, ended: impl FnMut(bool) + 'a) -> ReplanDue<'a> {
+        ReplanDue { shared, ended: Box::new(ended), published: false }
+    }
+
+    /// Published: no more due, unless another re-plan is already asked (it
+    /// keeps it due until its own publish).
+    fn published(&mut self) {
+        self.published = true;
+        self.end(true);
+    }
+
+    fn end(&mut self, published: bool) {
+        if self.shared.work_replan.load(Ordering::SeqCst) {
+            return;
         }
+        self.shared.replan_due.store(false, Ordering::SeqCst);
+        (self.ended)(published);
     }
 }
 
 impl Drop for ReplanDue<'_> {
     fn drop(&mut self) {
-        self.done();
+        if !self.published {
+            self.end(false);
+        }
     }
 }
 
@@ -722,7 +763,12 @@ impl Drop for ReplanDue<'_> {
 fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
     // However this run ends, the re-plan it was stops being due (never an agenda waiting for ever).
-    let due = ReplanDue(shared);
+    let mut due = ReplanDue::new(shared, |published| {
+        tell_replan_due(&qt);
+        if !published {
+            crate::agenda::show_agenda(&qt, shared);
+        }
+    });
     {
         let generation = shared.work_generation.fetch_add(1, Ordering::Relaxed) + 1;
         // Today's steps as laid before: the Health page's day shows them faded.
@@ -802,7 +848,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let desk = Arc::new(desk);
         publish(PlanShown { stamp, made_on, desk: Arc::clone(&desk), today: today_laid });
         // Published: the agenda draws from it (a re-plan asked meanwhile sets it again).
-        due.done();
+        due.published();
         crate::agenda::show_agenda(&qt, &shared);
         // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
         if day_steps() != steps_before {
@@ -2698,16 +2744,29 @@ mod tests {
 
     /// A re-plan stays due until its publish, or until its run ends however
     /// it ends; one asked meanwhile keeps it due (review of 3a2fbd4, later 4).
+    /// Its run ended without a publish, it is said so, and the agenda is
+    /// asked again (review of 590eb18, later 4); published, said once.
     #[test]
     fn a_replan_is_due_until_its_publish() {
         let shared = Shared::default();
-        shared.replan_due.store(true, Ordering::SeqCst);
-        drop(ReplanDue(&shared));
+        let ended = std::cell::RefCell::new(Vec::new());
+        replan_asked(&shared);
+        drop(ReplanDue::new(&shared, |published| ended.borrow_mut().push(published)));
         assert!(!shared.replan_due.load(Ordering::SeqCst), "its run ended: no more due");
-        shared.replan_due.store(true, Ordering::SeqCst);
+        assert_eq!(*ended.borrow(), [false], "ended without a publish: the agenda asked again");
+        ended.borrow_mut().clear();
+        replan_asked(&shared);
+        let mut due = ReplanDue::new(&shared, |published| ended.borrow_mut().push(published));
+        due.published();
+        drop(due);
+        assert!(!shared.replan_due.load(Ordering::SeqCst));
+        assert_eq!(*ended.borrow(), [true], "published: said once, the agenda not asked again");
+        ended.borrow_mut().clear();
+        replan_asked(&shared);
         shared.work_replan.store(true, Ordering::SeqCst);
-        ReplanDue(&shared).done();
+        drop(ReplanDue::new(&shared, |published| ended.borrow_mut().push(published)));
         assert!(shared.replan_due.load(Ordering::SeqCst), "another asked meanwhile: still due");
+        assert!(ended.borrow().is_empty(), "nothing said: the next re-plan says it");
     }
 
     #[test]

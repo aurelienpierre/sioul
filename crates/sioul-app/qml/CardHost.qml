@@ -6,12 +6,14 @@
 // part where the page would lose its room), the whole page on a phone. It
 // opens by a reference that every row carries (`window.openCard(ref)`: its
 // kind, its source's key and start or date, its task), and holds one card
-// per kind, each made the first time it is needed (a phone's unloaded once
-// closed): an appointment's (EventCard), a task's (the window's one
-// TaskPanel: a step, a time block and a task done open their task), a meal's,
-// a nap's or the night's (NeedCard). A dose keeps opening its day in Health,
-// where its medicine is named. It keeps the card you came from, one level
-// deep (`follow`, `back`); Back and Escape close it first.
+// per kind, each made the first time it is needed (on a phone, an
+// appointment's and a meal's unloaded once closed): an appointment's
+// (EventCard), a task's (the window's one TaskPanel: a step, a time block
+// and a task done open their task), a meal's, a nap's or the night's
+// (NeedCard). A dose keeps opening its day in Health, where its medicine is
+// named. It keeps the card you came from, one level deep (`follow`,
+// `back`); Back and Escape close it first, and on a phone a place opened
+// closes it (`leave`).
 
 pragma ComponentBehavior: Bound
 
@@ -34,7 +36,7 @@ Item {
     readonly property string kind: host.open ? host.ref.card : ""
     // As wide as the card reads: the task's form's own, else about seventy characters.
     readonly property real naturalWidth: host.kind === "task" && host.taskPanel ? host.taskPanel.naturalWidth : 520
-    // The kinds' cards made so far (a phone's unloaded once closed).
+    // The kinds' cards made so far (on a phone, an appointment's and a meal's unloaded once closed).
     property var made: ({})
     readonly property var taskPanel: taskLoader.item
     readonly property EventCard eventCard: eventLoader.item as EventCard
@@ -45,6 +47,13 @@ Item {
     }
     // What a task's card offers to choose from (`taskCardChoices`).
     property var choices: ({ projects: [], kinds: [], categories: [] })
+
+    // An event's file and the time a reminder named ("…/yoga.ics#1793520000",
+    // `remind::event_time`): {key, start}; the file alone, start 0 (its next time).
+    function eventTime(key) {
+        const named = /^(.*)#(\d+)$/.exec(key || "")
+        return named ? { key: named[1], start: Number(named[2]) } : { key: key || "", start: 0 }
+    }
 
     // The card a reference opens, by its kind; "" for none here.
     function cardOf(ref) {
@@ -94,14 +103,14 @@ Item {
         host.previous = keep ? host.ref : null
         const made = Object.assign({}, host.made)
         made[card] = true
-        // A phone keeps the card shown and the one Back goes to, no other.
+        // A phone keeps the card shown and the one Back goes to, no other; but
+        // the task's card, once made, as the Tasks page kept its panel (made
+        // again, some 700 items, at every tap on a step: review of 590eb18, later 1).
         if (host.window.compact) {
-            for (const other of ["event", "task", "need"]) {
+            for (const other of ["event", "need"]) {
                 if (other !== card && (host.previous === null || host.previous.card !== other))
                     made[other] = false
             }
-            if (made.task !== true)
-                taskLoader.source = ""
         }
         host.made = made
         if (card === "task")
@@ -148,20 +157,34 @@ Item {
         host.opened++
         host.ref = null
         host.previous = null
-        // A phone keeps what is shown only: the card made again at its next opening.
-        if (host.window.compact && was !== "") {
+        // A phone keeps what is shown only: the card made again at its next
+        // opening; the task's card kept once made (`place`).
+        if (host.window.compact && was !== "" && was !== "task") {
             const made = Object.assign({}, host.made)
             made[was] = false
             host.made = made
-            if (was === "task")
-                taskLoader.source = ""
         }
     }
 
-    // A new task's form open in the task's card, with a title typed: the task made first.
+    // The page changes under the card, or a place opens (a message, a note, a
+    // contact, a project): on a phone, where the card covers the page, it
+    // closes, so that what opens shows; on a computer it stays beside the page
+    // (review of 590eb18, M3).
+    function leave() {
+        if (host.window.compact && host.open)
+            host.close()
+    }
+
+    // The task's card left (another card, another task, Back, closed): a new
+    // task's form with a title typed makes the task first; a task's field being
+    // typed in is saved first.
     function leaveTask() {
-        if (host.ref !== null && host.ref.card === "task" && host.ref.making && host.taskPanel)
+        if (host.ref === null || host.ref.card !== "task" || !host.taskPanel)
+            return
+        if (host.ref.making)
             host.taskPanel.leave()
+        else
+            host.taskPanel.commit()
     }
 
     // A new task's full form, its title first; from `source` (a card's Add ▾ ▸ A task), its tie given.

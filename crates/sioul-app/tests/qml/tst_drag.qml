@@ -31,6 +31,8 @@ Item {
         property bool away: false
         property string status: ""
         property var calls: []
+        // A re-plan due after a write (`work::replan_asked`): the days wait for it.
+        property bool replanDue: false
         function text(key) { return key }
         function textWith(key, name, value) { return key + "(" + value + ")" }
         function textArgs(key, args) { return key }
@@ -140,6 +142,7 @@ Item {
 
         function init() {
             mock.calls = []
+            mock.replanDue = false
             mock.status = ""
         }
 
@@ -352,6 +355,21 @@ Item {
             const planning = createTemporaryObject(planningComponent, root, Object.assign({ width: 900, height: 760, days: week(), frame: { from: 360, to: 1440 } }, more || {}))
             waitForRendering(planning)
             return planning
+        }
+
+        // What was let go stays drawn where it went while its re-plan is due
+        // (the days wait for it), then goes (review of 590eb18, later 2).
+        function test_agenda_landed_stays_while_the_replan_is_due() {
+            const planning = makeWeek({ landedFor: 100 })
+            drag(planning, planningPoint(planning, 0, 630), planningPoint(planning, 1, 720))
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            verify(planning.landed !== null, "drawn where it went")
+            mock.replanDue = true
+            wait(400)
+            verify(planning.landed !== null, "the re-plan due: still drawn there")
+            mock.replanDue = false
+            wait(400)
+            verify(planning.landed === null, "the re-plan over: gone")
         }
 
         function test_agenda_move_end_and_repeating() {

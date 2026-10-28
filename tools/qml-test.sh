@@ -16,6 +16,10 @@
 # copied, and no build is needed. The module the build generates would not do:
 # its qmldir prefers the copies compiled into the program (`prefer :/qt/qml/…`).
 #
+# The window's module (com.aurelienpierre.sioul) is stood in for by
+# tests/qml/stand-ins/: its C++ types that a tested file uses (TextSpacing,
+# for TaskPanel.qml), as QML that does nothing.
+#
 # A test that names tools/qml-stand-in.py gets that stand-in web server on
 # 127.0.0.1:18731 while it runs (tst_plaintext.qml asks it whether Qt
 # fetched a picture); it fails at once when the port is taken.
@@ -96,7 +100,7 @@ for name in "${names[@]}"; do
         continue
     fi
     if ! env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 \
-            TZ=Europe/Paris "$runner" -input "$tests/$name" "$@"; then
+            TZ=Europe/Paris "$runner" -import "$tests/stand-ins" -input "$tests/$name" "$@"; then
         failed+=("$name")
     fi
     stop_stand_in

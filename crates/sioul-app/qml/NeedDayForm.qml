@@ -46,11 +46,36 @@ Dialog {
         return { from: from.text, to: to.text, bed: bed.text, before: before.value, after: after.value }
     }
 
+    // The fields typed, those that differ from what was read (`loadedForm`):
+    // its times (from, to, bedtime) one group, one typed and the three kept;
+    // given back over the day as it is read then, so that a block moved since
+    // stays where it went, but for times you typed (review of 590eb18, M2).
+    function typedFields() {
+        const now = form.typed()
+        const loaded = JSON.parse(form.loadedForm || "{}")
+        const typed = {}
+        for (const name in now) {
+            if (now[name] !== loaded[name])
+                typed[name] = now[name]
+        }
+        if (typed.from !== undefined || typed.to !== undefined || typed.bed !== undefined) {
+            typed.from = now.from
+            typed.to = now.to
+            typed.bed = now.bed
+        }
+        return typed
+    }
+
     function keep() {
-        if (!form.keeper || form.keptKey === "" || form.closedBySave || form.cancelled || JSON.stringify(form.typed()) === form.loadedForm)
+        if (!form.keeper || form.keptKey === "" || form.loadedForm === "" || form.closedBySave || form.cancelled)
             return
+        const typed = form.typedFields()
+        if (Object.keys(typed).length === 0) {
+            form.forget()
+            return
+        }
         const forms = Object.assign({}, form.keeper.forms)
-        forms[form.keptKey] = { form: form.typed(), at: Qt.formatTime(new Date(), "HH:mm") }
+        forms[form.keptKey] = { form: typed, at: Qt.formatTime(new Date(), "HH:mm") }
         form.keeper.forms = forms
     }
 
@@ -90,11 +115,15 @@ Dialog {
         form.loadedForm = JSON.stringify(form.typed())
         const kept = form.keeper && form.keptKey !== "" ? form.keeper.forms[form.keptKey] : null
         if (kept) {
-            from.text = kept.form.from
-            to.text = kept.form.to
-            bed.text = kept.form.bed
-            before.value = kept.form.before
-            after.value = kept.form.after
+            if (kept.form.from !== undefined) {
+                from.text = kept.form.from
+                to.text = kept.form.to
+                bed.text = kept.form.bed
+            }
+            if (kept.form.before !== undefined)
+                before.value = kept.form.before
+            if (kept.form.after !== undefined)
+                after.value = kept.form.after
         }
         form.keptLine = kept ? form.sioul.textWith("card-typed-back", "time", kept.at) : ""
         form.closedBySave = false
@@ -249,6 +278,7 @@ Dialog {
         SpinBox {
             id: before
 
+            objectName: "needBefore"
             visible: form.mode !== "move" && form.shownKind === "meal"
             from: 0
             to: 180

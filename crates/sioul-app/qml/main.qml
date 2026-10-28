@@ -176,6 +176,8 @@ SioulWindow {
     property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
+        // On a phone the card covers the page: the page asked for shows (review of 590eb18, M3).
+        cardHost.leave()
         if (window.made[window.page] !== true) {
             const made = Object.assign({}, window.made)
             made[window.page] = true
@@ -311,6 +313,7 @@ SioulWindow {
 
     // A sender's contact, from a message.
     function openContact(key) {
+        cardHost.leave()
         window.page = 5
         contactsPage.open(key)
     }
@@ -333,6 +336,7 @@ SioulWindow {
     }
 
     function openNote(path) {
+        cardHost.leave()
         window.page = 6
         notesPage.open(path)
     }
@@ -646,12 +650,20 @@ SioulWindow {
     // (from a card, `fromCard`, the card it came from kept), the rest opened where it lives.
     function openThing(item, fromCard) {
         const id = uri => decodeURIComponent(item.uri.slice(uri.length))
+        // A place (a message, a note, a contact, a project, a page): on a phone
+        // the card over the page closes first, so that the place shows, even
+        // the page already shown. A task and an appointment open their card; a
+        // dose and a meal answer a notification as before.
+        if (["task", "event", "dose", "need", "stopped"].indexOf(item.kind) < 0)
+            cardHost.leave()
         if (item.kind === "task")
             window.openCard({ kind: "task", owner: (item.uri || "").startsWith("sioul:task/") ? id("sioul:task/") : item.key, title: item.title || "" }, fromCard)
         else if (item.kind === "note")
             window.openNote(id("sioul:note/").split("#")[0])
         else if (item.kind === "event") {
-            window.openCard({ kind: "event", srcKey: item.key, srcStart: item.start || 0, title: item.title || "" }, fromCard)
+            // Its time as the row gave it, or as a reminder named it with its file.
+            const at = cardHost.eventTime(item.key)
+            window.openCard({ kind: "event", srcKey: at.key, srcStart: item.start || at.start, title: item.title || "" }, fromCard)
         } else if (item.kind === "mail") {
             window.page = 2
             mailPage.openMessage(item.key)
@@ -732,6 +744,7 @@ SioulWindow {
 
     // A project's page.
     function openProject(id) {
+        cardHost.leave()
         window.page = 7
         projectsPage.open(id)
     }
@@ -1122,7 +1135,8 @@ SioulWindow {
             // Every object's card where you are (SIOUL_GRAB_STEPS=cards; SIOUL_GRAB_PHONE
             // for a phone's): from today's Day, an appointment's, a step's (its
             // task's), a meal's and the night's cards, then Back; a task's from Tasks
-            // beside its list. The items alive under the host, said in the log.
+            // beside its list; then its first tie (a note), which on a phone shows
+            // in place of the card. The items alive under the host, said in the log.
             // Pictures alone: nothing is changed.
             readonly property var cardSteps: [
                 () => window.page = 4,
@@ -1150,8 +1164,31 @@ SioulWindow {
                 () => tasksPage.openFirst(),
                 () => {},
                 () => grabber.saveCounted("card-task-in-tasks", cardHost),
+                () => grabber.openFirstTie(),
+                () => {},
+                () => grabber.save("card-tie-opened"),
                 () => window.close()
             ]
+            // The task card's first tie to a note (else its first), opened as a tap opens it.
+            function openFirstTie() {
+                const lists = []
+                const walk = item => {
+                    if (item.leaveOut !== undefined && item.items !== undefined && item.reload !== undefined)
+                        lists.push(item)
+                    for (let i = 0; i < item.children.length; ++i)
+                        walk(item.children[i])
+                }
+                if (cardHost.taskPanel)
+                    walk(cardHost.taskPanel)
+                for (const list of lists) {
+                    const tie = list.items.find(t => t.kind === "note") || list.items[0]
+                    if (tie) {
+                        list.openThing(tie)
+                        return
+                    }
+                }
+                console.warn("cards: no tie in the task's card")
+            }
             // The first thing of `kind` of the agenda's days (today first), its card opened as a tap opens it.
             function openFirstOf(kind) {
                 const shown = JSON.parse(sioul.agenda || "{}")

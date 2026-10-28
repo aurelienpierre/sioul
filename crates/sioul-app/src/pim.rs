@@ -271,8 +271,8 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     };
     if changed {
         show(qt, shared);
-        show_pim(qt, shared);
         crate::work::show_work(qt, shared);
+        show_pim(qt, shared);
     }
 }
 
@@ -405,7 +405,8 @@ pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
-    let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
+    // Each with its time: its card opens on that time of a series, not its next (review of 590eb18, later 6).
+    let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "start": e.start, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
     let between = load_config().agenda.between();
     let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(events, between)
         .iter()
@@ -512,8 +513,9 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
         let _ = crate::work::retitle(qt, shared, &task, &saved.title);
     }
     tell(qt, shared, tr().text("event-saved", None));
-    show_pim(qt, shared);
+    // The re-plan due before the agenda's job starts (`work::replan_asked`).
     crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
     Ok(())
 }
 
@@ -610,32 +612,12 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
 /// "Undo" offered for ten seconds, which writes back what the file held, unless
 /// it changed since (a sync, another device). Returns what went wrong, else "".
 pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, new_start: i64, new_end: i64, only_this: bool) -> String {
-    let Some(path) = ours(key) else { return tr().text("agenda-gone", None) };
-    if collection_of(&path).is_none_or(|c| c.read_only) {
-        return tr().text("agenda-read-only", None);
-    }
-    let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
-    // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it).
-    if with_others(&before) {
-        return tr().text("event-change-with-others", None);
-    }
-    let zone = TimeZone::system();
-    let text = match agenda::moved(&before, start, new_start, new_end, only_this, &zone) {
-        Ok(text) => text,
-        Err(agenda::MoveProblem::Gone) => return tr().text("agenda-gone", None),
-        Err(agenda::MoveProblem::SetDays) => return tr().text("agenda-move-set-days", None),
-        Err(agenda::MoveProblem::Unreadable(e)) => return e,
+    let Moved { path, before, text, account } = match move_written(shared, key, start, new_start, new_end, only_this) {
+        Ok(Some(moved)) => moved,
+        Ok(None) => return String::new(),
+        Err(problem) => return problem,
     };
-    if text == before {
-        return String::new();
-    }
-    if let Err(e) = vdir::write_item(&path, &text) {
-        return e;
-    }
-    let account = account_of(&path);
-    if let Some(account) = &account {
-        nudge(shared, account);
-    }
+    let zone = TimeZone::system();
     // Said as it is now: its title, its day, its times.
     let at = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone())).ok();
     let time = match (at(new_start), at(new_end)) {
@@ -655,13 +637,53 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
         if let Some(account) = &account {
             nudge(shared, account);
         }
-        show_pim(qt, shared);
         crate::work::show_work(qt, shared);
+        show_pim(qt, shared);
         String::new()
     });
-    show_pim(qt, shared);
     crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
     String::new()
+}
+
+/// An event's file as a drag moved it (`move_event`), written and sent.
+pub(crate) struct Moved {
+    path: PathBuf,
+    before: String,
+    text: String,
+    account: Option<String>,
+}
+
+/// The write of `move_event`, without the window: its checks, the file
+/// written, its account told, and its re-plan due at once, before any job
+/// starts (`work::replan_asked`). None when nothing changes.
+pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i64, new_end: i64, only_this: bool) -> Result<Option<Moved>, String> {
+    let Some(path) = ours(key) else { return Err(tr().text("agenda-gone", None)) };
+    if collection_of(&path).is_none_or(|c| c.read_only) {
+        return Err(tr().text("agenda-read-only", None));
+    }
+    let Ok(before) = std::fs::read_to_string(&path) else { return Err(tr().text("agenda-gone", None)) };
+    // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it).
+    if with_others(&before) {
+        return Err(tr().text("event-change-with-others", None));
+    }
+    let zone = TimeZone::system();
+    let text = match agenda::moved(&before, start, new_start, new_end, only_this, &zone) {
+        Ok(text) => text,
+        Err(agenda::MoveProblem::Gone) => return Err(tr().text("agenda-gone", None)),
+        Err(agenda::MoveProblem::SetDays) => return Err(tr().text("agenda-move-set-days", None)),
+        Err(agenda::MoveProblem::Unreadable(e)) => return Err(e),
+    };
+    if text == before {
+        return Ok(None);
+    }
+    vdir::write_item(&path, &text)?;
+    crate::work::replan_asked(shared);
+    let account = account_of(&path);
+    if let Some(account) = &account {
+        nudge(shared, account);
+    }
+    Ok(Some(Moved { path, before, text, account }))
 }
 
 /// Deletes an event, or only this occurrence of a repeating one, after ten
@@ -774,8 +796,8 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                     if let Some(account) = account_of(&file) {
                         nudge(shared, &account);
                     }
-                    show_pim(qt, shared);
                     crate::work::show_work(qt, shared);
+                    show_pim(qt, shared);
                 }
             }
             return Ok(());
@@ -835,9 +857,10 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
         _ => send_answer(&path, &agenda::reply(&text, &load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default(), &answer.to_ascii_uppercase()).ok_or_else(|| tr().text("agenda-gone", None))?, &asked, answer)?,
     }
     tell(qt, shared, tr().text(&format!("invitation-{answer}"), None));
-    show_pim(qt, shared);
-    // Accepted or added, it takes its time in the plan at once, not after the sync.
+    // Accepted or added, it takes its time in the plan at once, not after the
+    // sync; its re-plan due before the agenda's job starts.
     crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
     Ok(())
 }
 
@@ -988,6 +1011,44 @@ pub(crate) fn add_account(qt: &QtThread, shared: &Arc<Shared>, address: String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An appointment saved from the form (the computer's and the phone's,
+    /// one writer) is on the local clock with its zone, and every reader finds
+    /// it at the instant typed: the agenda's, the plan's, Health's week's and
+    /// the Porch's overlaps' read (`agenda::occurrences`), the reminders',
+    /// the phone's alarms' and the MCP's (the same core), its card (item 11 of
+    /// the fix round of 590eb18).
+    #[test]
+    fn a_form_s_appointment_reads_back_at_its_instant() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Local clock", None, &["VEVENT"]).unwrap();
+        let zone = TimeZone::system();
+        let day = Zoned::now().date().checked_add(jiff::Span::new().days(120)).unwrap();
+        let typed = day.at(9, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let edit = serde_json::json!({ "title": "Local clock", "start": format!("{day}T09:00"), "end": format!("{day}T09:30") }).to_string();
+        let saved = write_event("", &edit, &format!("{}/{}", calendar.account, calendar.id)).unwrap();
+        let text = std::fs::read_to_string(&saved.path).unwrap();
+        if let Some(name) = zone.iana_name() {
+            assert!(text.contains(&format!("DTSTART;TZID={name}:")) && text.contains("BEGIN:VTIMEZONE"), "on the local clock: {text}");
+        }
+        let found: Vec<i64> = sioul_core::agenda::occurrences(typed - 86_400, typed + 86_400).into_iter().filter(|o| o.summary == "Local clock").map(|o| o.start).collect();
+        assert_eq!(found, vec![typed], "read back at the instant typed");
+        let card: serde_json::Value = serde_json::from_str(&crate::agenda::event_card(&Shared::default(), &saved.path.display().to_string(), typed)).unwrap();
+        assert_eq!(card["start"], typed);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// Each side of an overlap says its time, which its card opens (review
+    /// of 590eb18, later 6): a daily series' Thursday, not its next time.
+    #[test]
+    fn an_overlap_names_each_time() {
+        sioul_core::config::stand_ins_only();
+        let start = Zoned::now().timestamp().as_second() + 3 * 86_400;
+        let one = |key: &str, from: i64| agenda::Occurrence { key: key.into(), uid: key.into(), summary: key.into(), start: from, end: from + 3_600, recurring: true, ..Default::default() };
+        let rows: serde_json::Value = serde_json::from_str(&overlaps_of(&[one("/c/daily.ics", start), one("/c/other.ics", start + 1_800)])).unwrap();
+        assert_eq!(rows[0]["first"]["start"], start, "{rows}");
+        assert_eq!(rows[0]["second"]["start"], start + 1_800, "{rows}");
+    }
 
     /// An event moved to another calendar (21 October 2026): written there,
     /// taken out here, never twice, never lost; not into a read-only one. A

@@ -147,15 +147,7 @@ pub(crate) fn schedule_from(all: &[Reminder], holds: &Holds, now: &Zoned) {
 /// A reminder shown in Android's notifications, "Events": its words, "Open",
 /// a tap opening the event; gone from the shade an hour after the event began.
 pub(crate) fn show(reminder: &Reminder) {
-    let json = serde_json::json!({
-        "key": reminder.key,
-        "kind": reminder.kind,
-        "title": reminder.title,
-        "body": reminder.body,
-        "event": reminder.target,
-        "until": reminder.until * 1000,
-        "words": words(),
-    });
+    let json = shown(reminder);
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
@@ -305,6 +297,22 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
     crate::alarms::handed(answer)
 }
 
+/// A reminder as Android's notification shows it (EventAlarms.java): its
+/// words, and the event it opens, its file and its time, given back as they
+/// are when the notification is tapped (`remind::event_time`; review of
+/// 590eb18, later 6).
+fn shown(reminder: &Reminder) -> serde_json::Value {
+    serde_json::json!({
+        "key": reminder.key,
+        "kind": reminder.kind,
+        "title": reminder.title,
+        "body": reminder.body,
+        "event": crate::remind::event_time(&reminder.target, reminder.starts),
+        "until": reminder.until * 1000,
+        "words": words(),
+    })
+}
+
 /// What a notification tapped while Sioul was away opens, once: ("event",
 /// its file), ("porch", ""), a closing sheet ("review", "work" or "night",
 /// with its day: "work:2026-10-14"), or a block's question ("need", its key).
@@ -341,6 +349,15 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A phone's notification of an event opens that time of it when tapped:
+    /// its file and its time, given back as they are (review of 590eb18, later 6).
+    #[test]
+    fn an_event_s_notification_names_its_time() {
+        let reminder = Reminder { key: "e".into(), kind: sioul_core::reminders::Kind::Event, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None };
+        assert_eq!(shown(&reminder)["event"], "/c/yoga.ics#1793520000");
+        assert_eq!(opened_of(&serde_json::json!({ "kind": "event", "key": "/c/yoga.ics#1793520000" })), Some(("event".into(), "/c/yoga.ics#1793520000".into())), "given back as it was");
+    }
 
     #[test]
     fn held_reminders_are_asked_about_again_when_the_hold_ends() {

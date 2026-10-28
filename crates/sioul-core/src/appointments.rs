@@ -291,7 +291,25 @@ pub fn event_to_task(path: &Path, list: &Collection, place: &dyn Fn(&Task) -> Re
     }
     let zone = now.time_zone().clone();
     let event = crate::agenda::edit_of_text(&text, &zone).ok_or(Refused::Word("agenda-gone"))?;
-    let unfolded = lines::unfold(&text);
+    // The event's lines, its zone's left out: a VTIMEZONE's STANDARD and
+    // DAYLIGHT repeat every year, which is no repeat of the event (every
+    // appointment Sioul writes from its form carries its zone since item 11
+    // of the fix round of 590eb18; another program's often did).
+    let mut in_zone = false;
+    let unfolded: Vec<String> = lines::unfold(&text)
+        .into_iter()
+        .filter(|l| {
+            let (name, value) = (lines::name(l), lines::value(l).trim().to_ascii_uppercase());
+            if name == "BEGIN" && value == "VTIMEZONE" {
+                in_zone = true;
+            }
+            let own = !in_zone;
+            if name == "END" && value == "VTIMEZONE" {
+                in_zone = false;
+            }
+            own
+        })
+        .collect();
     // A repeat a task cannot say (every other Tuesday, until a day) is not lost: a task's is FREQ alone.
     let plain = format!("FREQ={}", event.repeat.to_ascii_uppercase());
     if unfolded.iter().filter(|l| lines::name(l) == "RRULE").any(|l| event.repeat.is_empty() || !lines::value(l).trim().eq_ignore_ascii_case(&plain))

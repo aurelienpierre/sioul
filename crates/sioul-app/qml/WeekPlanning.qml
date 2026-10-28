@@ -712,11 +712,21 @@ ColumnLayout {
         sioul: planning.sioul
     }
 
+    // What was let go stays drawn where it went until the days come back with
+    // it, while its re-plan is due (the days wait for it: `sioul.replanDue`),
+    // then `landedFor` more at most (review of 590eb18, later 2).
+    property int landedFor: 4000
+
     Timer {
         id: landedLate
 
-        interval: 4000
-        onTriggered: planning.landed = null
+        interval: planning.landedFor
+        onTriggered: {
+            if (planning.sioul.replanDue === true)
+                landedLate.restart()
+            else
+                planning.landed = null
+        }
     }
 
     // ---- The keyboard: from thing to thing in time order (Up and Down).

@@ -153,6 +153,18 @@ Panel {
         panel.making = false
     }
 
+    // The field you are typing in (the title, the notes), saved now: the card
+    // goes to another task, whose read takes the field away before its own
+    // editingFinished could save it (review of 590eb18, later 9).
+    function commit() {
+        if (panel.making || !panel.detail)
+            return
+        if (title.activeFocus && title.text.trim() !== "" && title.text !== panel.detail.edit.title)
+            panel.change("title", title.text.trim())
+        else if (taskNotes.activeFocus && taskNotes.visible && taskNotes.text !== panel.detail.edit.notes)
+            panel.change("notes", taskNotes.text)
+    }
+
     // For the window's tests: the title typed (or the one given kept), then confirmed.
     function confirmTitle(text) {
         if (text) {
@@ -544,6 +556,7 @@ Panel {
                 TextField {
                     id: title
 
+                    objectName: "taskTitle"
                     visible: panel.form
                     // Its own width, not its wrapped text's: the column gives it the rest
                     // (the text's width would follow the width it sets, a binding loop).
