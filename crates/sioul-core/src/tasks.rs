@@ -1244,7 +1244,13 @@ pub fn set_status(text: &str, status: Status, zone: &TimeZone, now: &Zoned) -> R
     edit.status = status;
     if status == Status::Completed && !task.repeat.is_empty() {
         let source = lines::unfold(text);
-        let rule = source.iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).to_string()).unwrap_or_default();
+        // The task's own rule: never a VTIMEZONE's (its STANDARD and DAYLIGHT
+        // repeat yearly, often with an UNTIL long past), written before it
+        // (review of 5f173ff, later 4).
+        let rule = master_range(&source)
+            .and_then(|range| own_lines(&source, &range).into_iter().find(|&i| lines::name(&source[i]) == "RRULE"))
+            .map(|i| lines::value(&source[i]).to_string())
+            .unwrap_or_default();
         let (start, due) = next_turn(&task, &rule, now.date());
         // A rule that ends (UNTIL, as another application may write it) before the next turn: done for good.
         let until = rule.to_ascii_uppercase().split(';').find_map(|p| p.trim().strip_prefix("UNTIL=").and_then(|v| Date::strptime("%Y%m%d", v.get(..8)?).ok()));
@@ -1698,6 +1704,14 @@ mod tests {
         let ended = odd.replace("DURATION:P9999999999D\r\n", "").replace("INTERVAL=99999999999", "UNTIL=20261231T000000Z");
         let done = task_of_text(&set_status(&ended, Status::Completed, &paris(), &now()).unwrap(), &paris()).unwrap();
         assert_eq!(done.status, Status::Completed);
+        // A VTIMEZONE written before the task, its yearly rules ended in 1996:
+        // the task's own rule counts, and it comes back (review of 5f173ff, later 4).
+        let zoned = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\n\
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU;UNTIL=19961027T010000Z\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n\
+            BEGIN:VTODO\r\nUID:zoned-weekly\r\nSUMMARY:Water the plants\r\nDTSTART;VALUE=DATE:20261005\r\nRRULE:FREQ=WEEKLY\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        let back = task_of_text(&set_status(zoned, Status::Completed, &paris(), &now()).unwrap(), &paris()).unwrap();
+        assert_eq!(back.status, Status::NeedsAction, "back for its next turn, not done for good");
+        assert!(back.start.as_str() > "2026-10-05", "{}", back.start);
         // Line breaks in what is written as it is stay out of the file.
         let link = link_line(&Link { uri: "uid:a\r\nATTENDEE:mailto:x@example.org".into(), ..Link::default() });
         assert!(!link.contains(['\r', '\n']) && relation_line("DEPENDS-ON", "b\nX", 0) == "X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:bX", "{link}");

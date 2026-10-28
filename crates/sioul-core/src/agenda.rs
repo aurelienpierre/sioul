@@ -977,26 +977,27 @@ fn utc(at: &Zoned) -> String {
 /// (its VTIMEZONE written once in the file): dates for whole days; every
 /// timed event, one-off or repeating, on the local clock with its zone
 /// (`DTSTART;TZID=Europe/Paris:20261102T090000`): an appointment is given in
-/// local time, summer or winter, and stays there whatever reads it (28
-/// October 2026, the owner's word: UTC was written for one-off events
-/// until then). The zone is named by the system, else as this device
+/// local time, summer or winter, and stays there whatever reads it (asked
+/// on 28 October 2026, on the person's word: UTC was written for one-off
+/// events until then). The zone is named by the system, else as this device
 /// recorded it (`recorded_zone`). With no name at all, a one-off event is
 /// written at its instant in UTC and a repeating one on its offset's own
 /// clock ("Etc/GMT-1"), never in UTC; an offset that is not whole hours has
 /// no such zone, and the series is written in UTC then.
-fn time_lines(edit: &EventEdit, zone: &TimeZone) -> Result<(Vec<String>, Option<(String, TimeZone)>), String> {
+fn time_lines(edit: &EventEdit, zone: &TimeZone) -> Result<(Vec<String>, Option<ZoneWritten>), String> {
     let recorded = if zone.iana_name().is_none() { recorded_zone() } else { None };
     time_lines_with(edit, zone, recorded.as_deref())
 }
 
-fn time_lines_with(edit: &EventEdit, zone: &TimeZone, recorded: Option<&str>) -> Result<(Vec<String>, Option<(String, TimeZone)>), String> {
+fn time_lines_with(edit: &EventEdit, zone: &TimeZone, recorded: Option<&str>) -> Result<(Vec<String>, Option<ZoneWritten>), String> {
     let (start, end) = instants(edit, zone)?;
     if edit.all_day {
         return Ok((vec![format!("DTSTART;VALUE=DATE:{}", start.date().strftime("%Y%m%d")), format!("DTEND;VALUE=DATE:{}", end.date().strftime("%Y%m%d"))], None));
     }
     let on = |name: &str, clock: &TimeZone| {
         let wall = |at: &Zoned| at.with_time_zone(clock.clone()).strftime("%Y%m%dT%H%M%S").to_string();
-        (vec![format!("DTSTART;TZID={name}:{}", wall(&start)), format!("DTEND;TZID={name}:{}", wall(&end))], Some((name.to_string(), clock.clone())))
+        let year = start.with_time_zone(clock.clone()).year();
+        (vec![format!("DTSTART;TZID={name}:{}", wall(&start)), format!("DTEND;TZID={name}:{}", wall(&end))], Some(ZoneWritten { name: name.to_string(), clock: clock.clone(), year }))
     };
     if let Some((name, clock)) = named_zone(zone, recorded, &[start.timestamp(), end.timestamp()]) {
         return Ok(on(&name, &clock));
@@ -1007,6 +1008,18 @@ fn time_lines_with(edit: &EventEdit, zone: &TimeZone, recorded: Option<&str>) ->
         return Ok(on(&name, &clock));
     }
     Ok((vec![format!("DTSTART:{}", utc(&start)), format!("DTEND:{}", utc(&end))], None))
+}
+
+/// The zone an event's times name (`time_lines`): its TZID, its rules, and
+/// the year of the event's start on its clock, from which its VTIMEZONE is
+/// written. A reader that takes the file's own VTIMEZONE (the phone's
+/// account manager, ical4j) gives a time before every part's start the last
+/// part's offset: written from this year, an appointment of an earlier
+/// summer read an hour late there (review of 5f173ff, N1).
+struct ZoneWritten {
+    name: String,
+    clock: TimeZone,
+    year: i16,
 }
 
 /// The zone's own name ("Europe/Paris"), else the one this device recorded
@@ -1055,9 +1068,10 @@ fn rule_line(repeat: &str) -> Option<String> {
     }
 }
 
-/// The VTIMEZONE of a zone, as its changes of hour go this year: one STANDARD
-/// and one DAYLIGHT part, each repeating yearly on the same weekday of the
-/// same month ("last Sunday of October"); a single part when it has no summer time.
+/// The VTIMEZONE of a zone, as its changes of hour go in `year` (the year an
+/// event written with it starts in: `ZoneWritten`): one STANDARD and one
+/// DAYLIGHT part, each repeating yearly on the same weekday of the same month
+/// ("last Sunday of October"); a single part when it has no summer time.
 pub fn vtimezone(zone: &TimeZone, name: &str, year: i16) -> Vec<String> {
     let mut out = vec!["BEGIN:VTIMEZONE".to_string(), format!("TZID:{name}")];
     let Some(from) = Date::new(year, 1, 1).ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { return out };
@@ -1110,8 +1124,8 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     let zone = zone.clone();
     let (times, tzid) = time_lines(edit, &zone)?;
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "CALSCALE:GREGORIAN".to_string()];
-    if let Some((name, clock)) = &tzid {
-        out.extend(vtimezone(clock, name, Zoned::now().with_time_zone(clock.clone()).year()));
+    if let Some(written) = &tzid {
+        out.extend(vtimezone(&written.clock, &written.name, written.year));
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&Zoned::now()))]);
     out.extend(times);
@@ -1227,7 +1241,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     for line in source {
         let name = lines::name(&line);
         let value = lines::value(&line).trim().to_ascii_uppercase();
-        if name == "BEGIN" && value == "VTIMEZONE" && tzid.as_ref().is_some_and(|(z, _)| text.contains(&format!("TZID:{z}"))) {
+        if name == "BEGIN" && value == "VTIMEZONE" && tzid.as_ref().is_some_and(|z| text.contains(&format!("TZID:{}", z.name))) {
             has_zone = true;
         }
         if !depth_in_event {
@@ -1277,9 +1291,9 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
         event.push(line);
     }
     // An event on your clock needs its zone written once.
-    if let (Some((name, clock)), false) = (&tzid, has_zone) {
+    if let (Some(written), false) = (&tzid, has_zone) {
         let at = out.iter().position(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VEVENT")).unwrap_or(out.len());
-        let zone_lines = vtimezone(clock, name, Zoned::now().with_time_zone(clock.clone()).year());
+        let zone_lines = vtimezone(&written.clock, &written.name, written.year);
         out.splice(at..at, zone_lines);
     }
     Ok(lines::fold(&out))
@@ -1351,6 +1365,41 @@ fn head_of(line: &str) -> &str {
     line.strip_suffix(lines::value(line)).and_then(|h| h.strip_suffix(':')).unwrap_or(line)
 }
 
+/// The clock a TZID names, as calcard reads it (`Tz::from_str`), so that
+/// Sioul writes and shifts a time on the clock every reader reads it on: an
+/// IANA name (a leading "/" or a registry's prefix too), else a Windows or
+/// Outlook name ("Eastern Standard Time", "(UTC+01:00) Amsterdam, Berlin…")
+/// by calcard's own table, else a fixed offset. Until then a name jiff did
+/// not know was taken on this device's clock, which calcard read as New
+/// York's: a drag moved such an event by hours (review of 5f173ff, later 1).
+enum Clock {
+    Zone(TimeZone),
+    /// calcard reads no zone in it either: a time on your clock, as calcard takes it.
+    Yours,
+    /// calcard reads a zone that jiff does not have here: only its instant, in UTC, is sure.
+    Unknown,
+}
+
+fn clock_of(tzid: &str) -> Clock {
+    use calcard::common::timezone::Tz;
+    if let Ok(zone) = TimeZone::get(tzid.trim_start_matches('/')) {
+        return Clock::Zone(zone);
+    }
+    match tzid.parse::<Tz>() {
+        Ok(Tz::Tz(named)) => TimeZone::get(named.name()).map_or(Clock::Unknown, Clock::Zone),
+        Ok(Tz::Fixed(offset)) => jiff::tz::Offset::from_seconds(offset.local_minus_utc()).map_or(Clock::Unknown, |o| Clock::Zone(TimeZone::fixed(o))),
+        Ok(Tz::Floating) | Err(()) => Clock::Yours,
+    }
+}
+
+/// The zone a line's TZID names (`clock_of`); `zone` for none, or one no reader knows.
+fn zone_named(line: &str, zone: &TimeZone) -> TimeZone {
+    match lines::param(line, "TZID").map(|t| clock_of(&t)) {
+        Some(Clock::Zone(own)) => own,
+        _ => zone.clone(),
+    }
+}
+
 /// `at` as `like` writes its time (a DTSTART line): a date, UTC, or the clock
 /// in its TZID; a time without a zone, on the clock in `zone`.
 fn written_value(like: &str, at: Timestamp, zone: &TimeZone) -> String {
@@ -1360,13 +1409,18 @@ fn written_value(like: &str, at: Timestamp, zone: &TimeZone) -> String {
     } else if value.ends_with(['Z', 'z']) {
         at.strftime("%Y%m%dT%H%M%SZ").to_string()
     } else {
-        let own = lines::param(like, "TZID").and_then(|t| TimeZone::get(t.trim_start_matches('/')).ok()).unwrap_or_else(|| zone.clone());
-        at.to_zoned(own).strftime("%Y%m%dT%H%M%S").to_string()
+        at.to_zoned(zone_named(like, zone)).strftime("%Y%m%dT%H%M%S").to_string()
     }
 }
 
-/// A line `name` for `at`, with `like`'s parameters, written as `like` writes its time.
+/// A line `name` for `at`, with `like`'s parameters, written as `like` writes
+/// its time; a time in a zone calcard reads but jiff does not have here,
+/// written at its instant in UTC, its TZID left out (`Clock::Unknown`).
 fn written_like(like: &str, name: &str, at: Timestamp, zone: &TimeZone) -> String {
+    if lines::value(like).trim().len() != 8 && lines::param(like, "TZID").is_some_and(|t| matches!(clock_of(&t), Clock::Unknown)) {
+        let kept: String = lines::params(like).into_iter().filter(|(param, _)| param != "TZID").map(|(param, value)| format!(";{param}={}", lines::param_value(&value))).collect();
+        return format!("{name}{kept}:{}", at.strftime("%Y%m%dT%H%M%SZ"));
+    }
     let head = head_of(like);
     let params = head.find(';').map_or("", |i| &head[i..]);
     format!("{name}{params}:{}", written_value(like, at, zone))
@@ -1382,8 +1436,7 @@ fn moment_in(line: &str, value: &str, zone: &TimeZone) -> Option<Zoned> {
     if let Some(utc) = value.strip_suffix(['Z', 'z']) {
         return DateTime::strptime("%Y%m%dT%H%M%S", utc).ok()?.to_zoned(TimeZone::UTC).ok().map(|z| z.with_time_zone(zone.clone()));
     }
-    let own = lines::param(line, "TZID").and_then(|t| TimeZone::get(t.trim_start_matches('/')).ok()).unwrap_or_else(|| zone.clone());
-    DateTime::strptime("%Y%m%dT%H%M%S", value).ok()?.to_zoned(own).ok().map(|z| z.with_time_zone(zone.clone()))
+    DateTime::strptime("%Y%m%dT%H%M%S", value).ok()?.to_zoned(zone_named(line, zone)).ok().map(|z| z.with_time_zone(zone.clone()))
 }
 
 /// A VEVENT's lines with its own times set: `from` to `to`, written as its
@@ -2012,7 +2065,14 @@ fn instant_of(value: &str, zone: Option<&str>) -> Option<i64> {
         None => (value, false),
     };
     let civil = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%S", civil).ok()?;
-    let zone = if utc { TimeZone::UTC } else { TimeZone::get(zone?).ok()? };
+    let zone = if utc {
+        TimeZone::UTC
+    } else {
+        match clock_of(zone?) {
+            Clock::Zone(zone) => zone,
+            Clock::Yours | Clock::Unknown => return None,
+        }
+    };
     civil.to_zoned(zone).ok().map(|z| z.timestamp().as_second())
 }
 
@@ -3109,7 +3169,7 @@ mod tests {
     }
 
     /// Every timed appointment written from the form is on the local clock
-    /// with its zone, one-off or repeating (28 October 2026, the owner's word:
+    /// with its zone, one-off or repeating (asked on 28 October 2026:
     /// appointments are given in local time, winter or summer): it reads back
     /// at the same instant, whatever zone reads it; 09:00 stays 09:00 on a date
     /// past the October change, and a series made in winter keeps 09:00 in
@@ -3145,6 +3205,98 @@ mod tests {
         assert!(moved.contains("DTSTART:20261104T100000Z") && moved.contains("DTEND:20261104T110000Z") && !moved.contains("TZID"), "its own form kept: {moved}");
     }
 
+    /// An event whose TZID is a Windows name (Outlook's "Eastern Standard
+    /// Time"), dragged half an hour on a device in Paris: half an hour later,
+    /// as calcard reads it and as Sioul's form does (review of 5f173ff, later 1).
+    #[test]
+    fn a_windows_zone_moves_by_what_it_was_dragged() {
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:outlook-1\r\nDTSTART;TZID=Eastern Standard Time:20261104T090000\r\nDTEND;TZID=Eastern Standard Time:20261104T100000\r\nSUMMARY:Call New York\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let nine = 1_793_800_800; // 09:00 in New York, 14:00Z
+        let read = |text: &str| -> Vec<i64> {
+            let path = write_temp("outlook-zone.ics", text);
+            file_occurrences(&path, &calendar(), nine - 86_400, nine + 86_400, &paris()).iter().map(|o| o.start).collect()
+        };
+        assert_eq!(read(text), vec![nine], "calcard reads it in New York");
+        let moved = moved(text, nine, nine + 1_800, nine + 5_400, false, &paris()).unwrap();
+        assert!(moved.contains("DTSTART;TZID=Eastern Standard Time:20261104T093000") && moved.contains("DTEND;TZID=Eastern Standard Time:20261104T103000"), "{moved}");
+        assert_eq!(read(&moved), vec![nine + 1_800], "calcard: half an hour later");
+        assert_eq!(edit_of_text(&moved, &paris()).map(|e| e.start), Some("2026-11-04T15:30".to_string()), "Sioul's form: 15:30 in Paris");
+        assert!(occurrence_at(&moved, nine + 1_800, &paris()).is_some(), "a writer finds it there");
+    }
+
+    /// A file's VTIMEZONE read as ical4j 3.2.13 reads it, the phone's account
+    /// manager (`VTimeZone.getApplicableObservance`, `Observance.getLatestOnset`):
+    /// the part whose latest onset at or before `local` is the latest, else, a
+    /// time before every part's start, the last part listed. Its TZOFFSETTO.
+    fn ical4j_offset(text: &str, local: DateTime) -> String {
+        // Each part: its start, its yearly rule, its offset after.
+        let mut parts: Vec<(Option<DateTime>, Option<String>, String)> = Vec::new();
+        let mut part: Option<(Option<DateTime>, Option<String>, String)> = None;
+        for line in lines::unfold(text) {
+            let (name, value) = (lines::name(&line), lines::value(&line).trim().to_string());
+            let open = part.is_some();
+            match (name.as_str(), open) {
+                ("BEGIN", false) if value == "STANDARD" || value == "DAYLIGHT" => part = Some((None, None, String::new())),
+                ("END", true) if value == "STANDARD" || value == "DAYLIGHT" => parts.extend(part.take()),
+                ("DTSTART", true) => part.as_mut().unwrap().0 = DateTime::strptime("%Y%m%dT%H%M%S", &value).ok(),
+                ("RRULE", true) => part.as_mut().unwrap().1 = Some(value),
+                ("TZOFFSETTO", true) => part.as_mut().unwrap().2 = value,
+                _ => {}
+            }
+        }
+        // A part's onset in `year`: its rule's month and weekday ("-1SU"), at its start's time.
+        let onset = |start: DateTime, rule: &Option<String>, year: i16| -> Option<DateTime> {
+            let Some(rule) = rule else { return (start.year() == year).then_some(start) };
+            let said = |key: &str| rule.split(';').find_map(|p| p.strip_prefix(key));
+            let month: i8 = said("BYMONTH=")?.parse().ok()?;
+            let by = said("BYDAY=")?;
+            let (nth, day) = by.split_at(by.len() - 2);
+            let weekday = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"].iter().position(|d| *d == day)?;
+            let weekday = jiff::civil::Weekday::from_monday_zero_offset(weekday as i8).ok()?;
+            let date = Date::new(year, month, 1).ok()?.nth_weekday_of_month(nth.parse().ok()?, weekday).ok()?;
+            Some(date.to_datetime(start.time()))
+        };
+        let mut best: Option<(DateTime, String)> = None;
+        for (start, rule, to) in &parts {
+            let Some(start) = *start else { continue };
+            let latest = (start.year()..=local.year()).rev().filter_map(|year| onset(start, rule, year)).find(|at| *at <= local && *at >= start);
+            if let Some(at) = latest
+                && best.as_ref().is_none_or(|(b, _)| at > *b)
+            {
+                best = Some((at, to.clone()));
+            }
+        }
+        best.map(|(_, to)| to).unwrap_or_else(|| parts.last().map(|p| p.2.clone()).unwrap_or_default())
+    }
+
+    /// The VTIMEZONE written with an appointment covers the time it holds,
+    /// read as the phone's account manager reads it (review of 5f173ff, N1):
+    /// an appointment of an earlier summer, a series begun then, and a
+    /// southern summer, each at the offset its zone has then.
+    #[test]
+    fn a_zone_written_covers_the_time_it_holds() {
+        let sydney = TimeZone::get("Australia/Sydney").unwrap();
+        let edit = |start: &str, end: &str, repeat: &str| EventEdit { title: "Visit".into(), start: start.into(), end: end.into(), repeat: repeat.into(), ..EventEdit::default() };
+        let offset = |zone: &TimeZone, local: DateTime| {
+            let seconds = zone.to_offset(local.to_zoned(zone.clone()).unwrap().timestamp()).seconds();
+            format!("{}{:02}{:02}", if seconds < 0 { '-' } else { '+' }, seconds.abs() / 3600, (seconds.abs() % 3600) / 60)
+        };
+        let july: DateTime = "2025-07-03T09:00".parse().unwrap();
+        let february: DateTime = "2027-02-03T09:00".parse().unwrap();
+        for (what, text, zone, local) in [
+            ("a summer of 2025 in Paris", new_event(&edit("2025-07-03T09:00", "2025-07-03T10:00", ""), &paris()).unwrap(), paris(), july),
+            ("a weekly series begun then", new_event(&edit("2025-07-03T09:00", "2025-07-03T10:00", "weekly"), &paris()).unwrap(), paris(), july),
+            ("a southern summer in Sydney", new_event(&edit("2027-02-03T09:00", "2027-02-03T10:00", ""), &sydney).unwrap(), sydney.clone(), february),
+        ] {
+            assert_eq!(ical4j_offset(&text, local), offset(&zone, local), "{what}: {text}");
+        }
+        // An edit that gives a file its first VTIMEZONE writes it from the event's year too.
+        let theirs = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:theirs-2025\r\nDTSTART:20250703T070000Z\r\nDTEND:20250703T080000Z\r\nSUMMARY:Visit\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let retimed = apply(theirs, &edit("2025-07-03T09:30", "2025-07-03T10:30", ""), &paris()).unwrap();
+        assert!(retimed.contains("DTSTART;TZID=Europe/Paris:20250703T093000"), "{retimed}");
+        assert_eq!(ical4j_offset(&retimed, "2025-07-03T09:30".parse().unwrap()), "+0200", "{retimed}");
+    }
+
     /// A phone whose system zone has no name writes the same lines, on the
     /// zone this device recorded (zone.toml); with none recorded, a one-off
     /// event at its instant in UTC and a series on its offset's own clock,
@@ -3157,14 +3309,14 @@ mod tests {
         let named = time_lines_with(&edit(""), &paris(), None).unwrap();
         let recorded = time_lines_with(&edit(""), &paris_rules, Some("Europe/Paris")).unwrap();
         assert_eq!(recorded.0, named.0, "the same lines");
-        assert_eq!(recorded.1.map(|(name, _)| name), Some("Europe/Paris".to_string()));
+        assert_eq!(recorded.1.map(|z| z.name), Some("Europe/Paris".to_string()));
         // A recorded zone that disagrees with the clock at that time is not taken.
         assert!(time_lines_with(&edit(""), &paris_rules, Some("America/New_York")).unwrap().1.is_none());
         // None recorded: a one-off in UTC, a series on UTC+1's own clock.
         assert_eq!(time_lines_with(&edit(""), &paris_rules, None).unwrap().0, vec!["DTSTART:20261102T080000Z".to_string(), "DTEND:20261102T083000Z".to_string()]);
         let (series, zone) = time_lines_with(&edit("weekly"), &paris_rules, None).unwrap();
         assert_eq!(series, vec!["DTSTART;TZID=Etc/GMT-1:20261102T090000".to_string(), "DTEND;TZID=Etc/GMT-1:20261102T093000".to_string()]);
-        assert_eq!(zone.map(|(name, _)| name), Some("Etc/GMT-1".to_string()));
+        assert_eq!(zone.map(|z| z.name), Some("Etc/GMT-1".to_string()));
     }
 
     #[test]
