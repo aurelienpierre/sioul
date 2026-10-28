@@ -32,6 +32,38 @@ Dialog {
     // Saved: the page reads its days again.
     signal saved
 
+    // What you typed, kept when the form closes without Save and given back at
+    // its next opening for the same day, block and form, until you save or
+    // cancel (the unified agenda, part 3): the card host's, {forms: {…}}.
+    property var keeper: null
+    property string loadedForm: ""
+    property bool closedBySave: false
+    property bool cancelled: false
+    property string keptLine: ""
+    readonly property string keptKey: form.day && form.item && form.mode !== "add" ? "need:" + form.day.date + "|" + form.item.key + "|" + form.mode : ""
+
+    function typed() {
+        return { from: from.text, to: to.text, bed: bed.text, before: before.value, after: after.value }
+    }
+
+    function keep() {
+        if (!form.keeper || form.keptKey === "" || form.closedBySave || form.cancelled || JSON.stringify(form.typed()) === form.loadedForm)
+            return
+        const forms = Object.assign({}, form.keeper.forms)
+        forms[form.keptKey] = { form: form.typed(), at: Qt.formatTime(new Date(), "HH:mm") }
+        form.keeper.forms = forms
+    }
+
+    function forget() {
+        if (!form.keeper || !form.keeper.forms[form.keptKey])
+            return
+        const forms = Object.assign({}, form.keeper.forms)
+        delete forms[form.keptKey]
+        form.keeper.forms = forms
+    }
+
+    onClosed: form.keep()
+
     function edit(mode, day, item) {
         form.mode = mode
         form.day = day
@@ -54,6 +86,19 @@ Dialog {
         name.text = ""
         before.value = item ? item.before : 10
         after.value = item ? item.after : 10
+        // What was typed here before, closed without Save: given back, said so.
+        form.loadedForm = JSON.stringify(form.typed())
+        const kept = form.keeper && form.keptKey !== "" ? form.keeper.forms[form.keptKey] : null
+        if (kept) {
+            from.text = kept.form.from
+            to.text = kept.form.to
+            bed.text = kept.form.bed
+            before.value = kept.form.before
+            after.value = kept.form.after
+        }
+        form.keptLine = kept ? form.sioul.textWith("card-typed-back", "time", kept.at) : ""
+        form.closedBySave = false
+        form.cancelled = false
         form.open()
         if (mode === "add")
             name.forceActiveFocus()
@@ -84,6 +129,8 @@ Dialog {
         form.problem = form.sioul.changeNeed(JSON.stringify(edit))
         if (form.problem !== "")
             return
+        form.closedBySave = true
+        form.forget()
         form.close()
         form.saved()
     }
@@ -98,6 +145,17 @@ Dialog {
         columns: 2
         columnSpacing: 10
         rowSpacing: 8
+
+        Label {
+            objectName: "needKept"
+            visible: form.keptLine !== ""
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            text: form.keptLine
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: form.theme.muted
+        }
 
         // One added: a meal or a rest, and its name.
         Row {
@@ -253,7 +311,12 @@ Dialog {
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             }
             onAccepted: form.save()
-            onRejected: form.close()
+            // Cancel: what was typed goes, as it never was.
+            onRejected: {
+                form.cancelled = true
+                form.forget()
+                form.close()
+            }
         }
     }
 }

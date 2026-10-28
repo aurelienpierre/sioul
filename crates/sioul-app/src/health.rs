@@ -893,6 +893,25 @@ struct Around<'a> {
     steps: &'a [(i64, i64, String)],
 }
 
+/// A meal's, a nap's or the night's row of `date` (its key: "meal:1",
+/// "sleep", "added-…") as Health's list has it, for its card (`NeedCard.qml`,
+/// the unified agenda, part 3): its name, its times, how that day has it, its
+/// lengths for its form, whether it is over, its alarm; with the day's date,
+/// title and whether it is today or gone by. Read from the health file and
+/// the days' changes alone, as pure reads: no dose record, no lock. As JSON;
+/// "{}" when that day has no such block.
+pub(crate) fn need_item(date: &str, key: &str) -> String {
+    let Ok(date) = date.parse::<Date>() else { return "{}".into() };
+    let now = Zoned::now();
+    let health = Health::read(&Health::default_path()).unwrap_or_default();
+    let days = Days::load(&Days::default_path());
+    let held = crate::work::held_on(date, &now);
+    let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
+    let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &held, steps: &[] }, date, &now);
+    let Some(item) = view.items.iter().find(|i| i.key == key && i.kind != "dose") else { return "{}".into() };
+    json(&serde_json::json!({ "date": view.date, "title": view.title, "today": view.today, "past": view.past, "later": health.needs.later, "item": item }))
+}
+
 /// One day: its list (blocks, those taken out that day, its doses) and what its column draws.
 fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowledge: &Knowledge, days: &Days, around: &Around, date: Date, now: &Zoned) -> DayView {
     let zone = now.time_zone().clone();
@@ -8001,6 +8020,32 @@ mod tests {
         // The timeline's marks name no medicine, nor its amount: the key routes, nothing more.
         let marks = dose_marks_json(&rows, &zone);
         assert!(!marks.contains("Lumiel") && !marks.contains("1 tablet") && marks.contains(&format!("lumiel@{off}")), "{marks}");
+    }
+
+    /// A meal's card reads its row of that day as Health's list has it, a
+    /// meal added that day too, and nothing for a key that day has not; no
+    /// dose in it (the unified agenda, part 3).
+    #[test]
+    fn a_need_s_card_reads_its_day() {
+        let _files = health_files_held();
+        sioul_core::config::stand_ins_only();
+        let path = Health::default_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n").unwrap();
+        let _ = std::fs::remove_file(Days::default_path());
+        let tomorrow = Zoned::now().date().tomorrow().unwrap();
+        let date = tomorrow.to_string();
+        assert_eq!(change_need(&serde_json::json!({ "date": date, "action": "add", "kind": "meal", "name": "Picnic", "from": "15:00", "to": "15:45" }).to_string()), "");
+        let added = Days::load(&Days::default_path()).0.get(&tomorrow).and_then(|blocks| blocks.keys().find(|k| sioul_core::needs::is_added(k)).cloned()).unwrap();
+        let card: serde_json::Value = serde_json::from_str(&need_item(&date, &added)).unwrap();
+        assert_eq!((card["item"]["name"].as_str(), card["item"]["from"].as_str(), card["item"]["added"].as_bool()), (Some("Picnic"), Some("15:00"), Some(true)), "{card}");
+        assert_eq!((card["date"].as_str(), card["today"].as_bool(), card["past"].as_bool()), (Some(date.as_str()), Some(false), Some(false)));
+        let night: serde_json::Value = serde_json::from_str(&need_item(&date, "sleep")).unwrap();
+        assert_eq!(night["item"]["kind"], "sleep");
+        assert_eq!(need_item(&date, "lumiel@1"), "{}", "never a dose");
+        assert_eq!(need_item(&date, "meal:9"), "{}", "none that day");
+        let _ = std::fs::remove_file(Days::default_path());
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A row's states follow the window's clock, given ahead: before its

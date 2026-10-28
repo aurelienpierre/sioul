@@ -43,21 +43,14 @@ Item {
         if (!page.rest)
             page.nowMade = true
     }
-    // For the window's images: the task open.
-    readonly property var panel: panelLoader.item
-    // The task's panel, made the first time a task opens (a form of many fields), then kept.
-    property bool panelMade: false
-    onOpenedChanged: {
-        if (page.opened !== "")
-            page.panelMade = true
-        // The panel follows, even after it went to one of its steps by itself.
-        if (page.panel && page.panel.uid !== page.opened)
-            page.panel.uid = page.opened
-    }
-    // A new task's form open in the panel, not made yet.
-    property bool making: false
-    // The panel shows: a task, or a new one's form.
-    readonly property bool panelOpen: page.opened !== "" || page.making
+    // The task open: the window's one task card, in its card host beside the
+    // list (CardHost.qml, the unified agenda, part 3), as it opens from anywhere.
+    readonly property var panel: page.window.cardHost ? page.window.cardHost.taskPanel : null
+    readonly property bool panelOpen: page.window.cardRef !== null && page.window.cardRef.card === "task"
+    // A new task's form open in the card, not made yet.
+    readonly property bool making: page.panelOpen && page.window.cardRef.making === true
+    // The list keeps its rows on one line beside the card (main.qml's `cardRoom`).
+    readonly property real cardRoom: page.listLeast
     property alias routines: routinesDialog
     // "now", "day", "list", "board", "timeline".
     property string mode: "now"
@@ -74,11 +67,11 @@ Item {
         made[page.mode] = true
         page.made = made
     }
-    property string opened: ""
-    // On a phone, the task open (or a new one's form) takes the page; Back closes it (main.qml).
-    readonly property bool canGoBack: page.panelOpen
+    // The task whose card is open: outlined in the views.
+    readonly property string opened: page.panelOpen ? page.window.cardRef.owner : ""
+    // The card host takes Back (main.qml).
+    readonly property bool canGoBack: false
     function back() {
-        page.closePanel()
     }
     // "I dread it", "It is boring": two minutes offered for this task, until it changes.
     property string twoOffered: ""
@@ -92,19 +85,10 @@ Item {
     property string projectFilter: ""
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
-    // The open task's width beside the list, with no cap of its own
-    // (docs/qt-quick.md, "An editing card's width"): its natural width (its
-    // fields at a readable line, its tiles side by side) while the list keeps
-    // `listLeast` pixels, where its rows still hold on one line (the day's
-    // weather and its three choices, in French), or half the room in a
-    // narrower window. On a phone the list is hidden and the panel takes the
-    // whole width.
+    // What the list keeps beside an open card: `listLeast` pixels, where its
+    // rows still hold on one line (the day's weather and its three choices, in
+    // French); narrower, the card covers its right part (main.qml).
     readonly property real listLeast: 480
-    readonly property real panelWidth: {
-        const room = columns.width - columns.spacing
-        const natural = page.panel ? page.panel.naturalWidth : room / 2
-        return Math.round(Math.max(0, Math.min(natural, Math.max(room - page.listLeast, room / 2))))
-    }
     readonly property int halfFlow: Math.floor((viewsFlow.width - viewsFlow.spacing) / 2)
     // One kind, one category; "" for all. Kept between sessions, as the choices above.
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
@@ -137,14 +121,13 @@ Item {
     property point dragPoint: Qt.point(0, 0)
 
     function open(uid) {
-        page.leaveForm()
-        page.opened = uid
+        page.window.openCard({ kind: "task", owner: uid })
     }
 
-    // The panel closed; a new task's form with a title typed makes the task first.
+    // The card closed; a new task's form with a title typed makes the task first.
     function closePanel() {
-        page.leaveForm()
-        page.opened = ""
+        if (page.panelOpen)
+            page.window.cardHost.close()
     }
 
     // A new task: the panel's full form, its title first; from `source` (a
@@ -156,23 +139,12 @@ Item {
             page.anyway = true
             page.sioul.showTasksAnyway(true)
         }
-        page.panelMade = true
-        page.opened = ""
-        page.making = true
-        const problem = page.panel.startNew(source || null)
-        if (problem !== "") {
-            page.making = false
-            page.sioul.status = problem
-        }
+        page.window.cardHost.startNewTask(source || null)
     }
 
     // A new task's form left: a title typed makes the task, as leaving its field does.
     function leaveForm() {
-        if (!page.making)
-            return
-        page.making = false
-        if (page.panel)
-            page.panel.leave()
+        page.window.cardHost.leaveTask()
     }
 
     // One project's tasks, from its page.
@@ -230,14 +202,14 @@ Item {
 
     // A task's form with its folded fields shown (for captures): a task opens on its details.
     function openDetails(uid) {
-        page.opened = uid
-        panelLoader.item.editing = true
-        panelLoader.item.moreShown = true
+        page.open(uid)
+        page.panel.editing = true
+        page.panel.moreShown = true
     }
 
     function openFirst() {
         if (page.shown && page.shown.now.now)
-            page.opened = page.shown.now.now.uid
+            page.open(page.shown.now.now.uid)
     }
 
     // "Make it a step of…": the open task's form, once shown, the field to find its bigger task.
@@ -250,14 +222,8 @@ Item {
 
     // For the window's pictures: the open task's form, its folded fields shown.
     function showPanelDetails() {
-        panelLoader.item.editing = true
-        panelLoader.item.moreShown = true
-    }
-
-    Shortcut {
-        sequence: "Escape"
-        enabled: page.visible && page.panelOpen
-        onActivated: page.closePanel()
+        page.panel.editing = true
+        page.panel.moreShown = true
     }
 
     RowLayout {
@@ -268,11 +234,10 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
-            visible: !(page.window.compact && page.panelOpen)
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: !page.panelOpen ? columns.width : columns.width - columns.spacing - page.panelWidth
+            Layout.preferredWidth: columns.width
             spacing: 10
 
             // The ways to see tasks, then the filters: on a second line when the
@@ -1227,36 +1192,6 @@ Item {
                             onOpen: uid => page.open(uid)
                             onMenu: task => taskMenu.now().show(task)
                         }
-                    }
-                }
-            }
-        }
-
-        Loader {
-            id: panelLoader
-
-            active: page.panelMade
-            visible: page.panelOpen
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: page.panelWidth
-
-            sourceComponent: TaskPanel {
-                theme: page.theme
-                sioul: page.sioul
-                window: page.window
-                uid: page.opened
-                projects: page.shown ? page.shown.projects : []
-                kinds: page.shown ? page.shown.kinds : []
-                categories: page.shown ? page.shown.categories : []
-                onClosed: page.closePanel()
-                onFocusRequested: (uid, minutes) => page.focusOn(uid, minutes)
-                // The form's title given: the task made goes on in the panel, unless it was being closed.
-                onMade: uid => {
-                    if (page.making) {
-                        page.making = false
-                        page.opened = uid
                     }
                 }
             }

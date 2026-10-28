@@ -211,7 +211,8 @@ Item {
 
     Shortcut {
         sequence: "Escape"
-        enabled: page.visible && (page.person !== null || page.duplicatesShown)
+        // A card open over the page takes Escape first (main.qml).
+        enabled: page.visible && !page.window.cardRef && (page.person !== null || page.duplicatesShown)
         onActivated: {
             page.editing = false
             page.duplicatesShown = false

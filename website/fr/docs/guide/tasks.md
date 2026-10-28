@@ -154,7 +154,7 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 
 ## Une tâche, ouverte {#a-task-open}
 
-Une tâche s’ouvre à droite avec ses détails, depuis n’importe quelle vue : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
+Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un téléphone, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
 
 - **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
 - ses étiquettes, **ses étapes** dans leur ordre (chacune se coche ici ; leurs minutes s’additionnent), **ce qu’elle attend**, chaque attente avec son délai quand elle en a un (« deux semaines après elle »), et ce qu’elle libère ;

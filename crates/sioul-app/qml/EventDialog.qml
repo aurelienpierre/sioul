@@ -57,6 +57,54 @@ Dialog {
 
     signal saved
 
+    // What you typed, kept when the form closes without Save (Escape, Back, a
+    // press outside) and given back at its next Edit, until you save or cancel
+    // (the unified agenda, part 3): the card host's, {forms: {key: {form, at}}}.
+    property var keeper: null
+    property string loadedForm: ""
+    property bool closedBySave: false
+    property bool cancelled: false
+    property string keptLine: ""
+
+    function keep() {
+        if (!dialog.keeper || dialog.key === "" || dialog.closedBySave || dialog.cancelled)
+            return
+        const form = dialog.form()
+        if (JSON.stringify(form) === dialog.loadedForm)
+            return
+        const forms = Object.assign({}, dialog.keeper.forms)
+        forms[dialog.key] = { form: form, at: Qt.formatTime(new Date(), "HH:mm") }
+        dialog.keeper.forms = forms
+    }
+
+    function forget() {
+        if (!dialog.keeper || !dialog.keeper.forms[dialog.key])
+            return
+        const forms = Object.assign({}, dialog.keeper.forms)
+        delete forms[dialog.key]
+        dialog.keeper.forms = forms
+    }
+
+    // A form as `form()` gives it, put back in the fields.
+    function applyForm(f) {
+        title.text = f.title
+        place.text = f.location
+        notes.text = f.notes
+        allDay.checked = f.all_day
+        startDay.date = f.start.slice(0, 10)
+        startTime.text = f.all_day ? "09:00" : f.start.slice(11, 16)
+        endDay.date = f.end.slice(0, 10)
+        endTime.text = f.all_day ? "10:00" : f.end.slice(11, 16)
+        repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(f.repeat))
+        dialog.around = f.margins
+        dialog.demands = f.demands
+        dialog.remind = f.remind
+        dialog.links = f.links || []
+        dialog.moreShown = true
+    }
+
+    onClosed: dialog.keep()
+
     function pad(n) {
         return n < 10 ? "0" + n : String(n)
     }
@@ -111,7 +159,15 @@ Dialog {
             dialog.remind = e.remind || ""
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices(dialog.remind) || "[]")
             dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || dialog.remind !== "" || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
+            // What was typed here before, closed without Save: given back, said so.
+            dialog.loadedForm = JSON.stringify(dialog.form())
+            const kept = dialog.keeper ? dialog.keeper.forms[key] : null
+            if (kept)
+                dialog.applyForm(kept.form)
+            dialog.keptLine = kept ? dialog.sioul.textWith("card-typed-back", "time", kept.at) : ""
         } else {
+            dialog.loadedForm = ""
+            dialog.keptLine = ""
             const now = new Date()
             hour = hour === undefined || hour < 0 ? Math.min(now.getHours() + 1, 23) : hour
             title.text = ""
@@ -135,6 +191,8 @@ Dialog {
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices("") || "[]")
             dialog.moreShown = false
         }
+        dialog.closedBySave = false
+        dialog.cancelled = false
         dialog.open()
         title.forceActiveFocus()
     }
@@ -201,6 +259,8 @@ Dialog {
             dialog.problem = problem
             return
         }
+        dialog.closedBySave = true
+        dialog.forget()
         dialog.close()
         dialog.saved()
     }
@@ -253,6 +313,15 @@ Dialog {
             width: scroll.availableWidth
             spacing: 10
 
+            Label {
+                objectName: "eventKept"
+                visible: dialog.keptLine !== ""
+                Layout.fillWidth: true
+                text: dialog.keptLine
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
             Label {
                 objectName: "event-losses"
                 visible: dialog.losses !== ""
@@ -530,9 +599,15 @@ Dialog {
             Item {
                 Layout.fillWidth: true
             }
+            // Cancel: what was typed goes, as it never was.
             Button {
+                objectName: "eventCancel"
                 text: dialog.sioul.text("ui-cancel")
-                onClicked: dialog.close()
+                onClicked: {
+                    dialog.cancelled = true
+                    dialog.forget()
+                    dialog.close()
+                }
             }
             Button {
                 text: dialog.sioul.text("ui-save")

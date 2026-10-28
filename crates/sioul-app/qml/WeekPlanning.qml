@@ -52,7 +52,7 @@ ColumnLayout {
     property real backAt: 0
     // "Show anyway": quiet time's bands drawn as the steps they hold.
     property bool showAnyway: false
-    // What Show leaves out on this device: {steps, needs, doses, calendars: [names]}.
+    // What Show leaves out on this device: {steps, needs, doses, calendars: [places, "account/id"]}.
     property var hide: ({})
     // The thing open beside the timeline, by its item's id: shown chosen (on each day it covers).
     property string chosenId: ""
@@ -237,6 +237,7 @@ ColumnLayout {
             recurring: src.recurring === true,
             srcDate: src.date || "",
             calendar: src.calendar || "",
+            collection: src.collection || "",
             cancelled: detail.cancelled === true,
             tentative: detail.tentative === true,
             readOnly: detail.read_only === true,
@@ -258,7 +259,8 @@ ColumnLayout {
             return false
         if (hide.needs && (row.kind === "meal" || row.kind === "nap" || row.kind === "night"))
             return false
-        if ((row.kind === "event" || row.kind === "block") && (hide.calendars || []).indexOf(row.calendar) >= 0)
+        // A calendar by its place, never its name: two of one name stay apart.
+        if ((row.kind === "event" || row.kind === "block") && (hide.calendars || []).indexOf(row.collection) >= 0)
             return false
         return true
     }

@@ -154,7 +154,7 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 ## A task, open {#a-task-open}
 
-A task opens on the right with its details, from any view: a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
+A task opens in its card on the right, beside the list (on a phone, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
 - **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
 - its tags, **its steps** in their order (each can be ticked here; their minutes are added up), **what it waits for**, each wait with its gap when it has one ("two weeks after it"), and what it frees;

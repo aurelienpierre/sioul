@@ -87,6 +87,11 @@ QtObject {
             "project": "folder-documents",
             "web": "insert-link",
             "file": "document-new",
+            "meal": "food",
+            "nap": "chronometer",
+            "night": "weather-clear-night",
+            "date": "milestone",
+            "day-off": "view-calendar",
             "other": "insert-link"
         })
 

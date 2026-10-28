@@ -200,7 +200,8 @@ Panel {
 
     Shortcut {
         sequence: "Escape"
-        enabled: reader.visible && reader.key !== ""
+        // A card open over the page takes Escape first (main.qml).
+        enabled: reader.visible && !reader.window.cardRef && reader.key !== ""
         onActivated: reader.closeRequested()
     }
     Shortcut {

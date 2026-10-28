@@ -268,6 +268,39 @@ struct KindChoice {
     label: String,
 }
 
+/// The projects a task can go in: those not closed.
+fn projects_offered(loaded: &Loaded) -> Vec<ProjectChoice> {
+    loaded.projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect()
+}
+
+fn kinds_offered() -> Vec<KindChoice> {
+    load_config().task_kinds(tr()).into_iter().map(|(id, label)| KindChoice { id, label }).collect()
+}
+
+/// The open tasks' categories, the most used first, each as first written.
+fn categories_of(tasks: &[Task]) -> Vec<String> {
+    let mut counted: BTreeMap<String, (usize, String)> = BTreeMap::new();
+    for task in tasks.iter().filter(|t| t.status.is_open()) {
+        for category in &task.categories {
+            counted.entry(category.to_lowercase()).or_insert((0, category.clone())).0 += 1;
+        }
+    }
+    let mut categories: Vec<(usize, String)> = counted.into_values().collect();
+    categories.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    categories.into_iter().map(|(_, c)| c).collect()
+}
+
+/// What a task's card offers to choose from, wherever it opens (the card
+/// host, the unified agenda, part 3): `{projects, kinds, categories}`, as the
+/// Tasks page's JSON gives them, from the plan as last made or the last read;
+/// never a read of the stores on the window's thread (empty lists before the
+/// first read).
+pub(crate) fn task_choices(shared: &Shared) -> String {
+    let loaded = plan_shown().map(|p| Arc::clone(&p.desk.loaded)).or_else(|| shared.loaded.lock().ok().and_then(|l| l.clone()));
+    let (projects, categories) = loaded.as_deref().map_or_else(|| (Vec::new(), Vec::new()), |l| (projects_offered(l), categories_of(&l.tasks)));
+    crate::backend::json(&serde_json::json!({ "projects": projects, "kinds": kinds_offered(), "categories": categories }))
+}
+
 /// What the task page shows: its four views at once, so switching is instant.
 #[derive(Serialize)]
 struct TasksShown {
@@ -425,7 +458,9 @@ pub(crate) fn plan_shown() -> Option<Arc<PlanShown>> {
 /// the plan, the agenda, Health's days and the writer of a day's meals
 /// (`health::change_day`), whoever read the events (review of 1880bce, later 8).
 pub(crate) fn held_from(date: jiff::civil::Date, now: &Zoned, near: Vec<sioul_core::agenda::Occurrence>) -> Vec<(i64, i64)> {
-    let shown = plan_shown().filter(|s| s.made_on == now.date());
+    // A plan older than a write holds its pins where they were: then the blocks as they are now,
+    // read in `near` (review of 3a2fbd4, later 10).
+    let shown = plan_shown().filter(|s| s.made_on == now.date() && s.current());
     match shown {
         Some(shown) if date != now.date() => {
             let mut held = sioul_core::plan::event_spans(&sioul_core::blocks::without_blocks(near, &shown.loaded().tasks), 0);
@@ -608,6 +643,7 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
 
 /// Reads everything again, computes the task and notes pages on a thread, and shows them.
 pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
+    shared.replan_due.store(true, Ordering::SeqCst);
     shared.work_replan.store(true, Ordering::SeqCst);
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.work_job, move |shared| work_run(&qt, shared));
@@ -663,9 +699,30 @@ fn relaid(shared: &Shared) -> bool {
     true
 }
 
+/// A re-plan due until its publish, or until its run ends however it ends
+/// (`Shared::replan_due`).
+struct ReplanDue<'a>(&'a Shared);
+
+impl ReplanDue<'_> {
+    /// Done, unless another re-plan is already asked (it keeps it due until its own publish).
+    fn done(&self) {
+        if !self.0.work_replan.load(Ordering::SeqCst) {
+            self.0.replan_due.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+impl Drop for ReplanDue<'_> {
+    fn drop(&mut self) {
+        self.done();
+    }
+}
+
 /// The plan made again from everything read again (`show_work`).
 fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
+    // However this run ends, the re-plan it was stops being due (never an agenda waiting for ever).
+    let due = ReplanDue(shared);
     {
         let generation = shared.work_generation.fetch_add(1, Ordering::Relaxed) + 1;
         // Today's steps as laid before: the Health page's day shows them faded.
@@ -709,14 +766,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let project = Some(state.project.as_str()).filter(|c| !c.is_empty());
         let rest = desk.settings.rest_days();
         let lists = writable_lists();
-        let mut counted: BTreeMap<String, (usize, String)> = BTreeMap::new();
-        for task in desk.loaded.tasks.iter().filter(|t| t.status.is_open()) {
-            for category in &task.categories {
-                counted.entry(category.to_lowercase()).or_insert((0, category.clone())).0 += 1;
-            }
-        }
-        let mut categories: Vec<(usize, String)> = counted.into_values().collect();
-        categories.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+        let categories = categories_of(&desk.loaded.tasks);
         // The day's first step, as the plan had it when the day before was closed.
         let today = Zoned::now();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
@@ -728,8 +778,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let day = today_laid.clone();
         let shown = TasksShown {
             view: state.clone(),
-            kinds: load_config().task_kinds(tr()).into_iter().map(|(id, label)| KindChoice { id, label }).collect(),
-            categories: categories.into_iter().map(|(_, c)| c).collect(),
+            kinds: kinds_offered(),
+            categories,
             weather: desk.today.weather,
             now: taskview::now(&cx, desk.today.weather, &desk.today.aside),
             list: taskview::list(&cx, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query),
@@ -737,7 +787,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             timeline: taskview::timeline(&cx, project, &rest),
             no_list: lists.is_empty(),
             lists,
-            projects: desk.loaded.projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect(),
+            projects: projects_offered(&desk.loaded),
             quiet: desk.quiet,
             first_step: first.0,
             first_step_task: first.1,
@@ -751,6 +801,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // the window hears of the change, so that what it reads then is this plan.
         let desk = Arc::new(desk);
         publish(PlanShown { stamp, made_on, desk: Arc::clone(&desk), today: today_laid });
+        // Published: the agenda draws from it (a re-plan asked meanwhile sets it again).
+        due.done();
         crate::agenda::show_agenda(&qt, &shared);
         // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
         if day_steps() != steps_before {
@@ -2593,7 +2645,7 @@ mod tests {
         assert!(!relaid(&shared), "no plan yet: made instead");
         // Made again while another test wrote meanwhile (the count and the folders' times are the process's).
         let mut laid = false;
-        for _ in 0..5 {
+        for _ in 0..40 {
             publish_now(&shared);
             let made = plan_shown().unwrap();
             LOADS.with(|n| n.set(0));
@@ -2611,6 +2663,51 @@ mod tests {
         assert!(!relaid(&shared), "a write since: the plan made again instead");
         forget_plan();
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// Another day's meals move past a pinned block where it is now: a plan
+    /// older than a write (the block moved since) never lends its pins
+    /// (review of 3a2fbd4, later 10).
+    #[test]
+    fn another_day_is_held_where_its_blocks_are_now() {
+        sioul_core::config::stand_ins_only();
+        let shared = Arc::new(Shared::default());
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let calendar = sioul_core::vdir::create(sioul_core::vdir::Kind::Calendars, sioul_core::vdir::LOCAL, "Pins held", None, &["VEVENT", "VTODO"]).unwrap();
+        let tomorrow = now.date().tomorrow().unwrap();
+        let at = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let utc = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let edit = TaskEdit { title: "Pinned elsewhere".into(), estimate: 45, ..TaskEdit::default() };
+        sioul_core::vdir::write_item(&calendar.dir.join("pinned-task.ics"), &tasks::new_task(&edit, "pins-held-task", &zone, &now).unwrap()).unwrap();
+        let block = |hour: i8| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:pins-held-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Pinned elsewhere\r\n{}:pins-held-task\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(hour), utc(hour + 1), sioul_core::blocks::TASK);
+        let block_path = calendar.dir.join("pins-held-block.ics");
+        sioul_core::vdir::write_item(&block_path, &block(12)).unwrap();
+        publish_now(&shared);
+        assert!(plan_shown().is_some_and(|s| s.plan().pins.values().any(|p| p.start == at(12))), "the plan pins it at 12:00");
+        // Moved to 14:00 by its file (a drag, the server): the plan is older than the write.
+        sioul_core::vdir::write_item(&block_path, &block(14)).unwrap();
+        let (from, to) = near_span(tomorrow, &zone);
+        let held = held_from(tomorrow, &now, sioul_core::agenda::occurrences(from, to));
+        let holds = |t: i64| held.iter().any(|&(a, b)| a <= t && t < b);
+        assert!(holds(at(14) + 1800), "held where the block is now: {held:?}");
+        assert!(!holds(at(12) + 1800), "never where the older plan had it: {held:?}");
+        forget_plan();
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A re-plan stays due until its publish, or until its run ends however
+    /// it ends; one asked meanwhile keeps it due (review of 3a2fbd4, later 4).
+    #[test]
+    fn a_replan_is_due_until_its_publish() {
+        let shared = Shared::default();
+        shared.replan_due.store(true, Ordering::SeqCst);
+        drop(ReplanDue(&shared));
+        assert!(!shared.replan_due.load(Ordering::SeqCst), "its run ended: no more due");
+        shared.replan_due.store(true, Ordering::SeqCst);
+        shared.work_replan.store(true, Ordering::SeqCst);
+        ReplanDue(&shared).done();
+        assert!(shared.replan_due.load(Ordering::SeqCst), "another asked meanwhile: still due");
     }
 
     #[test]
@@ -2654,7 +2751,7 @@ mod tests {
         // Made and published, current: made again while another test wrote meanwhile (the
         // count and the folders' times are the process's).
         let make_current = || {
-            for _ in 0..5 {
+            for _ in 0..40 {
                 let stamp = sioul_core::timeline::Stamp::now();
                 let desk = Desk::new(Arc::new(read_loaded(&shared)), &shared);
                 publish(PlanShown { stamp, made_on: now.date(), desk: Arc::new(desk), today: Default::default() });

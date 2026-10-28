@@ -309,7 +309,7 @@ Item {
             extra = extra || {}
             const fixed = extra.read_only === true || extra.with_others === true
             const time = span(day, from, to)
-            return placed({ id: "event:" + key, kind: "event", time: time, source: { type: "calendar", key: key, uid: key, start: time.at, recurring: extra.recurring === true, calendar: "c" }, can: { edit: fixed ? "none" : "event", drag: fixed ? "none" : "event", ends: !fixed }, title: key }, day, from, to, { detail: Object.assign({ end: time.until }, extra) })
+            return placed({ id: "event:" + key, kind: "event", time: time, source: { type: "calendar", key: key, uid: key, start: time.at, recurring: extra.recurring === true, calendar: "c", collection: extra.collection || "local/c" }, can: { edit: fixed ? "none" : "event", drag: fixed ? "none" : "event", ends: !fixed }, title: key }, day, from, to, { detail: Object.assign({ end: time.until }, extra) })
         }
 
         function step(uid, day, from, to, held) {
@@ -658,8 +658,14 @@ Item {
             planning.hide = { needs: true, doses: true }
             compare(kinds(), "event event event event step")
             compare(marks(), 0)
-            planning.hide = { calendars: ["c"] }
+            planning.hide = { calendars: ["local/c"] }
             compare(kinds(), "meal night night step")
+            // Two calendars named alike: the one hidden alone, by its place (review of 3a2fbd4, later 11).
+            const twins = week()
+            twins[0].timed.push(event("twin.ics", twins[0], 1080, 1110, { collection: "remote/c" }))
+            planning.days = twins
+            wait(20)
+            compare(kinds(), "event meal night night step")
         }
 
         // On a phone the Week is a list of days, in time order: a day's title
@@ -720,6 +726,55 @@ Item {
             compare(mock.calls.length, 0)
         }
 
+        // A busy week far ahead, as the stand-in profile's: each day three
+        // appointments, two steps, lunch and dinner, the night, two doses; a
+        // nap on two days, an all-day appointment on one.
+        function busyWeek() {
+            const dates = ["2099-01-05", "2099-01-06", "2099-01-07", "2099-01-08", "2099-01-09", "2099-01-10", "2099-01-11", "2099-01-12"]
+            const days = dates.map(v3day)
+            for (let i = 0; i < 7; i++) {
+                const day = days[i]
+                day.hours_from = 540
+                day.hours_to = 1020
+                day.timed = [event("a" + i + ".ics", day, 600, 660), event("b" + i + ".ics", day, 840, 900, { recurring: true }), event("c" + i + ".ics", day, 960, 1020, { read_only: true }),
+                    step("letter" + i, day, 540, 570, false), step("form" + i, day, 690, 720, i % 2 === 0),
+                    meal("meal:1", day, 730, 750, 780, 780), meal("meal:2", day, 1140, 1150, 1200, 1210)]
+                if (i % 3 === 0)
+                    day.timed.push(placed({ id: "need:" + day.date + "/nap:0", kind: "nap", time: span(day, 870, 900), certainty: "usual", source: { type: "needs", date: day.date, key: "nap:0" }, can: { edit: "need", drag: "need", ends: true }, privacy: "health", title: "Nap" }, day, 870, 900))
+                if (i === 2)
+                    day.head = [placed({ id: "event:fair.ics", kind: "event", time: { type: "days", start: day.start, end: day.start + 86400 }, source: { type: "calendar", key: "fair.ics", uid: "fair", start: day.start, recurring: false, calendar: "c", collection: "local/c" }, can: { edit: "event", drag: "none", ends: false }, title: "Fair" }, day, 0, 1440)]
+                day.doses = [dose("m@8|" + i, day, 480), dose("m@20|" + i, day, 1200)]
+                night(day, days[i + 1], 1350, 1380, 420)
+            }
+            return days.slice(0, 7)
+        }
+
+        // The items the timeline keeps alive, per mode (review of 3a2fbd4,
+        // later 9): a computer's Day and Week, a phone's Day and its Week as a
+        // list, on the busy week above, within the counts measured on
+        // 28 October 2026 and a tenth more. (The grabber counts the whole page
+        // on the stand-in profile: its "sioul-objects" lines.)
+        function test_agenda_objects_stay_within_their_budget() {
+            const count = item => {
+                let n = 1
+                for (let i = 0; i < item.children.length; i++)
+                    n += count(item.children[i])
+                return n
+            }
+            const days = busyWeek()
+            const measured = {}
+            const modes = [["computerDay", { days: [days[1]] }], ["computerWeek", { days: days }], ["phoneDay", { width: 412, height: 800, days: [days[1]] }], ["phoneWeek", { width: 412, height: 800, days: days, today: "2099-01-06" }]]
+            for (const [mode, more] of modes) {
+                const planning = makeWeek(more)
+                wait(50)
+                measured[mode] = count(planning)
+                planning.destroy()
+            }
+            console.warn("sioul-objects: timeline " + JSON.stringify(measured))
+            for (const mode in measured)
+                verify(measured[mode] <= Math.ceil(timelineBudget[mode] * 1.1), mode + ": " + measured[mode] + " for " + timelineBudget[mode])
+        }
+
         function test_day_step_given_a_time() {
             const today = new Date()
             today.setHours(0, 0, 0, 0)
@@ -777,5 +832,15 @@ Item {
             compare(mock.calls.length, 1, JSON.stringify(mock.calls))
             compare([mock.calls[0].key, mock.calls[0].newStart, mock.calls[0].onlyThis].join(" "), ["y.ics", at(870), true].join(" "))
         }
+    }
+
+    // Measured on the busy week above, 28 October 2026.
+    QtObject {
+        id: timelineBudget
+
+        readonly property int computerDay: 179
+        readonly property int computerWeek: 753
+        readonly property int phoneDay: 179
+        readonly property int phoneWeek: 663
     }
 }

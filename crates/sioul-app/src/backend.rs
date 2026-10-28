@@ -484,6 +484,22 @@ pub mod qobject {
         #[qinvokable]
         fn event_details(self: &Sioul, key: &QString, start: f64) -> QString;
 
+        /// One time of an event as its card shows it, from its file alone
+        /// (`agenda::event_card`); `start` 0: the next time it comes. "{}"
+        /// when it is gone or waits for Undo.
+        #[qinvokable]
+        fn event_card(self: &Sioul, key: &QString, start: f64) -> QString;
+
+        /// A meal's, a nap's or the night's row of a day, for its card
+        /// (`health::need_item`): pure reads, no dose record.
+        #[qinvokable]
+        fn need_item(self: &Sioul, date: &QString, key: &QString) -> QString;
+
+        /// What a task's card offers to choose from, wherever it opens
+        /// (`work::task_choices`): projects, kinds, categories.
+        #[qinvokable]
+        fn task_card_choices(self: &Sioul) -> QString;
+
         /// Today laid again from now with what the plan as last made kept
         /// (`work::relay_today`): while the agenda shows today, at each five
         /// minutes' turn of the window's clock.
@@ -2262,6 +2278,10 @@ pub(crate) struct Shared {
     /// What the Tasks job was asked (`work::work_run`): the plan made again, today laid again.
     pub(crate) work_replan: AtomicBool,
     pub(crate) work_relay: AtomicBool,
+    /// A re-plan asked and not published yet (`work::show_work` until its
+    /// publish): the agenda keeps the days it shows rather than draw today
+    /// from the older plan beside the newer calendars (review of 3a2fbd4, later 4).
+    pub(crate) replan_due: AtomicBool,
     pub(crate) health_job: Job,
     /// The agenda's days (`agenda::show_agenda`), and only the newest shown.
     pub(crate) agenda_job: Job,
@@ -4229,6 +4249,18 @@ impl qobject::Sioul {
 
     fn event_details(&self, key: &QString, start: f64) -> QString {
         QString::from(&crate::agenda::event_details(&key.to_string(), start as i64))
+    }
+
+    fn event_card(&self, key: &QString, start: f64) -> QString {
+        QString::from(&crate::agenda::event_card(&self.shared(), &key.to_string(), start as i64))
+    }
+
+    fn need_item(&self, date: &QString, key: &QString) -> QString {
+        QString::from(&crate::health::need_item(&date.to_string(), &key.to_string()))
+    }
+
+    fn task_card_choices(&self) -> QString {
+        QString::from(&work::task_choices(&self.shared()))
     }
 
     fn relay_today(self: Pin<&mut Self>) {
@@ -6206,8 +6238,9 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
-        // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda"].contains(&steps.as_str()) && offline()) {
+        // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
+        // object's card opened from the agenda and Tasks, then Back (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

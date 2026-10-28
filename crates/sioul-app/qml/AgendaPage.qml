@@ -5,10 +5,9 @@
 // week and the month one switch away. The Day and the Week are one timeline
 // of everything that has a time (WeekPlanning.qml): appointments, the plan's
 // steps, meals, naps, the night, doses. Nothing is late or overdue: the past
-// is not shown unless you go back to it. An event opens on the right with its
-// time and place; notes, repetition and guests are folded; anything else
-// opens where it lives (`window.openCard`). Deleting waits ten seconds with
-// "Undo"; a repeating event asks whether it is this time or all.
+// is not shown unless you go back to it. Anything tapped opens its card where
+// you are (`window.openCard`, CardHost.qml), beside the page; the open thing
+// is outlined. New events are made here.
 
 pragma ComponentBehavior: Bound
 
@@ -71,47 +70,17 @@ Item {
     function takeShown() {
         if (page.visible)
             page.agendaText = page.sioul.agenda
-        // The open event read again, with what changed in it (its list ticked): by its file and start.
-        if (page.opened !== null) {
-            const key = page.opened.key
-            const start = page.opened.start
-            for (const day of page.shown.days)
-                for (const event of day.events)
-                    if (event.key === key && event.start === start)
-                        page.opened = event
-            page.readDetails()
-        }
-        // An event asked for by a link, once its days are shown: its details.
-        if (page.wanted !== "" && page.showWanted())
-            page.wanted = ""
     }
 
-    // An event asked for by a link, outside the days shown: its days are read first.
-    property string wanted: ""
-
-    // Its details, when it is in the days shown.
-    function showWanted() {
-        for (const day of page.shown.days)
-            for (const event of day.events)
-                if (event.key === page.wanted) {
-                    page.opened = event
-                    return true
-                }
-        return false
+    // The card open, as the views outline it: an appointment by its file and start.
+    readonly property var cardRef: page.window.cardRef
+    function isOpen(event) {
+        return page.cardRef !== null && page.cardRef.card === "event" && page.cardRef.srcKey === event.key && (page.cardRef.srcStart === event.start || page.cardRef.itemId === event.id)
     }
 
-    // Its days never came: its form, as before.
-    Timer {
-        id: wantedLate
-
-        interval: 3000
-        onTriggered: {
-            if (page.wanted === "")
-                return
-            const key = page.wanted
-            page.wanted = ""
-            eventDialog.now().edit(key, "")
-        }
+    // An appointment of the list or the month: its card, where you are.
+    function openEventRow(event) {
+        page.window.openCard({ kind: "event", srcKey: event.key, srcStart: event.start, itemId: event.id, title: event.summary })
     }
 
     Connections {
@@ -134,45 +103,28 @@ Item {
     // A narrow screen (a phone): the title under the arrows, events on two lines.
     readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
-    property var opened: null
-    // The event being made a task, asked about first.
-    property string converting: ""
-    // The one opened is a task's time block: shown as the task it is.
-    readonly property bool openedTask: page.opened !== null && (page.opened.task || "") !== ""
-    // When the open event is reminded, and its own choice (docs/reminders.md): {line, remind, writable}.
-    property var reminder: ({})
-    readonly property var reminds: page.reminder.writable ? JSON.parse(page.sioul.reminderChoices(page.reminder.remind || "") || "[]") : []
-    function readReminder() {
-        page.reminder = page.opened ? JSON.parse(page.sioul.eventReminder(page.opened.key, page.opened.start) || "{}") : ({})
-    }
-    // Its notes, organizer and guests, read from its file when it opens: the agenda's
-    // days carry none of them, so that a week of long invitations stays light.
-    property var details: ({})
-    function readDetails() {
-        page.details = page.opened ? JSON.parse(page.sioul.eventDetails(page.opened.key, page.opened.start) || "{}") : ({})
-    }
-    onOpenedChanged: {
-        page.readReminder()
-        page.readDetails()
-    }
-    // The event the menu or the deletion asks about.
-    property var menuTarget: null
+    // What the page keeps beside an open card: the Week's grid, else a list's room (main.qml).
+    readonly property real cardRoom: page.mode === "week" ? 830 : 480
     // The step whose menu is open (a row of the timeline).
     property var stepTarget: null
     // "Show anyway": the steps quiet time folds on coming days, drawn.
     property bool showAnyway: false
     // What the Day and the Week show on this device ("Show", agenda-view.toml):
-    // {steps, needs, doses, calendars_hidden}; all shown until you say.
+    // {steps, needs, doses, calendars: [{id, name}]}, a calendar by its place
+    // ("account/id"), two of one name apart; all shown until you say.
     property var view: JSON.parse(page.sioul.agendaView() || "{}")
-    readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.view.calendars_hidden || [] })
-    // The calendars of the days shown, and those Show hides: Show's list.
+    readonly property var hiddenCalendars: (page.view.calendars || []).map(c => c.id)
+    readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.hiddenCalendars })
+    // The calendars of the days shown, and those Show hides: Show's list, {id, name}.
     readonly property var calendarsShown: {
-        const names = (page.view.calendars_hidden || []).slice()
+        const out = (page.view.calendars || []).slice()
         for (const day of page.shown.days)
-            for (const row of (day.head || []).concat(day.timed || []))
-                if (row.item.source && row.item.source.type === "calendar" && row.item.source.calendar && names.indexOf(row.item.source.calendar) < 0)
-                    names.push(row.item.source.calendar)
-        return names.sort((a, b) => a.localeCompare(b))
+            for (const row of (day.head || []).concat(day.timed || [])) {
+                const source = row.item.source || {}
+                if (source.type === "calendar" && source.collection && !out.some(c => c.id === source.collection))
+                    out.push({ id: source.collection, name: source.calendar || source.collection })
+            }
+        return out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
     }
     // Whether a day shown has steps quiet time folds: "Show anyway" offered.
     readonly property bool anyFolded: page.shown.days.some(d => (d.bands || []).length > 0)
@@ -184,11 +136,11 @@ Item {
         page.saveView(changed)
     }
 
-    function showCalendar(name, on) {
-        const hidden = (page.view.calendars_hidden || []).filter(n => n !== name)
+    function showCalendar(calendar, on) {
+        const hidden = (page.view.calendars || []).filter(c => c.id !== calendar.id)
         if (!on)
-            hidden.push(name)
-        page.saveView(Object.assign({}, page.view, { calendars_hidden: hidden }))
+            hidden.push({ id: calendar.id, name: calendar.name })
+        page.saveView(Object.assign({}, page.view, { calendars: hidden }))
     }
 
     function saveView(changed) {
@@ -212,14 +164,6 @@ Item {
     }
     // The Day or the Week shows today: the doses' marks and today's steps follow the clock.
     readonly property bool drawnToday: (page.mode === "day" || page.mode === "week") && page.shown.days.some(d => d.date === page.window.today)
-    // On a phone, the event open takes the page; Back closes it (main.qml).
-    readonly property bool canGoBack: page.opened !== null
-    function back() {
-        page.opened = null
-    }
-    property bool moreShown: false
-    // The open event, as what new things are tied to.
-    readonly property var source: page.opened && page.opened.uid ? { uri: "sioul:event/" + encodeURIComponent(page.opened.uid), kind: "event", key: page.opened.key, title: page.opened.summary, start: page.opened.start } : null
 
     function today() {
         return new Date()
@@ -380,63 +324,26 @@ Item {
         eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))
     }
 
-    // An event of your own that could be a task instead: not a task's time
-    // already, not a meeting with others (Rust's one rule: others expect you
-    // there), not read only.
-    function canBeTask(event) {
-        return event !== null && (event.task || "") === "" && !event.read_only && !event.with_others
-    }
-
-    // A task made an appointment (the event form, its block's time, then
-    // saved), or an appointment made a task, at once (21 October 2026).
-    function changeKind(event) {
-        if ((event.task || "") !== "") {
-            eventDialog.now().makeFromTask(event.task, event.key, event.start, event.end)
-            return
-        }
-        // What it cannot keep as a task, asked first (F5, 22 October 2026).
-        const losses = page.sioul.eventToTaskLosses(event.key)
-        if (losses !== "") {
-            page.converting = event.key
-            convertChoice.now().ask(event.summary, losses, page.sioul.text("agenda-make-task"))
-            return
-        }
-        page.toTask(event.key)
-    }
-
-    function toTask(key) {
-        const problem = page.sioul.eventToTask(key)
-        if (problem === "")
-            page.opened = null
-        else
-            page.sioul.status = problem
-    }
-
-    // A thing of the timeline tapped (a row: WeekPlanning.qml): an appointment
-    // opens its details here; anything else where it opens elsewhere, until
-    // each has its card (`window.openCard`).
+    // A thing of the timeline tapped (a row: WeekPlanning.qml): its card, where you are.
     function openRow(row) {
         // A band of steps quiet time folds: those steps, drawn ("Show anyway").
         if (row.fold === "band") {
             page.showAnyway = true
             return
         }
-        if (row.kind === "event" || (row.kind === "block" && row.owner === "")) {
-            page.opened = page.eventOf(JSON.parse(row.json))
-            return
-        }
         page.window.openCard(row)
     }
 
-    // Its menu (a right click, a long press): an appointment's or a block's
-    // here; a step's; for a meal, a nap, the night or a dose, its day in Health.
+    // Its menu (a right click, a long press): an appointment's or a block's, a
+    // step's, a meal's, a nap's or the night's; a dose's opens its day in Health.
     function menuRow(row) {
         if (row.kind === "event" || row.kind === "block") {
-            page.menuTarget = page.eventOf(JSON.parse(row.json))
-            eventMenu.now().popup()
+            page.window.cardHost.eventMenu(row)
         } else if ((row.kind === "step" || row.kind === "done") && row.owner !== "") {
             page.stepTarget = { owner: row.owner, title: row.title, held: row.certainty === "held" }
             stepMenu.now().popup()
+        } else if (row.kind === "meal" || row.kind === "nap" || row.kind === "night") {
+            page.window.cardHost.needMenu(row)
         } else if (row.kind !== "gain" && row.kind !== "slack") {
             page.window.openCard(row)
         }
@@ -459,41 +366,9 @@ Item {
             page.mode = "day"
     }
 
-    // Deleted: a repeating event asks whether it is this time or every time; a single one goes at once.
-    function askDelete(target) {
-        page.menuTarget = target
-        if (!target.recurring) {
-            page.deleteNow(false)
-            return
-        }
-        deleteChoice.now().ask(target.summary, "")
-    }
-
-    function deleteNow(onlyThis) {
-        if (page.menuTarget === null)
-            return
-        page.said(page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, onlyThis))
-        page.opened = null
-    }
-
-    // An event by its file, from a link: its details, as from the agenda;
-    // outside the days shown, its days are shown first. Its form ("Edit")
-    // only when it cannot be found.
+    // An event by its file, from a link: its card, where you are (the next time it comes).
     function openEvent(key) {
-        page.wanted = key
-        if (page.showWanted()) {
-            page.wanted = ""
-            return
-        }
-        const found = JSON.parse(page.sioul.eventForm(key) || "null")
-        if (!found || !found.edit || !found.edit.start) {
-            page.wanted = ""
-            eventDialog.now().edit(key, "")
-            return
-        }
-        page.anchor = new Date(found.edit.start.slice(0, 10) + "T12:00:00")
-        page.load()
-        wantedLate.restart()
+        page.window.openCard({ kind: "event", srcKey: key, srcStart: 0 })
     }
 
     onModeChanged: page.load()
@@ -502,11 +377,6 @@ Item {
         page.readAgain()
     }
 
-    Shortcut {
-        sequence: "Escape"
-        enabled: page.visible && page.opened !== null
-        onActivated: page.opened = null
-    }
 
     RowLayout {
         id: columns
@@ -516,11 +386,10 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
-            visible: !(page.window.compact && page.opened !== null)
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: page.opened === null ? columns.width : Math.round((columns.width - columns.spacing) * 0.6)
+            Layout.preferredWidth: columns.width
             spacing: 8
 
             // Two events at once in the next two weeks, the time to get there and
@@ -680,7 +549,7 @@ Item {
                 id: headLine
 
                 readonly property var day: page.mode === "day" && page.shown.days.length === 1 ? page.shown.days[0] : null
-                readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && (page.view.calendars_hidden || []).indexOf(p.item.source.calendar) >= 0)) : []
+                readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && page.hiddenCalendars.indexOf(p.item.source.collection) >= 0)) : []
 
                 visible: (page.mode === "day" || page.mode === "week") && (page.headNow !== null || headLine.chips.length > 0)
                 Layout.fillWidth: true
@@ -779,12 +648,9 @@ Item {
                             event: modelData
                             theme: page.theme
                             sioul: page.sioul
-                            selected: page.opened !== null && page.opened.key === modelData.key && page.opened.start === modelData.start
-                            onOpen: page.opened = modelData
-                            onMenu: {
-                                page.menuTarget = modelData
-                                eventMenu.now().popup()
-                            }
+                            selected: page.isOpen(modelData)
+                            onOpen: page.openEventRow(modelData)
+                            onMenu: page.window.cardHost.eventMenu({ kind: "event", srcKey: modelData.key, srcStart: modelData.start, itemId: modelData.id, title: modelData.summary })
                         }
                     }
                 }
@@ -812,7 +678,7 @@ Item {
                 hide: page.hide
                 // A phone's Day says its whole days on its head line.
                 chipsHere: !(page.narrow && page.mode === "day")
-                chosenId: page.opened ? page.opened.id || "" : ""
+                chosenId: page.cardRef ? page.cardRef.itemId || "" : ""
                 onOpen: row => page.openRow(row)
                 onMenu: row => page.menuRow(row)
                 onEdit: row => page.editRow(row)
@@ -902,7 +768,7 @@ Item {
                                             color: page.theme.text
                                         }
                                         TapHandler {
-                                            onTapped: page.opened = monthEvent.modelData
+                                            onTapped: page.openEventRow(monthEvent.modelData)
                                         }
                                     }
                                 }
@@ -917,342 +783,6 @@ Item {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        // The event, read.
-        Panel {
-            visible: page.opened !== null
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.4)
-            theme: page.theme
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 10
-
-                Label {
-                    Layout.fillWidth: true
-                    text: page.opened ? page.opened.summary : ""
-                    textFormat: Text.PlainText
-                    font.pixelSize: 20
-                    font.strikeout: page.opened !== null && page.opened.cancelled
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: page.opened ? new Date(page.opened.start * 1000).toLocaleDateString(page.locale, "dddd d MMMM") + " · " + page.opened.when : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
-                }
-                // The time it keeps before and after it, its own, said: never hidden (22 October 2026).
-                Label {
-                    objectName: "agenda-opened-kept"
-                    visible: page.opened !== null && ((page.opened.before || 0) > 0 || (page.opened.after || 0) > 0)
-                    Layout.fillWidth: true
-                    text: page.opened ? page.sioul.textArgs("agenda-kept", JSON.stringify({ before: page.opened.before || 0, after: page.opened.after || 0 })) : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.muted
-                }
-                Label {
-                    visible: page.opened !== null && page.opened.location !== ""
-                    Layout.fillWidth: true
-                    text: page.opened ? page.opened.location : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
-                }
-                RowLayout {
-                    spacing: 6
-
-                    Rectangle {
-                        visible: !page.openedTask
-                        Layout.preferredWidth: 10
-                        Layout.preferredHeight: 10
-                        radius: 5
-                        color: page.opened && page.opened.color ? page.opened.color : page.theme.accent
-                    }
-                    // A task's time block says the task it is, and its list (21 October 2026).
-                    Icon {
-                        visible: page.openedTask
-                        iconName: "view-task"
-                        size: 16
-                        tip: page.sioul.text("agenda-task-mark")
-                    }
-                    Label {
-                        objectName: "agenda-opened-kind"
-                        text: !page.opened ? "" : (page.openedTask ? page.sioul.textWith("agenda-task-of", "list", page.opened.list) : page.opened.calendar) + (page.opened.recurring ? "  ·  " + page.sioul.text("agenda-repeats") : "")
-                        textFormat: Text.PlainText
-                        color: page.theme.muted
-                    }
-                }
-                // When it is reminded; changed here for every time it comes.
-                Label {
-                    visible: (page.reminder.line || "") !== ""
-                    Layout.fillWidth: true
-                    text: page.reminder.line || ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.muted
-                }
-                PlainComboBox {
-                    visible: page.reminds.length > 0
-                    Layout.fillWidth: page.narrow
-                    Layout.preferredWidth: page.narrow ? -1 : 260
-                    textRole: "label"
-                    model: page.reminds.map(c => ({ value: c.value, label: page.theme.plain(c.label) }))
-                    currentIndex: Math.max(0, page.reminds.findIndex(c => c.value === (page.reminder.remind || "")))
-                    Accessible.name: page.sioul.text("event-remind")
-                    onActivated: index => {
-                        const problem = page.sioul.setEventReminder(page.opened.key, page.reminds[index].value)
-                        if (problem === "")
-                            page.readReminder()
-                        else
-                            page.sioul.status = problem
-                    }
-                }
-                Button {
-                    readonly property bool any: page.opened !== null && ((page.details.notes || "") !== "" || (page.details.organizer || "") !== "" || (page.details.attendees || []).length > 0)
-
-                    visible: any
-                    flat: true
-                    text: (page.moreShown ? "▾  " : "▸  ") + page.sioul.text("ui-more-details")
-                    onClicked: page.moreShown = !page.moreShown
-                }
-                // Its notes, their Markdown drawn: an invitation's are its sender's words.
-                Description {
-                    visible: page.moreShown && page.opened !== null && (page.details.notes || "") !== ""
-                    Layout.fillWidth: true
-                    sioul: page.sioul
-                    theme: page.theme
-                    window: page.window
-                    markdown: page.details.notes || ""
-                    // Its checklist ticked here: a task's that can be changed, an event's of
-                    // a calendar you write to, never a meeting with others' (its organizer's words).
-                    tickable: page.opened !== null && !page.opened.read_only && (page.openedTask || page.opened.with_others !== true)
-                    // An item made a task of its own; a step, of a task's list.
-                    converts: tickable
-                    steps: page.openedTask
-                    onConvert: (line, to) => {
-                        const problem = page.openedTask ? page.sioul.convertItem("task", page.opened.task, line, to) : page.sioul.convertItem("event", page.opened.key, line, to)
-                        if (problem !== "")
-                            page.sioul.status = problem
-                    }
-                    onCheck: (line, state) => {
-                        const problem = page.openedTask ? page.sioul.checkItem("task", page.opened.task, line, state) : page.sioul.checkItem("event", page.opened.key, line, state)
-                        if (problem !== "")
-                            page.sioul.status = problem
-                    }
-                }
-                Label {
-                    visible: page.moreShown && page.opened !== null && (page.details.organizer || "") !== ""
-                    Layout.fillWidth: true
-                    text: page.opened ? page.sioul.textWith("agenda-organizer", "name", page.details.organizer || "") : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: page.theme.muted
-                }
-                Repeater {
-                    model: page.moreShown && page.opened ? page.details.attendees || [] : []
-
-                    delegate: Label {
-                        id: guest
-
-                        required property var modelData
-
-                        Layout.fillWidth: true
-                        text: (guest.modelData.name || guest.modelData.address) + "  ·  " + page.sioul.text("answer-" + guest.modelData.answer)
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        color: page.theme.muted
-                        font.pixelSize: 13
-                    }
-                }
-                // Which it is, a task or an appointment, is yours to say (21 October 2026).
-                Button {
-                    objectName: "agenda-change-kind"
-                    visible: page.opened !== null && (page.openedTask || page.canBeTask(page.opened))
-                    flat: true
-                    text: page.openedTask ? page.sioul.text("agenda-make-appointment") : page.sioul.text("agenda-make-task")
-                    onClicked: page.changeKind(page.opened)
-                }
-                // What prepares it: its task, with its steps and list (opened by a tap); else steps to
-                // add, or a task made from it to use as its steps (docs/tasks.md, "An appointment and its steps").
-                ColumnLayout {
-                    id: pairing
-
-                    // {task, adoptable, can}, read again when the event or the tasks change.
-                    property var shown: null
-
-                    function read() {
-                        pairing.shown = page.opened && !page.openedTask ? JSON.parse(page.sioul.eventPairing(page.opened.key) || "null") : null
-                    }
-
-                    visible: pairing.shown !== null
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Connections {
-                        target: page
-                        function onOpenedChanged() {
-                            pairing.read()
-                        }
-                    }
-                    Connections {
-                        target: page.sioul
-                        function onTasksChanged() {
-                            pairing.read()
-                        }
-                    }
-                    Label {
-                        objectName: "agendaPairing"
-                        visible: !!pairing.shown && !!pairing.shown.task
-                        Layout.fillWidth: true
-                        text: pairing.shown && pairing.shown.task ? page.sioul.textWith("pair-prepared-by", "title", pairing.shown.task.title) + (pairing.shown.task.next ? "  ·  " + pairing.shown.task.next : "") : ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: page.theme.text
-
-                        TapHandler {
-                            onTapped: page.window.openThing({ kind: "task", uri: "sioul:task/" + encodeURIComponent(pairing.shown.task.uid), key: pairing.shown.task.uid })
-                        }
-                    }
-                    Button {
-                        objectName: "agendaAddSteps"
-                        visible: !!pairing.shown && pairing.shown.can
-                        flat: true
-                        text: "+  " + page.sioul.text("pair-add-steps")
-                        onClicked: {
-                            const answer = JSON.parse(page.sioul.stepsForEvent(page.opened.key) || "{}")
-                            if (answer.error)
-                                page.sioul.status = answer.error
-                            else
-                                page.window.openThing({ kind: "task", uri: "sioul:task/" + encodeURIComponent(answer.uid), key: answer.uid })
-                        }
-                    }
-                    Repeater {
-                        model: pairing.shown ? pairing.shown.adoptable : []
-
-                        delegate: Button {
-                            id: adopt
-
-                            required property var modelData
-
-                            flat: true
-                            text: page.theme.plain(page.sioul.textWith("pair-adopt", "title", adopt.modelData.title))
-                            onClicked: {
-                                const problem = page.sioul.attachToEvent(adopt.modelData.uid, page.opened.key)
-                                if (problem !== "")
-                                    page.sioul.status = problem
-                                pairing.read()
-                            }
-                        }
-                    }
-                }
-                // What it is tied to, and what can be made from it.
-                RelatedList {
-                    Layout.fillWidth: true
-                    Layout.topMargin: 8
-                    sioul: page.sioul
-                    theme: page.theme
-                    title: page.sioul.text("related-title")
-                    uri: page.source ? page.source.uri : ""
-                    onOpenThing: item => page.window.openThing(item)
-                }
-                ThingActions {
-                    visible: page.source !== null
-                    sioul: page.sioul
-                    theme: page.theme
-                    window: page.window
-                    source: page.source
-                }
-                Item {
-                    Layout.fillHeight: true
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: page.theme.gap
-
-                    Button {
-                        visible: page.opened !== null && !page.opened.read_only
-                        text: page.sioul.text("ui-edit")
-                        onClicked: eventDialog.now().edit(page.opened.key, "")
-                    }
-                    // Never a meeting with others: its server would cancel or decline it for them.
-                    Button {
-                        visible: page.opened !== null && !page.opened.read_only && page.opened.with_others !== true
-                        flat: true
-                        text: page.sioul.text("ui-delete")
-                        onClicked: page.askDelete(page.opened)
-                    }
-                    Button {
-                        visible: page.openedTask
-                        flat: true
-                        text: page.sioul.text("agenda-open-task")
-                        onClicked: page.window.openTask(page.opened.task)
-                    }
-                    Item {
-                        Layout.fillWidth: true
-                    }
-                    Button {
-                        text: page.sioul.text("ui-close")
-                        onClicked: page.opened = null
-                    }
-                }
-            }
-        }
-    }
-
-    // Right click on an event.
-    Later {
-        id: eventMenu
-
-        sourceComponent: Component {
-            SioulMenu {
-                id: eventMenuForm
-
-                readonly property var source: page.menuTarget && page.menuTarget.uid ? { uri: "sioul:event/" + encodeURIComponent(page.menuTarget.uid), kind: "event", key: page.menuTarget.key, title: page.menuTarget.summary, start: page.menuTarget.start } : null
-
-                // Its details first, as a click gives them; then its form.
-                MenuItem {
-                    enabled: page.menuTarget !== null
-                    text: page.sioul.text("ui-details")
-                    onTriggered: page.opened = page.menuTarget
-                }
-                MenuItem {
-                    enabled: page.menuTarget !== null && !page.menuTarget.read_only
-                    text: page.sioul.text("ui-edit")
-                    onTriggered: eventDialog.now().edit(page.menuTarget.key, "")
-                }
-                MenuItem {
-                    enabled: page.menuTarget !== null && !page.menuTarget.read_only && page.menuTarget.with_others !== true
-                    text: page.sioul.text("ui-delete")
-                    onTriggered: page.askDelete(page.menuTarget)
-                }
-                MenuItem {
-                    readonly property bool task: page.menuTarget !== null && (page.menuTarget.task || "") !== ""
-
-                    visible: task || page.canBeTask(page.menuTarget)
-                    height: visible ? implicitHeight : 0
-                    text: task ? page.sioul.text("agenda-make-appointment") : page.sioul.text("agenda-make-task")
-                    onTriggered: page.changeKind(page.menuTarget)
-                }
-                MenuSeparator {}
-                AddMenu {
-                    sioul: page.sioul
-                    window: page.window
-                    source: eventMenuForm.source
-                }
-                MenuItem {
-                    enabled: eventMenuForm.source !== null
-                    text: page.sioul.text("ui-link-existing")
-                    onTriggered: page.window.linkFrom(eventMenuForm.source)
                 }
             }
         }
@@ -1303,12 +833,12 @@ Item {
                     delegate: MenuItem {
                         id: calendarLine
 
-                        required property string modelData
+                        required property var modelData
 
                         // "&" marks a shortcut in a menu: "&&" is one.
-                        text: page.theme.plain(calendarLine.modelData.replace(/&/g, "&&"))
+                        text: page.theme.plain(calendarLine.modelData.name.replace(/&/g, "&&"))
                         checkable: true
-                        checked: (page.view.calendars_hidden || []).indexOf(calendarLine.modelData) < 0
+                        checked: page.hiddenCalendars.indexOf(calendarLine.modelData.id) < 0
                         onTriggered: page.showCalendar(calendarLine.modelData, checked)
                     }
                     onObjectAdded: (index, object) => showForm.insertItem(5 + index, object)
@@ -1338,41 +868,13 @@ Item {
         }
     }
 
-    // A repeating event deleted: this time, or every time (WhichTimes.qml, one with moving).
-    Later {
-        id: deleteChoice
-
-        sourceComponent: Component {
-            WhichTimes {
-                sioul: page.sioul
-                theme: page.theme
-                onChosen: onlyThis => page.deleteNow(onlyThis)
-            }
-        }
-    }
-
-    Later {
-        id: convertChoice
-
-        sourceComponent: Component {
-            ConfirmDialog {
-                sioul: page.sioul
-                theme: page.theme
-                onConfirmed: page.toTask(page.converting)
-            }
-        }
-    }
-
     Later {
         id: eventDialog
 
         sourceComponent: Component {
             EventDialog {
-                id: eventDialogForm
-
                 sioul: page.sioul
                 theme: page.theme
-                onSaved: page.opened = null
             }
         }
     }

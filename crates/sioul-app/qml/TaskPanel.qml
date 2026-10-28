@@ -638,7 +638,7 @@ Panel {
                     // A click, a tap: the block, in the agenda.
                     TapHandler {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key })
+                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key }, true)
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
@@ -650,7 +650,7 @@ Panel {
                         id: pinnedHold
 
                         acceptedDevices: PointerDevice.TouchScreen
-                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key })
+                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key }, true)
                         onLongPressed: {
                             panel.window.menuAt = pinnedHold.point.scenePosition
                             pinMenu.now().popup()
@@ -935,7 +935,7 @@ Panel {
                     TapHandler {
                         onTapped: {
                             if (panel.detail.appointment.here)
-                                panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key })
+                                panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key }, true)
                         }
                     }
                 }
@@ -1969,7 +1969,7 @@ Panel {
                 uri: panel.uid !== "" ? "sioul:task/" + encodeURIComponent(panel.uid) : ""
                 // Steps and waits show above, in their own place.
                 leaveOut: [panel.sioul.text("how-step"), panel.sioul.text("how-part-of"), panel.sioul.text("how-waits-for"), panel.sioul.text("how-unblocks")]
-                onOpenThing: item => panel.window.openThing(item)
+                onOpenThing: item => panel.window.openThing(item, true)
             }
 
             Repeater {
@@ -2095,7 +2095,7 @@ Panel {
             SioulMenu {
                 MenuItem {
                     text: panel.sioul.text("task-pinned-open")
-                    onTriggered: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin ? pinned.pin.key : "" })
+                    onTriggered: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin ? pinned.pin.key : "" }, true)
                 }
                 MenuItem {
                     enabled: pinned.pin !== null && !pinned.pin.read_only && panel.canEdit

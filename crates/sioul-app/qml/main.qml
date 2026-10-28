@@ -219,7 +219,19 @@ SioulWindow {
     // The page in view; on a phone, a page showing one thing it opened
     // (a message, a task) says so (canGoBack) and closes it (back()).
     readonly property var shownPage: pages.children[window.page] ? pages.children[window.page].item : null
-    readonly property bool canGoBack: window.compact && window.shownPage !== null && window.shownPage.canGoBack === true
+    readonly property bool canGoBack: window.compact && (cardHost.open || window.shownPage !== null && window.shownPage.canGoBack === true)
+    // Every object's card, where you are (CardHost.qml), and what it shows: the agenda, Tasks
+    // and Health outline the open thing.
+    readonly property alias cardHost: cardHost
+    readonly property var cardRef: cardHost.ref
+
+    // Back, on a phone (its button and Android's) and Escape: the card first, then what the page opened.
+    function goBack() {
+        if (cardHost.open)
+            cardHost.back()
+        else if (window.shownPage !== null && window.shownPage.canGoBack === true)
+            window.shownPage.back()
+    }
     // Work time or quiet time: {quiet, reason, until, line, hours}.
     readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, sleep: false, reason: "", until: "", line: "", hours: false, night: true })
 
@@ -309,9 +321,9 @@ SioulWindow {
         contactsPage.startNew(number)
     }
 
+    // A task's card, where you are (the window's one TaskPanel, in the card host).
     function openTask(uid) {
-        window.page = 1
-        tasksPage.open(uid)
+        cardHost.show({ kind: "task", owner: uid })
     }
 
     // Today in the agenda's Day: what Tasks ▸ The day opens (the unified agenda, part 2).
@@ -336,8 +348,7 @@ SioulWindow {
     // task's full form, its title and its tie given: made once its title is.
     function addLinked(kind, source) {
         if (kind === "task") {
-            window.page = 1
-            tasksPage.startNew(source)
+            cardHost.startNewTask(source)
             return
         }
         if (kind === "event") {
@@ -612,37 +623,35 @@ SioulWindow {
         interruption.item.ask(key)
     }
 
-    // A thing of the agenda's timeline (a row of WeekPlanning.qml: its kind,
-    // its source's key and date, its task), opened by its kind. Until each
-    // kind has its card where you are, each opens where it opens elsewhere: an
-    // appointment its details in the agenda; a step, a time block or a task
-    // done its task in Tasks; a meal, a nap, the night or a dose its day in
-    // Health, its row lit (where a dose names its medicine); days off where
-    // they are set.
-    function openCard(ref) {
-        if (ref.kind === "event") {
-            window.page = 4
-            agendaPage.openEvent(ref.srcKey)
-        } else if ((ref.kind === "step" || ref.kind === "block" || ref.kind === "done") && ref.owner !== "") {
-            window.openTask(ref.owner)
-        } else if (ref.kind === "meal" || ref.kind === "nap" || ref.kind === "night" || ref.kind === "dose") {
+    // A thing's card, where you are (the unified agenda, part 3), by the
+    // reference every row carries (its kind, its source's key, start or date,
+    // its task): an appointment's, a task's (a step, a time block, a task
+    // done), a meal's, a nap's or the night's, in the card host; a dose its day
+    // in Health, its row lit, where its medicine is named; days off where they
+    // are set. From a card (`fromCard`): the card it came from kept, one level deep.
+    function openCard(ref, fromCard) {
+        if (ref.kind === "dose") {
             window.page = 10
-            healthPage.openRow(ref.kind === "dose" ? ref.date : ref.srcDate, ref.srcKey)
+            healthPage.openRow(ref.date, ref.srcKey)
         } else if (ref.kind === "day-off") {
             window.showParameters("time_off")
+        } else if (fromCard === true) {
+            cardHost.follow(ref)
+        } else {
+            cardHost.show(ref)
         }
     }
 
-    // Whatever a link leads to, opened where it lives.
-    function openThing(item) {
+    // Whatever a link leads to: a task's or an event's card where you are
+    // (from a card, `fromCard`, the card it came from kept), the rest opened where it lives.
+    function openThing(item, fromCard) {
         const id = uri => decodeURIComponent(item.uri.slice(uri.length))
         if (item.kind === "task")
-            window.openTask(id("sioul:task/"))
+            window.openCard({ kind: "task", owner: (item.uri || "").startsWith("sioul:task/") ? id("sioul:task/") : item.key, title: item.title || "" }, fromCard)
         else if (item.kind === "note")
             window.openNote(id("sioul:note/").split("#")[0])
         else if (item.kind === "event") {
-            window.page = 4
-            agendaPage.openEvent(item.key)
+            window.openCard({ kind: "event", srcKey: item.key, srcStart: item.start || 0, title: item.title || "" }, fromCard)
         } else if (item.kind === "mail") {
             window.page = 2
             mailPage.openMessage(item.key)
@@ -1046,7 +1055,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1110,6 +1119,55 @@ SioulWindow {
                 () => grabber.saveCounted("agenda-day-wide", agendaPage),
                 () => window.close()
             ]
+            // Every object's card where you are (SIOUL_GRAB_STEPS=cards; SIOUL_GRAB_PHONE
+            // for a phone's): from today's Day, an appointment's, a step's (its
+            // task's), a meal's and the night's cards, then Back; a task's from Tasks
+            // beside its list. The items alive under the host, said in the log.
+            // Pictures alone: nothing is changed.
+            readonly property var cardSteps: [
+                () => window.page = 4,
+                () => agendaPage.showDay(window.today),
+                () => {},
+                () => {},
+                () => grabber.openFirstOf("event"),
+                () => {},
+                () => grabber.saveCounted("card-event", cardHost),
+                () => grabber.openFirstOf("step"),
+                () => {},
+                () => grabber.saveCounted("card-step", cardHost),
+                () => grabber.openFirstOf("meal"),
+                () => {},
+                () => grabber.saveCounted("card-meal", cardHost),
+                () => grabber.openFirstOf("night"),
+                () => {},
+                () => grabber.saveCounted("card-night", cardHost),
+                () => window.goBack(),
+                () => {},
+                () => grabber.save("card-closed"),
+                () => window.page = 1,
+                () => tasksPage.mode = "list",
+                () => {},
+                () => tasksPage.openFirst(),
+                () => {},
+                () => grabber.saveCounted("card-task-in-tasks", cardHost),
+                () => window.close()
+            ]
+            // The first thing of `kind` of the agenda's days (today first), its card opened as a tap opens it.
+            function openFirstOf(kind) {
+                const shown = JSON.parse(sioul.agenda || "{}")
+                for (const day of shown.days || []) {
+                    for (const row of (day.timed || []).concat(day.edges || [], day.head || [])) {
+                        const item = row.item
+                        if (item.kind !== kind)
+                            continue
+                        const source = item.source || {}
+                        const time = item.time || {}
+                        window.openCard({ kind: kind, srcKey: source.key || "", srcStart: source.start || 0, srcDate: source.date || "", owner: item.owner || "", date: day.date, itemId: item.id, title: item.title, when: row.when, at: time.at || 0, certainty: typeof item.certainty === "string" ? item.certainty : "" })
+                        return
+                    }
+                }
+                console.warn("cards: no " + kind + " in the days shown")
+            }
             // Leaving a list from a message (SIOUL_GRAB_STEPS=unsubscribe; SIOUL_GRAB_PHONE
             // for a phone's): a newsletter open in Mail, Unsubscribe in its row; then a
             // client's message, without it.
@@ -4167,15 +4225,21 @@ SioulWindow {
     // else back to the Porch; on the Porch, Android's own (Sioul goes to the background).
     Shortcut {
         sequence: "Back"
-        enabled: window.placesOpen || window.canGoBack || window.page !== 0
+        enabled: window.placesOpen || window.canGoBack || cardHost.open || window.page !== 0
         onActivated: {
             if (window.placesOpen)
                 window.placesOpen = false
-            else if (window.canGoBack)
-                window.shownPage.back()
+            else if (window.canGoBack || cardHost.open)
+                window.goBack()
             else
                 window.page = 0
         }
+    }
+    // Escape: the card open first (a computer's; a phone's Back above).
+    Shortcut {
+        sequence: "Escape"
+        enabled: cardHost.open
+        onActivated: cardHost.back()
     }
     Shortcut {
         sequence: "Ctrl+1"
@@ -4369,7 +4433,7 @@ SioulWindow {
                             icon.color: theme.text
                             display: AbstractButton.IconOnly
                             Accessible.name: sioul.text("ui-back")
-                            onClicked: window.shownPage.back()
+                            onClicked: window.goBack()
                         }
                         Label {
                             Layout.fillWidth: true
@@ -4382,11 +4446,26 @@ SioulWindow {
                     }
                 }
 
-                StackLayout {
-                    id: pages
+                // The pages, and every object's card where you are (CardHost.qml): beside
+                // the page while the page keeps its room (`cardRoom`: the Week's grid,
+                // a list's 480 pixels), else over its right part; a phone's whole page.
+                Item {
+                    id: pageArea
+
+                    readonly property real cardWidth: window.compact ? pageArea.width : Math.round(Math.min(cardHost.naturalWidth, pageArea.width / 2))
+                    readonly property real cardRoom: window.shownPage && window.shownPage.cardRoom !== undefined ? window.shownPage.cardRoom : 480
+                    readonly property bool beside: !window.compact && cardHost.open && pageArea.width - pageArea.cardWidth >= pageArea.cardRoom
 
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+
+                StackLayout {
+                    id: pages
+
+                    x: 0
+                    y: 0
+                    width: pageArea.beside ? pageArea.width - pageArea.cardWidth : pageArea.width
+                    height: pageArea.height
                     currentIndex: window.page
 
                     Loader {
@@ -4434,6 +4513,22 @@ SioulWindow {
                     Loader {
                         id: textsPageLoader
                     }
+                }
+
+                CardHost {
+                    id: cardHost
+
+                    objectName: "cardHost"
+                    visible: cardHost.open
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    width: pageArea.cardWidth
+                    z: 2
+                    sioul: sioul
+                    theme: theme
+                    window: window
+                }
                 }
 
                 // On a phone, the status line at the bottom (StatusLine.qml); a

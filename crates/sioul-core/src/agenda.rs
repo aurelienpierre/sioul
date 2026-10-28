@@ -206,13 +206,45 @@ fn alarms_of(ical: &ICalendar, component: &ICalendarComponent, start: i64, lengt
     out
 }
 
+/// The text as calcard should expand it (`utc_series`, `same_sequence`); the file is left as it is.
+fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
+    match utc_series(text) {
+        std::borrow::Cow::Borrowed(text) => same_sequence(text),
+        std::borrow::Cow::Owned(text) => std::borrow::Cow::Owned(same_sequence(&text).into_owned()),
+    }
+}
+
+/// A series whose start is written in UTC ("DTSTART:20270205T080000Z"), said
+/// "DTSTART;TZID=UTC:…" for its expansion: calcard 0.3.14 expands a rule on a
+/// floating clock, then reads each time back in the series' zone, which for a
+/// time in UTC is its default, yours; every time of the series came an hour
+/// or two early (found 28 October 2026, building the event's card). Its
+/// times are the same instants; only the expansion's clock changes.
+fn utc_series(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains("RRULE") || !text.contains("DTSTART:") {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut changed = false;
+    let out: Vec<String> = lines::unfold(text)
+        .into_iter()
+        .map(|line| match line.strip_prefix("DTSTART:").map(str::trim) {
+            Some(value) if value.len() == 16 && value.as_bytes()[8] == b'T' && value.ends_with(['Z', 'z']) => {
+                changed = true;
+                format!("DTSTART;TZID=UTC:{}", &value[..15])
+            }
+            _ => line,
+        })
+        .collect();
+    if changed { std::borrow::Cow::Owned(lines::fold(&out)) } else { std::borrow::Cow::Borrowed(text) }
+}
+
 /// The text as calcard should expand it. calcard puts a changed occurrence
 /// (RECURRENCE-ID) in place of its time in the series only when both have the
 /// same SEQUENCE, where RFC 5545 matches them by RECURRENCE-ID alone: a series
 /// edited since, or an occurrence changed by an application that counts its own
 /// changes, would show twice, at its old time and its new one. So each changed
 /// occurrence is read with the series' SEQUENCE; the file is left as it is.
-fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
+fn same_sequence(text: &str) -> std::borrow::Cow<'_, str> {
     if !text.contains("RECURRENCE-ID") {
         return std::borrow::Cow::Borrowed(text);
     }
@@ -688,7 +720,7 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 kind: if block { Kind::Block } else { Kind::Event },
                 time,
                 certainty: if block { Certainty::Held } else { Certainty::Fixed },
-                source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone() },
+                source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone(), collection: crate::timeline::collection_of(&o.key) },
                 can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free, why },
                 privacy: if block && errand(&o.task) { Privacy::Health } else { Privacy::Admin },
                 title: o.summary.clone(),
@@ -1591,7 +1623,7 @@ pub struct Invitation {
 /// What an invitation asks, from the text of its `text/calendar` part; times
 /// without a zone are taken in `zone`, yours.
 pub fn invitation(text: &str, zone: &TimeZone) -> Option<Invitation> {
-    let ical = parse(text)?;
+    let ical = parse(&utc_series(text))?;
     let method = ical
         .components
         .iter()
@@ -2328,6 +2360,26 @@ mod tests {
 
     fn paris() -> TimeZone {
         TimeZone::get("Europe/Paris").unwrap()
+    }
+
+    /// A series written in UTC keeps its hour: calcard read each of its times
+    /// back in your zone, an hour early in Paris's winter (found 28 October
+    /// 2026). One time, the first, an invitation's and the one a writer looks
+    /// for are all at the hour written; a series with its zone, as before.
+    #[test]
+    fn a_series_in_utc_keeps_its_hour() {
+        let zone = paris();
+        let daily = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:utc-daily\r\nDTSTART:20270205T080000Z\r\nDTEND:20270205T090000Z\r\nRRULE:FREQ=DAILY;COUNT=5\r\nEXDATE:20270206T080000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let eight = 1_801_814_400;
+        assert_eq!(first_times(daily, &zone), Some((eight, eight + 3_600)), "08:00Z, not 07:00Z");
+        let starts: Vec<i64> = parse(&for_expansion(daily)).unwrap().expand_dates(calcard_zone(&zone), 100).events.iter().map(|e| e.start.timestamp()).collect();
+        assert_eq!(starts, vec![eight, eight + 2 * 86_400, eight + 3 * 86_400, eight + 4 * 86_400], "each at its hour, the one left out left out");
+        assert!(occurrence_at(daily, eight + 2 * 86_400, &zone).is_some(), "a writer finds the time shown");
+        let invite = daily.replace("VERSION:2.0\r\n", "VERSION:2.0\r\nMETHOD:REQUEST\r\n");
+        assert_eq!(invitation(&invite, &zone).map(|i| i.start), Some(eight));
+        // With its zone written, as it always was.
+        let zoned = daily.replace("DTSTART:20270205T080000Z", "DTSTART;TZID=Europe/Paris:20270205T090000").replace("DTEND:20270205T090000Z", "DTEND;TZID=Europe/Paris:20270205T100000");
+        assert_eq!(first_times(&zoned, &zone), Some((eight, eight + 3_600)));
     }
 
     fn at(text: &str) -> i64 {

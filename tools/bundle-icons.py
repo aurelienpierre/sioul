@@ -51,6 +51,9 @@ for source in SOURCES:
     names.update(re.findall(r'"([a-z][a-z0-9]*(?:-[a-z0-9]+)+)"', text))
     # Names of one word ("chronometer") where an icon is named: icon.name, iconName, an object's icon.
     names.update(re.findall(r'(?:icon(?:\.name|Name)|\bicon)\s*:\s*"([a-z][a-z0-9]*)"', text))
+    # And the values of a table named for icons (`property var kindIcons: ({ "meal": "food" })`), as the icons' test reads them.
+    for table in re.findall(r'property var\s+\w*Icons\s*:\s*\(\{(.*?)\}\)', text, re.S):
+        names.update(re.findall(r':\s*"([a-z][a-z0-9]*(?:-[a-z0-9]+)*)"', table))
 
 # What the last run bundled, as its icons.qrc listed it: what is no longer
 # bundled goes, and only that. The folder itself is never emptied.

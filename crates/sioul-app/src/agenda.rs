@@ -135,6 +135,65 @@ impl Detail {
     }
 }
 
+/// One time of an event as its card shows it (`EventCard.qml`), read from its
+/// file alone, as it is now, whatever page opened it (the unified agenda,
+/// part 3): its time and the time kept around it, its place, its calendar,
+/// whether it repeats, its notes, organizer and guests, the task it is the
+/// block of, what may change it and why not. `start` names the time of a
+/// repeating one; 0 asks for the next time it comes, else its last. As JSON;
+/// "{}" when it is gone, or while its deletion (or that time's) waits for Undo.
+pub(crate) fn event_card(shared: &Shared, key: &str, start: i64) -> String {
+    let Some(path) = pim::ours(key) else { return "{}".into() };
+    let Some(calendar) = pim::collection_of(&path) else { return "{}".into() };
+    let (removed, skipped) = mail::hidden_pim(shared);
+    if removed.contains(&path) {
+        return "{}".into();
+    }
+    let zone = TimeZone::system();
+    let now = Zoned::now().timestamp().as_second();
+    let mut found = if start > 0 {
+        agenda::file_occurrences(&path, &calendar, start, start + 1, &zone).into_iter().filter(|o| o.start == start).collect::<Vec<_>>()
+    } else {
+        // The next time it comes, else its last, within a year either way.
+        let all = agenda::file_occurrences(&path, &calendar, now - 366 * 86_400, now + 366 * 86_400, &zone);
+        let next = all.iter().filter(|o| o.end > now).min_by_key(|o| o.start).or_else(|| all.iter().max_by_key(|o| o.start)).cloned();
+        next.into_iter().collect()
+    };
+    agenda::mark_tasks(&mut found, &tasks_known(shared));
+    let Some(o) = found.into_iter().next().filter(|o| !skipped.contains(&(path.clone(), o.start))) else { return "{}".into() };
+    let item = agenda::items(std::slice::from_ref(&o), &zone, &|_| false).into_iter().next();
+    let date = jiff::Timestamp::from_second(o.start).map_or_else(|_| Zoned::now().date(), |t| t.to_zoned(zone.clone()).date());
+    let day = midnight(date, &zone);
+    let end = date.tomorrow().map_or(day + 86_400, |d| midnight(d, &zone));
+    let when = format!("{} · {}", tr().day(date), timeline::when_on(o.start, o.end, o.all_day, day, end, &zone, tr()));
+    json(&serde_json::json!({
+        "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
+        "key": o.key,
+        "uid": o.uid,
+        "start": o.start,
+        "end": o.end,
+        "all_day": o.all_day,
+        "summary": if o.summary.trim().is_empty() { tr().text("agenda-untitled", None) } else { o.summary.clone() },
+        "when": when,
+        "before": o.margins.before,
+        "after": o.margins.after,
+        "location": o.location,
+        "calendar": o.calendar,
+        "color": o.color,
+        "recurring": o.recurring,
+        "cancelled": o.cancelled,
+        "tentative": o.tentative,
+        "read_only": o.read_only,
+        "with_others": o.with_others,
+        "task": o.task,
+        "list": o.list,
+        "notes": o.notes,
+        "organizer": o.organizer,
+        "attendees": o.attendees,
+        "why": item.map(|i| i.can.why).unwrap_or_default(),
+    }))
+}
+
 /// One time of an event, read from its file when its panel opens: its notes,
 /// organizer and guests, as JSON (`{notes, organizer, attendees}`); "{}" when
 /// it is gone.
@@ -146,21 +205,43 @@ pub(crate) fn event_details(key: &str, start: i64) -> String {
 }
 
 /// What the Day and the Week show on this device ("Show"): the plan's steps,
-/// meals, naps and the night, doses, and each calendar (by its name), all
-/// shown unless you say. Kept in the state folder, never shared: each device
-/// shows what you ask of it there. Written only when it changes.
+/// meals, naps and the night, doses, and each calendar, all shown unless you
+/// say. A calendar hidden is kept by its place, "account/id", with its name
+/// for Show's list: two calendars of one name stay apart (review of 3a2fbd4,
+/// later 11). Kept in the state folder, never shared: each device shows what
+/// you ask of it there. Written only when it changes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(crate) struct View {
     steps: bool,
     needs: bool,
     doses: bool,
+    calendars: Vec<HiddenCalendar>,
+    /// Calendars hidden by their names alone, as Show kept them until 28
+    /// October 2026: read once, each name as every calendar it names then,
+    /// and never written again.
+    #[serde(skip_serializing)]
     calendars_hidden: Vec<String>,
+}
+
+/// A calendar Show hides: its place (`timeline::collection_of`), and its name when it was hidden.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct HiddenCalendar {
+    id: String,
+    #[serde(default)]
+    name: String,
 }
 
 impl Default for View {
     fn default() -> View {
-        View { steps: true, needs: true, doses: true, calendars_hidden: Vec::new() }
+        View { steps: true, needs: true, doses: true, calendars: Vec::new(), calendars_hidden: Vec::new() }
+    }
+}
+
+impl View {
+    /// Whether a thing of this source is left out: an event or a block of a calendar hidden.
+    fn hides(&self, source: &timeline::Source) -> bool {
+        matches!(source, timeline::Source::Calendar { collection, .. } if self.calendars.iter().any(|c| c.id == *collection))
     }
 }
 
@@ -168,14 +249,26 @@ fn view_path() -> std::path::PathBuf {
     sioul_core::config::state_dir().join("agenda-view.toml")
 }
 
-/// What Show says, as JSON (`{steps, needs, doses, calendars_hidden}`); the
-/// default when nothing was said or the file does not read.
+/// What Show says, as JSON (`{steps, needs, doses, calendars: [{id, name}]}`);
+/// the default when nothing was said or the file does not read.
 pub(crate) fn view() -> String {
     json(&read_view())
 }
 
 fn read_view() -> View {
-    std::fs::read_to_string(view_path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    let mut view: View = std::fs::read_to_string(view_path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
+    if !view.calendars_hidden.is_empty() {
+        // An older Show, by names: each name as the calendars it names now, written once in places.
+        let names = std::mem::take(&mut view.calendars_hidden);
+        for collection in sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).into_iter().filter(|c| names.contains(&c.name)) {
+            let id = format!("{}/{}", collection.account, collection.id);
+            if !view.calendars.iter().any(|c| c.id == id) {
+                view.calendars.push(HiddenCalendar { id, name: collection.name.clone() });
+            }
+        }
+        let _ = write_view(&view);
+    }
+    view
 }
 
 /// Show changed (`view`'s JSON): written whole, beside then in place. Returns
@@ -185,15 +278,16 @@ pub(crate) fn set_view(asked: &str) -> String {
     if view == read_view() {
         return String::new();
     }
+    write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
+}
+
+fn write_view(view: &View) -> std::io::Result<()> {
     let path = view_path();
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let text = toml::to_string(&view).unwrap_or_default();
-    match sioul_core::filelock::replace(&path, text.as_bytes()) {
-        Ok(()) => String::new(),
-        Err(_) => tr().text("agenda-show-not-saved", None),
-    }
+    let text = toml::to_string(view).unwrap_or_default();
+    sioul_core::filelock::replace(&path, text.as_bytes())
 }
 
 /// Midnight of `date` where you are, Unix seconds.
@@ -249,7 +343,39 @@ fn tasks_known(shared: &Shared) -> Vec<sioul_core::tasks::Task> {
     {
         return loaded.tasks.clone();
     }
-    sioul_core::tasks::all(&TimeZone::system())
+    tasks_read_at(timeline::Stamp::now()).as_ref().clone()
+}
+
+/// The tasks read from disk while the plan is older than a write, kept for
+/// that write (`timeline::Stamp`, taken before the read): read once until the
+/// next write, never at each agenda run before the re-plan (review of
+/// 3a2fbd4, later 15).
+fn tasks_read_at(stamp: timeline::Stamp) -> Arc<Vec<sioul_core::tasks::Task>> {
+    static READ: std::sync::Mutex<TasksRead> = std::sync::Mutex::new(None);
+    tasks_read_in(&READ, stamp)
+}
+
+/// The tasks last read from disk, with the stamp they were read at.
+type TasksRead = Option<(timeline::Stamp, Arc<Vec<sioul_core::tasks::Task>>)>;
+
+fn tasks_read_in(read: &std::sync::Mutex<TasksRead>, stamp: timeline::Stamp) -> Arc<Vec<sioul_core::tasks::Task>> {
+    let mut kept = read.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, tasks)) = kept.as_ref()
+        && *at == stamp
+    {
+        return Arc::clone(tasks);
+    }
+    #[cfg(test)]
+    TASK_READS.with(|n| n.set(n.get() + 1));
+    let tasks = Arc::new(sioul_core::tasks::all(&TimeZone::system()));
+    *kept = Some((stamp, Arc::clone(&tasks)));
+    tasks
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The tasks read from disk on this thread (`tasks_read_at`).
+    static TASK_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// The overlaps of the next two weeks (`pim::overlaps_of`), what waits for
@@ -603,7 +729,7 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
         .collect();
     let (start, end) = (midnight(today, &zone), next_midnight.timestamp().as_second());
     let view = read_view();
-    let shown = |item: &timeline::Item| !matches!(&item.source, timeline::Source::Calendar { calendar, .. } if view.calendars_hidden.iter().any(|c| c == calendar));
+    let shown = |item: &timeline::Item| !view.hides(&item.source);
     let worded = |mut item: timeline::Item| {
         if matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step) && item.privacy != timeline::Privacy::Health && !item.owner.is_empty() && hidden(&item.owner) {
             item.title = tr().text("head-work", None);
@@ -647,6 +773,15 @@ fn days_wanted(shared: &Shared) -> bool {
     shared.agenda_asked.load(Ordering::Relaxed) || (work::plan_shown().is_some() && !shared.agenda_prefilled.load(Ordering::Relaxed))
 }
 
+/// Whether the days wait for the re-plan under way: today's plan is older
+/// than a write (a drag, a sync) and its re-plan is asked, not published yet.
+/// Drawn now, today's steps would come from the older plan beside the newer
+/// calendars, a step dragged showing at both its times (review of 3a2fbd4,
+/// later 4); the days shown stay until the re-plan's publish brings them.
+fn waits_for_replan(shared: &Shared) -> bool {
+    shared.replan_due.load(Ordering::SeqCst) && work::plan_shown().is_some_and(|p| p.made_on == Zoned::now().date() && !p.current())
+}
+
 /// One run of the agenda's job: the overlaps of the next two weeks, always,
 /// for the Porch; the days, with their own generation, once they are wanted
 /// (`days_wanted`), with how long their read of the calendars took.
@@ -659,7 +794,7 @@ struct Run {
 fn run(shared: &Shared) -> Run {
     let generation = shared.agenda_generation.fetch_add(1, Ordering::Relaxed) + 1;
     let overlaps = overlaps_now(shared);
-    let days = days_wanted(shared).then(|| {
+    let days = (days_wanted(shared) && !waits_for_replan(shared)).then(|| {
         let (agenda, read) = made(shared);
         (shared.agenda_days_generation.fetch_add(1, Ordering::Relaxed) + 1, agenda, read)
     });
@@ -729,6 +864,85 @@ mod tests {
     /// Show is this device's: everything shown when nothing was said (or the
     /// file does not read), what is said read back, the same said again
     /// written nothing, and nothing but its own file written.
+    /// Just after a write, while its re-plan is due, the days wait for it:
+    /// today is never drawn from the older plan beside the newer calendars, a
+    /// dragged step at both its times (review of 3a2fbd4, later 4).
+    #[test]
+    fn the_days_wait_for_the_replan_after_a_write() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Replan wait", None, &["VEVENT"]).unwrap();
+        let shared = Arc::new(Shared::default());
+        if let Ok(mut state) = shared.pim.lock() {
+            state.from = Zoned::now().date();
+            state.days = 7;
+        }
+        shared.agenda_asked.store(true, Ordering::Relaxed);
+        work::publish_now(&shared);
+        assert!(run(&shared).days.is_some(), "no re-plan due: the days");
+        // A write after the plan, its re-plan asked and not published yet.
+        vdir::write_item(&calendar.dir.join("moved.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:replan-wait\r\nDTSTART:20991001T090000Z\r\nDTEND:20991001T100000Z\r\nSUMMARY:Moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        assert!(work::plan_shown().is_some_and(|p| !p.current()));
+        shared.replan_due.store(true, Ordering::SeqCst);
+        assert!(run(&shared).days.is_none(), "the re-plan due: the days shown stay");
+        shared.replan_due.store(false, Ordering::SeqCst);
+        assert!(run(&shared).days.is_some(), "published: drawn again");
+        work::forget_plan();
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// The tasks read from disk while the plan is older than a write: once a
+    /// write, whatever the agenda's runs meanwhile (review of 3a2fbd4, later 15).
+    #[test]
+    fn the_tasks_are_read_once_a_write() {
+        sioul_core::config::stand_ins_only();
+        let kept = std::sync::Mutex::new(None);
+        let stamp = timeline::Stamp::now();
+        TASK_READS.with(|n| n.set(0));
+        let first = tasks_read_in(&kept, stamp);
+        let again = tasks_read_in(&kept, stamp);
+        assert_eq!(TASK_READS.with(std::cell::Cell::get), 1, "read once for one write");
+        assert!(Arc::ptr_eq(&first, &again));
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Read once", None, &["VTODO"]).unwrap();
+        let (zone, now) = (TimeZone::system(), Zoned::now());
+        let edit = sioul_core::tasks::TaskEdit { title: "Read once".into(), ..sioul_core::tasks::TaskEdit::default() };
+        vdir::write_item(&list.dir.join("read-once.ics"), &sioul_core::tasks::new_task(&edit, "read-once", &zone, &now).unwrap()).unwrap();
+        let after = tasks_read_in(&kept, timeline::Stamp::now());
+        assert_eq!(TASK_READS.with(std::cell::Cell::get), 2, "read again after a write");
+        assert!(after.iter().any(|t| t.uid == "read-once"), "the new task in it");
+        let _ = std::fs::remove_dir_all(&list.dir);
+    }
+
+    /// An event's card reads its own file, wherever it opens: the time asked
+    /// of a repeating one, the next time it comes when none is asked; its
+    /// notes, the time kept around it; none while its deletion waits for Undo
+    /// (the unified agenda, part 3).
+    #[test]
+    fn an_event_s_card_reads_its_own_file() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Card file", None, &["VEVENT"]).unwrap();
+        let (now, zone) = (Zoned::now(), TimeZone::system());
+        // A hundred days ahead: never the first thing of another test's tomorrow.
+        let tomorrow = now.date().checked_add(jiff::Span::new().days(100)).unwrap();
+        let at = |date: jiff::civil::Date, hour: i8| date.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap();
+        let utc = |z: Zoned| z.with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let file = calendar.dir.join("card-weekly.ics");
+        std::fs::write(&file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:card-weekly\r\nDTSTART:{}\r\nDTEND:{}\r\nRRULE:FREQ=DAILY;COUNT=5\r\nSUMMARY:Card standup\r\nLOCATION:Room 2\r\nDESCRIPTION:Bring the notes.\r\nX-SIOUL-BEFORE:10\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(at(tomorrow, 9)), utc(at(tomorrow, 10)))).unwrap();
+        let shared = Arc::new(Shared::default());
+        let key = file.display().to_string();
+        let third = at(tomorrow.checked_add(jiff::Span::new().days(2)).unwrap(), 9).timestamp().as_second();
+        let card: serde_json::Value = serde_json::from_str(&event_card(&shared, &key, third)).unwrap();
+        assert_eq!(card["start"], third, "the time asked");
+        assert_eq!((card["summary"].as_str(), card["location"].as_str(), card["notes"].as_str()), (Some("Card standup"), Some("Room 2"), Some("Bring the notes.")));
+        assert_eq!((card["recurring"].as_bool(), card["before"].as_u64()), (Some(true), Some(10)), "it repeats; ten minutes kept before it");
+        assert!(card["when"].as_str().is_some_and(|w| w.contains("09:00")), "{}", card["when"]);
+        let next: serde_json::Value = serde_json::from_str(&event_card(&shared, &key, 0)).unwrap();
+        assert_eq!(next["start"], at(tomorrow, 9).timestamp().as_second(), "none asked: the next time it comes");
+        assert_eq!(event_card(&shared, &key, third + 60), "{}", "no time of it then");
+        crate::mail::wait_to_remove(&shared, file.clone());
+        assert_eq!(event_card(&shared, &key, third), "{}", "its deletion waits for Undo: no card");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// One test at a time writes Show's file.
     fn view_held() -> std::sync::MutexGuard<'static, ()> {
         static VIEW: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -743,17 +957,46 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(read_view(), View::default());
         let all: serde_json::Value = serde_json::from_str(&view()).unwrap();
-        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "calendars_hidden": [] }));
-        assert_eq!(set_view(r#"{"steps": true, "needs": false, "doses": true, "calendars_hidden": ["Club"]}"#), "");
-        assert_eq!(read_view(), View { needs: false, calendars_hidden: vec!["Club".into()], ..View::default() });
+        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "calendars": [] }));
+        assert_eq!(set_view(r#"{"steps": true, "needs": false, "doses": true, "calendars": [{"id": "local/club", "name": "Club"}]}"#), "");
+        assert_eq!(read_view(), View { needs: false, calendars: vec![HiddenCalendar { id: "local/club".into(), name: "Club".into() }], ..View::default() });
         let written = std::fs::metadata(&path).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(set_view(r#"{"needs": false, "calendars_hidden": ["Club"]}"#), "", "what is not said stays shown");
+        assert_eq!(set_view(r#"{"needs": false, "calendars": [{"id": "local/club", "name": "Club"}]}"#), "", "what is not said stays shown");
         assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), written, "the same said again writes nothing");
         assert_eq!(set_view("not json"), tr().text("agenda-show-not-saved", None));
         std::fs::write(&path, "steps = [").unwrap();
         assert_eq!(read_view(), View::default(), "a file that does not read shows everything");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Show hides a calendar by its place, never by its name: of two
+    /// calendars named alike, the one hidden alone; an older Show, kept by
+    /// names, read once as every calendar its names name, written in places
+    /// (review of 3a2fbd4, later 11).
+    #[test]
+    fn show_hides_a_calendar_by_its_place() {
+        let _view = view_held();
+        sioul_core::config::stand_ins_only();
+        let first = vdir::create(Kind::Calendars, vdir::LOCAL, "Twin name", None, &["VEVENT"]).unwrap();
+        let second = vdir::create(Kind::Calendars, vdir::LOCAL, "Twin name", None, &["VEVENT"]).unwrap();
+        let place = |c: &vdir::Collection| format!("{}/{}", c.account, c.id);
+        assert_ne!(place(&first), place(&second));
+        let source = |c: &vdir::Collection| timeline::Source::Calendar { key: c.dir.join("a.ics").display().to_string(), uid: "a".into(), start: 0, recurring: false, calendar: "Twin name".into(), collection: timeline::collection_of(&c.dir.join("a.ics").display().to_string()) };
+        assert_eq!(timeline::collection_of(&first.dir.join("a.ics").display().to_string()), place(&first), "a file's calendar by its place");
+        let one = View { calendars: vec![HiddenCalendar { id: place(&first), name: "Twin name".into() }], ..View::default() };
+        assert!(one.hides(&source(&first)) && !one.hides(&source(&second)), "the one hidden alone");
+        // Kept by names before: read once as both, in places, and written so.
+        std::fs::create_dir_all(view_path().parent().unwrap()).unwrap();
+        std::fs::write(view_path(), "steps = true\nneeds = true\ndoses = true\ncalendars_hidden = [\"Twin name\"]\n").unwrap();
+        let read = read_view();
+        assert!(read.hides(&source(&first)) && read.hides(&source(&second)), "as it hid them: {read:?}");
+        let text = std::fs::read_to_string(view_path()).unwrap();
+        assert!(!text.contains("calendars_hidden") && text.contains(&place(&first)) && text.contains(&place(&second)), "{text}");
+        assert_eq!(read_view(), read, "read once: the same since");
+        let _ = std::fs::remove_file(view_path());
+        let _ = std::fs::remove_dir_all(&first.dir);
+        let _ = std::fs::remove_dir_all(&second.dir);
     }
 
     /// The agenda's job makes its days while another thread holds every
@@ -1072,7 +1315,7 @@ mod tests {
             kind: timeline::Kind::Block,
             time: timeline::Time::span(at, at + 1800),
             certainty: timeline::Certainty::Held,
-            source: timeline::Source::Calendar { key: "/c/quiet.ics".into(), uid: "quiet".into(), start: at, recurring: false, calendar: "c".into() },
+            source: timeline::Source::Calendar { key: "/c/quiet.ics".into(), uid: "quiet".into(), start: at, recurring: false, calendar: "c".into(), collection: "c".into() },
             can: timeline::Can::nothing(),
             privacy: timeline::Privacy::Admin,
             title: "Quarterly report".into(),
@@ -1091,7 +1334,7 @@ mod tests {
         {
             let _view = view_held();
             let calendar_name = std::fs::read_to_string(calendar.dir.join("displayname")).unwrap();
-            assert_eq!(set_view(&serde_json::json!({ "calendars_hidden": [calendar_name.trim()] }).to_string()), "");
+            assert_eq!(set_view(&serde_json::json!({ "calendars": [{ "id": format!("{}/{}", calendar.account, calendar.id), "name": calendar_name.trim() }] }).to_string()), "");
             let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
             let _ = std::fs::remove_file(view_path());
             let said = hidden.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");

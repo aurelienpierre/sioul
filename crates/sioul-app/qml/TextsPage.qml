@@ -375,7 +375,8 @@ Item {
 
     Shortcut {
         sequence: "Escape"
-        enabled: page.visible && page.openId !== ""
+        // A card open over the page takes Escape first (main.qml).
+        enabled: page.visible && !page.window.cardRef && page.openId !== ""
         onActivated: page.close()
     }
 

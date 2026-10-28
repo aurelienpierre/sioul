@@ -325,8 +325,9 @@ impl Tone {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Source {
-    /// An event, a time block or a leg: its own file.
-    Calendar { key: String, uid: String, start: i64, recurring: bool, calendar: String },
+    /// An event, a time block or a leg: its own file; its calendar by its name
+    /// and by its place, "account/id" (`collection_of`): two calendars may share a name.
+    Calendar { key: String, uid: String, start: i64, recurring: bool, calendar: String, collection: String },
     Task { uid: String, list: String },
     /// A step of the plan, on `date`; `part` from 1 for a step cut in parts, 0 when whole.
     Plan { uid: String, date: Date, part: u32 },
@@ -350,6 +351,13 @@ pub fn event_id(key: &str, start: i64, recurring: bool) -> String {
 pub fn block_id(key: &str, start: i64, recurring: bool) -> String {
     let file = below_calendars(key);
     if recurring { format!("block:{file}@{start}") } else { format!("block:{file}") }
+}
+
+/// The calendar a file lies in, "account/id" ("local/work"), as the
+/// calendars' choices name it (`pim::calendars`); its folder as it is when it
+/// lies elsewhere.
+pub fn collection_of(key: &str) -> String {
+    below_calendars(key).rsplit_once('/').map_or_else(String::new, |(folder, _)| folder.to_string())
 }
 
 /// A calendar's file named below the calendars' folder ("local/work/a.ics"),
@@ -1230,7 +1238,7 @@ mod tests {
             kind: Kind::Block,
             time: Time::span(at(from), at(to)),
             certainty: Certainty::Held,
-            source: Source::Calendar { key: format!("/c/{owner}.ics"), uid: owner.into(), start: at(from), recurring: false, calendar: "c".into() },
+            source: Source::Calendar { key: format!("/c/{owner}.ics"), uid: owner.into(), start: at(from), recurring: false, calendar: "c".into(), collection: "c".into() },
             can: Can::nothing(),
             privacy: Privacy::Admin,
             title: owner.into(),

@@ -74,6 +74,7 @@
     <file>sioul/16/media-playback-start.svg</file>
     <file>sioul/16/media-playback-stop.svg</file>
     <file>sioul/16/media-record.svg</file>
+    <file>sioul/16/milestone.svg</file>
     <file>sioul/16/overflow-menu.svg</file>
     <file>sioul/16/package-x-generic.svg</file>
     <file>sioul/16/password-copy.svg</file>
@@ -164,6 +165,7 @@
     <file>sioul/22/folder-new.svg</file>
     <file>sioul/22/folder-trash.svg</file>
     <file>sioul/22/folder.svg</file>
+    <file>sioul/22/food.svg</file>
     <file>sioul/22/games-hint.svg</file>
     <file>sioul/22/go-bottom.svg</file>
     <file>sioul/22/go-down.svg</file>
@@ -197,6 +199,7 @@
     <file>sioul/22/media-playback-start.svg</file>
     <file>sioul/22/media-playback-stop.svg</file>
     <file>sioul/22/media-record.svg</file>
+    <file>sioul/22/milestone.svg</file>
     <file>sioul/22/notification-active.svg</file>
     <file>sioul/22/notification-disabled.svg</file>
     <file>sioul/22/notification-inactive.svg</file>
@@ -416,6 +419,7 @@
     <file>sioul-dark/16/media-playback-start.svg</file>
     <file>sioul-dark/16/media-playback-stop.svg</file>
     <file>sioul-dark/16/media-record.svg</file>
+    <file>sioul-dark/16/milestone.svg</file>
     <file>sioul-dark/16/overflow-menu.svg</file>
     <file>sioul-dark/16/package-x-generic.svg</file>
     <file>sioul-dark/16/password-copy.svg</file>
@@ -506,6 +510,7 @@
     <file>sioul-dark/22/folder-new.svg</file>
     <file>sioul-dark/22/folder-trash.svg</file>
     <file>sioul-dark/22/folder.svg</file>
+    <file>sioul-dark/22/food.svg</file>
     <file>sioul-dark/22/games-hint.svg</file>
     <file>sioul-dark/22/go-bottom.svg</file>
     <file>sioul-dark/22/go-down.svg</file>
@@ -539,6 +544,7 @@
     <file>sioul-dark/22/media-playback-start.svg</file>
     <file>sioul-dark/22/media-playback-stop.svg</file>
     <file>sioul-dark/22/media-record.svg</file>
+    <file>sioul-dark/22/milestone.svg</file>
     <file>sioul-dark/22/notification-active.svg</file>
     <file>sioul-dark/22/notification-disabled.svg</file>
     <file>sioul-dark/22/notification-inactive.svg</file>

@@ -74,7 +74,8 @@ Item {
     // Escape folds the readable timeline, as "Done" and Back do.
     Shortcut {
         sequence: "Escape"
-        enabled: page.visible && page.readable
+        // A card open over the page takes Escape first (main.qml).
+        enabled: page.visible && !page.window.cardRef && page.readable
         onActivated: page.readable = false
     }
     // A phone, or a window as narrow: the list under the day, the header on two lines.
@@ -756,8 +757,14 @@ Item {
                                     page.hovered = ""
                             }
                         }
+                        // Chosen, its block lit; a meal, a nap or the night: its card, where you are.
                         TapHandler {
-                            onTapped: page.chosen = row.ident
+                            onTapped: {
+                                page.chosen = row.ident
+                                const kind = row.modelData.kind === "sleep" ? "night" : row.modelData.kind
+                                if (kind !== "dose")
+                                    page.window.openCard({ kind: kind, srcDate: scroll.day.date, srcKey: row.modelData.key, title: row.modelData.name })
+                            }
                         }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
@@ -1039,84 +1046,16 @@ Item {
         id: needMenu
 
         sourceComponent: Component {
-            SioulMenu {
+            NeedMenu {
                 id: menu
 
-                property var day: null
-                property var item: null
-                // A night begun on a past day, not over: its alarm alone (the rest of that day is as it was).
-                property bool alarmOnly: false
-                readonly property bool today: menu.day !== null && menu.day.today
-                readonly property bool off: menu.item !== null && menu.item.off
-                readonly property bool added: menu.item !== null && menu.item.added
-
-                function show(day, item, under, alarmOnly) {
-                    menu.day = day
-                    menu.item = item
-                    menu.alarmOnly = alarmOnly === true
-                    if (under)
-                        menu.popup(under, 0, under.height)
-                    else
-                        menu.popup()
-                }
-
-                function act(action) {
-                    page.change(menu.day.date, menu.item.key, action)
-                }
-
+                sioul: page.sioul
+                theme: page.theme
+                later: page.shown.later
+                onActed: action => page.change(menu.day.date, menu.item.key, action)
+                onFormAsked: mode => dayForm.now().edit(mode, menu.day, menu.item)
                 onOpened: page.menuOpen = true
                 onClosed: page.menuOpen = false
-
-                MenuItem {
-                    visible: !menu.off && !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: page.theme.plain(page.sioul.textWith("need-later-n", "minutes", String(page.shown.later)))
-                    onTriggered: menu.act("later")
-                }
-                MenuItem {
-                    visible: !menu.off && !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: page.sioul.text("need-move-to") + "…"
-                    onTriggered: dayForm.now().edit("move", menu.day, menu.item)
-                }
-                MenuItem {
-                    visible: !menu.off && !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: page.sioul.text("need-change-times")
-                    onTriggered: dayForm.now().edit("times", menu.day, menu.item)
-                }
-                // No notice that day, kept free all the same; or back.
-                MenuItem {
-                    visible: !menu.off && !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: menu.item === null ? "" : page.sioul.text(menu.item.quiet ? (menu.today ? "need-unskip" : "need-unskip-day") : (menu.today ? "needs-not-today" : "need-not-that-day"))
-                    onTriggered: menu.act(menu.item.quiet ? "loud" : "quiet")
-                }
-                // The alarm at waking, the morning this night ends: none that morning, or back (docs/health.md).
-                // A night known only from the timeline (the week before's) has no alarm said: none offered.
-                MenuItem {
-                    visible: menu.item !== null && menu.item.kind === "sleep" && (menu.item.alarm || "") !== "" && !menu.off
-                    height: visible ? implicitHeight : 0
-                    text: page.theme.plain(menu.item === null ? "" : page.sioul.textWith(menu.item.alarm_skipped ? "wake-unskip" : "wake-skip", "time", menu.item.alarm || ""))
-                    onTriggered: menu.act(menu.item.alarm_skipped ? "alarm" : "no-alarm")
-                }
-                MenuItem {
-                    visible: menu.item !== null && menu.item.changed && !menu.off && !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: page.sioul.text("need-as-usual")
-                    onTriggered: menu.act("usual")
-                }
-                MenuSeparator {
-                    visible: !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                }
-                // Taken out that day (its time free for other things), or put back; one added that day, gone.
-                MenuItem {
-                    visible: !menu.alarmOnly
-                    height: visible ? implicitHeight : 0
-                    text: page.sioul.text(menu.off ? "need-put-back" : menu.added ? "needs-remove" : menu.today ? "need-remove-today" : "need-remove-day")
-                    onTriggered: menu.act(menu.off ? "on" : "off")
-                }
             }
         }
     }
