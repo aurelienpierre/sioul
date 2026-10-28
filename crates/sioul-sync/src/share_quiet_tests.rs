@@ -587,7 +587,16 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     });
     entry(&phone, &folder, &key, |e| e.start(now / 1000));
     desk.write("data/own-time.toml", "[event.\"board-1\"]\nbefore = 15\n\n[event.\"review-2\"]\nafter = 10\nremind = \"30\"\n");
-    background(&desk, &folder, &key, now);
+    // The desk's own exchanges: its file kept to itself, nothing sent; quiet from its third
+    // (re-check of 857c39e, §3.6: said before, never asserted).
+    let mut desk_steps = Vec::new();
+    for _ in 0..3 {
+        let n = quieted();
+        let outcome = background(&desk, &folder, &key, now);
+        desk_steps.push((quieted() > n, outcome.sent));
+        now += MINUTE;
+    }
+    assert!(desk_steps.iter().all(|(_, sent)| *sent == 0) && desk_steps[2].0, "{desk_steps:?}");
     // The phone as 982d6e5: no such store, none known.
     let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != OWN_TIME).collect::<Vec<_>>();
     super::tests::OLDER.with(|o| *o.borrow_mut() = vec![OWN_TIME.to_string()]);
@@ -607,9 +616,11 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     assert!(steps.iter().all(|(_, o)| o.pending == 0), "nothing it cannot place: {steps:?}");
     assert!(steps[2].0 && steps[3].0, "its background steps quiet again: {steps:?}");
     assert!(!phone.path("data/own-time.toml").exists(), "nothing written there");
-    // The desk's own exchanges stay quiet too: its file kept to itself.
+    // The desk's again, after the phone's: its file still kept to itself.
     now += MINUTE;
-    background(&desk, &folder, &key, now);
+    assert_eq!(background(&desk, &folder, &key, now).sent, 0);
+    // Settings says which device keeps it from travelling (§3.2).
+    assert_eq!(formats(&folder, &key, &desk.memory, &desk.id, now).own_time, [phone.id.clone()]);
     // The phone updated: its entry says it has the store; the desk's next exchange sends it, once.
     super::tests::OLDER.with(|o| o.borrow_mut().clear());
     entry(&phone, &folder, &key, |e| e.own_time = OWN_TIME_SHARED);
@@ -622,5 +633,59 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     now += MINUTE;
     let again = background(&desk, &folder, &key, now);
     assert_eq!(again.sent, 0, "sent once: {again:?}");
+    assert!(formats(&folder, &key, &desk.memory, &desk.id, now).own_time.is_empty(), "nothing held back any more");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Once your own time around meetings has travelled from a device, it keeps
+/// travelling there whoever joins (`Memory::own_time_open`): a device on an
+/// older Sioul counted for a while, then forgotten, never makes the store
+/// leave and join again, its records written back over what changed
+/// meanwhile (re-check of 857c39e, §3.1).
+#[test]
+fn your_own_time_keeps_travelling_once_it_has() {
+    let base = scratch("own-time-open");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone, old) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"), Computer::new(&base, "old"));
+    let mut now = NOW;
+    for c in [&desk, &phone] {
+        entry(c, &folder, &key, |e| {
+            e.start(now / 1000);
+            e.own_time = OWN_TIME_SHARED;
+        });
+    }
+    desk.write("data/own-time.toml", "[event.\"board-1\"]\nbefore = 15\n");
+    let before = |c: &Computer| c.read("data/own-time.toml").parse::<toml::Table>().ok().and_then(|t| t["event"]["board-1"]["before"].as_integer());
+    for _ in 0..2 {
+        for c in [&desk, &phone] {
+            now += MINUTE;
+            background(c, &folder, &key, now);
+        }
+    }
+    assert_eq!((before(&desk), before(&phone)), (Some(15), Some(15)), "travelled");
+    // A third device whose entry does not say it reads own time counts now.
+    entry(&old, &folder, &key, |e| e.start(now / 1000));
+    for c in [&desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(formats(&folder, &key, &desk.memory, &desk.id, now).own_time.is_empty(), "open here: nothing said held back");
+    // Changed on the desk meanwhile, then the third device forgotten on both.
+    desk.write("data/own-time.toml", "[event.\"board-1\"]\nbefore = 25\n");
+    for c in [&desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    for c in [&desk, &phone] {
+        forget_device(&folder, &key, &c.memory, &c.id, &old.id).unwrap();
+    }
+    for _ in 0..2 {
+        for c in [&desk, &phone] {
+            now += MINUTE;
+            background(c, &folder, &key, now);
+        }
+    }
+    assert_eq!((before(&desk), before(&phone)), (Some(25), Some(25)), "the change kept on both");
     let _ = std::fs::remove_dir_all(&base);
 }

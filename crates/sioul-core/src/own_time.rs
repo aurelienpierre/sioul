@@ -204,6 +204,15 @@ mod tests {
         assert_eq!(std::fs::metadata(&path).unwrap().len(), first.len());
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(first.modified().unwrap()).unwrap();
         assert_eq!(current_at(&path).events.get("a").map(|o| o.before), Some(25), "never stale");
+        // Another program's write (the sharing's writer, a phone's background process: no
+        // count of this one's): a new file renamed over it, the same size, its time set back
+        // (re-check of 857c39e, §3.6).
+        let other = dir.join("own-time.toml.new");
+        std::fs::write(&other, std::fs::read_to_string(&path).unwrap().replace("before = 25", "before = 35")).unwrap();
+        std::fs::File::options().write(true).open(&other).unwrap().set_modified(first.modified().unwrap()).unwrap();
+        std::fs::rename(&other, &path).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), first.len());
+        assert_eq!(current_at(&path).events.get("a").map(|o| o.before), Some(35), "another program's write read too");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

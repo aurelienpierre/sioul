@@ -600,7 +600,10 @@ pub(crate) fn status(folder: &str) -> String {
         })
         .collect();
     // Every device holding the newer form back, or on an older Sioul once it travels, has its line.
-    let holders: Vec<(String, i64, bool)> = formats.as_ref().map(|f| f.holders.iter().map(|(id, _)| (id, true)).chain(f.older.iter().map(|id| (id, false))).map(|(id, holds)| (id.clone(), f.heard.get(id).copied().unwrap_or(0) / 1000, holds)).collect()).unwrap_or_default();
+    // And every device keeping your own time around meetings from travelling, while some is set
+    // and this device shares its time (re-check of 857c39e, §3.2).
+    let own_time_set = here.shares("time", &config) && !sioul_core::own_time::current().events.is_empty();
+    let holders = formats.as_ref().map(|f| holding(f, own_time_set)).unwrap_or_default();
     let devices = if on { crate::health::device_rows(&holders) } else { Vec::new() };
     let backup = backup(on && mirror.is_none(), &path);
     let build = say("share-build", &[("build", sioul_core::build::DESCRIBED.to_string())]);
@@ -616,6 +619,17 @@ pub(crate) fn status(folder: &str) -> String {
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
     let leaving = if on { leaving_rows(&path) } else { Vec::new() };
     json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+}
+
+/// The devices the sharing lists as holding something back (`share::formats`),
+/// for Settings' rows (`health::device_rows`): the format's holders, those on an
+/// older Sioul once it travels, and, while some of your own time around
+/// meetings is set (`own_time_set`), those that keep it from travelling; each
+/// with when it was last heard (seconds).
+fn holding(f: &share::Formats, own_time_set: bool) -> Vec<(String, i64, crate::health::Holding)> {
+    use crate::health::Holding;
+    let own_time = f.own_time.iter().filter(|_| own_time_set).map(|id| (id, Holding::OwnTime));
+    f.holders.iter().map(|(id, _)| (id, Holding::Format)).chain(f.older.iter().map(|id| (id, Holding::Older))).chain(own_time).map(|(id, holds)| (id.clone(), f.heard.get(id).copied().unwrap_or(0) / 1000, holds)).collect()
 }
 
 /// Where the sharing folder is on a Nextcloud, as this device knows it: the
@@ -3436,6 +3450,17 @@ mod tests {
         assert!(account_item(event).is_some_and(|p| p.ends_with("calendars/work/personal/dentist.ics")));
         assert!(account_item("data/../config/config.toml").is_none() && account_item("data/drafts/reply.eml").is_none() && account_item("config/config.toml").is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Settings lists the devices that keep your own time around meetings
+    /// from travelling only while some of it is set here (re-check of
+    /// 857c39e, §3.2), after those that hold the format back.
+    #[test]
+    fn a_device_holding_your_own_time_back_is_listed_while_some_is_set() {
+        use crate::health::Holding;
+        let formats = share::Formats { writes: 2, newer: Vec::new(), holders: Vec::new(), older: vec!["old".into()], own_time: vec!["tablet".into()], heard: [("tablet".to_string(), 7_000_000_i64)].into_iter().collect() };
+        assert_eq!(holding(&formats, false), [("old".to_string(), 0, Holding::Older)]);
+        assert_eq!(holding(&formats, true), [("old".to_string(), 0, Holding::Older), ("tablet".to_string(), 7_000, Holding::OwnTime)]);
     }
 
     /// Can-wait 6 of the review of 36002ea: putting back a calendar's item

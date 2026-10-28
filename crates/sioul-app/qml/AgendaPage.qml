@@ -557,31 +557,13 @@ Item {
 
                 // A date asked comes first in a day's head: on a phone its diamond and its words
                 // ("CAF form · Date asked · four days left"), as the computer's Day says it (later 2).
-                readonly property var firstDated: headLine.chips.length > 0 && headLine.chips[0].item.kind === "dated" ? headLine.chips[0] : null
-
-                Rectangle {
-                    objectName: "agendaDayDiamond"
-                    visible: headLine.firstDated !== null
-                    Layout.preferredWidth: 7
-                    Layout.preferredHeight: 7
-                    Layout.alignment: Qt.AlignVCenter
-                    rotation: 45
-                    color: headLine.firstDated && headLine.firstDated.item.tone !== "quiet" ? page.theme.text : "transparent"
-                    border.color: page.theme.text
-                    border.width: 1
-                }
-                Label {
-                    objectName: "agendaDayChips"
-                    visible: headLine.chips.length > 0
+                DayHead {
+                    sioul: page.sioul
+                    theme: page.theme
+                    planning: timeline
+                    chips: headLine.chips
                     Layout.maximumWidth: headLine.width * (page.headNow !== null ? 0.4 : 1)
-                    text: headLine.chips.length === 0 ? "" : (headLine.firstDated ? timeline.datedWords({ title: headLine.firstDated.item.title, when: headLine.firstDated.item.time && headLine.firstDated.item.time.type === "at" ? headLine.firstDated.when || "" : "", line: headLine.firstDated.item.line || "" }) : headLine.chips[0].item.title) + (headLine.chips.length > 1 ? "  " + page.sioul.textArgs("agenda-chips-more", JSON.stringify({ n: headLine.chips.length - 1 })) : "")
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: page.theme.muted
-
-                    TapHandler {
-                        onTapped: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0, ""))
-                    }
+                    onOpened: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0, ""))
                 }
                 Label {
                     objectName: "agendaHeadLine"

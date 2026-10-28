@@ -1176,7 +1176,9 @@ mod tests {
         // A long thing across the appointment's start (12:00 to 15:00): laid as any step, never over it (later 6).
         let workshop = Occurrence { key: "w.ics".into(), uid: "w".into(), summary: "Workshop".into(), start: t("2026-10-06T12:00"), end: t("2026-10-06T15:00"), ..Occurrence::default() };
         let long = [doctor.clone(), workshop.clone()];
-        for (from, to) in laid(&long).into_iter().flatten() {
+        let around = laid(&long);
+        assert!(around.iter().all(Option::is_some), "both laid all the same (re-check of 857c39e, §3.6): {around:?}");
+        for (from, to) in around.into_iter().flatten() {
             assert!(to <= workshop.start || from >= workshop.end, "never over the workshop: {from}–{to}");
         }
         // Something kept across it (another appointment at 13:00): laid as any step, never over it.

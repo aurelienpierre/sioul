@@ -2412,6 +2412,16 @@ struct Memory {
     /// Others' records already read in: done once, when sharing starts.
     #[serde(default)]
     joined: bool,
+    /// Your own time around meetings (`OWN_TIME`) travelled from here once
+    /// every device said it reads it (`own_time_shared`): from then on it
+    /// stays in this device's exchanges, whoever joins later (an older Sioul
+    /// keeps its records waiting there until it is updated), so that the
+    /// store never leaves and joins again, its records written back over what
+    /// changed meanwhile (re-check of 857c39e, §3.1). Missing (a memory from
+    /// before): not yet. 982d6e5 and 857c39e read a memory with it (an
+    /// unknown field passed over) and write it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    own_time_open: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -4380,10 +4390,15 @@ pub struct Formats {
     /// The devices that count (`present`) whose entry says they read an
     /// older format than this one's: said once this device writes format 2.
     pub older: Vec<String>,
-    /// When each device of `holders` and `older` was last heard of, from
-    /// sealed facts (`last_heard`), in milliseconds; 0 when nothing says it.
-    /// Settings lists each, with "Forget this device" for one not counted
-    /// otherwise.
+    /// The devices that count whose entry does not say they read your own
+    /// time around meetings (`devices::Entry::own_time`), while it has not
+    /// travelled from here yet (`Memory::own_time_open`): until each is
+    /// updated or forgotten, it stays on each device (re-check of 857c39e, §3.2).
+    pub own_time: Vec<String>,
+    /// When each device of `holders`, `older` and `own_time` was last heard
+    /// of, from sealed facts (`last_heard`), in milliseconds; 0 when nothing
+    /// says it. Settings lists each, with "Forget this device" for one not
+    /// counted otherwise.
     pub heard: BTreeMap<String, i64>,
 }
 
@@ -4391,9 +4406,10 @@ pub fn formats(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now
     let state = Memory::load(memory, computer);
     let holders = if state.format < 2 && state.joined { format_holders(folder, key, computer, &state, now_ms) } else { Vec::new() };
     let counting = present(folder, key, computer, &state, now_ms);
-    let older = if state.format >= 2 { counting.iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id.clone()).collect() } else { Vec::new() };
-    let heard = counting.iter().filter(|(id, _, _)| holders.iter().any(|(holder, _)| holder == id) || older.contains(id)).map(|(id, entry, _)| (id.clone(), last_heard(entry.as_ref(), &state, id))).collect();
-    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older, heard }
+    let older: Vec<String> = if state.format >= 2 { counting.iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id.clone()).collect() } else { Vec::new() };
+    let own_time: Vec<String> = if state.own_time_open { Vec::new() } else { counting.iter().filter(|(_, entry, _)| !entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED)).map(|(id, _, _)| id.clone()).collect() };
+    let heard = counting.iter().filter(|(id, _, _)| holders.iter().any(|(holder, _)| holder == id) || older.contains(id) || own_time.contains(id)).map(|(id, entry, _)| (id.clone(), last_heard(entry.as_ref(), &state, id))).collect();
+    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older, own_time, heard }
 }
 
 /// Whether this device holds a part met in a newer format than its Sioul
@@ -5285,9 +5301,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if sealed == Some(true) {
         memory.seal_salt = salt;
     }
-    // Your own time around meetings: left out until every device has its store (`own_time_shared`).
+    // Your own time around meetings: left out until every device has its store (`own_time_shared`),
+    // then kept in for good (`Memory::own_time_open`).
     let gated: Vec<Store>;
-    let stores: &[Store] = if stores.iter().any(|s| s.name == OWN_TIME) && !own_time_shared(sharing, &memory, now_ms) {
+    let own_time = stores.iter().any(|s| s.name == OWN_TIME);
+    if own_time && !memory.own_time_open && own_time_shared(sharing, &memory, now_ms) {
+        memory.own_time_open = true;
+    }
+    let stores: &[Store] = if own_time && !memory.own_time_open {
         gated = stores.iter().filter(|s| s.name != OWN_TIME).cloned().collect();
         &gated
     } else {

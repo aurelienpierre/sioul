@@ -282,7 +282,9 @@ pub(crate) fn make_event(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Strin
 /// 23:00 or later, or the whole day; its scan's link, and the letter's
 /// address labelled with its sender ("A letter" without one), so that the
 /// event stands for the letter's appointment on every device
-/// (`dated::letter_event`) and its tie reads by name (review of part 4, later 11).
+/// (`dated::letter_event`) and its tie reads by name (review of part 4, later
+/// 11); in the letter's project, as its task is (`make_task`), so that what
+/// the project keeps from agents keeps the event too (re-check of 857c39e, §3.4).
 pub(crate) fn event_of(letters: &Letters, letter: &Letter, date: jiff::civil::Date, time: Option<(i8, i8)>) -> serde_json::Value {
     let (start, end, all_day) = match time {
         Some((h, m)) if h >= 23 => (format!("{date}T{h:02}:{m:02}"), format!("{date}T23:59"), false),
@@ -298,6 +300,7 @@ pub(crate) fn event_of(letters: &Letters, letter: &Letter, date: jiff::civil::Da
         "end": end,
         "all_day": all_day,
         "links": [crate::backend::file_url(&letters.file_path(letter)), { "uri": sioul_core::links::letter_uri(&letter.id), "label": label }],
+        "projects": if letter.project.is_empty() { Vec::new() } else { vec![letter.project.clone()] },
     })
 }
 

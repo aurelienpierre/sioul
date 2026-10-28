@@ -3363,12 +3363,25 @@ pub(crate) struct DeviceRow {
     build: String,
 }
 
+/// What a device listed by the sharing holds back (`share::formats`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Holding {
+    /// The newer form of what travels: it is known by what it shared alone.
+    Format,
+    /// An older Sioul, once the newer form travels.
+    Older,
+    /// Your own time around meetings, kept on each device until it is
+    /// updated or forgotten (re-check of 857c39e, §3.2).
+    OwnTime,
+}
+
 /// Your other devices, as this one knows them, for Settings: nothing red, no
 /// counts. `holders`: the devices that hold the newer form of what travels
-/// back, or run an older Sioul once it travels (`share::formats`), with when
-/// each was last heard (seconds, 0 when nothing says it) and whether it holds
-/// it back; each is listed (`holder_rows`).
-pub(crate) fn device_rows(holders: &[(String, i64, bool)]) -> Vec<DeviceRow> {
+/// back, run an older Sioul once it travels, or keep your own time around
+/// meetings from travelling (`share::formats`), with when each was last
+/// heard (seconds, 0 when nothing says it) and what it holds back; each is
+/// listed (`holder_rows`).
+pub(crate) fn device_rows(holders: &[(String, i64, Holding)]) -> Vec<DeviceRow> {
     let knowledge = know();
     let kept = load_peers();
     let mut rows = device_rows_of(&knowledge.peers, &kept, Timestamp::now().as_second(), tr());
@@ -3383,19 +3396,30 @@ pub(crate) fn device_rows(holders: &[(String, i64, bool)]) -> Vec<DeviceRow> {
 /// this device": it is not counted for your doses, so forgetting it makes no
 /// dose look known. One listed keeps its own line: forgotten only once silent
 /// for a week, as any device, since a device counted for your doses and
-/// forgotten could make a dose it took look not taken.
-fn holder_rows(rows: &mut Vec<DeviceRow>, holders: &[(String, i64, bool)], words: &Translator) {
+/// forgotten could make a dose it took look not taken. One that keeps your
+/// own time around meetings from travelling says so in one sentence, under
+/// its own line when it has one (re-check of 857c39e, §3.2).
+fn holder_rows(rows: &mut Vec<DeviceRow>, holders: &[(String, i64, Holding)], words: &Translator) {
     let zone = jiff::tz::TimeZone::system();
     let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
     for (id, heard, holds) in holders {
-        if id.is_empty() || rows.iter().any(|row| row.id == *id) {
+        if id.is_empty() {
+            continue;
+        }
+        if let Some(row) = rows.iter_mut().find(|row| row.id == *id) {
+            let note = words.text("share-device-own-time", None);
+            if *holds == Holding::OwnTime && !row.notes.contains(&note) {
+                row.notes.push(note);
+            }
             continue;
         }
         let state = match (holds, *heard > 0) {
-            (true, true) => said(words, "share-device-holds", &[("when", when(*heard))]),
-            (true, false) => words.text("share-device-holds-unknown", None),
-            (false, true) => said(words, "share-device-older", &[("when", when(*heard))]),
-            (false, false) => words.text("share-device-unread", None),
+            (Holding::Format, true) => said(words, "share-device-holds", &[("when", when(*heard))]),
+            (Holding::Format, false) => words.text("share-device-holds-unknown", None),
+            (Holding::Older, true) => said(words, "share-device-older", &[("when", when(*heard))]),
+            (Holding::Older, false) => words.text("share-device-unread", None),
+            (Holding::OwnTime, true) => said(words, "share-device-own-time-heard", &[("when", when(*heard))]),
+            (Holding::OwnTime, false) => words.text("share-device-own-time-unknown", None),
         };
         rows.push(DeviceRow { id: id.clone(), name: capitalized(&words.text("share-other-device", None)), state, notes: Vec::new(), off: false, forget: true, forget_now: false, build: String::new() });
     }
@@ -7984,13 +8008,28 @@ mod tests {
         // The devices holding the newer form of what travels back: each has its
         // line; one not listed is added, with Forget; one listed keeps its own.
         let mut rows = rows;
-        holder_rows(&mut rows, &[("e-older".into(), now - 120, true), ("f-gone".into(), now - 90 * 86_400, true), ("g-unknown".into(), 0, true), ("h-after".into(), now - 3_600, false)], &english);
+        holder_rows(&mut rows, &[("e-older".into(), now - 120, Holding::Format), ("f-gone".into(), now - 90 * 86_400, Holding::Format), ("g-unknown".into(), 0, Holding::Format), ("h-after".into(), now - 3_600, Holding::Older)], &english);
         assert_eq!(rows.iter().filter(|r| r.id == "e-older").count(), 1);
         let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
         assert!(!row("e-older").forget, "counted for the doses: forgotten once silent a week only");
         assert!(row("f-gone").forget && row("f-gone").name == "Another device of yours" && row("f-gone").state.starts_with("Known here by what it shared, last "), "{:?}", row("f-gone"));
         assert!(row("h-after").forget && row("h-after").state.starts_with("An older Sioul: last heard "), "{:?}", row("h-after"));
         assert!(row("g-unknown").forget && row("g-unknown").state == "Known here by what it shared: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.", "{:?}", row("g-unknown"));
+        // The devices keeping your own time around meetings from travelling (re-check of 857c39e,
+        // §3.2): one listed says it under its own line, keeping its own Forget; one not listed is
+        // added with Forget; one already added for the format says it once more, under it.
+        let mut rows = rows;
+        holder_rows(&mut rows, &[("d-old".into(), now - 9 * 86_400, Holding::OwnTime), ("i-tablet".into(), now - 3_600, Holding::OwnTime), ("f-gone".into(), now - 90 * 86_400, Holding::OwnTime)], &english);
+        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
+        let sentence = "Until it is updated there, or forgotten here, the time you keep around meetings stays on each of your devices.";
+        assert!(row("d-old").forget && row("d-old").notes == [sentence], "{:?}", row("d-old"));
+        let tablet = row("i-tablet");
+        assert!(tablet.forget && tablet.name == "Another device of yours" && tablet.state.starts_with("Known here by what it shared, last heard ") && tablet.state.ends_with(": until it is updated there, or forgotten here, the time you keep around meetings stays on each of your devices."), "{tablet:?}");
+        assert!(row("f-gone").notes == [sentence] && rows.iter().filter(|r| r.id == "f-gone").count() == 1, "{:?}", row("f-gone"));
+        for r in &rows {
+            let words = format!("{} {}", r.state, r.notes.join(" ")).to_lowercase();
+            assert!(!words.contains("error") && !words.contains("blocked"), "calm: {r:?}");
+        }
     }
     /// A Health run reads once what your devices know (`know`, under
     /// `KNOWING`): its page and its Porch's doses come from one read.

@@ -237,6 +237,13 @@ impl Consent {
         // Mail: by the routes that read the sender and the subject, and the
         // ties above; then everything in the same conversations.
         consent.gather_mail(loaded, &mail_ties);
+        // A paper letter is in its project, as the letters' file of the notes folder says
+        // (re-check of 857c39e, §3.4): its address, wherever it is tied.
+        if let Some(letters) = loaded.vault.as_ref().and_then(|vault| crate::letters::Letters::load(&vault.root).ok()) {
+            for letter in letters.list.iter().filter(|l| !l.project.trim().is_empty()) {
+                consent.tie(&links::letter_uri(&letter.id), letter.project.trim());
+            }
+        }
         // A draft is in the projects of the message it answers.
         for draft in &loaded.drafts {
             if let Some(answered) = draft.in_reply_to.as_deref().filter(|id| !id.is_empty()) {

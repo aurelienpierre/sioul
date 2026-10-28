@@ -81,6 +81,15 @@ Item {
     }
 
     Component {
+        id: dayHeadComponent
+
+        DayHead {
+            sioul: mock
+            theme: testTheme
+        }
+    }
+
+    Component {
         id: pathsComponent
 
         Paths {
@@ -407,6 +416,32 @@ Item {
             compare(diamonds.length, 1)
             verify(root.all(list, c => c.visible && c.text === "CAF form · Date asked · four days left").length === 1, "its words")
             verify(root.all(list, c => c.visible && c.text === "School holidays  ·  A birthday").length === 1, "the whole days under the day's title")
+        }
+
+        // A phone's Day head (`DayHead`, AgendaPage's line above the hours): a date
+        // asked first draws its diamond, filled within seven days, and its words with
+        // its hour, then "more"; a whole day first, its title alone; a tap opens the
+        // first (re-check of 857c39e, §3.6).
+        function test_agenda_a_phone_s_day_head_draws_a_date_with_its_words() {
+            const days = week()
+            const planning = makeWeek({ width: 412, days: days })
+            const at = placed({ id: "dated:task:form", kind: "dated", time: { type: "at", at: days[0].start + 17 * 3600 }, source: { type: "dated", kind: "task", key: "form" }, can: { edit: "task", drag: "none" }, title: "Form", line: "Date asked · today", tone: "plain", owner: "form" }, days[0], 0, 1440)
+            at.when = "17:00"
+            const whole = placed({ id: "event:trip", kind: "event", time: { type: "day", date: days[0].date, until: days[0].date }, source: { type: "calendar", key: "trip", uid: "trip", start: days[0].start, recurring: false, calendar: "c", collection: "local/c" }, can: { edit: "event", drag: "none" }, title: "Trip" }, days[0], 0, 1440)
+            const head = createTemporaryObject(dayHeadComponent, root, { planning: planning, chips: [at, whole], width: 380 })
+            waitForRendering(head)
+            const diamond = root.find(head, "agendaDayDiamond")
+            const words = root.find(head, "agendaDayChips")
+            verify(diamond.visible && diamond.color !== "transparent", "its diamond, filled")
+            compare(words.text, "Form · 17:00 · Date asked · today  agenda-chips-more", "its words, its hour, and more")
+            let opened = 0
+            head.opened.connect(() => opened++)
+            mouseClick(words)
+            compare(opened, 1)
+            head.chips = [whole]
+            verify(!diamond.visible && words.text === "Trip", "a whole day: its title alone")
+            head.chips = []
+            verify(!head.visible)
         }
 
         // What was let go stays drawn where it went while its re-plan is due

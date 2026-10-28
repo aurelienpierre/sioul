@@ -310,7 +310,7 @@ mod tests {
         let at = |time: &str| format!("2026-10-29T{time}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let block = Occurrence { key: "/nowhere/block.ics".into(), uid: "block".into(), summary: "Gather the papers".into(), task: "gather".into(), start: at("13:30"), end: at("14:00"), ..Occurrence::default() };
         let cancelled = Occurrence { key: "/nowhere/gone.ics".into(), uid: "gone".into(), summary: "Doctor".into(), cancelled: true, start: at("14:00"), end: at("14:30"), ..Occurrence::default() };
-        let marked = |events: &[Occurrence]| dated::of_letters(&letters, &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
+        let marked = |events: &[Occurrence]| dated::of_letters(&letters, &[], &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
         assert!(marked(std::slice::from_ref(&block)), "a block is no event of yours");
         assert!(marked(std::slice::from_ref(&cancelled)), "nor one cancelled");
         let doctor = Occurrence { cancelled: false, ..cancelled };

@@ -42,6 +42,7 @@ fn main() {
         "qml/EventDialog.qml",
         "qml/EventRow.qml",
         "qml/WeekPlanning.qml",
+        "qml/DayHead.qml",
         "qml/Paths.qml",
         "qml/WhichTimes.qml",
         "qml/DoseMark.qml",

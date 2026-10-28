@@ -1201,7 +1201,8 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
         parts.push(if leaves { say("head-next-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-next", &[("time", clock(if matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) { at } else { start })), ("what", named(item))]) });
     }
     // In work and admin time, the nearest date asked this week, one only.
-    let working = moment.is_some_and(|m| works(m.time));
+    // With no hours set, until 18:00 only, as `work_left` (re-check of 857c39e, §3.3).
+    let working = moment.is_some_and(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin) || (m.time == crate::areas::Time::Any && t < evening));
     if working && let Some((date, item, kind)) = nearest_date(i.dates, t, i.zone) {
         let today = jiff::Timestamp::from_second(t).map_or(date, |s| s.to_zoned(i.zone.clone()).date());
         parts.push(say("head-date", &[("kind", tr.text(kind.word(), None)), ("what", item.title.clone()), ("date", tr.day(date)), ("left", crate::dated::left(tr, today, date))]));
@@ -1680,5 +1681,14 @@ mod tests {
         let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
         assert_eq!(at_("2026-10-05T10:00"), "Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.");
         assert_eq!(at_("2026-10-05T19:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.");
+        // A concert at 20:00 still to come: at 19:00 the line names it, and no date (re-check of
+        // 857c39e, §3.3), as with hours set.
+        let mut concert = thing("Concert", Kind::Event, "2026-10-05T20:00", "2026-10-05T22:00");
+        concert.time = Time::span(at("2026-10-05T20:00"), at("2026-10-05T22:00"));
+        let evening = vec![concert];
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &evening, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
+        assert_eq!(at_("2026-10-05T10:00"), "Next: 20:00 Concert. Date asked: CAF form, Friday 9 October: four days left.");
+        assert_eq!(at_("2026-10-05T19:00"), "Next: 20:00 Concert.");
     }
 }

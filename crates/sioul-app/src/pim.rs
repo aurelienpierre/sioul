@@ -535,9 +535,12 @@ struct SavedEvent {
 /// another is chosen (`move_event_file`).
 fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, String> {
     // What a new event is made from: a message, a task, a letter (`links`): each an
-    // address, or an address with its label (`{"uri", "label"}`).
-    let links: Vec<(String, String)> = serde_json::from_str::<serde_json::Value>(edit)
-        .ok()
+    // address, or an address with its label (`{"uri", "label"}`); and its projects
+    // (`projects`, a letter's: re-check of 857c39e, §3.4).
+    let given = serde_json::from_str::<serde_json::Value>(edit).ok();
+    let projects: Vec<String> = given.as_ref().and_then(|v| v.get("projects")?.as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::trim).filter(|p| !p.is_empty()).map(str::to_string)).collect())).unwrap_or_default();
+    let links: Vec<(String, String)> = given
+        .as_ref()
         .and_then(|v| {
             v.get("links").and_then(|l| l.as_array()).map(|a| {
                 a.iter()
@@ -603,6 +606,7 @@ fn write_event(key: &str, edit: &str, calendar: &str) -> Result<SavedEvent, Stri
                     let rel = if uri.starts_with("mid:") { "via" } else { "related" };
                     sioul_core::tasks::link_line(&sioul_core::tasks::Link { uri: uri.clone(), label: label.clone(), rel: rel.into() })
                 })
+                .chain(projects.iter().map(|project| sioul_core::tasks::project_line(project)))
                 .collect();
             (agenda::new_path(&target), agenda::add_lines(&text, &lines).unwrap_or(text))
         }
@@ -1261,21 +1265,25 @@ mod tests {
     }
 
     /// "Into the agenda" (`letters::event_of`): the new event carries the
-    /// letter's address labelled with its sender, and stands for the letter's
-    /// appointment there (review of part 4, later 11).
+    /// letter's address labelled with its sender, a comma and an accent
+    /// quoted and read back as written, and stands for the letter's
+    /// appointment there (review of part 4, later 11); it is in the letter's
+    /// project (re-check of 857c39e, §3.4 and §3.6).
     #[test]
     fn a_letter_s_appointment_carries_its_address_and_its_sender() {
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Letters' appointments", None, &["VEVENT"]).unwrap();
         let here = format!("{}/{}", calendar.account, calendar.id);
-        let reading = sioul_core::letters::Reading { sender: "CAF".into(), appointment: Some(("2099-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
-        let letter = sioul_core::letters::Letter { id: "2026-10-28-1a2b".into(), file: "letters/inbox/caf.pdf".into(), status: "new".into(), reading, ..Default::default() };
+        let reading = sioul_core::letters::Reading { sender: "Caisse, Défense".into(), appointment: Some(("2099-10-29".parse().unwrap(), Some((14, 0)))), ..Default::default() };
+        let letter = sioul_core::letters::Letter { id: "2026-10-28-1a2b".into(), file: "letters/inbox/caf.pdf".into(), status: "new".into(), project: "caf-file".into(), reading, ..Default::default() };
         let letters = sioul_core::letters::Letters { root: "/nowhere/Notes".into(), list: vec![letter.clone()] };
         let edit = crate::letters::event_of(&letters, &letter, "2099-10-29".parse().unwrap(), Some((14, 0)));
         let saved = write_event("", &edit.to_string(), &here).unwrap();
         let text = std::fs::read_to_string(&saved.path).unwrap();
         let tie = sioul_core::lines::unfold(&text).into_iter().find(|l| l.ends_with(":sioul:letter/2026-10-28-1a2b"));
-        assert!(tie.as_deref().is_some_and(|l| sioul_core::lines::name(l).ends_with("LINK") && sioul_core::lines::params(l).iter().any(|(name, value)| name == "LABEL" && value == "CAF")), "{text}");
+        // In the letter's project, as its task would be (re-check of 857c39e, §3.4).
+        assert!(sioul_core::lines::unfold(&text).contains(&sioul_core::tasks::project_line("caf-file")), "{text}");
+        assert!(tie.as_deref().is_some_and(|l| sioul_core::lines::name(l).ends_with("LINK") && l.contains(";LABEL=\"Caisse, Défense\";") && sioul_core::lines::params(l).iter().any(|(name, value)| name == "LABEL" && value == "Caisse, Défense")), "{text}");
         let seen = sioul_core::dated::EventSeen { start: 0, yours: false, text };
         assert_eq!(sioul_core::dated::letter_event(&letters, &letter, None, &[seen]), Some(0), "it stands for the letter's appointment");
         let _ = std::fs::remove_dir_all(&calendar.dir);

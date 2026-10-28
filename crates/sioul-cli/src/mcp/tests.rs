@@ -760,6 +760,41 @@ fn a_closed_project_is_never_shown() {
     assert!(!Draft::all().iter().any(|d| d.body.contains("Paid.") || d.subject == "Taxes"), "no draft");
 }
 
+/// A paper letter of a project closed to agents, put into the agenda
+/// (re-check of 857c39e, §3.4): the event "Into the agenda" makes now is in
+/// the letter's project (its REFID, as `letters::event_of` gives it), kept;
+/// the letter itself is kept by its project, as letters.toml says it; an
+/// event made before, in no project, is given, its tie to the letter left
+/// out and counted, never named, neither by its label nor by the sender.
+#[test]
+fn a_closed_project_s_letter_put_into_the_agenda_stays_kept() {
+    let _home = home();
+    let mut server = server();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let zone = jiff::tz::TimeZone::system();
+    let tie = tasks::link_line(&tasks::Link { uri: sioul_core::links::letter_uri("zeugma-letter"), label: "Quorum".into(), rel: "related".into() });
+    let event = |title: &str, day: &str, lines: &[String]| {
+        let edit = sioul_core::agenda::EventEdit { title: title.into(), start: format!("{day}T14:00"), end: format!("{day}T15:00"), ..Default::default() };
+        sioul_core::agenda::add_lines(&sioul_core::agenda::new_event(&edit, &zone).unwrap(), lines).unwrap()
+    };
+    let (made, older) = (calendar.dir.join("quorum-made.ics"), calendar.dir.join("quorum-older.ics"));
+    vdir::write_item(&made, &event("Appointment: Quorum", "2099-11-03", &[tie.clone(), tasks::project_line("taxes")])).unwrap();
+    vdir::write_item(&older, &event("Letter's appointment", "2099-11-04", &[tie])).unwrap();
+    let (made_uid, older_uid) = (sioul_core::appointments::uid_in(&made), sioul_core::appointments::uid_in(&older));
+    let got = call(&mut server, "get_event", json!({ "event": made_uid }));
+    assert!(got["isError"] == true && text(&got).contains("kept from agents") && !got.to_string().contains("Quorum"), "{got}");
+    let letter = call(&mut server, "links", json!({ "uri": "sioul:letter/zeugma-letter" }));
+    assert!(letter["isError"] == true && text(&letter).contains("kept from agents"), "{letter}");
+    let ties = call(&mut server, "links", json!({ "uri": format!("sioul:event/{older_uid}") }));
+    assert_eq!((ties["isError"].as_bool(), ties["structuredContent"]["kept_from_agents"].as_u64()), (Some(false), Some(1)), "{ties}");
+    assert!(text(&ties).contains("left out on purpose"), "{ties}");
+    never_zeugma(&ties, "links");
+    assert!(!ties.to_string().contains("Quorum"), "{ties}");
+    for path in [made, older] {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 /// Health never reaches an agent (docs/mcp.md): no answer of any tool or
 /// resource holds a word planted in health (`HEALTH_WORDS`, case and accents
 /// aside), each tool the server lists asked at least once (review of
@@ -2230,6 +2265,8 @@ fn events_and_tasks_are_changed_one_by_one() {
     assert_eq!((data["before"].as_u64(), data["after"].as_u64(), data["remind"].as_str()), (Some(25), Some(10), Some("30")), "{got}");
     let refused = call(&mut server, "update_event", json!({ "event": "meeting-1", "before": 5 }));
     assert_eq!((refused["isError"].as_bool(), text(&refused)), (Some(true), session().tr.text("agent-meeting-never-written", None)), "{refused}");
+    // Said as it is: Sioul does not change it here; your answer to it goes from the window (re-check of 857c39e, §3.7).
+    assert!(text(&refused).contains("Sioul does not change it here") && !text(&refused).contains("never writes"), "{refused}");
     assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept, "the meeting byte for byte");
     assert_eq!(sioul_core::own_time::load(&own_path).events.get("meeting-1").map(|o| o.before), Some(25), "your own time as it was");
     let _ = sioul_core::own_time::set(&own_path, "meeting-1", None);
