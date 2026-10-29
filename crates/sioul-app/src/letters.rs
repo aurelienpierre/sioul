@@ -161,8 +161,39 @@ struct View {
     reader: String,
 }
 
-/// The letters not done with, as JSON.
-pub(crate) fn view() -> String {
+/// A letter's task as its row and its card say it (`task`): "" when the
+/// tasks known here (`tasks`, None before the first read: as the letter says)
+/// hold it not, deleted or known here by another id, so that the row offers
+/// "A task for that date" again rather than open a task that is not here
+/// (review of e5bd27b, later 2).
+pub(crate) fn task_shown(task: &str, tasks: Option<&[sioul_core::tasks::Task]>) -> String {
+    match tasks {
+        Some(tasks) if !tasks.iter().any(|t| t.uid == task) => String::new(),
+        _ => task.to_string(),
+    }
+}
+
+/// Its task taken out of the letters that name it, once that task is
+/// deleted here (its ten seconds to undo over: `mail::perform`): the letter's
+/// date asked is drawn again, and its row offers a task for it. Nothing
+/// written when no letter names it. Whether any was.
+pub(crate) fn untie_task(root: &Path, uid: &str) -> Result<bool, String> {
+    if uid.is_empty() || !Letters::load(root)?.list.iter().any(|l| l.task == uid) {
+        return Ok(false);
+    }
+    Letters::try_change(root, |letters| {
+        let tied: Vec<Letter> = letters.list.iter().filter(|l| l.task == uid).cloned().collect();
+        for mut letter in tied {
+            letter.task.clear();
+            letters.put(letter);
+        }
+        Ok(true)
+    })
+}
+
+/// The letters not done with, as JSON; each letter's task as the tasks
+/// known here say it (`task_shown`, the last read: nothing read here).
+pub(crate) fn view(shared: &Shared) -> String {
     let mut view = View {
         inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(),
         missing: MISSING.lock().map(|m| m.clone()).unwrap_or_default(),
@@ -172,6 +203,7 @@ pub(crate) fn view() -> String {
     let Some(root) = load_config().notes_root_path() else { return json(&view) };
     let Ok(letters) = Letters::load(&root) else { return json(&view) };
     let today = jiff::Zoned::now().date();
+    let known = crate::work::loaded_known(shared);
     let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
     view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
     for letter in letters.list.iter().filter(|l| l.status != "done") {
@@ -210,7 +242,7 @@ pub(crate) fn view() -> String {
             file: letters.file_path(letter).display().to_string(),
             deadline: r.deadline.map(|d| d.to_string()).unwrap_or_default(),
             appointment: r.appointment.is_some(),
-            task: letter.task.clone(),
+            task: task_shown(&letter.task, known.as_ref().map(|l| l.tasks.as_slice())),
             project: letter.project.clone(),
             problem: letter.problem.clone(),
         });
@@ -389,5 +421,42 @@ mod tests {
         assert_eq!(free_name(&folder, "scan.pdf"), folder.join("scan (3).pdf"));
         assert_eq!(free_name(&folder, "photo"), folder.join("photo"));
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+    /// A letter's task as its row and card say it: "" when the tasks known
+    /// here hold it not (deleted, or a Google list's known here by another
+    /// id), so that a task for that date is offered again; as the letter says
+    /// before the first read (review of e5bd27b, later 2).
+    #[test]
+    fn a_letter_s_task_as_this_device_knows_it() {
+        use super::task_shown;
+        let task = sioul_core::tasks::Task { uid: "t2".into(), ..Default::default() };
+        assert_eq!(task_shown("t1", Some(std::slice::from_ref(&task))), "");
+        assert_eq!(task_shown("t2", Some(std::slice::from_ref(&task))), "t2");
+        assert_eq!(task_shown("t1", None), "t1", "nothing read yet");
+        assert_eq!(task_shown("", Some(&[])), "");
+    }
+
+    /// A task deleted here is taken out of the letters that name it, those
+    /// alone; nothing is written when none does (review of e5bd27b, later 6).
+    #[test]
+    fn a_deleted_task_frees_its_letter() {
+        use sioul_core::letters::{Letter, Letters};
+        let root = std::env::temp_dir().join(format!("sioul-letters-untie-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let letter = |id: &str, task: &str| Letter { id: id.into(), status: "new".into(), task: task.into(), ..Default::default() };
+        Letters::change(&root, |letters| {
+            letters.put(letter("caf", "t1"));
+            letters.put(letter("bank", "t2"));
+        })
+        .unwrap();
+        assert_eq!(super::untie_task(&root, "t1"), Ok(true));
+        let read = Letters::load(&root).unwrap();
+        assert_eq!((read.get("caf").unwrap().task.as_str(), read.get("bank").unwrap().task.as_str()), ("", "t2"));
+        let file = Letters::folder(&root).join(sioul_core::letters::MANIFEST);
+        let before = std::fs::read(&file).unwrap();
+        assert_eq!(super::untie_task(&root, "nobody"), Ok(false));
+        assert_eq!(std::fs::read(&file).unwrap(), before, "nothing written");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

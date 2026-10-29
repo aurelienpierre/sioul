@@ -27,44 +27,55 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string agendaText: ""
-    readonly property var shown: page.agendaText ? page.eventsOfDays(JSON.parse(page.agendaText)) : ({ days: [], sentence: "", from: "" })
+    readonly property var shown: page.agendaText ? JSON.parse(page.agendaText) : ({ days: [], sentence: "", from: "" })
 
-    // The agenda's days (version 3): each thing an item of the one model of
-    // time as its day places it (`timeline::Placed`), with an event's details.
-    // The list and the month draw each day's events and time blocks, its whole
-    // days first, each with its details, its place in the day and what may
-    // change it; the Day and the Week draw every kind, from the days as they come.
-    function eventOf(row) {
-        const item = row.item
-        const source = item.source || {}
-        const time = item.time || {}
-        const span = time.type === "span"
-        // What the job leaves out when false or empty, said: every reader finds its field.
-        const detail = Object.assign({ end: span ? time.until : source.start, location: "", cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "" }, row.detail || {})
-        return Object.assign(detail, {
-            id: item.id,
-            key: source.key,
-            uid: source.uid,
-            start: source.start,
-            recurring: source.recurring === true,
-            calendar: source.calendar || "",
-            color: item.colour || null,
-            when: row.when,
-            summary: item.title,
-            all_day: row.all_day === true,
-            from_minute: row.from_minute,
-            to_minute: row.to_minute,
-            column: row.column || 0,
-            columns: row.columns || 1,
-            // The time kept before and after it: its lighter ends.
-            before: span ? Math.round((time.at - time.start) / 60) : 0,
-            after: span ? Math.round((time.end - time.until) / 60) : 0,
-            can: item.can
-        })
+    // What comes' rows of a day (version 3's `comes`, `timeline::comes`), in time order:
+    // its whole-day things first, tonight's night last; today's doses by the minute, as the
+    // Porch lists them: from their time on until marked, with their mark and what is known
+    // (the window's rows, `timeline.markState`), those still to come plainly; never a name.
+    function comesRows(day) {
+        const comes = day.comes || { rows: [] }
+        const out = []
+        for (const placed of comes.rows || []) {
+            const item = placed.item
+            const detail = placed.detail || {}
+            out.push({ sort: item.kind === "night" ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
+        }
+        for (const dose of comes.doses || []) {
+            let known = ""
+            let words = ""
+            if (day.today) {
+                const state = timeline.markState(JSON.stringify(dose.keys), day.date)
+                if (state.state === "taken")
+                    continue
+                if (state.state !== "not-come") {
+                    known = state.state
+                    words = state.words || ""
+                }
+            }
+            out.push({ sort: dose.minute, id: "doses:" + day.date + "/" + dose.minute, when: dose.when, title: dose.title, line: words, kind: "dose", tone: "plain", colour: "transparent", known: known, cancelled: false, tentative: false, placed: null, keys: dose.keys })
+        }
+        return out.sort((a, b) => a.sort - b.sort)
     }
 
-    function eventsOfDays(agenda) {
-        return Object.assign({}, agenda, { days: (agenda.days || []).map(day => Object.assign({}, day, { events: (day.head || []).concat(day.timed || []).filter(row => row.detail).map(page.eventOf) })) })
+    // A row of What comes or of a phone's Month list: its card where you are; a dose's, its day in Health.
+    function openListed(row, day) {
+        if (row.kind === "dose")
+            page.window.openCard({ kind: "dose", date: day.date, srcKey: row.keys[0] || "" })
+        else
+            page.openRow(timeline.rowOf(row.placed, day, 0, ""))
+    }
+
+    function menuListed(row, day) {
+        if (row.kind !== "dose")
+            page.menuRow(timeline.rowOf(row.placed, day, 0, ""))
+    }
+
+    // A Month's line, as the lists' rows are.
+    function monthRow(placed) {
+        const item = placed.item
+        const detail = placed.detail || {}
+        return { sort: placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: "", kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] }
     }
 
     function takeShown() {
@@ -72,15 +83,10 @@ Item {
             page.agendaText = page.sioul.agenda
     }
 
-    // The card open, as the views outline it: an appointment by its file and start.
+    // The card open, as the views outline it: its thing by its id.
     readonly property var cardRef: page.window.cardRef
-    function isOpen(event) {
-        return page.cardRef !== null && page.cardRef.card === "event" && page.cardRef.srcKey === event.key && (page.cardRef.srcStart === event.start || page.cardRef.itemId === event.id)
-    }
-
-    // An appointment of the list or the month: its card, where you are.
-    function openEventRow(event) {
-        page.window.openCard({ kind: "event", srcKey: event.key, srcStart: event.start, itemId: event.id, title: event.summary })
+    function isOpen(row) {
+        return page.cardRef !== null && (page.cardRef.itemId || "") === row.id
     }
 
     Connections {
@@ -418,7 +424,7 @@ Item {
                         Label {
                             Layout.fillWidth: true
                             text: {
-                                const one = e => e.title + " (" + e.from + "–" + e.to + ")"
+                                const one = e => e.title + " (" + e.from + " – " + e.to + ")"
                                 const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
                                 // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
                                 return page.sioul.textArgs(clash.modelData.at_once ? "overlap-day" : "overlap-day-close", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second), gap: clash.modelData.gap, needed: clash.modelData.needed, source: clash.modelData.source }))
@@ -551,7 +557,8 @@ Item {
                 readonly property var day: page.mode === "day" && page.shown.days.length === 1 ? page.shown.days[0] : null
                 readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && page.hiddenCalendars.indexOf(p.item.source.collection) >= 0)) : []
 
-                visible: (page.mode === "day" || page.mode === "week") && (page.headNow !== null || headLine.chips.length > 0)
+                // Above What comes too, while it shows today (§4.2).
+                visible: (page.mode === "day" || page.mode === "week" || page.mode === "agenda") && (page.headNow !== null || headLine.chips.length > 0)
                 Layout.fillWidth: true
                 spacing: 8
 
@@ -562,13 +569,18 @@ Item {
                     theme: page.theme
                     planning: timeline
                     chips: headLine.chips
-                    Layout.maximumWidth: headLine.width * (page.headNow !== null ? 0.4 : 1)
+                    // Its share of the page, never of the line it sits in: a layout in a layout fills
+                    // by default, and a width read from the line rearranged the line again and again.
+                    Layout.fillWidth: page.headNow === null
+                    Layout.maximumWidth: Math.max(0, (page.width - 2 * page.theme.gap) * (page.headNow !== null ? 0.4 : 1))
                     onOpened: page.openRow(timeline.rowOf(headLine.chips[0], headLine.day, 0, ""))
                 }
                 Label {
                     objectName: "agendaHeadLine"
                     visible: page.headNow !== null
                     Layout.fillWidth: true
+                    // What is left of the line, its words cut short: it never widens the page (found in the phone's pictures).
+                    Layout.preferredWidth: 0
                     text: page.headNow ? page.headNow.text : ""
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
@@ -596,7 +608,7 @@ Item {
                 color: page.theme.muted
             }
 
-            // The days that hold something, and today.
+            // What comes: the days that hold something, and today (the unified agenda, §4.6).
             ListView {
                 id: daysList
 
@@ -605,7 +617,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 12
-                model: page.shown.days.filter(d => d.events.length > 0 || d.today)
+                model: page.mode === "agenda" ? page.shown.days.filter(d => d.today || (d.comes && ((d.comes.rows || []).length > 0 || (d.comes.doses || []).length > 0 || (d.comes.plan || "") !== ""))) : []
                 ScrollBar.vertical: ScrollBar {}
                 // Opened on today (its first day, from today).
                 onCountChanged: Qt.callLater(() => {
@@ -618,6 +630,8 @@ Item {
                     id: day
 
                     required property var modelData
+                    readonly property var rows: page.comesRows(day.modelData)
+                    readonly property string plan: day.modelData.comes ? day.modelData.comes.plan || "" : ""
 
                     width: daysList.width - 12
                     spacing: 2
@@ -630,24 +644,49 @@ Item {
                         color: day.modelData.date < page.window.today ? page.theme.muted : page.theme.text
                     }
                     Label {
-                        visible: day.modelData.events.length === 0
+                        visible: day.rows.length === 0 && day.plan === ""
                         text: page.sioul.text("agenda-free")
                         color: page.theme.muted
                     }
                     Repeater {
-                        model: day.modelData.events
+                        model: day.rows
 
-                        delegate: EventRow {
+                        delegate: ItemRow {
+                            id: listed
+
                             required property var modelData
 
                             Layout.fillWidth: true
-                            compact: page.narrow
-                            event: modelData
                             theme: page.theme
-                            sioul: page.sioul
-                            selected: page.isOpen(modelData)
-                            onOpen: page.openEventRow(modelData)
-                            onMenu: page.window.cardHost.eventMenu({ kind: "event", srcKey: modelData.key, srcStart: modelData.start, itemId: modelData.id, title: modelData.summary })
+                            compact: page.narrow
+                            timeWidth: page.narrow ? 76 : 116
+                            when: listed.modelData.when
+                            title: listed.modelData.title
+                            line: listed.modelData.line
+                            kind: listed.modelData.kind
+                            tone: listed.modelData.tone
+                            colour: listed.modelData.colour
+                            known: listed.modelData.known
+                            cancelled: listed.modelData.cancelled
+                            tentative: listed.modelData.tentative
+                            selected: page.isOpen(listed.modelData)
+                            onOpen: page.openListed(listed.modelData, day.modelData)
+                            onMenu: page.menuListed(listed.modelData, day.modelData)
+                        }
+                    }
+                    // The plan in one line; a tap opens that day.
+                    Label {
+                        objectName: "comesPlan"
+                        visible: day.plan !== ""
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        text: day.plan
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: page.theme.muted
+
+                        TapHandler {
+                            onTapped: page.showDay(day.modelData.date)
                         }
                     }
                 }
@@ -684,12 +723,20 @@ Item {
                 onNewAt: (day, hour) => eventDialog.now().edit("", day, hour)
             }
 
-            // The month: the days in a grid, three events at most in each, then "…".
+            // The Month (§4.5): six weeks of seven cells. On a computer each cell its
+            // dates first, then its appointments, three lines, then "…"; on a phone its
+            // number and two marks at most, the month's dates and appointments listed
+            // under the grid from today on. Days off are shaded; no step, meal or dose.
             ColumnLayout {
+                id: month
+
                 visible: page.mode === "month"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 4
+
+                // The month's days from today on that hold something: a phone's list.
+                readonly property var listed: page.mode === "month" && page.narrow ? page.shown.days.filter(d => Number(d.date.slice(5, 7)) === page.anchor.getMonth() + 1 && d.date >= page.window.today && (d.lines || []).length > 0) : []
 
                 DayOfWeekRow {
                     Layout.fillWidth: true
@@ -697,7 +744,8 @@ Item {
                 }
                 GridLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.fillHeight: !page.narrow
+                    Layout.preferredHeight: page.narrow ? 6 * 44 + 5 * 4 : -1
                     columns: 7
                     columnSpacing: 4
                     rowSpacing: 4
@@ -712,17 +760,26 @@ Item {
                             readonly property bool inMonth: Number(cell.modelData.date.slice(5, 7)) === page.anchor.getMonth() + 1
                             // Today as the window's clock has it: it moves at midnight.
                             readonly property bool today: cell.modelData.date === page.window.today
+                            readonly property var lines: cell.modelData.lines || []
+                            readonly property var dated: cell.lines.find(p => p.item.kind === "dated") || null
 
+                            objectName: "monthCell"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.preferredWidth: 1
                             Layout.preferredHeight: 1
-                            color: cell.today ? page.theme.surface : "transparent"
+                            color: cell.today ? page.theme.surface : cell.modelData.off === true ? timeline.tint(page.theme.line, 0.35) : "transparent"
                             radius: page.theme.radius
                             border.color: page.theme.line
                             opacity: cell.inMonth ? 1 : 0.5
 
                             TapHandler {
+                                // On a phone, the day's place in the list; double, a new event there.
+                                onTapped: if (page.narrow) {
+                                    const at = month.listed.findIndex(d => d.date >= cell.modelData.date)
+                                    if (at >= 0)
+                                        monthList.positionViewAtIndex(at, ListView.Beginning)
+                                }
                                 onDoubleTapped: page.newEvent(cell.modelData.date)
                             }
 
@@ -731,52 +788,152 @@ Item {
                                 anchors.margins: 4
                                 spacing: 2
 
-                                Label {
-                                    text: Number(cell.modelData.date.slice(8, 10))
-                                    textFormat: Text.PlainText
-                                    font.weight: cell.today ? Font.Bold : Font.Normal
-                                    color: cell.today ? page.theme.accent : page.theme.text
+                                RowLayout {
+                                    spacing: 3
+
+                                    Label {
+                                        objectName: "monthDay"
+                                        text: Number(cell.modelData.date.slice(8, 10))
+                                        textFormat: Text.PlainText
+                                        font.weight: cell.today ? Font.Bold : Font.Normal
+                                        color: cell.today ? page.theme.accent : page.theme.text
+
+                                        // Its number: that day in the Day (a computer; a phone's cell takes the tap).
+                                        TapHandler {
+                                            enabled: !page.narrow
+                                            onTapped: page.showDay(cell.modelData.date)
+                                        }
+                                    }
+                                    // A phone's two marks: a diamond for a date asked, a dot for appointments.
+                                    Rectangle {
+                                        objectName: "monthDiamond"
+                                        visible: page.narrow && cell.dated !== null
+                                        Layout.preferredWidth: 6
+                                        Layout.preferredHeight: 6
+                                        rotation: 45
+                                        color: cell.dated && cell.dated.item.tone !== "quiet" ? page.theme.text : "transparent"
+                                        border.color: page.theme.text
+                                        border.width: 1
+                                    }
+                                    Rectangle {
+                                        objectName: "monthDot"
+                                        visible: page.narrow && cell.lines.some(p => p.item.kind !== "dated")
+                                        Layout.preferredWidth: 6
+                                        Layout.preferredHeight: 6
+                                        radius: 3
+                                        color: page.theme.accent
+                                    }
                                 }
                                 Repeater {
-                                    model: cell.modelData.events.slice(0, 3)
+                                    model: page.narrow ? [] : cell.lines.slice(0, 3)
 
                                     delegate: RowLayout {
-                                        id: monthEvent
+                                        id: monthLine
 
                                         required property var modelData
 
+                                        objectName: "monthLine"
                                         Layout.fillWidth: true
                                         spacing: 3
 
-                                        // A task's time: the task mark (21 October 2026).
-                                        Icon {
-                                            visible: monthEvent.modelData.task !== ""
-                                            iconName: "view-task"
-                                            size: 12
-                                            tip: page.sioul.text("agenda-task-mark")
+                                        // A date's diamond, filled within seven days; an appointment's colour dot.
+                                        Rectangle {
+                                            readonly property bool diamond: monthLine.modelData.item.kind === "dated"
+
+                                            Layout.preferredWidth: diamond ? 6 : 7
+                                            Layout.preferredHeight: diamond ? 6 : 7
+                                            Layout.alignment: Qt.AlignVCenter
+                                            rotation: diamond ? 45 : 0
+                                            radius: diamond ? 0 : 3.5
+                                            color: diamond ? (monthLine.modelData.item.tone !== "quiet" ? page.theme.text : "transparent") : monthLine.modelData.item.colour || page.theme.accent
+                                            border.width: diamond ? 1 : 0
+                                            border.color: page.theme.text
                                         }
                                         Label {
                                             Layout.fillWidth: true
-                                            text: monthEvent.modelData.summary
+                                            text: monthLine.modelData.item.title
                                             textFormat: Text.PlainText
                                             elide: Text.ElideRight
                                             font.pixelSize: 12
-                                            font.strikeout: monthEvent.modelData.cancelled
+                                            font.strikeout: (monthLine.modelData.detail || {}).cancelled === true
                                             color: page.theme.text
                                         }
                                         TapHandler {
-                                            onTapped: page.openEventRow(monthEvent.modelData)
+                                            onTapped: page.openRow(timeline.rowOf(monthLine.modelData, cell.modelData, 0, ""))
                                         }
                                     }
                                 }
                                 Label {
-                                    visible: cell.modelData.events.length > 3
+                                    visible: !page.narrow && cell.lines.length > 3
                                     text: "…"
                                     color: page.theme.muted
                                 }
                                 Item {
                                     Layout.fillHeight: true
                                 }
+                            }
+                        }
+                    }
+                }
+                // A phone: the month's dates and appointments, day by day, from today on.
+                Label {
+                    visible: page.narrow
+                    Layout.topMargin: 6
+                    text: page.sioul.text("agenda-month-list")
+                    textFormat: Text.PlainText
+                    font.weight: Font.DemiBold
+                    color: page.theme.text
+                }
+                ListView {
+                    id: monthList
+
+                    visible: page.narrow
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 8
+                    model: month.listed
+
+                    delegate: ColumnLayout {
+                        id: listedDay
+
+                        required property var modelData
+
+                        width: monthList.width
+                        spacing: 1
+
+                        Label {
+                            text: listedDay.modelData.title
+                            textFormat: Text.PlainText
+                            font.weight: Font.DemiBold
+                            color: page.theme.text
+
+                            TapHandler {
+                                onTapped: page.showDay(listedDay.modelData.date)
+                            }
+                        }
+                        Repeater {
+                            model: (listedDay.modelData.lines || []).map(page.monthRow)
+
+                            delegate: ItemRow {
+                                id: monthItem
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                theme: page.theme
+                                compact: true
+                                timeWidth: 76
+                                when: monthItem.modelData.when
+                                title: monthItem.modelData.title
+                                kind: monthItem.modelData.kind
+                                tone: monthItem.modelData.tone
+                                colour: monthItem.modelData.colour
+                                cancelled: monthItem.modelData.cancelled
+                                tentative: monthItem.modelData.tentative
+                                selected: page.isOpen(monthItem.modelData)
+                                onOpen: page.openListed(monthItem.modelData, listedDay.modelData)
+                                onMenu: page.menuListed(monthItem.modelData, listedDay.modelData)
                             }
                         }
                     }

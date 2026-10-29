@@ -690,12 +690,11 @@ ColumnLayout {
 
                                     spacing: 4
 
-                                    TextField {
+                                    ClockField {
                                         id: from
 
                                         width: 70
                                         text: range.modelData.start
-                                        inputMask: "99:99"
                                         Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
                                         onEditingFinished: if (from.text !== range.modelData.start) week.setRange(range.modelData.at, from.text, to.text)
                                     }
@@ -704,12 +703,11 @@ ColumnLayout {
                                         text: "–"
                                         color: field.theme.muted
                                     }
-                                    TextField {
+                                    ClockField {
                                         id: to
 
                                         width: 70
                                         text: range.modelData.end
-                                        inputMask: "99:99"
                                         Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
                                         onEditingFinished: if (to.text !== range.modelData.end) week.setRange(range.modelData.at, from.text, to.text)
                                     }

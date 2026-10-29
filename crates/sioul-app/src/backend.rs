@@ -4833,7 +4833,7 @@ impl qobject::Sioul {
     }
 
     fn letters(&self) -> QString {
-        QString::from(&crate::letters::view())
+        QString::from(&crate::letters::view(&self.shared()))
     }
 
     fn letter_task(self: Pin<&mut Self>, id: &QString) -> QString {

@@ -347,9 +347,8 @@ ColumnLayout {
             textFormat: Text.PlainText
             color: section.theme.muted
         }
-        TextField {
+        ClockField {
             Layout.preferredWidth: 70
-            inputMask: "99:99"
             inputMethodHints: Qt.ImhTime
             text: timeField.value
             Accessible.name: timeField.label

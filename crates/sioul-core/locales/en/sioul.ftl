@@ -1373,7 +1373,7 @@ related-title = Tied to it
 task-mode-now = Now
 task-mode-list = List
 task-mode-board = Board
-task-mode-timeline = Calendar
+task-mode-timeline = Gantt
 task-capture-hint = A task in one line: “Call the tax office tomorrow ~15m #project {"{"}date asked{"}"}”
 chip-start = from
 chip-due = date asked
@@ -1407,8 +1407,8 @@ task-pinned-move = Move…
 task-pinned-open = Open in the agenda
 task-pinned-menu = What to do with this time
 task-pinned = Pinned: { $when }
-task-pinned-today = today, { $from }–{ $to }
-task-pinned-day = { $day }, { $from }–{ $to }
+task-pinned-today = today, { $from } – { $to }
+task-pinned-day = { $day }, { $from } – { $to }
 task-pinned-read-only = Its calendar can only be read here: move it in the application it comes from.
 task-pin-before-now = A step is given a time from now on.
 blocks-calendar = Planned tasks
@@ -2071,7 +2071,7 @@ project-kind-own = Yours
 project-rate = { $rate } an hour
 project-board = Board
 project-list = List
-project-calendar = Calendar
+project-calendar = Gantt
 project-open-tasks = { $n ->
     [one] one task open
    *[other] { $n } tasks open
@@ -6328,6 +6328,16 @@ texts-copy-all = Copy the text
 
 # The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
 agenda-plan-first = The plan: { $step } first
+agenda-plan-then = The plan: { $step }, then { $then }
+agenda-plan-one = The plan: { $step }
+health-week-in-agenda = The week, in the agenda
+task-day-in-agenda = The day, in the agenda
+agenda-month-list = Dates and appointments this month
+agenda-no-alarm = No alarm
+agenda-doses = { $n ->
+    [one] Dose
+   *[other] { $Count } doses
+}
 agenda-more = { $n ->
     [one] One more step of today does not fit before the end of the day: { $steps }.
    *[other] { $Count } more steps of today do not fit before the end of the day: { $steps }.

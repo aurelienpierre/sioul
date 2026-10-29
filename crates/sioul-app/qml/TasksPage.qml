@@ -52,7 +52,8 @@ Item {
     // The list keeps its rows on one line beside the card (main.qml's `cardRoom`).
     readonly property real cardRoom: page.listLeast
     property alias routines: routinesDialog
-    // "now", "day", "list", "board", "timeline".
+    // "now", "list", "board", "timeline". "day" (a saved view, the window's pictures)
+    // opens the agenda's Day, the page on Now (the unified agenda, part 5).
     property string mode: "now"
     // The views made so far: each the first time it is shown; "now" not
     // while the rest cover hides it.
@@ -63,6 +64,11 @@ Item {
             page.nowMade = true
     }
     onModeChanged: {
+        if (page.mode === "day") {
+            page.mode = "now"
+            page.window.showAgendaDay()
+            return
+        }
         const made = Object.assign({}, page.made)
         made[page.mode] = true
         page.made = made
@@ -412,7 +418,7 @@ Item {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: ["now", "day", "list", "board", "timeline"].indexOf(page.mode)
+                currentIndex: ["now", "list", "board", "timeline"].indexOf(page.mode)
 
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
@@ -918,25 +924,27 @@ Item {
                                     ToolTip.delay: 500
                                     onClicked: page.stopForToday()
                                 }
-                            }
-                        }
-                    }
-                }
+                                // The day as a whole: the agenda's Day (the unified agenda, part 5).
+                                Label {
+                                    objectName: "nowDayInAgenda"
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: page.sioul.text("task-day-in-agenda")
+                                    textFormat: Text.PlainText
+                                    font.underline: dayLink.hovered
+                                    color: page.theme.muted
+                                    Accessible.role: Accessible.Link
+                                    Accessible.name: text
 
-                // The day: events at their times, today's steps in the gaps, now.
-                // Made the first time it is shown.
-                Loader {
-                    active: page.made["day"] === true
-                    sourceComponent: Component {
-                        DayView {
-                            sioul: page.sioul
-                            theme: page.theme
-                            day: page.shown ? page.shown.day : null
-                            // The window's clock: the line at now follows it.
-                            now: page.window.now
-                            onRelay: page.sioul.refreshWork()
-                            onOpenTask: uid => page.open(uid)
-                            onOpenEvent: key => page.window.openThing({ kind: "event", uri: "", key: key })
+                                    HoverHandler {
+                                        id: dayLink
+
+                                        cursorShape: Qt.PointingHandCursor
+                                    }
+                                    TapHandler {
+                                        onTapped: page.window.showAgendaDay()
+                                    }
+                                }
+                            }
                         }
                     }
                 }

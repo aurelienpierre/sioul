@@ -4395,6 +4395,11 @@ pub struct Formats {
     /// travelled from here yet (`Memory::own_time_open`): until each is
     /// updated or forgotten, it stays on each device (re-check of 857c39e, §3.2).
     pub own_time: Vec<String>,
+    /// While it has not travelled from here: whether a device that counts
+    /// says it reads your own time (`devices::Entry::own_time`), so may hold
+    /// some to send here; Settings then names the devices of `own_time` even
+    /// on a device that has none of its own (review of e5bd27b, later 1).
+    pub others_share_own_time: bool,
     /// When each device of `holders`, `older` and `own_time` was last heard
     /// of, from sealed facts (`last_heard`), in milliseconds; 0 when nothing
     /// says it. Settings lists each, with "Forget this device" for one not
@@ -4408,8 +4413,9 @@ pub fn formats(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now
     let counting = present(folder, key, computer, &state, now_ms);
     let older: Vec<String> = if state.format >= 2 { counting.iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id.clone()).collect() } else { Vec::new() };
     let own_time: Vec<String> = if state.own_time_open { Vec::new() } else { counting.iter().filter(|(_, entry, _)| !entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED)).map(|(id, _, _)| id.clone()).collect() };
+    let others_share_own_time = !state.own_time_open && counting.iter().any(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED));
     let heard = counting.iter().filter(|(id, _, _)| holders.iter().any(|(holder, _)| holder == id) || older.contains(id) || own_time.contains(id)).map(|(id, entry, _)| (id.clone(), last_heard(entry.as_ref(), &state, id))).collect();
-    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older, own_time, heard }
+    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older, own_time, others_share_own_time, heard }
 }
 
 /// Whether this device holds a part met in a newer format than its Sioul

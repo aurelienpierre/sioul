@@ -205,11 +205,10 @@ Dialog {
                     text: form.sioul.text("health-field-at")
                     color: form.theme.muted
                 }
-                TextField {
+                ClockField {
                     id: dayTime
 
                     Layout.preferredWidth: 70
-                    inputMask: "99:99"
                 }
             }
             Label {
@@ -245,11 +244,10 @@ Dialog {
                     text: form.sioul.text("health-field-from-time")
                     color: form.theme.muted
                 }
-                TextField {
+                ClockField {
                     id: hourFrom
 
                     Layout.preferredWidth: 70
-                    inputMask: "99:99"
                 }
             }
 

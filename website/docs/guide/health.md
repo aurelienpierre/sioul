@@ -26,16 +26,11 @@ Health keeps your day's needs first. Your meals, rests and nights are set once a
 
 The page opens on today: **‹ Today, Monday 5 October ›**, a day at a time with the arrows (a week back at most: past days are shown as they were), **Today** to come back.
 
-- **Day**: a timeline of the day, and beside it (under it on a phone) the same as a list. On the timeline, your meals, naps and night as blocks, with the time to get a meal ready, to wind down or to come back from a nap a little lighter; your doses as dots, filled once taken; the day's events and the steps planned today faded on the side, so you see what the day holds around them. In the list, each in time order with its times and how that day has it, and what changes it. Point at a row, or tap it, and its block lights up, and the other way round; a tap on a meal, a nap or the night also opens its card, with what changes it that day, as in the [agenda](agenda.md). Then come your [medicines](#medicines) and [prescriptions](#prescriptions): under the list, or in a column of their own on a wide screen.
-- **Week**: Monday to Sunday side by side, the same blocks. When a day is going to differ from the usual one (a lunch out, no nap, a late night), fix it there ahead: tap its block. Tap a day's name to open it. On a wide screen, your medicines and prescriptions stay beside it.
+The day is a list: your meals, naps and night, and your doses, in time order, each with its times, how that day has it, and what changes it; a tap on a meal, a nap or the night also opens its card, with what changes it that day, as in the [agenda](agenda.md). Then come your [medicines](#medicines) and [prescriptions](#prescriptions): under the list, or in a column of their own on a wide screen. The same day drawn in time, among your appointments and the plan's steps, is the agenda's [Day](agenda.md#day-and-week); **The week, in the agenda** opens its Week, where a day that is going to differ (a lunch out, no nap, a late night) is fixed ahead the same way.
 
 **Change a day**, that day only, without a question: **15 min later** (as often as you like), **Move to…** another time, **Change its times…** (from, to; for a meal the minutes to get it ready, for a nap the minutes to come back, for the night bedtime and waking), **Not today** (no notice that day, but its time stays free of tasks; **Today after all** takes it back), **Back to usual**, and **Remove from today**: its time goes back to your tasks, and the row stays, quiet, with **Put back**. **Add a meal or a rest…** adds one for that day alone. Your usual meals, naps and night never change from here: they are in ⚙. Your other devices get these changes too, when you share with them.
 
-**Move it by hand**, on the timeline: drag a meal, a nap or the night to another time on its day; it keeps its length. Drag its bottom edge to change how long a meal or a nap lasts; the night's top edge is bedtime, its bottom edge waking (in the next morning's column: tomorrow's, or the week). While you drag, its new times show above it, by five minutes. Let go: it is that day's change, as **Move to…** makes it, and **Undo** waits ten seconds in the status line, and puts back only what the drag changed; let go where it was, and nothing changes. Past days and what is already over stay as they are; in the week, a block stays on its own day.
-
-- **With a mouse**: press and drag; the wheel scrolls.
-- **On a touch screen**: hold the block until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
-- **On a phone**, the whole day fits in a third of the screen, too small for a finger: hold the timeline and it opens larger, the hour under your finger kept under it, and the block you were on comes with your finger. When two blocks sit close together, none is taken: hold the one you want again. The ends you can move show a small bar. **Done**, under the hours, or Back, returns to the whole day.
+**Move it by hand** in the agenda's Day or Week: drag a meal, a nap or the night to another time on its day; it keeps its length. Drag its bottom edge to change how long a meal or a nap lasts; the night's top edge is bedtime, its bottom edge waking. While you drag, its new times show above it, by five minutes. Let go: it is that day's change, as **Move to…** makes it; let go where it was, and nothing changes. Past days and what is already over stay as they are; a meal stays on its own day. With a mouse, press and drag; on a touch screen, hold it until it lifts, then slide it (a plain swipe scrolls; held and let go without moving, it opens its menu). On a phone, the agenda's Day has hours tall enough for a finger.
 
 The menus (**Move to…**, **Change its times…**) do the same from the keyboard.
 
@@ -59,7 +54,7 @@ At the pharmacy or with a doctor, **Show to a doctor or pharmacist**, under your
 
 ### Today {#today}
 
-Each dose of the day, in the day's list with **Taken**, and on its timeline as a dot. A dose taken says when; one click takes it back. A dose not marked is simply not marked. Another day shows its doses plainly: no record of the past.
+Each dose of the day, in the day's list with **Taken**, and in the agenda's Day as a mark. A dose taken says when; one click takes it back. A dose not marked is simply not marked. Another day shows its doses plainly: no record of the past.
 
 **Taken late**: more than half an hour past its time, **Taken…** asks when you took it (now, unless you change it), or lets you say it was not taken.
 

@@ -37,7 +37,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 À gauche, tous les projets, avec leurs tâches ouvertes et le temps qui reste à facturer. À droite, le projet ouvert :
 
 - **Sur une ligne de temps** : d’abord ce qui est **À venir** (les dates demandées de ses tâches ouvertes, les événements), puis ce qui s’est passé **Avant**, du plus récent au plus ancien : tâches faites, courriels, notes modifiées, temps noté, factures.
-- **Ses tâches**, en **Tableau**, en **Liste** ou en **Calendrier** : chacun ouvre la page [Tâches](tasks.md), limitée à ce projet. Le **Calendrier** est celui de la page Tâches ([Liste, Tableau, Calendrier](tasks.md#list-board-timeline)) : chaque tâche sur ses jours, la date demandée en petit losange.
+- **Ses tâches**, en **Tableau**, en **Liste** ou en **Gantt** : chacun ouvre la page [Tâches](tasks.md), limitée à ce projet. Le **Calendrier** est celui de la page Tâches ([Liste, Tableau, Calendrier](tasks.md#list-board-timeline)) : chaque tâche sur ses jours, la date demandée en petit losange.
 - **Noter du temps** : une réunion, un appel, un travail fait loin du minuteur.
 - **Faire la facture**, quand du temps facturable attend d’être facturé. Voir [Le temps et les factures](time.md).
 - **Ajouter ▾** et **Lier à…**, au bas : quelque chose de nouveau lié au projet, ou un lien vers ce qui existe, comme le contact du client.
@@ -102,7 +102,7 @@ En octobre 2026, d’après la documentation de chaque application.
 5. Absent de la page des fonctions de Vikunja.
 6. Les vues Tableau (Table), Calendrier et Frise sont dans les offres Premium et Enterprise ; le Planner, sur un calendrier, dans les offres payantes.
 7. Absent de la documentation d’utilisation de Deck, qui décrit des tableaux faits de piles de cartes.
-8. Le bouton **Calendrier** du projet ouvre le Calendrier de la page Tâches, limité au projet.
+8. Le bouton **Gantt** du projet ouvre le Gantt de la page Tâches, limité au projet.
 9. Chaque tableau est offert en CalDAV comme une liste de tâches, en lecture seule : les cartes datées s’affichent dans l’agenda de Nextcloud (d’après le code de Deck).
 10. Absent de sa documentation et de la liste de ses offres.
 11. À partir de l’offre Starter.

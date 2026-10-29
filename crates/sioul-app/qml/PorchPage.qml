@@ -633,7 +633,7 @@ Item {
                                 Label {
                                     Layout.fillWidth: true
                                     // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
-                                    text: page.sioul.textArgs(overlap.modelData.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + "–" + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + "–" + overlap.modelData.second.to + ")", gap: overlap.modelData.gap, needed: overlap.modelData.needed, source: overlap.modelData.source }))
+                                    text: page.sioul.textArgs(overlap.modelData.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + " – " + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + " – " + overlap.modelData.second.to + ")", gap: overlap.modelData.gap, needed: overlap.modelData.needed, source: overlap.modelData.source }))
                                     textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     color: page.theme.text

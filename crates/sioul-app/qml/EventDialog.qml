@@ -390,12 +390,11 @@ Dialog {
                     // The end follows the start when it would come before it.
                     onEdited: if (endDay.date < startDay.date) endDay.date = startDay.date
                 }
-                TextField {
+                ClockField {
                     id: startTime
 
                     visible: !allDay.checked
                     Layout.preferredWidth: 80
-                    inputMask: "99:99"
                 }
                 Label {
                     text: dialog.sioul.text("event-ends")
@@ -409,12 +408,11 @@ Dialog {
                     locale: Qt.locale(dialog.sioul.text("qt-locale"))
                     pickLabel: dialog.sioul.text("event-pick-day")
                 }
-                TextField {
+                ClockField {
                     id: endTime
 
                     visible: !allDay.checked
                     Layout.preferredWidth: 80
-                    inputMask: "99:99"
                 }
             }
             TextField {

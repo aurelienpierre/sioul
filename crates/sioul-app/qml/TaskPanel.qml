@@ -2224,11 +2224,10 @@ Panel {
                             text: panel.sioul.text("task-do-at-time")
                             color: panel.theme.muted
                         }
-                        TextField {
+                        ClockField {
                             id: timeField
 
                             Layout.preferredWidth: 80
-                            inputMask: "99:99"
                             Accessible.name: panel.sioul.text("task-do-at-time")
                             onAccepted: doAtForm.save()
                         }

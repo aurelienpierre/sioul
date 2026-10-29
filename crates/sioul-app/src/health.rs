@@ -589,18 +589,16 @@ struct SettingsView {
     lists: Vec<serde_json::Value>,
 }
 
-/// Monday to Sunday, the hours the timeline shows (minutes from midnight,
-/// whole hours, the same for every day: the lines stay put from day to day).
+/// Monday to Sunday, each day's list: ‹ and › go a day at a time without
+/// waiting (the day and the week drawn in time are the agenda's, part 5).
 #[derive(Serialize)]
 struct WeekView {
     monday: String,
     today: String,
-    from_minute: i64,
-    to_minute: i64,
     days: Vec<DayView>,
 }
 
-/// One day: its list and what its column of the timeline draws.
+/// One day: its list.
 #[derive(Serialize)]
 struct DayView {
     /// "2026-10-07".
@@ -616,10 +614,6 @@ struct DayView {
     /// The list, in time order: the day's meals, naps and night (those taken
     /// out that day too, to put back), those added that day, its doses.
     items: Vec<DayItem>,
-    /// What the timeline draws in this day's column, in minutes from its midnight.
-    segments: Vec<Segment>,
-    /// Its events and today's planned steps, faded, for context.
-    context: Vec<ContextItem>,
     /// Events of the whole day; refills and renewals falling on it.
     lines: Vec<String>,
 }
@@ -671,41 +665,6 @@ struct DayItem {
     /// Its alarm not rung yet: "No alarm" can still be asked, even after
     /// midnight, on the night going on (a past day's row, its menu that item only).
     alarm_open: bool,
-}
-
-/// A part of the timeline's column: from, to, in minutes from the column's
-/// midnight (a night split at midnight, its morning part the day before's).
-#[derive(Serialize)]
-struct Segment {
-    /// The day it belongs to, and its key: what the list's row is.
-    date: String,
-    key: String,
-    /// "meal", "nap", "sleep", "dose".
-    kind: &'static str,
-    name: String,
-    from_minute: i64,
-    to_minute: i64,
-    /// Its whole span as kept, not cut at the column's midnights (before 0, past
-    /// 1440): a drag knows which of its ends this column holds, and how long it is.
-    start_minute: i64,
-    end_minute: i64,
-    /// Where it starts and ends proper: before and after, lighter (getting ready, winding down, coming back).
-    at_minute: i64,
-    until_minute: i64,
-    quiet: bool,
-    past: bool,
-    /// A dose of today: "taken", "due", "check" (another device may know); "" another day.
-    state: &'static str,
-}
-
-/// An event or a planned step, for context only.
-#[derive(Serialize)]
-struct ContextItem {
-    title: String,
-    /// "event", "task".
-    kind: &'static str,
-    from_minute: i64,
-    to_minute: i64,
 }
 
 /// The list the errands go to: the one chosen, else your usual list, else the
@@ -819,11 +778,24 @@ pub(crate) fn settings_view() -> String {
 /// Events whose deletion waits ("Undo": `mail::hidden_pim`), and occurrences left out.
 pub(crate) type Waiting = (std::collections::BTreeSet<std::path::PathBuf>, std::collections::BTreeSet<(std::path::PathBuf, i64)>);
 
-/// The events of the week from `monday`, read again five minutes after at most
-/// (the page is made again each minute while it is open), those whose deletion
-/// waits left out as every agenda leaves them out (`pim::without_waiting`), at once.
-fn week_events(monday: Date, zone: &TimeZone, waiting: &Waiting) -> Vec<sioul_core::agenda::Occurrence> {
+/// The events of the week from `monday` that a day's meals move past, and
+/// its whole days: read again five minutes after at most (the page is made
+/// again each minute while it is open), those whose deletion waits left out as
+/// every agenda leaves them out (`pim::without_waiting`), at once. (The day's
+/// events drawn faded, and today's steps beside them, went with Health's
+/// timeline: the agenda draws them, part 5.)
+fn week_around(monday: Date, zone: &TimeZone, waiting: &Waiting) -> Vec<sioul_core::agenda::Occurrence> {
     crate::pim::without_waiting(week_read(monday, zone).as_ref().clone(), &waiting.0, &waiting.1)
+}
+
+/// What a day's meals, naps and night are pushed by that day (minutes, by
+/// key), one rule for Health's list and the agenda (the needs adapter, the
+/// unified agenda, part 5): today, as the plan pushed them past today's events
+/// while it is current (`Settings::shifts`); another day, or no plan of today,
+/// past that day's events held (`held`, `Needs::past_events_on`).
+pub(crate) fn pushed_on(needs: &sioul_core::needs::Needs, days: &Days, date: Date, now: &Zoned, held: &dyn Fn() -> Vec<(i64, i64)>) -> std::collections::BTreeMap<String, i64> {
+    let shifts = if date == now.date() { crate::work::plan_shown().filter(|p| p.made_on == now.date() && p.current()).map(|p| p.settings().shifts.clone()) } else { None };
+    shifts.unwrap_or_else(|| needs.past_events_on(date, now.time_zone(), days, &held()))
 }
 
 /// The calendars' events of the week from `monday`, as read, kept five
@@ -856,58 +828,27 @@ fn week_read(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occur
     events
 }
 
-/// Which day a night is: the evening it starts, or, its bedtime after
-/// midnight, the evening before (`Needs::kept_with`'s rule).
-fn night_of(kept: &Kept, zone: &TimeZone) -> Option<Date> {
-    let bed = Timestamp::from_second(kept.at).ok()?.to_zoned(zone.clone());
-    if bed.hour() < 12 { bed.date().yesterday().ok() } else { Some(bed.date()) }
-}
-
-/// The week of `day`, Monday to Sunday: each day's list and timeline, and
-/// the hours the timeline shows (the same each day).
+/// The week of `day`, Monday to Sunday: each day's list.
 fn week_view(health: &Health, state: &HealthState, records: &DoseRecords, knowledge: &Knowledge, day: Date, now: &Zoned, waiting: &Waiting) -> WeekView {
     let zone = now.time_zone().clone();
     let monday = day.checked_sub(Span::new().days(i64::from(day.weekday().to_monday_zero_offset()))).unwrap_or(day);
     let days = days();
-    let events = week_events(monday, &zone, waiting);
+    let events = week_around(monday, &zone, waiting);
     // Meals move past the events with their margins, as the plan has them
     // (`work::held_from`'s rule): within the plan's reach from its one read
     // while nothing was written since (`work::held_by_plan`); else from the
     // week's one read (`week_read`), never a read a day (review of 1880bce, M5).
     let held = |date: Date| crate::work::held_by_plan(date, now).unwrap_or_else(|| crate::work::held_from(date, now, events.clone()));
-    let steps = crate::work::day_steps();
-    let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, records, knowledge, &days, &Around { events: &events, held: &held(date), steps: &steps }, date, now)).collect();
-    // From half an hour before the first thing (waking, the first block or
-    // event), to half an hour after the last (bedtime, the last one), whole hours.
-    let (mut first, mut last) = (i64::MAX, i64::MIN);
-    for day in &days {
-        for s in &day.segments {
-            match s.kind {
-                "sleep" if s.from_minute <= 0 => first = first.min(s.to_minute),
-                "sleep" => last = last.max(s.at_minute.min(24 * 60)),
-                _ => {
-                    first = first.min(s.from_minute);
-                    last = last.max(s.to_minute);
-                }
-            }
-        }
-        for c in &day.context {
-            first = first.min(c.from_minute);
-            last = last.max(c.to_minute);
-        }
-    }
-    let first = if first == i64::MAX { 7 * 60 } else { first };
-    let last = if last == i64::MIN { 22 * 60 } else { last };
-    let from = (first - 30).clamp(0, 23 * 60) / 60 * 60;
-    let to = ((last + 30 + 59) / 60 * 60).clamp(from + 6 * 60, 24 * 60);
-    WeekView { monday: monday.to_string(), today: now.date().to_string(), from_minute: from.min(to - 60), to_minute: to, days }
+    let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, records, knowledge, &days, &Around { events: &events, held: &|| held(date) }, date, now)).collect();
+    WeekView { monday: monday.to_string(), today: now.date().to_string(), days }
 }
 
-/// What lies around the days: the week's events, their times with margins, today's planned steps.
+/// What lies around the days: the week's events (its whole days said), and
+/// what a day's meals move past, asked only when the plan does not say it
+/// (`pushed_on`).
 struct Around<'a> {
     events: &'a [sioul_core::agenda::Occurrence],
-    held: &'a [(i64, i64)],
-    steps: &'a [(i64, i64, String)],
+    held: &'a dyn Fn() -> Vec<(i64, i64)>,
 }
 
 /// A meal's, a nap's or the night's row of `date` (its key: "meal:1",
@@ -922,9 +863,8 @@ pub(crate) fn need_item(date: &str, key: &str) -> String {
     let now = Zoned::now();
     let health = Health::read(&Health::default_path()).unwrap_or_default();
     let days = Days::load(&Days::default_path());
-    let held = crate::work::held_on(date, &now);
     let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
-    let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &held, steps: &[] }, date, &now);
+    let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &|| crate::work::held_on(date, &now) }, date, &now);
     let Some(item) = view.items.iter().find(|i| i.key == key && i.kind != "dose") else { return "{}".into() };
     json(&serde_json::json!({ "date": view.date, "title": view.title, "today": view.today, "past": view.past, "later": health.needs.later, "item": item }))
 }
@@ -944,11 +884,10 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
         after * 24 * 60 + i64::from(z.hour()) * 60 + i64::from(z.minute())
     };
     let needs = &health.needs;
-    let pushed = needs.past_events_on(date, &zone, days, around.held);
+    let pushed = pushed_on(needs, days, date, now, around.held);
     let shift = |key: &str| pushed.get(key).copied().unwrap_or(0);
     let past_day = date < today;
     let mut items: Vec<(i64, DayItem)> = Vec::new();
-    let mut segments: Vec<Segment> = Vec::new();
     let block_item = |k: &Kept, off: bool| -> DayItem {
         let change = days.get(date, &k.key);
         let added = sioul_core::needs::is_added(&k.key);
@@ -1007,37 +946,12 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
         }
     };
     for k in needs.blocks_of(date, &zone, days, &shift) {
-        let item = block_item(&k, false);
-        // Before and after it proper, lighter: getting it ready, winding down, coming back.
-        let until = if k.kind == "sleep" { k.end } else { k.at + i64::from(item.minutes) * 60 };
-        if minute(k.start) < 24 * 60 {
-            segments.push(Segment { date: date.to_string(), key: k.key.clone(), kind: k.kind, name: item.name.clone(), from_minute: minute(k.start).max(0), to_minute: minute(k.end).min(24 * 60), start_minute: minute(k.start), end_minute: minute(k.end), at_minute: minute(k.at), until_minute: minute(until), quiet: item.quiet, past: item.past, state: "" });
-        }
-        items.push((minute(k.start), item));
+        items.push((minute(k.start), block_item(&k, false)));
     }
     // Taken out that day: in the list still, to put back; its time is free.
     let usual = needs.blocks_of(date, &zone, &Days::default(), &|_| 0);
     for k in usual.iter().filter(|k| days.get(date, &k.key).is_some_and(|c| c.off)) {
         items.push((minute(k.start), block_item(k, true)));
-    }
-    // The night ending this morning is the day before's: its morning part.
-    for k in needs.kept_with(date, &zone, days, &shift).iter().filter(|k| k.kind == "sleep") {
-        let Some(night) = night_of(k, &zone).filter(|night| *night != date) else { continue };
-        segments.push(Segment {
-            date: night.to_string(),
-            key: k.key.clone(),
-            kind: "sleep",
-            name: tr().text("needs-sleep", None),
-            from_minute: minute(k.start).max(0),
-            to_minute: minute(k.end).min(24 * 60),
-            start_minute: minute(k.start),
-            end_minute: minute(k.end),
-            at_minute: minute(k.at),
-            until_minute: minute(k.end),
-            quiet: days.get(night, "sleep").is_some_and(|c| c.quiet),
-            past: night < today || k.end <= stamp,
-            state: "",
-        });
     }
     // The doses: on today with whether they are marked, and the doubt when
     // another device may know; another day, plainly (no record of the past here).
@@ -1096,28 +1010,15 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
                 alarm_skipped: false,
                 alarm_open: false,
             };
-            let state = if date != today { "" } else if marked { "taken" } else if item.doubt.is_empty() { "due" } else { "check" };
-            segments.push(Segment { date: date.to_string(), key, kind: "dose", name, from_minute: minute(due), to_minute: minute(due), start_minute: minute(due), end_minute: minute(due), at_minute: minute(due), until_minute: minute(due), quiet: false, past: item.past, state });
             items.push((minute(due), item));
         }
     }
     items.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| (a.1.kind == "dose").cmp(&(b.1.kind == "dose"))));
-    // The day's events, and today's planned steps, for context; whole days and errands in words.
-    let mut context = Vec::new();
+    // Whole days and errands in words.
     let mut lines = Vec::new();
-    for event in around.events.iter().filter(|e| !e.cancelled && e.end > start && e.start < next) {
-        if event.all_day {
-            lines.push(say("day-all-day", &[("what", event.summary.clone())]));
-        } else {
-            context.push(ContextItem { title: event.summary.clone(), kind: "event", from_minute: minute(event.start).max(0), to_minute: minute(event.end.max(event.start + 15 * 60)).min(24 * 60) });
-        }
+    for event in around.events.iter().filter(|e| !e.cancelled && e.all_day && e.end > start && e.start < next) {
+        lines.push(say("day-all-day", &[("what", event.summary.clone())]));
     }
-    if date == today {
-        for (from, to, title) in around.steps.iter().filter(|(from, to, _)| *to > start && *from < next) {
-            context.push(ContextItem { title: title.clone(), kind: "task", from_minute: minute(*from).max(0), to_minute: minute(*to).min(24 * 60) });
-        }
-    }
-    context.sort_by_key(|c| c.from_minute);
     for errand in health.errands().into_iter().filter(|e| e.day == date) {
         let what = say(if errand.kind == ErrandKind::Refill { "health-errand-refill" } else { "health-errand-renew" }, &[("title", errand.title.clone())]);
         lines.push(say("health-errand-day", &[("what", what)]));
@@ -1138,8 +1039,6 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
         today: date == today,
         past: past_day,
         items: items.into_iter().map(|(_, item)| item).collect(),
-        segments,
-        context,
         lines,
     }
 }
@@ -6323,9 +6222,9 @@ mod tests {
         assert!(card.first().is_some_and(|d| d.name == tr().text("health-card-unread", None) && d.time.is_empty()), "the home card says it");
     }
 
-    /// Health's week reads the calendars as every agenda does: an event
-    /// whose deletion waits for its "Undo" is not in it, and comes back with
-    /// "Undo" (`pim::without_waiting`).
+    /// Health's week reads the calendars as every agenda does (what its
+    /// meals move past, its whole days): an event whose deletion waits for
+    /// its "Undo" is not in it, and comes back with "Undo" (`pim::without_waiting`).
     #[test]
     fn health_s_week_leaves_out_an_event_waiting_for_undo() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
@@ -6336,7 +6235,7 @@ mod tests {
         let file = calendar.dir.join("visit.ics");
         std::fs::write(&file, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:visit-1\r\nDTSTART:20310304T090000Z\r\nDTEND:20310304T100000Z\r\nSUMMARY:Visit\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
         let zone = TimeZone::system();
-        let shown = |waiting: &Waiting| week_events(monday, &zone, waiting).iter().any(|o| o.uid == "visit-1");
+        let shown = |waiting: &Waiting| week_around(monday, &zone, waiting).iter().any(|o| o.uid == "visit-1");
         assert!(shown(&Waiting::default()));
         let waiting: Waiting = ([file.clone()].into(), Default::default());
         assert!(!shown(&waiting), "its deletion waits: left out at once");

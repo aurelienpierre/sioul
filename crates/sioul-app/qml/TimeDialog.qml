@@ -178,7 +178,7 @@ Dialog {
         RowLayout {
             spacing: 8
 
-            TextField {
+            ClockField {
                 id: at
 
                 Layout.preferredWidth: 70
@@ -191,7 +191,7 @@ Dialog {
                 text: dialog.sioul.text("time-field-to")
                 color: dialog.theme.muted
             }
-            TextField {
+            ClockField {
                 id: until
 
                 Layout.preferredWidth: 70

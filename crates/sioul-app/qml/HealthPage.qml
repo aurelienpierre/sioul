@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Health: the day at a glance, or its week (docs/health.md, "The page").
-// A day: its meals, naps, night and doses down the hours, and beside them
-// (under them on a phone) the same as a list, the day's events and planned
-// steps faded behind, for context. Each block is a tap away from what can
-// change it, that day only: a quarter of an hour later, another time, other
-// times, not that day, taken out; and one can be added for that day alone.
-// The week: seven columns, the same blocks and the same taps, to fix ahead a
-// day that will differ. Today's doses say whether they are marked taken,
+// Health: its day as a list, ‹ › a day at a time (docs/health.md, "The
+// page"): its meals, naps, night and doses in time order, each a tap away
+// from what can change it, that day only: a quarter of an hour later,
+// another time, other times, not that day, taken out; and one can be added
+// for that day alone. The same day in time, among the rest, is the agenda's
+// Day, and its week the agenda's Week (the unified agenda, part 5): Week here
+// opens it, for one release. Today's doses say whether they are marked taken,
 // and the doubt when another device may know: never "not taken". The
 // medicines and the prescriptions are the page's content, after the day:
-// under its list, or in a column of their own on a wide window, which the
-// week keeps too (MedicinesSection.qml); their forms open from there. What
-// is set once (the usual meals and night, the pauses, where the errands go)
-// is behind the ⚙. Nothing counts what was not done.
+// under its list, or in a column of their own on a wide window
+// (MedicinesSection.qml); their forms open from there. What is set once (the
+// usual meals and night, the pauses, where the errands go) is behind the ⚙.
+// Nothing counts what was not done.
 
 pragma ComponentBehavior: Bound
 
@@ -29,63 +28,43 @@ Item {
     required property var theme
     required property var window
 
-    // The page's view (`health::page`): the week of the day shown, and what only today says.
-    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", unreadable: "", later: 15, any: true, medicines: [], prescriptions: [] })
+    // The page's view (`health::page`): the week of the day shown, its days' lists, and what only today says.
+    property var shown: ({ week: { monday: "", today: "", days: [] }, missed: [], shared_note: "", reminded_there: "", unreadable: "", later: 15, any: true, medicines: [], prescriptions: [] })
     // The medicines, the prescriptions and the week's days, taken from the view
     // only when they change: the view comes again each minute, and their rows
-    // and timelines stay as they are.
+    // stay as they are.
     property var medicines: []
     property var prescriptions: []
     property var weekDays: []
-    // "day" or "week"; the week made the first time it is asked for.
-    property string mode: "day"
-    property bool weekMade: false
     // The day asked for ("2026-10-07"); the day shown is the view's, once it has it.
     property string wanted: page.iso(new Date())
     property var day: null
     // Shown from today: the page follows the days as they turn.
     property bool followsToday: true
-    // A block or a dose under the pointer, or chosen ("date|key"): its row and its block light up together.
+    // A row under the pointer, or chosen ("date|key"): lit.
     property string hovered: ""
     property string chosen: ""
-    // A row to bring into view, chosen in the timeline (its key).
+    // A row to bring into view, asked from the agenda (its key).
     property string reveal: ""
     signal revealed
     // A block's menu open (the window's pictures take it).
     property bool menuOpen: false
-    // The timeline opened readable by a long press, a block a finger can take
-    // (HealthTimeline.qml): on a phone it takes the page, the list behind it,
-    // until "Done" or Back.
-    property bool readable: false
     // What a doctor or a pharmacist is shown, open over the window (ShowMedicines.qml).
     property bool professionalOpen: false
-    // Back closes it first, then folds the readable timeline.
-    readonly property bool canGoBack: page.readable || page.professionalOpen
+    // Back closes it first.
+    readonly property bool canGoBack: page.professionalOpen
     function back() {
         if (page.professionalOpen)
             professional.close()
-        else
-            page.readable = false
     }
-    // For the window's pictures: opened readable, as a long press opens it.
-    function showReadable(on) {
-        page.readable = on
-    }
-    // Escape folds the readable timeline, as "Done" and Back do.
-    Shortcut {
-        sequence: "Escape"
-        // A card open over the page takes Escape first (main.qml).
-        enabled: page.visible && !page.window.cardRef && page.readable
-        onActivated: page.readable = false
-    }
-    // A phone, or a window as narrow: the list under the day, the header on two lines.
+    // A phone, or a window as narrow: the header on two lines.
     readonly property bool narrow: page.width < 760
     // A window wide enough for a third column: the medicines and prescriptions
     // beside the day (and the week); else under the day's list.
     readonly property bool wide: page.width >= 1400
     readonly property int sideWidth: Math.round(Math.max(340, Math.min(440, page.width * 0.24)))
     readonly property var locale: Qt.locale(page.sioul.text("qt-locale"))
-    readonly property bool onToday: page.mode === "week" ? page.shown.week.days.some(d => d.today) : page.day !== null && page.day.today
+    readonly property bool onToday: page.day !== null && page.day.today
 
     function iso(d) {
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -98,13 +77,14 @@ Item {
         settings.now().showNeeds()
     }
 
-    // The week, or the day, in view; the settings, for their picture (the window's pictures).
+    // The week: the agenda's Week, where it is drawn in time among the rest (for one
+    // release, then the link goes); the day: this page (the window's pictures too).
     function showWeek() {
-        page.setMode("week")
+        page.window.showAgendaWeek()
     }
 
     function showDay() {
-        page.setMode("day")
+        page.window.page = 10
     }
 
     function settingsPanel() {
@@ -120,7 +100,6 @@ Item {
     signal medicinesWanted
 
     function showMedicines() {
-        page.setMode("day")
         page.medicinesWanted()
     }
 
@@ -128,7 +107,6 @@ Item {
     // "sleep", a dose's), from the agenda: that day shown, its row lit and
     // brought into view once the day is there.
     function openRow(date, key) {
-        page.setMode("day")
         page.goTo(date)
         page.chosen = date + "|" + key
         page.reveal = key
@@ -265,32 +243,17 @@ Item {
         return d
     }
 
-    // A day, or a week, earlier or later.
+    // A day earlier or later.
     function move(steps) {
         const d = new Date(page.wanted + "T12:00:00")
-        d.setDate(d.getDate() + steps * (page.mode === "week" ? 7 : 1))
+        d.setDate(d.getDate() + steps)
         const first = page.earliest()
         page.goTo(page.iso(d < first ? first : d))
     }
 
-    readonly property bool earlierAllowed: {
-        const d = new Date(page.wanted + "T12:00:00")
-        if (page.mode === "week")
-            d.setDate(d.getDate() - (d.getDay() + 6) % 7)
-        return d > page.earliest()
-    }
-
-    function setMode(mode) {
-        if (mode === "week")
-            page.weekMade = true
-        page.mode = mode
-    }
+    readonly property bool earlierAllowed: new Date(page.wanted + "T12:00:00") > page.earliest()
 
     function title() {
-        if (page.mode === "week") {
-            const monday = page.shown.week.monday !== "" ? new Date(page.shown.week.monday + "T12:00:00") : new Date()
-            return page.sioul.textWith("agenda-week-of", "day", monday.toLocaleDateString(page.locale, "d MMMM"))
-        }
         return page.day ? page.day.title : ""
     }
 
@@ -299,16 +262,6 @@ Item {
         const problem = page.sioul.changeNeed(JSON.stringify(Object.assign({ date: date, key: key, action: action }, more || {})))
         if (problem !== "")
             page.sioul.status = problem
-    }
-
-    // A block's day and row: those of the week shown, else (a night ending
-    // the week's first morning, the week before's) what the timeline knows.
-    function rowOf(segment) {
-        const day = page.shown.week.days.find(d => d.date === segment.date)
-        const item = day ? day.items.find(i => i.key === segment.key) : null
-        if (day && item)
-            return { day: day, item: item }
-        return { day: { date: segment.date, title: "", today: false, past: segment.past }, item: { key: segment.key, kind: segment.kind, name: segment.name, quiet: segment.quiet, off: false, changed: false, added: false, past: segment.past, from: "", to: "", at: "", before: 0, after: 0 } }
     }
 
     // What can change a block that day: under `under` (its ⋯), else where the
@@ -322,33 +275,6 @@ Item {
         if ((day.past || item.past) && !alarmOnly)
             return
         needMenu.now().show(day, item, under || null, alarmOnly)
-    }
-
-    // A block or a dose tapped in the timeline: chosen, its row shown; in the
-    // week, a block's menu at once, a dose's day opened.
-    function tapped(segment, at) {
-        page.chosen = segment.date + "|" + segment.key
-        // The morning part of a night begun the day before is not in this day's
-        // list (its row there is tonight's): its menu instead, as in the week.
-        if (page.mode === "day" && (page.day === null || segment.date === page.day.date)) {
-            page.reveal = segment.key
-            page.revealed()
-            return
-        }
-        if (segment.kind === "dose") {
-            page.setMode("day")
-            page.goTo(segment.date)
-            return
-        }
-        const row = page.rowOf(segment)
-        page.window.menuAt = at
-        page.openMenu(row.day, row.item, null)
-    }
-
-    function held(segment, at) {
-        const row = page.rowOf(segment)
-        page.window.menuAt = at
-        page.openMenu(row.day, row.item, null)
     }
 
     Connections {
@@ -376,8 +302,6 @@ Item {
     onVisibleChanged: {
         if (page.visible)
             page.follow()
-        else
-            page.readable = false
     }
     Component.onCompleted: {
         page.takeView()
@@ -386,8 +310,7 @@ Item {
 
     // Doses pass their time, and what is known of them from your other devices
     // ages: made again at each minute's turn of the window's clock while open,
-    // and at once when the app comes back. The line at now follows the clock
-    // alone (HealthTimeline.qml).
+    // and at once when the app comes back.
     Connections {
         target: page.window
 
@@ -402,7 +325,7 @@ Item {
         anchors.margins: page.theme.gap
         spacing: 8
 
-        // ‹ The day, or the week › … Day, Week; the settings. On a phone, on two lines.
+        // ‹ The day › … Week (the agenda's); the settings. On a phone, on two lines.
         RowLayout {
             Layout.fillWidth: true
             spacing: 2
@@ -442,7 +365,7 @@ Item {
                 text: page.sioul.text("agenda-today")
                 onClicked: page.goTo(page.window.today)
             }
-            ModeSwitch {
+            WeekLink {
                 visible: !page.narrow
             }
             SettingsGear {
@@ -454,7 +377,7 @@ Item {
             Layout.fillWidth: true
             spacing: 4
 
-            ModeSwitch {}
+            WeekLink {}
             Button {
                 visible: !page.onToday
                 flat: true
@@ -489,91 +412,24 @@ Item {
             sourceComponent: missedComponent
         }
 
-        // The day or the week; on a wide window, the medicines and the prescriptions beside them.
+        // The day's list; on a wide window, the medicines and the prescriptions beside it.
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: page.theme.gap
 
-            // The day: its timeline, and its list beside it (under it on a phone).
-            Item {
-                id: body
-
-                visible: page.mode === "day"
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                HealthTimeline {
-                    id: dayLine
-
-                    width: page.narrow ? body.width : Math.round((body.width - page.theme.gap) * 0.55)
-                    height: page.narrow && !page.readable ? Math.round(body.height * 0.38) : body.height
-                    sioul: page.sioul
-                    theme: page.theme
-                    days: page.day ? [page.day] : []
-                    fromMinute: page.shown.week.from_minute
-                    toMinute: page.shown.week.to_minute
-                    // The window's clock: the line at now and today's marks follow it.
-                    now: page.window.now
-                    today: page.window.today
-                    lit: page.hovered
-                    chosen: page.chosen
-                    readable: page.readable
-                    onHover: ident => page.hovered = ident
-                    onTapped: (segment, at) => page.tapped(segment, at)
-                    onMenu: (segment, at) => page.held(segment, at)
-                    onReadableAsked: page.readable = true
-                    onReadableDone: page.readable = false
-                }
-                // Made a moment after the first screen, without holding the window.
-                Loader {
-                    id: listLoader
-
-                    // On a phone, behind the timeline opened readable.
-                    visible: !(page.narrow && page.readable)
-                    x: page.narrow ? 0 : dayLine.width + page.theme.gap
-                    y: page.narrow ? dayLine.height + 8 : 0
-                    width: body.width - x
-                    height: body.height - y
-                    asynchronous: true
-                    sourceComponent: dayListComponent
-                }
-            }
-
-            // The week: seven columns, the same blocks, the same taps. Made the first time.
+            // Made a moment after the first screen, without holding the window.
             Loader {
-                visible: page.mode === "week"
-                active: page.weekMade
+                id: listLoader
+
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-
-                sourceComponent: HealthTimeline {
-                    sioul: page.sioul
-                    theme: page.theme
-                    titles: true
-                    days: page.weekDays
-                    fromMinute: page.shown.week.from_minute
-                    toMinute: page.shown.week.to_minute
-                    now: page.window.now
-                    today: page.window.today
-                    lit: page.hovered
-                    chosen: page.chosen
-                    readable: page.readable
-                    onHover: ident => page.hovered = ident
-                    onTapped: (segment, at) => page.tapped(segment, at)
-                    onMenu: (segment, at) => page.held(segment, at)
-                    onReadableAsked: page.readable = true
-                    onReadableDone: page.readable = false
-                    onOpenDay: date => {
-                        page.setMode("day")
-                        page.goTo(date)
-                    }
-                }
+                asynchronous: true
+                sourceComponent: dayListComponent
             }
 
             // Wide: their own column, its width kept from the start (nothing
-            // moves when it comes), the same in the day and the week. Made
-            // after the first screen, without holding the window.
+            // moves when it comes). Made after the first screen, without holding the window.
             Loader {
                 visible: page.wide
                 active: page.wide
@@ -597,29 +453,12 @@ Item {
         }
     }
 
-    // Day, Week.
-    component ModeSwitch: Row {
-        spacing: 4
-
-        Repeater {
-            model: ["day", "week"]
-
-            delegate: Button {
-                id: modeButton
-
-                required property string modelData
-
-                text: page.sioul.text("agenda-mode-" + modeButton.modelData)
-                checkable: true
-                checked: page.mode === modeButton.modelData
-                flat: page.mode !== modeButton.modelData
-                // A click on the way shown unticks it: its binding ticks it again.
-                onClicked: {
-                    page.setMode(modeButton.modelData)
-                    modeButton.checked = Qt.binding(() => page.mode === modeButton.modelData)
-                }
-            }
-        }
+    // The week, drawn in time among the rest: the agenda's (for one release, then it goes).
+    component WeekLink: Button {
+        objectName: "healthWeekLink"
+        flat: true
+        text: page.sioul.text("health-week-in-agenda")
+        onClicked: page.showWeek()
     }
 
     // The page's settings: what is set once (SettingsButton's look).
@@ -804,7 +643,7 @@ Item {
                                 // Kept from–to (getting it ready, winding down included); a dose, its time.
                                 Label {
                                     Layout.preferredWidth: timeWidth.implicitWidth + 2
-                                    text: row.isDose ? row.modelData.from : row.modelData.from + "–" + row.modelData.to
+                                    text: row.isDose ? row.modelData.from : row.modelData.from + " – " + row.modelData.to
                                     textFormat: Text.PlainText
                                     font.features: { "tnum": 1 }
                                     color: row.ink

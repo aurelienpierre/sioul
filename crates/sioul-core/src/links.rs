@@ -434,6 +434,9 @@ pub struct World<'a> {
     pub budget: &'a [BudgetRef],
     pub local: &'a LocalLinks,
     pub sites: &'a [crate::sites::Site],
+    /// The letters of the notes folder, read the first time one is described
+    /// (`describe`), once for all (review of e5bd27b, later 5).
+    pub letters: std::cell::OnceCell<Option<crate::letters::Letters>>,
 }
 
 impl World<'_> {
@@ -735,7 +738,8 @@ impl World<'_> {
             // ("Into the agenda" labels its link the same): never by its id (review of
             // part 4, later 11); its card reads the rest.
             Kind::Letter => {
-                let sender = self.vault.and_then(|v| crate::letters::Letters::load(&v.root).ok()).and_then(|letters| letters.get(&id).map(|l| l.reading.sender.trim().to_string())).filter(|s| !s.is_empty());
+                let letters = self.letters.get_or_init(|| self.vault.and_then(|v| crate::letters::Letters::load(&v.root).ok()));
+                let sender = letters.as_ref().and_then(|letters| letters.get(&id).map(|l| l.reading.sender.trim().to_string())).filter(|s| !s.is_empty());
                 out.title = sender.unwrap_or_else(|| id.clone());
                 out.key = id.clone();
                 out.found = true;
@@ -1029,6 +1033,7 @@ impl Loaded {
             budget: &self.budget,
             local: &self.local,
             sites: &self.sites,
+            letters: Default::default(),
         }
     }
 }
@@ -1163,7 +1168,7 @@ mod tests {
         let mut local = LocalLinks::default();
         local.add("mid:abc@caf.example", "sioul:contact/caf", "contact");
         let (tasks, events) = (vec![certificate, form], vec![meeting]);
-        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[] };
+        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default() };
         let related = world.related("sioul:task/certificate");
         let seen: Vec<(Kind, &str, &str)> = related.iter().map(|r| (r.kind, r.how.as_str(), r.uri.as_str())).collect();
         assert_eq!(
@@ -1223,7 +1228,7 @@ mod tests {
         let vault = Vault { root: PathBuf::from("/vault"), notes: vec![notes::read("lease.md", "---\ncase: housing\n---\n# Lease\n"), notes::read("rent.md", "# Rent\n\nFor [housing](sioul:project/housing).\n")], folders: Vec::new() };
         let tasks = vec![Task { uid: "rent".into(), title: "Pay the rent".into(), projects: vec!["housing".into()], ..Task::default() }];
         let projects = vec![housing];
-        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[] };
+        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[], letters: Default::default() };
         assert_eq!(world.canonical("sioul:case/housing"), "sioul:project/housing");
         for address in ["sioul:case/housing", "sioul:project/housing"] {
             let mut tied: Vec<(Kind, String, String)> = world.related(address).into_iter().map(|r| (r.kind, r.how, r.uri)).collect();
@@ -1259,10 +1264,12 @@ mod tests {
         crate::letters::Letters::change(&root, |letters| letters.put(letter)).unwrap();
         let vault = Vault::open(&root);
         let local = LocalLinks::default();
-        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[] };
+        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default() };
         let named = world.describe("sioul:letter/2026-10-28-1a2b");
         assert_eq!((named.kind, named.title.as_str(), named.found), (Kind::Letter, "CAF", true));
         assert_eq!(world.describe("sioul:letter/elsewhere").title, "elsewhere");
-        let _ = std::fs::remove_dir_all(&root);
+        // Read once for all (review of e5bd27b, later 5): the file gone, the next letter is named still.
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(world.describe("sioul:letter/2026-10-28-1a2b").title, "CAF");
     }
 }

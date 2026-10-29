@@ -25,8 +25,9 @@ The agenda shows what comes, from today, as a calm list of days, with the day, t
 
 A choice at the top of the page:
 
-- **What comes**: what is still to come today, then the next two weeks, as a list. An event already over is left out. This is where the page opens.
-- **Day**, **Week**, **Month**.
+- **What comes**: today in full, then the next two weeks, as a list. Today shows what remains of its appointments and pinned tasks, its meals and nap, its dates, tonight's night as its last row, and the plan's next step and the one after ("The plan: Call the CAF, then Sort the receipts"). Its doses are listed as the Porch lists them, one row a minute ("20:00 · Two doses"), never by name and with nothing to press: a tap opens them in Health. Every other day shows only what differs from your usual days: its appointments, its dates, a meal moved or added that day, a night without its alarm, a medicine taken every few days, and the plan's first step. A tap on the plan's line opens that day. This is where the page opens.
+- **Day**, **Week**.
+- **Month**: six weeks of days. On a computer, each day shows its dates first, then its appointments, three lines at most, then "…"; a tap on a line opens it, a tap on the day's number opens that day. Days off are shaded. On a phone, each day shows its number and at most two marks, a diamond for a date asked and a dot for appointments, and under the month "Dates and appointments this month" lists them day by day from today on; a tap on a day brings it to the top of that list. The Month shows no step, meal or dose.
 
 The arrows ◂ and ▸ go earlier and later; **Today** comes back to today. Nothing is late or overdue: the past shows only when you go back to it.
 
@@ -54,7 +55,7 @@ An event can also be made from a message, from a task, or from a paper letter's 
 
 With a time kept before it, an appointment says when to leave, under its title in the day and in its card: "Leave at 13:05 · Next: check the bus schedule". When steps prepare it ([An appointment and its steps](tasks.md#the-plan)), its card says them under **Before** (the next one, then the one after, the rest folded) and lists what to bring under **Bring**, which you can tick there. On the appointment's day, its steps are laid one after the other so that the last ends when you leave, when nothing else is kept then. Nothing asks you to tick anything, and a step left open costs nothing.
 
-**A meeting with others** (someone else organises it, or someone else is invited) keeps its own lines as its organizer set them: Sioul never changes its time, title, place, notes or guests, since its server would tell every guest of any change. Its card's **Edit** opens **Your time around it**: the time kept before and after, what it costs and gives back, your reminder. These are kept in a file of your own, beside your other data, and travel to your other devices with your time, once each of them runs this version of Sioul (Settings ▸ Your folder and sharing names a device that keeps them here, with its Forget button); your plan, your reminders and "Leave at" read them there. While its invitation is still in your mail, its card offers **Answer…**: yes, maybe or no, sent to its organizer from the account the invitation came to.
+**A meeting with others** (someone else organises it, or someone else is invited) keeps its own lines as its organizer set them: Sioul never changes its time, title, place, notes or guests, since its server would tell every guest of any change. Its card's **Edit** opens **Your time around it**: the time kept before and after, what it costs and gives back, your reminder. These are kept in a file of your own, beside your other data, and travel to your other devices with your time, once each of them runs this version of Sioul (Settings ▸ Your folder and sharing names a device that keeps them here; one you no longer use can be forgotten there); your plan, your reminders and "Leave at" read them there. While its invitation is still in your mail, its card offers **Answer…**: yes, maybe or no, sent to its organizer from the account the invitation came to.
 
 ## Dates asked of you {#dates}
 
@@ -144,6 +145,8 @@ On your calendar server, as standard CalDAV events: your phone and other program
 Google calendars are made, renamed and deleted on Google's own pages; Sioul greys those settings, and says why.
 
 **How far back mail and the agenda reach** is set at the top of [Accounts](accounts.md#your-accounts).
+
+Health's own day and week drawn in time, and Tasks' **The day**, are this agenda now: Health keeps its day as a list, and its **The week, in the agenda** opens the agenda's Week; Tasks' **The day** opens the agenda's Day, and its **Now** has a link to it.
 
 ## Not there yet
 

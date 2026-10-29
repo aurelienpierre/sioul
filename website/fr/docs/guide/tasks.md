@@ -109,7 +109,7 @@ Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cel
 
 ## La journée {#the-day}
 
-**La journée** ouvre le Jour de l’[Agenda](agenda.md#day-and-week) sur aujourd’hui, où s’affiche tout ce qui a une heure. Elle dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, vos repas et vos siestes ([Santé](health.md#meals-rest-and-sleep)), et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Le temps gardé avant et après une tâche ou un événement s’affiche à part, « Autour : … ». Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait. Ce que vous avez fini aujourd’hui reste là où cela s’est terminé, coché ✓ et estompé.
+**La journée** ouvre le Jour de l’[Agenda](agenda.md#day-and-week) sur aujourd’hui, où s’affiche tout ce qui a une heure ; **Maintenant** y mène aussi (« La journée, dans l’agenda »). Elle dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, vos repas et vos siestes ([Santé](health.md#meals-rest-and-sleep)), et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Le temps gardé avant et après une tâche ou un événement s’affiche à part, « Autour : … ». Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait. Ce que vous avez fini aujourd’hui reste là où cela s’est terminé, coché ✓ et estompé.
 
 La journée suit l’horloge : la ligne avance avec les minutes, et la journée est disposée à nouveau à partir de maintenant toutes les cinq minutes et chaque fois que vous revenez dans Sioul, avec ce que vos autres appareils ont marqué ou noté entre-temps, et aussitôt que quelque chose change ce qu’elle tient ([Le plan](#the-plan)).
 
@@ -137,13 +137,13 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
   <figcaption>La journée : les événements, et les étapes qui trouvent place autour.</figcaption>
 </figure>
 
-## Liste, Tableau, Calendrier {#list-board-timeline}
+## Liste, Tableau, Gantt {#list-board-timeline}
 
 À un clic de Maintenant :
 
 - **Liste** : chaque tâche ouverte dans l’ordre du plan, une tâche plus grande suivie de ses étapes, groupées **Par projet** ou **Par liste**, avec une recherche, et **Faites aussi** sur demande. Les tâches facultatives viennent en dernier.
 - **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Les cartes se déplacent par glisser-déposer, à la souris ou au pavé tactile ; sur un écran tactile, glisser fait défiler le tableau. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
-- **Calendrier** : chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés. Un projet, ou tous. Le bouton **Calendrier** d’un projet ouvre cette vue, limitée au projet.
+- **Gantt** (elle s’appelait Calendrier) : chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés. Un projet, ou tous. Le bouton **Gantt** d’un projet ouvre cette vue, limitée au projet.
 
 <figure markdown="span">
   [![La Liste : un champ de recherche, « Par projet » et « Faites aussi » en haut ; les tâches groupées par projet, une tâche plus grande suivie de ses étapes, chacune avec le temps qu’elle prend, la date demandée en jours restants et ce qu’elle attend ; les tâches sans projet en dessous, et celles « Quand vous le direz » en dernier.](../assets/screens/fr/tasks-list.png){ loading=lazy }](../assets/screens/fr/tasks-list.png "Ouvrir l’image en grand")

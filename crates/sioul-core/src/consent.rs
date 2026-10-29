@@ -238,10 +238,19 @@ impl Consent {
         // ties above; then everything in the same conversations.
         consent.gather_mail(loaded, &mail_ties);
         // A paper letter is in its project, as the letters' file of the notes folder says
-        // (re-check of 857c39e, §3.4): its address, wherever it is tied.
+        // (re-check of 857c39e, §3.4): its address, wherever it is tied; and an event that
+        // stands for it (`dated::letter_event`'s first two rules: it carries the letter's
+        // address, or links its scan), made before the letter had its project or before
+        // "Into the agenda" gave it one, as a time block is in its task's (review of
+        // e5bd27b, later 3).
         if let Some(letters) = loaded.vault.as_ref().and_then(|vault| crate::letters::Letters::load(&vault.root).ok()) {
             for letter in letters.list.iter().filter(|l| !l.project.trim().is_empty()) {
-                consent.tie(&links::letter_uri(&letter.id), letter.project.trim());
+                let address = links::letter_uri(&letter.id);
+                consent.tie(&address, letter.project.trim());
+                let stands = |e: &&crate::agenda::EventRef| e.links.iter().any(|l| l.uri.trim() == address || (!letter.file.is_empty() && crate::dated::links_scan(l.uri.trim(), &letter.file, &letters.root)));
+                for event in loaded.events.iter().filter(stands) {
+                    consent.tie(&links::event_uri(&event.uid), letter.project.trim());
+                }
             }
         }
         // A draft is in the projects of the message it answers.

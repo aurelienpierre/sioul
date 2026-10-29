@@ -25,8 +25,9 @@ L’agenda montre ce qui vient, à partir d’aujourd’hui, en une liste calme 
 
 Un choix en haut de la page :
 
-- **Ce qui vient** : ce qui reste à venir aujourd’hui, puis les deux prochaines semaines, en liste. Un événement déjà fini n’y est plus. C’est là que la page s’ouvre.
-- **Jour**, **Semaine**, **Mois**.
+- **Ce qui vient** : aujourd’hui en entier, puis les deux prochaines semaines, en liste. Aujourd’hui montre ce qui reste de ses rendez-vous et de ses tâches fixées, ses repas et sa sieste, ses dates, la nuit de ce soir en dernière ligne, et la prochaine étape du plan avec la suivante (« Le plan : Appeler la CAF, puis Trier les reçus »). Ses prises sont listées comme le Porche les liste, une ligne par minute (« 20:00 · Deux prises »), jamais par leur nom et sans rien à presser : un toucher les ouvre dans Santé. Chaque autre jour ne montre que ce qui diffère de vos jours habituels : ses rendez-vous, ses dates, un repas déplacé ou ajouté ce jour-là, une nuit sans son réveil, un médicament pris tous les quelques jours, et la première étape du plan. Un toucher sur la ligne du plan ouvre ce jour. C’est là que la page s’ouvre.
+- **Jour**, **Semaine**.
+- **Mois** : six semaines de jours. Sur un ordinateur, chaque jour montre d’abord ses dates, puis ses rendez-vous, trois lignes au plus, puis « … » ; un toucher sur une ligne l’ouvre, un toucher sur le numéro du jour ouvre ce jour. Les jours de congé sont grisés. Sur un téléphone, chaque jour montre son numéro et deux marques au plus, un losange pour une date demandée et un point pour les rendez-vous, et sous le mois « Dates et rendez-vous de ce mois » les liste jour par jour à partir d’aujourd’hui ; un toucher sur un jour l’amène en haut de cette liste. Le Mois ne montre ni étape, ni repas, ni prise.
 
 Les flèches ◂ et ▸ vont plus tôt et plus tard ; **Aujourd’hui** revient à aujourd’hui. Rien n’est en retard ni dépassé : le passé ne s’affiche que si vous y retournez.
 
@@ -54,7 +55,7 @@ Un événement peut aussi naître d’un courriel, d’une tâche, ou du rendez-
 
 Avec un temps gardé avant lui, un rendez-vous dit quand partir, sous son titre dans la journée et dans sa carte : « Partir à 13:05 · Ensuite : vérifier l’horaire du bus ». Quand des étapes le préparent ([Un rendez-vous et ses étapes](tasks.md#the-plan)), sa carte les dit sous **Avant** (la suivante, puis celle d’après, les autres repliées) et liste ce qu’il faut emporter sous **À emporter**, que vous pouvez cocher là. Le jour du rendez-vous, ses étapes sont posées l’une après l’autre pour que la dernière finisse quand vous partez, quand rien d’autre n’est gardé à ce moment. Rien ne vous demande de cocher quoi que ce soit, et une étape laissée ouverte ne coûte rien.
 
-**Une réunion avec d’autres** (quelqu’un d’autre l’organise, ou quelqu’un d’autre est invité) garde ses propres lignes telles que son organisateur les a mises : Sioul ne change jamais son heure, son titre, son lieu, ses notes ni ses invités, son serveur dirait tout changement à chaque invité. Le **Modifier** de sa carte ouvre **Votre temps autour** : le temps gardé avant et après, ce qu’elle coûte et ce qu’elle rend, votre rappel. Ils sont gardés dans un fichier à vous, à côté de vos autres données, et vont vers vos autres appareils avec votre temps, dès que chacun a cette version de Sioul (Paramètres ▸ Votre dossier et le partage nomme un appareil qui les garde ici, avec son bouton Oublier cet appareil) ; votre plan, vos rappels et « Partir à » les lisent là. Tant que son invitation est encore dans vos courriels, sa carte propose **Répondre…** : oui, peut-être ou non, envoyé à son organisateur depuis le compte où l’invitation est arrivée.
+**Une réunion avec d’autres** (quelqu’un d’autre l’organise, ou quelqu’un d’autre est invité) garde ses propres lignes telles que son organisateur les a mises : Sioul ne change jamais son heure, son titre, son lieu, ses notes ni ses invités, son serveur dirait tout changement à chaque invité. Le **Modifier** de sa carte ouvre **Votre temps autour** : le temps gardé avant et après, ce qu’elle coûte et ce qu’elle rend, votre rappel. Ils sont gardés dans un fichier à vous, à côté de vos autres données, et vont vers vos autres appareils avec votre temps, dès que chacun a cette version de Sioul (Paramètres ▸ Votre dossier et le partage nomme un appareil qui les garde ici ; un appareil dont vous ne vous servez plus peut y être oublié) ; votre plan, vos rappels et « Partir à » les lisent là. Tant que son invitation est encore dans vos courriels, sa carte propose **Répondre…** : oui, peut-être ou non, envoyé à son organisateur depuis le compte où l’invitation est arrivée.
 
 ## Les dates qui vous sont demandées {#dates}
 
@@ -144,6 +145,8 @@ Sur votre serveur d’agenda, en événements CalDAV standard : votre téléph
 Les agendas Google se créent, se renomment et se suppriment sur les pages de Google ; Sioul grise ces réglages, et dit pourquoi.
 
 **Jusqu’où remontent les courriels et l’agenda** se règle en haut de [Comptes](accounts.md#your-accounts).
+
+Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de Tâches, sont cet agenda désormais : Santé garde sa journée en liste, et son bouton **La semaine, dans l’agenda** ouvre la Semaine de l’agenda ; **La journée** de Tâches ouvre le Jour de l’agenda, et son **Maintenant** y mène par un lien.
 
 ## Pas encore là {#not-there-yet}
 

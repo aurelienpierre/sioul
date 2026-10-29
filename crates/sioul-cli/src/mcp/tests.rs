@@ -186,6 +186,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     sioul_core::invoice::save_in(&sioul_core::invoice::folder(), &bill).unwrap();
     let letter = sioul_core::letters::Letter {
         id: "zeugma-letter".into(),
+        file: "letters/2026/zeugma-letter.pdf".into(),
         received: Some(Zoned::now().date()),
         project: "taxes".into(),
         reading: sioul_core::letters::Reading { sender: "Zeugma Office".into(), deadline: Zoned::now().date().tomorrow().ok(), ..Default::default() },
@@ -761,11 +762,13 @@ fn a_closed_project_is_never_shown() {
 }
 
 /// A paper letter of a project closed to agents, put into the agenda
-/// (re-check of 857c39e, §3.4): the event "Into the agenda" makes now is in
-/// the letter's project (its REFID, as `letters::event_of` gives it), kept;
-/// the letter itself is kept by its project, as letters.toml says it; an
-/// event made before, in no project, is given, its tie to the letter left
-/// out and counted, never named, neither by its label nor by the sender.
+/// (re-check of 857c39e, §3.4): the letter itself is kept by its project, as
+/// letters.toml says it; an event made for it before it had its project, or
+/// before "Into the agenda" gave the event one (no REFID: its address alone,
+/// or its scan's link), titled as "Into the agenda" titles it, is kept too,
+/// by the letter's project (review of e5bd27b, later 3 and 7): refused by
+/// address, left out of the agenda and counted, never named. (The REFID that
+/// "Into the agenda" now writes is held by the window's pim test.)
 #[test]
 fn a_closed_project_s_letter_put_into_the_agenda_stays_kept() {
     let _home = home();
@@ -777,20 +780,21 @@ fn a_closed_project_s_letter_put_into_the_agenda_stays_kept() {
         let edit = sioul_core::agenda::EventEdit { title: title.into(), start: format!("{day}T14:00"), end: format!("{day}T15:00"), ..Default::default() };
         sioul_core::agenda::add_lines(&sioul_core::agenda::new_event(&edit, &zone).unwrap(), lines).unwrap()
     };
-    let (made, older) = (calendar.dir.join("quorum-made.ics"), calendar.dir.join("quorum-older.ics"));
-    vdir::write_item(&made, &event("Appointment: Quorum", "2099-11-03", &[tie.clone(), tasks::project_line("taxes")])).unwrap();
-    vdir::write_item(&older, &event("Letter's appointment", "2099-11-04", &[tie])).unwrap();
-    let (made_uid, older_uid) = (sioul_core::appointments::uid_in(&made), sioul_core::appointments::uid_in(&older));
-    let got = call(&mut server, "get_event", json!({ "event": made_uid }));
-    assert!(got["isError"] == true && text(&got).contains("kept from agents") && !got.to_string().contains("Quorum"), "{got}");
+    let scan = tasks::link_line(&tasks::Link { uri: "file:///nowhere/Notes/letters/2026/zeugma-letter.pdf".into(), label: String::new(), rel: "related".into() });
+    let (addressed, scanned) = (calendar.dir.join("zeugma-addressed.ics"), calendar.dir.join("zeugma-scanned.ics"));
+    vdir::write_item(&addressed, &event("Appointment: Zeugma Office", "2099-11-03", &[tie])).unwrap();
+    vdir::write_item(&scanned, &event("Appointment: Zeugma Office", "2099-11-04", &[scan])).unwrap();
     let letter = call(&mut server, "links", json!({ "uri": "sioul:letter/zeugma-letter" }));
     assert!(letter["isError"] == true && text(&letter).contains("kept from agents"), "{letter}");
-    let ties = call(&mut server, "links", json!({ "uri": format!("sioul:event/{older_uid}") }));
-    assert_eq!((ties["isError"].as_bool(), ties["structuredContent"]["kept_from_agents"].as_u64()), (Some(false), Some(1)), "{ties}");
-    assert!(text(&ties).contains("left out on purpose"), "{ties}");
-    never_zeugma(&ties, "links");
-    assert!(!ties.to_string().contains("Quorum"), "{ties}");
-    for path in [made, older] {
+    for path in [&addressed, &scanned] {
+        let got = call(&mut server, "get_event", json!({ "event": sioul_core::appointments::uid_in(path) }));
+        assert!(got["isError"] == true && text(&got).contains("kept from agents"), "{got}");
+        never_zeugma(&got, "get_event");
+    }
+    let days = call(&mut server, "agenda", json!({ "from": "2099-11-03", "days": 2 }));
+    assert!(days["isError"] != true && days["structuredContent"]["kept_from_agents"].as_u64() >= Some(2), "{days}");
+    never_zeugma(&days, "agenda");
+    for path in [addressed, scanned] {
         let _ = std::fs::remove_file(path);
     }
 }

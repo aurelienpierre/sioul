@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The window's clock (Clock.qml) and the line at now in the day views
-// (DayView.qml, WeekPlanning.qml, HealthTimeline.qml, TaskTimeline.qml), on a
+// (WeekPlanning.qml, TaskTimeline.qml), on a
 // fake clock: the minute and the day said only when they turn, a turn early
 // or late set right, the line moving without the day laid again, today's
 // column moving at midnight. Run by tools/qml-test.sh, in a fixed time zone
@@ -53,14 +53,6 @@ Item {
         }
     }
     Component {
-        id: dayComponent
-
-        DayView {
-            sioul: mock
-            theme: testTheme
-        }
-    }
-    Component {
         id: planningComponent
 
         WeekPlanning {
@@ -68,16 +60,6 @@ Item {
             theme: testTheme
             locale: Qt.locale("en_GB")
             days: []
-        }
-    }
-    Component {
-        id: healthComponent
-
-        HealthTimeline {
-            sioul: mock
-            theme: testTheme
-            fromMinute: 360
-            toMinute: 1380
         }
     }
     Component {
@@ -175,43 +157,6 @@ Item {
 
         // Tasks ▸ Day: the line follows the clock, nothing laid again for it; the
         // block under way follows too; laid again at each five minutes' turn only.
-        function test_day_view() {
-            const midnight = root.sec(2026, 10, 6, 0, 0)
-            const block = (start, end, kind, title, key) => ({ start: midnight + start * 60, end: midnight + end * 60, kind: kind, title: title, key: key, energy: "", location: "", column: 0, columns: 1, part: 0, pinned: false, note: "", read_only: false, recurring: false })
-            const day = { from: midnight + 7 * 3600, to: midnight + 22 * 3600, now: midnight + 10 * 3600, hours: [], blocks: [block(540, 600, "task", "Write", "t1"), block(660, 720, "event", "Call", "e1")], all_day: [], more: 0, said: [] }
-            const view = createTemporaryObject(dayComponent, root, { width: 600, height: 700, day: day, now: midnight + 10 * 3600 })
-            waitForRendering(view)
-            let relays = 0
-            view.relay.connect(() => relays++)
-            const line = root.find(view, "nowLine")
-            verify(line !== null)
-            verify(line.visible)
-            compare(line.y, view.at(midnight + 600 * 60) - 1)
-            const card = root.drawn(view, "t1")
-            verify(card !== null)
-            compare(view.current, -1, "between the step and the call")
-            compare(view.next, 1)
-            // Half an hour later: the line lower, the same cards (nothing made again).
-            const before = line.y
-            view.now = midnight + 630 * 60
-            compare(line.y, view.at(midnight + 630 * 60) - 1)
-            verify(line.y > before)
-            verify(root.drawn(view, "t1") === card, "the day is not laid again for the line")
-            compare(relays, 1, "a five minutes' turn passed: laid again once")
-            // A minute within the same five minutes: the line alone.
-            view.now = midnight + 631 * 60
-            compare(relays, 1)
-            compare(line.y, view.at(midnight + 631 * 60) - 1)
-            // In the call: it is under way.
-            view.now = midnight + 670 * 60
-            compare(view.current, 1)
-            // Past the day's end (after midnight, before the day is laid again): no line.
-            view.now = midnight + 24 * 3600 + 60
-            verify(!line.visible)
-        }
-
-        // Agenda ▸ Week: one line, in today's column; today's title and column
-        // move at midnight, before the agenda is read again.
         function test_week() {
             // The agenda's days (version 3): the call, a `timeline::Placed` row.
             const day = (date, d) => ({ title: date, date: date, today: false, past: false, start: root.sec(2026, 10, d, 0, 0), hours_from: -1, hours_to: -1, head: [], timed: [], planned: true })
@@ -254,42 +199,6 @@ Item {
         }
 
         // Health, day and week: one line on today; today's ground and title move at midnight.
-        function test_health() {
-            const day = (date, d) => ({ date: date, title: date, weekday: "D", number: d, today: false, past: false, items: [], context: [], lines: [], segments: [] })
-            const days = [day("2026-10-05", 5), day("2026-10-06", 6), day("2026-10-07", 7)]
-            const week = createTemporaryObject(healthComponent, root, { width: 600, height: 700, titles: true, days: days, today: "2026-10-06", now: root.sec(2026, 10, 6, 12, 0) })
-            waitForRendering(week)
-            const line = root.find(week, "nowLine")
-            verify(line !== null && line.visible)
-            compare(week.todayIndex, 1)
-            compare(line.x, week.gutter + week.columnWidth)
-            compare(line.y, week.yOf(720) - 1)
-            week.now = root.sec(2026, 10, 6, 12, 30)
-            compare(line.y, week.yOf(750) - 1)
-            const ground = () => root.all(week, c => c.color !== undefined && c.visible && c.anchors !== undefined && c.anchors.fill !== null && Qt.colorEqual(c.color, testTheme.surface))
-            compare(ground().length, 1)
-            const was = ground()[0]
-            // Midnight: the next column is today, its ground with it; 00:00 is before the hours shown.
-            week.today = "2026-10-07"
-            week.now = root.sec(2026, 10, 7, 0, 1)
-            compare(week.todayIndex, 2)
-            verify(!line.visible)
-            compare(ground().length, 1)
-            verify(ground()[0] !== was, "today's ground moved")
-            week.now = root.sec(2026, 10, 7, 7, 0)
-            verify(line.visible)
-            compare(line.x, week.gutter + 2 * week.columnWidth)
-            // The day view: one column; another day than today shows no line.
-            const one = createTemporaryObject(healthComponent, root, { y: 0, width: 300, height: 700, days: [day("2026-10-06", 6)], today: "2026-10-06", now: root.sec(2026, 10, 6, 9, 0) })
-            waitForRendering(one)
-            const oneLine = root.find(one, "nowLine")
-            verify(oneLine.visible)
-            compare(oneLine.y, one.yOf(540) - 1)
-            one.today = "2026-10-07"
-            verify(!oneLine.visible)
-        }
-
-        // Tasks ▸ Timeline: today's line and bold day follow the day, before the plan is made again.
         function test_task_timeline() {
             const head = (date, day) => ({ date: date, day: day, weekday: "Tuesday", month: "", rest: false })
             const view = createTemporaryObject(taskTimelineComponent, root, { width: 800, height: 400, timeline: { days: [head("2026-10-06", "6"), head("2026-10-07", "7"), head("2026-10-08", "8")], rows: [], note: "" }, today: "2026-10-06" })

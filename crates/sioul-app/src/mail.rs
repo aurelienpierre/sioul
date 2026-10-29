@@ -802,13 +802,20 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             None
         }
         // Through the one rule, on the file as it is now: one become a meeting with others meanwhile stays.
-        Work::Remove { account, file } => match sioul_core::vdir::remove_item(file) {
-            Ok(()) => {
-                crate::pim::nudge(shared, account);
-                None
+        Work::Remove { account, file } => {
+            // A task taken out: the letters it stood for are free again (review of e5bd27b, later 6).
+            let task = std::fs::read_to_string(file).ok().filter(|text| text.lines().any(|l| l.trim().eq_ignore_ascii_case("BEGIN:VTODO"))).and_then(|text| sioul_core::lines::unfold(&text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()));
+            match sioul_core::vdir::remove_item(file) {
+                Ok(()) => {
+                    crate::pim::nudge(shared, account);
+                    if let (Some(uid), Some(root)) = (task, load_config().notes_root_path()) {
+                        let _ = crate::letters::untie_task(&root, &uid);
+                    }
+                    None
+                }
+                Err(e) => Some(e),
             }
-            Err(e) => Some(e),
-        },
+        }
         Work::RemoveCancelled { account, file, cancel } => {
             if sioul_core::vdir::calendar_read_only(file) == Some(true) {
                 return Some(tr().text("agenda-read-only", None));

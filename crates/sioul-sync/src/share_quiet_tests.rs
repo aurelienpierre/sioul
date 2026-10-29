@@ -621,6 +621,10 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     assert_eq!(background(&desk, &folder, &key, now).sent, 0);
     // Settings says which device keeps it from travelling (§3.2).
     assert_eq!(formats(&folder, &key, &desk.memory, &desk.id, now).own_time, [phone.id.clone()]);
+    // On the phone, which has none of its own: the desk says it reads own time, so it may hold some
+    // to send there; the phone's Settings names itself nowhere (review of e5bd27b, later 1).
+    let on_phone = formats(&folder, &key, &phone.memory, &phone.id, now);
+    assert!(on_phone.others_share_own_time && on_phone.own_time.is_empty(), "{:?}", on_phone.own_time);
     // The phone updated: its entry says it has the store; the desk's next exchange sends it, once.
     super::tests::OLDER.with(|o| o.borrow_mut().clear());
     entry(&phone, &folder, &key, |e| e.own_time = OWN_TIME_SHARED);
@@ -634,6 +638,35 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     let again = background(&desk, &folder, &key, now);
     assert_eq!(again.sent, 0, "sent once: {again:?}");
     assert!(formats(&folder, &key, &desk.memory, &desk.id, now).own_time.is_empty(), "nothing held back any more");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device with no own time of its own (the phone, just updated), while a
+/// device on an older Sioul still counts: another device says it reads own
+/// time, so may hold some to send; Settings there names the device that keeps
+/// it from travelling (review of e5bd27b, later 1).
+#[test]
+fn a_device_with_no_own_time_still_names_the_one_holding_it_back() {
+    let base = scratch("own-time-named");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone, old) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"), Computer::new(&base, "old"));
+    let mut now = NOW;
+    for c in [&desk, &phone] {
+        entry(c, &folder, &key, |e| {
+            e.start(now / 1000);
+            e.own_time = OWN_TIME_SHARED;
+        });
+    }
+    entry(&old, &folder, &key, |e| e.start(now / 1000));
+    desk.write("data/own-time.toml", "[event.\"board-1\"]\nbefore = 15\n");
+    for c in [&desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(!phone.path("data/own-time.toml").exists(), "kept on the desk");
+    let on_phone = formats(&folder, &key, &phone.memory, &phone.id, now);
+    assert_eq!((on_phone.own_time, on_phone.others_share_own_time), (vec![old.id.clone()], true));
     let _ = std::fs::remove_dir_all(&base);
 }
 

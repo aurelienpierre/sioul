@@ -404,7 +404,7 @@ ColumnLayout {
             const line = (kind, title, more) => Object.assign(planning.rowOf({ item: { id: kind, kind: kind, title: title, time: { type: "at", at: day.start }, can: {}, source: {} }, when: "", from_minute: 0, to_minute: 0 }, day, i, ""), { key: kind + "|" + day.date }, more || {})
             const heads = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(planning.shown)
             // Whole days under the day's title; a date asked on a line of its own, its diamond and its words (review of part 4, later 2).
-            out.push(line("day-title", day.title || day.date, { line: heads.filter(r => r.kind !== "dated").map(r => r.title).join("  ·  ") }))
+            out.push(line("day-title", day.title || day.date, { line: heads.filter(r => r.kind !== "dated").map(r => r.title).join(" · ") }))
             for (const r of heads.filter(r => r.kind === "dated"))
                 out.push(Object.assign({}, r, { key: r.key + "|list", line: planning.datedWords(r) }))
             if (day.today && marks.some(m => m.date === day.date))
@@ -1351,7 +1351,7 @@ ColumnLayout {
                         }
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
-                            readonly property string line: card.when + (beside !== "" ? "  ·  " + beside : "")
+                            readonly property string line: card.when + (beside !== "" ? " · " + beside : "")
 
                             // A band's title says its time already.
                             visible: card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine

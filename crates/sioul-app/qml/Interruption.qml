@@ -68,7 +68,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
-    title: dialog.theme.plain(dialog.block !== null ? dialog.block.name + "  ·  " + dialog.block.from + "–" + dialog.block.to : dialog.sioul.text("stopped-title"))
+    title: dialog.theme.plain(dialog.block !== null ? dialog.block.name + " · " + dialog.block.from + " – " + dialog.block.to : dialog.sioul.text("stopped-title"))
 
     contentItem: ColumnLayout {
         spacing: 10
@@ -90,11 +90,10 @@ Dialog {
                     text: dialog.sioul.text("need-move-to")
                     color: dialog.theme.muted
                 }
-                TextField {
+                ClockField {
                     id: when
 
                     Layout.preferredWidth: 70
-                    inputMask: "99:99"
                     inputMethodHints: Qt.ImhTime
                     Accessible.name: dialog.sioul.text("need-move-to")
                     onAccepted: dialog.move(0, when.text)

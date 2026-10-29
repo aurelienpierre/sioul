@@ -1380,6 +1380,10 @@ def write_calendars(p: Profile, mails: list[Mail]):
     write_tasks(p, by_key)
 
 
+# A task's tie to the appointment it prepares (`pairs::APPOINTMENT`).
+APPOINTMENT_REL = "tag:aurelienpierre.com,2026:sioul/rel/appointment"
+
+
 def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=None, due=None, estimate=0, kind="", categories=(),
          project=None, parent=None, waits=(), notes="", links=(), contacts=(), office=None, completed=None, priority=0, created=None, energy="",
          order=None) -> str:
@@ -1488,6 +1492,15 @@ def write_tasks(p: Profile, mail: dict):
         ("home-tasks", task(c, "tax-check", t("Read the 2026 tax notice", "Lire l'avis d'impôt 2026"), estimate=20, kind="read", categories=[admin],
                             project="taxes-2026", due=c.day(20), links=[("via", mid(mail["tax"]))])),
         ("home-tasks", task(c, "bike", t("Fix the bike's back light", "Réparer le feu arrière du vélo"), estimate=20, kind="make", categories=[admin])),
+        # Going to the doctor: what prepares Dr Varga's check-up (composed tasks, part F: its
+        # steps laid back from leaving, what to bring ticked on the appointment's card).
+        ("home-tasks", task(c, "doctor-prep", t("Going to the doctor", "Aller chez le médecin"), estimate=20, kind="out", categories=[admin],
+                            links=[(APPOINTMENT_REL, "sioul:event/demo-event-doctor")],
+                            notes=t("Bring:\n- [ ] Health card\n- [ ] Last blood test results", "À apporter :\n- [ ] Carte Vitale\n- [ ] Dernière prise de sang"))),
+        ("home-tasks", task(c, "doctor-questions", t("Write down the questions for Dr Varga", "Noter les questions pour le Dr Varga"), estimate=10, kind="write",
+                            categories=[admin], parent="doctor-prep", order=1)),
+        ("home-tasks", task(c, "doctor-bus", t("Check the bus times", "Vérifier les horaires du bus"), estimate=5, kind="online",
+                            categories=[admin], parent="doctor-prep", order=2)),
         ("home-tasks", task(c, "bus-pass", t("Renew the bus pass", "Renouveler l'abonnement de bus"), status="COMPLETED", estimate=10, kind="online",
                             categories=[admin], completed=c.at(c.day(-3), "18:30"))),
         # Leisure.
@@ -1813,6 +1826,23 @@ from_domains = ["{W.choir}"]
     write_bank(p)
     write_contracts(p)
     write_papers(p)
+    write_letters(p)
+
+
+def write_letters(p: Profile):
+    """A paper letter read from its scan, new, with a date asked within the week
+    and no task yet: its diamond on its day, its card with its own actions."""
+    c = p.clock
+    deadline = c.day(4)
+    sender = t("Housing aid office", "Caisse d'aide au logement")
+    p.write(p.notes / "letters" / "inbox" / t("housing-aid.pdf", "aide-logement.pdf"), pdf([sender, t("Your file: a document is missing.", "Votre dossier : il manque une pièce."),
+            t(f"Please send your lease within a month, by {long_date(deadline, year=True)}.", f"Merci d'envoyer votre bail sous un mois, avant le {long_date(deadline, year=True)}."),
+            "", t("Specimen: invented for Sioul's demo.", "Spécimen : inventé pour la démo de Sioul.")]), c.at(c.day(-3), "10:00"))
+    out = ["# Paper letters, read from their scans (docs/porch.md). Their texts are beside: <id>.txt.", "",
+           "[[letter]]", 'id = "demo-letter-housing"', f"file = {toml_string('letters/inbox/' + t('housing-aid.pdf', 'aide-logement.pdf'))}",
+           f"sender = {toml_string(sender)}", f"why = {toml_string(t('within a month', 'sous un mois'))}", 'status = "new"', 'kind = "other"',
+           f"received = {c.day(-3)}", f"deadline = {deadline}", ""]
+    p.write(p.notes / "letters" / "letters.toml", "\n".join(out))
 
 
 def write_budgets(p: Profile, mail: dict):
@@ -2145,6 +2175,9 @@ def write_papers(p: Profile):
          c.today.replace(day=1) - timedelta(days=1), None, [t("Rent receipt", "Quittance de loyer"), W.lets, t("Rent paid in full", "Loyer payé en totalité")]),
         ("bank-details", "bank-details", t("Bank details (Riverside Bank)", "RIB (Banque des Berges)"), t("Bank details.pdf", "RIB.pdf"), date(2024, 3, 1), None,
          [t("Bank details", "Relevé d'identité bancaire"), W.bank_name, "IBAN FR76 0000 0000 0000 0000 0000 000"]),
+        # Ending within two weeks: its last day shows in the agenda.
+        ("bus-pass", "other", t("Bus pass", "Abonnement de bus"), t("Bus pass.pdf", "Abonnement de bus.pdf"), c.day(-355), c.day(10),
+         [t("Bus pass", "Abonnement de bus"), holder, t(f"Valid until: {long_date(c.day(10), year=True)}", f"Valable jusqu'au {long_date(c.day(10), year=True)}")]),
         ("laptop", "warranty", t("Laptop: proof of purchase", "Ordinateur portable : preuve d'achat"), t("Laptop invoice.pdf", "Facture ordinateur.pdf"),
          date(2025, 2, 14), date(2027, 2, 13),
          [t("Invoice", "Facture"), t("Laptop, 14 inches", "Ordinateur portable, 14 pouces"), t("Two years' warranty", "Garantie de deux ans")]),
@@ -2502,7 +2535,12 @@ payment = {toml_string(t("IBAN FR76 0000 0000 0000 0000 0000 000, within 30 days
 # The camera, microphone and speaker of calls in sites: the system's own.
 [calls]
 {hours if p.hours else ""}
-# Time off: quiet from the first day to the last.
+# Time off: quiet from the first day to the last; one day off within the next two weeks.
+[[time_off]]
+from = {p.clock.weekday_after(6)}
+until = {p.clock.weekday_after(6)}
+label = {toml_string(t("Day off", "Jour de congé"))}
+
 [[time_off]]
 from = {p.clock.today.year}-12-21
 until = {p.clock.today.year + 1}-01-03

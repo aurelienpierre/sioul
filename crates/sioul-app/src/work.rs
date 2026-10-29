@@ -332,8 +332,6 @@ struct TasksShown {
     first_step_task: String,
     /// The next date asked within a week: the time budget until then, else "".
     budget: String,
-    /// Today laid out: events at their times, today's steps in the gaps.
-    day: sioul_core::dayview::DayView,
     /// In free time, leisure offered, never a list to finish (docs/pauses.md).
     free: Vec<serde_json::Value>,
 }
@@ -355,10 +353,6 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     }
     // Time for you, the free time kept, and why today holds what it holds, in words.
     crate::capacity::dress(&mut day, &desk.loaded.tasks);
-    // The steps as laid, for the Health page's day (faded, for context).
-    if let Ok(mut steps) = DAY_STEPS.lock() {
-        *steps = day.blocks.iter().filter(|b| b.kind == "task").map(|b| (b.start, b.end, b.title.clone())).collect();
-    }
     day
 }
 
@@ -519,13 +513,6 @@ thread_local! {
     pub(crate) static HELD_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Today's steps as the day's layout last laid them: (start, end, title).
-static DAY_STEPS: std::sync::Mutex<Vec<(i64, i64, String)>> = std::sync::Mutex::new(Vec::new());
-
-/// Today's steps as last laid out, for the Health page's day: faded, for context.
-pub(crate) fn day_steps() -> Vec<(i64, i64, String)> {
-    DAY_STEPS.lock().map(|steps| steps.clone()).unwrap_or_default()
-}
 
 /// The routines, as the page lists them: the admin window's first (made from
 /// what is there now), then yours, each with its steps as lines to change.
@@ -685,15 +672,11 @@ fn work_run(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 fn relay_now(qt: &QtThread, shared: &Arc<Shared>) {
-    let steps_before = day_steps();
     if !relaid(shared) {
         replan_now(qt, shared);
         return;
     }
     crate::agenda::show_agenda(qt, shared);
-    if day_steps() != steps_before {
-        crate::health::show_health(qt, shared);
-    }
 }
 
 /// Today laid again from the plan as last made, published with it (the same
@@ -777,8 +760,6 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
     });
     {
         let generation = shared.work_generation.fetch_add(1, Ordering::Relaxed) + 1;
-        // Today's steps as laid before: the Health page's day shows them faded.
-        let steps_before = day_steps();
         // The files' stamp before anything is read: what is written after, by any
         // program, makes this plan older (`PlanShown::current`).
         let stamp = sioul_core::timeline::Stamp::now();
@@ -827,7 +808,6 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             None => (String::new(), String::new()),
         };
         let today_laid = today_laid_out(&desk, &shared);
-        let day = today_laid.clone();
         let shown = TasksShown {
             view: state.clone(),
             kinds: kinds_offered(),
@@ -844,7 +824,6 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             first_step: first.0,
             first_step_task: first.1,
             budget: desk.next_budget(),
-            day,
             free: crate::pauses::offers(&desk.loaded.tasks, desk.filter.quiet.as_ref(), crate::hours::mode_now().free()),
         };
         let tasks_json = crate::backend::json(&shown);
@@ -856,10 +835,6 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // Published: the agenda draws from it (a re-plan asked meanwhile sets it again).
         due.published();
         crate::agenda::show_agenda(&qt, &shared);
-        // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
-        if day_steps() != steps_before {
-            crate::health::show_health(&qt, shared);
-        }
         let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
         let focus_json = focus_json(&desk);
         // The time running, in the system's notifications as in the focus window.

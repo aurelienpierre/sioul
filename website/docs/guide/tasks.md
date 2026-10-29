@@ -109,7 +109,7 @@ Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It i
 
 ## The day {#the-day}
 
-**The day** opens the [Agenda](agenda.md#day-and-week)'s Day on today, where everything with a time shows. It lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
+**The day** opens the [Agenda](agenda.md#day-and-week)'s Day on today, where everything with a time shows; **Now** links to it too ("The day, in the agenda"). It lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
 
 The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile, and at once after anything changes what it holds ([The plan](#the-plan)).
 
@@ -137,13 +137,13 @@ After the last step, some time is **Kept free, in case steps take longer** ([How
   <figcaption>The day: your hours by kind, and the steps placed in them.</figcaption>
 </figure>
 
-## List, Board, Calendar {#list-board-timeline}
+## List, Board, Gantt {#list-board-timeline}
 
 One switch away from Now:
 
 - **List**: every open task in the plan's order, a bigger task followed by its steps, grouped **By project** or **By list**, with a search, and **Done too** on request. The optional ones come last.
 - **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
-- **Calendar**: each open task on its days, the date asked as a small diamond, days without room shaded. One project, or all. A project's **Calendar** button opens this view, kept to the project.
+- **Gantt** (it was called Calendar): each open task on its days, the date asked as a small diamond, days without room shaded. One project, or all. A project's **Gantt** button opens this view, kept to the project.
 
 <figure markdown="span">
   [![The List: a search field, "By project" and "Done too" at the top; tasks grouped by project, a bigger task followed by its steps, each with how long it takes, the date asked as days left and what it waits for; tasks without a project below, and those "when you say so" last.](../assets/screens/tasks-list.png){ loading=lazy }](../assets/screens/tasks-list.png "Open the picture at full size")

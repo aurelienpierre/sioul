@@ -767,6 +767,144 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
     out
 }
 
+/// The Month's lines of a day (the unified agenda, §4.5): its dates asked
+/// first (today and after: the adapters give no other), then its appointments
+/// and pinned times, whole-day ones first, then the others by their time;
+/// never a step the plan proposes, a meal, a nap, the night, a dose or a task
+/// done. A computer's cell shows three, then "…"; a phone's cell its marks,
+/// and its list them all. A day off is its cell's shade (`day_off`), no line.
+pub fn month_lines(day: &Day) -> Vec<Placed> {
+    let shown = |p: &&Placed| match p.item.kind {
+        Kind::Dated | Kind::Event | Kind::Block => true,
+        Kind::Step => p.item.certainty == Certainty::Held,
+        _ => false,
+    };
+    day.head.iter().filter(shown).chain(day.timed.iter().filter(shown)).cloned().collect()
+}
+
+/// Whether a day is a day off (one at its head): its Month cell is shaded.
+pub fn day_off(day: &Day) -> bool {
+    day.head.iter().any(|p| p.item.kind == Kind::DayOff)
+}
+
+/// One minute's doses in What comes, as the Porch lists them (§4.6): one row
+/// a minute, never a medicine's name, nothing to press; today's marks come
+/// from the window's rows (`doseMarks`): from their time on until marked,
+/// those still to come plainly; another day's plainly.
+#[derive(Debug, Clone, Serialize)]
+pub struct DoseLine {
+    pub minute: i32,
+    /// "12:30".
+    pub when: String,
+    /// "Dose", "Two doses".
+    pub title: String,
+    pub keys: Vec<String>,
+}
+
+/// A day of What comes: what it lists, its doses by the minute, and the
+/// plan's line ("The plan: Call the CAF, then Sort the receipts").
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Comes {
+    pub rows: Vec<Placed>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub doses: Vec<DoseLine>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub plan: String,
+}
+
+impl Comes {
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty() && self.doses.is_empty() && self.plan.is_empty()
+    }
+}
+
+/// What What comes knows beyond a day's things (`comes`).
+pub struct ComesOf<'a> {
+    pub now: i64,
+    pub today: Date,
+    /// The evenings whose night rings no alarm, that day only.
+    pub no_alarm: &'a std::collections::BTreeSet<Date>,
+    /// A dose (by its key) of a medicine taken at set times each day: listed
+    /// on today only; one taken every few days or every few hours, on its day too.
+    pub every_day: &'a dyn Fn(&str) -> bool,
+    /// A step's task that quiet time hides now: its step named "Work".
+    pub hidden: &'a dyn Fn(&str) -> bool,
+    pub zone: &'a TimeZone,
+    pub tr: &'a Translator,
+}
+
+/// What a day of What comes lists (the unified agenda, §4.6). Today, from
+/// now: what remains of its appointments and pinned times, its meals and
+/// nap, its dates and days off, tonight's night as the last row, every dose
+/// of today by the minute, and the plan's next step and the one after. Every
+/// other day only what differs from your usual days: its appointments and
+/// pinned times, its dates and days off, a meal or a nap moved or added that
+/// day, a night without its alarm, a dose of a medicine not taken every day
+/// at set times, and the plan's first step. Repetition is noise; difference
+/// is information.
+pub fn comes(day: &Day, c: &ComesOf) -> Comes {
+    let Ok(date) = day.date.parse::<Date>() else { return Comes::default() };
+    let today = date == c.today;
+    let over = |p: &Placed| p.item.time.proper(c.zone).1 <= c.now && !p.all_day;
+    let mut rows: Vec<Placed> = Vec::new();
+    let mut nights: Vec<Placed> = Vec::new();
+    let mut doses: std::collections::BTreeMap<i32, Vec<String>> = std::collections::BTreeMap::new();
+    let mut steps: Vec<&Placed> = Vec::new();
+    for placed in day.head.iter().chain(day.timed.iter()) {
+        match placed.item.kind {
+            Kind::Dated | Kind::DayOff => rows.push(placed.clone()),
+            Kind::Event | Kind::Block if !(today && over(placed)) => rows.push(placed.clone()),
+            Kind::Step if placed.item.certainty == Certainty::Held => {
+                if !(today && over(placed)) {
+                    rows.push(placed.clone());
+                }
+            }
+            Kind::Step if !over(placed) => steps.push(placed),
+            Kind::Meal | Kind::Nap if (today && !over(placed)) || (!today && placed.item.certainty == Certainty::ThatDay) => rows.push(placed.clone()),
+            // Tonight's night (from its winding down this evening), never the morning of the one before.
+            Kind::Night if placed.item.time.whole(c.zone).0 >= day.start && (today || c.no_alarm.contains(&date)) => {
+                let mut night = placed.clone();
+                if c.no_alarm.contains(&date) {
+                    night.item.line = c.tr.text("agenda-no-alarm", None);
+                }
+                nights.push(night);
+            }
+            Kind::Dose => {
+                let Source::Dose { key } = &placed.item.source else { continue };
+                if today || !(c.every_day)(key) {
+                    doses.entry(placed.from_minute).or_default().push(key.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    rows.extend(nights);
+    let doses = doses
+        .into_iter()
+        .map(|(minute, keys)| DoseLine { minute, when: format!("{:02}:{:02}", minute / 60, minute % 60), title: if keys.len() == 1 { c.tr.text("agenda-dose", None) } else { c.tr.text("agenda-doses", Some(&c.tr.counted(keys.len()))) }, keys })
+        .collect();
+    steps.sort_by_key(|p| p.item.time.proper(c.zone).0);
+    let named = |p: &Placed| if !p.item.owner.is_empty() && (c.hidden)(&p.item.owner) { c.tr.text("head-work", None) } else { p.item.title.clone() };
+    let mut args = crate::i18n::args();
+    let plan = match (today, steps.first(), steps.get(1)) {
+        (_, None, _) => String::new(),
+        (true, Some(first), Some(second)) => {
+            args.set("step", named(first));
+            args.set("then", named(second));
+            c.tr.text("agenda-plan-then", Some(&args))
+        }
+        (true, Some(first), None) => {
+            args.set("step", named(first));
+            c.tr.text("agenda-plan-one", Some(&args))
+        }
+        (false, Some(first), _) => {
+            args.set("step", named(first));
+            c.tr.text("agenda-plan-first", Some(&args))
+        }
+    };
+    Comes { rows, doses, plan }
+}
+
 /// A thing's time on one day (`day_start`..`day_end`): its hours, "All day",
 /// or how it goes on from the day before or into the next.
 pub fn when_on(at: i64, until: i64, whole: bool, day_start: i64, day_end: i64, zone: &TimeZone, tr: &Translator) -> String {
@@ -1049,6 +1187,10 @@ pub struct HeadInputs<'a> {
     /// The dates asked of you this week, today and after (`dated::item`): in
     /// work and admin time, the nearest is said in a second sentence.
     pub dates: &'a [Item],
+    /// The plan's first hour (`[agenda] day_start`), when set: with no hours
+    /// set, a date asked is named from then (else from 06:00) to 18:00, never
+    /// just after midnight (review of e5bd27b, later 4).
+    pub first_hour: Option<u32>,
     pub zone: &'a TimeZone,
     pub tr: &'a Translator,
 }
@@ -1082,9 +1224,10 @@ pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
     for (from, until, _) in i.moments {
         bounds.extend([*from, *until]);
     }
-    // With no hours set, the day's work ends at 18:00 for the line (`head_at`).
+    // With no hours set, the day's work runs from its first hour to 18:00 for the line (`head_at`).
     if i.moments.iter().any(|(_, _, mode)| mode.time == crate::areas::Time::Any) {
         bounds.extend(evening_of(i.now, i.zone));
+        bounds.extend(morning_of(i.now, i.first_hour, i.zone));
     }
     bounds.retain(|b| *b >= i.now && *b <= i.next_midnight);
     bounds.sort_unstable();
@@ -1107,6 +1250,14 @@ pub fn head_line(i: &HeadInputs) -> Vec<HeadFrame> {
 fn evening_of(t: i64, zone: &TimeZone) -> Option<i64> {
     let day = jiff::Timestamp::from_second(t).ok()?.to_zoned(zone.clone()).date();
     Some(day.at(18, 0, 0, 0).to_zoned(zone.clone()).ok()?.timestamp().as_second())
+}
+
+/// The plan's first hour of `t`'s day (`first_hour`, else 06:00): with no
+/// hours set, where the day's work begins for the date sentence.
+fn morning_of(t: i64, first_hour: Option<u32>, zone: &TimeZone) -> Option<i64> {
+    let day = jiff::Timestamp::from_second(t).ok()?.to_zoned(zone.clone()).date();
+    let hour = i8::try_from(first_hour.unwrap_or(6).min(23)).unwrap_or(6);
+    Some(day.at(hour, 0, 0, 0).to_zoned(zone.clone()).ok()?.timestamp().as_second())
 }
 
 /// Work and admin for the head line: their hours, and with no hours set
@@ -1201,8 +1352,10 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
         parts.push(if leaves { say("head-next-leave", &[("time", clock(at)), ("what", named(item)), ("leave", clock(start))]) } else { say("head-next", &[("time", clock(if matches!(item.kind, Kind::Event | Kind::Block | Kind::Step) { at } else { start })), ("what", named(item))]) });
     }
     // In work and admin time, the nearest date asked this week, one only.
-    // With no hours set, until 18:00 only, as `work_left` (re-check of 857c39e, §3.3).
-    let working = moment.is_some_and(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin) || (m.time == crate::areas::Time::Any && t < evening));
+    // With no hours set, from the plan's first hour (else 06:00) to 18:00 only (re-check of
+    // 857c39e, §3.3; review of e5bd27b, later 4).
+    let morning = morning_of(t, i.first_hour, i.zone).unwrap_or(i64::MIN);
+    let working = moment.is_some_and(|m| matches!(m.time, crate::areas::Time::Work | crate::areas::Time::Admin) || (m.time == crate::areas::Time::Any && t >= morning && t < evening));
     if working && let Some((date, item, kind)) = nearest_date(i.dates, t, i.zone) {
         let today = jiff::Timestamp::from_second(t).map_or(date, |s| s.to_zoned(i.zone.clone()).date());
         parts.push(say("head-date", &[("kind", tr.text(kind.word(), None)), ("what", item.title.clone()), ("date", tr.day(date)), ("left", crate::dated::left(tr, today, date))]));
@@ -1616,7 +1769,7 @@ mod tests {
             (at("2026-10-05T09:00"), at("2026-10-05T17:00"), moment(Hours::Work, Reason::Working, "2026-10-05T17:00")),
             (at("2026-10-05T17:00"), at("2026-10-06T00:00"), moment(Hours::Leisure, Reason::Evening, "2026-10-06T09:00")),
         ];
-        let line = |now: &str| head_line(&HeadInputs { now: at(now), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &[], zone: &zone, tr: &tr });
+        let line = |now: &str| head_line(&HeadInputs { now: at(now), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &[], first_hour: None, zone: &zone, tr: &tr });
         let frames = line("2026-10-05T10:40");
         assert_eq!(frames[0].text, "Time for you until 11:00. Next: 12:10 Lunch.");
         assert_eq!((frames[0].from, frames[0].until), (at("2026-10-05T10:40"), at("2026-10-05T11:00")), "it holds until time for you ends");
@@ -1627,7 +1780,7 @@ mod tests {
         assert!(frames.iter().all(|f| !f.text.contains("Dose") && !f.text.contains("Sort the receipts")), "{frames:?}");
         // Free time: the moment alone.
         let free = vec![(at("2026-10-05T09:00"), at("2026-10-05T16:00"), moment(Hours::Leisure, Reason::FreeTime, "2026-10-05T16:00"))];
-        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], alarm: None, dates: &[], zone: &zone, tr: &tr });
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], alarm: None, dates: &[], first_hour: None, zone: &zone, tr: &tr });
         assert_eq!(frames[0].text, "Free time until 16:00.");
     }
 
@@ -1643,6 +1796,100 @@ mod tests {
         let caf = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: "caf".into(), address: "sioul:task/caf".into(), title: "CAF form".into(), date: day("2026-10-05"), at: None }, day("2026-10-05"), &tr);
         let days = days(&[trip, birthday, caf], day("2026-10-05"), 1, day("2026-10-05"), &zone, &tr);
         assert_eq!(days[0].head.iter().map(|p| p.item.title.as_str()).collect::<Vec<_>>(), ["CAF form", "Trip", "A birthday"]);
+    }
+
+    /// The Month's lines (the unified agenda, §4.5): dates first, then the
+    /// appointments, whole-day ones first, a pinned step; never a proposal, a
+    /// meal, a nap, the night or a dose; a day off shades its cell.
+    #[test]
+    fn a_month_day_lists_dates_then_appointments() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let mut fair = thing("Fair", Kind::Event, "2026-10-05T00:00", "2026-10-06T00:00");
+        fair.time = Time::Day { date: day("2026-10-05"), until: day("2026-10-05") };
+        let mut off = thing("Holidays", Kind::DayOff, "2026-10-05T00:00", "2026-10-06T00:00");
+        off.time = Time::Day { date: day("2026-10-05"), until: day("2026-10-05") };
+        let mut pinned = thing("Letter", Kind::Step, "2026-10-05T09:00", "2026-10-05T09:30");
+        pinned.certainty = Certainty::Held;
+        let mut proposed = thing("Form", Kind::Step, "2026-10-05T10:00", "2026-10-05T10:30");
+        proposed.certainty = Certainty::Planned;
+        let caf = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: "caf".into(), address: "sioul:task/caf".into(), title: "CAF form".into(), date: day("2026-10-05"), at: None }, day("2026-10-05"), &tr);
+        let items = [thing("Dentist", Kind::Event, "2026-10-05T14:00", "2026-10-05T14:30"), thing("Lunch", Kind::Meal, "2026-10-05T12:30", "2026-10-05T13:00"), thing("Dose", Kind::Dose, "2026-10-05T08:00", "2026-10-05T08:00"), fair, off, pinned, proposed, caf];
+        let shown = days(&items, day("2026-10-05"), 1, day("2026-10-05"), &zone, &tr);
+        assert_eq!(month_lines(&shown[0]).iter().map(|p| p.item.title.as_str()).collect::<Vec<_>>(), ["CAF form", "Fair", "Letter", "Dentist"]);
+        assert!(day_off(&shown[0]));
+    }
+
+    /// What comes (the unified agenda, §4.6): today from now, in full, its
+    /// doses by the minute, unnamed, tonight's night last, the plan's next step
+    /// and the one after; another day only what differs: its appointments, a
+    /// meal moved that day, a night without its alarm, a dose taken every
+    /// other day, the plan's first step, never your usual lunch, night or doses.
+    #[test]
+    fn what_comes_says_today_and_what_differs() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let dose = |key: &str, when: &str| {
+            let mut d = thing("Dose", Kind::Dose, when, when);
+            d.time = Time::At { at: at(when) };
+            d.source = Source::Dose { key: key.into() };
+            d
+        };
+        let step = |id: &str, from: &str, to: &str| {
+            let mut s = thing(id, Kind::Step, from, to);
+            s.certainty = Certainty::Planned;
+            s
+        };
+        let meal = |when: &str, until: &str, that_day: bool| {
+            let mut m = thing("Lunch", Kind::Meal, when, until);
+            m.certainty = if that_day { Certainty::ThatDay } else { Certainty::Usual };
+            m
+        };
+        let mut night5 = night("2026-10-05T22:30", "2026-10-05T23:00", "2026-10-06T07:00");
+        night5.id = "night-5".into();
+        let mut night6 = night("2026-10-06T22:30", "2026-10-06T23:00", "2026-10-07T07:00");
+        night6.id = "night-6".into();
+        let mut night7 = night("2026-10-07T22:30", "2026-10-07T23:00", "2026-10-08T07:00");
+        night7.id = "night-7".into();
+        let items = vec![
+            thing("Call", Kind::Event, "2026-10-05T09:00", "2026-10-05T09:30"),
+            thing("Doctor", Kind::Event, "2026-10-05T14:00", "2026-10-05T14:30"),
+            meal("2026-10-05T12:30", "2026-10-05T13:00", false),
+            dose("levo@1", "2026-10-05T08:00"),
+            dose("vit@1", "2026-10-05T20:00"),
+            dose("levo@2", "2026-10-05T20:00"),
+            step("Write to the CAF", "2026-10-05T15:00", "2026-10-05T15:30"),
+            step("Sort the receipts", "2026-10-05T16:00", "2026-10-05T16:30"),
+            step("Pay the rent", "2026-10-05T17:00", "2026-10-05T17:15"),
+            night5,
+            meal("2026-10-06T12:30", "2026-10-06T13:00", false),
+            dose("levo@3", "2026-10-06T08:00"),
+            dose("iron@3", "2026-10-06T09:00"),
+            step("Call the bank", "2026-10-06T10:00", "2026-10-06T10:30"),
+            night6,
+            meal("2026-10-07T13:30", "2026-10-07T14:00", true),
+            night7,
+        ];
+        let shown = days(&items, day("2026-10-05"), 3, day("2026-10-05"), &zone, &tr);
+        let no_alarm: std::collections::BTreeSet<Date> = [day("2026-10-07")].into_iter().collect();
+        let every_day = |key: &str| !key.starts_with("iron@");
+        let hidden = |uid: &str| uid == "Sort the receipts";
+        let of = ComesOf { now: at("2026-10-05T11:00"), today: day("2026-10-05"), no_alarm: &no_alarm, every_day: &every_day, hidden: &hidden, zone: &zone, tr: &tr };
+        fn titles(c: &Comes) -> Vec<&str> {
+            c.rows.iter().map(|p| p.item.title.as_str()).collect()
+        }
+        let today = comes(&shown[0], &of);
+        assert_eq!(titles(&today), ["Lunch", "Doctor", "Winding down"], "the call over; tonight's night last");
+        assert_eq!(today.doses.iter().map(|d| (d.when.as_str(), d.title.as_str(), d.keys.len())).collect::<Vec<_>>(), [("08:00", "Dose", 1), ("20:00", "Two doses", 2)]);
+        assert_eq!(today.plan, "The plan: Write to the CAF, then Work", "a step hidden now named Work");
+        let tuesday = comes(&shown[1], &of);
+        assert!(titles(&tuesday).is_empty(), "the usual lunch and night: {:?}", titles(&tuesday));
+        assert_eq!(tuesday.doses.iter().map(|d| d.when.as_str()).collect::<Vec<_>>(), ["09:00"], "the dose taken every few days alone");
+        assert_eq!(tuesday.plan, "The plan: Call the bank first");
+        let wednesday = comes(&shown[2], &of);
+        assert_eq!(titles(&wednesday), ["Lunch", "Winding down"], "lunch moved that day, the night without its alarm");
+        assert_eq!(wednesday.rows[1].item.line, "No alarm");
+        for c in [&today, &tuesday, &wednesday] {
+            assert!(c.rows.iter().all(|p| p.item.kind != Kind::Dose) && c.doses.iter().all(|d| d.title.contains("ose")), "never a medicine's name");
+        }
     }
 
     /// The evening with a night set (part 2's open point, decided in part 4):
@@ -1669,7 +1916,7 @@ mod tests {
         let caf = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: "caf".into(), address: "sioul:task/caf".into(), title: "CAF form".into(), date: day("2026-10-09"), at: None }, day("2026-10-05"), &tr);
         let notice = crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Notice, key: "box".into(), address: "sioul:contract/box".into(), title: "Internet box".into(), date: day("2026-10-06"), at: None }, day("2026-10-05"), &tr);
         let dates = vec![notice, caf];
-        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, first_hour: None, zone: &zone, tr: &tr });
         let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
         assert_eq!(at_("2026-10-05T10:00"), "Work until 17:00. Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.", "the notice day never");
         assert_eq!(at_("2026-10-05T18:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.", "dinner and the night to come: tomorrow, no date");
@@ -1677,7 +1924,7 @@ mod tests {
         // No hours set (everything comes, all day): the day's line until 18:00, its date
         // named; tomorrow's after (review of part 4, later 8).
         let any = vec![(at("2026-10-05T00:00"), at("2026-10-06T00:00"), crate::quiet::Mode { until: None, ..moment(Hours::Any, Reason::NoHours, "2026-10-06T00:00") })];
-        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &today, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, first_hour: None, zone: &zone, tr: &tr });
         let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
         assert_eq!(at_("2026-10-05T10:00"), "Next: 19:10 Dinner. Date asked: CAF form, Friday 9 October: four days left.");
         assert_eq!(at_("2026-10-05T19:00"), "Tomorrow: 09:30 Dentist. Alarm at 07:00.");
@@ -1686,9 +1933,18 @@ mod tests {
         let mut concert = thing("Concert", Kind::Event, "2026-10-05T20:00", "2026-10-05T22:00");
         concert.time = Time::span(at("2026-10-05T20:00"), at("2026-10-05T22:00"));
         let evening = vec![concert];
-        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &evening, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, zone: &zone, tr: &tr });
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T10:00"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &evening, tomorrow: std::slice::from_ref(&dentist), alarm: Some(at("2026-10-06T07:00")), dates: &dates, first_hour: None, zone: &zone, tr: &tr });
         let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
         assert_eq!(at_("2026-10-05T10:00"), "Next: 20:00 Concert. Date asked: CAF form, Friday 9 October: four days left.");
         assert_eq!(at_("2026-10-05T19:00"), "Next: 20:00 Concert.");
+        // Just after midnight, no hours and no night set: no date before the plan's first hour
+        // (08:00 here; else 06:00), named from then (review of e5bd27b, later 4).
+        for (first, before, after) in [(Some(8), "2026-10-05T07:30", "2026-10-05T08:10"), (None, "2026-10-05T05:30", "2026-10-05T06:10")] {
+            let frames = head_line(&HeadInputs { now: at("2026-10-05T00:30"), next_midnight: at("2026-10-06T00:00"), moments: &any, today: &evening, tomorrow: std::slice::from_ref(&dentist), alarm: None, dates: &dates, first_hour: first, zone: &zone, tr: &tr });
+            let at_ = |t: &str| frames.iter().find(|f| f.from <= at(t) && at(t) < f.until).map(|f| f.text.clone()).unwrap_or_default();
+            assert_eq!(at_("2026-10-05T00:30"), "Next: 20:00 Concert.", "{first:?}");
+            assert_eq!(at_(before), "Next: 20:00 Concert.", "{first:?}");
+            assert_eq!(at_(after), "Next: 20:00 Concert. Date asked: CAF form, Friday 9 October: four days left.", "{first:?}");
+        }
     }
 }

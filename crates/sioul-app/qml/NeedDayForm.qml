@@ -230,11 +230,10 @@ Dialog {
             text: form.sioul.text(form.mode === "move" ? "need-move-to" : "need-form-from")
             color: form.theme.muted
         }
-        TextField {
+        ClockField {
             id: from
 
             Layout.preferredWidth: 80
-            inputMask: "99:99"
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text(form.mode === "move" ? "need-move-to" : "need-form-from")
             onAccepted: form.save()
@@ -245,12 +244,11 @@ Dialog {
             text: form.sioul.text("needs-bed")
             color: form.theme.muted
         }
-        TextField {
+        ClockField {
             id: bed
 
             visible: form.mode === "times" && form.night
             Layout.preferredWidth: 80
-            inputMask: "99:99"
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text("needs-bed")
         }
@@ -259,12 +257,11 @@ Dialog {
             text: form.sioul.text(form.night ? "needs-wake" : "need-form-to")
             color: form.theme.muted
         }
-        TextField {
+        ClockField {
             id: to
 
             visible: form.mode !== "move"
             Layout.preferredWidth: 80
-            inputMask: "99:99"
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text(form.night ? "needs-wake" : "need-form-to")
             onAccepted: form.save()

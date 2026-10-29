@@ -87,6 +87,51 @@ struct DayShown {
     more: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     said: Vec<String>,
+    /// The Month's lines (`timeline::month_lines`): its dates, then its
+    /// appointments and pinned times; the Month's days alone.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    lines: Vec<Row>,
+    /// A day off: its Month cell shaded.
+    #[serde(skip_serializing_if = "is_false")]
+    off: bool,
+    /// What comes' rows, its doses by the minute and the plan's line
+    /// (`timeline::comes`); What comes' days alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comes: Option<ComesShown>,
+}
+
+/// A day of What comes: its rows with their details, its doses, the plan's line.
+#[derive(Serialize)]
+struct ComesShown {
+    rows: Vec<Row>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    doses: Vec<timeline::DoseLine>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    plan: String,
+}
+
+/// What the days are shown as: the Day and the Week (one timeline of every
+/// kind), the Month (dates and appointments), What comes (today in full,
+/// other days what differs); any other count of days, their events alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Drawn,
+    Month,
+    Comes,
+    Events,
+}
+
+impl Mode {
+    /// As the page asks for its days (`showDays`): one or seven, What comes'
+    /// fifteen days, the Month's six weeks.
+    fn of(days: i64) -> Mode {
+        match days {
+            1 | 7 => Mode::Drawn,
+            15 => Mode::Comes,
+            42 => Mode::Month,
+            _ => Mode::Events,
+        }
+    }
 }
 
 /// A thing of the day: the item as placed, and an event's details for its
@@ -414,8 +459,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let tasks = tasks_known(shared);
     let started = std::time::Instant::now();
     // The Day and the Week draw every kind, the day before's night too (its morning); the
-    // Month and What comes the events alone (the unified agenda, §4.7).
-    let drawn = state.days == 1 || state.days == 7;
+    // Month its dates and appointments; What comes today in full and what differs (§4.7).
+    let mode = Mode::of(state.days);
+    let drawn = mode == Mode::Drawn;
     let read_from = if drawn { from - 86_400 } else { from };
     // Today drawn: tomorrow read with it, for the head line (one read of the calendars).
     let after_tomorrow = today.tomorrow().and_then(|d| d.tomorrow()).map_or(to, |d| midnight(d, &zone));
@@ -436,6 +482,37 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     appointment_lines(&mut items, &occurrences, &tasks, &zone);
     let mut doses_note = String::new();
     let plan = work::plan_shown().filter(|p| p.made_on == today);
+    let mut health_read = None;
+    if mode == Mode::Comes {
+        if let Some(plan) = &plan {
+            items.extend(laid_items(plan, &occurrences, state.from, state.days, &now).into_iter().map(|mut item| {
+                if errand(&item.owner) {
+                    item.privacy = timeline::Privacy::Health;
+                    item.address.clear();
+                }
+                item
+            }));
+        }
+        let needs = sioul_core::needs::Needs::read(&sioul_core::health::Health::default_path());
+        let days = plan.as_ref().filter(|p| p.current()).map_or_else(|| sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path()), |p| p.settings().needs_days.clone());
+        let shifts_today = plan.as_ref().filter(|p| p.current()).map(|p| p.settings().shifts.clone());
+        items.extend(needs_items(&needs, &days, shifts_today.as_ref(), &occurrences, state.from, state.days, &now));
+        let health = sioul_core::health::Health::read(&sioul_core::health::Health::default_path());
+        match &health {
+            Ok(health) => items.extend(dose_items(health, state.from, state.days, &now)),
+            Err(_) => doses_note = tr().text("agenda-doses-unread", None),
+        }
+        health_read = Some((health, needs, days));
+    }
+    if matches!(mode, Mode::Month | Mode::Comes) {
+        // The Month's dates too: a prescription's, by its kind (a pure read of the health file).
+        let month_health = (mode == Mode::Month).then(|| sioul_core::health::Health::read(&sioul_core::health::Health::default_path()).ok()).flatten();
+        let health = health_read.as_ref().and_then(|(h, _, _)| h.as_ref().ok()).or(month_health.as_ref());
+        items.extend(timeline::days_off(&load_config().time_off));
+        items.extend(crate::dated::items(&tasks, &occurrences, health, state.from, state.days, &now, &errand));
+        let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
+        items = timeline::merge(items, stamp, &open);
+    }
     if drawn {
         if let Some(plan) = &plan {
             // An errand's steps and its task done are health too, as its block is.
@@ -467,12 +544,28 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let mut days = timeline::days(&items, state.from, state.days, today, &zone, tr());
     timeline::set_hours(&mut days, &load_config().week_hours(), &zone);
     let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &now) } else { (None, Vec::new()) };
+    // What comes: each day's rows (`timeline::comes`), and today's head line above them.
+    let planned: &[sioul_core::tasks::Task] = plan.as_ref().map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
+    let quiet = plan.as_ref().and_then(|p| p.quiet());
+    let hidden = |uid: &str| quiet.is_some_and(|q| planned.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
+    let comes: Vec<Option<timeline::Comes>> = match (&health_read, mode) {
+        (Some((health, needs, needs_days)), Mode::Comes) => {
+            let no_alarm: std::collections::BTreeSet<jiff::civil::Date> = dates(state.from, state.days).filter(|date| crate::wake::of_night(needs, *date, &zone, needs_days).1).collect();
+            let set_times: std::collections::BTreeSet<String> = health.as_ref().map(|h| h.medicines.iter().filter(|m| matches!(m.schedule, sioul_core::health::Schedule::Day { .. })).map(|m| m.id.clone()).collect()).unwrap_or_default();
+            let every_day = |key: &str| key.rsplit_once('@').is_some_and(|(medicine, _)| set_times.contains(medicine));
+            let of = timeline::ComesOf { now: stamp, today, no_alarm: &no_alarm, every_day: &every_day, hidden: &hidden, zone: &zone, tr: tr() };
+            days.iter().map(|d| Some(timeline::comes(d, &of))).collect()
+        }
+        _ => days.iter().map(|_| None).collect(),
+    };
+    let head = if mode == Mode::Comes && days.iter().any(|d| d.today) { head_frames(&items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &hidden, &now) } else { head };
+    let lines: Vec<(Vec<Placed>, bool)> = days.iter().map(|d| if mode == Mode::Month { (timeline::month_lines(d), timeline::day_off(d)) } else { (Vec::new(), false) }).collect();
     let detail = |placed: &Placed| match &placed.item.source {
         timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start).map(Detail::of),
         _ => None,
     };
     let row = |placed: Placed| Row { detail: detail(&placed), placed };
-    let empty = days.iter().all(|d| d.head.is_empty() && d.timed.is_empty());
+    let empty = days.iter().all(|d| d.head.is_empty() && d.timed.is_empty()) && comes.iter().flatten().all(timeline::Comes::is_empty);
     let can_add = agenda::default_calendar().is_some();
     let sentence = match (empty, can_add || !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty()) {
         (true, false) => tr().text("agenda-no-calendar", None),
@@ -489,7 +582,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         doses_note,
         days: days
             .into_iter()
-            .map(|d| DayShown {
+            .zip(comes)
+            .zip(lines)
+            .map(|((d, comes), (lines, off))| DayShown {
                 date: d.date,
                 title: d.title,
                 today: d.today,
@@ -497,8 +592,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 start: d.start,
                 hours_from: d.hours_from,
                 hours_to: d.hours_to,
-                head: d.head.into_iter().map(row).collect(),
-                timed: d.timed.into_iter().map(row).collect(),
+                // The Month and What comes say their own (`lines`, `comes`): the day's things once.
+                head: if matches!(mode, Mode::Drawn | Mode::Events) { d.head.into_iter().map(row).collect() } else { Vec::new() },
+                timed: if matches!(mode, Mode::Drawn | Mode::Events) { d.timed.into_iter().map(row).collect() } else { Vec::new() },
                 hours: d.hours,
                 bands: d.bands,
                 hidden: d.hidden,
@@ -508,6 +604,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 plan: d.plan,
                 more: d.more,
                 said: d.said,
+                lines: lines.into_iter().map(row).collect(),
+                off,
+                comes: comes.map(|c| ComesShown { rows: c.rows.into_iter().map(row).collect(), doses: c.doses, plan: c.plan }),
             })
             .collect(),
     };
@@ -596,9 +695,10 @@ fn needs_items(needs: &sioul_core::needs::Needs, days: &sioul_core::needs::Days,
             let near: Vec<Occurrence> = occurrences.iter().filter(|o| o.end > start - 86_400 && o.start < end + 86_400).cloned().collect();
             work::held_by_plan(date, now).unwrap_or_else(|| work::held_from(date, now, near))
         };
+        // One rule with Health's list (the needs adapter, part 5): today as the plan pushed them.
         let pushed = match (date == today, shifts_today) {
             (true, Some(shifts)) => shifts.clone(),
-            _ => needs.past_events_on(date, zone, days, &held()),
+            _ => crate::health::pushed_on(needs, days, date, now, &held),
         };
         for kept in needs.blocks_of(date, zone, days, &|key: &str| pushed.get(key).copied().unwrap_or(0)) {
             // The day before the first: its night alone, for its morning.
@@ -814,7 +914,7 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     // line names none), for its second sentence in work and admin time.
     let to_sunday = 8 - i64::from(today.weekday().to_monday_one_offset());
     let dates = crate::dated::items(known, occurrences, None, today, to_sunday, now, &errand_in(known));
-    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, dates: &dates, zone: &zone, tr: tr() };
+    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, dates: &dates, first_hour: load_config().agenda.day_start, zone: &zone, tr: tr() };
     timeline::head_line(&inputs)
 }
 
@@ -1406,6 +1506,51 @@ mod tests {
             assert!(!said.contains(&tr().text("agenda-errand-refill", None)) && !said.contains("Kinds appointment"), "{said}");
         }
         work::forget_plan();
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_file(&health);
+    }
+    /// What comes and the Month say their own (the unified agenda, part 5):
+    /// What comes' days carry their rows, today's doses by the minute, unnamed
+    /// ("Dose"), another day's usual doses left out, and no `head`/`timed` of
+    /// their own; the Month's days carry their lines (appointments), and no
+    /// meal, step or dose; neither ever names a medicine.
+    #[test]
+    fn what_comes_and_the_month_say_their_own() {
+        let _health_tests = crate::health::health_files_held();
+        sioul_core::config::stand_ins_only();
+        let health = sioul_core::health::Health::default_path();
+        std::fs::create_dir_all(health.parent().unwrap()).unwrap();
+        std::fs::write(&health, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"comprimel\"\nname = \"Comprimel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n").unwrap();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Coming", None, &["VEVENT"]).unwrap();
+        let (now, zone) = (Zoned::now(), TimeZone::system());
+        let later = now.date().checked_add(jiff::Span::new().days(3)).unwrap();
+        let utc = |hour: i8| later.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        std::fs::write(calendar.dir.join("coming.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:coming-1\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Coming appointment\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(10), utc(11))).unwrap();
+        let shared = Arc::new(Shared::default());
+        let shown = |days: i64| {
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = now.date();
+                state.days = days;
+                state.upcoming = days == 15;
+            }
+            let text = made(&shared).0;
+            (serde_json::from_str::<serde_json::Value>(&text).unwrap(), text)
+        };
+        let (comes, text) = shown(15);
+        let days = comes["days"].as_array().unwrap();
+        assert!(days.iter().all(|d| d["head"].as_array().is_some_and(Vec::is_empty) && d["timed"].as_array().is_some_and(Vec::is_empty)), "the day's things once");
+        let today = &days[0]["comes"];
+        let dose = tr().text("agenda-dose", None);
+        assert!(today["doses"].as_array().is_some_and(|d| !d.is_empty() && d.iter().all(|l| l["title"] == dose.as_str() && l["keys"].as_array().is_some_and(|k| k.len() == 1))), "today's doses, each its minute: {today}");
+        assert!(days[1]["comes"]["doses"].as_array().is_none_or(Vec::is_empty), "another day's usual doses left out");
+        assert!(days[3]["comes"]["rows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["item"]["title"] == "Coming appointment" && r["detail"].is_object())), "{}", days[3]["comes"]);
+        assert!(!text.contains("Comprimel"), "never a medicine's name");
+        let (month, text) = shown(42);
+        let days = month["days"].as_array().unwrap();
+        let kinds: std::collections::BTreeSet<String> = days.iter().flat_map(|d| d["lines"].as_array().cloned().unwrap_or_default()).map(|r| r["item"]["kind"].as_str().unwrap_or("").to_string()).collect();
+        assert!(kinds.contains("event") && kinds.iter().all(|k| k == "event" || k == "block" || k == "dated" || k == "step"), "{kinds:?}");
+        assert!(days.iter().all(|d| d["comes"].is_null() && d["timed"].as_array().is_some_and(Vec::is_empty)));
+        assert!(!text.contains("Comprimel"));
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_file(&health);
     }

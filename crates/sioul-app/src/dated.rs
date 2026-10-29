@@ -161,6 +161,10 @@ fn letter_card(shared: &Shared, letters: &Letters, letter: &Letter, kind: Kind, 
     let day = |d: Date| tr().day_in(d, today);
     let tasks = sioul_core::tasks::all(zone);
     let task_open = !letter.task.is_empty() && tasks.iter().any(|t| t.uid == letter.task && t.status.is_open());
+    // Its task in none of this device's lists (deleted, or known here by another id: a list
+    // that keeps no UID): nothing to open, and a task for that date offered again (review of
+    // e5bd27b, later 2).
+    let task = crate::letters::task_shown(&letter.task, Some(&tasks));
     let at = r.appointment.and_then(|(d, t)| t.and_then(|(h, m)| d.at(h, m, 0, 0).to_zoned(zone.clone()).ok())).map(|z| z.timestamp().as_second());
     // That day's events, as the agenda read them (the plan's read when current).
     let event = r.appointment.and_then(|(date, _)| {
@@ -217,11 +221,11 @@ fn letter_card(shared: &Shared, letters: &Letters, letter: &Letter, kind: Kind, 
         "lines": lines,
         "edit": edit,
         "file": letters.file_path(letter).display().to_string(),
-        "task": letter.task,
+        "task": task,
         "task_open": task_open,
         "event": event,
         "into_agenda": r.appointment.is_some() && !event.as_ref().is_some_and(|e| e["address"] == true),
-        "can_task": r.deadline.is_some() && letter.task.is_empty(),
+        "can_task": r.deadline.is_some() && task.is_empty(),
         "project": letter.project,
         "item": {
             "deadline": r.deadline.map(|d| d.to_string()).unwrap_or_default(),
@@ -310,7 +314,7 @@ mod tests {
         let at = |time: &str| format!("2026-10-29T{time}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let block = Occurrence { key: "/nowhere/block.ics".into(), uid: "block".into(), summary: "Gather the papers".into(), task: "gather".into(), start: at("13:30"), end: at("14:00"), ..Occurrence::default() };
         let cancelled = Occurrence { key: "/nowhere/gone.ics".into(), uid: "gone".into(), summary: "Doctor".into(), cancelled: true, start: at("14:00"), end: at("14:30"), ..Occurrence::default() };
-        let marked = |events: &[Occurrence]| dated::of_letters(&letters, &[], &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
+        let marked = |events: &[Occurrence]| dated::of_letters(&letters, &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
         assert!(marked(std::slice::from_ref(&block)), "a block is no event of yours");
         assert!(marked(std::slice::from_ref(&cancelled)), "nor one cancelled");
         let doctor = Occurrence { cancelled: false, ..cancelled };

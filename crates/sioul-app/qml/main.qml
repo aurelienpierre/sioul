@@ -335,6 +335,16 @@ SioulWindow {
         agendaPage.showDay(window.today)
     }
 
+    // This week in the agenda's Week: what Health's Week opens (part 5, for one release).
+    function showAgendaWeek() {
+        window.page = 4
+        agendaPage.anchor = new Date(window.today + "T12:00:00")
+        if (agendaPage.mode === "week")
+            agendaPage.load()
+        else
+            agendaPage.mode = "week"
+    }
+
     function openNote(path) {
         cardHost.leave()
         window.page = 6
@@ -1122,28 +1132,22 @@ SioulWindow {
             // In French (make-demo.py --language fr), the same places, under its names.
             readonly property bool demoFrench: sioul.text("qt-locale") === "fr_FR"
             // Each page in a phone's layout (SIOUL_GRAB_STEPS=phone), Settings scrolled too.
-            // The Health page's timeline opened readable, as a finger's long press
-            // opens it on a thin day (SIOUL_GRAB_STEPS=drag; SIOUL_GRAB_PHONE for a phone's).
+            // Health's day as its list, then the week it opens: the agenda's, which a
+            // finger reads and moves as Health's timeline did (SIOUL_GRAB_STEPS=drag;
+            // SIOUL_GRAB_PHONE for a phone's).
             readonly property var dragSteps: [
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health-day"),
-                () => healthPage.showReadable(true),
-                () => {},
-                () => grabber.save("health-readable"),
-                () => healthPage.showReadable(false),
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
-                () => healthPage.showReadable(true),
-                () => {},
-                () => grabber.save("health-week-readable"),
                 () => window.close()
             ]
             // The agenda's Day and Week, one timeline of everything with a time
             // (SIOUL_GRAB_STEPS=agenda; SIOUL_GRAB_PHONE for a phone's, then in
             // landscape): today's Day, its Show menu, the Week (a phone's: a list of
-            // days), the next week; the items alive in each, said in the log.
+            // days), the next week, What comes and the Month; the items alive in each, said in the log.
             // Pictures alone: nothing is changed.
             readonly property var agendaSteps: [
                 () => window.page = 4,
@@ -1163,6 +1167,25 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveCounted("agenda-next-week", agendaPage),
+                // What comes and the Month (the unified agenda, part 5), from today.
+                () => {
+                    agendaPage.anchor = new Date(window.today + "T12:00:00")
+                    agendaPage.mode = "agenda"
+                },
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-comes", agendaPage),
+                () => agendaPage.mode = "month",
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-month", agendaPage),
+                // Back to next week, which the next step leaves for this week.
+                () => {
+                    agendaPage.anchor = new Date(window.today + "T12:00:00")
+                    agendaPage.mode = "week"
+                    agendaPage.move(1)
+                },
+                () => {},
                 () => {
                     agendaPage.move(-1)
                     if (window.phoneGrab) {
@@ -3621,7 +3644,8 @@ SioulWindow {
             readonly property var health: [
                 () => window.page = 10,
                 () => {},
-                () => grabber.save("health"),
+                // The items alive under the page, said in the log (part 5: its day a list alone).
+                () => grabber.saveCounted("health", healthPage),
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),

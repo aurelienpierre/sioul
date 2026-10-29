@@ -1391,7 +1391,7 @@ related-title = Lié à cela
 task-mode-now = Maintenant
 task-mode-list = Liste
 task-mode-board = Tableau
-task-mode-timeline = Calendrier
+task-mode-timeline = Gantt
 task-capture-hint = Une tâche en une ligne : « Appeler les impôts demain ~15m #projet {"{"}date demandée{"}"} »
 chip-start = à partir du
 chip-due = date demandée
@@ -1425,8 +1425,8 @@ task-pinned-move = Déplacer…
 task-pinned-open = Ouvrir dans l’agenda
 task-pinned-menu = Que faire de cette heure
 task-pinned = Fixée : { $when }
-task-pinned-today = aujourd’hui, { $from }–{ $to }
-task-pinned-day = { $day }, { $from }–{ $to }
+task-pinned-today = aujourd’hui, { $from } – { $to }
+task-pinned-day = { $day }, { $from } – { $to }
 task-pinned-read-only = Son agenda est en lecture seule ici : déplacez-le dans l’application d’où il vient.
 task-pin-before-now = Une étape reçoit une heure à partir de maintenant.
 blocks-calendar = Tâches planifiées
@@ -2089,7 +2089,7 @@ project-kind-own = À vous
 project-rate = { $rate } de l’heure
 project-board = Tableau
 project-list = Liste
-project-calendar = Calendrier
+project-calendar = Gantt
 project-open-tasks = { $n ->
     [one] une tâche ouverte
    *[other] { $n } tâches ouvertes
@@ -6356,6 +6356,16 @@ texts-copy-all = Copier le SMS
 
 # The agenda's one timeline (the unified agenda, part 2): the lists' line, today's steps that find no time, the bands of quiet time.
 agenda-plan-first = Le plan : d’abord { $step }
+agenda-plan-then = Le plan : { $step }, puis { $then }
+agenda-plan-one = Le plan : { $step }
+health-week-in-agenda = La semaine, dans l’agenda
+task-day-in-agenda = La journée, dans l’agenda
+agenda-month-list = Dates et rendez-vous de ce mois
+agenda-no-alarm = Sans réveil
+agenda-doses = { $n ->
+    [one] Prise
+   *[other] { $Countf } prises
+}
 agenda-more = { $n ->
     [one] Une étape de plus d’aujourd’hui ne tient pas avant la fin de la journée : { $steps }.
    *[other] { $Countf } étapes de plus d’aujourd’hui ne tiennent pas avant la fin de la journée : { $steps }.

@@ -602,8 +602,7 @@ pub(crate) fn status(folder: &str) -> String {
     // Every device holding the newer form back, or on an older Sioul once it travels, has its line.
     // And every device keeping your own time around meetings from travelling, while some is set
     // and this device shares its time (re-check of 857c39e, §3.2).
-    let own_time_set = here.shares("time", &config) && !sioul_core::own_time::current().events.is_empty();
-    let holders = formats.as_ref().map(|f| holding(f, own_time_set)).unwrap_or_default();
+    let holders = formats.as_ref().map(|f| holding(f, own_time_listed(here.shares("time", &config), !sioul_core::own_time::current().events.is_empty(), f))).unwrap_or_default();
     let devices = if on { crate::health::device_rows(&holders) } else { Vec::new() };
     let backup = backup(on && mirror.is_none(), &path);
     let build = say("share-build", &[("build", sioul_core::build::DESCRIBED.to_string())]);
@@ -619,6 +618,15 @@ pub(crate) fn status(folder: &str) -> String {
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
     let leaving = if on { leaving_rows(&path) } else { Vec::new() };
     json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+}
+
+/// Whether Settings names the devices that keep your own time around
+/// meetings from travelling: while this device shares its time, and either
+/// some is set here, or another device says it reads it, so may hold some to
+/// send here (review of e5bd27b, later 1: the device that needs the sentence
+/// is the one that has none of its own).
+fn own_time_listed(shares_time: bool, set_here: bool, f: &share::Formats) -> bool {
+    shares_time && (set_here || f.others_share_own_time)
 }
 
 /// The devices the sharing lists as holding something back (`share::formats`),
@@ -3458,9 +3466,15 @@ mod tests {
     #[test]
     fn a_device_holding_your_own_time_back_is_listed_while_some_is_set() {
         use crate::health::Holding;
-        let formats = share::Formats { writes: 2, newer: Vec::new(), holders: Vec::new(), older: vec!["old".into()], own_time: vec!["tablet".into()], heard: [("tablet".to_string(), 7_000_000_i64)].into_iter().collect() };
+        let mut formats = share::Formats { writes: 2, newer: Vec::new(), holders: Vec::new(), older: vec!["old".into()], own_time: vec!["tablet".into()], others_share_own_time: false, heard: [("tablet".to_string(), 7_000_000_i64)].into_iter().collect() };
         assert_eq!(holding(&formats, false), [("old".to_string(), 0, Holding::Older)]);
         assert_eq!(holding(&formats, true), [("old".to_string(), 0, Holding::Older), ("tablet".to_string(), 7_000, Holding::OwnTime)]);
+        // When it is listed (review of e5bd27b, later 1 and 7): the time part shared here, and
+        // some own time set here or another device saying it reads it.
+        assert!(own_time_listed(true, true, &formats) && !own_time_listed(true, false, &formats) && !own_time_listed(false, true, &formats));
+        formats.others_share_own_time = true;
+        assert!(own_time_listed(true, false, &formats), "a device with none of its own");
+        assert!(!own_time_listed(false, false, &formats), "its time part not shared here");
     }
 
     /// Can-wait 6 of the review of 36002ea: putting back a calendar's item
