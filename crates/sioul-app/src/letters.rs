@@ -166,10 +166,10 @@ struct View {
 /// hold it not, deleted or known here by another id, so that the row offers
 /// "A task for that date" again rather than open a task that is not here
 /// (review of e5bd27b, later 2).
-pub(crate) fn task_shown(task: &str, tasks: Option<&[sioul_core::tasks::Task]>) -> String {
+pub(crate) fn task_shown(letter: &Letter, tasks: Option<&[sioul_core::tasks::Task]>) -> String {
     match tasks {
-        Some(tasks) if !tasks.iter().any(|t| t.uid == task) => String::new(),
-        _ => task.to_string(),
+        Some(tasks) if needs_task(letter, tasks) => String::new(),
+        _ => letter.task.clone(),
     }
 }
 
@@ -191,9 +191,27 @@ pub(crate) fn untie_task(root: &Path, uid: &str) -> Result<bool, String> {
     })
 }
 
+/// The tasks a row of letters may trust to say a letter's task: the plan's,
+/// while it is current (`PlanShown::current`: no write since it was read).
+/// After any write (a task just made for a letter among them) none, so that
+/// the row says the letter's own task until the plan is made again, never ""
+/// for a task the plan has not read yet (review of 21436bf, M1).
+fn tasks_trusted(plan: Option<Arc<crate::work::PlanShown>>) -> Option<Arc<sioul_core::links::Loaded>> {
+    plan.filter(|p| p.current()).map(|p| Arc::clone(p.loaded()))
+}
+
+/// A file just removed (its text, read before): when it held a task, the
+/// letters naming that task are untied (`untie_task`), by the task's own UID
+/// (`tasks::task_of_text`), never another component's (an alarm's UID, RFC
+/// 9074); an event or a time block unties nothing (review of 21436bf, later
+/// 4). Whether any letter was.
+pub(crate) fn untie_removed(root: &Path, text: &str) -> bool {
+    sioul_core::tasks::task_of_text(text, &jiff::tz::TimeZone::system()).is_some_and(|task| untie_task(root, &task.uid).unwrap_or(false))
+}
+
 /// The letters not done with, as JSON; each letter's task as the tasks
-/// known here say it (`task_shown`, the last read: nothing read here).
-pub(crate) fn view(shared: &Shared) -> String {
+/// known here say it (`task_shown`, the plan's while current: nothing read here).
+pub(crate) fn view() -> String {
     let mut view = View {
         inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(),
         missing: MISSING.lock().map(|m| m.clone()).unwrap_or_default(),
@@ -203,7 +221,7 @@ pub(crate) fn view(shared: &Shared) -> String {
     let Some(root) = load_config().notes_root_path() else { return json(&view) };
     let Ok(letters) = Letters::load(&root) else { return json(&view) };
     let today = jiff::Zoned::now().date();
-    let known = crate::work::loaded_known(shared);
+    let known = tasks_trusted(crate::work::plan_shown());
     let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
     view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
     for letter in letters.list.iter().filter(|l| l.status != "done") {
@@ -242,7 +260,7 @@ pub(crate) fn view(shared: &Shared) -> String {
             file: letters.file_path(letter).display().to_string(),
             deadline: r.deadline.map(|d| d.to_string()).unwrap_or_default(),
             appointment: r.appointment.is_some(),
-            task: task_shown(&letter.task, known.as_ref().map(|l| l.tasks.as_slice())),
+            task: task_shown(letter, known.as_ref().map(|l| l.tasks.as_slice())),
             project: letter.project.clone(),
             problem: letter.problem.clone(),
         });
@@ -267,9 +285,22 @@ fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Resul
     }
 }
 
-/// A task for its date, in your usual list, tied to its scan and its project.
+/// Whether a letter needs a task made for its date: none named, or the one
+/// it names in none of this device's lists (deleted, `Letter::task_in`). A
+/// task there is never made twice, whatever a row says of it before the plan
+/// is made again, and a double press makes one (review of 21436bf, M1).
+fn needs_task(letter: &Letter, tasks: &[sioul_core::tasks::Task]) -> bool {
+    !letter.task_in(tasks)
+}
+
+/// A task for its date, in your usual list, tied to its scan and its project;
+/// nothing when the letter's task is there already (`needs_task`).
 pub(crate) fn make_task(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     with_letter(id, |letters, letter| {
+        // The lists read from their files only when the letter names a task: a first press reads none.
+        if !letter.task.is_empty() && !needs_task(letter, &sioul_core::tasks::all(&jiff::tz::TimeZone::system())) {
+            return Ok(String::new());
+        }
         // Filed first: the task's link holds where the scan stays.
         letters.file_away(letter)?;
         let r = &letter.reading;
@@ -430,10 +461,46 @@ mod tests {
     fn a_letter_s_task_as_this_device_knows_it() {
         use super::task_shown;
         let task = sioul_core::tasks::Task { uid: "t2".into(), ..Default::default() };
-        assert_eq!(task_shown("t1", Some(std::slice::from_ref(&task))), "");
-        assert_eq!(task_shown("t2", Some(std::slice::from_ref(&task))), "t2");
-        assert_eq!(task_shown("t1", None), "t1", "nothing read yet");
-        assert_eq!(task_shown("", Some(&[])), "");
+        let letter = |task: &str| sioul_core::letters::Letter { task: task.into(), ..Default::default() };
+        assert_eq!(task_shown(&letter("t1"), Some(std::slice::from_ref(&task))), "");
+        assert_eq!(task_shown(&letter("t2"), Some(std::slice::from_ref(&task))), "t2");
+        assert_eq!(task_shown(&letter("t1"), None), "t1", "nothing read yet");
+        assert_eq!(task_shown(&letter(""), Some(&[])), "");
+        // A Google list's task, by the id that list gave it (review of 21436bf, later 3).
+        let google = sioul_core::letters::Letter { task: "t9".into(), task_elsewhere: "t2".into(), ..Default::default() };
+        assert_eq!(task_shown(&google, Some(std::slice::from_ref(&task))), "t9");
+    }
+
+    /// A letter's task is said as the letter names it until the plan is made
+    /// again after a write (a task just made for it): a plan older than a write
+    /// is no source to say it is gone (review of 21436bf, M1 and later 9).
+    #[test]
+    fn a_letter_s_task_is_said_as_written_until_the_plan_is_current() {
+        sioul_core::config::stand_ins_only();
+        let shared = crate::backend::Shared::default();
+        crate::work::publish_now(&shared);
+        // A write since the plan was read (the task made for the letter): the plan is not current.
+        sioul_core::timeline::note_written();
+        let trusted = super::tasks_trusted(crate::work::plan_shown());
+        assert!(trusted.is_none(), "an older plan is not trusted");
+        let letter = sioul_core::letters::Letter { task: "just-made".into(), ..Default::default() };
+        assert_eq!(task_shown_of(&letter, trusted), "just-made", "said as written");
+        crate::work::forget_plan();
+    }
+
+    fn task_shown_of(letter: &sioul_core::letters::Letter, known: Option<std::sync::Arc<sioul_core::links::Loaded>>) -> String {
+        super::task_shown(letter, known.as_ref().map(|l| l.tasks.as_slice()))
+    }
+
+    /// A letter whose task is in a list here gets none made again; one whose
+    /// task is gone, or names none, gets one (review of 21436bf, M1).
+    #[test]
+    fn a_letter_s_task_is_made_once() {
+        let there = sioul_core::tasks::Task { uid: "t1".into(), ..Default::default() };
+        let letter = |task: &str| sioul_core::letters::Letter { task: task.into(), ..Default::default() };
+        assert!(!super::needs_task(&letter("t1"), std::slice::from_ref(&there)), "its task there: none made");
+        assert!(super::needs_task(&letter("t1"), &[]), "its task gone: one made");
+        assert!(super::needs_task(&letter(""), std::slice::from_ref(&there)), "none named: one made");
     }
 
     /// A task deleted here is taken out of the letters that name it, those
@@ -457,6 +524,33 @@ mod tests {
         let before = std::fs::read(&file).unwrap();
         assert_eq!(super::untie_task(&root, "nobody"), Ok(false));
         assert_eq!(std::fs::read(&file).unwrap(), before, "nothing written");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    /// A removed file unties the letters naming its task by the task's own
+    /// UID, even with an alarm's UID before it; an event and a time block
+    /// untie nothing (review of 21436bf, later 4).
+    #[test]
+    fn a_removed_task_unties_by_its_own_uid() {
+        use sioul_core::letters::{Letter, Letters};
+        let root = std::env::temp_dir().join(format!("sioul-letters-removed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let letter = |id: &str, task: &str| Letter { id: id.into(), status: "new".into(), task: task.into(), ..Default::default() };
+        Letters::change(&root, |letters| {
+            letters.put(letter("caf", "task-1"));
+            letters.put(letter("bank", "alarm-1"));
+            letters.put(letter("rent", "block-1"));
+        })
+        .unwrap();
+        let block = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:block-1\r\nDTSTART:20991023T090000Z\r\nDTEND:20991023T100000Z\r\nSUMMARY:Rent\r\n{}:rent-task\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", sioul_core::blocks::TASK);
+        assert!(!super::untie_removed(&root, &block), "a time block unties nothing");
+        let event = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:task-1\r\nDTSTART:20991023T090000Z\r\nDTEND:20991023T100000Z\r\nSUMMARY:Same id\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(!super::untie_removed(&root, event), "an event unties nothing");
+        // An alarm's own UID before the task's (RFC 9074): the task's own unties.
+        let task = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nBEGIN:VALARM\r\nUID:alarm-1\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nUID:task-1\r\nSUMMARY:Answer the CAF\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        assert!(super::untie_removed(&root, task));
+        let read = Letters::load(&root).unwrap();
+        assert_eq!([read.get("caf").unwrap().task.as_str(), read.get("bank").unwrap().task.as_str(), read.get("rent").unwrap().task.as_str()], ["", "alarm-1", "block-1"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

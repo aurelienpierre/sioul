@@ -36,12 +36,13 @@ Item {
     function comesRows(day) {
         const comes = day.comes || { rows: [] }
         const out = []
-        for (const placed of comes.rows || []) {
+        for (const placed of (comes.rows || []).filter(p => page.shownHere(p.item))) {
             const item = placed.item
             const detail = placed.detail || {}
             out.push({ sort: item.kind === "night" ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
         }
-        for (const dose of comes.doses || []) {
+        // Show leaves the doses out here as in the Day and the Week (review of 21436bf, later 2).
+        for (const dose of page.hide.doses ? [] : comes.doses || []) {
             let known = ""
             let words = ""
             if (day.today) {
@@ -56,6 +57,25 @@ Item {
             out.push({ sort: dose.minute, id: "doses:" + day.date + "/" + dose.minute, when: dose.when, title: dose.title, line: words, kind: "dose", tone: "plain", colour: "transparent", known: known, cancelled: false, tentative: false, placed: null, keys: dose.keys })
         }
         return out.sort((a, b) => a.sort - b.sort)
+    }
+
+    // What Show keeps on this device, in What comes and the Month as in the Day and the Week
+    // (WeekPlanning's `shown`): the plan's steps, meals and rest, a calendar by its place
+    // (review of 21436bf, later 2). The dates asked are never left out (decision 8).
+    function shownHere(item) {
+        const hide = page.hide
+        if (hide.steps && (item.kind === "step" || item.kind === "done"))
+            return false
+        if (hide.needs && (item.kind === "meal" || item.kind === "nap" || item.kind === "night"))
+            return false
+        if ((item.kind === "event" || item.kind === "block") && hide.calendars.indexOf((item.source || {}).collection) >= 0)
+            return false
+        return true
+    }
+
+    // The plan's line of a day in What comes, unless Show leaves the steps out.
+    function comesPlan(day) {
+        return page.hide.steps || !day.comes ? "" : day.comes.plan || ""
     }
 
     // A row of What comes or of a phone's Month list: its card where you are; a dose's, its day in Health.
@@ -100,7 +120,7 @@ Item {
         page.takeShown()
         if (page.visible) {
             page.readAgain()
-            if (page.drawnToday)
+            if (page.todayShown)
                 page.sioul.refreshHealth()
         }
     }
@@ -125,7 +145,7 @@ Item {
     readonly property var calendarsShown: {
         const out = (page.view.calendars || []).slice()
         for (const day of page.shown.days)
-            for (const row of (day.head || []).concat(day.timed || [])) {
+            for (const row of (day.head || []).concat(day.timed || [], day.lines || [], (day.comes || {}).rows || [])) {
                 const source = row.item.source || {}
                 if (source.type === "calendar" && source.collection && !out.some(c => c.id === source.collection))
                     out.push({ id: source.collection, name: source.calendar || source.collection })
@@ -168,8 +188,10 @@ Item {
                 found = frame
         return found
     }
-    // The Day or the Week shows today: the doses' marks and today's steps follow the clock.
-    readonly property bool drawnToday: (page.mode === "day" || page.mode === "week") && page.shown.days.some(d => d.date === page.window.today)
+    // Today shown, in the Day, the Week or What comes: the doses' marks and rows, and today's
+    // steps, follow the clock; the doses' reading asked at each minute, on showing and on
+    // coming back, today laid again at each five minutes' turn (review of 21436bf, M2).
+    readonly property bool todayShown: (page.mode === "day" || page.mode === "week" || page.mode === "agenda") && page.shown.days.some(d => d.date === page.window.today)
 
     function today() {
         return new Date()
@@ -229,7 +251,7 @@ Item {
         // Back on the screen while today is drawn: the doses read again at once, not at the
         // next minute's turn (until then, their marks say they are being read).
         function onBackAtChanged() {
-            if (page.visible && page.drawnToday)
+            if (page.visible && page.todayShown)
                 page.sioul.refreshHealth()
         }
 
@@ -237,12 +259,12 @@ Item {
             if (!page.visible)
                 return
             // While today is drawn: the doses' marks read again at each minute (the Health job, one run for all who ask).
-            if (page.drawnToday)
+            if (page.todayShown)
                 page.sioul.refreshHealth()
             if (page.window.today === page.readOn && Math.floor(page.window.now / 300) === Math.floor(page.readAt / 300))
                 return
             // Today laid again from now, cheaply (the plan as last made): its publish brings the agenda's days.
-            if (page.drawnToday && page.window.today === page.readOn) {
+            if (page.todayShown && page.window.today === page.readOn) {
                 page.readAt = page.window.now
                 page.sioul.relayToday()
             } else {
@@ -491,7 +513,7 @@ Item {
                     id: showButton
 
                     objectName: "agendaShow"
-                    visible: !page.narrow && (page.mode === "day" || page.mode === "week")
+                    visible: !page.narrow
                     Layout.preferredWidth: page.width < 1000 ? 40 : -1
                     text: page.sioul.text("agenda-show")
                     icon.name: "view-filter"
@@ -533,7 +555,7 @@ Item {
                 Button {
                     id: showButtonNarrow
 
-                    visible: page.mode === "day" || page.mode === "week"
+                    visible: true
                     Layout.preferredWidth: 40
                     text: page.sioul.text("agenda-show")
                     icon.name: "view-filter"
@@ -617,7 +639,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 12
-                model: page.mode === "agenda" ? page.shown.days.filter(d => d.today || (d.comes && ((d.comes.rows || []).length > 0 || (d.comes.doses || []).length > 0 || (d.comes.plan || "") !== ""))) : []
+                model: page.mode === "agenda" ? page.shown.days.filter(d => d.today || page.comesRows(d).length > 0 || page.comesPlan(d) !== "") : []
                 ScrollBar.vertical: ScrollBar {}
                 // Opened on today (its first day, from today).
                 onCountChanged: Qt.callLater(() => {
@@ -631,7 +653,7 @@ Item {
 
                     required property var modelData
                     readonly property var rows: page.comesRows(day.modelData)
-                    readonly property string plan: day.modelData.comes ? day.modelData.comes.plan || "" : ""
+                    readonly property string plan: page.comesPlan(day.modelData)
 
                     width: daysList.width - 12
                     spacing: 2
@@ -736,7 +758,7 @@ Item {
                 spacing: 4
 
                 // The month's days from today on that hold something: a phone's list.
-                readonly property var listed: page.mode === "month" && page.narrow ? page.shown.days.filter(d => Number(d.date.slice(5, 7)) === page.anchor.getMonth() + 1 && d.date >= page.window.today && (d.lines || []).length > 0) : []
+                readonly property var listed: page.mode === "month" && page.narrow ? page.shown.days.filter(d => Number(d.date.slice(5, 7)) === page.anchor.getMonth() + 1 && d.date >= page.window.today && (d.lines || []).some(p => page.shownHere(p.item))) : []
 
                 DayOfWeekRow {
                     Layout.fillWidth: true
@@ -760,7 +782,7 @@ Item {
                             readonly property bool inMonth: Number(cell.modelData.date.slice(5, 7)) === page.anchor.getMonth() + 1
                             // Today as the window's clock has it: it moves at midnight.
                             readonly property bool today: cell.modelData.date === page.window.today
-                            readonly property var lines: cell.modelData.lines || []
+                            readonly property var lines: (cell.modelData.lines || []).filter(p => page.shownHere(p.item))
                             readonly property var dated: cell.lines.find(p => p.item.kind === "dated") || null
 
                             objectName: "monthCell"
@@ -913,7 +935,7 @@ Item {
                             }
                         }
                         Repeater {
-                            model: (listedDay.modelData.lines || []).map(page.monthRow)
+                            model: (listedDay.modelData.lines || []).filter(p => page.shownHere(p.item)).map(page.monthRow)
 
                             delegate: ItemRow {
                                 id: monthItem

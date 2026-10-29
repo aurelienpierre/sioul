@@ -163,21 +163,20 @@ pub fn links_scan(uri: &str, scan: &str, root: &std::path::Path) -> bool {
 }
 
 /// A letter's date asked and its appointment, while the letter is new: its
-/// date asked gives way while the letter names its task, open (its own mark
-/// stands for it), done (settled), or in none of this device's lists: a list
-/// that keeps no UID (Google's) knows it here by another id, and its date
-/// would be drawn beside it (review of e5bd27b, later 6). A task deleted here
-/// is taken out of its letters (`letters::untie_task` in the window), and the
-/// date comes back then (re-check of 857c39e, §3.5). Its appointment to an event that stands for it
+/// date asked gives way while its task is in a list on this device, open
+/// (its own mark stands for it) or done (settled), found by its UID or, on a
+/// list that keeps no UID (Google's), by the id that list gave it
+/// (`Letter::task_in`, `Letters::note_elsewhere`); a task deleted, here or
+/// elsewhere, gives the date back (review of 21436bf, later 3). Its appointment to an event that stands for it
 /// (`letter_event`; `events_on` gives each day's events). Only from `today` on.
-pub fn of_letters(letters: &Letters, events_on: &dyn Fn(Date) -> Vec<EventSeen>, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<Dated> {
+pub fn of_letters(letters: &Letters, tasks: &[Task], events_on: &dyn Fn(Date) -> Vec<EventSeen>, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<Dated> {
     let mut out = Vec::new();
     for letter in letters.list.iter().filter(|l| l.status != "done") {
         let r = &letter.reading;
         let title = if r.sender.trim().is_empty() { tr.text("letter-unknown-sender", None) } else { r.sender.clone() };
         // Its task stands for its date asked, open or done: a date done is settled
-        // (§7.2, "it goes when settled"; review of part 4, later 7); one known elsewhere too.
-        let tasked = !letter.task.is_empty();
+        // (§7.2, "it goes when settled"; review of part 4, later 7); one deleted, not.
+        let tasked = letter.task_in(tasks);
         if let Some(deadline) = r.deadline.filter(|d| *d >= today)
             && !tasked
         {
@@ -281,7 +280,7 @@ pub fn read_all(config: &crate::config::Config, tasks: &[Task], events_on: &dyn 
     let mut out = of_tasks(tasks, today, zone);
     if let Some(root) = config.notes_root_path() {
         if let Ok(letters) = Letters::load(&root) {
-            out.extend(of_letters(&letters, events_on, today, zone, tr));
+            out.extend(of_letters(&letters, tasks, events_on, today, zone, tr));
         }
         if let Ok(contracts) = crate::contracts::Contracts::load(&root) {
             out.extend(of_contracts(&contracts.list, today));
@@ -415,25 +414,30 @@ mod tests {
         done.status = "done".into();
         let letters = Letters { root: "/home/a/Notes".into(), list: vec![letter("plain", Some("2026-10-30"), Some(("2026-11-02", Some((14, 0))))), tasked, done] };
         let none = |_: Date| Vec::new();
-        let dates = of_letters(&letters, &none, today, &zone, &tr);
+        let mut done_task = task("t1", "");
+        done_task.status = Status::Completed;
+        let dates = of_letters(&letters, &[task("t1", "")], &none, today, &zone, &tr);
         assert_eq!(dates.iter().map(|d| (d.key.as_str(), d.kind)).collect::<Vec<_>>(), [("plain", Kind::Letter), ("plain", Kind::LetterAppointment)]);
         assert_eq!(dates[1].address, "sioul:letter/plain");
         let two = day("2026-11-02").at(14, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
         let stands = |text: &'static str, start: i64, yours: bool| move |_: Date| vec![EventSeen { start, yours, text: text.to_string() }];
-        let appointment = |events: &dyn Fn(Date) -> Vec<EventSeen>| of_letters(&letters, events, today, &zone, &tr).into_iter().any(|d| d.kind == Kind::LetterAppointment);
+        let appointment = |events: &dyn Fn(Date) -> Vec<EventSeen>| of_letters(&letters, &[], events, today, &zone, &tr).into_iter().any(|d| d.kind == Kind::LetterAppointment);
         assert!(!appointment(&stands("BEGIN:VEVENT\r\nLINK;VALUE=URI:sioul:letter/plain\r\nEND:VEVENT\r\n", two + 7_200, false)), "its address");
         assert!(!appointment(&stands("BEGIN:VEVENT\r\nLINK;VALUE=URI:file:///home/a/Notes/letters/2026/plain.pdf\r\nEND:VEVENT\r\n", two + 7_200, false)), "its scan, here");
         assert!(!appointment(&stands("BEGIN:VEVENT\r\nLINK;VALUE=URI:file:///storage/emulated/0/Notes/letters/2026/plain.pdf\r\nEND:VEVENT\r\n", two + 7_200, false)), "its scan, on a phone's notes folder");
         assert!(!appointment(&stands("BEGIN:VEVENT\r\nSUMMARY:Doctor\r\nEND:VEVENT\r\n", two + 1_800, true)), "an event of yours within an hour");
         assert!(appointment(&stands("BEGIN:VEVENT\r\nSUMMARY:Doctor\r\nEND:VEVENT\r\n", two + 5_400, true)), "beyond the hour: still its own mark");
         assert!(appointment(&stands("BEGIN:VEVENT\r\nSUMMARY:Board\r\nEND:VEVENT\r\n", two, false)), "not yours");
-        // Its task, open, done (settled) or in none of this device's lists (a Google list's,
-        // known here by another id), stands for its date asked (review of part 4, later 7;
-        // review of e5bd27b, later 6); untied (its task deleted here), drawn again.
+        // Its task, open or done (settled), stands for its date asked (review of part 4, later 7);
+        // deleted, here or elsewhere, its date back (review of 21436bf, later 3).
         assert!(!dates.iter().any(|d| d.key == "tasked"));
-        let mut untied = letters.clone();
-        untied.list.iter_mut().filter(|l| l.id == "tasked").for_each(|l| l.task.clear());
-        assert!(of_letters(&untied, &none, today, &zone, &tr).iter().any(|d| d.key == "tasked" && d.kind == Kind::Letter), "untied: its date back");
+        assert!(!of_letters(&letters, &[done_task], &none, today, &zone, &tr).iter().any(|d| d.key == "tasked"), "done: settled");
+        assert!(of_letters(&letters, &[], &none, today, &zone, &tr).iter().any(|d| d.key == "tasked" && d.kind == Kind::Letter), "deleted: its date back");
+        // A Google list's task, known on this device by the id that list gave it: found, the date kept hidden.
+        let mut elsewhere = letters.clone();
+        elsewhere.list.iter_mut().filter(|l| l.id == "tasked").for_each(|l| l.task_elsewhere = "g-17".into());
+        assert!(!of_letters(&elsewhere, &[task("g-17", "")], &none, today, &zone, &tr).iter().any(|d| d.key == "tasked"), "found by its list's id");
+        assert!(of_letters(&elsewhere, &[task("g-18", "")], &none, today, &zone, &tr).iter().any(|d| d.key == "tasked"), "another task: the date back");
     }
 
     /// A contract renewing each year with a notice: its last day for notice;

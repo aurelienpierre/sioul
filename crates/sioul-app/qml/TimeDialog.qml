@@ -193,6 +193,8 @@ Dialog {
             }
             ClockField {
                 id: until
+                // An end: Up stops at 23:55 (ClockField's `end`).
+                end: true
 
                 Layout.preferredWidth: 70
                 inputMask: "99:99;_"

@@ -23,6 +23,21 @@ Item {
         ClockField {}
     }
 
+    // A field bound to its model, as the settings' rows are (`text: …`).
+    QtObject {
+        id: model
+
+        property string value: "09:00"
+    }
+
+    Component {
+        id: boundComponent
+
+        ClockField {
+            text: model.value
+        }
+    }
+
     TestCase {
         name: "ClockField"
         when: windowShown
@@ -49,7 +64,36 @@ Item {
             field.text = "25:00"
             keyClick(Qt.Key_Up)
             compare(field.text, "25:00", "what does not read stays as typed")
+            field.text = "9:"
+            keyClick(Qt.Key_Up)
+            compare(field.text.replace(/ /g, ""), "9:", "half typed stays as typed")
             verify(field.inputMask.indexOf("99:99") === 0, field.inputMask)
+        }
+    
+
+        // An end field stops at 23:55, never wrapping to the day's start (review of
+        // 21436bf, later 10).
+        function test_an_end_stops_at_the_day_s_end() {
+            const field = createTemporaryObject(fieldComponent, root, { text: "23:50", end: true })
+            field.forceActiveFocus()
+            keyClick(Qt.Key_Up)
+            keyClick(Qt.Key_Up)
+            compare(field.text, "23:55")
+            field.text = "00:05"
+            keyClick(Qt.Key_Down)
+            keyClick(Qt.Key_Down)
+            compare(field.text, "00:00")
+        }
+
+        // A step keeps the field's binding: its model changed after, it shows the model's.
+        function test_a_step_keeps_the_binding() {
+            const field = createTemporaryObject(boundComponent, root)
+            field.forceActiveFocus()
+            keyClick(Qt.Key_Up)
+            compare(field.text, "09:05")
+            model.value = "14:30"
+            compare(field.text, "14:30", "the model's, after a step")
+            model.value = "09:00"
         }
     }
 }

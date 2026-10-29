@@ -262,6 +262,14 @@ fn sync_list(api: &Api, account: &str, id: &str, local: &str, title: &str, zone:
         if let Err(e) = sioul_core::health::HealthState::note_elsewhere(&record, Timestamp::now().as_second(), &ids) {
             eprintln!("sioul: google tasks: the errands' ids on this list could not be noted ({e:?}): tried again at the next sync");
         }
+        // A letter's task the same way, beside the letter (`Letters::note_elsewhere`): its date
+        // asked gives way on a device that knows the task by that id alone (review of 21436bf,
+        // later 3). Written only when new; tried again at the next sync.
+        if let Some(root) = sioul_core::config::Config::load(&sioul_core::config::default_path()).ok().and_then(|c| c.notes_root_path())
+            && let Err(e) = sioul_core::letters::Letters::note_elsewhere(&root, &ids)
+        {
+            eprintln!("sioul: google tasks: the letters' task ids on this list could not be noted ({e}): tried again at the next sync");
+        }
         pull(api, id, &dir, &mut state, report)
     });
     if synced.is_ok() {

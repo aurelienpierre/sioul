@@ -746,10 +746,6 @@ pub mod qobject {
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
 
-        /// Reads tasks and notes again and shows them.
-        #[qinvokable]
-        fn refresh_work(self: Pin<&mut Sioul>);
-
         /// One task in full, with its steps and what it is tied to, as JSON.
         #[qinvokable]
         fn task(self: &Sioul, uid: &QString) -> QString;
@@ -4569,10 +4565,6 @@ impl qobject::Sioul {
         work::set_filter(&self.qt_thread(), &self.shared(), &kind.to_string(), &category.to_string());
     }
 
-    fn refresh_work(self: Pin<&mut Self>) {
-        work::show_work(&self.qt_thread(), &self.shared());
-    }
-
     fn show_tasks_anyway(self: Pin<&mut Self>, on: bool) {
         work::show_anyway(&self.qt_thread(), &self.shared(), on);
     }
@@ -4833,7 +4825,7 @@ impl qobject::Sioul {
     }
 
     fn letters(&self) -> QString {
-        QString::from(&crate::letters::view(&self.shared()))
+        QString::from(&crate::letters::view())
     }
 
     fn letter_task(self: Pin<&mut Self>, id: &QString) -> QString {

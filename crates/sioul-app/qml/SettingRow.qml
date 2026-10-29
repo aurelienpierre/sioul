@@ -705,6 +705,8 @@ ColumnLayout {
                                     }
                                     ClockField {
                                         id: to
+                                        // An end: Up stops at 23:55 (ClockField's `end`).
+                                        end: true
 
                                         width: 70
                                         text: range.modelData.end

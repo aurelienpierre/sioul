@@ -36,6 +36,9 @@ Item {
         property string status: ""
         property bool replanDue: false
         property var asked: []
+        // What the page asks of the Health job and of today's layout (review of 21436bf, M2).
+        property int healthAsked: 0
+        property int relaid: 0
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
@@ -43,8 +46,8 @@ Item {
         function agendaView() { return "{}" }
         function setAgendaView(view) { return "" }
         function showDays(from, count, upcoming) { mock.asked.push(count) }
-        function refreshHealth() {}
-        function relayToday() {}
+        function refreshHealth() { mock.healthAsked++ }
+        function relayToday() { mock.relaid++ }
         function setOverlapAside(key) {}
         function setTaskAt(uid, at) { return "" }
     }
@@ -147,6 +150,42 @@ Item {
             shell.opened = []
             mock.doseMarks = ""
             mock.agenda = ""
+            shell.now = root.monday + 10 * 3600
+            shell.backAt = 0
+            mock.healthAsked = 0
+            mock.relaid = 0
+        }
+
+        // What comes showing today asks for the doses' reading as the Day does: when
+        // shown, at each minute's turn and on coming back; and lays today again at
+        // each five minutes' turn. Showing last week, it asks nothing (review of
+        // 21436bf, M2 and later 9).
+        function test_what_comes_asks_for_the_doses_each_minute() {
+            const page = makePage()
+            page.mode = "agenda"
+            const today = day(0)
+            today.comes = { rows: [], doses: [{ minute: 1200, when: "20:00", title: "Dose", keys: ["a@2"] }] }
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [today, day(1, { comes: { rows: [] } })] })
+            wait(20)
+            mock.healthAsked = 0
+            mock.relaid = 0
+            page.visible = false
+            page.visible = true
+            compare(mock.healthAsked, 1, "shown: asked")
+            shell.now += 60
+            compare(mock.healthAsked, 2, "a minute later: asked again")
+            shell.backAt = shell.now
+            compare(mock.healthAsked, 3, "back on the screen: asked at once")
+            shell.now = (Math.floor(shell.now / 300) + 1) * 300 + 1
+            compare(mock.relaid, 1, "at the five minutes' turn: today laid again")
+            verify(page.todayShown, "today shown in What comes")
+            // Last week: nothing of today shown, nothing asked.
+            mock.agenda = JSON.stringify({ version: 3, from: "2098-12-29", sentence: "", days: [day(-7), day(-6)] })
+            wait(20)
+            verify(!page.todayShown)
+            const asked = mock.healthAsked
+            shell.now += 60
+            compare(mock.healthAsked, asked, "nothing asked")
         }
 
         // What comes (§4.6): today's rows in order, tonight's night last; a dose
@@ -177,7 +216,9 @@ Item {
             compare([come.known, come.line].join(" "), "come Due at 12:00")
             const later = rows.find(r => r.title === "Two doses")
             compare(later.known, "", "still to come: plainly")
-            verify(rows.every(r => r.title.indexOf("a@") < 0), "never a medicine")
+            // A dose row says Rust's words alone, never a key or a name (review of 21436bf, later 9).
+            compare(rows.filter(r => r.kind === "dose").map(r => r.title).join(" | "), "Dose | Two doses")
+            verify(rows.every(r => r.title.indexOf("@") < 0 && r.line.indexOf("@") < 0), "never a dose's key")
             mouseClick(come)
             compare(shell.opened.length, 1)
             compare([shell.opened[0].kind, shell.opened[0].date, shell.opened[0].srcKey].join(" "), "dose 2099-01-05 b@1")
@@ -185,6 +226,35 @@ Item {
             compare(plans.map(p => p.text).join(" | "), "The plan: Write, then Sort | The plan: Call first")
             mouseClick(plans[1])
             compare(page.mode, "day", "its day opens")
+        }
+
+        // Show leaves out of What comes and the Month what it leaves out of the Day
+        // and the Week, on this device: doses, meals and rest, a calendar by its
+        // place, the plan's line with the steps; never a date asked (review of
+        // 21436bf, later 2). Its button shows there too.
+        function test_show_holds_in_what_comes_and_the_month() {
+            const page = makePage()
+            page.mode = "agenda"
+            page.view = { doses: false, needs: false, steps: false, calendars: [{ id: "local/c", name: "c" }] }
+            const today = day(0)
+            const other = placed("Choir", "event", today.start, 1080, 1140, { when: "18:00 – 19:00" }, { source: { type: "calendar", key: "choir.ics", uid: "choir", start: today.start + 1080 * 60, recurring: false, calendar: "Leisure", collection: "local/leisure" } })
+            today.comes = {
+                rows: [placed("Doctor", "event", today.start, 840, 870, { when: "14:00 – 14:30" }), placed("Lunch", "meal", today.start, 750, 780, { when: "12:30 – 13:00" }, { privacy: "health" }), other, dated("CAF", today.start, "plain")],
+                doses: [{ minute: 1200, when: "20:00", title: "Dose", keys: ["a@2"] }],
+                plan: "The plan: Write, then Sort"
+            }
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [today] })
+            wait(50)
+            const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
+            compare(rows.map(r => r.title).join(" | "), "CAF | Choir", "the hidden calendar, the meal and the dose left out; the date kept")
+            compare(root.all(page, c => c.objectName === "comesPlan" && c.visible).length, 0, "the plan's line with the steps")
+            verify(root.find(page, "agendaShow").visible, "Show offered in What comes")
+            page.mode = "month"
+            const monday = day(0)
+            monday.lines = [dated("CAF", monday.start, "plain"), placed("Doctor", "event", monday.start, 840, 870), other]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
+            wait(50)
+            compare(root.all(page, c => c.objectName === "monthLine").map(l => l.modelData.item.title).join(" | "), "CAF | Choir")
         }
 
         // The Month on a computer (§4.5): a cell's dates first, then its
@@ -230,6 +300,22 @@ Item {
             compare(listed.map(r => r.title).join(" | "), "CAF | Doctor | Dentist")
             mouseClick(listed[2])
             compare([shell.opened[0].kind, shell.opened[0].srcKey].join(" "), "event Dentist.ics")
+            // A cell's tap brings its day to the top of the list (review of 21436bf, later 9).
+            const busy = [0, 1, 2, 3, 4, 5, 6].map(n => {
+                const d = day(n)
+                d.lines = [placed("Morning " + n, "event", d.start, 540, 570, { when: "09:00 – 09:30" }), placed("Noon " + n, "event", d.start, 720, 750, { when: "12:00 – 12:30" }), placed("Evening " + n, "event", d.start, 1080, 1110, { when: "18:00 – 18:30" })]
+                return d
+            })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: busy })
+            wait(50)
+            const list = root.all(page, c => c.positionViewAtIndex !== undefined && c.visible)[0]
+            verify(list.contentHeight > list.height, "a list longer than its room")
+            compare(list.contentY, 0)
+            const busyCells = root.all(page, c => c.objectName === "monthCell")
+            mouseClick(busyCells[2])
+            wait(50)
+            verify(list.contentY > 0, "scrolled to its day")
+            compare(list.itemAtIndex(2).y, list.contentY, "Wednesday at the top")
         }
 
         // A phone's Day head as the page uses it (review of e5bd27b, later 7):

@@ -259,6 +259,8 @@ Dialog {
         }
         ClockField {
             id: to
+            // An end: Up stops at 23:55 (ClockField's `end`).
+            end: form.item === null || form.item.kind !== "sleep"
 
             visible: form.mode !== "move"
             Layout.preferredWidth: 80

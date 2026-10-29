@@ -803,13 +803,14 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
         }
         // Through the one rule, on the file as it is now: one become a meeting with others meanwhile stays.
         Work::Remove { account, file } => {
-            // A task taken out: the letters it stood for are free again (review of e5bd27b, later 6).
-            let task = std::fs::read_to_string(file).ok().filter(|text| text.lines().any(|l| l.trim().eq_ignore_ascii_case("BEGIN:VTODO"))).and_then(|text| sioul_core::lines::unfold(&text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()));
+            // A task taken out: the letters it stood for are free again (review of e5bd27b, later 6),
+            // by the task's own UID (`letters::untie_removed`), read before the file goes.
+            let before = std::fs::read_to_string(file).ok();
             match sioul_core::vdir::remove_item(file) {
                 Ok(()) => {
                     crate::pim::nudge(shared, account);
-                    if let (Some(uid), Some(root)) = (task, load_config().notes_root_path()) {
-                        let _ = crate::letters::untie_task(&root, &uid);
+                    if let (Some(text), Some(root)) = (before, load_config().notes_root_path()) {
+                        crate::letters::untie_removed(&root, &text);
                     }
                     None
                 }

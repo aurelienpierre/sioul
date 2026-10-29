@@ -337,8 +337,23 @@ pub struct Letter {
     pub status: String,
     /// The task made for its date.
     pub task: String,
+    /// The id a list that keeps no UID (Google Tasks) gave that task, as the
+    /// device that made it learnt it at its sync (`note_elsewhere`): the task
+    /// by that id on your other devices, which know it by it alone; "" for
+    /// none. Written only when given. An older Sioul (982d6e5) reads the file
+    /// without it and writes it back without it; the next sync of the device
+    /// that made the task writes it again.
+    pub task_elsewhere: String,
     /// Why it could not be read ("no OCR program"), if it could not.
     pub problem: String,
+}
+
+impl Letter {
+    /// Whether its task is among `tasks`: by its UID, or by the id a list
+    /// that keeps no UID gave it (`task_elsewhere`); open or done alike.
+    pub fn task_in(&self, tasks: &[crate::tasks::Task]) -> bool {
+        !self.task.is_empty() && tasks.iter().any(|t| t.uid == self.task || (!self.task_elsewhere.is_empty() && t.uid == self.task_elsewhere))
+    }
 }
 
 /// The letters of a notes folder.
@@ -367,6 +382,27 @@ impl Letters {
             let out = change(&mut letters)?;
             letters.save()?;
             Ok(out)
+        })
+    }
+
+    /// The letters' tasks as a list that keeps no UID knows them (Google
+    /// Tasks: its own id, `ids` by Sioul's UID), noted beside each letter
+    /// (`Letter::task_elsewhere`), as the errands' are in the doses' record
+    /// (`HealthState::note_elsewhere`), so that a device knowing the task by
+    /// that id alone finds it (`dated::of_letters`). Written only when one is
+    /// new; whether one was.
+    pub fn note_elsewhere(root: &Path, ids: &std::collections::BTreeMap<String, String>) -> Result<bool, String> {
+        let new = |letters: &Letters| letters.list.iter().any(|l| !l.task.is_empty() && ids.get(&l.task).is_some_and(|id| *id != l.task_elsewhere && *id != l.task));
+        if !new(&Letters::load(root)?) {
+            return Ok(false);
+        }
+        Letters::try_change(root, |letters| {
+            for letter in letters.list.iter_mut() {
+                if let Some(id) = ids.get(&letter.task).filter(|id| **id != letter.task) {
+                    letter.task_elsewhere = id.clone();
+                }
+            }
+            Ok(true)
         })
     }
 
@@ -407,6 +443,7 @@ impl Letters {
                     project: Some(text_of(t, "project")).filter(|p| !p.is_empty()).unwrap_or_else(|| text_of(t, "case")),
                     status: text_of(t, "status"),
                     task: text_of(t, "task"),
+                    task_elsewhere: text_of(t, "task_elsewhere"),
                     problem: text_of(t, "problem"),
                 })
             })
@@ -477,7 +514,7 @@ impl Letters {
             t["file"] = toml_edit::value(&l.file);
             // The project under `case`, its key from the first version: an older
             // Sioul writing the file again would drop a key it does not know.
-            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("case", &l.project), ("status", &l.status), ("task", &l.task), ("problem", &l.problem)] {
+            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("case", &l.project), ("status", &l.status), ("task", &l.task), ("task_elsewhere", &l.task_elsewhere), ("problem", &l.problem)] {
                 if !v.is_empty() {
                     t[k] = toml_edit::value(v);
                 }
@@ -605,6 +642,35 @@ mod tests {
         let again = Letters::load(&root).unwrap();
         assert_eq!(again.list, vec![letter]);
         assert_eq!(again.text(&again.list[0]), "the text");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    /// A letter's task as a Google list knows it: noted beside the letter at
+    /// the sync (`note_elsewhere`), read back, written only when new, and
+    /// found by it (`Letter::task_in`); a file without it reads as before
+    /// (review of 21436bf, later 3).
+    #[test]
+    fn a_letter_s_task_noted_as_its_list_knows_it() {
+        let root = std::env::temp_dir().join(format!("sioul-letters-elsewhere-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        Letters::change(&root, |letters| {
+            letters.put(Letter { id: "caf".into(), status: "new".into(), task: "sioul-1".into(), ..Default::default() });
+            letters.put(Letter { id: "bank".into(), status: "new".into(), ..Default::default() });
+        })
+        .unwrap();
+        let ids: std::collections::BTreeMap<String, String> = [("sioul-1".to_string(), "g-17".to_string()), ("other".to_string(), "g-18".to_string())].into_iter().collect();
+        assert_eq!(Letters::note_elsewhere(&root, &ids), Ok(true));
+        let read = Letters::load(&root).unwrap();
+        assert_eq!((read.get("caf").unwrap().task_elsewhere.as_str(), read.get("bank").unwrap().task_elsewhere.as_str()), ("g-17", ""));
+        let file = Letters::folder(&root).join(MANIFEST);
+        let before = std::fs::read(&file).unwrap();
+        assert_eq!(Letters::note_elsewhere(&root, &ids), Ok(false), "known already");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "nothing written");
+        let there = crate::tasks::Task { uid: "g-17".into(), ..Default::default() };
+        assert!(read.get("caf").unwrap().task_in(std::slice::from_ref(&there)), "found by its list's id");
+        // As an older Sioul writes it back, without the id: read as before.
+        std::fs::write(&file, String::from_utf8(before).unwrap().replace("task_elsewhere = \"g-17\"\n", "")).unwrap();
+        assert_eq!(Letters::load(&root).unwrap().get("caf").unwrap().task_elsewhere, "");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

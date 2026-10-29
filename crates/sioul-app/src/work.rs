@@ -442,6 +442,13 @@ pub(crate) fn forget_plan() {
     PLAN_SHOWN.with(|plan| *plan.borrow_mut() = None);
 }
 
+/// Whether Health's list is shown again after a re-plan: today's meals are
+/// pushed otherwise than by the plan before (`Settings::shifts`), or no plan
+/// of today was made before. Health's list reads them (`health::pushed_on`).
+pub(crate) fn health_follows(before: Option<&std::collections::BTreeMap<String, i64>>, after: &std::collections::BTreeMap<String, i64>) -> bool {
+    before != Some(after)
+}
+
 /// The plan as the Tasks job last made it; none before its first run.
 pub(crate) fn plan_shown() -> Option<Arc<PlanShown>> {
     #[cfg(not(test))]
@@ -831,10 +838,17 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // The plan and today as laid, for the agenda, a task's card and `laid`: published before
         // the window hears of the change, so that what it reads then is this plan.
         let desk = Arc::new(desk);
+        // Today's meals as the plan before pushed them past today's events (Health's list reads them).
+        let shifts_before = plan_shown().filter(|p| p.made_on == made_on).map(|p| p.settings().shifts.clone());
         publish(PlanShown { stamp, made_on, desk: Arc::clone(&desk), today: today_laid });
         // Published: the agenda draws from it (a re-plan asked meanwhile sets it again).
         due.published();
         crate::agenda::show_agenda(&qt, &shared);
+        // A meal pushed elsewhere by this plan (an event added at lunch): Health's list follows at
+        // once, as the agenda does (review of 21436bf, later 7).
+        if health_follows(shifts_before.as_ref(), &desk.settings.shifts) {
+            crate::health::show_health(&qt, &shared);
+        }
         let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
         let focus_json = focus_json(&desk);
         // The time running, in the system's notifications as in the focus window.

@@ -859,12 +859,23 @@ struct Around<'a> {
 /// the days' changes alone, as pure reads: no dose record, no lock. As JSON;
 /// "{}" when that day has no such block.
 pub(crate) fn need_item(date: &str, key: &str) -> String {
+    let Ok(parsed) = date.parse::<Date>() else { return "{}".into() };
+    need_item_held(date, key, &|| crate::work::held_on(parsed, &Zoned::now()))
+}
+
+/// `need_item` with that day's events given (the tests': no calendar read).
+#[cfg(test)]
+pub(crate) fn need_item_with(date: &str, key: &str, events: &[sioul_core::agenda::Occurrence]) -> String {
+    need_item_held(date, key, &|| sioul_core::plan::event_spans(events, 0))
+}
+
+fn need_item_held(date: &str, key: &str, held: &dyn Fn() -> Vec<(i64, i64)>) -> String {
     let Ok(date) = date.parse::<Date>() else { return "{}".into() };
     let now = Zoned::now();
     let health = Health::read(&Health::default_path()).unwrap_or_default();
     let days = Days::load(&Days::default_path());
     let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
-    let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &|| crate::work::held_on(date, &now) }, date, &now);
+    let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held }, date, &now);
     let Some(item) = view.items.iter().find(|i| i.key == key && i.kind != "dose") else { return "{}".into() };
     json(&serde_json::json!({ "date": view.date, "title": view.title, "today": view.today, "past": view.past, "later": health.needs.later, "item": item }))
 }

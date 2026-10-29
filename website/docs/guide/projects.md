@@ -37,7 +37,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 On the left, every project, with its open tasks and the time left to bill. On the right, the project open:
 
 - **On one line of time**: what is **coming** first (dates asked of its open tasks, events), then what happened **before**, newest first: tasks done, mail, notes changed, time noted, invoices.
-- **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Calendar** is the Tasks page's own ([List, Board, Calendar](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
+- **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
 - **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
 - **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact.

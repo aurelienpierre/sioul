@@ -554,7 +554,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             let set_times: std::collections::BTreeSet<String> = health.as_ref().map(|h| h.medicines.iter().filter(|m| matches!(m.schedule, sioul_core::health::Schedule::Day { .. })).map(|m| m.id.clone()).collect()).unwrap_or_default();
             let every_day = |key: &str| key.rsplit_once('@').is_some_and(|(medicine, _)| set_times.contains(medicine));
             let of = timeline::ComesOf { now: stamp, today, no_alarm: &no_alarm, every_day: &every_day, hidden: &hidden, zone: &zone, tr: tr() };
-            days.iter().map(|d| Some(timeline::comes(d, &of))).collect()
+            // Each day with the next, where a night winding down after midnight lies.
+            days.iter().enumerate().map(|(i, d)| Some(timeline::comes(d, days.get(i + 1), &of))).collect()
         }
         _ => days.iter().map(|_| None).collect(),
     };
@@ -1544,14 +1545,75 @@ mod tests {
         assert!(today["doses"].as_array().is_some_and(|d| !d.is_empty() && d.iter().all(|l| l["title"] == dose.as_str() && l["keys"].as_array().is_some_and(|k| k.len() == 1))), "today's doses, each its minute: {today}");
         assert!(days[1]["comes"]["doses"].as_array().is_none_or(Vec::is_empty), "another day's usual doses left out");
         assert!(days[3]["comes"]["rows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["item"]["title"] == "Coming appointment" && r["detail"].is_object())), "{}", days[3]["comes"]);
-        assert!(!text.contains("Comprimel"), "never a medicine's name");
+        // Never a medicine's name, in any case, where a thing is said (its id is in `keys` only;
+        // review of 21436bf, later 9).
+        let named = |v: &serde_json::Value| said(v).iter().filter(|s| s.to_lowercase().contains("comprimel")).cloned().collect::<Vec<_>>();
+        assert!(named(&comes).is_empty(), "never a medicine's name: {:?}", named(&comes));
+        assert!(!text.contains("Comprimel"));
         let (month, text) = shown(42);
         let days = month["days"].as_array().unwrap();
         let kinds: std::collections::BTreeSet<String> = days.iter().flat_map(|d| d["lines"].as_array().cloned().unwrap_or_default()).map(|r| r["item"]["kind"].as_str().unwrap_or("").to_string()).collect();
         assert!(kinds.contains("event") && kinds.iter().all(|k| k == "event" || k == "block" || k == "dated" || k == "step"), "{kinds:?}");
         assert!(days.iter().all(|d| d["comes"].is_null() && d["timed"].as_array().is_some_and(Vec::is_empty)));
-        assert!(!text.contains("Comprimel"));
+        assert!(!text.contains("Comprimel") && named(&month).is_empty(), "{:?}", named(&month));
         let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_file(&health);
+    }
+    /// What the page says of a thing, wherever it sits: titles, lines, times
+    /// (`when`), details and the plan's line; never ids or keys.
+    fn said(v: &serde_json::Value) -> Vec<String> {
+        const SAID: [&str; 8] = ["title", "line", "when", "detail", "plan", "text", "note", "place"];
+        match v {
+            serde_json::Value::Object(map) => map.iter().flat_map(|(k, v)| match v {
+                serde_json::Value::String(s) if SAID.contains(&k.as_str()) => vec![s.clone()],
+                _ => said(v),
+            }).collect(),
+            serde_json::Value::Array(list) => list.iter().flat_map(said).collect(),
+            _ => Vec::new(),
+        }
+    }
+    /// Health's list and the agenda give today's lunch the same time, pushed
+    /// past an event at lunch by the one rule (`health::pushed_on`, the needs
+    /// adapter); the agenda's Rust says what may move it: a meal over moves
+    /// no more (`Move::None`), and its writer refuses a day gone by (review of
+    /// 21436bf, later 7 and later 9).
+    #[test]
+    fn health_s_list_and_the_agenda_give_lunch_one_time() {
+        let _health_tests = crate::health::health_files_held();
+        sioul_core::config::stand_ins_only();
+        work::forget_plan();
+        let health = sioul_core::health::Health::default_path();
+        std::fs::create_dir_all(health.parent().unwrap()).unwrap();
+        std::fs::write(&health, "[needs]\nmeals_on = true\n").unwrap();
+        let (now, zone) = (Zoned::now(), TimeZone::system());
+        let later = now.date().checked_add(jiff::Span::new().days(2)).unwrap();
+        let at = |hour: i8, minute: i8| later.at(hour, minute, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        // An appointment across the usual lunch.
+        let event = Occurrence { key: "/c/lunch-meeting.ics".into(), uid: "lunch-meeting".into(), summary: "Meeting".into(), start: at(12, 0), end: at(13, 30), ..Occurrence::default() };
+        let needs = sioul_core::needs::Needs::read(&health);
+        let days = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path());
+        let agenda_lunch = needs_items(&needs, &days, None, std::slice::from_ref(&event), later, 1, &now).into_iter().find(|i| i.id == timeline::need_id(later, "meal:1")).map(|i| i.time.whole(&zone).0);
+        let card: serde_json::Value = serde_json::from_str(&crate::health::need_item_with(&later.to_string(), "meal:1", &[event.clone()])).unwrap();
+        let clock = |t: i64| jiff::Timestamp::from_second(t).unwrap().to_zoned(zone.clone()).strftime("%H:%M").to_string();
+        assert!(agenda_lunch.is_some_and(|t| t >= at(13, 30)), "pushed past the meeting: {agenda_lunch:?}");
+        assert_eq!(card["item"]["from"].as_str(), agenda_lunch.map(clock).as_deref(), "{card}");
+        // Today, both read the plan's pushes (`Settings::shifts`): a re-plan that pushes a meal
+        // otherwise shows Health's list again (`work::health_follows`), as it does the agenda.
+        let pushed: std::collections::BTreeMap<String, i64> = [("meal:1".to_string(), 90)].into();
+        assert!(work::health_follows(Some(&std::collections::BTreeMap::new()), &pushed), "a meal pushed by the new plan");
+        assert!(work::health_follows(None, &pushed), "no plan of today before");
+        assert!(!work::health_follows(Some(&pushed), &pushed.clone()), "pushed as before: not again");
+        // Over, its time cannot be moved here.
+        let after = later.at(23, 0, 0, 0).to_zoned(zone.clone()).unwrap();
+        let over = needs_items(&needs, &days, None, &[], later, 1, &after).into_iter().find(|i| i.id == timeline::need_id(later, "meal:1")).unwrap();
+        assert_eq!(over.can.drag, timeline::Move::None, "a meal over moves no more");
+        // A day gone by: its writer refuses the drop, and the day's file stays as it was.
+        let yesterday = now.date().yesterday().unwrap();
+        let days_file = sioul_core::needs::Days::default_path();
+        let before = std::fs::read(&days_file).ok();
+        let asked = serde_json::json!({ "date": yesterday.to_string(), "key": "meal:1", "action": "move", "from": "14:00", "to": "14:30" }).to_string();
+        assert_eq!(crate::health::change_need(&asked), tr().text("need-past", None));
+        assert_eq!(std::fs::read(&days_file).ok(), before, "nothing written for a day gone by");
         let _ = std::fs::remove_file(&health);
     }
 }

@@ -155,7 +155,7 @@ Item {
             compare(clock.now, root.sec(2026, 10, 7, 7, 30))
         }
 
-        // Tasks ▸ Day: the line follows the clock, nothing laid again for it; the
+        // The agenda's day and week (WeekPlanning): the line follows the clock, nothing laid again for it; the
         // block under way follows too; laid again at each five minutes' turn only.
         function test_week() {
             // The agenda's days (version 3): the call, a `timeline::Placed` row.
@@ -198,7 +198,7 @@ Item {
             compare(bold().length, 0)
         }
 
-        // Health, day and week: one line on today; today's ground and title move at midnight.
+        // Tasks ▸ Gantt (TaskTimeline): one line on today; today's ground and title move at midnight.
         function test_task_timeline() {
             const head = (date, day) => ({ date: date, day: day, weekday: "Tuesday", month: "", rest: false })
             const view = createTemporaryObject(taskTimelineComponent, root, { width: 800, height: 400, timeline: { days: [head("2026-10-06", "6"), head("2026-10-07", "7"), head("2026-10-08", "8")], rows: [], note: "" }, today: "2026-10-06" })

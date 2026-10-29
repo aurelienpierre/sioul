@@ -1561,9 +1561,10 @@ mod tests {
 
     #[test]
     fn a_day_changed_by_dragging() {
-        // What the Health page's timeline sends when a block or one of its edges is dropped
-        // (HealthTimeline.qml): minutes of its column, on the clock, as "Move to…" and
-        // "Change its times…" send them; a night's morning part is in the next day's column.
+        // What the agenda sends when a meal, a nap or a night, or one of its edges, is dropped
+        // (WeekPlanning.qml, through `health::change_need`): minutes of its column, on the clock,
+        // as "Move to…" and "Change its times…" send them; a night's morning part is in the next
+        // day's column.
         let needs = Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() };
         let now: jiff::Zoned = "2026-10-06T10:00[Europe/Paris]".parse().unwrap();
         let (today, tomorrow) = (day("2026-10-06"), day("2026-10-07"));

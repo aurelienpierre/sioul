@@ -410,6 +410,8 @@ Dialog {
                 }
                 ClockField {
                     id: endTime
+                    // An end: Up stops at 23:55 (ClockField's `end`).
+                    end: true
 
                     visible: !allDay.checked
                     Layout.preferredWidth: 80
