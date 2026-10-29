@@ -179,6 +179,36 @@ ItemDelegate {
                 font.pixelSize: 12
                 color: row.theme.muted
             }
+            // Set aside by an appointment over (the done tasks list it, however old):
+            // said so, with Bring back, which needs no card (review of 4d7bab4, later 8).
+            // Made only then: every other row stays as light as before.
+            Loader {
+                active: !!row.task.set_aside
+                visible: active
+                Layout.fillWidth: true
+                sourceComponent: RowLayout {
+                    spacing: 8
+                    Label {
+                        Layout.fillWidth: true
+                        text: row.task.set_aside || ""
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 12
+                        color: row.theme.muted
+                    }
+                    Button {
+                        objectName: "taskRowBringBack"
+                        visible: !row.task.read_only && row.sioul !== null
+                        flat: true
+                        text: row.sioul ? row.sioul.text("appointment-bring-back") : ""
+                        onClicked: {
+                            const answer = JSON.parse(row.sioul.bringBack(row.task.uid) || "{}")
+                            if (answer.error)
+                                row.sioul.status = answer.error
+                        }
+                    }
+                }
+            }
         }
     }
 }

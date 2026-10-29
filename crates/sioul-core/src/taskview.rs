@@ -246,6 +246,9 @@ pub struct CardView {
     pub in_loop: bool,
     /// "Done Thursday 1 October".
     pub done_on: String,
+    /// "Set aside Thursday 29 October, its appointment over" (`pairs::closing`,
+    /// not brought back yet): the done tasks list it with Bring back; "" otherwise.
+    pub set_aside: String,
     /// How many things it links to.
     pub links: usize,
     /// How heavy, from its costs when any is rated: "light", "usual", "heavy",
@@ -294,6 +297,11 @@ pub fn pin_view(cx: &Context, uid: &str) -> Option<PinView> {
     Some(PinView { when: pinned_when(cx, pin), at, minutes: pin.minutes(), key: pin.key.clone(), read_only: pin.read_only })
 }
 
+/// Set aside by an appointment over and not brought back (`pairs::closing`).
+fn set_aside(task: &Task) -> bool {
+    task.status == Status::Cancelled && !task.set_aside.is_empty() && !task.brought_back
+}
+
 /// A task in words.
 pub fn card(cx: &Context, task: &Task) -> CardView {
     let planned = cx.planned(&task.uid).cloned().unwrap_or_default();
@@ -324,6 +332,12 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
     let done_on = match (task.status, task.completed) {
         (Status::Completed, Some(at)) => Timestamp::from_second(at).map(|t| cx.say("task-done-on", &[("date", cx.tr.day(t.to_zoned(TimeZone::system()).date()))])).unwrap_or_default(),
         _ => String::new(),
+    };
+    let set_aside = if set_aside(task) {
+        let on = Timestamp::from_second(task.set_aside_end).ok().filter(|_| task.set_aside_end > 0).map(|t| cx.tr.day(t.to_zoned(TimeZone::system()).date()));
+        cx.say("task-set-aside-on", &[("date", on.unwrap_or_default())])
+    } else {
+        String::new()
     };
     CardView {
         uid: task.uid.clone(),
@@ -356,6 +370,7 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         in_loop: planned.in_loop,
         after: task.after,
         done_on,
+        set_aside,
         links: task.links.len() + task.contacts.len(),
         level: task.demands.level().map_or("", crate::demands::Level::id),
         pinned: cx.plan.pins.get(&task.uid).map(|pin| cx.say("task-pinned", &[("when", pinned_when(cx, pin))])).unwrap_or_default(),
@@ -623,11 +638,13 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
     let words: Vec<String> = query.split_whitespace().map(fold).collect();
     let matches = |t: &Task| words.iter().all(|w| fold(&format!("{} {} {}", t.title, t.notes, t.categories.join(" "))).contains(w.as_str()));
     let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
-    let shown = |t: &Task| (t.status.is_open() || (done && t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight))) && matches(t) && cx.filter.wants(t);
-    // Open tasks in the plan's order, then done ones, newest first.
+    // What an appointment over set aside, with the done ones, however old: the way back that
+    // needs no card, the appointment deleted since (review of 4d7bab4, later 8).
+    let shown = |t: &Task| (t.status.is_open() || (done && t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)) || (done && set_aside(t))) && matches(t) && cx.filter.wants(t);
+    // Open tasks in the plan's order, then done and set aside ones, newest first.
     let mut ordered: Vec<&Task> = cx.plan.order.iter().filter_map(|u| cx.task(u)).collect();
-    let mut finished: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed).collect();
-    finished.sort_by_key(|t| std::cmp::Reverse(t.completed));
+    let mut finished: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed || set_aside(t)).collect();
+    finished.sort_by_key(|t| std::cmp::Reverse(if t.status == Status::Completed { t.completed.unwrap_or(0) } else { t.set_aside_end }));
     ordered.extend(finished);
     let position: BTreeMap<&str, usize> = ordered.iter().enumerate().map(|(i, t)| (t.uid.as_str(), i)).collect();
     // A bigger task, then its steps, each after the other, each once.
@@ -1027,6 +1044,29 @@ mod tests {
         let mut titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         titles.sort();
         assert_eq!(titles, vec!["First", "Second", "Third"]);
+    }
+
+    /// What an appointment over set aside is listed with the done tasks,
+    /// however old, said so (review of 4d7bab4, later 8): the way back that
+    /// needs no card. Never a task cancelled by hand, nor one brought back.
+    #[test]
+    fn the_done_tasks_list_what_was_set_aside() {
+        let today: Date = "2026-12-20".parse().unwrap();
+        let aside = Task { status: Status::Cancelled, set_aside: "visit".into(), set_aside_end: 1_793_280_600, ..task("aside", "Find the card") };
+        let dropped = Task { status: Status::Cancelled, ..task("dropped", "Dropped by hand") };
+        let back = Task { set_aside: "visit".into(), brought_back: true, ..task("back", "Brought back") };
+        let tasks = vec![aside, dropped, back];
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let everything = Filter::default();
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+        let rows = |done: bool| -> Vec<(String, String)> { list(&cx, "project", done, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.set_aside.clone()))).collect() };
+        let mut shown = rows(true);
+        shown.sort();
+        assert_eq!(shown.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back", "Find the card"], "set aside, and the open one");
+        assert!(shown.iter().any(|(t, said)| t == "Find the card" && said.starts_with("Set aside") && said.contains("29 October")), "{shown:?}");
+        assert!(shown.iter().all(|(t, said)| t == "Find the card" || said.is_empty()));
+        assert_eq!(rows(false).iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back"], "with the open ones alone, not listed");
     }
 
     /// A wait's gap said beside it in the task's details, wherever it is

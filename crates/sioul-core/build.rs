@@ -33,6 +33,17 @@ fn main() {
         .or_else(|| std::env::var("SIOUL_COMMIT").ok().map(|c| c.trim().to_string()).filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.')))
         .unwrap_or_else(|| "unknown".into());
     println!("cargo::rustc-env=SIOUL_BUILD_COMMIT={commit}");
+    // The commit's time, a floor for the clock (`moves::closing_floor`); else SOURCE_DATE_EPOCH; else 0.
+    println!("cargo::rerun-if-env-changed=SOURCE_DATE_EPOCH");
+    let committed = committed_at(&manifest).or_else(|| std::env::var("SOURCE_DATE_EPOCH").ok().map(|t| t.trim().to_string()).filter(|t| t.parse::<i64>().is_ok())).unwrap_or_else(|| "0".into());
+    println!("cargo::rustc-env=SIOUL_BUILD_COMMITTED={committed}");
+}
+
+/// The commit's time from `git` itself, Unix seconds.
+fn committed_at(manifest: &Path) -> Option<String> {
+    let out = Command::new("git").arg("-C").arg(manifest).args(["log", "-1", "--format=%ct", "HEAD"]).output().ok().filter(|o| o.status.success())?;
+    let time = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    time.parse::<i64>().is_ok().then_some(time)
 }
 
 /// The commit from `git` itself, "-dirty" added when tracked files changed.

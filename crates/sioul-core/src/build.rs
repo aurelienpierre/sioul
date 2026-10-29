@@ -14,6 +14,15 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// committed; `SIOUL_COMMIT`'s value where the repository was not there; "unknown".
 pub const COMMIT: &str = env!("SIOUL_BUILD_COMMIT");
 
+/// The commit's time (`git log -1 --format=%ct`), Unix seconds, as the build
+/// found it: `SOURCE_DATE_EPOCH` where the repository was not there; "0".
+pub const COMMITTED: &str = env!("SIOUL_BUILD_COMMITTED");
+
+/// `COMMITTED` as a number; 0 when it is unknown.
+pub fn committed() -> i64 {
+    COMMITTED.trim().parse().unwrap_or(0)
+}
+
 /// Both, as said everywhere: "0.0.3 (eff8661abcde)".
 pub const DESCRIBED: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("SIOUL_BUILD_COMMIT"), ")");
 

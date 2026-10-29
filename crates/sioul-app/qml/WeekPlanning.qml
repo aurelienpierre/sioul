@@ -601,9 +601,9 @@ ColumnLayout {
             const box = planning.boxOf(row)
             if (p.x < box.x || p.x > box.x + box.width || p.y < box.y - 4 || p.y > box.y + box.height + 4)
                 continue
-            // A leg is a line in its appointment's lead: in the Week, a press there is the
-            // appointment's, never the leg's; in the Day, the leg's where nothing else is (review
-            // of ab7daa4, later 8).
+            // A leg is a line in its appointment's lead or tail: in the Week, a press there is the
+            // appointment's, never the leg's, and its body's, never its end's handle; in the Day,
+            // the leg's, over the box it lies in (reviews of ab7daa4, later 8, and 4d7bab4, later 14).
             if (row.kind === "leg") {
                 if (p.y >= box.y && p.y <= box.y + box.height && leg === null)
                     leg = { row: row, index: i, part: "body" }
@@ -627,8 +627,10 @@ ColumnLayout {
                 continue
             found = { row: row, index: i, part: part }
         }
-        if (leg !== null && planning.single && (found === null || found.row.itemId !== leg.row.itemId))
+        if (leg !== null && planning.single)
             return leg
+        if (leg !== null && found !== null && found.part === "bottom")
+            found = { row: found.row, index: found.index, part: "body" }
         return found || leg || behind
     }
 

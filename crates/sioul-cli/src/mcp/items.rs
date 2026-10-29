@@ -222,15 +222,22 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let calendar = args.text("calendar")?;
     let moving = calendar.as_deref().is_some_and(|c| c != format!("{}/{}", found.calendar.account, found.calendar.id));
+    // The calendar asked, found and able to take it before anything is written; the move is
+    // part of the one change (review of 4d7bab4, later 3).
+    let target = match calendar.as_deref() {
+        Some(id) if moving => Some(calendar_named(id, s)?),
+        _ => None,
+    };
     let legs_stay = match args.text("legs")?.as_deref() {
         None | Some("follow") => false,
         Some("stay") => true,
         Some(other) => return Err(format!("“legs” is follow or stay; not “{}”.", one_line(other))),
     };
     let text = agenda::apply(&found.text, &edit, &zone)?;
-    let mut files = Vec::new();
     let mut legs_moved: Vec<String> = Vec::new();
     let mut kept_back = 0usize;
+    let mut written: Vec<(PathBuf, String)> = Vec::new();
+    let mut own = found.text.clone();
     if text != found.text {
         // Its legs in the same change (part E2): moved with it, or, asked, kept where they are.
         // Never a leg kept from agents: left as it is, counted, never named; the window's next
@@ -254,9 +261,8 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
             legs_moved = gesture.legs.iter().map(|(_, t)| sioul_core::anchors::moved_name(t, &s.tr)).collect();
             gesture.legs
         };
-        let mut written = vec![(found.path.clone(), gesture.own)];
+        own = gesture.own;
         written.extend(legs);
-        files = sioul_core::composed::Change { written, ..sioul_core::composed::Change::default() }.write()?;
     }
     let mut at = found.path.clone();
     let mut line = s.say("agent-event-changed", &[("title", one_line(&edit.title))]);
@@ -264,18 +270,16 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
         line = format!("{line} {}", s.say("legs-moved-with", &[("legs", legs_moved.join(", "))]));
     }
     let kept_line = if kept_back > 0 { format!("\n{}", s.tr.text("legs-kept-back", Some(&s.tr.counted(kept_back)))) } else { String::new() };
-    if moving && let Some(id) = &calendar {
-        let target = calendar_named(id, s)?;
-        let moved = agenda::new_path(&target);
-        let written = std::fs::read_to_string(&found.path).map_err(|e| e.to_string())?;
-        vdir::move_item(&found.path, &moved)?;
-        // As a move: there before, the old file gone; its legs as they were written.
-        let legs: Vec<FileChange> = files.into_iter().filter(|f| f.path != found.path).collect();
-        files = vec![FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None }, FileChange { path: moved.clone(), before: None, after: Some(written) }];
-        files.extend(legs);
-        at = moved;
+    // One change: the appointment written or moved (there before, the old file gone), its legs.
+    let mut change = sioul_core::composed::Change { written, ..sioul_core::composed::Change::default() };
+    if let Some(target) = &target {
+        at = agenda::new_path(target);
+        change.moved.push((found.path.clone(), at.clone(), own));
         line = s.say("agent-event-moved", &[("title", one_line(&edit.title)), ("calendar", target.label(&s.config, &s.tr))]);
+    } else if own != found.text {
+        change.written.insert(0, (found.path.clone(), own));
     }
+    let files = if change.is_empty() { Vec::new() } else { change.write()? };
     if files.is_empty() {
         return Ok(Answer { text: "Nothing changed: the event already says so.".into(), data: json!({ "uri": links::event_uri(&found.uid), "changed": false }) });
     }

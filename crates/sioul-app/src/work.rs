@@ -791,8 +791,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let mut seen = sioul_core::moves::Seen::load();
         let before = seen.clone();
         // What closes by itself, from the first pass on only (kept, never moved): the past at the
-        // install is never set aside.
-        let closing_from = *seen.closing_from.get_or_insert(now.timestamp().as_second());
+        // install is never set aside; a clock behind this build starts nothing (`Seen::closing_since`).
+        let closing_from = seen.closing_since(now.timestamp().as_second());
         // The pages' events alone: a copy left in an account switched off never moves a date (F15).
         let moved = sioul_core::moves::upkeep(&desk.loaded.tasks, &desk.loaded.events, &mut seen, &now);
         if seen != before {
@@ -800,7 +800,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
-        let closed = sioul_core::pairs::closing(&desk.loaded.tasks, &desk.loaded.events, closing_from, &now);
+        let closed = closing_from.map(|from| sioul_core::pairs::closing(&desk.loaded.tasks, &desk.loaded.events, from, &now)).unwrap_or_default();
         if !closed.is_empty()
             && let Ok(files) = closed.write()
         {

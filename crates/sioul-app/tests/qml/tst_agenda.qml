@@ -352,6 +352,22 @@ Item {
         // Part 6: a leg is a quiet line in its appointment's lead in the Day (no card of its
         // own), its row left out of a phone's week list (said on the appointment's line
         // there); Show's choice for the legs reads the days again.
+        // A press at the end of an appointment's box, on its Coming back line, in the Week: the
+        // appointment's body, never its end's handle, which would stretch it (review of
+        // 4d7bab4, later 14).
+        function test_a_leg_s_line_never_takes_the_end_handle() {
+            const page = makePage()
+            page.mode = "week"
+            const span = { type: "span", start: root.monday + 840 * 60, at: root.monday + 840 * 60, until: root.monday + 870 * 60, end: root.monday + 900 * 60 }
+            const monday = day(0, { timed: [placed("doctor", "event", root.monday, 840, 870, { when: "14:00 – 14:30" }, { time: span }), placed("walk", "leg", root.monday, 870, 900, { when: "14:30 – 15:00" }, { owner: "doctor" })] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, day(1), day(2), day(3), day(4), day(5), day(6)] })
+            wait(50)
+            const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+            const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0, ""))
+            const thing = planning.thingAt({ x: box.x + box.width / 2, y: box.y + box.height - 2 })
+            compare(thing.row.kind + " " + thing.part, "event body")
+        }
+
         function test_a_leg_is_a_quiet_line() {
             const page = makePage()
             page.mode = "day"

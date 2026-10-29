@@ -198,6 +198,15 @@ Item {
     }
 
     Component {
+        id: taskRowComponent
+
+        TaskRow {
+            theme: testTheme
+            sioul: mock
+        }
+    }
+
+    Component {
         id: dialogComponent
 
         EventDialog {
@@ -690,6 +699,24 @@ Item {
             verify(root.all(host.eventCard, c => c.text === "Send the prescription" && c.visible).length >= 1)
             back[0].clicked()
             compare(mock.calls.filter(c => c.what === "bringBack").map(c => c.uid).join(" "), "early")
+        }
+
+        // The way back that needs no card (review of 4d7bab4, later 8): a task set aside by an
+        // appointment over, listed with the done tasks, says so and brings itself back; a task
+        // done, or one you only read, offers nothing.
+        function test_a_task_set_aside_comes_back_from_the_done_tasks() {
+            const task = { uid: "early", title: "Find the card", status: "cancelled", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: false, has_steps: false, set_aside: "Set aside Thursday 29 October, its appointment over" }
+            const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 600 })
+            const back = root.find(row, "taskRowBringBack")
+            verify(back.visible, "Bring back offered")
+            verify(root.all(row, c => c.text === task.set_aside && c.visible).length >= 1, "said so")
+            const before = mock.calls.length
+            back.clicked()
+            compare(mock.calls.slice(before).filter(c => c.what === "bringBack").map(c => c.uid).join(" "), "early")
+            const done = createTemporaryObject(taskRowComponent, root, { task: Object.assign({}, task, { status: "completed", set_aside: "", done_on: "Done Thursday 29 October" }), width: 600 })
+            verify(!root.find(done, "taskRowBringBack"), "done: nothing to bring back, nothing made")
+            const read = createTemporaryObject(taskRowComponent, root, { task: Object.assign({}, task, { read_only: true }), width: 600 })
+            verify(!root.find(read, "taskRowBringBack").visible, "read only: nothing")
         }
 
         function test_an_appointment_s_part_f() {

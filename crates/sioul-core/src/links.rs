@@ -789,6 +789,9 @@ pub struct Loaded {
     pub budget: Vec<BudgetRef>,
     pub local: LocalLinks,
     pub sites: Vec<crate::sites::Site>,
+    /// When the read began (`read`): a file changed since is newer than what
+    /// it holds. None for a set made otherwise.
+    pub read_at: Option<std::time::SystemTime>,
 }
 
 /// Whether a line of a task or an event points at `other` (a canonical
@@ -985,6 +988,7 @@ impl Loaded {
     /// Reads every task, event, contact, draft and link, the notes of the notes
     /// folder, and the headers of the mail kept for the configured accounts.
     pub fn read(config: &crate::config::Config) -> Loaded {
+        let read_at = Some(std::time::SystemTime::now());
         let zone = jiff::tz::TimeZone::system();
         let root = config.notes_root_path();
         let mail_roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
@@ -1018,6 +1022,7 @@ impl Loaded {
             budget,
             local: LocalLinks::load(&LocalLinks::default_path()),
             sites: crate::sites::sites(config),
+            read_at,
         }
     }
 

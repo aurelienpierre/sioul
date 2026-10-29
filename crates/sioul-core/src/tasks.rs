@@ -247,6 +247,10 @@ pub struct Task {
     pub set_aside: String,
     /// Brought back since (`;BROUGHT-BACK=TRUE` on that line): never set aside again by that appointment.
     pub brought_back: bool,
+    /// The appointment's end when it set it aside (`;END=` on that line, in
+    /// UTC), Unix seconds; 0 when unsaid. Moved later than this, the
+    /// appointment gives it back (`pairs::closing`).
+    pub set_aside_end: i64,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -290,6 +294,16 @@ impl Task {
     /// Nextcloud Tasks counts one unsaid.
     pub fn sequence(&self) -> i64 {
         self.sort_order.unwrap_or(self.created - APPLE_EPOCH)
+    }
+
+    /// When its own place among its bigger task's steps (`SORT_ORDER`) says it
+    /// was given, Unix seconds: Sioul writes it in seconds from 1 January 2001,
+    /// never before the step's making or its move among them
+    /// (`next_in_sequence`), so a task made a step since says so here, its
+    /// CREATED kept. A place given after others in a row may say a little
+    /// later than it was (a gap each). None when unsaid.
+    pub fn placed_at(&self) -> Option<i64> {
+        self.sort_order.map(|s| s.saturating_add(APPLE_EPOCH))
     }
 }
 
@@ -646,6 +660,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             crate::pairs::SET_ASIDE => {
                 task.set_aside = value.trim().to_string();
                 task.brought_back = lines::param(line, "BROUGHT-BACK").is_some_and(|b| b.trim().eq_ignore_ascii_case("TRUE"));
+                task.set_aside_end = lines::param(line, "END").and_then(|e| crate::moves::read_utc(&e)).unwrap_or(0);
             }
             // A whole number; another program's decimal read to the nearest.
             SORT_ORDER => task.sort_order = value.trim().parse::<i64>().ok().or_else(|| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 9e15).map(|v| v.round() as i64)),

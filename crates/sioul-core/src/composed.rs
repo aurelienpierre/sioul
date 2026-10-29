@@ -146,14 +146,7 @@ impl Change {
             out.push(FileChange { path: path.clone(), before, after: Some(text.clone()) });
         }
         for (from, to, text) in &self.moved {
-            let before = std::fs::read_to_string(from).ok();
-            vdir::move_item(from, to)?;
-            // Moved: taken back as the file there removed and the one here put back.
-            out.push(FileChange { path: from.clone(), before: before.clone(), after: None });
-            out.push(FileChange { path: to.clone(), before: None, after: Some(text.clone()) });
-            if before.as_deref() != Some(text.as_str()) {
-                vdir::write_item(to, text)?;
-            }
+            moved_into(from, to, text, out, &vdir::write_item)?;
         }
         for path in &self.gone {
             let Ok(before) = std::fs::read_to_string(path) else { continue };
@@ -162,6 +155,25 @@ impl Change {
         }
         Ok(())
     }
+}
+
+/// One file moved, then rewritten as `text` (by `write`): taken back as the
+/// file there removed and the one here put back. Until the rewrite is done,
+/// the file there holds what was moved, and is said so: a rewrite that fails
+/// then takes the moved file out, never leaving the task in both lists
+/// (review of 4d7bab4, later 6).
+fn moved_into(from: &Path, to: &Path, text: &str, out: &mut Vec<FileChange>, write: &dyn Fn(&Path, &str) -> Result<(), String>) -> Result<(), String> {
+    let before = std::fs::read_to_string(from).ok();
+    vdir::move_item(from, to)?;
+    out.push(FileChange { path: from.to_path_buf(), before: before.clone(), after: None });
+    out.push(FileChange { path: to.to_path_buf(), before: None, after: before.clone() });
+    if before.as_deref() != Some(text) {
+        write(to, text)?;
+        if let Some(there) = out.last_mut() {
+            there.after = Some(text.to_string());
+        }
+    }
+    Ok(())
 }
 
 /// What a change cut short wrote, taken back, last first: each file only
@@ -528,6 +540,23 @@ mod tests {
         std::fs::write(&path, "written").unwrap();
         take_back(&[FileChange { path: path.clone(), before: Some("before".into()), after: Some("written".into()) }]);
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "before", "what it wrote, taken back");
+    }
+
+    /// A file moved whose rewrite there fails (a full disk): taken back, it
+    /// is in its old list alone, never in both (review of 4d7bab4, later 6).
+    #[test]
+    fn a_move_whose_rewrite_fails_leaves_one_copy() {
+        let desk = Desk::new("move-rewrite");
+        desk.add(&desk.list, "moved", TaskEdit::default());
+        let from = desk.list.dir.join("moved.ics");
+        let before = std::fs::read_to_string(&from).unwrap();
+        let to = desk.other.dir.join("moved.ics");
+        let mut done = Vec::new();
+        let full = |_: &Path, _: &str| -> Result<(), String> { Err("No space left on device".into()) };
+        assert!(moved_into(&from, &to, &before.replace("END:VTODO", "X-UNTIED:1\r\nEND:VTODO"), &mut done, &full).is_err());
+        take_back(&done);
+        assert_eq!(std::fs::read_to_string(&from).ok().as_deref(), Some(before.as_str()), "put back here");
+        assert!(!to.exists(), "and not left there");
     }
 
     /// E0.7: a file that fails takes back what the change wrote before it: the

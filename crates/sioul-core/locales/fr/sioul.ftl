@@ -1276,6 +1276,7 @@ task-steps-total = Ses étapes font { $estimate } en tout.
 task-part-of = Fait partie de : { $title }
 task-tight = À ce rythme, le plan finit après le { $date }. La faire plus tôt, la réduire ou la confier garderait la date.
 task-done-on = Faite le { $date }
+task-set-aside-on = Mise de côté le { $date }, son rendez-vous passé
 task-unblocks = Libère { $n ->
         [one] une autre étape
        *[other] { $countf } autres étapes

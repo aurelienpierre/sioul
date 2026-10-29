@@ -2303,6 +2303,11 @@ fn legs_move_and_go_with_their_appointment() {
     assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| (e.start, e.end)), Some(("2099-11-24T14:10".to_string(), "2099-11-24T14:35".to_string())));
     assert!(said_about("Doctor").put_back());
     assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "every file back");
+    // Into a calendar that is not here: refused before anything is written, the leg with it
+    // (review of 4d7bab4, later 3).
+    let nowhere = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-24T15:00", "end": "2099-11-24T15:30", "calendar": "nowhere/none" }));
+    assert_eq!(nowhere["isError"], true, "{nowhere}");
+    assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "nothing written");
     // Asked to stay: the leg keeps its time, set from the appointment as it is now.
     let stayed = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-24T15:00", "end": "2099-11-24T15:30", "legs": "stay" }));
     assert_eq!(stayed["isError"], false, "{stayed}");

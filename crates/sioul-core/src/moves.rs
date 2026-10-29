@@ -105,6 +105,31 @@ impl Seen {
     pub fn doubted(&mut self, uid: &str, instant: i64, now: i64) -> i64 {
         *self.doubt.entry(doubt_key(uid, instant)).or_insert(now)
     }
+
+    /// From when what closes by itself sets aside (`closing_from`): `now` at
+    /// the first pass, kept after. None, and nothing kept, while the clock
+    /// says a time before this build was made (`closing_floor`): such a clock
+    /// is wrong, and taking its time would let the past at the install be set
+    /// aside once it is set right; that pass closes nothing (review of
+    /// 4d7bab4, later 7).
+    pub fn closing_since(&mut self, now: i64) -> Option<i64> {
+        if let Some(from) = self.closing_from {
+            return Some(from);
+        }
+        if now < closing_floor() {
+            return None;
+        }
+        self.closing_from = Some(now);
+        Some(now)
+    }
+}
+
+/// No clock right says a time before this build: its commit's time
+/// (`build::committed`), and never before what closes by itself was written
+/// (29 October 2026, 00:00 UTC), for a build that could not read its commit.
+pub fn closing_floor() -> i64 {
+    const WRITTEN: i64 = 1_793_232_000;
+    crate::build::committed().max(WRITTEN)
 }
 
 /// A doubt's key: the appointment's UID and the instant its follower was set for.
@@ -281,6 +306,21 @@ mod tests {
         assert!(seen.doubt.contains_key("visit"), "an older key, the UID alone, still the appointment's");
         seen.closing_from = Some(42);
         assert_eq!(toml::from_str::<Seen>(&toml::to_string(&seen).unwrap()).unwrap().closing_from, Some(42));
+    }
+
+    /// The closing's start is taken only from a clock at or after this
+    /// build's time; before it, that pass closes nothing and keeps nothing
+    /// (review of 4d7bab4, later 7). Then kept, whatever the clock says.
+    #[test]
+    fn a_clock_behind_the_build_starts_no_closing() {
+        let floor = closing_floor();
+        assert!(floor >= 1_793_232_000 && floor >= crate::build::committed());
+        let mut seen = Seen::default();
+        assert_eq!(seen.closing_since(floor - 400 * 86_400), None, "a year behind: nothing");
+        assert_eq!(seen.closing_from, None, "and nothing kept");
+        assert_eq!(seen.closing_since(floor + 60), Some(floor + 60));
+        assert_eq!(seen.closing_since(floor + 3_600), Some(floor + 60), "kept");
+        assert_eq!(seen.closing_since(floor - 86_400), Some(floor + 60), "kept, the clock set back since");
     }
 
     /// An older form (days only) is not read: first sight again, harmless.
