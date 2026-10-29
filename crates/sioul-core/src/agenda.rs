@@ -85,6 +85,15 @@ pub struct Occurrence {
     /// Its reminder before, as it says it (`reminders::REMIND`): "" as usual,
     /// "NONE", "15"; a changed occurrence's own, else its series'.
     pub remind: String,
+    /// A leg's anchor to its appointment (`anchors`), read with its file; none for any other event.
+    #[serde(skip)]
+    pub anchor: Option<crate::anchors::Anchor>,
+    /// A leg whose appointment was read with it (`anchors::mark`): that appointment's UID.
+    #[serde(skip)]
+    pub leg_of: String,
+    /// An appointment one of whose legs was moved with it, its timetable not checked (`anchors::mark`).
+    #[serde(skip)]
+    pub legs_doubt: bool,
 }
 
 /// Someone invited, and what they answered.
@@ -446,6 +455,7 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
 pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
     let with_others = meeting_with_others(&text, own);
+    let anchor = crate::anchors::parse(&text);
     let Some(ical) = parse(&for_expansion(&from_window(&text, from))) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
     let mut found = Vec::new();
@@ -495,6 +505,9 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
             remind: remind_of(&ical, component),
             with_others,
             list: String::new(),
+            anchor: anchor.clone(),
+            leg_of: String::new(),
+            legs_doubt: false,
         });
     }
     // Your own time around a meeting, kept in your own file, wins over the
@@ -518,6 +531,9 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
         let own: Vec<String> = crate::config::Config::load(&crate::config::default_path()).map(|c| c.every_account().filter_map(|a| a.address.clone()).collect()).unwrap_or_default();
         mark_declined(&mut all, &own);
     }
+    // An appointment's time kept around it from its legs, while it has some (part E):
+    // the plan, the day, quiet time, pauses, health, reach and the reminders all read it here.
+    crate::anchors::mark(&mut all);
     all.sort_by(|a, b| (a.start, a.all_day == false, &a.summary).cmp(&(b.start, b.all_day == false, &b.summary)));
     all
 }
@@ -764,6 +780,8 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
         .iter()
         .map(|o| {
             let block = !o.task.is_empty() && !o.with_others;
+            // A leg whose appointment was read with it (`anchors::mark`): a quiet line in its lead.
+            let leg = !o.leg_of.is_empty() && !block;
             let why = if o.read_only {
                 read_only.clone()
             } else if o.with_others {
@@ -780,9 +798,21 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
             };
             Item {
                 id: if block { block_id(&o.key, o.start, o.recurring) } else { event_id(&o.key, o.start, o.recurring) },
-                kind: if block { Kind::Block } else { Kind::Event },
+                kind: if block {
+                    Kind::Block
+                } else if leg {
+                    Kind::Leg
+                } else {
+                    Kind::Event
+                },
                 time,
-                certainty: if block { Certainty::Held } else { Certainty::Fixed },
+                certainty: if block {
+                    Certainty::Held
+                } else if leg && o.anchor.as_ref().is_some_and(|a| a.unconfirmed.is_some()) {
+                    Certainty::Unconfirmed
+                } else {
+                    Certainty::Fixed
+                },
                 source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone(), collection: crate::timeline::collection_of(&o.key) },
                 can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free, why },
                 privacy: if block && errand(&o.task) { Privacy::Health } else { Privacy::Admin },
@@ -799,7 +829,8 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 colour: o.color.clone(),
                 address: if block { crate::links::task_uri(&o.task) } else { crate::links::event_uri(&o.uid) },
                 // A meeting with others that is a task's time block is its task's too: kept with it, counted once with it.
-                owner: o.task.clone(),
+                // A leg: its appointment's UID.
+                owner: if leg { o.leg_of.clone() } else { o.task.clone() },
                 holds_time: o.holds_time(),
             }
         })
@@ -1436,6 +1467,31 @@ fn moment_in(line: &str, value: &str, zone: &TimeZone) -> Option<Zoned> {
 /// they are; `drop` names the other lines left out (a new changed occurrence
 /// leaves the rule).
 fn retimed(block: &[String], like: &str, from: Timestamp, to: Timestamp, recurrence: Option<String>, drop: &[&str], zone: &TimeZone) -> Vec<String> {
+    retimed_stamped(block, like, from, to, recurrence, drop, zone, None)
+}
+
+/// A single event's text at new times, in its own form (`moved`'s), its
+/// stamps `stamp` (UTC) when given, else now: what a leg moved with its
+/// appointment takes, so that two devices write the same bytes (`anchors`).
+/// None for a repeating event or one that does not read.
+pub fn retimed_text(text: &str, start: i64, end: i64, stamp: Option<&str>, zone: &TimeZone) -> Option<String> {
+    let (from, to) = (Timestamp::from_second(start).ok()?, Timestamp::from_second(end).ok()?);
+    if to <= from {
+        return None;
+    }
+    let mut source = lines::unfold(text);
+    let master = master_range(&source)?;
+    if source[master.clone()].iter().any(|l| matches!(lines::name(l).as_str(), "RRULE" | "RDATE")) {
+        return None;
+    }
+    let like = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART").cloned()?;
+    let block = retimed_stamped(&source[master.clone()], &like, from, to, None, &[], zone, stamp);
+    source.splice(master, block);
+    Some(lines::fold(&source))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn retimed_stamped(block: &[String], like: &str, from: Timestamp, to: Timestamp, recurrence: Option<String>, drop: &[&str], zone: &TimeZone, stamp: Option<&str>) -> Vec<String> {
     let kept = recurrence.is_some();
     let sequence = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse::<u32>().ok());
     let last = block.len().saturating_sub(1);
@@ -1454,7 +1510,7 @@ fn retimed(block: &[String], like: &str, from: Timestamp, to: Timestamp, recurre
         }
         out.push(line.clone());
     }
-    let now = utc(&Zoned::now());
+    let now = stamp.map_or_else(|| utc(&Zoned::now()), str::to_string);
     let mut own = Vec::new();
     own.extend(recurrence);
     own.extend([written_like(like, "DTSTART", from, zone), written_like(like, "DTEND", to, zone), format!("DTSTAMP:{now}"), format!("LAST-MODIFIED:{now}")]);
@@ -1714,6 +1770,8 @@ pub struct EventRef {
     pub recurring: bool,
     /// The task it is the time block of (`X-SIOUL-TASK`, `blocks`), by UID; "" for an event of its own.
     pub task: String,
+    /// A leg's anchor to its appointment (`anchors`); none for any other event.
+    pub anchor: Option<crate::anchors::Anchor>,
 }
 
 /// The ties of one event's text; None when it holds no event.
@@ -1740,6 +1798,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             _ => {}
         }
     }
+    found.anchor = crate::anchors::parse(text);
     found.start = edit_of_text(text, zone).and_then(|e| {
         let at: DateTime = if e.all_day { format!("{}T00:00", e.start).parse().ok()? } else { e.start.parse().ok()? };
         at.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())

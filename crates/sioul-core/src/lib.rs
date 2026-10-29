@@ -172,6 +172,7 @@
 
 pub mod accounts;
 pub mod agenda;
+pub mod anchors;
 pub mod agentwrites;
 pub mod appointments;
 pub mod appnotes;
@@ -226,6 +227,7 @@ pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moves;
 pub mod needs;
 pub mod overlaps;
 pub mod own_time;

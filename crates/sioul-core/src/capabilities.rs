@@ -101,6 +101,8 @@ pub fn task_losses(task: &Task, to: Provider) -> Vec<&'static str> {
     add(!task.kind.is_empty() || task.office_hours, "kind");
     add(task.estimate > 0, "estimate");
     add(!task.links.is_empty(), "links");
+    // Tied to an appointment: Google keeps no link, so the tie is undone with the move (part E0.9).
+    add(crate::pairs::appointment_of(task).is_some(), "appointment");
     add(!task.contacts.is_empty(), "contacts");
     add(!task.categories.is_empty(), "categories");
     add(task.billable.is_some(), "billable");

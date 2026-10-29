@@ -386,7 +386,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "get_event",
         title: "Read an event",
-        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here.",
+        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes; from its legs while it has some), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here. An appointment gives its legs (a ride or a walk before or after it, which move with it: side, and unconfirmed when one was moved with it and its timetable not checked); a leg gives the appointment it is before or after (leg_of).",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -751,7 +751,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_event",
         title: "Add an event",
-        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes. An appointment, not a task: something to do goes in add_task, even with a time; when the person has not said which it is, ask them.",
+        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes. An appointment, not a task: something to do goes in add_task, even with a time; when the person has not said which it is, ask them. With `anchor` (an appointment's address) it is a leg of that appointment: a ride or a walk `side` before or after it, at the times given, which then moves with it; in the appointment's calendar and projects (the calendar for new events when that one cannot hold it, said). Never invent a timetable: give `timetable` only for a time read from one, and leave a ride out rather than guess. Not for an appointment that repeats or lasts the whole day. Said in Sioul's window with Undo.",
         writes: true,
         idempotent: false,
         open_world: false,
@@ -766,6 +766,10 @@ pub const TOOLS: &[Tool] = &[
                     "notes": { "type": "string" },
                     "repeat": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
                     "calendar": { "type": "string", "description": "The calendar, as account/id." },
+                    "anchor": { "type": "string", "description": "A leg: the appointment it belongs to, sioul:event/<UID>. start and end are then the leg's own times." },
+                    "side": { "type": "string", "enum": ["before", "after"], "description": "A leg: before the appointment (getting there; the default) or after it (coming back)." },
+                    "timetable": { "type": "boolean", "description": "A leg whose time was read from a timetable: once moved with its appointment, said as not checked." },
+                    "step": { "type": "string", "description": "Not yet: a leg as a step's time waits until every device reads it; refused." },
                 }),
                 &["title", "start"],
             )
@@ -794,6 +798,7 @@ pub const TOOLS: &[Tool] = &[
                     "before": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept before it: getting ready, getting there." },
                     "after": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept after it: coming back." },
                     "calendar": { "type": "string", "description": "Another calendar, as account/id: the event moves there." },
+                    "legs": { "type": "string", "enum": ["follow", "stay"], "description": "Its legs when its times change: they move with it (follow, the default; the answer lists them), or stay where they are." },
                 }),
                 &["event"],
             )
@@ -807,7 +812,7 @@ pub const TOOLS: &[Tool] = &[
         writes: true,
         idempotent: false,
         open_world: false,
-        schema: || object(json!({ "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." }, "occurrence": { "type": "string", "description": "The time one occurrence starts, as 2026-10-05T09:00: that time alone." } }), &["event"]),
+        schema: || object(json!({ "event": { "type": "string", "description": "Its address, sioul:event/<UID> (agenda and find give them), or its UID." }, "occurrence": { "type": "string", "description": "The time one occurrence starts, as 2026-10-05T09:00: that time alone." }, "legs": { "type": "string", "enum": ["delete", "keep"], "description": "Its legs to come: deleted with it under the same Undo (delete, the default), or kept as events of their own. Those already over stay." } }), &["event"]),
         run: items::delete_event,
     },
     Tool {

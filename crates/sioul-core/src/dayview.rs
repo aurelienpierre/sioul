@@ -438,18 +438,53 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
     // agenda's part 4): the open steps of what prepares an appointment of that
     // day, among those the plan gives it, laid back to back, each at its own
     // length, the last ending when leaving begins (its start less the time kept
-    // before it); no pause inside the run, one before it. Until part E's
-    // anchors say which steps come after the appointment, every open step
-    // counts as before it. A run that would cross something kept, or reach
-    // before now, is laid as any step is.
+    // before it, from its legs while it has some: `anchors::mark`); no pause
+    // inside the run, one before it. The steps that come after it (part E6,
+    // `Task::after`) are laid forward from its end, its coming back included,
+    // the same way. A run that would cross something kept, or reach before
+    // now, is laid as any step is.
     let mut others = others;
     for event in &timed {
-        let leave = event.start - i64::from(event.margins.before) * 60;
-        if leave <= start_at || event.start >= next_midnight {
+        if event.start >= next_midnight {
             continue;
         }
         let Some(preparation) = tasks.iter().find(|t| t.status.is_open() && crate::pairs::appointment_of(t).as_deref() == Some(event.uid.as_str())) else { continue };
-        let order: Vec<&str> = crate::tasks::steps_of(tasks, &preparation.uid).into_iter().filter(|t| t.status.is_open()).map(|t| t.uid.as_str()).collect();
+        // After it: from its end and its coming back, forward, back to back.
+        let back = event.end + i64::from(event.margins.after) * 60;
+        let after: Vec<&str> = crate::tasks::steps_of(tasks, &preparation.uid).into_iter().filter(|t| t.status.is_open() && t.after).map(|t| t.uid.as_str()).collect();
+        let mut run: Vec<usize> = after.iter().filter_map(|uid| others.iter().position(|s| s.task.uid == *uid)).collect();
+        if !run.is_empty() && back >= start_at {
+            let mut placed: Vec<(usize, i64, i64)> = Vec::new();
+            let mut end = back;
+            for &i in &run {
+                let to = end + i64::from(others[i].minutes) * 60;
+                placed.push((i, end, to));
+                end = to;
+            }
+            let mut kept = busy.clone();
+            if let Some(i) = crate::plan::event_spans(std::slice::from_ref(*event), settings.pause).first().and_then(|own| kept.iter().position(|span| span == own)) {
+                kept.remove(i);
+            }
+            if end <= day_end && placed.iter().all(|&(_, from, to)| kept.iter().all(|&(a, b)| b <= from || a >= to)) {
+                for &(i, from, to) in &placed {
+                    lay(&mut view, &others[i], from, to, 0, false);
+                    laid.insert(others[i].task.uid.as_str(), to);
+                    if others[i].level == crate::demands::Level::Heavy {
+                        heavy_laid.push((from, to));
+                    }
+                }
+                busy.push((back, end + pause));
+                run.sort_unstable_by(|a, b| b.cmp(a));
+                for i in run {
+                    others.remove(i);
+                }
+            }
+        }
+        let leave = event.start - i64::from(event.margins.before) * 60;
+        if leave <= start_at {
+            continue;
+        }
+        let order: Vec<&str> = crate::tasks::steps_of(tasks, &preparation.uid).into_iter().filter(|t| t.status.is_open() && !t.after).map(|t| t.uid.as_str()).collect();
         let mut run: Vec<usize> = order.iter().filter_map(|uid| others.iter().position(|s| s.task.uid == *uid)).collect();
         if run.is_empty() {
             continue;
@@ -1189,6 +1224,30 @@ mod tests {
         for (from, to) in elsewhere.into_iter().flatten() {
             assert!(to <= call.start || from >= call.end, "never over the call: {from}–{to}");
         }
+    }
+
+    /// The steps that come after an appointment (part E6, `Task::after`) are
+    /// laid forward from its end and its coming back, back to back; the run
+    /// before it holds only the steps before.
+    #[test]
+    fn the_steps_after_an_appointment_follow_its_end() {
+        let now = at("2026-10-05T11:30");
+        let hours = vec![window("tuesday", "09:00", "17:00", "work")];
+        let settings = Settings::of_hours(&hours, TaskAreas::usual());
+        let mut doctor = Occurrence { key: "doc.ics".into(), uid: "doc".into(), summary: "Doctor".into(), start: at("2026-10-06T14:00").timestamp().as_second(), end: at("2026-10-06T14:30").timestamp().as_second(), ..Occurrence::default() };
+        doctor.margins = crate::demands::Margins { before: 30, after: 15 };
+        let mut prep = task("prep", 0, "");
+        prep.links = vec![crate::tasks::Link { uri: "sioul:event/doc".into(), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }];
+        let step = |uid: &str, minutes: u32, created: i64| Task { relations: vec![crate::tasks::Relation { kind: "PARENT".into(), uid: "prep".into(), gap: 0 }], created, ..task(uid, minutes, "") };
+        let tasks = vec![prep, step("bus", 20, 1), Task { after: true, ..step("book", 15, 2) }];
+        let mut made = plan(&tasks, now.date(), &settings.clone().with_events(&now, std::slice::from_ref(&doctor)), &BTreeMap::new(), &BTreeSet::new());
+        let tuesday = jiff::civil::date(2026, 10, 6);
+        made.days.insert(tuesday, vec![("bus".into(), 20), ("book".into(), 15)]);
+        let view = lay_on(tuesday, &now, std::slice::from_ref(&doctor), &made, &tasks, &settings.clone().with_events(&now, std::slice::from_ref(&doctor)), Drawn::ALL);
+        let laid = |uid: &str| view.blocks.iter().find(|b| b.kind == "task" && b.key == uid).map(|b| (b.start, b.end));
+        let t = |text: &str| at(text).timestamp().as_second();
+        assert_eq!(laid("bus"), Some((t("2026-10-06T13:10"), t("2026-10-06T13:30"))), "the one before, ending when leaving begins");
+        assert_eq!(laid("book"), Some((t("2026-10-06T14:45"), t("2026-10-06T15:00"))), "the one after, from its end and coming back");
     }
 
     /// Another day's meals move past what the plan's own rule says

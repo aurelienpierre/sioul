@@ -2095,6 +2095,18 @@ Panel {
                     text: panel.sioul.text("task-fold")
                     onTriggered: panel.foldStep(stepActions.step.uid)
                 }
+                // A step of an appointment's task that comes after it (part E6): laid from its end,
+                // said under Coming back, never dropped once it is over.
+                MenuItem {
+                    objectName: "stepAfter"
+                    visible: stepActions.step !== null && panel.detail !== null && !!panel.detail.appointment
+                    height: visible ? implicitHeight : 0
+                    enabled: stepActions.step !== null && panel.canEdit && !stepActions.step.read_only
+                    checkable: true
+                    checked: stepActions.step !== null && stepActions.step.after === true
+                    text: panel.sioul.text("task-step-after")
+                    onTriggered: panel.composed(panel.sioul.setStepAfter(stepActions.step.uid, checked), null)
+                }
             }
         }
     }

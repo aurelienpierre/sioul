@@ -618,6 +618,19 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
         return serde_json::json!({ "losses": losses.iter().map(|l| tr().text(&format!("loss-{l}"), None)).collect::<Vec<_>>() }).to_string();
     }
     let mut accounts = BTreeSet::new();
+    // Into a list that keeps no link (Google Tasks): a tie to an appointment undone first,
+    // by its one rule, put back if the move then fails (part E0.9).
+    let mut untied = Vec::new();
+    if provider == sioul_core::capabilities::Provider::GoogleTasks {
+        let now = Zoned::now();
+        for task in &family {
+            let change = sioul_core::pairs::untied_for_list(task, &loaded.events, &now);
+            match change.write() {
+                Ok(files) => untied.extend(files),
+                Err(e) => return answer(Err(e)),
+            }
+        }
+    }
     for task in family {
         let from = Path::new(&task.key);
         if from.parent() == Some(target.dir.as_path()) {
@@ -626,6 +639,7 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
         // Through the moves' journal: a step cut short is finished, never both, never neither (the check of ef8c0ca, low 27).
         let moved = vdir::move_item(from, &target.dir.join(format!("{}.ics", vdir::new_name())));
         if let Err(e) = moved {
+            let _ = sioul_core::agentwrites::Said { at: 0, line: String::new(), files: untied }.put_back();
             return answer(Err(e));
         }
         accounts.extend(account_of(from));
@@ -783,15 +797,24 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             show_work(&qt, &shared);
             pim::show_pim(&qt, &shared);
         }
-        // A paired task's date follows its appointment, while it says the day the pairing wrote (`pairs`).
+        // What follows an appointment follows it (`moves`): a paired task's date, while it says the
+        // day the pairing wrote (`pairs`), and its legs (`anchors`), by one rule.
         let now = Zoned::now();
-        // Only a move this device saw (`pairs::Seen`), and again at once only after a write that succeeded (F4, F12).
-        let mut seen = sioul_core::pairs::Seen::load();
+        // Only a move this device saw (`moves::Seen`), and again at once only after a write that succeeded (F4, F12).
+        let mut seen = sioul_core::moves::Seen::load();
         let before = seen.clone();
         // The pages' events alone: a copy left in an account switched off never moves a date (F15).
-        let moved = sioul_core::pairs::upkeep(&desk.loaded.tasks, &sioul_core::pairs::appointments_of(&desk.loaded.events, now.time_zone()), &mut seen, &now);
+        let moved = sioul_core::moves::upkeep(&desk.loaded.tasks, &desk.loaded.events, &mut seen, &now);
         if seen != before {
             let _ = seen.save();
+        }
+        // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
+        let mut moved = moved;
+        let closed = sioul_core::pairs::closing(&desk.loaded.tasks, &desk.loaded.events, &now);
+        if !closed.is_empty()
+            && let Ok(files) = closed.write()
+        {
+            moved.extend(files.into_iter().map(|f| f.path));
         }
         if !moved.is_empty() {
             for account in moved.iter().filter_map(|p| account_of(p)).collect::<BTreeSet<_>>() {
@@ -1398,7 +1421,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
                 // Its next time, as the plan read it (its margins and your own time around it), else its first.
                 let now = Zoned::now().timestamp().as_second();
                 let time = desk.read.iter().filter(|o| o.uid == uid && o.end > now).min_by_key(|o| o.start).cloned().unwrap_or_else(|| sioul_core::agenda::Occurrence { key: event.key.clone(), uid: uid.clone(), summary: event.summary.clone(), start: event.start, end: event.start, cancelled: event.cancelled, ..Default::default() });
-                let mut view = serde_json::to_value(sioul_core::pairs::appointment_view(&time, &event.links, &loaded.tasks, tr(), &zone)).unwrap_or_default();
+                let legs = sioul_core::anchors::legs_seen_in(&uid, &desk.read);
+                let mut view = serde_json::to_value(sioul_core::pairs::appointment_view(&time, &event.links, &loaded.tasks, &legs, None, tr(), &zone)).unwrap_or_default();
                 if event.start <= 0 {
                     view["when"] = serde_json::Value::String(String::new());
                 }
@@ -1467,6 +1491,26 @@ pub(crate) fn make_step_of(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bigge
     let title = |u: &str| all.iter().find(|t| t.uid == u).map(|t| t.title.clone()).unwrap_or_default();
     let planned = if bigger.is_empty() { sioul_core::composed::promote(&all, uid, &now) } else { sioul_core::composed::demote(&all, uid, bigger, &tasks::lists(), &keeper(&config), confirmed, &now) };
     composed_done(qt, shared, planned, uid, || if bigger.is_empty() { say("composed-made-own", &[("title", title(uid))]) } else { say("composed-made-step", &[("title", title(uid)), ("whole", title(bigger))]) })
+}
+
+/// A step said to come after its appointment, or before it (part E6): laid
+/// then forward from the appointment's end, said under Coming back, never
+/// dropped once the appointment is over. {"uid"} or {"error"}.
+pub(crate) fn set_step_after(qt: &QtThread, shared: &Arc<Shared>, uid: &str, after: bool) -> String {
+    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let all = tasks::all(&zone);
+    let planned = match all.iter().find(|t| t.uid == uid) {
+        None => Err(sioul_core::composed::Refusal::Gone),
+        Some(step) if step.read_only => Err(sioul_core::composed::Refusal::ReadOnly),
+        Some(step) => std::fs::read_to_string(&step.key)
+            .ok()
+            .and_then(|text| sioul_core::anchors::step_side(&text, after, &now).ok().filter(|t| *t != text))
+            .map(|text| sioul_core::composed::Change { written: vec![(std::path::PathBuf::from(&step.key), text)], ..sioul_core::composed::Change::default() })
+            .ok_or(sioul_core::composed::Refusal::Gone)
+            .or_else(|_| Ok(sioul_core::composed::Change::default())),
+    };
+    let title = all.iter().find(|t| t.uid == uid).map(|t| t.title.clone()).unwrap_or_default();
+    composed_done(qt, shared, planned, uid, || say(if after { "step-after-said" } else { "step-before-said" }, &[("title", title)]))
 }
 
 /// A step folded into its bigger task's list (an item), its blocks to come

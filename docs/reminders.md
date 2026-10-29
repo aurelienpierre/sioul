@@ -48,6 +48,8 @@ When each reminder may come is the one matrix of what reaches you ([attention.md
 ## The notification
 One quiet desktop notification, no sound. From the window it carries "Open" where the desktop's notifications take buttons (Linux): the task, the event or the budget, shown; on Windows and macOS, and from the watcher, it is its text alone.
 
+**An outing with legs** (a bus, a walk around an appointment: docs/tasks.md, "Getting there and coming back") is reminded once, by the appointment, counted from its first leg (`anchors::mark`), with "(timetable not checked)" when a leg was moved with the appointment by arithmetic; a leg's own reminder before it and the working day before are not told while its appointment is here, its own alarms are. An older Sioul on another device reminds the leg and the appointment each as an event.
+
 **On a phone**, the events' reminders come (before an event, the working day before, its alarms), Sioul open or not: Android's alarm clock is given them ahead and asks Sioul at their time ([android.md](android.md), "Events"), in the quiet "Events" channel, a tap opening the event. The other reminders (dates asked, waits, payments, papers, contracts, the money watch) come on a computer only.
 
 ## Tested

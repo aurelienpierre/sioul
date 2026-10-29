@@ -356,10 +356,11 @@ pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: i64) {
 }
 
 /// The blocks to delete with a task deleted, (account, file): those not
-/// begun. One under way, or over, stays: an event of its own once the task is gone.
+/// begun. One under way, or over, stays: an event of its own once the task is
+/// gone; so does a leg that is its time (`anchors`): it belongs to its appointment.
 pub(crate) fn with_task(uid: &str) -> Vec<(String, PathBuf)> {
     let stamp = Timestamp::now().as_second();
-    found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring && b.start > stamp).map(|b| (pim::account_of(Path::new(&b.key)).unwrap_or_default(), PathBuf::from(&b.key))).collect()
+    found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring && b.anchor.is_none() && b.start > stamp).map(|b| (pim::account_of(Path::new(&b.key)).unwrap_or_default(), PathBuf::from(&b.key))).collect()
 }
 
 /// A task's title or its dates changed here: its blocks to come follow, the
@@ -371,7 +372,8 @@ pub(crate) fn follow(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
     let Some(task) = std::fs::read_to_string(&known.key).ok().and_then(|text| sioul_core::tasks::task_of_text(&text, &zone)) else { return };
     let stamp = Timestamp::now().as_second();
     let turn = blocks::turn_of(&task);
-    for block in found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring && b.end > stamp) {
+    // A leg keeps its own title ("Bus 24"), whatever its step is called.
+    for block in found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring && b.anchor.is_none() && b.end > stamp) {
         let path = PathBuf::from(&block.key);
         let Ok(before) = std::fs::read_to_string(&path) else { continue };
         let mut text = blocks::titled(&before, &task.title, &zone).unwrap_or_else(|| before.clone());

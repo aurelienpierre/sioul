@@ -26,6 +26,13 @@ Dialog {
     // 2026): its UID, and the file of the time block it was opened from.
     property string taskUid: ""
     property string taskBlock: ""
+    // A leg of the appointment in `legOf` (part E5: "Add a ride or a walk…"):
+    // on `legSide` ("before", "after"), from a timetable or not; `legLine`
+    // says which appointment ("Before Doctor (14:00)").
+    property string legOf: ""
+    property string legSide: "before"
+    property bool legTimetable: false
+    property string legLine: ""
     // What the task cannot keep as an appointment, said before Save (F5); else "".
     property string losses: ""
     property var calendars: []
@@ -152,6 +159,10 @@ Dialog {
     // Opens on an event, or on a new one on `day` ("2026-10-05"), at `hour` or the next full hour.
     function edit(key, day, hour) {
         dialog.key = key
+        dialog.legOf = ""
+        dialog.legSide = "before"
+        dialog.legTimetable = false
+        dialog.legLine = ""
         dialog.taskUid = ""
         dialog.taskBlock = ""
         dialog.losses = ""
@@ -256,6 +267,19 @@ Dialog {
         dialog.moreShown = made.notes !== "" || made.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
     }
 
+    // A leg of the appointment in `key` (part E5), its times given ("YYYY-MM-DD",
+    // "HH:MM"), on `side`; `line` names the appointment. Saved, it moves with it.
+    function makeLeg(key, side, line, day, from, to) {
+        dialog.edit("", day)
+        dialog.legOf = key
+        dialog.legSide = side
+        dialog.legLine = line
+        startDay.date = day
+        endDay.date = day
+        startTime.text = from
+        endTime.text = to
+    }
+
     // For the window's pictures: the costs and the gain in view.
     function showRatings() {
         dialog.moreShown = true
@@ -278,7 +302,7 @@ Dialog {
         // An event of a calendar not offered (read only) stays where it is.
         const offered = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
         const where = dialog.key !== "" && dialog.calendars.findIndex(c => c.id === dialog.currentCalendar) < 0 ? dialog.currentCalendar : offered
-        const problem = dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
+        const problem = dialog.legOf !== "" ? dialog.sioul.saveLeg(dialog.legOf, JSON.stringify(dialog.form()), dialog.legSide, dialog.legTimetable) : dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
         if (problem) {
             dialog.problem = problem
             return
@@ -319,7 +343,7 @@ Dialog {
     // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
     height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
     // A meeting with others: your own time around it alone, kept in your own file (decision 18).
-    title: dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key && dialog.withOthers ? dialog.sioul.text("event-own-time") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
+    title: dialog.legOf !== "" ? dialog.sioul.text("appointment-add-leg") : dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key && dialog.withOthers ? dialog.sioul.text("event-own-time") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
 
     FontMetrics {
         id: body
@@ -346,6 +370,45 @@ Dialog {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: dialog.theme.muted
+            }
+            // A leg: which appointment, which side of it, and whether its time is a timetable's.
+            ColumnLayout {
+                objectName: "eventLeg"
+                visible: dialog.legOf !== ""
+                Layout.fillWidth: true
+                spacing: 4
+
+                Label {
+                    Layout.fillWidth: true
+                    text: dialog.legLine
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                RowLayout {
+                    spacing: 6
+
+                    Button {
+                        objectName: "legBefore"
+                        text: dialog.sioul.text("leg-side-before")
+                        checkable: true
+                        checked: dialog.legSide === "before"
+                        onClicked: dialog.legSide = "before"
+                    }
+                    Button {
+                        objectName: "legAfter"
+                        text: dialog.sioul.text("leg-side-after")
+                        checkable: true
+                        checked: dialog.legSide === "after"
+                        onClicked: dialog.legSide = "after"
+                    }
+                }
+                CheckBox {
+                    objectName: "legTimetable"
+                    text: dialog.sioul.text("leg-timetable")
+                    checked: dialog.legTimetable
+                    onToggled: dialog.legTimetable = checked
+                }
             }
             Label {
                 objectName: "event-losses"

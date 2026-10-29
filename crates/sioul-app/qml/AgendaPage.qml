@@ -68,7 +68,7 @@ Item {
             return false
         if (hide.needs && (item.kind === "meal" || item.kind === "nap" || item.kind === "night"))
             return false
-        if ((item.kind === "event" || item.kind === "block") && hide.calendars.indexOf((item.source || {}).collection) >= 0)
+        if ((item.kind === "event" || item.kind === "block" || item.kind === "leg") && hide.calendars.indexOf((item.source || {}).collection) >= 0)
             return false
         return true
     }
@@ -120,7 +120,7 @@ Item {
         page.takeShown()
         if (page.visible) {
             page.readAgain()
-            if (page.todayShown)
+            if (page.dosesAsked)
                 page.sioul.refreshHealth()
         }
     }
@@ -135,7 +135,7 @@ Item {
     property var stepTarget: null
     // "Show anyway": the steps quiet time folds on coming days, drawn.
     property bool showAnyway: false
-    // What the Day and the Week show on this device ("Show", agenda-view.toml):
+    // What every view shows on this device ("Show", agenda-view.toml):
     // {steps, needs, doses, calendars: [{id, name}]}, a calendar by its place
     // ("account/id"), two of one name apart; all shown until you say.
     property var view: JSON.parse(page.sioul.agendaView() || "{}")
@@ -192,6 +192,9 @@ Item {
     // steps, follow the clock; the doses' reading asked at each minute, on showing and on
     // coming back, today laid again at each five minutes' turn (review of 21436bf, M2).
     readonly property bool todayShown: (page.mode === "day" || page.mode === "week" || page.mode === "agenda") && page.shown.days.some(d => d.date === page.window.today)
+    // The doses' reading asked of the Health job while today is shown, but not in What comes
+    // while Show leaves the doses out there: rows it would not show (review of 679f96a, later 9).
+    readonly property bool dosesAsked: page.todayShown && !(page.mode === "agenda" && page.hide.doses)
 
     function today() {
         return new Date()
@@ -251,7 +254,7 @@ Item {
         // Back on the screen while today is drawn: the doses read again at once, not at the
         // next minute's turn (until then, their marks say they are being read).
         function onBackAtChanged() {
-            if (page.visible && page.todayShown)
+            if (page.visible && page.dosesAsked)
                 page.sioul.refreshHealth()
         }
 
@@ -259,7 +262,7 @@ Item {
             if (!page.visible)
                 return
             // While today is drawn: the doses' marks read again at each minute (the Health job, one run for all who ask).
-            if (page.todayShown)
+            if (page.dosesAsked)
                 page.sioul.refreshHealth()
             if (page.window.today === page.readOn && Math.floor(page.window.now / 300) === Math.floor(page.readAt / 300))
                 return
@@ -365,7 +368,7 @@ Item {
     // Its menu (a right click, a long press): an appointment's or a block's, a
     // step's, a meal's, a nap's or the night's; a dose's opens its day in Health.
     function menuRow(row) {
-        if (row.kind === "event" || row.kind === "block") {
+        if (row.kind === "event" || row.kind === "block" || row.kind === "leg") {
             page.window.cardHost.eventMenu(row)
         } else if ((row.kind === "step" || row.kind === "done") && row.owner !== "") {
             page.stepTarget = { owner: row.owner, title: row.title, held: row.certainty === "held" }
@@ -379,7 +382,7 @@ Item {
 
     // Ctrl+E: its form; one that cannot be changed here opens where it lives.
     function editRow(row) {
-        if ((row.kind === "event" || row.kind === "block") && !row.readOnly)
+        if ((row.kind === "event" || row.kind === "block" || row.kind === "leg") && !row.readOnly)
             eventDialog.now().edit(row.srcKey, "")
         else
             page.openRow(row)
@@ -507,7 +510,7 @@ Item {
                     currentIndex: page.modes.indexOf(page.mode)
                     onActivated: index => page.mode = page.modes[index]
                 }
-                // What the Day and the Week show here: the plan's steps, meals and the night, doses, each calendar.
+                // What every view shows here: the plan's steps, meals and the night, doses, each calendar.
                 // Words beside its icon on a wide window; on a phone, on the title's line.
                 Button {
                     id: showButton
@@ -613,7 +616,7 @@ Item {
             }
             // The medicines could not be read here: said where their doses would be.
             Label {
-                visible: (page.mode === "day" || page.mode === "week") && (page.shown.doses_note || "") !== ""
+                visible: (page.mode === "day" || page.mode === "week" || (page.mode === "agenda" && !page.hide.doses)) && (page.shown.doses_note || "") !== ""
                 Layout.fillWidth: true
                 text: page.shown.doses_note || ""
                 textFormat: Text.PlainText
@@ -964,7 +967,7 @@ Item {
         }
     }
 
-    // Show: what the Day and the Week draw on this device.
+    // Show: what every view draws on this device (the Day, the Week, What comes and the Month).
     Later {
         id: showMenu
 
@@ -989,6 +992,18 @@ Item {
                     checkable: true
                     checked: page.view.doses !== false
                     onTriggered: page.showPart("doses", checked)
+                }
+                // Each ride or walk as an event of its own, rather than a quiet line in its
+                // appointment's lead (part E, D25): made in Rust, so the days are read again.
+                MenuItem {
+                    objectName: "agendaShowLegs"
+                    text: page.sioul.text("agenda-show-legs")
+                    checkable: true
+                    checked: page.view.legs === true
+                    onTriggered: {
+                        page.showPart("legs", checked)
+                        page.readAgain()
+                    }
                 }
                 // Quiet time's bands on coming days, drawn as the steps they hold: for now, not kept.
                 MenuItem {
@@ -1017,7 +1032,7 @@ Item {
                         checked: page.hiddenCalendars.indexOf(calendarLine.modelData.id) < 0
                         onTriggered: page.showCalendar(calendarLine.modelData, checked)
                     }
-                    onObjectAdded: (index, object) => showForm.insertItem(5 + index, object)
+                    onObjectAdded: (index, object) => showForm.insertItem(6 + index, object)
                     onObjectRemoved: (index, object) => showForm.removeItem(object)
                 }
             }

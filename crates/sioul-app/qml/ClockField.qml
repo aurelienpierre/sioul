@@ -6,8 +6,11 @@
 // lists, TimeField.qml). Up and Down move it by five minutes, to the next
 // whole five minutes, around midnight, but in an end field (`end`) only
 // from 00:00 to 23:55; what does not read is left as typed, for its form to
-// say. A step edits the text as typing does, so a `text:` binding holds. A
-// phone offers its digits. Its form reads `text`, as from the field it
+// say. A step edits the text as typing does, so a `text:` binding holds:
+// over the whole text selected, `insert` writes through the input mask, as a
+// key typed does, which every use gives ("99:99"); without a mask it would add
+// to the text, so a field without one is stepped by assignment. A phone offers
+// its digits. Its form reads `text`, as from the field it
 // replaces.
 
 import QtQuick
@@ -37,8 +40,14 @@ TextField {
         // Through the field's own editing, never an assignment: a `text:` binding holds, and
         // the field follows its model when that changes (review of 21436bf, later 10). The
         // edit says itself as typed (`textEdited`).
+        const typed = pad(Math.floor(at / 60)) + ":" + pad(at % 60)
+        if (field.inputMask === "") {
+            field.text = typed
+            field.textEdited()
+            return
+        }
         field.selectAll()
-        field.insert(0, pad(Math.floor(at / 60)) + ":" + pad(at % 60))
+        field.insert(0, typed)
         field.deselect()
     }
 

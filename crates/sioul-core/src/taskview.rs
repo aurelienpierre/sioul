@@ -255,6 +255,8 @@ pub struct CardView {
     pub pinned: String,
     /// The same, short, beside a pin on its row: "14:00" today, "Thu 8 Oct 10:00" another day; "" when not.
     pub pinned_time: String,
+    /// A step that comes after its appointment (`Task::after`, part E6).
+    pub after: bool,
 }
 
 /// Where a task is pinned, as its panel shows it.
@@ -352,6 +354,7 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         kind: task.kind.clone(),
         tight,
         in_loop: planned.in_loop,
+        after: task.after,
         done_on,
         links: task.links.len() + task.contacts.len(),
         level: task.demands.level().map_or("", crate::demands::Level::id),

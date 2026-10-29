@@ -85,6 +85,14 @@ Item {
             compare(field.text, "00:00")
         }
 
+        // A field without a mask is stepped whole, never added to (review of 679f96a, later 11).
+        function test_a_field_without_a_mask_steps_whole() {
+            const field = createTemporaryObject(fieldComponent, root, { inputMask: "", text: "09:00" })
+            field.forceActiveFocus()
+            keyClick(Qt.Key_Up)
+            compare(field.text, "09:05")
+        }
+
         // A step keeps the field's binding: its model changed after, it shows the model's.
         function test_a_step_keeps_the_binding() {
             const field = createTemporaryObject(boundComponent, root)

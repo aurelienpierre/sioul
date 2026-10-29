@@ -2221,6 +2221,79 @@ fn said_about(words: &str) -> sioul_core::agentwrites::Said {
     sioul_core::agentwrites::since(0).0.into_iter().rev().find(|s| s.line.contains(words)).unwrap_or_else(|| panic!("nothing said about {words}"))
 }
 
+/// The file of the event `uid`, in any calendar.
+fn event_file_of(uid: &str) -> PathBuf {
+    vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| std::fs::read_to_string(p).is_ok_and(|t| t.contains(&format!("UID:{uid}\r\n")))).unwrap_or_else(|| panic!("no event {uid}"))
+}
+
+/// Part E0.8: a task with steps made an appointment at its block's time keeps
+/// the task, tied, and takes its block out in the same change, as the window
+/// does with the block it was opened from; one Undo puts the block back.
+#[test]
+fn an_appointment_made_of_a_task_with_steps_takes_its_block() {
+    home();
+    let mut server = server();
+    let made = call(&mut server, "add_task", json!({ "title": "Renew the passport", "estimate": 60 }));
+    let uid = made["structuredContent"]["uid"].as_str().unwrap().to_string();
+    let step = call(&mut server, "add_task", json!({ "title": "Find the photo", "parent": uid }));
+    assert_eq!(step["isError"], false, "{step}");
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let zone = jiff::tz::TimeZone::system();
+    let tomorrow = Zoned::now().date().tomorrow().unwrap();
+    let at = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+    let block = agenda.dir.join("passport-block.ics");
+    std::fs::write(&block, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:passport-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Renew the passport\r\n{}:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", at(10), at(11), sioul_core::blocks::TASK)).unwrap();
+    let kept = call(&mut server, "task_to_event", json!({ "task": uid }));
+    assert_eq!((kept["isError"].as_bool(), kept["structuredContent"]["kept"].as_bool()), (Some(false), Some(true)), "{kept}");
+    assert!(!block.exists(), "its block, the appointment's time now, taken out");
+    assert!(said_about("Renew the passport").put_back());
+    assert!(block.exists(), "Undo brings it back");
+}
+
+/// Part E4: a leg added beside an appointment (never as a step's time yet),
+/// listed by get_event; moved with it by update_event (or kept where it is,
+/// asked), deleted with it by delete_event, each under the window's one Undo;
+/// a closed project's appointment takes no leg.
+#[test]
+fn legs_move_and_go_with_their_appointment() {
+    home();
+    let mut server = server();
+    let added = call(&mut server, "add_event", json!({ "title": "Doctor", "start": "2026-11-24T14:00", "end": "2026-11-24T14:30" }));
+    let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let doctor = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    let refused = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2026-11-24T13:10", "end": "2026-11-24T13:35", "anchor": uri, "step": "some-step" }));
+    assert_eq!(refused["isError"], true, "a step's time waits: {refused}");
+    let leg = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2026-11-24T13:10", "end": "2026-11-24T13:35", "anchor": uri, "timetable": true }));
+    assert_eq!(leg["isError"], false, "{leg}");
+    let bus = event_file_of(leg["structuredContent"]["uid"].as_str().unwrap());
+    let got = call(&mut server, "get_event", json!({ "event": uri }));
+    assert_eq!((got["structuredContent"]["legs"][0]["title"].as_str(), got["structuredContent"]["legs"][0]["side"].as_str()), (Some("Bus 24"), Some("before")), "{got}");
+    let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
+    // Moved: the leg with it, said, one Undo for both.
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": "2026-11-24T15:00", "end": "2026-11-24T15:30" }));
+    assert_eq!(moved["structuredContent"]["legs_moved"], json!(["Bus 24 (timetable not checked)"]), "{moved}");
+    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| (e.start, e.end)), Some(("2026-11-24T14:10".to_string(), "2026-11-24T14:35".to_string())));
+    assert!(said_about("Doctor").put_back());
+    assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "every file back");
+    // Asked to stay: the leg keeps its time, set from the appointment as it is now.
+    let stayed = call(&mut server, "update_event", json!({ "event": uri, "start": "2026-11-24T15:00", "end": "2026-11-24T15:30", "legs": "stay" }));
+    assert_eq!(stayed["isError"], false, "{stayed}");
+    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| e.start), Some("2026-11-24T13:10".to_string()));
+    assert_eq!(sioul_core::anchors::parse(&std::fs::read_to_string(&bus).unwrap()).map(|a| a.gap), Some(85 * 60));
+    // Deleted: its leg to come with it; Undo brings both back.
+    let gone = call(&mut server, "delete_event", json!({ "event": uri }));
+    assert_eq!(gone["isError"], false, "{gone}");
+    assert!(!doctor.exists() && !bus.exists(), "its leg to come with it");
+    assert!(said_about("leg to come").put_back());
+    assert!(doctor.exists() && bus.exists());
+    // A closed project's appointment: kept from agents, it takes no leg.
+    let zeugma = vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| p.ends_with("zeugma-event.ics")).unwrap();
+    let zeugma_uid = sioul_core::appointments::uid_in(&zeugma);
+    let kept = call(&mut server, "add_event", json!({ "title": "Walk", "start": "2026-11-24T09:00", "end": "2026-11-24T09:20", "anchor": format!("sioul:event/{zeugma_uid}") }));
+    assert_eq!(kept["isError"], true, "{kept}");
+    assert!(!text(&kept).contains("Zeugma"));
+}
+
 /// Events and tasks read and changed one by one (25 October 2026): each
 /// change said for the window with Undo; a move through the journal, once;
 /// a meeting with others never moved nor deleted; a task made an

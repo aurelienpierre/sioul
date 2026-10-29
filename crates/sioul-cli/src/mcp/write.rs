@@ -225,6 +225,10 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
+    // A leg (part E): in its appointment's projects, so its consent is the appointment's.
+    if args.has("anchor") {
+        return add_leg(s, args);
+    }
     // A new event is in no project.
     if !s.config.mcp.outside_projects {
         return Err(access::OUTSIDE_CLOSED.into());
@@ -270,6 +274,54 @@ pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
     let text = format!("{}\n{} · {when}  <{uri}>", s.tr.text("event-saved", None), edit.title);
     Ok(Answer { text, data: json!({ "uid": uid, "uri": uri, "calendar": format!("{}/{}", calendar.account, calendar.id), "file": path, "sent": false }) })
+}
+
+/// A leg (part E): a ride or a walk before or after the appointment `anchor`,
+/// moving with it; in its calendar when it can be written and is no Google
+/// calendar (which may not keep a leg's lines), else in the calendar for new
+/// events, said; in its projects. Refused for an appointment that repeats or
+/// lasts the whole day, one that is a leg or a task's time block, one kept
+/// from agents, and as a step's time (`step`), which waits until every device
+/// reads such a leg.
+fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
+    if args.has("step") {
+        return Err("“step” waits: a leg that is a step's time is written once every device of the person's reads such a leg. Add the leg alone; the step stays a step.".into());
+    }
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    let found = super::items::find_event(&consent, &args.needed("anchor")?)?;
+    super::items::may_change(&consent, &links::event_uri(&found.uid))?;
+    let zone = TimeZone::system();
+    if sioul_core::anchors::parse(&found.text).is_some() || sioul_core::appointments::block_of(&found.text, "") {
+        return Err("A leg belongs to an appointment: not to another leg, nor to a task's time block.".into());
+    }
+    let appointment = sioul_core::anchors::Followed::of(&found.text, &found.path, &zone).ok_or("This event's file does not read.")?;
+    let side = match args.text("side")?.as_deref() {
+        None | Some("before") => sioul_core::anchors::Side::Before,
+        Some("after") => sioul_core::anchors::Side::After,
+        Some(other) => return Err(format!("“side” is before or after; not “{}”.", one_line(other))),
+    };
+    let title = args.needed_line("title")?;
+    let start = args.moment("start")?.ok_or("“start” is needed.")?;
+    let end = args.moment("end")?.ok_or("“end” is needed for a leg.")?;
+    if !start.contains('T') || !end.contains('T') || end.parse::<DateTime>().ok() <= start.parse::<DateTime>().ok() {
+        return Err("A leg starts and ends at times, as 2026-10-05T09:00, its end after its start.".into());
+    }
+    let projects = agenda::event_ref(&found.text, &found.path.display().to_string(), &zone).map(|r| r.projects).unwrap_or_default();
+    let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, ..EventEdit::default() };
+    let text = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, args.flag("timetable")?, &zone).map_err(|e| s.tr.text(&e, None))?;
+    // Never a Google calendar: it may not keep the leg's lines (D17's else, said).
+    let google = sioul_core::capabilities::provider_of_collection(s.config.account(&found.calendar.account), &found.calendar) == sioul_core::capabilities::Provider::Google;
+    let calendar = if found.calendar.read_only || google { agenda::default_calendar().filter(|c| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), c) != sioul_core::capabilities::Provider::Google).ok_or_else(|| s.tr.text("dav-no-calendar", None))? } else { found.calendar.clone() };
+    let path = free_item(agenda::new_path(&calendar), || agenda::new_path(&calendar));
+    let files = sioul_core::composed::Change { made: vec![(path.clone(), text.clone())], ..sioul_core::composed::Change::default() }.write()?;
+    let uid = agenda::event_ref(&text, &path.display().to_string(), &zone).map(|e| e.uid).unwrap_or_default();
+    let name = agenda::edit_of_text(&found.text, &zone).map(|e| e.title).unwrap_or_default();
+    let word = if side == sioul_core::anchors::Side::Before { "leg-made" } else { "leg-made-after" };
+    let line = s.say(word, &[("leg", one_line(&edit.title)), ("appointment", one_line(&name))]);
+    super::items::say_in_window(line.clone(), files);
+    let elsewhere = if calendar.dir != found.calendar.dir { format!("\nIn {}: the appointment's calendar does not take it.", calendar.label(&s.config, &s.tr)) } else { String::new() };
+    Ok(Answer { text: format!("{line}{elsewhere}  <{}>", links::event_uri(&uid)), data: json!({ "uid": uid, "uri": links::event_uri(&uid), "leg_of": links::event_uri(&found.uid), "calendar": format!("{}/{}", calendar.account, calendar.id), "sent": false }) })
 }
 
 /// The folder new notes go into: the configuration's, else "notes" (as the window does).

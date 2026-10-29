@@ -36,16 +36,16 @@ use sioul_core::vdir::{self, Collection, Kind};
 use std::path::{Path, PathBuf};
 
 /// An event found for an agent: its file, its calendar, its text, its UID.
-struct Found {
-    path: PathBuf,
-    calendar: Collection,
-    text: String,
-    uid: String,
+pub(super) struct Found {
+    pub(super) path: PathBuf,
+    pub(super) calendar: Collection,
+    pub(super) text: String,
+    pub(super) uid: String,
 }
 
 /// An event by its address (`sioul:event/<UID>`) or its UID, in any
 /// calendar; refused when it is kept from agents, or the block of a task kept from them.
-fn find_event(consent: &Consent, wanted: &str) -> Result<Found, String> {
+pub(super) fn find_event(consent: &Consent, wanted: &str) -> Result<Found, String> {
     let wanted = wanted.trim();
     let uid = if wanted.starts_with("sioul:event/") { links::id_of(wanted) } else { wanted.to_string() };
     let gone = || format!("No event “{}” here: agenda and find give events' addresses (sioul:event/…).", one_line(wanted));
@@ -79,7 +79,7 @@ pub(super) fn may_change(consent: &Consent, uri: &str) -> Result<(), String> {
 }
 
 /// A change said in the window, with Undo while its files stay as they are now.
-fn say_in_window(line: String, files: Vec<FileChange>) {
+pub(super) fn say_in_window(line: String, files: Vec<FileChange>) {
     let said = Said { at: Zoned::now().timestamp().as_millisecond(), line, files };
     if let Err(e) = sioul_core::agentwrites::note(&said) {
         eprintln!("sioul mcp: {e}");
@@ -139,8 +139,22 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     // The task that prepares it, with its steps and list, when the agent may see it (`pairs`).
     let reference = loaded.events.iter().find(|e| e.uid == found.uid);
     data["preparation"] = reference.and_then(|e| sioul_core::pairs::preparation_of(&loaded.tasks, e)).filter(|t| consent.allows(&links::task_uri(&t.uid))).map_or(Value::Null, |t| Value::String(links::task_uri(&t.uid)));
+    // Its legs (part E), or, for a leg, the appointment it is before or after.
+    let zone = TimeZone::system();
+    data["legs"] = Value::Array(sioul_core::anchors::legs_of(&found.uid, &loaded.events).into_iter().filter(|l| consent.allows(&links::event_uri(&l.uid))).filter_map(|l| leg_json(l, &zone)).collect());
+    if let Some(anchor) = sioul_core::anchors::parse(&found.text) {
+        data["leg_of"] = json!({ "event": links::event_uri(&anchor.appointment), "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() });
+    }
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
     Ok(Answer { text: format!("{} · {when} · {}  <{}>", one_line(&edit.title), data["calendar_name"].as_str().unwrap_or_default(), links::event_uri(&found.uid)), data })
+}
+
+/// A leg as get_event gives it: its address, title, times, side, and whether its timetable was not checked.
+fn leg_json(leg: &sioul_core::agenda::EventRef, zone: &TimeZone) -> Option<Value> {
+    let text = std::fs::read_to_string(&leg.key).ok()?;
+    let edit = agenda::edit_of_text(&text, zone)?;
+    let anchor = sioul_core::anchors::parse(&text)?;
+    Some(json!({ "uri": links::event_uri(&leg.uid), "title": edit.title, "start": edit.start, "end": edit.end, "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() }))
 }
 
 /// A number of minutes given, 0 to a day; none when absent.
@@ -207,21 +221,49 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let calendar = args.text("calendar")?;
     let moving = calendar.as_deref().is_some_and(|c| c != format!("{}/{}", found.calendar.account, found.calendar.id));
+    let legs_stay = match args.text("legs")?.as_deref() {
+        None | Some("follow") => false,
+        Some("stay") => true,
+        Some(other) => return Err(format!("“legs” is follow or stay; not “{}”.", one_line(other))),
+    };
     let text = agenda::apply(&found.text, &edit, &zone)?;
     let mut files = Vec::new();
+    let mut legs_moved: Vec<String> = Vec::new();
     if text != found.text {
-        vdir::write_item(&found.path, &text)?;
-        files.push(FileChange::of(&found.path, Some(found.text.clone())));
+        // Its legs in the same change (part E2): moved with it, or, asked, kept where they are.
+        let gesture = sioul_core::anchors::gesture(&found.path, &found.text, &text, &loaded.events, &zone);
+        let legs: Vec<(PathBuf, String)> = if legs_stay {
+            let instants = agenda::first_times(&text, &zone).map(|(start, end)| sioul_core::moves::Instants { start, end });
+            sioul_core::anchors::legs_of(&found.uid, &loaded.events)
+                .into_iter()
+                .filter_map(|leg| {
+                    let path = PathBuf::from(&leg.key);
+                    let leg_text = std::fs::read_to_string(&path).ok()?;
+                    sioul_core::anchors::set_by_hand(&leg_text, instants?, &zone).map(|t| (path, t))
+                })
+                .collect()
+        } else {
+            legs_moved = gesture.legs.iter().map(|(_, t)| sioul_core::anchors::moved_name(t, &s.tr)).collect();
+            gesture.legs
+        };
+        let mut written = vec![(found.path.clone(), gesture.own)];
+        written.extend(legs);
+        files = sioul_core::composed::Change { written, ..sioul_core::composed::Change::default() }.write()?;
     }
     let mut at = found.path.clone();
     let mut line = s.say("agent-event-changed", &[("title", one_line(&edit.title))]);
+    if !legs_moved.is_empty() {
+        line = format!("{line} {}", s.say("legs-moved-with", &[("legs", legs_moved.join(", "))]));
+    }
     if moving && let Some(id) = &calendar {
         let target = calendar_named(id, s)?;
         let moved = agenda::new_path(&target);
         let written = std::fs::read_to_string(&found.path).map_err(|e| e.to_string())?;
         vdir::move_item(&found.path, &moved)?;
-        // As a move: there before, the old file gone.
+        // As a move: there before, the old file gone; its legs as they were written.
+        let legs: Vec<FileChange> = files.into_iter().filter(|f| f.path != found.path).collect();
         files = vec![FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None }, FileChange { path: moved.clone(), before: None, after: Some(written) }];
+        files.extend(legs);
         at = moved;
         line = s.say("agent-event-moved", &[("title", one_line(&edit.title)), ("calendar", target.label(&s.config, &s.tr))]);
     }
@@ -230,7 +272,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     say_in_window(line.clone(), files);
     let calendar = pim_collection(&at).unwrap_or(found.calendar.clone());
-    Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "changed": true, "calendar": format!("{}/{}", calendar.account, calendar.id), "sent": false }) })
+    Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "changed": true, "calendar": format!("{}/{}", calendar.account, calendar.id), "legs_moved": legs_moved, "sent": false }) })
 }
 
 /// The collection a file is in.
@@ -264,9 +306,23 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
             vec![FileChange::of(&found.path, Some(found.text.clone()))]
         }
         None => {
+            // Its legs to come with it, unless asked to keep them (part E2); those over stay.
+            let keep = match args.text("legs")?.as_deref() {
+                None | Some("delete") => false,
+                Some("keep") => true,
+                Some(other) => return Err(format!("“legs” is delete or keep; not “{}”.", one_line(other))),
+            };
+            let legs = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone) };
+            let mut files = Vec::new();
+            for leg in legs {
+                let Ok(before) = std::fs::read_to_string(&leg) else { continue };
+                vdir::remove_item(&leg)?;
+                files.push(FileChange { path: leg, before: Some(before), after: None });
+            }
             vdir::remove_item(&found.path)?;
-            line = s.say("agent-event-deleted", &[("title", one_line(&title))]);
-            vec![FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None }]
+            line = if files.is_empty() { s.say("agent-event-deleted", &[("title", one_line(&title))]) } else { s.tr.text("legs-deleted-with", Some(&s.tr.counted(files.len()))) };
+            files.insert(0, FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None });
+            files
         }
     };
     say_in_window(line.clone(), files);
@@ -849,6 +905,12 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         if family.iter().any(|t| t.read_only) {
             return Err(s.tr.text("task-read-only", None));
         }
+        // Into a list that keeps no link (Google Tasks): a tie to an appointment undone first (part E0.9).
+        if provider == sioul_core::capabilities::Provider::GoogleTasks {
+            for t in &family {
+                merge_files(&mut files, sioul_core::pairs::untied_for_list(t, &desk.loaded.events, &now).write()?);
+            }
+        }
         // The task and its steps, each through the move journal.
         for t in family {
             let from = PathBuf::from(&t.key);
@@ -1008,7 +1070,12 @@ pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = tasks::all(&zone);
     let has_steps = all.iter().any(|t| t.status.is_open() && t.parent() == Some(task.uid.as_str()));
     if has_steps || args.flag("keep_task")? {
-        let (change, path) = sioul_core::pairs::appointment_for(&all, &task.uid, &edit, &target, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?;
+        let (mut change, path) = sioul_core::pairs::appointment_for(&all, &task.uid, &edit, &target, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?;
+        // The block whose time the appointment takes, as the window removes the one it was opened
+        // from (part E0.8): its block to come at the very same times; never one repeating, nor one
+        // with guests (`blocks::to_come_of` gives neither).
+        let times = agenda::first_times(&change.made.iter().map(|(_, t)| t.clone()).next().unwrap_or_default(), &zone);
+        change.gone.extend(blocks.iter().filter(|b| std::fs::read_to_string(b).ok().and_then(|t| agenda::first_times(&t, &zone)) == times && times.is_some()).cloned());
         let files = change.write()?;
         let new_uid = appointments::uid_in(&path);
         let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&edit.title))]);

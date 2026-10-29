@@ -161,16 +161,39 @@ struct View {
     reader: String,
 }
 
-/// A letter's task as its row and its card say it (`task`): "" when the
-/// tasks known here (`tasks`, None before the first read: as the letter says)
-/// hold it not, deleted or known here by another id, so that the row offers
-/// "A task for that date" again rather than open a task that is not here
-/// (review of e5bd27b, later 2).
+/// A letter's task as its row and its card say it (`task`), by the id this
+/// device knows it by: Sioul's UID, or the id a list that keeps no UID gave
+/// it (`Letter::task_elsewhere`), so that "Its task" opens the task that is
+/// here (review of 679f96a, later 2); "" when the tasks known here (`tasks`,
+/// None before the first read: as the letter says) hold it not, so that the
+/// row offers "A task for that date" again rather than open a task that is
+/// not here (review of e5bd27b, later 2).
 pub(crate) fn task_shown(letter: &Letter, tasks: Option<&[sioul_core::tasks::Task]>) -> String {
     match tasks {
-        Some(tasks) if needs_task(letter, tasks) => String::new(),
-        _ => letter.task.clone(),
+        Some(tasks) => found_task(letter, tasks).map(|t| t.uid.clone()).unwrap_or_default(),
+        None => letter.task.clone(),
     }
+}
+
+/// The letter's task among `tasks`: by its UID, or by the id a list that
+/// keeps no UID gave it (`Letter::task_in`'s rule).
+fn found_task<'a>(letter: &Letter, tasks: &'a [sioul_core::tasks::Task]) -> Option<&'a sioul_core::tasks::Task> {
+    if letter.task.is_empty() {
+        return None;
+    }
+    tasks.iter().find(|t| t.uid == letter.task || (!letter.task_elsewhere.is_empty() && t.uid == letter.task_elsewhere))
+}
+
+/// A task on disk made for this letter elsewhere, whose letters.toml has
+/// not come yet: one that links the letter's scan as filed (`describedby`,
+/// `dated::links_scan`, read on every device relative to the notes folder
+/// `root`). Adopted rather than a second made (review of 679f96a, later 1).
+fn adoptable<'a>(letter: &Letter, tasks: &'a [sioul_core::tasks::Task], root: &Path) -> Option<&'a sioul_core::tasks::Task> {
+    let scan = letter.file.replace('\\', "/");
+    if !letter.task.is_empty() || scan.is_empty() {
+        return None;
+    }
+    tasks.iter().find(|t| t.links.iter().any(|l| l.rel == "describedby" && sioul_core::dated::links_scan(l.uri.trim(), &scan, root)))
 }
 
 /// Its task taken out of the letters that name it, once that task is
@@ -178,13 +201,16 @@ pub(crate) fn task_shown(letter: &Letter, tasks: Option<&[sioul_core::tasks::Tas
 /// date asked is drawn again, and its row offers a task for it. Nothing
 /// written when no letter names it. Whether any was.
 pub(crate) fn untie_task(root: &Path, uid: &str) -> Result<bool, String> {
-    if uid.is_empty() || !Letters::load(root)?.list.iter().any(|l| l.task == uid) {
+    // By Sioul's UID, or by the id a list that keeps no UID gave it here (review of 679f96a, later 2).
+    let names = |l: &Letter| !l.task.is_empty() && (l.task == uid || (!l.task_elsewhere.is_empty() && l.task_elsewhere == uid));
+    if uid.is_empty() || !Letters::load(root)?.list.iter().any(names) {
         return Ok(false);
     }
     Letters::try_change(root, |letters| {
-        let tied: Vec<Letter> = letters.list.iter().filter(|l| l.task == uid).cloned().collect();
+        let tied: Vec<Letter> = letters.list.iter().filter(|l| names(l)).cloned().collect();
         for mut letter in tied {
             letter.task.clear();
+            letter.task_elsewhere.clear();
             letters.put(letter);
         }
         Ok(true)
@@ -197,7 +223,13 @@ pub(crate) fn untie_task(root: &Path, uid: &str) -> Result<bool, String> {
 /// the row says the letter's own task until the plan is made again, never ""
 /// for a task the plan has not read yet (review of 21436bf, M1).
 fn tasks_trusted(plan: Option<Arc<crate::work::PlanShown>>) -> Option<Arc<sioul_core::links::Loaded>> {
-    plan.filter(|p| p.current()).map(|p| Arc::clone(p.loaded()))
+    trusted_if(plan, crate::work::PlanShown::current)
+}
+
+/// `tasks_trusted`, whether a plan is current asked of `current` (the
+/// tests', which other tests' writes would make flaky through the stamp).
+fn trusted_if(plan: Option<Arc<crate::work::PlanShown>>, current: impl Fn(&crate::work::PlanShown) -> bool) -> Option<Arc<sioul_core::links::Loaded>> {
+    plan.filter(|p| current(p)).map(|p| Arc::clone(p.loaded()))
 }
 
 /// A file just removed (its text, read before): when it held a task, the
@@ -285,6 +317,11 @@ fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Resul
     }
 }
 
+/// The tasks read, less those whose deletion waits for its Undo (`removed`: `mail::hidden_pim`).
+fn here_but(tasks: &[sioul_core::tasks::Task], removed: &std::collections::BTreeSet<std::path::PathBuf>) -> Vec<sioul_core::tasks::Task> {
+    tasks.iter().filter(|t| !removed.contains(Path::new(&t.key))).cloned().collect()
+}
+
 /// Whether a letter needs a task made for its date: none named, or the one
 /// it names in none of this device's lists (deleted, `Letter::task_in`). A
 /// task there is never made twice, whatever a row says of it before the plan
@@ -294,15 +331,24 @@ fn needs_task(letter: &Letter, tasks: &[sioul_core::tasks::Task]) -> bool {
 }
 
 /// A task for its date, in your usual list, tied to its scan and its project;
-/// nothing when the letter's task is there already (`needs_task`).
+/// nothing when the letter's task is there already (`needs_task`), and the
+/// task another device made for it adopted (`adoptable`). A task whose
+/// deletion waits for its Undo counts as gone: the press makes the new one at
+/// once, the deletion still unties the old (review of 679f96a, later 5).
 pub(crate) fn make_task(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
+    let removed = crate::mail::hidden_pim(shared).0;
+    let root = load_config().notes_root_path();
     with_letter(id, |letters, letter| {
-        // The lists read from their files only when the letter names a task: a first press reads none.
-        if !letter.task.is_empty() && !needs_task(letter, &sioul_core::tasks::all(&jiff::tz::TimeZone::system())) {
+        let tasks = here_but(&sioul_core::tasks::all(&jiff::tz::TimeZone::system()), &removed);
+        if !needs_task(letter, &tasks) {
             return Ok(String::new());
         }
         // Filed first: the task's link holds where the scan stays.
         letters.file_away(letter)?;
+        if let Some(found) = root.as_deref().and_then(|root| adoptable(letter, &tasks, root)) {
+            letter.task = found.uid.clone();
+            return Ok(String::new());
+        }
         let r = &letter.reading;
         let amount = r.amount.map(|a| tr().money(a)).unwrap_or_default();
         let title = say(&format!("letter-task-{}", r.kind.id()), &[("sender", r.sender.clone()), ("amount", amount)]);
@@ -468,7 +514,44 @@ mod tests {
         assert_eq!(task_shown(&letter(""), Some(&[])), "");
         // A Google list's task, by the id that list gave it (review of 21436bf, later 3).
         let google = sioul_core::letters::Letter { task: "t9".into(), task_elsewhere: "t2".into(), ..Default::default() };
-        assert_eq!(task_shown(&google, Some(std::slice::from_ref(&task))), "t9");
+        assert_eq!(task_shown(&google, Some(std::slice::from_ref(&task))), "t2", "the id this device knows it by (review of 679f96a, later 2)");
+    }
+
+    /// A task made elsewhere for a letter whose letters.toml has not come: the
+    /// task on disk that links its scan is adopted, none made; one linking
+    /// another scan is not; a task waiting for its deletion's Undo is gone
+    /// (review of 679f96a, later 1 and later 5).
+    #[test]
+    fn a_task_made_elsewhere_for_a_letter_is_adopted() {
+        use sioul_core::tasks::{Link, Task};
+        let root = std::path::Path::new("/notes");
+        let scan = |uid: &str, path: &str| Task { uid: uid.into(), key: format!("/lists/{uid}.ics"), links: vec![Link { uri: format!("file:///notes/{path}"), label: String::new(), rel: "describedby".into() }], ..Default::default() };
+        let tasks = [scan("other", "letters/2026/2026-10-28 Bank bill.pdf"), scan("made", "letters/2026/2026-10-29 Water bill.pdf")];
+        let letter = sioul_core::letters::Letter { file: "letters/2026/2026-10-29 Water bill.pdf".into(), ..Default::default() };
+        assert_eq!(super::adoptable(&letter, &tasks, root).map(|t| t.uid.as_str()), Some("made"));
+        let named = sioul_core::letters::Letter { task: "kept".into(), ..letter.clone() };
+        assert!(super::adoptable(&named, &tasks, root).is_none(), "a letter naming its task adopts none");
+        // Its deletion waiting for Undo: gone, a task made at once.
+        let removed: std::collections::BTreeSet<std::path::PathBuf> = [std::path::PathBuf::from("/lists/made.ics")].into();
+        let here = super::here_but(&tasks, &removed);
+        assert!(super::adoptable(&letter, &here, root).is_none());
+        let waiting = sioul_core::letters::Letter { task: "made".into(), ..Default::default() };
+        assert!(super::needs_task(&waiting, &here) && !super::needs_task(&waiting, &tasks));
+    }
+
+    /// A deletion on the device that knows a Google list's task by Google's id
+    /// unties the letter too (review of 679f96a, later 2).
+    #[test]
+    fn a_task_known_by_its_list_s_id_unties_its_letter() {
+        use sioul_core::letters::{Letter, Letters};
+        let root = std::env::temp_dir().join(format!("sioul-letters-elsewhere-untie-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        Letters::change(&root, |letters| letters.put(Letter { id: "caf".into(), status: "new".into(), task: "sioul-1".into(), task_elsewhere: "g-17".into(), ..Default::default() })).unwrap();
+        assert_eq!(super::untie_task(&root, "g-17"), Ok(true));
+        let read = Letters::load(&root).unwrap();
+        assert_eq!((read.get("caf").unwrap().task.as_str(), read.get("caf").unwrap().task_elsewhere.as_str()), ("", ""));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// A letter's task is said as the letter names it until the plan is made
@@ -485,6 +568,11 @@ mod tests {
         assert!(trusted.is_none(), "an older plan is not trusted");
         let letter = sioul_core::letters::Letter { task: "just-made".into(), ..Default::default() };
         assert_eq!(task_shown_of(&letter, trusted), "just-made", "said as written");
+        // A current plan that lacks the task: gone, a task for that date offered again
+        // (review of 679f96a, later 7; current asked here, never of the stamp other tests move).
+        let current = super::trusted_if(crate::work::plan_shown(), |_| true);
+        assert!(current.is_some(), "a current plan is trusted");
+        assert_eq!(task_shown_of(&letter, current), "", "a current plan without it: gone");
         crate::work::forget_plan();
     }
 

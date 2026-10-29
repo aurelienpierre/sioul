@@ -272,6 +272,10 @@ pub(crate) struct View {
     steps: bool,
     needs: bool,
     doses: bool,
+    /// Each ride or walk around an appointment drawn as an event of its own,
+    /// rather than a quiet line in the appointment's lead (part E; D25). Off
+    /// unless you say; an older Show without it reads as off.
+    legs: bool,
     calendars: Vec<HiddenCalendar>,
     /// Calendars hidden by their names alone, as Show kept them until 28
     /// October 2026: read once, each name as every calendar it names then,
@@ -290,7 +294,7 @@ struct HiddenCalendar {
 
 impl Default for View {
     fn default() -> View {
-        View { steps: true, needs: true, doses: true, calendars: Vec::new(), calendars_hidden: Vec::new() }
+        View { steps: true, needs: true, doses: true, legs: false, calendars: Vec::new(), calendars_hidden: Vec::new() }
     }
 }
 
@@ -478,6 +482,13 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
     let mut items = agenda::items(&occurrences, &zone, &errand);
+    // Legs as events of their own when Show says so (D25); else quiet lines in their appointment's lead.
+    if read_view().legs {
+        for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Leg) {
+            item.kind = timeline::Kind::Event;
+            item.owner.clear();
+        }
+    }
     // Each appointment's line, part F's agenda half: "Leave at 13:05 · Next: …".
     appointment_lines(&mut items, &occurrences, &tasks, &zone);
     let mut doses_note = String::new();
@@ -623,7 +634,9 @@ fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], t
         let timeline::Source::Calendar { key, start, .. } = &item.source else { continue };
         let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { continue };
         let links = std::fs::read_to_string(&o.key).ok().and_then(|text| agenda::event_ref(&text, &o.key, zone)).map(|r| r.links).unwrap_or_default();
-        let view = sioul_core::pairs::appointment_view(o, &links, tasks, tr(), zone);
+        // Its legs read with it (part E): Leave at from the first, their titles on its line.
+        let legs = sioul_core::anchors::legs_seen_in(&o.uid, occurrences);
+        let view = sioul_core::pairs::appointment_view(o, &links, tasks, &legs, None, tr(), zone);
         if !view.line.is_empty() {
             item.line = view.line;
         }
@@ -640,9 +653,15 @@ pub(crate) fn appointment_card(shared: &Shared, key: &str, start: i64) -> String
     let zone = TimeZone::system();
     let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
     let Some(o) = found.into_iter().find(|o| o.start == start) else { return "{}".into() };
-    let links = std::fs::read_to_string(&path).ok().and_then(|text| agenda::event_ref(&text, key, &zone)).map(|r| r.links).unwrap_or_default();
-    let tasks = work::loaded_known(shared).map(|l| l.tasks.clone()).unwrap_or_default();
-    json(&sioul_core::pairs::appointment_view(&o, &links, &tasks, tr(), &zone))
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let links = agenda::event_ref(&text, key, &zone).map(|r| r.links).unwrap_or_default();
+    let known = work::loaded_known(shared);
+    let tasks = known.as_ref().map(|l| l.tasks.clone()).unwrap_or_default();
+    let events = known.as_ref().map(|l| l.events.as_slice()).unwrap_or_default();
+    // Its legs, each read from its file (part E: Getting there, Coming back); a leg's own: what it is to its appointment.
+    let legs = sioul_core::anchors::legs_seen_of(&o.uid, events, &zone);
+    let leg_of = sioul_core::anchors::leg_of(&text, events, tr(), &zone);
+    json(&sioul_core::pairs::appointment_view(&o, &links, &tasks, &legs, leg_of, tr(), &zone))
 }
 
 /// The days from `from`, `count` of them: each date.
@@ -1123,7 +1142,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(read_view(), View::default());
         let all: serde_json::Value = serde_json::from_str(&view()).unwrap();
-        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "calendars": [] }));
+        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "legs": false, "calendars": [] }));
         assert_eq!(set_view(r#"{"steps": true, "needs": false, "doses": true, "calendars": [{"id": "local/club", "name": "Club"}]}"#), "");
         assert_eq!(read_view(), View { needs: false, calendars: vec![HiddenCalendar { id: "local/club".into(), name: "Club".into() }], ..View::default() });
         let written = std::fs::metadata(&path).unwrap().modified().unwrap();
@@ -1572,6 +1591,45 @@ mod tests {
             _ => Vec::new(),
         }
     }
+    /// Part 6: a leg is a quiet line in its appointment's lead (`leg`, its
+    /// appointment's UID its owner), named on the appointment's line, Leave at
+    /// from it; Show's choice draws it as an event of its own.
+    #[test]
+    fn a_leg_is_drawn_in_its_appointment_s_lead() {
+        let _view = view_held();
+        sioul_core::config::stand_ins_only();
+        let _ = std::fs::remove_file(view_path());
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Legs drawn", None, &["VEVENT"]).unwrap();
+        let (now, zone) = (Zoned::now(), TimeZone::system());
+        let later = now.date().checked_add(jiff::Span::new().days(3)).unwrap();
+        let utc = |hour: i8, minute: i8| later.at(hour, minute, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        std::fs::write(calendar.dir.join("legs-doctor.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legs-doctor\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Doctor\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(14, 0), utc(14, 30))).unwrap();
+        std::fs::write(calendar.dir.join("legs-bus.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legs-bus\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Bus 24\r\nRELATED-TO;RELTYPE=PARENT:legs-doctor\r\nX-SIOUL-ANCHOR;GAP=PT25M;WAS={}:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(13, 10), utc(13, 35), utc(14, 0))).unwrap();
+        let shared = Arc::new(Shared::default());
+        let shown = || {
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = later;
+                state.days = 1;
+                state.upcoming = false;
+            }
+            serde_json::from_str::<serde_json::Value>(&made(&shared).0).unwrap()
+        };
+        let day = shown();
+        let timed = day["days"][0]["timed"].as_array().unwrap().clone();
+        let of = |title: &str| timed.iter().find(|p| p["item"]["title"] == title).cloned().unwrap_or_default();
+        assert_eq!((of("Bus 24")["item"]["kind"].as_str(), of("Bus 24")["item"]["owner"].as_str()), (Some("leg"), Some("legs-doctor")), "{timed:?}");
+        let clock = |h: i8, m: i8| later.at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().strftime("%H:%M").to_string();
+        assert!(of("Doctor")["item"]["line"].as_str().is_some_and(|l| l.contains(&clock(13, 10)) && l.contains("Bus 24")), "Leave at from the bus, the bus named: {}", of("Doctor"));
+        assert_eq!(of("Bus 24")["column"], of("Doctor")["column"]);
+        // Show: each leg as an event of its own.
+        assert_eq!(set_view(r#"{"legs": true}"#), "");
+        let day = shown();
+        let bus = day["days"][0]["timed"].as_array().unwrap().iter().find(|p| p["item"]["title"] == "Bus 24").cloned().unwrap();
+        assert_eq!(bus["item"]["kind"], "event");
+        let _ = std::fs::remove_file(view_path());
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// Health's list and the agenda give today's lunch the same time, pushed
     /// past an event at lunch by the one rule (`health::pushed_on`, the needs
     /// adapter); the agenda's Rust says what may move it: a meal over moves

@@ -56,6 +56,11 @@ pub fn overlaps(events: &[Occurrence], between: u32) -> Vec<Overlap> {
             if second.uid == first.uid && second.start == first.start {
                 continue;
             }
+            // A leg and its own appointment, or two legs of one, are one outing (part E): the
+            // appointment's time kept before and after comes from its legs, never a clash with them.
+            if one_outing(first, second) {
+                continue;
+            }
             // Sorted by start: the second starts at or after the first.
             let key = format!("{}@{}|{}@{}", first.uid, first.start, second.uid, second.start);
             let gap = (second.start - first.end).div_euclid(60);
@@ -71,6 +76,15 @@ pub fn overlaps(events: &[Occurrence], between: u32) -> Vec<Overlap> {
         }
     }
     out
+}
+
+/// Whether two events are one outing: a leg and its appointment, or two
+/// legs of one appointment (`anchors`).
+fn one_outing(a: &Occurrence, b: &Occurrence) -> bool {
+    fn of(o: &Occurrence) -> Option<&str> {
+        o.anchor.as_ref().map(|x| x.appointment.as_str()).filter(|u| !u.is_empty())
+    }
+    of(a) == Some(b.uid.as_str()) || of(b) == Some(a.uid.as_str()) || (of(a).is_some() && of(a) == of(b))
 }
 
 /// The overlaps set aside for good, on this device
@@ -106,6 +120,20 @@ mod tests {
 
     fn event(uid: &str, start: i64, end: i64, margins: Margins) -> Occurrence {
         Occurrence { uid: uid.into(), key: format!("{uid}.ics"), summary: uid.into(), start, end, margins, ..Occurrence::default() }
+    }
+
+    /// A leg and its appointment are one outing (part E): the bus 15 minutes
+    /// before the doctor, whose 40 minutes kept before come from the bus, is no
+    /// clash; another event in between still is said too close.
+    #[test]
+    fn a_leg_and_its_appointment_are_one_outing() {
+        let anchor = crate::anchors::Anchor { appointment: "doctor".into(), side: crate::anchors::Side::Before, gap: 900, timetable: true, was: Some(9 * 3600 + 1800), unconfirmed: None, cancelled_with: false };
+        let doctor = event("doctor", 9 * 3600 + 1800, 10 * 3600, Margins { before: 40, after: 0 });
+        let bus = Occurrence { anchor: Some(anchor.clone()), ..event("bus", 8 * 3600 + 3000, 9 * 3600 + 900, Margins::default()) };
+        let walk = Occurrence { anchor: Some(anchor), ..event("walk", 9 * 3600 + 900, 9 * 3600 + 1500, Margins::default()) };
+        assert!(overlaps(&[doctor.clone(), bus.clone(), walk.clone()], 0).is_empty(), "one outing");
+        let call = event("call", 9 * 3600 + 1200, 9 * 3600 + 1500, Margins::default());
+        assert_eq!(overlaps(&[doctor, bus, call], 0).iter().map(|o| (o.first.uid.as_str(), o.second.uid.as_str())).collect::<Vec<_>>(), [("call", "doctor")]);
     }
 
     #[test]

@@ -53,6 +53,7 @@ Item {
         property string mealFrom: "12:10"
         property string mealTo: "13:00"
         property var events: ({
+            "/c/bus.ics": { id: "event:c/bus.ics", key: "/c/bus.ics", uid: "bus", start: 3999997800, end: 3999999300, all_day: false, summary: "Bus 24", when: "Monday · 08:30 – 08:55", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
             "/c/dentist.ics": { id: "event:c/dentist.ics", key: "/c/dentist.ics", uid: "dentist", start: 4000000000, end: 4000003600, all_day: false, summary: "Dentist", when: "Monday · 09:00 – 10:00", before: 15, after: 0, location: "Rue Blanche", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
             "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "" },
             "/c/holidays.ics": { id: "event:c/holidays.ics", key: "/c/holidays.ics", uid: "holidays", start: 4000086400, end: 4000090000, all_day: false, summary: "Town fair", when: "Tuesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: true, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "This calendar can only be read." }
@@ -102,9 +103,21 @@ Item {
         function eventToTaskLosses(key) { return "" }
         // Part F's view of an appointment: the dentist's, when to leave and its next step.
         function appointmentView(key, start) {
+            // A leg's own card: what it is to its appointment (part E).
+            if (key === "/c/bus.ics")
+                return JSON.stringify({ uid: "bus", key: key, title: "Bus 24", line: "", before: [], more: 0, bring: [], getting_there: [], coming_back: [], steps_after: [], also: [], leg_of: { uid: "dentist", key: "/c/dentist.ics", title: "Dentist", start: 4000000000, side: "before", unconfirmed: true, line: "Before Dentist (09:00) · moves with it" } })
             if (key !== "/c/dentist.ics")
                 return "{}"
-            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }] })
+            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }], getting_there: mock.withLegs ? [{ uid: "bus", key: "/c/bus.ics", title: "Bus 24", start: 3999997800, end: 3999999300, when: "08:30 – 08:55", unconfirmed: true }] : [], coming_back: mock.withLegs ? [{ uid: "home", key: "/c/home.ics", title: "Walk home", start: 4000004200, end: 4000005400, when: "10:10 – 10:30", unconfirmed: false }] : [], steps_after: mock.withLegs ? [{ uid: "next", title: "Book the next one" }] : [], also: mock.withLegs ? [{ uid: "papers", title: "The papers" }] : [], leg_of: null })
+        }
+        property bool withLegs: false
+        function saveLeg(key, edit, side, timetable) {
+            mock.calls.push({ what: "saveLeg", key: key, edit: JSON.parse(edit), side: side, timetable: timetable })
+            return ""
+        }
+        function untieLeg(key) {
+            mock.calls.push({ what: "untieLeg", key: key })
+            return ""
         }
         function invitationOf(key) { return key === "/c/board.ics" ? "/mail/board.eml" : "" }
         function answerInvitation(key, answer) { mock.calls.push({ what: "answerInvitation", key: key, answer: answer }) }
@@ -258,6 +271,7 @@ Item {
         when: windowShown
 
         function init() {
+            mock.withLegs = false
             mock.letterTask = ""
             mock.calls = []
             mock.status = ""
@@ -598,6 +612,49 @@ Item {
         // A meeting's card (part F's agenda half): when to leave and its next
         // step, Before and Bring, a tick by its task's own writer; Answer… while
         // its invitation is in your mail.
+        // Part E's legs on an appointment's card: Getting there and Coming back in time
+        // order, a doubt said, the steps after it and another task tied to it; "Add a ride
+        // or a walk…" opens the event form as a leg, saved through `saveLeg`; a leg's own
+        // card says what it is to its appointment, and × unties it.
+        function test_an_appointment_s_legs() {
+            mock.withLegs = true
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const card = host.eventCard
+            // Each once: a Loader lists what it made among its children twice.
+            const legs = root.all(card, c => c.objectName === "eventCardLeg" && c.visible).filter((l, i, all) => all.indexOf(l) === i)
+            compare(legs.map(l => l.text).join(" | "), "08:30 – 08:55  legs-unconfirmed:Bus 24 | 10:10 – 10:30  Walk home")
+            const once = list => list.filter((l, i, all) => all.indexOf(l) === i)
+            compare(once(root.all(card, c => c.text === "·  Book the next one" && c.visible)).length, 1, "the step after, under Coming back")
+            compare(once(root.all(card, c => c.text === "appointment-also-tied:The papers" && c.visible)).length, 1)
+            const add = root.find(card, "eventCardAddLeg")
+            verify(add.visible)
+            add.clicked()
+            wait(20)
+            const dialog = root.all(card, c => typeof c.now === "function").map(l => l.item).find(d => d && typeof d.makeLeg === "function" && d.legOf !== "")
+            verify(dialog !== undefined, "the form, as a leg")
+            compare([dialog.legOf, dialog.legSide].join(" "), "/c/dentist.ics before")
+            root.find(dialog.contentItem, "eventTitle").text = "Bus 24"
+            root.find(dialog.contentItem, "legTimetable").toggle()
+            root.find(dialog.contentItem, "legTimetable").toggled()
+            root.find(dialog.contentItem, "legAfter").clicked()
+            dialog.save()
+            const saved = mock.calls.filter(c => c.what === "saveLeg")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare([saved[0].key, saved[0].edit.title, saved[0].side, saved[0].timetable].join(" "), "/c/dentist.ics Bus 24 after true")
+            // The leg's own card.
+            host.show({ kind: "leg", srcKey: "/c/bus.ics", srcStart: 3999997800 })
+            wait(20)
+            const of = root.find(host.eventCard, "eventCardLegOf")
+            verify(of.visible)
+            verify(root.all(of, c => c.text === "Before Dentist (09:00) · moves with it").length >= 1)
+            verify(!root.find(host.eventCard, "eventCardAddLeg").visible, "a leg takes no leg")
+            root.find(host.eventCard, "eventCardUntieLeg").clicked()
+            compare(mock.calls.filter(c => c.what === "untieLeg").map(c => c.key).join(" "), "/c/bus.ics")
+            mock.withLegs = false
+        }
+
         function test_an_appointment_s_part_f() {
             const host = makeHost()
             host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })

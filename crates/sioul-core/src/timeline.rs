@@ -731,11 +731,7 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
         // (review of part 4, later 2); the rest by when they start.
         placed.sort_by(|a, b| (a.item.kind != Kind::Dated, a.item.time.proper(zone).0, !a.all_day, &a.item.title).cmp(&(b.item.kind != Kind::Dated, b.item.time.proper(zone).0, !b.all_day, &b.item.title)));
         let (head, mut timed): (Vec<Placed>, Vec<Placed>) = placed.into_iter().partition(|p| p.all_day);
-        let spans: Vec<(i64, i64)> = timed.iter().map(|p| (i64::from(p.from_minute), i64::from(p.to_minute.max(p.from_minute + 15)))).collect();
-        for (p, (column, columns)) in timed.iter_mut().zip(crate::dayview::side_by_side(&spans)) {
-            p.column = column;
-            p.columns = columns;
-        }
+        side_by_side(&mut timed);
         let title = if date == today {
             tr.text("agenda-today", None)
         } else if Some(date) == today.tomorrow().ok() {
@@ -921,6 +917,26 @@ pub fn comes(day: &Day, next: Option<&Day>, c: &ComesOf) -> Comes {
     Comes { rows, doses, plan }
 }
 
+/// What overlaps side by side, each in its column (`dayview::side_by_side`);
+/// a leg (part E) no card of its own: a quiet line inside its appointment's
+/// lighter end, in its appointment's column, taking none.
+fn side_by_side(timed: &mut [Placed]) {
+    let cards: Vec<usize> = (0..timed.len()).filter(|&i| timed[i].item.kind != Kind::Leg).collect();
+    let spans: Vec<(i64, i64)> = cards.iter().map(|&i| (i64::from(timed[i].from_minute), i64::from(timed[i].to_minute.max(timed[i].from_minute + 15)))).collect();
+    for (&i, (column, columns)) in cards.iter().zip(crate::dayview::side_by_side(&spans)) {
+        timed[i].column = column;
+        timed[i].columns = columns;
+    }
+    for i in 0..timed.len() {
+        if timed[i].item.kind != Kind::Leg {
+            continue;
+        }
+        let owner = timed[i].item.owner.clone();
+        let of = timed.iter().find(|p| p.item.kind == Kind::Event && matches!(&p.item.source, Source::Calendar { uid, .. } if *uid == owner)).map(|p| (p.column, p.columns));
+        (timed[i].column, timed[i].columns) = of.unwrap_or((0, 1));
+    }
+}
+
 /// A thing's time on one day (`day_start`..`day_end`): its hours, "All day",
 /// or how it goes on from the day before or into the next.
 pub fn when_on(at: i64, until: i64, whole: bool, day_start: i64, day_end: i64, zone: &TimeZone, tr: &Translator) -> String {
@@ -1028,11 +1044,7 @@ pub fn dress(days: &mut [Day], d: &Dressing) -> Frame {
             }
         }
         // Side by side again, what overlaps among what is drawn as cards.
-        let spans: Vec<(i64, i64)> = timed.iter().map(|p| (i64::from(p.from_minute), i64::from(p.to_minute.max(p.from_minute + 15)))).collect();
-        for (p, (column, columns)) in timed.iter_mut().zip(crate::dayview::side_by_side(&spans)) {
-            p.column = column;
-            p.columns = columns;
-        }
+        side_by_side(&mut timed);
         day.head = head;
         day.timed = timed;
         day.bands = bands_of(day, d);
@@ -1912,6 +1924,27 @@ mod tests {
         for c in [&today, &tuesday, &wednesday] {
             assert!(c.rows.iter().all(|p| p.item.kind != Kind::Dose) && c.doses.iter().all(|d| d.title.contains("ose")), "never a medicine's name");
         }
+    }
+
+    /// A leg (part E) is a quiet line in its appointment's column, taking none:
+    /// what overlaps the appointment stays beside it as before; What comes and
+    /// the Month say legs in the appointment's line, never as rows.
+    #[test]
+    fn a_leg_sits_in_its_appointment_s_column() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let doctor = thing("Doctor", Kind::Event, "2026-10-06T14:00", "2026-10-06T14:30");
+        let mut leg = thing("Bus 24", Kind::Leg, "2026-10-06T13:10", "2026-10-06T13:35");
+        leg.owner = "doctor-uid".into();
+        let doctor = Item { source: Source::Calendar { key: "/c/doctor.ics".into(), uid: "doctor-uid".into(), start: at("2026-10-06T14:00"), recurring: false, calendar: "Agenda".into(), collection: "local/agenda".into() }, ..doctor };
+        let call = thing("Call", Kind::Event, "2026-10-06T14:00", "2026-10-06T14:20");
+        let walk = thing("Walk", Kind::Event, "2026-10-06T13:20", "2026-10-06T13:30");
+        let shown = days(&[doctor, leg, call, walk], day("2026-10-06"), 1, day("2026-10-06"), &zone, &tr);
+        let col = |title: &str| shown[0].timed.iter().find(|p| p.item.title == title).map(|p| (p.column, p.columns)).unwrap();
+        assert_eq!(col("Bus 24"), col("Doctor"), "in its appointment's column");
+        assert_eq!(col("Walk"), (0, 1), "the leg takes no column from what lies beside it");
+        let no_alarm = std::collections::BTreeSet::new();
+        let of = ComesOf { now: at("2026-10-06T06:00"), today: day("2026-10-06"), no_alarm: &no_alarm, every_day: &|_| true, hidden: &|_| false, zone: &zone, tr: &tr };
+        assert!(comes(&shown[0], None, &of).rows.iter().all(|p| p.item.kind != Kind::Leg), "no row of its own in What comes");
     }
 
     /// On the days the clocks change, What comes says a dose at its time on

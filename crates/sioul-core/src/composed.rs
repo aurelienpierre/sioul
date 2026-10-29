@@ -111,8 +111,28 @@ impl Change {
     }
 
     /// Done once: each file as it was before and as it is now, for Undo.
-    /// What is new first: cut short, nothing is left pointing at what was not made.
+    /// What is new first: cut short, nothing is left pointing at what was not
+    /// made; and a file that fails takes back what was written before it (made
+    /// removed, written put back, moved back, gone restored), then says why
+    /// (part E0.7): a gesture over several files is whole or not at all.
     pub fn write(&self) -> Result<Vec<FileChange>, String> {
+        let mut done = Vec::new();
+        match self.write_into(&mut done) {
+            Ok(()) => Ok(done),
+            Err(e) => {
+                for change in done.iter().rev() {
+                    let _ = match (&change.before, &change.after) {
+                        (Some(before), _) => vdir::write_item(&change.path, before),
+                        (None, Some(_)) => vdir::remove_item(&change.path),
+                        (None, None) => Ok(()),
+                    };
+                }
+                Err(e)
+            }
+        }
+    }
+
+    fn write_into(&self, out: &mut Vec<FileChange>) -> Result<(), String> {
         // Every event among them through the one rule first (`agenda::guard`): one
         // refused (a meeting with others, a calendar you only read), nothing is written.
         use crate::agenda::{Change as Done, guard, said};
@@ -122,7 +142,6 @@ impl Change {
         for (path, change) in checks {
             guard(path, change).map_err(|refusal| said(refusal, &change))?;
         }
-        let mut out = Vec::new();
         for (path, text) in &self.made {
             vdir::write_item(path, text)?;
             out.push(FileChange { path: path.clone(), before: None, after: Some(text.clone()) });
@@ -135,18 +154,19 @@ impl Change {
         for (from, to, text) in &self.moved {
             let before = std::fs::read_to_string(from).ok();
             vdir::move_item(from, to)?;
+            // Moved: taken back as the file there removed and the one here put back.
+            out.push(FileChange { path: from.clone(), before: before.clone(), after: None });
+            out.push(FileChange { path: to.clone(), before: None, after: Some(text.clone()) });
             if before.as_deref() != Some(text.as_str()) {
                 vdir::write_item(to, text)?;
             }
-            out.push(FileChange { path: from.clone(), before, after: None });
-            out.push(FileChange { path: to.clone(), before: None, after: Some(text.clone()) });
         }
         for path in &self.gone {
             let Ok(before) = std::fs::read_to_string(path) else { continue };
             vdir::remove_item(path)?;
             out.push(FileChange { path: path.clone(), before: Some(before), after: None });
         }
-        Ok(out)
+        Ok(())
     }
 }
 
@@ -483,6 +503,30 @@ pub fn close_with(tasks: &[Task], done: &str, now: &Zoned) -> Result<Change, Ref
 mod tests {
     use super::*;
     use crate::tasks::Relation;
+
+    /// E0.7: a file that fails takes back what the change wrote before it: the
+    /// file made removed, the file written put back; then it says why.
+    /// Unix alone: a folder's write permission is what fails the write there.
+    #[cfg(unix)]
+    #[test]
+    fn a_change_cut_short_takes_back_what_it_wrote() {
+        use std::os::unix::fs::PermissionsExt;
+        let desk = Desk::new("cut-short");
+        desk.add(&desk.list, "first", TaskEdit::default());
+        let first = desk.list.dir.join("first.ics");
+        let before = std::fs::read_to_string(&first).unwrap();
+        let made = desk.list.dir.join("made.ics");
+        let blocked = desk.other.dir.join("blocked.ics");
+        let text = tasks::new_task(&TaskEdit { title: "New".into(), ..TaskEdit::default() }, "made", &TimeZone::system(), &now()).unwrap();
+        let change = Change { made: vec![(made.clone(), text.clone())], written: vec![(first.clone(), text.replace("made", "first")), (blocked.clone(), text.replace("made", "blocked"))], ..Change::default() };
+        std::fs::set_permissions(&desk.other.dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let written = change.write();
+        std::fs::set_permissions(&desk.other.dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(written.is_err());
+        assert!(!made.exists(), "the file made taken back");
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), before, "the file written put back");
+        assert!(!blocked.exists());
+    }
 
     fn now() -> Zoned {
         "2026-10-25T10:00:00+01:00[Europe/Paris]".parse().unwrap()

@@ -1309,7 +1309,7 @@ def escape(text: str) -> str:
 
 
 def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *, location="", notes="", weekly=False,
-          organizer=None, attendees=(), project=None) -> str:
+          organizer=None, attendees=(), project=None, leg=None) -> str:
     lines = ["BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
              f"DTSTART:{utc(clock.at(day, start))}", f"DTEND:{utc(clock.at(day, end))}", f"SUMMARY:{escape(title)}"]
     if location:
@@ -1324,6 +1324,12 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
         lines.append(f'ATTENDEE;CN="{name}";PARTSTAT={answer}:mailto:{addr}')
     if project:
         lines.append(f"REFID:{project}")
+    # A leg of an appointment (composed tasks, part E): (its appointment's uid, BEFORE or AFTER,
+    # the minutes between, from a timetable, the appointment's start or end it is set for).
+    if leg:
+        appointment, side, gap, timetable, was = leg
+        lines.append(f"RELATED-TO;RELTYPE=PARENT:demo-event-{appointment}")
+        lines.append(f"X-SIOUL-ANCHOR;GAP=PT{gap}M{';TIMETABLE=TRUE' if timetable else ''};WAS={utc(clock.at(day, was))}:{side}")
     lines.append("END:VEVENT")
     return vcalendar(lines)
 
@@ -1359,6 +1365,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            location=t("Riverside Health Centre, 5 Rue Imaginaire, Lyon", "Centre de santé des Berges, 5 rue Imaginaire, Lyon"),
                            # What to bring, as a list to tick (docs/tasks.md, "Checklists").
                            notes=t("Bring:\n- [ ] The blood test results\n- [ ] Carte Vitale", "À emporter :\n- [ ] Les résultats de la prise de sang\n- [ ] La carte Vitale"))),
+        # The bus there, a leg of the check-up from the timetable: it moves with it (part E).
+        ("personal", event(c, "doctor-bus", t("Bus C3 to the health centre", "Bus C3 jusqu’au centre de santé"), c.weekday_after(1), "08:50", "09:15",
+                           leg=("doctor", "BEFORE", 15, True, "09:30"))),
         ("work", event(c, "accountant", t("Call with Marc (accountant)", "Appel avec Marc (comptable)"), c.weekday_after(2), "11:00", "11:30",
                        location=t("Phone: +33 4 65 71 63 25", "Téléphone : +33 4 65 71 63 25"),
                        notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), project="taxes-2026")),

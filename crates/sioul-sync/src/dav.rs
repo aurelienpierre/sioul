@@ -1631,6 +1631,8 @@ fn same_text(mine: &[u8], theirs: &str) -> bool {
 /// whether all came, else the next turn goes on from what was kept.
 #[allow(clippy::too_many_arguments)]
 fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, refetch: &BTreeSet<String>, report: &mut Report, until: Option<Instant>) -> Result<bool, SyncError> {
+    // When it began: once it goes through whole, what follows an appointment knows its copy is current (`moves`).
+    let began = jiff::Timestamp::now().as_second();
     let key = |href: &str| path_key(&absolute(&listed.url, href));
     let by_href: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (key(&item.href), i)).collect();
     let (changed, gone, token) = match state.sync_token.clone().and_then(|token| changes_since(client, &listed.url, &token).ok().flatten()) {
@@ -1693,6 +1695,7 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
         }
     }
     state.sync_token = token.or_else(|| listed.sync_token.clone());
+    state.pulled = Some(began);
     Ok(true)
 }
 
@@ -2368,7 +2371,12 @@ mod tests {
         dav.fault(nth(2, |r| r.method == "REPORT" && r.body.contains("multiget"), Fault::Drop));
         let client = client();
         assert!(matches!(sync_one(&client, "resumes", &home, "big"), Err(SyncError::Network(_))));
+        // Part E0: a pull cut short says no pull went through; the next, whole, says when it began.
+        let state = || vdir::State::load(&vdir::state_path("resumes", Kind::Calendars, "big"));
+        assert_eq!(state().pulled, None, "cut short: no pull went through");
+        let began = jiff::Timestamp::now().as_second();
         let report = sync_one(&client, "resumes", &home, "big").unwrap();
+        assert!(state().pulled.is_some_and(|at| at >= began), "{:?}", state().pulled);
         assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 70, 0), "{report:?}");
         assert_eq!(local_files(&folder("resumes", "big"), Kind::Calendars).len(), 120);
         assert_eq!(dav.items("big").len(), 120);

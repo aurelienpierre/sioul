@@ -1730,7 +1730,7 @@ mod tests {
         let none = BTreeSet::new();
         let on = |day: &str, cancelled: bool| -> Settings {
             let mut settings = Settings::default();
-            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: Some(day.parse().unwrap()), cancelled, recurring: false })]));
+            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: Some(day.parse().unwrap()), cancelled, recurring: false, start: 0 })]));
             settings
         };
         // Thursday the 8th: its steps free that day, not before; one with a day of its own, on its day.
@@ -1776,7 +1776,7 @@ mod tests {
         assert_eq!(with_due("2026-10-08", "2026-10-08"), Some(day("2026-10-08")));
         // F7: an appointment whose start cannot be read is here, without a day: nothing parked, nothing held.
         let mut undated = Settings::default();
-        undated.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: None, cancelled: false, recurring: false })]));
+        undated.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: None, cancelled: false, recurring: false, start: 0 })]));
         let planned = plan(&tasks, today(), &undated, &BTreeMap::new(), &none);
         assert!(!planned.items["doctor"].parked && planned.ready.contains(&"brush".to_string()));
     }

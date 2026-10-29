@@ -188,6 +188,33 @@ Item {
             compare(mock.healthAsked, asked, "nothing asked")
         }
 
+        // What comes with Show leaving the doses out: no reading asked of the Health job for
+        // rows it would not show; the medicines unread, said there as in the Day (review of
+        // 679f96a, later 9).
+        function test_what_comes_asks_no_doses_while_show_leaves_them_out() {
+            const page = makePage()
+            page.mode = "agenda"
+            const today = day(0)
+            today.comes = { rows: [], doses: [{ minute: 1200, when: "20:00", title: "Dose", keys: ["a@2"] }] }
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", doses_note: "The medicines could not be read here.", days: [today, day(1, { comes: { rows: [] } })] })
+            wait(20)
+            const note = () => root.all(page, o => o.text === "The medicines could not be read here.")
+            verify(note().some(o => o.visible), "the note in What comes")
+            page.view = { doses: false, needs: true, steps: true, calendars: [] }
+            wait(20)
+            mock.healthAsked = 0
+            page.visible = false
+            page.visible = true
+            shell.now += 60
+            shell.backAt = shell.now
+            compare(mock.healthAsked, 0, "nothing asked while Show leaves the doses out")
+            verify(!note().some(o => o.visible), "nor the note")
+            page.view = { doses: true, needs: true, steps: true, calendars: [] }
+            wait(20)
+            shell.now += 60
+            compare(mock.healthAsked, 1, "asked again once shown")
+        }
+
         // What comes (§4.6): today's rows in order, tonight's night last; a dose
         // marked taken left out, one still to come plain, one come with its mark
         // and what is known; never a name, nothing to press (a tap opens its day
@@ -322,6 +349,33 @@ Item {
         // the day's chips, the date first with its diamond and words, within
         // its share of the line; a tap opens the date's card. The phone's Day
         // page's objects, counted.
+        // Part 6: a leg is a quiet line in its appointment's lead in the Day (no card of its
+        // own), its row left out of a phone's week list (said on the appointment's line
+        // there); Show's choice for the legs reads the days again.
+        function test_a_leg_is_a_quiet_line() {
+            const page = makePage()
+            page.mode = "day"
+            const monday = day(0, { timed: [placed("doctor", "event", root.monday, 840, 870, { when: "14:00 – 14:30" }, { line: "Leave at 13:10 · Bus 24" }), placed("bus", "leg", root.monday, 790, 815, { when: "13:10 – 13:35" }, { owner: "doctor", certainty: "unconfirmed" })] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
+            wait(50)
+            const lines = root.all(page, o => o.objectName === "planning-leg" && o.visible)
+            compare(lines.length, 1, "one quiet line")
+            verify(lines[0].opacity < 0.5, "fainter while its timetable was not checked")
+            // A phone's week: the leg in the appointment's line, no row of its own.
+            const phone = makePage(412)
+            phone.mode = "week"
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, day(1), day(2), day(3), day(4), day(5), day(6)] })
+            wait(50)
+            const rows = root.all(phone, o => typeof o.text === "string" && o.visible && o.text.indexOf("bus") === 0)
+            compare(rows.length, 0, "no row for the leg")
+            verify(root.all(phone, o => typeof o.text === "string" && o.visible && o.text.indexOf("Leave at 13:10 · Bus 24") >= 0).length > 0, "said on its appointment's line")
+            // Show: each leg as an event, the days read again.
+            const asked = mock.asked.length
+            page.showPart("legs", true)
+            page.readAgain()
+            verify(mock.asked.length > asked, "the days read again")
+        }
+
         function test_a_phone_s_day_head_on_the_page() {
             // Laid out once: never a line rearranged by what it holds (found here, 29 October 2026).
             failOnWarning(/recursive rearrange/)

@@ -950,6 +950,19 @@ pub mod qobject {
         #[qinvokable]
         fn make_step_of(self: Pin<&mut Sioul>, uid: &QString, bigger: &QString, confirmed: bool) -> QString;
 
+        /// A step said to come after its appointment, or before it (part E6): {"uid"} or {"error"}.
+        #[qinvokable]
+        fn set_step_after(self: Pin<&mut Sioul>, uid: &QString, after: bool) -> QString;
+
+        /// A leg added beside the appointment in `key` (part E5): the event
+        /// form, "before" or "after", from a timetable or not. What went wrong, else "".
+        #[qinvokable]
+        fn save_leg(self: Pin<&mut Sioul>, key: &QString, edit: &QString, side: &QString, timetable: bool) -> QString;
+
+        /// The leg in `key` untied from its appointment (part E5). What went wrong, else "".
+        #[qinvokable]
+        fn untie_leg(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
         /// A step folded into its bigger task's checklist: {"uid"} (the bigger
         /// task's), {"error"}, or {"losses", "said"} to ask first.
         #[qinvokable]
@@ -5035,6 +5048,18 @@ impl qobject::Sioul {
 
     fn event_pairing(&self, key: &QString) -> QString {
         QString::from(&crate::appointments::pairing(&self.shared(), &key.to_string()))
+    }
+
+    fn set_step_after(self: Pin<&mut Self>, uid: &QString, after: bool) -> QString {
+        QString::from(&work::set_step_after(&self.qt_thread(), &self.shared(), &uid.to_string(), after))
+    }
+
+    fn save_leg(self: Pin<&mut Self>, key: &QString, edit: &QString, side: &QString, timetable: bool) -> QString {
+        QString::from(&pim::save_leg(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string(), &side.to_string(), timetable))
+    }
+
+    fn untie_leg(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&pim::untie_leg(&self.qt_thread(), &self.shared(), &key.to_string()))
     }
 
     fn make_step_of(self: Pin<&mut Self>, uid: &QString, bigger: &QString, confirmed: bool) -> QString {

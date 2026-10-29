@@ -292,12 +292,14 @@ pub enum Fix {
 /// done (from when it was done) or dropped (from now), as `closing` says; a
 /// block not begun of a turn done elsewhere goes; one to come of an open task
 /// takes its title again. Nothing for a block of a task unknown here, nor for
-/// one another application made repeat. Each file once.
+/// one another application made repeat, nor for a leg (`anchors`) that is a
+/// step's time: a ride is a fact about the bus, it stays as it is whatever
+/// its step becomes. Each file once.
 pub fn upkeep(blocks: &[Occurrence], tasks: &[Task], now: i64) -> Vec<(String, Fix)> {
     let by_uid: BTreeMap<&str, &Task> = tasks.iter().map(|t| (t.uid.as_str(), t)).collect();
     let mut seen = BTreeSet::new();
     let mut out = Vec::new();
-    for block in blocks.iter().filter(|b| !b.task.is_empty() && !b.all_day && !b.recurring) {
+    for block in blocks.iter().filter(|b| !b.task.is_empty() && !b.all_day && !b.recurring && b.anchor.is_none()) {
         if !seen.insert(block.key.clone()) {
             continue;
         }
@@ -384,12 +386,13 @@ pub fn place_for(chosen: &str, list_account: &str, calendars: &[Collection], mak
 /// with it when it is deleted or made an appointment (the window's
 /// `blocks::with_task`, read here from the calendars, for agents). Never a
 /// block given a guest: a meeting with others now, its organizer's
-/// (`agenda::may_change`), it stays as it is.
+/// (`agenda::may_change`), it stays as it is; nor a leg (`anchors`), which
+/// belongs to its appointment and stays when its step goes.
 pub fn to_come_of(uid: &str, chosen: &str, now: i64, zone: &TimeZone) -> Vec<std::path::PathBuf> {
     let mut found: Vec<Occurrence> = agenda::occurrences(now, now + 60 * 86_400);
     found.extend(read(&calendars(chosen), now, now + AHEAD_DAYS * 86_400, zone));
     let mut seen = BTreeSet::new();
-    found.into_iter().filter(|b| b.task == uid && !b.read_only && !b.recurring && !b.with_others && b.start > now && seen.insert(b.key.clone())).map(|b| std::path::PathBuf::from(b.key)).collect()
+    found.into_iter().filter(|b| b.task == uid && !b.read_only && !b.recurring && !b.with_others && b.anchor.is_none() && b.start > now && seen.insert(b.key.clone())).map(|b| std::path::PathBuf::from(b.key)).collect()
 }
 
 /// The calendar a task's blocks go into, made when it is the calendar for
@@ -603,6 +606,20 @@ mod tests {
         let text = new_block(&bank, "now", start, end, false, &now()).unwrap();
         let shorter = ended(&text, at("2026-10-06T14:20"), &paris()).unwrap();
         assert_eq!(agenda::first_times(&shorter, &paris()), Some((start, at("2026-10-06T14:20"))));
+    }
+
+    /// A leg that is a step's time (part E): a ride is a fact about the bus.
+    /// Its step done, dropped or renamed, the blocks' upkeep leaves it as it is.
+    #[test]
+    fn a_leg_that_is_a_step_s_time_stays() {
+        let bus = task("bus-step", "Take the bus");
+        let anchor = crate::anchors::Anchor { appointment: "doctor".into(), side: crate::anchors::Side::Before, gap: 1500, timetable: true, was: Some(at("2026-10-09T14:00")), unconfirmed: None, cancelled_with: false };
+        let leg = Occurrence { key: "leg.ics".into(), summary: "Bus 24".into(), start: at("2026-10-09T13:10"), end: at("2026-10-09T13:35"), task: "bus-step".into(), anchor: Some(anchor), ..Occurrence::default() };
+        let done = Task { status: Status::Completed, completed: Some(at("2026-10-06T14:20")), ..bus.clone() };
+        assert!(upkeep(std::slice::from_ref(&leg), std::slice::from_ref(&done), at("2026-10-06T16:00")).is_empty(), "its step done: the leg stays");
+        assert!(upkeep(std::slice::from_ref(&leg), std::slice::from_ref(&bus), at("2026-10-06T16:00")).is_empty(), "its own title kept");
+        let plain = Occurrence { anchor: None, key: "plain.ics".into(), ..leg.clone() };
+        assert_eq!(upkeep(std::slice::from_ref(&plain), std::slice::from_ref(&done), at("2026-10-06T16:00")), vec![("plain.ics".to_string(), Fix::Delete)], "a plain block goes");
     }
 
     #[test]

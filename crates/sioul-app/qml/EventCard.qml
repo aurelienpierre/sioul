@@ -297,20 +297,42 @@ CardFrame {
             }
         }
     }
-    // When to leave, Before and Bring (composed tasks' part F, the unified agenda's
-    // part 4): one next step named, the others folded; nothing asks to tick, and a
-    // step left open costs nothing.
+    // When to leave, Before, Getting there, Bring and Coming back (composed tasks'
+    // part F, the unified agenda's parts 4 and 6): one next step named, the others
+    // folded; the legs as they will be once moved with it, a doubt said plainly;
+    // nothing asks to tick, and a step left open costs nothing. A leg's own card:
+    // what it is to its appointment, and × to untie it.
     ColumnLayout {
         id: part
 
-        // `appointmentView`: {leave_at, line, preparation, before, more, bring}.
+        // `appointmentView`: {leave_at, line, preparation, before, more, bring,
+        // getting_there, coming_back, steps_after, also, leg_of}.
         property var shown: null
+        readonly property var legOf: part.shown && part.shown.leg_of ? part.shown.leg_of : null
+        readonly property bool legsTaken: card.there && !card.isTask && part.legOf === null && card.event.recurring !== true && card.event.all_day !== true
 
         function read() {
             part.shown = card.there && !card.isTask ? JSON.parse(card.sioul.appointmentView(card.event.key, card.event.start) || "{}") : null
         }
 
-        visible: part.shown !== null && ((part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0)
+        // "13:10 – 13:35 Bus 24", its doubt said.
+        function legText(leg) {
+            return leg.when + "  " + (leg.unconfirmed ? card.sioul.textWith("legs-unconfirmed", "leg", leg.title) : leg.title)
+        }
+
+        // "Add a ride or a walk…": the event form, its times before the appointment.
+        function addLeg() {
+            const two = n => (n < 10 ? "0" : "") + n
+            const at = new Date(card.event.start * 1000)
+            const end = new Date(at.getTime() - 5 * 60000)
+            const begin = new Date(end.getTime() - 25 * 60000)
+            const clock = d => two(d.getHours()) + ":" + two(d.getMinutes())
+            const day = d => d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate())
+            const line = card.sioul.textArgs("leg-before", JSON.stringify({ appointment: card.event.summary, time: clock(at) }))
+            legDialog.now().makeLeg(card.event.key, "before", line, day(begin), clock(begin), clock(end))
+        }
+
+        visible: part.shown !== null && ((part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0 || (part.shown.getting_there || []).length > 0 || (part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0 || part.legOf !== null || part.legsTaken)
         Layout.fillWidth: true
         spacing: 4
 
@@ -322,6 +344,60 @@ CardFrame {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: card.theme.text
+        }
+        // A leg: "Before Doctor (14:00) · moves with it", opened by a tap; its doubt; × unties it.
+        // Made only on a leg's card.
+        Loader {
+            objectName: "eventCardLegPart"
+            active: part.legOf !== null
+            visible: active
+            Layout.fillWidth: true
+
+            sourceComponent: Component {
+                ColumnLayout {
+                    spacing: 4
+
+                    RowLayout {
+                        objectName: "eventCardLegOf"
+                        visible: part.legOf !== null
+                        Layout.fillWidth: true
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: part.legOf ? part.legOf.line : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: card.theme.accent
+
+                            TapHandler {
+                                cursorShape: Qt.PointingHandCursor
+                                onTapped: card.host.follow({ kind: "event", srcKey: part.legOf.key, srcStart: part.legOf.start, title: part.legOf.title })
+                            }
+                        }
+                        ToolButton {
+                            objectName: "eventCardUntieLeg"
+                            visible: card.editable
+                            text: "×"
+                            Accessible.name: card.sioul.text("leg-untie")
+                            ToolTip.visible: hovered
+                            ToolTip.text: card.sioul.text("leg-untie")
+                            onClicked: {
+                                card.said(card.sioul.untieLeg(card.event.key))
+                                part.read()
+                            }
+                        }
+                    }
+                    Label {
+                        visible: part.legOf !== null && part.legOf.unconfirmed === true
+                        Layout.fillWidth: true
+                        text: card.sioul.text("leg-unconfirmed")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: card.theme.muted
+                    }
+
+                }
+            }
         }
         Label {
             visible: !!part.shown && (part.shown.before || []).length > 0
@@ -356,6 +432,49 @@ CardFrame {
             text: card.sioul.textArgs("appointment-more", JSON.stringify({ n: part.shown ? part.shown.more || 0 : 0 }))
             textFormat: Text.PlainText
             color: card.theme.muted
+        }
+        // Getting there: the legs before it, in time order; a tap opens the leg. Made only when it has some.
+        Loader {
+            active: !!part.shown && (part.shown.getting_there || []).length > 0
+            visible: active
+            Layout.fillWidth: true
+
+            sourceComponent: Component {
+                ColumnLayout {
+                    spacing: 4
+
+                    Label {
+                        visible: !!part.shown && (part.shown.getting_there || []).length > 0
+                        Layout.topMargin: 4
+                        text: card.sioul.text("appointment-getting-there")
+                        textFormat: Text.PlainText
+                        font.bold: true
+                        color: card.theme.text
+                    }
+                    Repeater {
+                        model: part.shown ? part.shown.getting_there || [] : []
+
+                        delegate: Label {
+                            id: going
+
+                            required property var modelData
+
+                            objectName: "eventCardLeg"
+                            Layout.fillWidth: true
+                            text: part.legText(going.modelData)
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: card.theme.accent
+                            font.italic: going.modelData.unconfirmed
+
+                            TapHandler {
+                                cursorShape: Qt.PointingHandCursor
+                                onTapped: card.host.follow({ kind: "event", srcKey: going.modelData.key, srcStart: going.modelData.start, title: going.modelData.title })
+                            }
+                        }
+                    }
+                }
+            }
         }
         Repeater {
             model: part.shown ? part.shown.bring || [] : []
@@ -401,6 +520,98 @@ CardFrame {
                     color: card.theme.muted
                 }
             }
+        }
+        // Coming back: the legs after it, then the steps that come after it; another task tied
+        // to it. Made only when there is one of them.
+        Loader {
+            active: !!part.shown && ((part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0)
+            visible: active
+            Layout.fillWidth: true
+
+            sourceComponent: Component {
+                ColumnLayout {
+                    spacing: 4
+
+                    Label {
+                        visible: !!part.shown && ((part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0)
+                        Layout.topMargin: 4
+                        text: card.sioul.text("appointment-coming-back")
+                        textFormat: Text.PlainText
+                        font.bold: true
+                        color: card.theme.text
+                    }
+                    Repeater {
+                        model: part.shown ? part.shown.coming_back || [] : []
+
+                        delegate: Label {
+                            id: back
+
+                            required property var modelData
+
+                            objectName: "eventCardLeg"
+                            Layout.fillWidth: true
+                            text: part.legText(back.modelData)
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: card.theme.accent
+                            font.italic: back.modelData.unconfirmed
+
+                            TapHandler {
+                                cursorShape: Qt.PointingHandCursor
+                                onTapped: card.host.follow({ kind: "event", srcKey: back.modelData.key, srcStart: back.modelData.start, title: back.modelData.title })
+                            }
+                        }
+                    }
+                    Repeater {
+                        model: part.shown ? part.shown.steps_after || [] : []
+
+                        delegate: Label {
+                            id: later
+
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            text: "·  " + later.modelData.title
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: card.theme.accent
+
+                            TapHandler {
+                                cursorShape: Qt.PointingHandCursor
+                                onTapped: card.host.follow({ kind: "task", owner: later.modelData.uid, title: later.modelData.title })
+                            }
+                        }
+                    }
+                    // Another open task tied to it besides its preparation (part E0.10): named, opened by a tap.
+                    Repeater {
+                        model: part.shown ? part.shown.also || [] : []
+
+                        delegate: Label {
+                            id: also
+
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            text: card.sioul.textWith("appointment-also-tied", "title", also.modelData.title)
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: card.theme.muted
+
+                            TapHandler {
+                                cursorShape: Qt.PointingHandCursor
+                                onTapped: card.host.follow({ kind: "task", owner: also.modelData.uid, title: also.modelData.title })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Button {
+            objectName: "eventCardAddLeg"
+            visible: part.legsTaken
+            flat: true
+            text: "+  " + card.sioul.text("appointment-add-leg")
+            onClicked: part.addLeg()
         }
     }
     // What it is tied to, and what can be made from it.
@@ -515,6 +726,19 @@ CardFrame {
                 sioul: card.sioul
                 theme: card.theme
                 keeper: card.host.keeper
+            }
+        }
+    }
+
+    // "Add a ride or a walk…": the event form for a leg, its own (never the one an edit keeps).
+    Later {
+        id: legDialog
+
+        sourceComponent: Component {
+            EventDialog {
+                sioul: card.sioul
+                theme: card.theme
+                onSaved: part.read()
             }
         }
     }

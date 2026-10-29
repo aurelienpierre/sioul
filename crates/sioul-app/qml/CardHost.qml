@@ -58,7 +58,8 @@ Item {
 
     // The card a reference opens, by its kind; "" for none here.
     function cardOf(ref) {
-        if (ref.kind === "event" || (ref.kind === "block" && (ref.owner || "") === ""))
+        // A leg (part E) is an event of its own: its card says what it is to its appointment.
+        if (ref.kind === "event" || ref.kind === "leg" || (ref.kind === "block" && (ref.owner || "") === ""))
             return "event"
         if (ref.kind === "task" || ref.kind === "step" || ref.kind === "block" || ref.kind === "done")
             return (ref.owner || "") !== "" || ref.making === true ? "task" : ""

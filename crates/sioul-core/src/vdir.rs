@@ -685,6 +685,11 @@ pub struct State {
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub interop: u32,
+    /// When the last pull that went through whole began (Unix seconds): what
+    /// follows an appointment set for an instant this device never saw waits
+    /// for one begun after (`moves`). This device's own, as the rest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pulled: Option<i64>,
     #[serde(default, rename = "item")]
     pub items: Vec<ItemState>,
 }

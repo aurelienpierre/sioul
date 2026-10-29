@@ -386,9 +386,14 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         // Its own alarms: set by you or the one who invited you. The alarm's
         // offset is the event file's: too far to be a time, none.
         let mut alarms: Vec<(i64, i64)> = event.alarms.iter().filter_map(|offset| event.start.checked_add(*offset).filter(|due| jiff::Timestamp::from_second(*due).is_ok()).map(|due| (*offset, due))).collect();
+        // A leg whose appointment is here: one reminder for the outing, the
+        // appointment's, counted from the earliest leg (`anchors::mark`); the
+        // leg's own alarms still come.
+        let leg = !event.leg_of.is_empty();
         // Sioul's before it, counted before its margin; one of its alarms
         // within minutes of it makes one reminder, at the earlier.
-        if let Some(due) = before_at(event, settings.before_event)
+        if !leg
+            && let Some(due) = before_at(event, settings.before_event)
             && modified(&event.key) <= due
             && !alarms.iter().any(|(_, alarm)| (alarm - due).abs() <= SAME_MOMENT && *alarm < due)
         {
@@ -416,7 +421,8 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 at: due,
                 until: event.start,
                 title: tr.text("reminder-before", Some(&args)),
-                body: [margin, event.location.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
+                // A leg moved with it, its timetable not checked: said once, here (part E).
+                body: [if event.legs_doubt { format!("{margin} {}", tr.text("reminder-legs-unconfirmed", None)).trim().to_string() } else { margin }, event.location.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
                 target: event.key.clone(),
                 work: false,
                 starts: Some(event.start),
@@ -437,8 +443,8 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 names: None,
             });
         }
-        // The working day before; not for calendars you only read (holidays, subscriptions).
-        if settings.events && !event.read_only
+        // The working day before; not for calendars you only read (holidays, subscriptions), nor a leg of an appointment here.
+        if settings.events && !event.read_only && !leg
             && let Some(due) = evening_before(&hours, &config.time_off, start.date(), &zone)
             && modified(&event.key) <= due.timestamp().as_second()
         {
@@ -988,6 +994,25 @@ mod tests {
     /// Sioul's own reminders before events, as told at `now`.
     fn befores(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence]) -> Vec<Reminder> {
         all(config, tr, now, events, &[], None, &[], &[], None, |_| true).into_iter().filter(|r| matches!(r.kind, Kind::Before | Kind::Alarm)).collect()
+    }
+
+    /// One reminder per outing (part E3): the appointment's, counted from its
+    /// earliest leg (`anchors::mark`), the doubt of a leg moved with it said
+    /// there; the leg's own Sioul reminders not told while its appointment is here.
+    #[test]
+    fn one_reminder_per_outing_from_the_first_leg() {
+        let en = Translator::new("en");
+        let config = config();
+        let now = at("2026-10-07T08:00");
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        let doctor = Occurrence { summary: "Doctor".into(), location: String::new(), ..event("doctor", "2026-10-07T14:00", vec![]) };
+        let anchor = crate::anchors::Anchor { appointment: "doctor".into(), side: crate::anchors::Side::Before, gap: 25 * 60, timetable: true, was: Some(stamp("2026-10-07T14:00")), unconfirmed: Some(stamp("2026-10-07T14:00")), cancelled_with: false };
+        let bus = Occurrence { uid: "bus".into(), summary: "Bus 24".into(), start: stamp("2026-10-07T13:10"), end: stamp("2026-10-07T13:35"), anchor: Some(anchor), location: String::new(), ..event("bus", "2026-10-07T13:10", vec![]) };
+        let mut events = vec![doctor, bus];
+        crate::anchors::mark(&mut events);
+        let told = befores(&config, &en, &now, &events);
+        assert_eq!(told.iter().map(|r| (r.key.as_str(), r.at)).collect::<Vec<_>>(), [(format!("before:doctor:{}", stamp("2026-10-07T14:00")).as_str(), stamp("2026-10-07T12:55"))], "one, from the bus at 13:10");
+        assert_eq!(told[0].body, "Getting ready, getting there: from 13:10. (timetable not checked)");
     }
 
     #[test]

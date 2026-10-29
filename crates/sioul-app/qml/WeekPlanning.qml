@@ -268,7 +268,7 @@ ColumnLayout {
         if (hide.needs && (row.kind === "meal" || row.kind === "nap" || row.kind === "night"))
             return false
         // A calendar by its place, never its name: two of one name stay apart.
-        if ((row.kind === "event" || row.kind === "block") && (hide.calendars || []).indexOf(row.collection) >= 0)
+        if ((row.kind === "event" || row.kind === "block" || row.kind === "leg") && (hide.calendars || []).indexOf(row.collection) >= 0)
             return false
         return true
     }
@@ -411,7 +411,8 @@ ColumnLayout {
                 out.push(line("doses-line", ""))
             // The night by its part: waking, at its time; winding down, from its start.
             const said = r => r.kind !== "night" ? r : planning.morning(r) ? Object.assign({}, r, { title: planning.sioul.text("agenda-wake"), when: planning.clockOf(r.to) }) : Object.assign({}, r, { when: planning.clockOf(r.lead) })
-            const own = rows.filter(r => r.day === i).sort((a, b) => a.from - b.from || a.column - b.column).map(said)
+            // A leg is said in its appointment's line here, never a row of its own (the unified agenda, §4.7).
+            const own = rows.filter(r => r.day === i && r.kind !== "leg").sort((a, b) => a.from - b.from || a.column - b.column).map(said)
             out.push(...own)
             if (day.plan)
                 out.push(line("plan-line", day.plan))
@@ -1249,6 +1250,8 @@ ColumnLayout {
                     readonly property bool isStep: card.kind === "step" && card.fold !== "band"
                     readonly property bool isBand: card.fold === "band"
                     readonly property bool isQuiet: card.kind === "gain" || card.kind === "slack"
+                    // A ride or a walk around an appointment (part E): a quiet line in its lead, never a card.
+                    readonly property bool isLeg: card.kind === "leg"
                     readonly property bool pinned: card.kind === "step" && card.certainty === "held"
                     readonly property bool done: card.kind === "done"
                     readonly property bool chosen: planning.chosenId !== "" && planning.chosenId === card.itemId
@@ -1267,7 +1270,7 @@ ColumnLayout {
                     y: card.box.y
                     width: card.box.width
                     height: card.box.height
-                    z: card.isNight ? 0 : card.isQuiet ? 1 : 2
+                    z: card.isNight ? 0 : card.isQuiet ? 1 : card.isLeg ? 3 : 2
                     opacity: card.away ? 0.3 : card.tentative || card.done ? 0.6 : 1
                     Accessible.role: Accessible.Button
                     Accessible.name: card.title + ", " + card.when
@@ -1276,7 +1279,7 @@ ColumnLayout {
                     // whole, lighter (what is kept around the thing: getting there and back,
                     // getting ready, coming back, winding down; the night's shading)...
                     Rectangle {
-                        visible: !card.isQuiet && (card.isNight || card.isNeed || card.properTop > 1 || card.properBottom < card.height - 1)
+                        visible: !card.isQuiet && !card.isLeg && (card.isNight || card.isNeed || card.properTop > 1 || card.properBottom < card.height - 1)
                         anchors.fill: parent
                         radius: card.isNight ? 0 : 3
                         color: planning.tint(card.hue, card.isNight ? 0.06 : card.isNeed && card.tone === "quiet" ? 0.05 : 0.1)
@@ -1286,10 +1289,22 @@ ColumnLayout {
                     // ... and the thing itself: an appointment, a block, a step, a task
                     // done, a band as a card; a meal's or a nap's stronger tint; the
                     // night's sleep, from bedtime on (its morning part: all of it).
+                    // A leg: a thin line down its time, its calendar's colour; fainter while its
+                    // timetable was not checked (moved with its appointment).
+                    Rectangle {
+                        objectName: "planning-leg"
+                        visible: card.isLeg
+                        x: 2
+                        width: 2
+                        height: parent.height
+                        radius: 1
+                        color: card.hue
+                        opacity: card.certainty === "unconfirmed" ? 0.45 : 0.9
+                    }
                     Rectangle {
                         readonly property bool asCard: !card.isNight && !card.isNeed
 
-                        visible: !card.isQuiet
+                        visible: !card.isQuiet && !card.isLeg
                         x: card.isNeed ? 1 : 0
                         y: card.isNight && planning.morning(card.row) ? 0 : Math.max(0, Math.min(card.properTop, card.height - planning.cardLeast))
                         width: parent.width - (card.isNeed ? 2 : 0)
@@ -1343,11 +1358,11 @@ ColumnLayout {
                             elide: Text.ElideRight
                             wrapMode: Text.Wrap
                             maximumLineCount: Math.max(1, Math.floor((card.height - planning.cardPadding) / planning.titleLine))
-                            font.pixelSize: 12
-                            font.italic: card.isQuiet || card.isBand
+                            font.pixelSize: card.isLeg ? 11 : 12
+                            font.italic: card.isQuiet || card.isBand || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled
                             font.weight: card.underWay ? Font.DemiBold : Font.Normal
-                            color: card.isQuiet || card.isBand || card.done ? planning.theme.muted : planning.theme.text
+                            color: card.isQuiet || card.isBand || card.done || card.isLeg ? planning.theme.muted : planning.theme.text
                         }
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
@@ -1710,7 +1725,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         // Its words wrap at the row's width: they never widen it.
                         Layout.preferredWidth: 0
-                        text: line.kind === "dated" ? line.line : (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "")
+                        // An appointment's line under it (Leave at, its legs, its next step: the unified agenda, §4.7).
+                        text: line.kind === "dated" ? line.line : (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "") + (line.kind === "event" && line.line !== "" ? "\n" + line.line : "")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 14

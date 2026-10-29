@@ -238,6 +238,10 @@ pub struct Task {
     /// link to its appointment), "2026-10-29"; "" when none: a DUE that says
     /// it is the pairing's, not a date of its own (`pairs::own_date`).
     pub due_written: String,
+    /// A step that comes after its appointment (composed tasks, part E6:
+    /// `X-SIOUL-ANCHOR:AFTER`): laid forward from the appointment's end, said
+    /// under Coming back, never dropped when the appointment is over.
+    pub after: bool,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -633,6 +637,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
+            crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
             // A whole number; another program's decimal read to the nearest.
             SORT_ORDER => task.sort_order = value.trim().parse::<i64>().ok().or_else(|| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 9e15).map(|v| v.round() as i64)),
             "DTSTAMP" => stamp = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
