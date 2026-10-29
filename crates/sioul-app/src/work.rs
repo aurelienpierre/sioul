@@ -61,6 +61,11 @@ pub(crate) struct WorkState {
     /// How other pages were left: a column folded, a section open ("sites-narrow"…).
     #[serde(default)]
     pub flags: std::collections::BTreeMap<String, bool>,
+    /// The tasks with steps opened in List, Board and the Gantt, by UID: the
+    /// others are one row each (`taskview::Fold`, composed tasks §7.2). Kept
+    /// here, never in the task.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub opened: BTreeSet<String>,
 }
 
 impl WorkState {
@@ -180,6 +185,8 @@ pub(crate) struct Desk {
     settings: Settings,
     /// Work rests now (quiet time); the filter alone says only that hours are set.
     quiet: bool,
+    /// The appointments and their legs (`pairs::outings`): what a step comes before.
+    outings: BTreeMap<String, sioul_core::pairs::Outing>,
 }
 
 impl Desk {
@@ -203,7 +210,8 @@ impl Desk {
         let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
         let filter = Filter { quiet: if anyway { None } else { situation.quiet_tasks() }, ..Filter::default() };
         let quiet = situation.mode.quiet;
-        Desk { loaded, read, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings, quiet }
+        let outings = sioul_core::pairs::outings(&loaded.events);
+        Desk { loaded, read, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings, quiet, outings }
     }
 
     /// "Until Thursday 8 October: about 2 h of steps, 6 h of room.", for a date asked.
@@ -237,7 +245,7 @@ impl Desk {
 
     /// The task views' context, through `filter` (the page's choices).
     fn context_with<'a>(&'a self, filter: &'a Filter) -> Context<'a> {
-        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: tr(), projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
+        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: tr(), projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     fn task(&self, uid: &str) -> Option<&Task> {
@@ -834,9 +842,9 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             categories,
             weather: desk.today.weather,
             now: taskview::now(&cx, desk.today.weather, &desk.today.aside),
-            list: taskview::list(&cx, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query),
-            board: taskview::board(&cx, project),
-            timeline: taskview::timeline(&cx, project, &rest),
+            list: taskview::list(&cx, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query, taskview::Fold::Opened(&state.opened)),
+            board: taskview::board(&cx, project, taskview::Fold::Opened(&state.opened)),
+            timeline: taskview::timeline(&cx, project, &rest, taskview::Fold::Opened(&state.opened)),
             no_list: lists.is_empty(),
             lists,
             projects: projects_offered(&desk.loaded),
@@ -1030,6 +1038,23 @@ pub(crate) fn set_view(qt: &QtThread, shared: &Arc<Shared>, by: &str, done: bool
         state.done = done;
         state.query = query.to_string();
         state.project = project.to_string();
+        state.save();
+    }
+    show_work(qt, shared);
+}
+
+/// A task with steps opened (its steps shown under it) or folded again, in
+/// List, Board and the Gantt; kept for next time, only for tasks still here.
+pub(crate) fn fold_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, open: bool) {
+    if let Ok(mut state) = shared.work.lock() {
+        if open {
+            state.opened.insert(uid.to_string());
+        } else {
+            state.opened.remove(uid);
+        }
+        if let Some(loaded) = loaded_known(shared) {
+            state.opened.retain(|u| loaded.tasks.iter().any(|t| t.uid == *u));
+        }
         state.save();
     }
     show_work(qt, shared);

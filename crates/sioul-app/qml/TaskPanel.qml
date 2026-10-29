@@ -609,6 +609,113 @@ Panel {
                     }
                 }
             }
+            // The appointment it prepares, at the top with when to leave (composed tasks §7.2): opened by
+            // a tap; in the form, untied (×), or one tied, found by its title (docs/tasks.md, "An appointment and its steps").
+            RowLayout {
+                visible: panel.detail !== null && !!panel.detail.appointment
+                Layout.fillWidth: true
+                spacing: 6
+
+                Icon {
+                    iconName: "view-calendar-day"
+                    size: 16
+                }
+                Label {
+                    objectName: "taskAppointment"
+                    Layout.fillWidth: true
+                    text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+
+                    TapHandler {
+                        onTapped: {
+                            if (panel.detail.appointment.here)
+                                panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key }, true)
+                        }
+                    }
+                }
+                ToolButton {
+                    objectName: "taskDetach"
+                    visible: panel.form && panel.canEdit
+                    text: "×"
+                    Accessible.name: panel.sioul.text("pair-detach")
+                    ToolTip.visible: hovered
+                    ToolTip.text: panel.sioul.text("pair-detach")
+                    onClicked: error.text = panel.sioul.detachFromEvent(panel.uid)
+                }
+            }
+            // When to leave, and how, under it: "Leave at 13:10 · Bus 24" (composed tasks §7.2).
+            Label {
+                objectName: "taskAppointmentLeave"
+                visible: panel.detail !== null && !!panel.detail.appointment && panel.detail.appointment.here && !!panel.detail.appointment.leave
+                Layout.fillWidth: true
+                Layout.leftMargin: 22
+                text: panel.detail && panel.detail.appointment ? panel.detail.appointment.leave || "" : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.muted
+            }
+            TextField {
+                id: appointmentOf
+
+                // The events found by their title, offered below.
+                property var matches: []
+
+                objectName: "taskAttach"
+                // Never offered for a task of a list that keeps no tie (Google Tasks).
+                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && !panel.detail.appointment && panel.detail.keeps_ties !== false
+                Layout.fillWidth: true
+                placeholderText: panel.sioul.text("pair-attach-field")
+                onTextEdited: {
+                    appointmentOf.matches = appointmentOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchThings(appointmentOf.text, "event", "") || "[]")
+                    if (appointmentOf.matches.length > 0)
+                        appointmentFound.now().open()
+                }
+                Keys.onEscapePressed: {
+                    appointmentOf.clear()
+                    appointmentFound.close()
+                }
+
+                Later {
+                    id: appointmentFound
+
+                    sourceComponent: Component {
+                        Popup {
+                            id: appointmentFoundForm
+
+                            y: appointmentOf.height
+                            width: appointmentOf.width
+                            padding: 4
+
+                            ListView {
+                                id: appointmentList
+
+                                implicitHeight: Math.min(contentHeight, 240)
+                                width: parent.width
+                                clip: true
+                                model: appointmentOf.matches
+
+                                delegate: ItemDelegate {
+                                    id: found
+
+                                    required property var modelData
+
+                                    width: appointmentList.width
+                                    // "&" doubled: a button reads one as a key to underline.
+                                    text: panel.theme.plain((found.modelData.title || "") + (found.modelData.when ? "  ·  " + found.modelData.when : "")).replace(/&/g, "&&")
+                                    onClicked: {
+                                        error.text = panel.sioul.attachToEvent(panel.uid, found.modelData.key)
+                                        appointmentOf.clear()
+                                        appointmentFoundForm.close()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Pinned to a time, near its title: a pin, and its block's day and
             // time in words. A click opens the block in the agenda; its menu
             // (right click, a long press, or ⋯) moves it or leaves it to the
@@ -926,102 +1033,6 @@ Panel {
                 }
             }
 
-            // The appointment it prepares: opened by a tap; in the form, untied (×), or
-            // one tied, found by its title (docs/tasks.md, "An appointment and its steps").
-            RowLayout {
-                visible: panel.detail !== null && !!panel.detail.appointment
-                Layout.fillWidth: true
-                spacing: 6
-
-                Icon {
-                    iconName: "view-calendar-day"
-                    size: 16
-                }
-                Label {
-                    objectName: "taskAppointment"
-                    Layout.fillWidth: true
-                    text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: panel.theme.text
-
-                    TapHandler {
-                        onTapped: {
-                            if (panel.detail.appointment.here)
-                                panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key }, true)
-                        }
-                    }
-                }
-                ToolButton {
-                    objectName: "taskDetach"
-                    visible: panel.form && panel.canEdit
-                    text: "×"
-                    Accessible.name: panel.sioul.text("pair-detach")
-                    ToolTip.visible: hovered
-                    ToolTip.text: panel.sioul.text("pair-detach")
-                    onClicked: error.text = panel.sioul.detachFromEvent(panel.uid)
-                }
-            }
-            TextField {
-                id: appointmentOf
-
-                // The events found by their title, offered below.
-                property var matches: []
-
-                objectName: "taskAttach"
-                // Never offered for a task of a list that keeps no tie (Google Tasks).
-                visible: panel.form && panel.canEdit && !panel.fresh && panel.detail !== null && !panel.detail.appointment && panel.detail.keeps_ties !== false
-                Layout.fillWidth: true
-                placeholderText: panel.sioul.text("pair-attach-field")
-                onTextEdited: {
-                    appointmentOf.matches = appointmentOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchThings(appointmentOf.text, "event", "") || "[]")
-                    if (appointmentOf.matches.length > 0)
-                        appointmentFound.now().open()
-                }
-                Keys.onEscapePressed: {
-                    appointmentOf.clear()
-                    appointmentFound.close()
-                }
-
-                Later {
-                    id: appointmentFound
-
-                    sourceComponent: Component {
-                        Popup {
-                            id: appointmentFoundForm
-
-                            y: appointmentOf.height
-                            width: appointmentOf.width
-                            padding: 4
-
-                            ListView {
-                                id: appointmentList
-
-                                implicitHeight: Math.min(contentHeight, 240)
-                                width: parent.width
-                                clip: true
-                                model: appointmentOf.matches
-
-                                delegate: ItemDelegate {
-                                    id: found
-
-                                    required property var modelData
-
-                                    width: appointmentList.width
-                                    // "&" doubled: a button reads one as a key to underline.
-                                    text: panel.theme.plain((found.modelData.title || "") + (found.modelData.when ? "  ·  " + found.modelData.when : "")).replace(/&/g, "&&")
-                                    onClicked: {
-                                        error.text = panel.sioul.attachToEvent(panel.uid, found.modelData.key)
-                                        appointmentOf.clear()
-                                        appointmentFoundForm.close()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // The task it is a step of: opened by a tap; in the form, a task of its own
             // again (×), or a step of another, found by its title (docs/tasks.md, "Composed tasks").
             RowLayout {
@@ -1140,6 +1151,8 @@ Panel {
                         theme: panel.theme
                         sioul: panel.sioul
                         compact: true
+                        // Edit turns the steps into drag handles (composed tasks §7.2).
+                        handle: stepDrag.enabled
                         opacity: panel.dragStep === stepHolder.modelData.uid ? 0.4 : 1
                         onOpen: uid => panel.uid = uid
                         onTick: uid => panel.sioul.setTaskStatus(uid, stepHolder.modelData.status === "completed" ? "needs-action" : "completed")
@@ -1205,6 +1218,26 @@ Panel {
                 parentUid: panel.uid
                 step: true
                 placeholder: panel.keeps("steps") ? panel.sioul.text("task-add-step") : panel.sioul.text("google-tasks-greyed")
+            }
+
+            // Its notes, under its steps with their checklist (composed tasks §7.2), their Markdown
+            // drawn safely: a list shared with other applications may hold anything.
+            Description {
+                visible: !panel.form && panel.detail !== null && panel.detail.edit.notes !== ""
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                sioul: panel.sioul
+                theme: panel.theme
+                window: panel.window
+                markdown: panel.detail ? panel.detail.edit.notes : ""
+                // Its checklist ticked here, when the task can be changed (docs/tasks.md, "Checklists").
+                tickable: panel.canEdit && !panel.fresh
+                // An item made a step of this task, or a task of its own.
+                converts: panel.canEdit && !panel.fresh
+                // Never a step of a step where its list keeps one level (Google Tasks: "steps" among what it loses).
+                steps: panel.canEdit && !panel.fresh && !(panel.detail && panel.detail.limited && panel.detail.limited.indexOf("steps") >= 0)
+                onCheck: (line, state) => error.text = panel.sioul.checkItem("task", panel.uid, line, state)
+                onConvert: (line, to) => error.text = panel.sioul.convertItem("task", panel.uid, line, to)
             }
 
             // What it waits for: removable; and one more, found by its title.
@@ -1426,25 +1459,6 @@ Panel {
                     }
                 }
             }
-            // Its notes, their Markdown drawn safely: a list shared with other applications may hold anything.
-            Description {
-                visible: !panel.form && panel.detail !== null && panel.detail.edit.notes !== ""
-                Layout.fillWidth: true
-                Layout.topMargin: 6
-                sioul: panel.sioul
-                theme: panel.theme
-                window: panel.window
-                markdown: panel.detail ? panel.detail.edit.notes : ""
-                // Its checklist ticked here, when the task can be changed (docs/tasks.md, "Checklists").
-                tickable: panel.canEdit && !panel.fresh
-                // An item made a step of this task, or a task of its own.
-                converts: panel.canEdit && !panel.fresh
-                // Never a step of a step where its list keeps one level (Google Tasks: "steps" among what it loses).
-                steps: panel.canEdit && !panel.fresh && !(panel.detail && panel.detail.limited && panel.detail.limited.indexOf("steps") >= 0)
-                onCheck: (line, state) => error.text = panel.sioul.checkItem("task", panel.uid, line, state)
-                onConvert: (line, to) => error.text = panel.sioul.convertItem("task", panel.uid, line, to)
-            }
-
             // Done: how it was, if you want to say. Filled in with what was
             // foreseen; nothing is kept until one changes, or "As expected".
             Button {

@@ -2291,6 +2291,25 @@ fn legs_move_and_go_with_their_appointment() {
     let doctor = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
     let refused = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2099-11-24T13:10", "end": "2099-11-24T13:35", "anchor": uri, "step": "some-step" }));
     assert_eq!(refused["isError"], true, "a step's time waits: {refused}");
+    // Every device keeping such a leg (as the window found it, part 7): the leg is the step's
+    // time, the step pinned to it, in one change.
+    let prep = call(&mut server, "add_task", json!({ "title": "Going to the doctor" }));
+    let prep_uid = prep["structuredContent"]["uid"].as_str().unwrap().to_string();
+    assert_eq!(call(&mut server, "attach_to_event", json!({ "task": prep_uid, "event": uri }))["isError"], false);
+    let steps = call(&mut server, "add_steps", json!({ "task": prep_uid, "steps": ["Take the walk"] }));
+    let step_uid = steps["structuredContent"]["steps"][0]["uid"].as_str().map(String::from).unwrap_or_else(|| panic!("{steps}"));
+    // Not every device keeps such a leg: refused for that alone, nothing written.
+    let waits = call(&mut server, "add_event", json!({ "title": "Walk to the stop", "start": "2099-11-24T13:00", "end": "2099-11-24T13:08", "anchor": uri, "step": step_uid }));
+    assert!(waits["isError"] == true && text(&waits).contains("waits"), "{waits}");
+    sioul_core::anchors::say_steps_offered(true);
+    let walk = call(&mut server, "add_event", json!({ "title": "Walk to the stop", "start": "2099-11-24T13:00", "end": "2099-11-24T13:08", "anchor": uri, "step": step_uid }));
+    sioul_core::anchors::say_steps_offered(false);
+    assert_eq!(walk["isError"], false, "{walk}");
+    let walk_file = event_file_of(walk["structuredContent"]["uid"].as_str().unwrap());
+    assert!(std::fs::read_to_string(&walk_file).unwrap().contains(&format!("X-SIOUL-TASK:{step_uid}")), "the step's time");
+    let step_task = tasks::all(&jiff::tz::TimeZone::system()).into_iter().find(|t| t.uid == step_uid).unwrap();
+    assert!(step_task.links.iter().any(sioul_core::blocks::is_block_link), "the step pinned to it");
+    let _ = std::fs::remove_file(&walk_file);
     let leg = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2099-11-24T13:10", "end": "2099-11-24T13:35", "anchor": uri, "timetable": true }));
     assert_eq!(leg["isError"], false, "{leg}");
     let bus = event_file_of(leg["structuredContent"]["uid"].as_str().unwrap());

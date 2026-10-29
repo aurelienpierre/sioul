@@ -28,6 +28,11 @@ ItemDelegate {
     property bool compact: false
     // Indent for steps, in levels.
     property int depth: 0
+    // The view folds a task with steps into one row (List, Board: composed tasks §7.2):
+    // its arrow opens its steps under it, or folds them again.
+    property bool folds: false
+    // A step in its task's form (Edit): a handle drawn, by which it is dragged into its place.
+    property bool handle: false
 
     // A click: its details asked, by its UID.
     signal open(string uid)
@@ -35,12 +40,15 @@ ItemDelegate {
     signal tick(string uid)
     // A right click or a long press: its menu asked.
     signal menu(var task)
+    // Its arrow pressed: its steps shown (`open`), or folded again.
+    signal fold(string uid, bool open)
 
     // Done or dropped: its circle filled, its title quieter.
     readonly property bool done: row.task.status === "completed" || row.task.status === "cancelled"
     // The words under its title that say something: the date asked, the length, the
     // steps, what it waits for, where you stopped.
-    readonly property var details: [row.task.due, row.task.estimate, row.task.steps, row.task.waits, row.task.stopped].filter(t => t !== "")
+    // Folded, its one line: its appointment's time and its next step, never a count.
+    readonly property var details: row.task.folded ? [row.task.fold_line || ""].filter(t => t !== "") : [row.task.due, row.task.estimate, row.task.steps, row.task.waits, row.task.stopped].filter(t => t !== "")
 
     leftPadding: 8 + row.depth * 22
     padding: row.compact ? 4 : 8
@@ -118,6 +126,24 @@ ItemDelegate {
                 Layout.fillWidth: true
                 spacing: 6
 
+                // One place before the title, made only where it is needed: in the form, a
+                // step's handle (it moves by a drag on its row); where the view folds, a task
+                // with steps' arrow (composed tasks §7.2).
+                Loader {
+                    active: row.handle || (row.folds && !!row.task.has_steps)
+                    visible: active
+                    sourceComponent: ToolButton {
+                        objectName: row.handle ? "taskRowHandle" : "taskRowFold"
+                        implicitWidth: 24
+                        implicitHeight: 24
+                        padding: 0
+                        // A handle is drawn only: the drag is its row's.
+                        enabled: !row.handle
+                        text: row.handle ? "⠿" : row.task.folded ? "▸" : "▾"
+                        Accessible.name: row.handle || !row.sioul ? "" : row.sioul.text(row.task.folded ? "task-fold-open" : "task-fold-close")
+                        onClicked: row.fold(row.task.uid, !!row.task.folded)
+                    }
+                }
                 // Its kind, quietly: a call, a form, going out…
                 Icon {
                     visible: !!row.task.kind

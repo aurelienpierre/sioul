@@ -526,6 +526,8 @@ pub(super) struct Desk {
     today: Today,
     spent: BTreeMap<String, u32>,
     stopped: BTreeMap<String, String>,
+    /// The appointments and legs the agent may see (`pairs::outings`): Now's reason names no other.
+    outings: BTreeMap<String, sioul_core::pairs::Outing>,
 }
 
 impl Desk {
@@ -549,7 +551,9 @@ impl Desk {
         settings.appointments = Some(sioul_core::pairs::appointments_here(&loaded.events, now.time_zone()));
         let plan = plan::plan(&loaded.tasks, now.date(), &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
-        Desk { loaded, consent, filter, offices: situation.offices, plan, settings, read, reach, today, spent, stopped }
+        let seen: Vec<sioul_core::agenda::EventRef> = loaded.events.iter().filter(|e| consent.allows(&links::event_uri(&e.uid))).cloned().collect();
+        let outings = sioul_core::pairs::outings(&seen);
+        Desk { loaded, consent, filter, offices: situation.offices, plan, settings, read, reach, today, spent, stopped, outings }
     }
 
     /// Whether a task reaches the agent.
@@ -576,7 +580,7 @@ impl Desk {
     /// The task views' context through `filter`: the list takes every task,
     /// whatever the hour (`tasks_list`).
     pub fn context_with<'a>(&'a self, s: &'a Session, filter: &'a Filter) -> Context<'a> {
-        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
+        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     /// The occurrences from `from` to `to` (Unix seconds), as
@@ -860,7 +864,7 @@ pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: 
     // The tasks as data whatever the hour (27 October 2026: in the evening,
     // the window's quiet time hid the work tasks from agents too).
     let every = Filter::default();
-    let mut view = taskview::list(&desk.context_with(s, &every), by, done, query);
+    let mut view = taskview::list(&desk.context_with(s, &every), by, done, query, taskview::Fold::Open);
     // Tasks kept from agents, and a group that held only them: left out, counted.
     let mut closed = 0;
     for group in &mut view.groups {

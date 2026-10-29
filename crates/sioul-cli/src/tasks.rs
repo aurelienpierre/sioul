@@ -160,6 +160,8 @@ struct Desk {
     sessions: Vec<timelog::Session>,
     /// The room the plan was made with: the timeline's days of rest come from it.
     settings: Settings,
+    /// The appointments and their legs (`pairs::outings`): what a step comes before.
+    outings: BTreeMap<String, sioul_core::pairs::Outing>,
 }
 
 /// The room for tasks: your hours, each kind for its own tasks, less the
@@ -226,11 +228,12 @@ impl Desk {
         settings.appointments = Some(sioul_core::pairs::appointments_here(&loaded.events, now.time_zone()));
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
-        Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings }
+        let outings = sioul_core::pairs::outings(&loaded.events);
+        Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings, outings }
     }
 
     fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
+        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     /// A task by UID, else by the start of its title, else by a word of it; one only.
@@ -320,7 +323,7 @@ fn now(s: &Session) -> Result<(), String> {
 
 fn list(s: &Session, by: &str, done: bool, query: &str) -> Result<(), String> {
     let desk = Desk::read(s);
-    let view = taskview::list(&desk.context(s), by, done, query);
+    let view = taskview::list(&desk.context(s), by, done, query, taskview::Fold::Open);
     for group in &view.groups {
         println!("\n{}", one_line(&group.title));
         for card in &group.rows {
@@ -332,7 +335,7 @@ fn list(s: &Session, by: &str, done: bool, query: &str) -> Result<(), String> {
 
 fn board(s: &Session) -> Result<(), String> {
     let desk = Desk::read(s);
-    let view = taskview::board(&desk.context(s), None);
+    let view = taskview::board(&desk.context(s), None, taskview::Fold::Open);
     for column in &view.columns {
         println!("\n{}", one_line(&column.title));
         for card in &column.cards {
@@ -349,7 +352,7 @@ fn timeline(s: &Session, project: Option<&str>) -> Result<(), String> {
     let desk = Desk::read(s);
     // The days of rest of the room the plan was made with, as in the window.
     let rest = desk.settings.rest_days();
-    let view = taskview::timeline(&desk.context(s), project, &rest);
+    let view = taskview::timeline(&desk.context(s), project, &rest, taskview::Fold::Open);
     let width = view.days.len();
     for row in &view.rows {
         let mut bar: Vec<char> = (0..width).map(|i| if view.days[i].rest { '·' } else { ' ' }).collect();

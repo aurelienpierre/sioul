@@ -63,6 +63,8 @@ fn words() -> serde_json::Value {
         "alarms-pause": tr().text("dnd-events-channel", None),
         "day": tr().text("review-channel", None),
         "open": tr().text("reminder-open", None),
+        // A reminder on a lock screen that hides private content: nothing of what it is about.
+        "public": tr().text("reminder-public", None),
     })
 }
 

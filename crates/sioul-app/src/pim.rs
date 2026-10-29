@@ -859,35 +859,77 @@ fn leg_made_line(side: sioul_core::anchors::Side, leg: &str, appointment: &str, 
 /// timetable or not; in the appointment's calendar and projects (the
 /// calendar for new events when that one cannot hold it), said with Undo.
 /// Returns what went wrong, else "".
-pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, side: &str, timetable: bool) -> String {
-    let made = || -> Result<agenda::EventEdit, String> {
-        let path = ours(key).ok_or_else(|| tr().text("leg-gone", None))?;
-        let text = std::fs::read_to_string(&path).map_err(|_| tr().text("leg-gone", None))?;
-        let zone = TimeZone::system();
-        let appointment = sioul_core::anchors::Followed::of(&text, &path, &zone).ok_or_else(|| tr().text("leg-gone", None))?;
-        let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-        if edit.title.trim().is_empty() {
-            return Err(tr().text("event-no-title", None));
-        }
-        let side = if side == "after" { sioul_core::anchors::Side::After } else { sioul_core::anchors::Side::Before };
-        let projects = agenda::event_ref(&text, key, &zone).map(|r| r.projects).unwrap_or_default();
-        let leg = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, timetable, &zone).map_err(|e| tr().text(&e, None))?;
-        let own = collection_of(&path);
-        let calendar = own.as_ref().and_then(leg_calendar).ok_or_else(|| tr().text("dav-no-calendar", None))?;
-        let files = sioul_core::composed::Change { made: vec![(agenda::new_path(&calendar), leg)], ..sioul_core::composed::Change::default() }.write()?;
-        let named = agenda::edit_of_text(&text, &zone).map(|e| e.title).unwrap_or_default();
-        let line = leg_made_line(side, edit.title.trim(), &named, own.as_ref(), &calendar);
+pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, side: &str, timetable: bool, step: &str) -> String {
+    let made = || -> Result<(), String> {
+        let offered = step.is_empty() || crate::share::legs_as_steps();
+        let (change, line) = leg_change(shared, key, edit, side, timetable, step, offered)?;
+        let files = change.write()?;
         crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line, files });
-        Ok(edit)
+        Ok(())
     };
     match made() {
-        Ok(_) => {
+        Ok(()) => {
             crate::work::show_work(qt, shared);
             show_pim(qt, shared);
             String::new()
         }
         Err(e) => e,
     }
+}
+
+/// `save_leg`'s change, and what it says: the leg in the appointment's
+/// calendar (else the one for new events), and, with `step` (its UID), that
+/// step pinned to it in the same change (part 7: the leg is the step's time),
+/// once every device keeps such a leg (`offered`, `share::legs_as_steps`).
+fn leg_change(shared: &Shared, key: &str, edit: &str, side: &str, timetable: bool, step: &str, offered: bool) -> Result<(sioul_core::composed::Change, String), String> {
+    let path = ours(key).ok_or_else(|| tr().text("leg-gone", None))?;
+    let text = std::fs::read_to_string(&path).map_err(|_| tr().text("leg-gone", None))?;
+    let zone = TimeZone::system();
+    let appointment = sioul_core::anchors::Followed::of(&text, &path, &zone).ok_or_else(|| tr().text("leg-gone", None))?;
+    let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    if edit.title.trim().is_empty() {
+        return Err(tr().text("event-no-title", None));
+    }
+    let side = if side == "after" { sioul_core::anchors::Side::After } else { sioul_core::anchors::Side::Before };
+    let projects = agenda::event_ref(&text, key, &zone).map(|r| r.projects).unwrap_or_default();
+    let mut leg = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, timetable, &zone).map_err(|e| tr().text(&e, None))?;
+    let own = collection_of(&path);
+    let calendar = own.as_ref().and_then(leg_calendar).ok_or_else(|| tr().text("dav-no-calendar", None))?;
+    let mut written = Vec::new();
+    if !step.is_empty() {
+        if !offered {
+            return Err(tr().text("leg-step-not-yet", None));
+        }
+        let task = leg_steps_of(shared, &appointment.uid).into_iter().find(|t| t.uid == step).ok_or_else(|| tr().text("leg-step-gone", None))?;
+        let step_text = std::fs::read_to_string(&task.key).map_err(|_| tr().text("leg-step-gone", None))?;
+        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&leg, &task, &step_text, &Zoned::now()).map_err(|e| tr().text(&e, None))?;
+        leg = as_time;
+        written.push((PathBuf::from(&task.key), pinned));
+    }
+    let change = sioul_core::composed::Change { made: vec![(agenda::new_path(&calendar), leg)], written, ..sioul_core::composed::Change::default() };
+    let named = agenda::edit_of_text(&text, &zone).map(|e| e.title).unwrap_or_default();
+    Ok((change, leg_made_line(side, edit.title.trim(), &named, own.as_ref(), &calendar)))
+}
+
+/// The steps a new leg of the appointment `uid` may be the time of (part
+/// 7): its preparation's open steps that can be written and have no time
+/// of their own (no time block, no start), from the tasks as last read.
+fn leg_steps_of(shared: &Shared, uid: &str) -> Vec<sioul_core::tasks::Task> {
+    let Some(known) = crate::work::loaded_known(shared) else { return Vec::new() };
+    let reference = sioul_core::agenda::EventRef { uid: uid.to_string(), ..sioul_core::agenda::EventRef::default() };
+    let Some(preparation) = sioul_core::pairs::preparation_of(&known.tasks, &reference).filter(|t| t.status.is_open()) else { return Vec::new() };
+    sioul_core::tasks::steps_of(&known.tasks, &preparation.uid).into_iter().filter(|s| s.status.is_open() && !s.read_only && s.start.is_empty() && !s.links.iter().any(sioul_core::blocks::is_block_link)).cloned().collect()
+}
+
+/// What the leg form offers as its step (part 7): {"offered", "steps":
+/// [{uid, title}], "why"}; offered only once every device keeps such a leg.
+pub(crate) fn leg_steps(shared: &Shared, key: &str) -> String {
+    let zone = TimeZone::system();
+    let uid = ours(key).and_then(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, key, &zone))).map(|r| r.uid).unwrap_or_default();
+    let steps: Vec<serde_json::Value> = leg_steps_of(shared, &uid).iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect();
+    let offered = !steps.is_empty() && crate::share::legs_as_steps();
+    let why = if steps.is_empty() || offered { String::new() } else { tr().text("leg-step-not-yet", None) };
+    json(&serde_json::json!({ "offered": offered, "steps": if offered { steps } else { Vec::new() }, "why": why }))
 }
 
 /// The leg in `key` untied from its appointment (its card's ×): an event of
@@ -1292,6 +1334,34 @@ mod tests {
         assert!(elsewhere.starts_with(&say("leg-made-after", &[("leg", "Walk home".into()), ("appointment", "Doctor".into())])));
         assert!(elsewhere.ends_with(&say("leg-elsewhere", &[("calendar", label.clone())])), "said where: {elsewhere}");
         assert!(leg_made_line(sioul_core::anchors::Side::Before, "Bus 24", "Doctor", None, &other).contains(&label));
+    }
+
+    /// A new leg made a step's time (part 7): the step chosen pinned to it in
+    /// the same change, the leg its block; refused until every device keeps
+    /// such a leg; only a step of the appointment's preparation.
+    #[test]
+    fn a_new_leg_can_be_a_step_s_time() {
+        let (_calendar, doctor, _bus) = doctor_and_bus("legs-step");
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "legs-step tasks", None, &["VTODO"]).unwrap();
+        let zone = TimeZone::system();
+        let now = Zoned::now();
+        let tie = sioul_core::tasks::Link { uri: "sioul:event/legs-step-doctor".into(), label: String::new(), rel: sioul_core::pairs::APPOINTMENT.into() };
+        let prep = sioul_core::tasks::new_task(&sioul_core::tasks::TaskEdit { title: "Going to the doctor".into(), links: vec![tie], ..Default::default() }, "legs-step-prep", &zone, &now).unwrap();
+        vdir::write_item(&list.dir.join("legs-step-prep.ics"), &prep).unwrap();
+        let walk = sioul_core::tasks::new_task(&sioul_core::tasks::TaskEdit { title: "Walk to the stop".into(), parent: "legs-step-prep".into(), ..Default::default() }, "legs-step-walk", &zone, &now).unwrap();
+        vdir::write_item(&list.dir.join("legs-step-walk.ics"), &walk).unwrap();
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let edit = serde_json::to_string(&EventEdit { title: "Walk".into(), start: "2099-10-29T12:00".into(), end: "2099-10-29T12:08".into(), ..EventEdit::default() }).unwrap();
+        let key = doctor.display().to_string();
+        assert_eq!(leg_change(&shared, &key, &edit, "before", false, "legs-step-walk", false).err(), Some(tr().text("leg-step-not-yet", None)), "not until every device keeps it");
+        let (change, _) = leg_change(&shared, &key, &edit, "before", false, "legs-step-walk", true).unwrap();
+        assert!(change.made[0].1.contains("X-SIOUL-TASK:legs-step-walk"), "the leg is the step's time");
+        assert_eq!(change.written.len(), 1, "and the step, in the same change");
+        let pinned = sioul_core::tasks::task_of_text(&change.written[0].1, &zone).unwrap();
+        assert!(pinned.links.iter().any(sioul_core::blocks::is_block_link), "pinned to it");
+        assert_eq!(leg_change(&shared, &key, &edit, "before", false, "nowhere", true).err(), Some(tr().text("leg-step-gone", None)), "a step of its preparation only");
+        let _ = std::fs::remove_dir_all(&list.dir);
     }
 
     /// A leg made since the last read (seconds before a delete, or before any

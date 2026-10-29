@@ -742,6 +742,10 @@ pub mod qobject {
         #[qinvokable]
         fn filter_tasks(self: Pin<&mut Sioul>, kind: &QString, category: &QString);
 
+        /// A task with steps opened in List, Board and the Gantt (`open`), or folded again. Kept for next time.
+        #[qinvokable]
+        fn fold_task(self: Pin<&mut Sioul>, uid: &QString, open: bool);
+
         /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
@@ -959,9 +963,14 @@ pub mod qobject {
         fn bring_back(self: Pin<&mut Sioul>, uid: &QString) -> QString;
 
         /// A leg added beside the appointment in `key` (part E5): the event
-        /// form, "before" or "after", from a timetable or not. What went wrong, else "".
+        /// form, "before" or "after", from a timetable or not; the time of
+        /// the step `step` (its UID, part 7), or of none (""). What went wrong, else "".
         #[qinvokable]
-        fn save_leg(self: Pin<&mut Sioul>, key: &QString, edit: &QString, side: &QString, timetable: bool) -> QString;
+        fn save_leg(self: Pin<&mut Sioul>, key: &QString, edit: &QString, side: &QString, timetable: bool, step: &QString) -> QString;
+
+        /// The steps a new leg of the appointment in `key` may be the time of (part 7), as JSON {offered, steps, why}.
+        #[qinvokable]
+        fn leg_steps(self: &Sioul, key: &QString) -> QString;
 
         /// The leg in `key` untied from its appointment (part E5). What went wrong, else "".
         #[qinvokable]
@@ -4582,6 +4591,10 @@ impl qobject::Sioul {
         work::set_filter(&self.qt_thread(), &self.shared(), &kind.to_string(), &category.to_string());
     }
 
+    fn fold_task(self: Pin<&mut Self>, uid: &QString, open: bool) {
+        work::fold_task(&self.qt_thread(), &self.shared(), &uid.to_string(), open);
+    }
+
     fn show_tasks_anyway(self: Pin<&mut Self>, on: bool) {
         work::show_anyway(&self.qt_thread(), &self.shared(), on);
     }
@@ -5062,8 +5075,12 @@ impl qobject::Sioul {
         QString::from(&work::set_step_after(&self.qt_thread(), &self.shared(), &uid.to_string(), after))
     }
 
-    fn save_leg(self: Pin<&mut Self>, key: &QString, edit: &QString, side: &QString, timetable: bool) -> QString {
-        QString::from(&pim::save_leg(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string(), &side.to_string(), timetable))
+    fn save_leg(self: Pin<&mut Self>, key: &QString, edit: &QString, side: &QString, timetable: bool, step: &QString) -> QString {
+        QString::from(&pim::save_leg(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string(), &side.to_string(), timetable, &step.to_string()))
+    }
+
+    fn leg_steps(&self, key: &QString) -> QString {
+        QString::from(&pim::leg_steps(&self.shared(), &key.to_string()))
     }
 
     fn untie_leg(self: Pin<&mut Self>, key: &QString) -> QString {
@@ -6313,8 +6330,9 @@ impl qobject::Sioul {
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
         // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
-        // object's card opened from the agenda and Tasks, then Back (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards"].contains(&steps.as_str()) && offline()) {
+        // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
+        // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

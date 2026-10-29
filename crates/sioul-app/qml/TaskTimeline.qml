@@ -40,6 +40,8 @@ ColumnLayout {
     signal open(string uid)
     // Right click, or a long press on a touch screen: the task's menu (its details, Add ▾, Link to…).
     signal menu(var task)
+    // A task with steps' arrow pressed: its steps shown (`open`), or folded into its one bar again.
+    signal fold(string uid, bool open)
 
     spacing: 6
 
@@ -156,8 +158,23 @@ ColumnLayout {
                     anchors.fill: parent
                     color: timeline.opened === bar.modelData.uid ? timeline.theme.surface : "transparent"
                 }
-                Label {
+                // A task with steps: its arrow, made only for it (composed tasks §7.2).
+                Loader {
+                    active: !!bar.modelData.has_steps
                     x: 6 + bar.modelData.depth * 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    sourceComponent: ToolButton {
+                        objectName: "timelineFold"
+                        implicitWidth: 20
+                        implicitHeight: 20
+                        padding: 0
+                        text: bar.modelData.folded ? "▸" : "▾"
+                        Accessible.name: timeline.sioul ? timeline.sioul.text(bar.modelData.folded ? "task-fold-open" : "task-fold-close") : ""
+                        onClicked: timeline.fold(bar.modelData.uid, !!bar.modelData.folded)
+                    }
+                }
+                Label {
+                    x: 6 + bar.modelData.depth * 14 + (bar.modelData.has_steps ? 22 : 0)
                     width: timeline.titleWidth - x - 6
                     anchors.verticalCenter: parent.verticalCenter
                     text: bar.modelData.title

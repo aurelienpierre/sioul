@@ -525,11 +525,29 @@ final class EventAlarms
             .setContentIntent(open)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
+            // Where the phone hides what a notification says on its lock screen: Sioul, and that
+            // it has a reminder, never the appointment nor what to bring (composed tasks §7.3).
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion(context, channel))
             .addAction(new Notification.Action.Builder(Icon.createWithResource(context, R.drawable.sioul_notification), word(context, "open"), open).build());
         long left = until - System.currentTimeMillis();
         if (until > 0 && left > -KEPT_AFTER_MS)
             reminder.setTimeoutAfter(left + KEPT_AFTER_MS);
         context.getSystemService(NotificationManager.class).notify(key, NOTE, reminder.build());
+    }
+
+    /**
+     * A reminder as the lock screen shows it where the phone hides private
+     * content: "Sioul has a reminder for you.", nothing of what it is about.
+     */
+    private static Notification publicVersion(Context context, String channel)
+    {
+        return new Notification.Builder(context, channel)
+            .setSmallIcon(R.drawable.sioul_notification)
+            .setColor(context.getColor(R.color.sioul_green))
+            .setContentTitle("Sioul")
+            .setContentText(word(context, "public"))
+            .build();
     }
 
     // ---------------------------------------------------------------- the words said here
@@ -542,6 +560,7 @@ final class EventAlarms
         { "mail-through", "New mail from people always let through", "Courriels des personnes qui passent toujours" },
         { "day", "End of the day", "Fin de journée" },
         { "open", "Open", "Ouvrir" },
+        { "public", "Sioul has a reminder for you.", "Sioul a un rappel pour vous." },
     };
 
     /**

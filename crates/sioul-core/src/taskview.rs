@@ -37,6 +37,30 @@ pub struct Context<'a> {
     pub spent: &'a BTreeMap<String, u32>,
     /// The last "where I stopped" line of each task.
     pub stopped: &'a BTreeMap<String, String>,
+    /// The appointments here, by UID, with their earliest leg (`pairs::outings`):
+    /// what a step of a composed task comes before (Now's reason, the fold's line).
+    pub outings: &'a BTreeMap<String, crate::pairs::Outing>,
+}
+
+/// How the task views show a task with steps (composed tasks §7.2): folded
+/// into one row, "Going to the doctor · Thu 29 Oct 14:00 · next: brush
+/// teeth", unless opened; the choice kept in the window's `tasks-view.toml`,
+/// never in the task. Agents and `sioul tasks` see every row (`Open`).
+#[derive(Debug, Clone, Copy)]
+pub enum Fold<'a> {
+    /// Every step shown under its task.
+    Open,
+    /// Every task with steps folded but those opened, by UID.
+    Opened(&'a std::collections::BTreeSet<String>),
+}
+
+impl Fold<'_> {
+    fn folds(&self, uid: &str) -> bool {
+        match self {
+            Fold::Open => false,
+            Fold::Opened(opened) => !opened.contains(uid),
+        }
+    }
 }
 
 /// What the task pages show: tasks of one kind, of one category; empty, all of them.
@@ -246,6 +270,11 @@ pub struct CardView {
     pub in_loop: bool,
     /// "Done Thursday 1 October".
     pub done_on: String,
+    /// A task with steps shown as one row (`Fold`): its steps not listed under it.
+    pub folded: bool,
+    /// That row's line: "Thu 29 Oct 14:00 · next: brush teeth" (its appointment's
+    /// time, when it prepares one, and its next step); "" otherwise.
+    pub fold_line: String,
     /// "Set aside Thursday 29 October, its appointment over" (`pairs::closing`,
     /// not brought back yet): the done tasks list it with Bring back; "" otherwise.
     pub set_aside: String,
@@ -370,12 +399,37 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         in_loop: planned.in_loop,
         after: task.after,
         done_on,
+        folded: false,
+        fold_line: String::new(),
         set_aside,
         links: task.links.len() + task.contacts.len(),
         level: task.demands.level().map_or("", crate::demands::Level::id),
         pinned: cx.plan.pins.get(&task.uid).map(|pin| cx.say("task-pinned", &[("when", pinned_when(cx, pin))])).unwrap_or_default(),
         pinned_time: cx.plan.pins.get(&task.uid).map(|pin| pinned_short(cx, pin)).unwrap_or_default(),
     }
+}
+
+/// The next open step of a task with steps, in their sequence, the first of
+/// its own steps when it has open ones (a step of a step), however far down.
+fn next_step<'a>(cx: &Context<'a>, task: &Task) -> Option<&'a Task> {
+    let mut at = task.uid.clone();
+    let mut found = None;
+    for _ in 0..8 {
+        let Some(step) = crate::tasks::steps_of(cx.tasks, &at).into_iter().find(|s| s.status.is_open()) else { break };
+        found = Some(step);
+        at = step.uid.clone();
+    }
+    found
+}
+
+/// A folded row's line (`Fold`): its appointment's time when it prepares
+/// one, still to come, and its next step.
+fn fold_line(cx: &Context, task: &Task) -> String {
+    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
+    let when = crate::pairs::outing_of(task, cx.tasks, cx.outings).filter(|o| o.start > stamp).and_then(|o| Timestamp::from_second(o.start).ok()).map(|t| cx.tr.date(&t.to_zoned(zone), true));
+    let next = next_step(cx, task).map(|s| cx.say("task-fold-next", &[("title", s.title.clone())]));
+    when.into_iter().chain(next).collect::<Vec<_>>().join(" · ")
 }
 
 /// "14:00" today, "Thu 8 Oct 10:00" another day: where a task is pinned, beside a pin on its row.
@@ -453,6 +507,29 @@ fn alike(a: &Planned, b: &Planned, ta: &Task, tb: &Task) -> bool {
     !siblings && a.latest_start == b.latest_start && a.unblocks == b.unblocks && ta.priority == tb.priority && a.left == b.left && ta.status == tb.status
 }
 
+/// Why a step of a composed task comes now (§7.2): "Second step of “Going
+/// to the doctor”.", then "It comes before Bus 24 at 13:10." when its task
+/// prepares an appointment still to come (its earliest leg, else itself),
+/// never for a step that comes after it. Empty for a task of its own.
+fn step_reason(cx: &Context, step: &Task, stamp: i64, zone: &TimeZone) -> Vec<String> {
+    let Some(whole) = step.parent().and_then(|p| cx.task(p)) else { return Vec::new() };
+    let mut said = Vec::new();
+    let place = crate::tasks::steps_of(cx.tasks, &whole.uid).iter().filter(|s| s.status != Status::Cancelled).position(|s| s.uid == step.uid);
+    if let Some(place) = place {
+        said.push(cx.counted("task-why-step", place + 1, &[("whole", whole.title.clone())]));
+    }
+    if !step.after
+        && let Some(outing) = crate::pairs::outing_of(step, cx.tasks, cx.outings).filter(|o| o.start > stamp)
+    {
+        let (what, at) = outing.leg.clone().filter(|(_, at)| *at > stamp).unwrap_or_else(|| (outing.title.clone(), outing.start));
+        if let Ok(at) = Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone())) {
+            let today = cx.offices.now.as_ref().map_or(cx.today, jiff::Zoned::date);
+            said.push(if at.date() == today { cx.say("task-why-before", &[("what", what), ("time", at.strftime("%H:%M").to_string())]) } else { cx.say("task-why-before-on", &[("what", what), ("date", cx.tr.date(&at, false))]) });
+        }
+    }
+    said
+}
+
 pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<String>) -> NowView {
     let mut view = NowView { weather, ..NowView::default() };
     let ready: Vec<&Task> = cx.plan.ready.iter().filter_map(|u| cx.task(u)).filter(|t| cx.filter.wants(t)).collect();
@@ -521,6 +598,9 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
         if crate::capacity::level_of(first) == crate::demands::Level::Heavy && weather == Weather::Fog {
             why.push(cx.tr.text("task-why-heavy-fog", None));
         }
+        // A step of a composed task (§7.2): which step of what, and what it comes before; never
+        // a count of what is left.
+        why.splice(0..0, step_reason(cx, first, stamp, &zone));
         if why.is_empty() {
             why.push(cx.tr.text("task-why-free", None));
         }
@@ -532,9 +612,14 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
             view.picked = cx.tr.text("task-picked", None);
         }
         view.now = Some(card(cx, first));
+        // Then: the step after it in its task, when it has one; else the plan's next.
+        let next_in_task = first.parent().and_then(|p| crate::tasks::steps_of(cx.tasks, p).into_iter().skip_while(|s| s.uid != first.uid).skip(1).find(|s| s.status.is_open()));
         if weather != Weather::Fog {
-            view.then = candidates.get(1).map(|t| card(cx, t));
-            view.others = candidates.iter().skip(2).take(2).map(|t| card(cx, t)).collect();
+            view.then = next_in_task.or_else(|| candidates.get(1).copied()).map(|t| card(cx, t));
+            let then = view.then.as_ref().map(|c| c.uid.clone());
+            view.others = candidates.iter().skip(1).filter(|t| then.as_deref() != Some(t.uid.as_str())).take(2).map(|t| card(cx, t)).collect();
+        } else if let Some(next) = next_in_task {
+            view.then = Some(card(cx, next));
         }
     } else {
         // Nothing free today: the step the plan puts first, and its day.
@@ -600,16 +685,69 @@ pub struct BoardView {
 }
 
 /// The board shows the steps you act on: a bigger task stands for itself
-/// only when all its steps are done.
-pub fn board(cx: &Context, project: Option<&str>) -> BoardView {
+/// only when all its steps are done. Folded (`Fold`, composed tasks §7.2): a
+/// task with steps is one card, in the column of its step furthest on
+/// (started, else free to start, else waiting), its line naming its next
+/// step; its done steps not listed until it is done.
+pub fn board(cx: &Context, project: Option<&str>, folded: Fold) -> BoardView {
     let in_project = |t: &Task| project.is_none_or(|c| t.projects.iter().any(|x| x == c)) && cx.filter.wants(t);
     let acted_on = |t: &&Task| cx.planned(&t.uid).is_some_and(|p| p.open_steps == 0 && (!p.optional || t.status != Status::NeedsAction)) && in_project(t);
+    // The task a step is folded into: its outermost bigger task folded.
+    let shut = |t: &Task| -> Option<&Task> {
+        let mut found = None;
+        let mut at = t.parent().and_then(|p| cx.task(p));
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(up) = at {
+            if !seen.insert(up.uid.clone()) {
+                break;
+            }
+            if folded.folds(&up.uid) {
+                found = Some(up);
+            }
+            at = up.parent().and_then(|p| cx.task(p));
+        }
+        found
+    };
     let ordered: Vec<&Task> = cx.plan.order.iter().filter_map(|u| cx.task(u)).filter(acted_on).collect();
     let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
-    let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)).filter(acted_on).collect();
+    let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)).filter(acted_on).filter(|t| shut(t).is_none()).collect();
     done.sort_by_key(|t| std::cmp::Reverse(t.completed));
-    let column = |id: Column, key: &str, tasks: Vec<&Task>| ColumnView { id, title: cx.tr.text(key, None), cards: tasks.into_iter().map(|t| card(cx, t)).collect() };
-    let of = |c: Column| ordered.iter().copied().filter(|t| cx.planned(&t.uid).is_some_and(|p| p.column == c)).collect::<Vec<_>>();
+    // A folded task's card: in the column of its step furthest on, once.
+    let rank = |c: Column| match c {
+        Column::Doing => 0,
+        Column::Ready => 1,
+        _ => 2,
+    };
+    let mut wholes: Vec<(&Task, Column)> = Vec::new();
+    for step in &ordered {
+        let Some(whole) = shut(step) else { continue };
+        let column = cx.planned(&step.uid).map_or(Column::Waiting, |p| p.column);
+        match wholes.iter_mut().find(|(w, _)| w.uid == whole.uid) {
+            Some((_, at)) if rank(column) < rank(*at) => *at = column,
+            Some(_) => {}
+            None => wholes.push((whole, column)),
+        }
+    }
+    let card_of = |t: &Task| {
+        let mut c = card(cx, t);
+        if wholes.iter().any(|(w, _)| w.uid == t.uid) {
+            c.folded = true;
+            c.fold_line = fold_line(cx, t);
+        }
+        c
+    };
+    let column = |id: Column, key: &str, tasks: Vec<&Task>| ColumnView { id, title: cx.tr.text(key, None), cards: tasks.into_iter().map(card_of).collect() };
+    let of = |c: Column| {
+        let mut out: Vec<&Task> = Vec::new();
+        for step in &ordered {
+            match shut(step) {
+                None if cx.planned(&step.uid).is_some_and(|p| p.column == c) => out.push(step),
+                Some(whole) if wholes.iter().any(|(w, at)| w.uid == whole.uid && *at == c) && !out.iter().any(|t| t.uid == whole.uid) => out.push(whole),
+                _ => {}
+            }
+        }
+        out
+    };
     let doing = of(Column::Doing);
     BoardView {
         wip: if doing.len() > 3 { cx.counted("task-wip", doing.len(), &[]) } else { String::new() },
@@ -632,8 +770,11 @@ pub struct ListView {
 
 /// The list: every open task, a bigger task followed by its steps, in the
 /// plan's order, grouped by project ("project") or by list ("list"). Done tasks of
-/// the last two weeks come last when `done` is asked.
-pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
+/// the last two weeks come last when `done` is asked. A task with steps is one
+/// row unless opened (`folded`, composed tasks §7.2), its steps not listed but
+/// those set aside when `done` is asked; a search opens every task.
+pub fn list(cx: &Context, by: &str, done: bool, query: &str, folded: Fold) -> ListView {
+    let folded = if query.trim().is_empty() { folded } else { Fold::Open };
     let fold = |t: &str| crate::text::fold(t).into_iter().collect::<String>();
     let words: Vec<String> = query.split_whitespace().map(fold).collect();
     let matches = |t: &Task| words.iter().all(|w| fold(&format!("{} {} {}", t.title, t.notes, t.categories.join(" "))).contains(w.as_str()));
@@ -647,20 +788,31 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
     finished.sort_by_key(|t| std::cmp::Reverse(if t.status == Status::Completed { t.completed.unwrap_or(0) } else { t.set_aside_end }));
     ordered.extend(finished);
     let position: BTreeMap<&str, usize> = ordered.iter().enumerate().map(|(i, t)| (t.uid.as_str(), i)).collect();
-    // A bigger task, then its steps, each after the other, each once.
-    fn outline<'a>(task: &'a Task, all: &[&'a Task], position: &BTreeMap<&str, usize>, out: &mut Vec<&'a Task>, placed: &mut std::collections::BTreeSet<&'a str>, depth: usize) {
+    // A bigger task, then its steps, each after the other, each once. Folded
+    // (`Fold`): its steps placed, so that no root lists them, but not listed,
+    // those `kept` (set aside, under Done too) excepted.
+    struct Outline<'a, 'b> {
+        all: &'b [&'a Task],
+        position: &'b BTreeMap<&'a str, usize>,
+        folded: &'b dyn Fn(&Task) -> bool,
+        kept: &'b dyn Fn(&Task) -> bool,
+    }
+    fn outline<'a>(how: &Outline<'a, '_>, task: &'a Task, out: &mut Vec<(&'a Task, bool)>, placed: &mut std::collections::BTreeSet<&'a str>, depth: usize, hidden: bool) {
         if !placed.insert(task.uid.as_str()) {
             return;
         }
-        out.push(task);
+        // In their sequence (`tasks::in_sequence`): where each is in the plan does not reorder them.
+        let mut steps: Vec<&Task> = how.all.iter().copied().filter(|t| t.parent() == Some(task.uid.as_str())).collect();
+        steps.sort_by(|a, b| crate::tasks::in_sequence(a, b).then_with(|| how.position.get(a.uid.as_str()).cmp(&how.position.get(b.uid.as_str()))));
+        let folds = !hidden && !steps.is_empty() && (how.folded)(task);
+        if !hidden || (how.kept)(task) {
+            out.push((task, folds));
+        }
         if depth > 8 {
             return;
         }
-        // In their sequence (`tasks::in_sequence`): where each is in the plan does not reorder them.
-        let mut steps: Vec<&Task> = all.iter().copied().filter(|t| t.parent() == Some(task.uid.as_str())).collect();
-        steps.sort_by(|a, b| crate::tasks::in_sequence(a, b).then_with(|| position.get(a.uid.as_str()).cmp(&position.get(b.uid.as_str()))));
         for step in steps {
-            outline(step, all, position, out, placed, depth + 1);
+            outline(how, step, out, placed, depth + 1, hidden || folds);
         }
     }
     let known: std::collections::BTreeSet<&str> = ordered.iter().map(|t| t.uid.as_str()).collect();
@@ -670,12 +822,17 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
     // elsewhere), steps nested too deep; else they would not be listed at all.
     let mut groups: Vec<GroupView> = Vec::new();
     let mut placed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let folds = |t: &Task| folded.folds(&t.uid);
+    let kept = |t: &Task| done && set_aside(t);
+    let how = Outline { all: &ordered, position: &position, folded: &folds, kept: &kept };
     for root in roots.into_iter().chain(ordered.iter().copied()) {
         if placed.contains(root.uid.as_str()) {
             continue;
         }
-        let mut rows: Vec<&Task> = Vec::new();
-        outline(root, &ordered, &position, &mut rows, &mut placed, 0);
+        let mut outlined: Vec<(&Task, bool)> = Vec::new();
+        outline(&how, root, &mut outlined, &mut placed, 0, false);
+        let shut: std::collections::BTreeSet<&str> = outlined.iter().filter(|(_, f)| *f).map(|(t, _)| t.uid.as_str()).collect();
+        let rows: Vec<&Task> = outlined.into_iter().map(|(t, _)| t).collect();
         let optional = cx.planned(&root.uid).is_some_and(|p| p.optional);
         let joyful = rows.iter().any(|t| crate::words::named_in(&t.categories, &crate::words::current().tasks.joy));
         let (id, title) = match by {
@@ -687,7 +844,18 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
                 None => (String::new(), cx.tr.text("task-no-project", None)),
             },
         };
-        let cards: Vec<CardView> = rows.into_iter().filter(|t| shown(t)).map(|t| card(cx, t)).collect();
+        let cards: Vec<CardView> = rows
+            .into_iter()
+            .filter(|t| shown(t))
+            .map(|t| {
+                let mut c = card(cx, t);
+                if shut.contains(t.uid.as_str()) {
+                    c.folded = true;
+                    c.fold_line = fold_line(cx, t);
+                }
+                c
+            })
+            .collect();
         if cards.is_empty() {
             continue;
         }
@@ -739,6 +907,8 @@ pub struct BarView {
     pub tight: bool,
     pub column: Column,
     pub has_steps: bool,
+    /// One bar for a task and its steps (`Fold`), opened by a press.
+    pub folded: bool,
     pub color: Option<String>,
     /// "Waits for: …", "Frees two other steps", in one line.
     pub detail: String,
@@ -754,9 +924,11 @@ pub struct TimelineView {
 
 /// The timeline (Gantt chart): each open task on the days the plan gives it,
 /// from today; the dates asked as marks. `project` keeps one project.
-pub fn timeline(cx: &Context, project: Option<&str>, rest_days: &[bool; 7]) -> TimelineView {
+pub fn timeline(cx: &Context, project: Option<&str>, rest_days: &[bool; 7], folded: Fold) -> TimelineView {
     let in_project = |t: &Task| project.is_none_or(|c| t.projects.iter().any(|x| x == c)) && cx.filter.wants(t);
-    let list = list(cx, "plan", false, "");
+    // Folded as the list is: a task with steps one bar, over its steps' days.
+    let list = list(cx, "plan", false, "", folded);
+    let shut: std::collections::BTreeSet<String> = list.groups.iter().flat_map(|g| g.rows.iter()).filter(|c| c.folded).map(|c| c.uid.clone()).collect();
     let ordered: Vec<&Task> = list.groups.iter().flat_map(|g| g.rows.iter()).filter_map(|c| cx.task(&c.uid)).filter(|t| in_project(t)).collect();
     let last = ordered
         .iter()
@@ -800,8 +972,9 @@ pub fn timeline(cx: &Context, project: Option<&str>, rest_days: &[bool; 7]) -> T
                 tight: p.tight,
                 column: p.column,
                 has_steps: c.has_steps,
+                folded: shut.contains(&t.uid),
                 color: t.color.clone(),
-                detail,
+                detail: if shut.contains(&t.uid) { [fold_line(cx, t), detail].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ") } else { detail },
             })
         })
         .collect();
@@ -988,7 +1161,7 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
-        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
         let view = now(&cx, Weather::Clear, &BTreeSet::new());
         let first = view.now.clone().unwrap();
         assert_eq!(first.title, "Fill the housing form");
@@ -1020,15 +1193,15 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let calls = Filter { kind: "call".into(), ..Filter::default() };
-        let cx = Context { filter: &calls, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
-        let titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
+        let cx = Context { filter: &calls, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+        let titles: Vec<String> = list(&cx, "project", false, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         // In the plan's order: the free call first, the one that waits after.
         assert_eq!(titles, vec!["Call the CAF", "Call the bank"]);
         assert_eq!(now(&cx, Weather::Clear, &BTreeSet::new()).now.unwrap().title, "Call the CAF", "the bank's call still waits for the message");
         assert_eq!(card(&cx, &tasks[0]).waits, "Waits for: Write to the bank");
         let money = Filter { category: "money".into(), ..Filter::default() };
         let cx = Context { filter: &money, ..cx };
-        assert_eq!(board(&cx, None).columns.iter().map(|c| c.cards.len()).sum::<usize>(), 1);
+        assert_eq!(board(&cx, None, Fold::Open).columns.iter().map(|c| c.cards.len()).sum::<usize>(), 1);
     }
 
     #[test]
@@ -1040,10 +1213,79 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
-        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
-        let mut titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+        let mut titles: Vec<String> = list(&cx, "project", false, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         titles.sort();
         assert_eq!(titles, vec!["First", "Second", "Third"]);
+    }
+
+    /// A composed task (§7.2): "Going to the doctor", tied to Doctor (5
+    /// January 2099, 14:00, the bus at 13:10), its steps the card (done),
+    /// the teeth and the bag; and a set-aside one.
+    fn doctor() -> (Vec<Task>, BTreeMap<String, crate::pairs::Outing>, Date) {
+        let today: Date = "2099-01-05".parse().unwrap();
+        let step = |uid: &str, title: &str, created: i64| Task { relations: vec![Relation { kind: "PARENT".into(), uid: "prep".into(), gap: 0 }], created, ..task(uid, title) };
+        let prep = Task { links: vec![crate::tasks::Link { uri: "sioul:event/doctor".into(), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }], ..task("prep", "Going to the doctor") };
+        let done = Task { status: Status::Completed, completed: Some(1), ..step("card", "Find the card", 1) };
+        let aside = Task { status: Status::Cancelled, set_aside: "older".into(), set_aside_end: 1, ..step("form", "Print the form", 2) };
+        let tasks = vec![prep, done, aside, step("teeth", "Brush teeth", 3), step("bag", "Check the bag", 4)];
+        let at = |hm: &str| format!("2099-01-05T{hm}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(TimeZone::system()).unwrap().timestamp().as_second();
+        let outings = [("doctor".to_string(), crate::pairs::Outing { title: "Doctor".into(), start: at("14:00"), leg: Some(("Bus 24".into(), at("13:10"))) })].into_iter().collect();
+        (tasks, outings, today)
+    }
+
+    /// Now's reason for a step of a composed task (§7.2): which step of
+    /// what, what it comes before; then its next step; no count of what is left.
+    #[test]
+    fn now_says_which_step_and_what_it_comes_before() {
+        let (mut tasks, outings, today) = doctor();
+        // The bag can wait (it starts in February), and another task is free: Then is still the
+        // task's next step, never the plan's next task.
+        tasks.iter_mut().filter(|t| t.uid == "bag").for_each(|t| t.start = "2099-02-01".into());
+        tasks.push(Task { created: 10, ..task("bank", "Call the bank") });
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let everything = Filter::default();
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &outings };
+        let view = now(&cx, Weather::Clear, &BTreeSet::new());
+        assert_eq!(view.now.as_ref().map(|c| c.title.as_str()), Some("Brush teeth"));
+        assert_eq!(view.why, ["Second step of “Going to the doctor”.", "It comes before Bus 24 at 13:10."], "the card done counts, the one set aside not");
+        assert_eq!(view.then.as_ref().map(|c| c.title.as_str()), Some("Check the bag"), "then: its next step");
+        assert!(view.now.as_ref().is_some_and(|c| c.steps.is_empty()), "no count of what is left");
+        // In French.
+        let fr = Translator::new("fr");
+        let cx = Context { tr: &fr, ..cx };
+        assert_eq!(now(&cx, Weather::Clear, &BTreeSet::new()).why[0], "Deuxième étape de «\u{202f}Going to the doctor\u{202f}».");
+    }
+
+    /// The fold (§7.2): a task with steps is one row in List, one card in
+    /// the Board, one bar in the Gantt, its line naming its appointment's
+    /// time and its next step; opened, its steps in order; Done too still
+    /// lists a step set aside under it.
+    #[test]
+    fn a_task_with_steps_is_one_row_until_opened() {
+        let (tasks, outings, today) = doctor();
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let everything = Filter::default();
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &outings };
+        let none = BTreeSet::new();
+        let opened: BTreeSet<String> = ["prep".to_string()].into();
+        let rows = |done: bool, fold: Fold| -> Vec<(String, bool, String)> { list(&cx, "project", done, "", fold).groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.folded, r.fold_line.clone()))).collect() };
+        let folded = rows(false, Fold::Opened(&none));
+        assert_eq!(folded.len(), 1, "one row: {folded:?}");
+        assert!(folded[0].1 && folded[0].2.ends_with("14:00 · next: Brush teeth"), "{folded:?}");
+        assert_eq!(rows(false, Fold::Opened(&opened)).iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["Going to the doctor", "Brush teeth", "Check the bag"], "opened: its steps in order");
+        assert_eq!(rows(false, Fold::Open).len(), 3, "agents see every row");
+        assert_eq!(rows(true, Fold::Opened(&none)).iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["Going to the doctor", "Print the form"], "Done too: the one set aside still listed");
+        assert_eq!(list(&cx, "project", false, "teeth", Fold::Opened(&none)).groups.iter().flat_map(|g| g.rows.iter()).filter(|r| r.title == "Brush teeth").count(), 1, "a search opens it");
+        // The Board: one card, where its step furthest on is.
+        let board_cards = |fold: Fold| -> Vec<(Column, String, bool)> { board(&cx, None, fold).columns.iter().flat_map(|c| c.cards.iter().map(move |k| (c.id, k.title.clone(), k.folded))).collect() };
+        assert_eq!(board_cards(Fold::Opened(&none)), [(Column::Ready, "Going to the doctor".to_string(), true)]);
+        assert_eq!(board_cards(Fold::Opened(&opened)).len(), 2, "opened: its steps");
+        // The Gantt: one bar.
+        let bars = timeline(&cx, None, &[false; 7], Fold::Opened(&none)).rows;
+        assert_eq!(bars.iter().map(|b| (b.title.as_str(), b.folded)).collect::<Vec<_>>(), [("Going to the doctor", true)]);
     }
 
     /// What an appointment over set aside is listed with the done tasks,
@@ -1059,8 +1301,8 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
-        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
-        let rows = |done: bool| -> Vec<(String, String)> { list(&cx, "project", done, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.set_aside.clone()))).collect() };
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+        let rows = |done: bool| -> Vec<(String, String)> { list(&cx, "project", done, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.set_aside.clone()))).collect() };
         let mut shown = rows(true);
         shown.sort();
         assert_eq!(shown.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back", "Find the card"], "set aside, and the open one");
@@ -1090,13 +1332,13 @@ mod tests {
         ] {
             let tr = Translator::new(language);
             let everything = Filter::default();
-            let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+            let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
             let view = detail(&cx, &tasks[2], &[], &[]);
             for (uid, words) in said {
                 let wait = view.waits_for.iter().find(|w| w.0 == uid).unwrap_or_else(|| panic!("{uid} in {:?}", view.waits_for));
                 assert_eq!(wait.2, words, "{language} {uid}");
             }
         }
-        assert_eq!(gap_words(&Context { filter: &Filter::default(), offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &Translator::new("en"), projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() }, 1440), "a day after it");
+        assert_eq!(gap_words(&Context { filter: &Filter::default(), offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &Translator::new("en"), projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() }, 1440), "a day after it");
     }
 }

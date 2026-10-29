@@ -367,9 +367,50 @@ pub fn before_at(event: &Occurrence, minutes: u32) -> Option<i64> {
     (lead > 0).then(|| event.start - i64::from(event.margins.before + lead) * 60)
 }
 
-/// Everything to remind, told or not, from the events of the coming days, the
-/// tasks, and the payments planned; `personal` says which tasks are yours (they do not wait for work).
-pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task], ledger: Option<&Ledger>, papers: &[crate::papers::Paper], contracts: &[crate::contracts::Contract], money: Option<&crate::bank::Watch>, personal: impl Fn(&Task) -> bool) -> Vec<Reminder> {
+/// What the leaving reminder says of an outing (composed tasks §7.3), its
+/// lines under its title: its earliest leg before it, where it will be once
+/// followed ("Bus 24 at 13:10.", "(timetable not checked)" for one moved by
+/// arithmetic), then the unticked items of its preparation's list, three at
+/// most ("Bring: Health card, Glasses, and 1 more."), never one ticked or
+/// skipped. None when it has neither: the usual reminder then.
+fn leaving(event: &Occurrence, events: &[Occurrence], tasks: &[Task], tr: &Translator, hm: &dyn Fn(i64) -> String) -> Option<Vec<String>> {
+    let appointment = crate::moves::Instants { start: event.start, end: event.end };
+    let leg = events
+        .iter()
+        .filter(|e| e.leg_of == event.uid && !e.cancelled)
+        .filter_map(|e| {
+            let anchor = e.anchor.as_ref().filter(|a| a.side == crate::anchors::Side::Before)?;
+            Some((e, anchor, crate::anchors::effective(crate::moves::Instants { start: e.start, end: e.end }, anchor, appointment)))
+        })
+        .min_by_key(|(_, _, at)| at.start);
+    let reference = crate::agenda::EventRef { key: event.key.clone(), uid: event.uid.clone(), ..crate::agenda::EventRef::default() };
+    let preparation = crate::pairs::preparation_of(tasks, &reference).filter(|t| t.status.is_open());
+    let steps = preparation.map(|p| crate::tasks::steps_of(tasks, &p.uid).into_iter().filter(|s| s.status.is_open()).collect::<Vec<_>>()).unwrap_or_default();
+    let open: Vec<String> = preparation.into_iter().chain(steps).flat_map(|t| crate::checklist::items(&t.notes)).filter(|i| i.mark == crate::checklist::Mark::Open).map(|i| i.text).collect();
+    if leg.is_none() && open.is_empty() {
+        return None;
+    }
+    let mut lines = Vec::new();
+    if let Some((e, anchor, at)) = leg {
+        let title = if e.summary.is_empty() { tr.text("agenda-untitled", None) } else { e.summary.clone() };
+        let mut args = crate::i18n::args();
+        args.set("leg", if anchor.unconfirmed.is_some() { tr.text("legs-unconfirmed", Some(&{ let mut a = crate::i18n::args(); a.set("leg", title.clone()); a })) } else { title });
+        args.set("time", hm(at.start));
+        lines.push(tr.text("reminder-leave-leg", Some(&args)));
+    }
+    if !open.is_empty() {
+        let mut args = crate::i18n::args();
+        args.set("items", open.iter().take(3).cloned().collect::<Vec<_>>().join(", "));
+        args.set("more", open.len().saturating_sub(3));
+        lines.push(tr.text("reminder-leave-bring", Some(&args)));
+    }
+    Some(lines)
+}
+
+/// The events' reminders (their own alarms, Sioul's before them, the working
+/// day before), from the events of the coming days; `tasks`, for what an
+/// appointment's preparation says to bring (`leaving`).
+fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task]) -> Vec<Reminder> {
     let zone = now.time_zone().clone();
     let settings = &config.reminders;
     let hours = hours(config);
@@ -415,14 +456,26 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                     tr.text("reminder-margin", Some(&from))
                 }
             };
+            // An outing (a leg before it, or things to bring): the leaving reminder, in its
+            // place, under its key: one per outing (composed tasks §7.3).
+            let (title, body) = match leaving(event, events, tasks, tr, &hm) {
+                Some(said) => {
+                    let mut leave = crate::i18n::args();
+                    leave.set("in", in_text(tr, ready - told));
+                    leave.set("what", if event.summary.is_empty() { tr.text("agenda-untitled", None) } else { event.summary.clone() });
+                    leave.set("time", if at(told).is_some_and(|t| t.date() == start.date()) { hm(event.start) } else { tr.date(&start, true) });
+                    (tr.text("reminder-leave", Some(&leave)), said.into_iter().chain([event.location.clone()]).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"))
+                }
+                // A leg moved with it, its timetable not checked: said once, here (part E).
+                None => (tr.text("reminder-before", Some(&args)), [if event.legs_doubt { format!("{margin} {}", tr.text("reminder-legs-unconfirmed", None)).trim().to_string() } else { margin }, event.location.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")),
+            };
             out.push(Reminder {
                 key: format!("before:{}:{}", event.uid, event.start),
                 kind: Kind::Before,
                 at: due,
                 until: event.start,
-                title: tr.text("reminder-before", Some(&args)),
-                // A leg moved with it, its timetable not checked: said once, here (part E).
-                body: [if event.legs_doubt { format!("{margin} {}", tr.text("reminder-legs-unconfirmed", None)).trim().to_string() } else { margin }, event.location.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
+                title,
+                body,
                 target: event.key.clone(),
                 work: false,
                 starts: Some(event.start),
@@ -465,6 +518,17 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             });
         }
     }
+    out
+}
+
+/// Everything to remind, told or not, from the events of the coming days, the
+/// tasks, and the payments planned; `personal` says which tasks are yours (they do not wait for work).
+pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task], ledger: Option<&Ledger>, papers: &[crate::papers::Paper], contracts: &[crate::contracts::Contract], money: Option<&crate::bank::Watch>, personal: impl Fn(&Task) -> bool) -> Vec<Reminder> {
+    let zone = now.time_zone().clone();
+    let settings = &config.reminders;
+    let hours = hours(config);
+    let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
+    let mut out = event_reminders(config, tr, now, events, tasks);
 
     // What each task waits for, read once a call, by the task that waits (the
     // check of ef8c0ca, low 16): written in the task that comes first (its
@@ -694,7 +758,9 @@ pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Remi
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     let blocks = crate::quiet::Blocks::read(now, &events);
     let mode = crate::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
-    let reminders = all(config, tr, now, &events, &[], None, &[], &[], None, |_| true);
+    // The tasks for what an outing's preparation says to bring (`leaving`), never their own reminders.
+    let tasks = crate::tasks::all(now.time_zone());
+    let reminders = event_reminders(config, tr, now, &events, &tasks);
     (reminders, Holds::of(config, &mode, &blocks, stamp))
 }
 
@@ -1012,7 +1078,42 @@ mod tests {
         crate::anchors::mark(&mut events);
         let told = befores(&config, &en, &now, &events);
         assert_eq!(told.iter().map(|r| (r.key.as_str(), r.at)).collect::<Vec<_>>(), [(format!("before:doctor:{}", stamp("2026-10-07T14:00")).as_str(), stamp("2026-10-07T12:55"))], "one, from the bus at 13:10");
-        assert_eq!(told[0].body, "Getting ready, getting there: from 13:10. (timetable not checked)");
+        // The leaving reminder in its place (composed tasks §7.3), the bus named, its doubt said.
+        assert_eq!((told[0].title.as_str(), told[0].body.as_str()), ("Leave in 15 minutes for Doctor (14:00)", "Bus 24 (timetable not checked) at 13:10."));
+    }
+
+    /// The leaving reminder (composed tasks §7.3): at the usual time before
+    /// the earliest leg, once, under the appointment's own key; its leg, and
+    /// the unticked items of its preparation's list, three at most, never one
+    /// ticked or skipped; an outing with only things to bring says them too;
+    /// one with neither keeps the usual words.
+    #[test]
+    fn the_leaving_reminder_names_the_bus_and_what_to_bring() {
+        let config = config();
+        let now = at("2026-10-07T08:00");
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        let doctor = Occurrence { summary: "Doctor".into(), location: String::new(), ..event("doctor", "2026-10-07T14:00", vec![]) };
+        let anchor = crate::anchors::Anchor { appointment: "doctor".into(), side: crate::anchors::Side::Before, gap: 50 * 60, timetable: true, was: Some(stamp("2026-10-07T14:00")), unconfirmed: None, cancelled_with: false };
+        let bus = Occurrence { uid: "bus".into(), summary: "Bus 24".into(), start: stamp("2026-10-07T13:10"), end: stamp("2026-10-07T13:35"), anchor: Some(anchor), location: String::new(), ..event("bus", "2026-10-07T13:10", vec![]) };
+        let mut events = vec![doctor.clone(), bus];
+        crate::anchors::mark(&mut events);
+        let tie = |uid: &str| vec![crate::tasks::Link { uri: format!("sioul:event/{uid}"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }];
+        let prep = Task { uid: "prep".into(), title: "Going to the doctor".into(), links: tie("doctor"), notes: "Bring:\n- [ ] Health card\n- [x] Mutuelle card\n- [ ] Glasses\n- [-] Umbrella\n- [ ] Keys\n- [ ] Letter".into(), ..Task::default() };
+        let tasks = vec![prep];
+        let en = Translator::new("en");
+        let said = |events: &[Occurrence], tr: &Translator| -> Vec<Reminder> { all(&config, tr, &now, events, &tasks, None, &[], &[], None, |_| true).into_iter().filter(|r| r.kind == Kind::Before).collect() };
+        let told = said(&events, &en);
+        assert_eq!(told.iter().map(|r| (r.key.as_str(), r.at)).collect::<Vec<_>>(), [(format!("before:doctor:{}", stamp("2026-10-07T14:00")).as_str(), stamp("2026-10-07T12:55"))], "one, its usual time before the bus");
+        assert_eq!((told[0].title.as_str(), told[0].body.as_str()), ("Leave in 15 minutes for Doctor (14:00)", "Bus 24 at 13:10.\nBring: Health card, Glasses, Keys, and 1 more."));
+        let fr = Translator::new("fr");
+        assert_eq!(said(&events, &fr)[0].body, "Bus 24 à 13:10.\nÀ emporter\u{202f}: Health card, Glasses, Keys, et 1 de plus.");
+        // No leg, things to bring: the leaving reminder still, from the time kept before it.
+        let alone = Occurrence { margins: crate::demands::Margins { before: 30, after: 0 }, ..doctor.clone() };
+        let told = said(std::slice::from_ref(&alone), &en);
+        assert_eq!((told[0].title.as_str(), told[0].body.as_str()), ("Leave in 15 minutes for Doctor (14:00)", "Bring: Health card, Glasses, Keys, and 1 more."));
+        // Neither: the usual words.
+        let plain = Occurrence { uid: "other".into(), ..doctor };
+        assert_eq!(said(std::slice::from_ref(&plain), &en)[0].title, "14:00 · Doctor, in 15 minutes");
     }
 
     #[test]

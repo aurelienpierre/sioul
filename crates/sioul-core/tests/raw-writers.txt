@@ -169,6 +169,9 @@ sioul-core/src/appnotes.rs	write_whole	1	std::fs::rename(&temporary, path)
 sioul-core/src/attention.rs	save	1	std::fs::write(&fresh, toml::to_string(self).map_err(|e| e.to_string())?)
 sioul-core/src/attention.rs	save	1	std::fs::rename(&fresh, path)
 
+# sioul-core/src/anchors.rs: whether a leg may be a step's time, as the window found it (state): no item.
+sioul-core/src/anchors.rs	say_steps_offered	1	std::fs::write(&path, format!("{word}\n"))
+
 # sioul-core/src/bank.rs: a bank statement's lines: no item.
 sioul-core/src/bank.rs	write	1	std::fs::write(&temporary, doc.to_string())
 

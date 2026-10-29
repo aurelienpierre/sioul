@@ -132,6 +132,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.keeping = sioul_sync::blobs::KEEPING;
         // It has the store of your own time around meetings: it travels once every device says so.
         entry.own_time = sioul_sync::share::OWN_TIME_SHARED;
+        // It keeps a leg that is a step's time: offered once every device says so (part 7).
+        entry.legs = sioul_sync::share::LEGS_AS_STEPS;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;
@@ -139,6 +141,10 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.acked = acked;
         change(entry);
     });
+    // What the others say of legs that are a step's time, said for `sioul mcp` (part 7).
+    if vault.is_some() {
+        let _ = crate::share::legs_as_steps();
+    }
     match written {
         Ok(entry) if vault.is_some() => {
             // Its opening, as the folder now says it: up since then, or down.

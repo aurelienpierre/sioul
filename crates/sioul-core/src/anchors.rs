@@ -377,6 +377,52 @@ pub fn new_leg(edit: &agenda::EventEdit, appointment: &Followed, projects: &[Str
     agenda::add_lines(&text, &added).ok_or_else(|| "leg-times".to_string())
 }
 
+/// A new leg made a step's time (composed tasks §4.2, the unified agenda's
+/// part 7): the leg the step's time block (`blocks::TASK` and its
+/// `block-of` link), the step pinned to it (`blocks::task_pinned`, its other
+/// blocks' links out): the leg and the step's text, for one change. Owned by
+/// its step, the leg is never moved by the plan nor taken out when the step
+/// is done (`blocks::upkeep` leaves a leg alone). Only once every device
+/// keeps such a leg (`steps_offered`). Refused for a step done or read only.
+pub fn leg_for_step(leg: &str, step: &crate::tasks::Task, step_text: &str, now: &Zoned) -> Result<(String, String), String> {
+    if !step.status.is_open() {
+        return Err("leg-step-done".into());
+    }
+    if step.read_only {
+        return Err("leg-step-read-only".into());
+    }
+    let uid = agenda::event_ref(leg, "", now.time_zone()).map(|r| r.uid).ok_or("leg-times")?;
+    let block_of = crate::tasks::link_line(&crate::tasks::Link { uri: format!("uid:{}", step.uid), label: String::new(), rel: crate::blocks::BLOCK_OF.to_string() });
+    let leg = agenda::add_lines(leg, &[format!("{}:{}", crate::blocks::TASK, step.uid), block_of]).ok_or("leg-times")?;
+    let pinned = crate::blocks::task_pinned(step_text, Some(&uid), now)?;
+    Ok((leg, pinned))
+}
+
+/// Whether a leg may be a step's time here, as the window last found it
+/// (the sharing's devices: `sioul_sync::share::legs_as_steps`), written for
+/// `sioul mcp` too: no word written, not yet (an older Sioul on another
+/// device would take such a leg out once its step is done).
+pub fn steps_offered() -> bool {
+    std::fs::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == "yes")
+}
+
+/// `steps_offered` said, written only when it changes.
+pub fn say_steps_offered(offered: bool) {
+    let word = if offered { "yes" } else { "no" };
+    if std::fs::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == word) {
+        return;
+    }
+    let path = steps_flag();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&path, format!("{word}\n"));
+}
+
+fn steps_flag() -> PathBuf {
+    crate::config::state_dir().join("legs-as-steps")
+}
+
 /// A leg untied from its appointment: an event of its own, its anchor and
 /// its belonging gone. None when it is no leg.
 pub fn untied(text: &str) -> Option<String> {

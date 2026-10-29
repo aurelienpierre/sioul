@@ -1313,6 +1313,19 @@ task-why-unblocks = Elle libère { $n ->
        *[other] { $countf } autres étapes
     }.
 task-why-free = Rien ne passe avant elle.
+task-why-step = { $n ->
+    [1] Première étape de « { $whole } ».
+    [2] Deuxième étape de « { $whole } ».
+    [3] Troisième étape de « { $whole } ».
+    [4] Quatrième étape de « { $whole } ».
+    [5] Cinquième étape de « { $whole } ».
+   *[other] Étape { $n } de « { $whole } ».
+}
+task-why-before = Elle vient avant { $what }, à { $time }.
+task-why-before-on = Elle vient avant { $what }, { $date }.
+task-fold-next = prochaine étape : { $title }
+task-fold-open = Montrer ses étapes
+task-fold-close = Replier ses étapes en une ligne
 task-picked = Choisie pour vous parmi des étapes égales.
 task-why-chain-part = { $title }, qui l’attend, fait partie de « { $whole } », dont la date est le { $date }.
 task-only-tied = Rien d’autre que ce que vous avez remis n’est libre maintenant : celle-ci y est liée.
@@ -3308,6 +3321,7 @@ remind-told = dit
 remind-running = Les rappels sont déjà surveillés sur cet appareil.
 remind-watching = Rappels surveillés : chacun vient une fois, en notification discrète. Ctrl+C arrête.
 reminder-open = Ouvrir
+reminder-public = Sioul a un rappel pour vous.
 # Avant un événement (docs/reminders.md) : « 14:00 · Dentiste, dans 15 minutes ».
 reminder-before = { $time } · { $what }, { $in }
 reminder-in-minutes = dans { $minutes ->
@@ -3322,6 +3336,12 @@ reminder-in-hours-minutes = dans { $hours } h { $minutes }
 reminder-in-now = maintenant
 reminder-margin = Se préparer, y aller : dès { $time }.
 reminder-margin-now = Se préparer, y aller : maintenant.
+reminder-leave = Partir { $in } pour { $what } ({ $time })
+reminder-leave-leg = { $leg } à { $time }.
+reminder-leave-bring = { $more ->
+    [0] À emporter : { $items }.
+   *[other] À emporter : { $items }, et { $more } de plus.
+}
 remind-lead = { $minutes ->
         [0] aucun
         [one] une minute
@@ -6462,6 +6482,12 @@ leg-timetable = D’après un horaire
 leg-made = { $leg }, avant { $appointment }.
 leg-made-after = { $leg }, après { $appointment }.
 leg-elsewhere = Dans { $calendar } : l’agenda du rendez-vous ne le prend pas.
+leg-step = Son étape
+leg-step-none = Aucune : un trajet à part
+leg-step-not-yet = Un trajet peut être l’heure d’une étape une fois que chaque appareil a un Sioul qui le garde.
+leg-step-gone = Cette étape n’est plus là.
+leg-step-done = Cette étape est faite : un trajet peut être l’heure d’une étape encore à faire.
+leg-step-read-only = Cette étape ne peut pas être changée ici.
 leg-repeating = Les trajets vont avec un rendez-vous à une heure : pas un rendez-vous qui se répète, ni un qui dure toute la journée.
 leg-times = Les heures du trajet ne se lisent pas.
 leg-gone = Son rendez-vous n’est pas ici.

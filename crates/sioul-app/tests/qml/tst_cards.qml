@@ -116,9 +116,15 @@ Item {
             mock.calls.push({ what: "bringBack", uid: uid })
             return JSON.stringify({ uid: uid })
         }
-        function saveLeg(key, edit, side, timetable) {
-            mock.calls.push({ what: "saveLeg", key: key, edit: JSON.parse(edit), side: side, timetable: timetable })
+        function saveLeg(key, edit, side, timetable, step) {
+            mock.calls.push({ what: "saveLeg", key: key, edit: JSON.parse(edit), side: side, timetable: timetable, step: step })
             return ""
+        }
+        // The steps a leg may be the time of (part 7): offered once every device keeps such a leg.
+        property bool stepsOffered: false
+        function legSteps(key) {
+            const steps = [{ uid: "s1", title: "Take the bus" }]
+            return JSON.stringify(mock.stepsOffered ? { offered: true, steps: steps, why: "" } : { offered: false, steps: [], why: "leg-step-not-yet" })
         }
         function untieLeg(key) {
             mock.calls.push({ what: "untieLeg", key: key })
@@ -153,7 +159,19 @@ Item {
             return { card: { title: title, status: "needs-action", read_only: false, due: "", estimate: 30, has_steps: false, spent: 0, stopped: "", tight: false, unblocks: [], waits: [], done_on: "" }, edit: { title: title, notes: "", area: "", billable: false, categories: [], demands: {}, due: "", energy: "", estimate: 30, felt: {}, kind: "", margins: { before: 0, after: 0 }, office_hours: "", office_times: [], parent: "", projects: [], repeat: "", start: "" }, steps: [], steps_total: "", waits_for: [], frees: [], sessions: [], related: [], area_tags: "", level: "", felt_on: "", ratio_line: "", pin: null, pin_minutes: 0, list: "Tasks", lists: [], parent_title: "", appointment: null, budget: null, limited: null, proposed: null, source: null, keeps_ties: false }
         }
         function task(uid) {
-            const titles = { t1: "Write the letter", t2: "Call the office", t9: "Book the room" }
+            const titles = { t1: "Write the letter", t2: "Call the office", t9: "Book the room", t3: "Going to the doctor" }
+            if (uid === "t3") {
+                // A composed task (§7.2): its appointment, two steps, a list to tick in its notes.
+                const detail = mock.taskDetail(uid, titles[uid])
+                detail.card.has_steps = true
+                detail.edit.notes = "Bring:\n- [ ] Health card"
+                detail.edit.margins = { before: 10, after: 0 }
+                detail.card.due = "Asked for Thursday 29 October"
+                const step = (id, title) => ({ uid: id, title: title, status: "needs-action", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: false, has_steps: false })
+                detail.steps = [step("s1", "Brush teeth"), step("s2", "Check the bag")]
+                detail.appointment = { uid: "dentist", key: "/c/dentist.ics", title: "Doctor", when: "on Thursday 29 October at 14:00", here: true, leave_at: 0, leave: "Leave at 13:10 · Bus 24", line: "" }
+                return JSON.stringify(detail)
+            }
             return titles[uid] ? JSON.stringify(mock.taskDetail(uid, titles[uid])) : ""
         }
         function newTaskForm(uri, key, start, list) {
@@ -166,6 +184,7 @@ Item {
             return JSON.stringify(uid === "" ? { uid: "t9" } : {})
         }
         function searchTasks(text) { return "[]" }
+        function descriptionHtml(markdown, tickable) { return "<p>" + markdown + "</p>" }
         function searchThings(text) { return "[]" }
         function textCounted(key, n) { return key }
         function focusStart(uid, minutes) {}
@@ -203,6 +222,17 @@ Item {
         TaskRow {
             theme: testTheme
             sioul: mock
+        }
+    }
+
+    Component {
+        id: timelineComponent
+
+        TaskTimeline {
+            sioul: mock
+            theme: testTheme
+            today: "2099-01-05"
+            opened: ""
         }
     }
 
@@ -582,6 +612,34 @@ Item {
             verify(!host.ref.making)
         }
 
+        // A composed task's details (§7.2): its appointment at the top with when to leave, its
+        // steps in order, the checklist under them; Edit turns the steps into drag handles.
+        function test_a_composed_task_s_details() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t3" })
+            wait(50)
+            const panel = host.taskPanel
+            const place = name => { const item = root.find(panel, name); return item ? item.mapToItem(panel, 0, 0).y : -1 }
+            const steps = root.all(panel, c => c.objectName === "taskStep" && c.visible)
+            compare(steps.length, 2)
+            const leave = root.find(panel, "taskAppointmentLeave")
+            verify(leave.visible && leave.text === "Leave at 13:10 · Bus 24", "when to leave")
+            const notes = root.all(panel, c => c.markdown !== undefined && c.visible)[0]
+            verify(notes, "its notes")
+            const at = item => item.mapToItem(panel, 0, 0).y
+            verify(place("taskAppointment") < at(steps[0]), "the appointment above the steps")
+            verify(at(steps[1]) < at(notes), "the checklist under the steps")
+            const fact = root.all(panel, c => c.text === "task-field-before" && c.visible)[0]
+            verify(fact && at(notes) < at(fact), "right under them, before its details")
+            const said = root.all(panel, c => c.text === "Asked for Thursday 29 October" && c.visible)[0]
+            verify(said && place("taskAppointment") < at(said), "at the top, above what it says of itself")
+            verify(!root.find(panel, "taskRowHandle"), "no handle outside Edit")
+            panel.editing = true
+            wait(20)
+            compare(root.all(panel, c => c.objectName === "taskRowHandle" && c.visible).filter((c, i, all) => all.indexOf(c) === i).length, 2, "Edit: a handle on each step")
+            panel.editing = false
+        }
+
         // A date asked's card (the unified agenda, part 4): a letter's, read from
         // its scan, its mark filled within seven days; Edit opens its own dates'
         // form while it has neither task nor event, saved by `letterDates`; with
@@ -657,6 +715,9 @@ Item {
             root.find(dialog.contentItem, "eventTitle").text = "Bus 24"
             root.find(dialog.contentItem, "legTimetable").toggle()
             root.find(dialog.contentItem, "legTimetable").toggled()
+            // Not every device keeps a leg that is a step's time yet: no step offered, why said (part 7).
+            verify(!root.find(dialog.contentItem, "legStep").visible, "no step offered")
+            compare(root.find(dialog.contentItem, "legStepWhy").text, "leg-step-not-yet")
             // Its times after the appointment's end: after it, as its times say.
             const two = n => (n < 10 ? "0" : "") + n
             const local = s => { const d = new Date(s * 1000); return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate()) + "T" + two(d.getHours()) + ":" + two(d.getMinutes()) }
@@ -666,7 +727,19 @@ Item {
             dialog.save()
             const saved = mock.calls.filter(c => c.what === "saveLeg")
             compare(saved.length, 1, JSON.stringify(mock.calls))
-            compare([saved[0].key, saved[0].edit.title, saved[0].side, saved[0].timetable].join(" "), "/c/dentist.ics Bus 24 after true")
+            compare([saved[0].key, saved[0].edit.title, saved[0].side, saved[0].timetable, saved[0].step].join(" "), "/c/dentist.ics Bus 24 after true ")
+            // Every device keeps it: the leg may be a step's time, chosen in its form.
+            mock.stepsOffered = true
+            dialog.makeLeg("/c/dentist.ics", "Dentist", 4000000000, 4000003600, "2096-10-02", "08:30", "08:55")
+            const combo = root.find(dialog.contentItem, "legStep")
+            verify(combo.visible, "its step offered")
+            compare(combo.count, 2, "none, or the step")
+            combo.activated(1)
+            compare(dialog.legStep, "s1")
+            root.find(dialog.contentItem, "eventTitle").text = "Bus 24"
+            dialog.save()
+            compare(mock.calls.filter(c => c.what === "saveLeg").map(c => c.step).join(","), ",s1")
+            mock.stepsOffered = false
             // The leg's own card.
             host.show({ kind: "leg", srcKey: "/c/bus.ics", srcStart: 3999997800 })
             wait(20)
@@ -717,6 +790,33 @@ Item {
             verify(!root.find(done, "taskRowBringBack"), "done: nothing to bring back, nothing made")
             const read = createTemporaryObject(taskRowComponent, root, { task: Object.assign({}, task, { read_only: true }), width: 600 })
             verify(!root.find(read, "taskRowBringBack").visible, "read only: nothing")
+        }
+
+        // The fold (composed tasks §7.2): a task with steps is one row in List and Board, its line
+        // its appointment's time and its next step, never a count; its arrow opens its steps; the
+        // Gantt's bar has its own; a view that does not fold makes no arrow.
+        function test_a_task_with_steps_folds_into_one_row() {
+            const task = { uid: "prep", title: "Going to the doctor", status: "needs-action", due: "", estimate: "", steps: "2 of 3 steps left", waits: "", stopped: "", list: "", done_on: "", read_only: false, has_steps: true, folded: true, fold_line: "Mon 5 Jan 14:00 · next: Brush teeth" }
+            const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 600, folds: true })
+            const folded = []
+            row.fold.connect((uid, open) => folded.push(uid + " " + open))
+            const arrow = root.find(row, "taskRowFold")
+            verify(arrow && arrow.visible, "its arrow")
+            compare(arrow.text, "▸")
+            verify(root.all(row, c => c.text === task.fold_line && c.visible).length >= 1, "its line")
+            verify(root.all(row, c => typeof c.text === "string" && c.text.indexOf("steps left") >= 0 && c.visible).length === 0, "no count")
+            arrow.clicked()
+            compare(folded.join(","), "prep true")
+            const plain = createTemporaryObject(taskRowComponent, root, { task: task, width: 600 })
+            verify(!root.find(plain, "taskRowFold"), "a view that does not fold: no arrow")
+            const bars = createTemporaryObject(timelineComponent, root, { width: 800, height: 300, timeline: { days: [{ date: "2099-01-05", day: "5", weekday: "Mon", month: "January 2099", rest: false }], rows: [{ uid: "prep", key: "", title: "Going to the doctor", depth: 0, start: 0, length: 1, due: null, tight: false, column: "ready", has_steps: true, folded: true, color: null, detail: "" }], note: "" } })
+            const opened = []
+            bars.fold.connect((uid, open) => opened.push(uid + " " + open))
+            wait(20)
+            const barArrow = root.find(bars, "timelineFold")
+            verify(barArrow, "the bar's arrow")
+            barArrow.clicked()
+            compare(opened.join(","), "prep true")
         }
 
         function test_an_appointment_s_part_f() {

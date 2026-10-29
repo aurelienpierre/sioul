@@ -648,14 +648,15 @@ pub const SET_ASIDE: &str = "X-SIOUL-SET-ASIDE";
 /// did them; marked `SET_ASIDE` with the appointment's end, so that its card
 /// and the done tasks list them and bring each back). A task with steps whose
 /// steps are all closed then closes too, done when every step was done, else
-/// set aside the same way; never while it has a time block (`blocks::upkeep`
+/// set aside the same way; never while it has a time block not begun (`blocks::upkeep`
 /// would take out the block's time to come). Nothing is said, and nothing
 /// counted. Only a step that is plainly a preparation: never one that comes
 /// after it (`X-SIOUL-ANCHOR:AFTER`, read from its file as it is), nor one with
 /// a start, a date of its own on or after the appointment's day, or a time
 /// block (each a follow-up by the plan's rule), nor one made or made a step
 /// once the appointment was over (a follow-up, never a preparation forgotten),
-/// nor one with open steps of its own, nor one that carries a mark while open
+/// nor one changed since (its LAST-MODIFIED after the end), nor one with open
+/// steps of its own, nor one that carries a mark while open
 /// (brought back, here or by an agent or another program). Only once the
 /// appointment's end has passed and, for a calendar that syncs, a pull begun
 /// after it went through whole (`moves::Pull`); never for an appointment that
@@ -707,8 +708,10 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
                 continue;
             }
             // Made once the appointment was over (review of 4d7bab4, M-a), or made a step since
-            // (`composed::demote` keeps CREATED; its place says when, later 9): a follow-up.
-            let made_after = fresh.created > end || fresh.placed_at().is_some_and(|placed| placed > end);
+            // (`composed::demote` keeps CREATED; its place says when, later 9), or changed since
+            // (opened again, moved to the top of the steps, renamed: review of 468a123, §3.1;
+            // the closing's own writes are stamped with the end, never after it): a follow-up.
+            let made_after = fresh.created > end || fresh.placed_at().is_some_and(|placed| placed > end) || fresh.modified > end;
             // Its own open steps would stay laid under a step set aside (later 11).
             let has_open_steps = tasks::steps_of(tasks, &fresh.uid).iter().any(|s| s.status.is_open());
             let follow_up = fresh.after || !fresh.start.is_empty() || own_date(&fresh).is_some_and(|d| d >= day) || fresh.links.iter().any(crate::blocks::is_block_link) || !fresh.set_aside.is_empty() || made_after || has_open_steps;
@@ -724,8 +727,9 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
                 None => open_left = true,
             }
         }
-        // With a time block, it stays open: its block is never taken out for it (later 4).
-        let pinned = preparation.links.iter().any(crate::blocks::is_block_link);
+        // With a time block not begun, it stays open: that block is never taken out for it
+        // (review of 4d7bab4, later 4); one over pins nothing (review of 468a123, §3.2).
+        let pinned = events.iter().any(|e| e.task == preparation.uid && e.anchor.is_none() && !e.cancelled && e.start > stamp);
         if !open_left
             && !pinned
             && let Ok(text) = std::fs::read_to_string(&preparation.key)
@@ -744,10 +748,11 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
 /// again, its mark taken out, so that it is set aside again only once the
 /// appointment is over again. The appointment's end is compared with the one
 /// kept, never the clock alone: two devices whose clocks differ near its end
-/// never undo each other. Stamped with the appointment's own last change (its
-/// LAST-MODIFIED, else DTSTAMP, as a leg moved with it is), never before the
-/// set-aside: the same bytes on every device, and never a stamp to come.
-/// Never on its deletion, its cancellation or its repeating: an appointment
+/// never undo each other. Stamped with the set-aside's own stamp (END, else
+/// the item's last change): the same bytes on every device, whatever a server
+/// did to the appointment's own lines, never a stamp to come, and never one
+/// after the end that would keep it from being set aside again (review of
+/// 468a123, §3.1). Never on its deletion, its cancellation or its repeating: an appointment
 /// over, then deleted, happened.
 fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<(PathBuf, String)> {
     let zone = now.time_zone();
@@ -765,7 +770,9 @@ fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<
         if fresh.status != Status::Cancelled || fresh.set_aside != task.set_aside || fresh.brought_back || end <= fresh.set_aside_end || end <= stamp {
             continue;
         }
-        let changed = crate::moves::read_utc(&appointment.stamp).unwrap_or(0).max(fresh.set_aside_end);
+        // The set-aside's own stamp (END): the same bytes whatever the server did to the
+        // appointment's, and "moved later, then back" consistent (review of 468a123, §3.1).
+        let changed = if fresh.set_aside_end > 0 { fresh.set_aside_end } else { fresh.modified };
         let Ok(at) = jiff::Timestamp::from_second(changed).map(|t| t.to_zoned(zone.clone())) else { continue };
         let back = tasks::set_status(&text, Status::NeedsAction, zone, &at).ok().and_then(|t| tasks::remove_lines(&t, |l| crate::lines::name(l) == SET_ASIDE, &at).ok());
         out.extend(back.map(|t| (PathBuf::from(&task.key), t)));
@@ -831,6 +838,48 @@ pub fn appointment_for(all: &[Task], uid: &str, edit: &agenda::EventEdit, calend
 pub struct Named {
     pub uid: String,
     pub title: String,
+}
+
+/// An appointment as the task views say it (composed tasks §7.2): its
+/// title, its first start, and its earliest leg before it (its title and its
+/// start as written).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Outing {
+    pub title: String,
+    pub start: i64,
+    pub leg: Option<(String, i64)>,
+}
+
+/// The appointments of `events` (one time, not cancelled), by their UID,
+/// each with its earliest leg before it (`anchors`), for the task views.
+pub fn outings(events: &[EventRef]) -> BTreeMap<String, Outing> {
+    let mut out: BTreeMap<String, Outing> = events.iter().filter(|e| e.anchor.is_none() && !e.cancelled && !e.recurring && e.start > 0).map(|e| (e.uid.clone(), Outing { title: e.summary.clone(), start: e.start, leg: None })).collect();
+    for leg in events.iter().filter(|e| !e.cancelled && e.start > 0) {
+        let Some(anchor) = leg.anchor.as_ref().filter(|a| a.side == crate::anchors::Side::Before) else { continue };
+        if let Some(outing) = out.get_mut(&anchor.appointment)
+            && outing.leg.as_ref().is_none_or(|(_, at)| leg.start < *at)
+        {
+            outing.leg = Some((leg.summary.clone(), leg.start));
+        }
+    }
+    out
+}
+
+/// The appointment `task` prepares, or its bigger task does, as the task
+/// views say it (`outings`); None for one not here.
+pub fn outing_of<'a>(task: &Task, tasks: &[Task], outings: &'a BTreeMap<String, Outing>) -> Option<&'a Outing> {
+    let mut at = Some(task);
+    let mut seen = std::collections::BTreeSet::new();
+    while let Some(t) = at {
+        if !seen.insert(t.uid.clone()) {
+            return None;
+        }
+        if let Some(outing) = appointment_of(t).and_then(|uid| outings.get(&uid)) {
+            return Some(outing);
+        }
+        at = t.parent().and_then(|p| tasks.iter().find(|x| x.uid == p));
+    }
+    None
 }
 
 /// One item to bring or to check, from the preparation's list (`checklist`):
@@ -906,6 +955,9 @@ pub struct AppointmentView {
     pub leg_of: Option<crate::anchors::LegOf>,
     /// "Leave at 13:10 · Bus 24 · Next: check the bus schedule"; "" when none is known.
     pub line: String,
+    /// "Leave at 13:10 · Bus 24": the line without its next step, which the
+    /// task's card says under its appointment (composed tasks §7.2).
+    pub leave: String,
 }
 
 /// The appointment `event` (one time of it) as part F says it, from the
@@ -967,6 +1019,8 @@ pub fn appointment_view(event: &agenda::Occurrence, links: &[tasks::Link], tasks
     if !getting_there.is_empty() {
         parts.push(getting_there.iter().map(|l| if l.unconfirmed { say("legs-unconfirmed", "leg", l.title.clone()) } else { l.title.clone() }).collect::<Vec<_>>().join(", "));
     }
+    // When to leave and how, the task's card's line under its appointment (§7.2): no next step there.
+    let leave = parts.join(" · ");
     if let Some(next) = before.first() {
         parts.push(say("appointment-next", "step", next.title.clone()));
     }
@@ -989,6 +1043,7 @@ pub fn appointment_view(event: &agenda::Occurrence, links: &[tasks::Link], tasks
         set_aside,
         leg_of,
         line: parts.join(" · "),
+        leave,
     }
 }
 
@@ -1694,6 +1749,27 @@ mod tests {
         let written: Vec<PathBuf> = closing(&desk.tasks(), &desk.refs(), closing_from(), &later).written.into_iter().map(|(p, _)| p).collect();
         assert!(written.iter().any(|p| p.ends_with("early.ics")), "the step before set aside");
         assert!(!written.iter().any(|p| p.ends_with("loose.ics")), "the one made a step since stays: {written:?}");
+        // Then dragged to the top of the steps: its place older than the end, its change not
+        // (review of 468a123, §3.1).
+        let steps = desk.tasks();
+        let ordered: Vec<&Task> = tasks::steps_of(&steps, "prep");
+        let moved: Zoned = "2026-10-29T15:05:00+01:00[Europe/Paris]".parse().unwrap();
+        for (uid, place) in tasks::reorder(&ordered, "loose", Some("early")).unwrap() {
+            let key = desk.list.dir.join(format!("{uid}.ics"));
+            std::fs::write(&key, tasks::set_sequence(&read(&key), place, &moved).unwrap()).unwrap();
+        }
+        assert!(task_of(&desk, "loose").placed_at().is_some_and(|placed| placed < 1_793_280_600), "its place now older than the end");
+        let written: Vec<PathBuf> = closing(&desk.tasks(), &desk.refs(), closing_from(), &later).written.into_iter().map(|(p, _)| p).collect();
+        assert!(!written.iter().any(|p| p.ends_with("loose.ics")), "moved to the top since, it stays: {written:?}");
+    }
+
+    /// A step ticked before the appointment and opened again once it was
+    /// over stays: changed after the end (review of 468a123, §3.1).
+    #[test]
+    fn a_step_opened_again_once_the_appointment_was_over_stays() {
+        let opened: Zoned = "2026-10-29T15:00:00+01:00[Europe/Paris]".parse().unwrap();
+        let open_again = |text: &str| tasks::set_status(text, Status::NeedsAction, &TimeZone::system(), &opened).unwrap();
+        assert!(!sets_aside("aside-opened-again", Ok(""), TaskEdit { status: Status::Completed, ..TaskEdit::default() }, Some(&open_again), closing_from()));
     }
 
     /// A step whose own steps are open stays, with them (review of 4d7bab4,
@@ -1714,14 +1790,20 @@ mod tests {
     /// steps before set aside (review of 4d7bab4, later 4).
     #[test]
     fn a_preparation_with_a_time_block_stays_open() {
-        let desk = Desk::new("aside-pinned");
-        desk.task("prep", TaskEdit { links: vec![crate::blocks::task_link("prep-block")], ..TaskEdit::default() });
-        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
-        let path = desk.event("visit", "");
-        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
-        let later: Zoned = "2026-10-30T16:00:00+01:00[Europe/Paris]".parse().unwrap();
-        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
-        assert_eq!((task_of(&desk, "early").status, task_of(&desk, "prep").status), (Status::Cancelled, Status::NeedsAction));
+        // Its block to come (2 November): it stays open; over (29 October, 10:00 UTC), it closes
+        // (review of 468a123, §3.2).
+        for (name, block_at, stays) in [("aside-pinned", "20261102T090000Z", true), ("aside-pinned-over", "20261029T100000Z", false)] {
+            let desk = Desk::new(name);
+            desk.task("prep", TaskEdit { links: vec![crate::blocks::task_link("prep-block")], ..TaskEdit::default() });
+            desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+            let path = desk.event("visit", "");
+            std::fs::write(desk.calendar.dir.join("prep-block.ics"), format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:prep-block\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:{block_at}\r\nDURATION:PT30M\r\nSUMMARY:prep\r\nX-SIOUL-TASK:prep\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")).unwrap();
+            attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+            let later: Zoned = "2026-10-30T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+            closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+            let prep = if stays { Status::NeedsAction } else { Status::Cancelled };
+            assert_eq!((task_of(&desk, "early").status, task_of(&desk, "prep").status), (Status::Cancelled, prep), "{name}");
+        }
     }
 
     /// Done is never "set aside" (review of 4d7bab4, later 1): a task the
@@ -1816,6 +1898,12 @@ mod tests {
         let back = closing(&desk.tasks(), &desk.refs(), closing_from(), &evening);
         let elsewhere: Zoned = "2026-10-30T08:00:00+01:00[Europe/Paris]".parse().unwrap();
         assert_eq!(back.written, closing(&desk.tasks(), &desk.refs(), closing_from(), &elsewhere).written, "the same bytes on another device, later");
+        // The appointment's own stamps rewritten by a server on the way: the same bytes still
+        // (stamped with the set-aside's END, review of 468a123, §3.1).
+        let moved = read(&path);
+        std::fs::write(&path, moved.replace("LAST-MODIFIED:20261029T170000Z", "LAST-MODIFIED:20261029T170512Z")).unwrap();
+        assert_eq!(back.written, closing(&desk.tasks(), &desk.refs(), closing_from(), &elsewhere).written, "whatever the server did to its stamps");
+        std::fs::write(&path, moved).unwrap();
         back.write().unwrap();
         for uid in ["early", "prep"] {
             let task = task_of(&desk, uid);

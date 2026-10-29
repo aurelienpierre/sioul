@@ -769,7 +769,7 @@ pub const TOOLS: &[Tool] = &[
                     "anchor": { "type": "string", "description": "A leg: the appointment it belongs to, sioul:event/<UID>. start and end are then the leg's own times." },
                     "side": { "type": "string", "enum": ["before", "after"], "description": "A leg: before the appointment (getting there; the default) or after it (coming back)." },
                     "timetable": { "type": "boolean", "description": "A leg whose time was read from a timetable: once moved with its appointment, said as not checked." },
-                    "step": { "type": "string", "description": "Not yet: a leg as a step's time waits until every device reads it; refused." },
+                    "step": { "type": "string", "description": "The leg as the time of one of the preparation's open steps (its UID or address), once every device runs a Sioul that keeps such a leg; refused until then." },
                 }),
                 &["title", "start"],
             )

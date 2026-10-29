@@ -343,6 +343,19 @@ fn own_time_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED))
 }
+/// What a device's entry says once its Sioul keeps a leg that is a step's time (`devices::Entry::legs`).
+pub const LEGS_AS_STEPS: u32 = 1;
+
+/// Whether a leg may be a step's time (the unified agenda's part 7): every
+/// other device that counts (`present`) says in its sealed entry that its
+/// Sioul keeps such a leg (`devices::Entry::legs`); none counting, none is
+/// harmed. A device whose entry does not read, or known by its records
+/// alone, counts as an older one.
+pub fn legs_as_steps(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> bool {
+    let state = Memory::load(memory, computer);
+    present(folder, key, computer, &state, now_ms).iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.legs >= LEGS_AS_STEPS))
+}
+
 /// Do-not-disturb's switch (docs/do-not-disturb.md): a table per device, each
 /// written by its own device alone, shared whole.
 static DND_RULES: Rules = Rules { keyed: &[], whole: &["device.*"], local: &[], next: None };

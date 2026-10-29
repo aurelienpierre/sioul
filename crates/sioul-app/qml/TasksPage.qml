@@ -1022,10 +1022,12 @@ Item {
                                             theme: page.theme
                                             sioul: page.sioul
                                             depth: modelData.depth
+                                            folds: true
                                             selected: page.opened === modelData.uid
                                             onOpen: uid => page.open(uid)
                                             onMenu: task => taskMenu.now().show(task)
                                             onTick: page.tick(modelData)
+                                            onFold: (uid, open) => page.sioul.foldTask(uid, open)
                                         }
                                     }
                                 }
@@ -1152,18 +1154,21 @@ Item {
                                                             theme: page.theme
                                                             sioul: page.sioul
                                                             compact: true
+                                                            folds: true
                                                             selected: page.opened === holder.modelData.uid
                                                             opacity: page.dragging !== null && page.dragging.uid === holder.modelData.uid ? 0.4 : 1
                                                             onOpen: uid => page.open(uid)
                                                             onMenu: task => taskMenu.now().show(task)
                                                             onTick: page.tick(holder.modelData)
+                                                            onFold: (uid, open) => page.sioul.foldTask(uid, open)
                                                         }
                                                         // With a mouse only: on a touch screen a drag scrolls the board.
+                                                        // A folded task stands for its steps: it moves by them, never itself.
                                                         DragHandler {
                                                             id: drag
 
                                                             target: null
-                                                            enabled: !holder.modelData.read_only
+                                                            enabled: !holder.modelData.read_only && !holder.modelData.folded
                                                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                                             onActiveChanged: {
                                                                 if (drag.active) {
@@ -1199,6 +1204,7 @@ Item {
                             opened: page.opened
                             onOpen: uid => page.open(uid)
                             onMenu: task => taskMenu.now().show(task)
+                            onFold: (uid, open) => page.sioul.foldTask(uid, open)
                         }
                     }
                 }

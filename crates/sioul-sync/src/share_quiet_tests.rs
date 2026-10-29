@@ -567,6 +567,27 @@ fn a_quiet_exchange_is_the_same_as_a_whole_one_through_the_switch() {
     assert!(quiet > 20, "the quiet path ran too seldom to mean anything: {quiet}");
 }
 
+/// A leg as a step's time (the unified agenda's part 7): offered only once
+/// every other device that counts says its Sioul keeps such a leg
+/// (`devices::Entry::legs`); a phone on an older Sioul, whose entry says
+/// nothing of it, keeps it from being offered; alone, nothing is harmed.
+#[test]
+fn a_leg_as_a_step_s_time_waits_for_every_device() {
+    let base = scratch("legs-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    entry(&desk, &folder, &key, |e| {
+        e.start(NOW / 1000);
+        e.legs = LEGS_AS_STEPS;
+    });
+    assert!(legs_as_steps(&folder, &key, &desk.memory, &desk.id, NOW), "no other device: none harmed");
+    entry(&phone, &folder, &key, |e| e.start(NOW / 1000));
+    assert!(!legs_as_steps(&folder, &key, &desk.memory, &desk.id, NOW + MINUTE), "the phone on an older Sioul");
+    entry(&phone, &folder, &key, |e| e.legs = LEGS_AS_STEPS);
+    assert!(legs_as_steps(&folder, &key, &desk.memory, &desk.id, NOW + 2 * MINUTE), "both keep such a leg");
+}
+
 /// Your own time around meetings (`data/own-time.toml`, the unified agenda's
 /// part 4) beside a phone on 982d6e5, which has no such store: never offered
 /// while the phone's entry does not say it has it, so the phone holds no

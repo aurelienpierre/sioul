@@ -36,6 +36,9 @@ Dialog {
     property real legAt: 0
     property real legUntil: 0
     property bool legTimetable: false
+    // The steps the leg may be the time of (part 7): {offered, steps: [{uid, title}], why}; the one chosen, "" for none.
+    property var legSteps: ({ offered: false, steps: [], why: "" })
+    property string legStep: ""
     readonly property string legSide: dialog.legOf !== "" && dialog.legStart() >= dialog.legUntil ? "after" : "before"
     readonly property string legLine: dialog.legOf === "" ? "" : dialog.sioul.textArgs(dialog.legSide === "after" ? "leg-after" : "leg-before", JSON.stringify({ appointment: dialog.legTitle, time: dialog.clockOf(dialog.legSide === "after" ? dialog.legUntil : dialog.legAt) }))
 
@@ -179,6 +182,8 @@ Dialog {
         dialog.legAt = 0
         dialog.legUntil = 0
         dialog.legTimetable = false
+        dialog.legSteps = ({ offered: false, steps: [], why: "" })
+        dialog.legStep = ""
         dialog.taskUid = ""
         dialog.taskBlock = ""
         dialog.losses = ""
@@ -289,6 +294,7 @@ Dialog {
     function makeLeg(key, title, at, until, day, from, to) {
         dialog.edit("", day)
         dialog.legOf = key
+        dialog.legSteps = JSON.parse(dialog.sioul.legSteps(key) || "{}")
         dialog.legTitle = title
         dialog.legAt = at
         dialog.legUntil = until
@@ -320,7 +326,7 @@ Dialog {
         // An event of a calendar not offered (read only) stays where it is.
         const offered = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
         const where = dialog.key !== "" && dialog.calendars.findIndex(c => c.id === dialog.currentCalendar) < 0 ? dialog.currentCalendar : offered
-        const problem = dialog.legOf !== "" ? dialog.sioul.saveLeg(dialog.legOf, JSON.stringify(dialog.form()), dialog.legSide, dialog.legTimetable) : dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
+        const problem = dialog.legOf !== "" ? dialog.sioul.saveLeg(dialog.legOf, JSON.stringify(dialog.form()), dialog.legSide, dialog.legTimetable, dialog.legStep) : dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
         if (problem) {
             dialog.problem = problem
             return
@@ -408,6 +414,30 @@ Dialog {
                     text: dialog.sioul.text("leg-timetable")
                     checked: dialog.legTimetable
                     onToggled: dialog.legTimetable = checked
+                }
+                // Its step (part 7): the leg is that step's time, once every device keeps such a leg.
+                Label {
+                    visible: dialog.legSteps.offered === true
+                    text: dialog.sioul.text("leg-step")
+                    textFormat: Text.PlainText
+                    color: dialog.theme.muted
+                }
+                PlainComboBox {
+                    objectName: "legStep"
+                    visible: dialog.legSteps.offered === true
+                    Layout.fillWidth: true
+                    model: [dialog.sioul.text("leg-step-none")].concat((dialog.legSteps.steps || []).map(s => dialog.theme.plain(s.title)))
+                    currentIndex: Math.max(0, (dialog.legSteps.steps || []).findIndex(s => s.uid === dialog.legStep) + 1)
+                    onActivated: index => dialog.legStep = index > 0 ? dialog.legSteps.steps[index - 1].uid : ""
+                }
+                Label {
+                    objectName: "legStepWhy"
+                    visible: !!dialog.legSteps.why
+                    Layout.fillWidth: true
+                    text: dialog.legSteps.why || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
                 }
             }
             Label {

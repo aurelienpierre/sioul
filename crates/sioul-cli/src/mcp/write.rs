@@ -281,11 +281,13 @@ pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
 /// calendar (which may not keep a leg's lines), else in the calendar for new
 /// events, said; in its projects. Refused for an appointment that repeats or
 /// lasts the whole day, one that is a leg or a task's time block, one kept
-/// from agents, and as a step's time (`step`), which waits until every device
-/// reads such a leg.
+/// from agents. As a step's time (`step`, the unified agenda's part 7): one
+/// of its preparation's open steps, pinned to it in the same change, once
+/// every device keeps such a leg (`anchors::steps_offered`, as the window
+/// last found it), else refused, the leg alone left to make.
 fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
-    if args.has("step") {
-        return Err("“step” waits: a leg that is a step's time is written once every device of the person's reads such a leg. Add the leg alone; the step stays a step.".into());
+    if args.has("step") && !sioul_core::anchors::steps_offered() {
+        return Err("“step” waits: a leg is a step's time once every device of the person's runs a Sioul that keeps such a leg (said by the window). Add the leg alone; the step stays a step.".into());
     }
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
@@ -309,12 +311,28 @@ fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let projects = agenda::event_ref(&found.text, &found.path.display().to_string(), &zone).map(|r| r.projects).unwrap_or_default();
     let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, ..EventEdit::default() };
-    let text = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, args.flag("timetable")?, &zone).map_err(|e| s.tr.text(&e, None))?;
+    let mut text = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, args.flag("timetable")?, &zone).map_err(|e| s.tr.text(&e, None))?;
+    // Its step (part 7): one of the preparation's open steps with no time of its own, that the agent may see.
+    let mut written = Vec::new();
+    if let Some(asked) = args.text("step")? {
+        let reference = sioul_core::agenda::EventRef { uid: found.uid.clone(), ..sioul_core::agenda::EventRef::default() };
+        let preparation = sioul_core::pairs::preparation_of(&loaded.tasks, &reference).filter(|t| t.status.is_open()).ok_or("This appointment has no task preparing it: its steps are a task's.")?;
+        let id = sioul_core::links::id_of(&asked);
+        let step = sioul_core::tasks::steps_of(&loaded.tasks, &preparation.uid).into_iter().find(|t| t.uid == id || t.uid == asked).ok_or("“step” names no step of the task preparing this appointment.")?;
+        super::items::may_change(&consent, &links::task_uri(&step.uid))?;
+        if !step.start.is_empty() || step.links.iter().any(sioul_core::blocks::is_block_link) {
+            return Err("That step has a time of its own already.".into());
+        }
+        let step_text = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
+        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&text, step, &step_text, &jiff::Zoned::now()).map_err(|e| s.tr.text(&e, None))?;
+        text = as_time;
+        written.push((std::path::PathBuf::from(&step.key), pinned));
+    }
     // Never a Google calendar: it may not keep the leg's lines (D17's else, said).
     let google = sioul_core::capabilities::provider_of_collection(s.config.account(&found.calendar.account), &found.calendar) == sioul_core::capabilities::Provider::Google;
     let calendar = if found.calendar.read_only || google { agenda::default_calendar().filter(|c| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), c) != sioul_core::capabilities::Provider::Google).ok_or_else(|| s.tr.text("dav-no-calendar", None))? } else { found.calendar.clone() };
     let path = free_item(agenda::new_path(&calendar), || agenda::new_path(&calendar));
-    let files = sioul_core::composed::Change { made: vec![(path.clone(), text.clone())], ..sioul_core::composed::Change::default() }.write()?;
+    let files = sioul_core::composed::Change { made: vec![(path.clone(), text.clone())], written, ..sioul_core::composed::Change::default() }.write()?;
     let uid = agenda::event_ref(&text, &path.display().to_string(), &zone).map(|e| e.uid).unwrap_or_default();
     let name = agenda::edit_of_text(&found.text, &zone).map(|e| e.title).unwrap_or_default();
     let word = if side == sioul_core::anchors::Side::Before { "leg-made" } else { "leg-made-after" };

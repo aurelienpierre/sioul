@@ -117,7 +117,7 @@ Changed line by line: what Sioul does not edit is kept byte for byte (tests: `ta
 | `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-COST`, `X-SIOUL-GAIN` | non-standard properties, RFC 5545 §3.8.8.2 | tasks, events | time kept around it; costs and gain, 0 to 10 |
 | `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN` (`X-SIOUL-ON`), `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-ENERGY`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-AREA`, `X-SIOUL-BILLABLE` | the same | tasks | how it was; the first estimate; light or heavy; an office's hours; what it is for; billed or not |
 | `X-SIOUL-AT` | the same | tasks | a time given for one day, before time blocks: read, never written; one for today or later becomes a block once (above) |
-| `X-SIOUL-TASK` | the same | events | the task a time block is for, by its UID (above) |
+| `X-SIOUL-TASK` | the same | events | the task a time block is for, by its UID (above); on a leg too, the step it is the time of (part 7, once every device keeps such a leg: [tasks.md](tasks.md), "Getting there and coming back") |
 | `X-SIOUL-GITHUB`, `X-SIOUL-GITHUB-REASON` | the same | the local GitHub list only | never sent to a server |
 | vCard `CATEGORIES` | RFC 6350 §6.7.1, RFC 2426 §3.6.1 | cards | categories, which Nextcloud Contacts shows as groups; several lines read, written back as one where the first was |
 | New cards in vCard 3.0 | RFC 2426 | cards | vCard 4.0 (RFC 6350) is read and kept; a 4.0 line merged into a 3.0 card is written as 3.0 |

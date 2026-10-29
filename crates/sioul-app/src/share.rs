@@ -1631,6 +1631,21 @@ pub(crate) fn vault() -> Option<(String, Option<(PathBuf, [u8; 32])>)> {
     Some((here.id, vault))
 }
 
+/// Whether a leg may be a step's time (the unified agenda's part 7): no
+/// sharing set up, no other Sioul is known here; else every other device
+/// that counts says its Sioul keeps such a leg (`share::legs_as_steps`); a
+/// sharing whose folder is not here yet says no. Said for `sioul mcp`
+/// (`anchors::say_steps_offered`).
+pub(crate) fn legs_as_steps() -> bool {
+    let offered = match vault() {
+        None => true,
+        Some((_, None)) => false,
+        Some((id, Some((folder, key)))) => share::legs_as_steps(&folder, &key, &memory_path(), &id, jiff::Timestamp::now().as_millisecond()),
+    };
+    sioul_core::anchors::say_steps_offered(offered);
+    offered
+}
+
 /// Whether this device shares a part (`share::PARTS`), as chosen here.
 pub(crate) fn shares(part: &str) -> bool {
     here().shares(part, &load_config())

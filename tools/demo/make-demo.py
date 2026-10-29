@@ -1429,7 +1429,10 @@ def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=Non
     for other in waits:
         lines.append(f"RELATED-TO;RELTYPE=DEPENDS-ON:demo-task-{other}")
     for rel, uri in links:
-        lines.append(f"LINK;LINKREL={rel};VALUE=URI:{uri}")
+        # A relation that is a URI (Sioul's tag: names) is quoted, as RFC 5545 §3.2 asks of a
+        # parameter holding ':' ';' ','; unquoted, it read as LINKREL=tag, the tie lost.
+        quoted = f'"{rel}"' if any(c in rel for c in ':;,') else rel
+        lines.append(f"LINK;LINKREL={quoted};VALUE=URI:{uri}")
     names = contacts_by_key()
     for key in contacts:
         lines.append(f'CONTACT;ALTREP="sioul:contact/demo-contact-{key}":{escape(names[key])}')

@@ -228,6 +228,8 @@ pub struct Task {
     pub repeat: String,
     /// When it was made (CREATED, else DTSTAMP), in Unix seconds: the order among equals.
     pub created: i64,
+    /// When it was last changed (LAST-MODIFIED, else DTSTAMP), in Unix seconds; 0 when unsaid.
+    pub modified: i64,
     /// Its place among its bigger task's steps (`SORT_ORDER`), as written;
     /// None when unsaid: then its creation's (`Task::sequence`).
     pub sort_order: Option<i64>,
@@ -655,6 +657,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             }
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
+            "LAST-MODIFIED" => task.modified = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
             crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
             crate::pairs::SET_ASIDE => {
@@ -670,6 +673,9 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     }
     if task.created == 0 {
         task.created = stamp;
+    }
+    if task.modified == 0 {
+        task.modified = stamp;
     }
     // The start kept by Sioul (`START`), where DTSTART is gone (a phone
     // dropped it, or Sioul wrote a due time beside a day to start), never

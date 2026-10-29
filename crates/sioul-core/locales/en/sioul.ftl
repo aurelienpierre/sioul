@@ -1295,6 +1295,19 @@ task-why-unblocks = It frees { $count } other { $n ->
        *[other] steps
     }.
 task-why-free = Nothing comes before it.
+task-why-step = { $n ->
+    [1] First step of “{ $whole }”.
+    [2] Second step of “{ $whole }”.
+    [3] Third step of “{ $whole }”.
+    [4] Fourth step of “{ $whole }”.
+    [5] Fifth step of “{ $whole }”.
+   *[other] Step { $n } of “{ $whole }”.
+}
+task-why-before = It comes before { $what } at { $time }.
+task-why-before-on = It comes before { $what }, { $date }.
+task-fold-next = next: { $title }
+task-fold-open = Show its steps
+task-fold-close = Fold its steps into one row
 task-picked = Picked for you among equal steps.
 task-why-chain-part = { $title }, which waits for it, is part of “{ $whole }”, whose date is { $date }.
 task-only-tied = Nothing outside what you put off is free now: this one is tied to it.
@@ -3290,6 +3303,7 @@ remind-told = told
 remind-running = Reminders are already watched on this device.
 remind-watching = Reminders watched: each one comes once, as a quiet notification. Ctrl+C stops.
 reminder-open = Open
+reminder-public = Sioul has a reminder for you.
 # Before an event (docs/reminders.md): "14:00 · Dentist, in 15 minutes".
 reminder-before = { $time } · { $what }, { $in }
 reminder-in-minutes = in { $minutes ->
@@ -3304,6 +3318,12 @@ reminder-in-hours-minutes = in { $hours } h { $minutes } min
 reminder-in-now = now
 reminder-margin = Getting ready, getting there: from { $time }.
 reminder-margin-now = Getting ready, getting there: now.
+reminder-leave = Leave { $in } for { $what } ({ $time })
+reminder-leave-leg = { $leg } at { $time }.
+reminder-leave-bring = { $more ->
+    [0] Bring: { $items }.
+   *[other] Bring: { $items }, and { $more } more.
+}
 remind-lead = { $minutes ->
         [0] none
         [one] one minute
@@ -6434,6 +6454,12 @@ leg-timetable = From a timetable
 leg-made = { $leg }, before { $appointment }.
 leg-made-after = { $leg }, after { $appointment }.
 leg-elsewhere = In { $calendar }: the appointment's calendar does not take it.
+leg-step = Its step
+leg-step-none = None: a ride of its own
+leg-step-not-yet = A ride can be a step's time once every device runs a Sioul that keeps it.
+leg-step-gone = That step is not here any more.
+leg-step-done = That step is done: a ride can be the time of a step still to do.
+leg-step-read-only = That step cannot be changed here.
 leg-repeating = Legs are for an appointment at one time: not one that repeats, nor one that lasts the whole day.
 leg-times = The leg's times do not read.
 leg-gone = Its appointment is not here.

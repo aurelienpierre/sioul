@@ -898,7 +898,8 @@ fn step_at(m: &Moment, input: &PlanInput, mode: &Mode, at: &Zoned) -> Option<Ste
     let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
     let today = input.today.date == at.date().to_string();
     let (weather, aside) = if today { (input.today.weather, input.today.aside.clone()) } else { (Weather::Clear, BTreeSet::new()) };
-    let cx = taskview::Context { filter: &filter, offices: situation.offices.clone(), tasks: &input.loaded.tasks, plan: &input.plan, today: at.date(), tr: m.tr, projects: &input.loaded.projects, spent: &input.spent, stopped: &input.stopped };
+    let outings = sioul_core::pairs::outings(&input.loaded.events);
+    let cx = taskview::Context { filter: &filter, offices: situation.offices.clone(), tasks: &input.loaded.tasks, plan: &input.plan, today: at.date(), tr: m.tr, projects: &input.loaded.projects, spent: &input.spent, stopped: &input.stopped, outings: &outings };
     let now = taskview::now(&cx, weather, &aside);
     let card = now.now?;
     if m.details {

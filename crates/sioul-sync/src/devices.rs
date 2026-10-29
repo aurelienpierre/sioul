@@ -80,6 +80,15 @@ pub struct Entry {
     /// serde, unknown fields left aside, and writes its own entry alone).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub own_time: u32,
+    /// Whether its Sioul keeps a leg that is a step's time (the unified
+    /// agenda's part 7, composed tasks §4.2: a leg with `X-SIOUL-TASK`): 1
+    /// from such a build, 0 from an older one, whose block upkeep reads no
+    /// anchor (679f96a: it would take out such a leg not begun once its step
+    /// is done, and give it its step's title). A leg is offered as a step's
+    /// time once every other device that counts says 1 (`share::legs_as_steps`).
+    /// An older Sioul reads the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub legs: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
