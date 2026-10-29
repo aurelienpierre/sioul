@@ -2250,6 +2250,34 @@ fn an_appointment_made_of_a_task_with_steps_takes_its_block() {
     assert!(block.exists(), "Undo brings it back");
 }
 
+/// An appointment deleted with its legs in one change (review of ab7daa4,
+/// later 5): a leg that cannot be taken out leaves everything as it was.
+/// Unix alone: a folder's write permission is what fails the removal there.
+#[cfg(unix)]
+#[test]
+fn an_appointment_and_its_legs_go_together_or_not_at_all() {
+    use std::os::unix::fs::PermissionsExt;
+    home();
+    let mut server = server();
+    let added = call(&mut server, "add_event", json!({ "title": "Dentist", "start": "2099-11-25T14:00", "end": "2099-11-25T14:30" }));
+    let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let dentist = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    let uid = sioul_core::appointments::uid_in(&dentist);
+    let leg = |dir: &Path, name: &str, at: &str| {
+        let path = dir.join(format!("{name}.ics"));
+        std::fs::write(&path, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{name}\r\nDTSTAMP:20991001T000000Z\r\nDTSTART:20991125T{at}00Z\r\nDTEND:20991125T{at}30Z\r\nSUMMARY:{name}\r\nRELATED-TO;RELTYPE=PARENT:{uid}\r\nX-SIOUL-ANCHOR;GAP=PT30M;WAS=20991125T130000Z:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")).unwrap();
+        path
+    };
+    let open = leg(dentist.parent().unwrap(), "walk-there", "1200");
+    let blocked_dir = vdir::create(Kind::Calendars, vdir::LOCAL, "Blocked legs", None, &["VEVENT"]).unwrap();
+    let blocked = leg(&blocked_dir.dir, "bus-there", "1215");
+    std::fs::set_permissions(&blocked_dir.dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let gone = call(&mut server, "delete_event", json!({ "event": uri }));
+    std::fs::set_permissions(&blocked_dir.dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(gone["isError"], true, "{gone}");
+    assert!(dentist.exists() && open.exists() && blocked.exists(), "everything as it was");
+}
+
 /// Part E4: a leg added beside an appointment (never as a step's time yet),
 /// listed by get_event; moved with it by update_event (or kept where it is,
 /// asked), deleted with it by delete_event, each under the window's one Undo;
@@ -2258,27 +2286,27 @@ fn an_appointment_made_of_a_task_with_steps_takes_its_block() {
 fn legs_move_and_go_with_their_appointment() {
     home();
     let mut server = server();
-    let added = call(&mut server, "add_event", json!({ "title": "Doctor", "start": "2026-11-24T14:00", "end": "2026-11-24T14:30" }));
+    let added = call(&mut server, "add_event", json!({ "title": "Doctor", "start": "2099-11-24T14:00", "end": "2099-11-24T14:30" }));
     let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
     let doctor = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
-    let refused = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2026-11-24T13:10", "end": "2026-11-24T13:35", "anchor": uri, "step": "some-step" }));
+    let refused = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2099-11-24T13:10", "end": "2099-11-24T13:35", "anchor": uri, "step": "some-step" }));
     assert_eq!(refused["isError"], true, "a step's time waits: {refused}");
-    let leg = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2026-11-24T13:10", "end": "2026-11-24T13:35", "anchor": uri, "timetable": true }));
+    let leg = call(&mut server, "add_event", json!({ "title": "Bus 24", "start": "2099-11-24T13:10", "end": "2099-11-24T13:35", "anchor": uri, "timetable": true }));
     assert_eq!(leg["isError"], false, "{leg}");
     let bus = event_file_of(leg["structuredContent"]["uid"].as_str().unwrap());
     let got = call(&mut server, "get_event", json!({ "event": uri }));
     assert_eq!((got["structuredContent"]["legs"][0]["title"].as_str(), got["structuredContent"]["legs"][0]["side"].as_str()), (Some("Bus 24"), Some("before")), "{got}");
     let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
     // Moved: the leg with it, said, one Undo for both.
-    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": "2026-11-24T15:00", "end": "2026-11-24T15:30" }));
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-24T15:00", "end": "2099-11-24T15:30" }));
     assert_eq!(moved["structuredContent"]["legs_moved"], json!(["Bus 24 (timetable not checked)"]), "{moved}");
-    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| (e.start, e.end)), Some(("2026-11-24T14:10".to_string(), "2026-11-24T14:35".to_string())));
+    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| (e.start, e.end)), Some(("2099-11-24T14:10".to_string(), "2099-11-24T14:35".to_string())));
     assert!(said_about("Doctor").put_back());
     assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "every file back");
     // Asked to stay: the leg keeps its time, set from the appointment as it is now.
-    let stayed = call(&mut server, "update_event", json!({ "event": uri, "start": "2026-11-24T15:00", "end": "2026-11-24T15:30", "legs": "stay" }));
+    let stayed = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-24T15:00", "end": "2099-11-24T15:30", "legs": "stay" }));
     assert_eq!(stayed["isError"], false, "{stayed}");
-    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| e.start), Some("2026-11-24T13:10".to_string()));
+    assert_eq!(sioul_core::agenda::edit_of(&bus).map(|e| e.start), Some("2099-11-24T13:10".to_string()));
     assert_eq!(sioul_core::anchors::parse(&std::fs::read_to_string(&bus).unwrap()).map(|a| a.gap), Some(85 * 60));
     // Deleted: its leg to come with it; Undo brings both back.
     let gone = call(&mut server, "delete_event", json!({ "event": uri }));
@@ -2289,9 +2317,30 @@ fn legs_move_and_go_with_their_appointment() {
     // A closed project's appointment: kept from agents, it takes no leg.
     let zeugma = vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| p.ends_with("zeugma-event.ics")).unwrap();
     let zeugma_uid = sioul_core::appointments::uid_in(&zeugma);
-    let kept = call(&mut server, "add_event", json!({ "title": "Walk", "start": "2026-11-24T09:00", "end": "2026-11-24T09:20", "anchor": format!("sioul:event/{zeugma_uid}") }));
+    let kept = call(&mut server, "add_event", json!({ "title": "Walk", "start": "2099-11-24T09:00", "end": "2099-11-24T09:20", "anchor": format!("sioul:event/{zeugma_uid}") }));
     assert_eq!(kept["isError"], true, "{kept}");
     assert!(!text(&kept).contains("Zeugma"));
+    // A leg kept from agents (the closed project's), beside the open appointment: never
+    // written nor named by update_event, kept by delete_event (review of ab7daa4, M2).
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let doctor_uid = sioul_core::appointments::uid_in(&doctor);
+    let walk = agenda.dir.join("zeugma-walk.ics");
+    std::fs::write(&walk, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:zeugma-walk\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20991124T123000Z\r\nDTEND:20991124T124500Z\r\nSUMMARY:Zeugma walk\r\nREFID:taxes\r\nRELATED-TO;RELTYPE=PARENT:{doctor_uid}\r\nX-SIOUL-ANCHOR;GAP=PT15M;WAS=20991124T130000Z:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")).unwrap();
+    let walk_before = std::fs::read_to_string(&walk).unwrap();
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-24T16:00", "end": "2099-11-24T16:30" }));
+    assert_eq!(moved["isError"], false, "{moved}");
+    assert_eq!(std::fs::read_to_string(&walk).unwrap(), walk_before, "never written");
+    assert!(!moved.to_string().contains("Zeugma"), "never named: {moved}");
+    assert_eq!(moved["structuredContent"]["legs_kept_back"], 1, "counted");
+    let gone = call(&mut server, "delete_event", json!({ "event": uri }));
+    assert_eq!(gone["isError"], false, "{gone}");
+    assert!(walk.exists() && !doctor.exists(), "kept, as an event of its own");
+    // An open leg of the closed appointment: what it is before is never given.
+    let open_leg = agenda.dir.join("open-walk.ics");
+    std::fs::write(&open_leg, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:open-walk\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20991124T083000Z\r\nDTEND:20991124T084500Z\r\nSUMMARY:Walk\r\nRELATED-TO;RELTYPE=PARENT:{zeugma_uid}\r\nX-SIOUL-ANCHOR;GAP=PT15M;WAS=20991124T090000Z:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")).unwrap();
+    let got = call(&mut server, "get_event", json!({ "event": "open-walk" }));
+    assert_eq!(got["isError"], false, "{got}");
+    assert!(got["structuredContent"]["leg_of"].is_null() && !got.to_string().contains(&zeugma_uid), "{got}");
 }
 
 /// Events and tasks read and changed one by one (25 October 2026): each

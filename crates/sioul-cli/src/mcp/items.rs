@@ -142,7 +142,8 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     // Its legs (part E), or, for a leg, the appointment it is before or after.
     let zone = TimeZone::system();
     data["legs"] = Value::Array(sioul_core::anchors::legs_of(&found.uid, &loaded.events).into_iter().filter(|l| consent.allows(&links::event_uri(&l.uid))).filter_map(|l| leg_json(l, &zone)).collect());
-    if let Some(anchor) = sioul_core::anchors::parse(&found.text) {
+    // What a leg is before or after, only when the agent may see that appointment (review of ab7daa4, M2).
+    if let Some(anchor) = sioul_core::anchors::parse(&found.text).filter(|a| consent.allows(&links::event_uri(&a.appointment))) {
         data["leg_of"] = json!({ "event": links::event_uri(&anchor.appointment), "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() });
     }
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
@@ -229,13 +230,20 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let text = agenda::apply(&found.text, &edit, &zone)?;
     let mut files = Vec::new();
     let mut legs_moved: Vec<String> = Vec::new();
+    let mut kept_back = 0usize;
     if text != found.text {
         // Its legs in the same change (part E2): moved with it, or, asked, kept where they are.
-        let gesture = sioul_core::anchors::gesture(&found.path, &found.text, &text, &loaded.events, &zone);
+        // Never a leg kept from agents: left as it is, counted, never named; the window's next
+        // pass sets it right, as a move this device saw (review of ab7daa4, M2).
+        let allowed = |path: &Path| loaded.events.iter().find(|e| Path::new(&e.key) == path).is_some_and(|e| consent.allows(&links::event_uri(&e.uid)));
+        kept_back = sioul_core::anchors::legs_of(&found.uid, &loaded.events).iter().filter(|l| !allowed(Path::new(&l.key))).count();
+        let mut gesture = sioul_core::anchors::gesture(&found.path, &found.text, &text, &loaded.events, &zone);
+        gesture.legs.retain(|(path, _)| allowed(path));
         let legs: Vec<(PathBuf, String)> = if legs_stay {
             let instants = agenda::first_times(&text, &zone).map(|(start, end)| sioul_core::moves::Instants { start, end });
             sioul_core::anchors::legs_of(&found.uid, &loaded.events)
                 .into_iter()
+                .filter(|leg| allowed(Path::new(&leg.key)))
                 .filter_map(|leg| {
                     let path = PathBuf::from(&leg.key);
                     let leg_text = std::fs::read_to_string(&path).ok()?;
@@ -255,6 +263,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if !legs_moved.is_empty() {
         line = format!("{line} {}", s.say("legs-moved-with", &[("legs", legs_moved.join(", "))]));
     }
+    let kept_line = if kept_back > 0 { format!("\n{}", s.tr.text("legs-kept-back", Some(&s.tr.counted(kept_back)))) } else { String::new() };
     if moving && let Some(id) = &calendar {
         let target = calendar_named(id, s)?;
         let moved = agenda::new_path(&target);
@@ -272,7 +281,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     say_in_window(line.clone(), files);
     let calendar = pim_collection(&at).unwrap_or(found.calendar.clone());
-    Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "changed": true, "calendar": format!("{}/{}", calendar.account, calendar.id), "legs_moved": legs_moved, "sent": false }) })
+    Ok(Answer { text: format!("{line}{kept_line}"), data: json!({ "uri": links::event_uri(&found.uid), "changed": true, "calendar": format!("{}/{}", calendar.account, calendar.id), "legs_moved": legs_moved, "legs_kept_back": kept_back, "sent": false }) })
 }
 
 /// The collection a file is in.
@@ -312,16 +321,15 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
                 Some("keep") => true,
                 Some(other) => return Err(format!("“legs” is delete or keep; not “{}”.", one_line(other))),
             };
-            let legs = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone) };
-            let mut files = Vec::new();
-            for leg in legs {
-                let Ok(before) = std::fs::read_to_string(&leg) else { continue };
-                vdir::remove_item(&leg)?;
-                files.push(FileChange { path: leg, before: Some(before), after: None });
-            }
-            vdir::remove_item(&found.path)?;
-            line = if files.is_empty() { s.say("agent-event-deleted", &[("title", one_line(&title))]) } else { s.tr.text("legs-deleted-with", Some(&s.tr.counted(files.len()))) };
-            files.insert(0, FileChange { path: found.path.clone(), before: Some(found.text.clone()), after: None });
+            // Never a leg kept from agents: it stays, as an event of its own (review of ab7daa4, M2).
+            let allowed = |path: &PathBuf| loaded.events.iter().find(|e| Path::new(&e.key) == path.as_path()).is_some_and(|e| consent.allows(&links::event_uri(&e.uid)));
+            let legs: Vec<PathBuf> = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone).into_iter().filter(allowed).collect() };
+            let count = legs.len();
+            // The legs and the appointment in one change: one that fails, none gone (review of ab7daa4, later 5).
+            let mut gone = vec![found.path.clone()];
+            gone.extend(legs);
+            let files = sioul_core::composed::Change { gone, ..sioul_core::composed::Change::default() }.write()?;
+            line = if count == 0 { s.say("agent-event-deleted", &[("title", one_line(&title))]) } else { s.tr.text("legs-deleted-with", Some(&s.tr.counted(count))) };
             files
         }
     };
@@ -905,26 +913,22 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         if family.iter().any(|t| t.read_only) {
             return Err(s.tr.text("task-read-only", None));
         }
-        // Into a list that keeps no link (Google Tasks): a tie to an appointment undone first (part E0.9).
-        if provider == sioul_core::capabilities::Provider::GoogleTasks {
-            for t in &family {
-                merge_files(&mut files, sioul_core::pairs::untied_for_list(t, &desk.loaded.events, &now).write()?);
+        // The task and its steps, each through the move journal, in one change; into a list that
+        // keeps no link (Google Tasks), a tie to an appointment undone in that same change (part
+        // E0.9): a move that fails unties nothing (review of ab7daa4, later 5).
+        let was: Vec<(PathBuf, String)> = family.iter().filter_map(|t| Some((PathBuf::from(&t.key), if t.uid == task.uid { current.clone() } else { std::fs::read_to_string(&t.key).ok()? }))).collect();
+        let change = sioul_core::pairs::moved_into(&family, &target.dir, &desk.loaded.events, provider == sioul_core::capabilities::Provider::GoogleTasks, &now)?;
+        let mut written = change.write()?;
+        // As a move: there before (the task as it was before this call), the old file gone.
+        for f in written.iter_mut() {
+            if let Some((_, before)) = was.iter().find(|(p, _)| *p == f.path) {
+                f.before = Some(before.clone());
             }
         }
-        // The task and its steps, each through the move journal.
-        for t in family {
-            let from = PathBuf::from(&t.key);
-            if from.parent() == Some(target.dir.as_path()) {
-                continue;
-            }
-            let written = std::fs::read_to_string(&from).map_err(|e| e.to_string())?;
-            let to = target.dir.join(format!("{}.ics", vdir::new_name()));
-            vdir::move_item(&from, &to)?;
-            files.retain(|f| f.path != from);
-            let was = if t.uid == task.uid { Some(current.clone()) } else { Some(written.clone()) };
-            files.push(FileChange { path: from, before: was, after: None });
-            files.push(FileChange { path: to, before: None, after: Some(written) });
+        for f in &written {
+            files.retain(|g| g.path != f.path);
         }
+        files.extend(written);
         line = s.say("agent-task-moved", &[("title", one_line(&edit.title)), ("list", target.label(&s.config, &s.tr))]);
     }
     // A step of another, or a task of its own again: after the rest, from the files as they are now.

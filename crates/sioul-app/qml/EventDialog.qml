@@ -26,13 +26,28 @@ Dialog {
     // 2026): its UID, and the file of the time block it was opened from.
     property string taskUid: ""
     property string taskBlock: ""
-    // A leg of the appointment in `legOf` (part E5: "Add a ride or a walk…"):
-    // on `legSide` ("before", "after"), from a timetable or not; `legLine`
-    // says which appointment ("Before Doctor (14:00)").
+    // A leg of the appointment in `legOf` (part E5: "Add a ride or a walk…"),
+    // `legTitle` from `legAt` to `legUntil` (Unix seconds), from a timetable or
+    // not. Its side is its times': after the appointment once it starts from its
+    // end, else before (review of ab7daa4, later 7); `legLine` says it ("Before
+    // Doctor (14:00)").
     property string legOf: ""
-    property string legSide: "before"
+    property string legTitle: ""
+    property real legAt: 0
+    property real legUntil: 0
     property bool legTimetable: false
-    property string legLine: ""
+    readonly property string legSide: dialog.legOf !== "" && dialog.legStart() >= dialog.legUntil ? "after" : "before"
+    readonly property string legLine: dialog.legOf === "" ? "" : dialog.sioul.textArgs(dialog.legSide === "after" ? "leg-after" : "leg-before", JSON.stringify({ appointment: dialog.legTitle, time: dialog.clockOf(dialog.legSide === "after" ? dialog.legUntil : dialog.legAt) }))
+
+    // The start typed, in Unix seconds (local, as the form writes it); NaN while it does not read.
+    function legStart() {
+        return new Date(startDay.date + "T" + startTime.text).getTime() / 1000
+    }
+
+    function clockOf(seconds) {
+        const d = new Date(seconds * 1000)
+        return dialog.pad(d.getHours()) + ":" + dialog.pad(d.getMinutes())
+    }
     // What the task cannot keep as an appointment, said before Save (F5); else "".
     property string losses: ""
     property var calendars: []
@@ -160,9 +175,10 @@ Dialog {
     function edit(key, day, hour) {
         dialog.key = key
         dialog.legOf = ""
-        dialog.legSide = "before"
+        dialog.legTitle = ""
+        dialog.legAt = 0
+        dialog.legUntil = 0
         dialog.legTimetable = false
-        dialog.legLine = ""
         dialog.taskUid = ""
         dialog.taskBlock = ""
         dialog.losses = ""
@@ -267,13 +283,15 @@ Dialog {
         dialog.moreShown = made.notes !== "" || made.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
     }
 
-    // A leg of the appointment in `key` (part E5), its times given ("YYYY-MM-DD",
-    // "HH:MM"), on `side`; `line` names the appointment. Saved, it moves with it.
-    function makeLeg(key, side, line, day, from, to) {
+    // A leg of the appointment in `key` (part E5), `title` from `at` to `until`
+    // (Unix seconds), its own times given ("YYYY-MM-DD", "HH:MM"). Saved, it
+    // moves with it. No repeat, no calendar to choose: the appointment's.
+    function makeLeg(key, title, at, until, day, from, to) {
         dialog.edit("", day)
         dialog.legOf = key
-        dialog.legSide = side
-        dialog.legLine = line
+        dialog.legTitle = title
+        dialog.legAt = at
+        dialog.legUntil = until
         startDay.date = day
         endDay.date = day
         startTime.text = from
@@ -385,24 +403,6 @@ Dialog {
                     wrapMode: Text.Wrap
                     color: dialog.theme.muted
                 }
-                RowLayout {
-                    spacing: 6
-
-                    Button {
-                        objectName: "legBefore"
-                        text: dialog.sioul.text("leg-side-before")
-                        checkable: true
-                        checked: dialog.legSide === "before"
-                        onClicked: dialog.legSide = "before"
-                    }
-                    Button {
-                        objectName: "legAfter"
-                        text: dialog.sioul.text("leg-side-after")
-                        checkable: true
-                        checked: dialog.legSide === "after"
-                        onClicked: dialog.legSide = "after"
-                    }
-                }
                 CheckBox {
                     objectName: "legTimetable"
                     text: dialog.sioul.text("leg-timetable")
@@ -493,6 +493,8 @@ Dialog {
             // details": folded there, it was never found (22 October 2026).
             GridLayout {
                 objectName: "event-calendar-row"
+                // A leg goes with its appointment, said once saved.
+                visible: dialog.legOf === ""
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 8
@@ -596,12 +598,16 @@ Dialog {
                     }
                 }
                 Label {
+                    visible: dialog.legOf === ""
                     text: dialog.sioul.text("event-repeat")
                     color: dialog.theme.muted
                 }
                 PlainComboBox {
                     id: repeat
 
+                    objectName: "eventRepeat"
+                    // A leg happens once: one that repeated would count other days as before it.
+                    visible: dialog.legOf === ""
                     enabled: !dialog.withOthers
                     Layout.fillWidth: true
                     model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))

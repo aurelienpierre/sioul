@@ -120,13 +120,7 @@ impl Change {
         match self.write_into(&mut done) {
             Ok(()) => Ok(done),
             Err(e) => {
-                for change in done.iter().rev() {
-                    let _ = match (&change.before, &change.after) {
-                        (Some(before), _) => vdir::write_item(&change.path, before),
-                        (None, Some(_)) => vdir::remove_item(&change.path),
-                        (None, None) => Ok(()),
-                    };
-                }
+                take_back(&done);
                 Err(e)
             }
         }
@@ -167,6 +161,24 @@ impl Change {
             out.push(FileChange { path: path.clone(), before: Some(before), after: None });
         }
         Ok(())
+    }
+}
+
+/// What a change cut short wrote, taken back, last first: each file only
+/// while it still holds what the change left there (`after`; a file it took
+/// out, while it is still gone), so that a newer copy stored meanwhile (a
+/// pull, another program) is never written over (review of ab7daa4, later 4).
+fn take_back(done: &[FileChange]) {
+    for change in done.iter().rev() {
+        let now = std::fs::read_to_string(&change.path).ok();
+        if now != change.after {
+            continue;
+        }
+        let _ = match (&change.before, &change.after) {
+            (Some(before), _) => vdir::write_item(&change.path, before),
+            (None, Some(_)) => vdir::remove_item(&change.path),
+            (None, None) => Ok(()),
+        };
     }
 }
 
@@ -503,6 +515,20 @@ pub fn close_with(tasks: &[Task], done: &str, now: &Zoned) -> Result<Change, Ref
 mod tests {
     use super::*;
     use crate::tasks::Relation;
+
+    /// A take-back never writes over a newer copy stored meanwhile (review of
+    /// ab7daa4, later 4): a file changed since the change wrote it stays as it is.
+    #[test]
+    fn a_take_back_keeps_a_newer_copy() {
+        let desk = Desk::new("take-back");
+        let path = desk.list.dir.join("kept.ics");
+        std::fs::write(&path, "newer").unwrap();
+        take_back(&[FileChange { path: path.clone(), before: Some("before".into()), after: Some("written".into()) }]);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer", "the newer copy kept");
+        std::fs::write(&path, "written").unwrap();
+        take_back(&[FileChange { path: path.clone(), before: Some("before".into()), after: Some("written".into()) }]);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "before", "what it wrote, taken back");
+    }
 
     /// E0.7: a file that fails takes back what the change wrote before it: the
     /// file made removed, the file written put back; then it says why.

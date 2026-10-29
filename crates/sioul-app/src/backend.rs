@@ -954,6 +954,10 @@ pub mod qobject {
         #[qinvokable]
         fn set_step_after(self: Pin<&mut Sioul>, uid: &QString, after: bool) -> QString;
 
+        /// A step or a task an appointment over set aside by itself, brought back: {"uid"} or {"error"}.
+        #[qinvokable]
+        fn bring_back(self: Pin<&mut Sioul>, uid: &QString) -> QString;
+
         /// A leg added beside the appointment in `key` (part E5): the event
         /// form, "before" or "after", from a timetable or not. What went wrong, else "".
         #[qinvokable]
@@ -5048,6 +5052,10 @@ impl qobject::Sioul {
 
     fn event_pairing(&self, key: &QString) -> QString {
         QString::from(&crate::appointments::pairing(&self.shared(), &key.to_string()))
+    }
+
+    fn bring_back(self: Pin<&mut Self>, uid: &QString) -> QString {
+        QString::from(&work::bring_back(&self.qt_thread(), &self.shared(), &uid.to_string()))
     }
 
     fn set_step_after(self: Pin<&mut Self>, uid: &QString, after: bool) -> QString {

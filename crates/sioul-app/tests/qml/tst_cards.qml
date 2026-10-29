@@ -108,9 +108,14 @@ Item {
                 return JSON.stringify({ uid: "bus", key: key, title: "Bus 24", line: "", before: [], more: 0, bring: [], getting_there: [], coming_back: [], steps_after: [], also: [], leg_of: { uid: "dentist", key: "/c/dentist.ics", title: "Dentist", start: 4000000000, side: "before", unconfirmed: true, line: "Before Dentist (09:00) · moves with it" } })
             if (key !== "/c/dentist.ics")
                 return "{}"
-            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }], getting_there: mock.withLegs ? [{ uid: "bus", key: "/c/bus.ics", title: "Bus 24", start: 3999997800, end: 3999999300, when: "08:30 – 08:55", unconfirmed: true }] : [], coming_back: mock.withLegs ? [{ uid: "home", key: "/c/home.ics", title: "Walk home", start: 4000004200, end: 4000005400, when: "10:10 – 10:30", unconfirmed: false }] : [], steps_after: mock.withLegs ? [{ uid: "next", title: "Book the next one" }] : [], also: mock.withLegs ? [{ uid: "papers", title: "The papers" }] : [], leg_of: null })
+            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }], getting_there: mock.withLegs ? [{ uid: "bus", key: "/c/bus.ics", title: "Bus 24", start: 3999997800, end: 3999999300, when: "08:30 – 08:55", unconfirmed: true }] : [], coming_back: mock.withLegs ? [{ uid: "home", key: "/c/home.ics", title: "Walk home", start: 4000004200, end: 4000005400, when: "10:10 – 10:30", unconfirmed: false }] : [], steps_after: mock.withLegs ? [{ uid: "next", title: "Book the next one" }] : [], also: mock.withLegs ? [{ uid: "papers", title: "The papers" }] : [], set_aside: mock.withAside ? [{ uid: "early", title: "Send the prescription" }] : [], leg_of: null })
         }
         property bool withLegs: false
+        property bool withAside: false
+        function bringBack(uid) {
+            mock.calls.push({ what: "bringBack", uid: uid })
+            return JSON.stringify({ uid: uid })
+        }
         function saveLeg(key, edit, side, timetable) {
             mock.calls.push({ what: "saveLeg", key: key, edit: JSON.parse(edit), side: side, timetable: timetable })
             return ""
@@ -272,6 +277,7 @@ Item {
 
         function init() {
             mock.withLegs = false
+            mock.withAside = false
             mock.letterTask = ""
             mock.calls = []
             mock.status = ""
@@ -618,6 +624,7 @@ Item {
         // card says what it is to its appointment, and × unties it.
         function test_an_appointment_s_legs() {
             mock.withLegs = true
+            const dentist = mock.events["/c/dentist.ics"]
             const host = makeHost()
             host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
             wait(20)
@@ -635,10 +642,18 @@ Item {
             const dialog = root.all(card, c => typeof c.now === "function").map(l => l.item).find(d => d && typeof d.makeLeg === "function" && d.legOf !== "")
             verify(dialog !== undefined, "the form, as a leg")
             compare([dialog.legOf, dialog.legSide].join(" "), "/c/dentist.ics before")
+            // A leg happens once, with its appointment: no repeat, no calendar to choose (review of ab7daa4, later 7).
+            dialog.moreShown = true
+            verify(!root.find(dialog.contentItem, "eventRepeat").visible && !root.find(dialog.contentItem, "event-calendar-row").visible)
             root.find(dialog.contentItem, "eventTitle").text = "Bus 24"
             root.find(dialog.contentItem, "legTimetable").toggle()
             root.find(dialog.contentItem, "legTimetable").toggled()
-            root.find(dialog.contentItem, "legAfter").clicked()
+            // Its times after the appointment's end: after it, as its times say.
+            const two = n => (n < 10 ? "0" : "") + n
+            const local = s => { const d = new Date(s * 1000); return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate()) + "T" + two(d.getHours()) + ":" + two(d.getMinutes()) }
+            dialog.applyForm({ start: local(4000003600 + 600), end: local(4000003600 + 1800) })
+            compare(dialog.legSide, "after")
+            verify(dialog.legLine.indexOf("leg-after") === 0, dialog.legLine)
             dialog.save()
             const saved = mock.calls.filter(c => c.what === "saveLeg")
             compare(saved.length, 1, JSON.stringify(mock.calls))
@@ -652,7 +667,29 @@ Item {
             verify(!root.find(host.eventCard, "eventCardAddLeg").visible, "a leg takes no leg")
             root.find(host.eventCard, "eventCardUntieLeg").clicked()
             compare(mock.calls.filter(c => c.what === "untieLeg").map(c => c.key).join(" "), "/c/bus.ics")
+            // Nor an appointment cancelled or declined, nor a block opened as an event (review of ab7daa4, later 15).
+            for (const changed of [{ cancelled: true }, { declined: true }, { task: "t1" }]) {
+                mock.events["/c/dentist.ics"] = Object.assign({}, dentist, changed)
+                host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+                wait(20)
+                verify(!root.find(host.eventCard, "eventCardAddLeg").visible, JSON.stringify(changed))
+            }
+            mock.events["/c/dentist.ics"] = dentist
             mock.withLegs = false
+        }
+
+        // The way back (review of ab7daa4, M1): what an appointment over set aside by itself is
+        // listed on its card, each with Bring back, which asks for it by its own UID.
+        function test_what_an_appointment_set_aside_comes_back() {
+            mock.withAside = true
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const back = root.all(host.eventCard, c => c.objectName === "eventCardBringBack" && c.visible)
+            verify(back.length >= 1, "Bring back offered")
+            verify(root.all(host.eventCard, c => c.text === "Send the prescription" && c.visible).length >= 1)
+            back[0].clicked()
+            compare(mock.calls.filter(c => c.what === "bringBack").map(c => c.uid).join(" "), "early")
         }
 
         function test_an_appointment_s_part_f() {

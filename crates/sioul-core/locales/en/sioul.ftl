@@ -6418,8 +6418,10 @@ appointment-bring = Bring
 appointment-more = and { $n } more
 appointment-getting-there = Getting there
 appointment-coming-back = Coming back
-appointment-arrive = arrive { $time }
 appointment-also-tied = Also tied: { $title }
+appointment-set-aside = Set aside after it
+appointment-bring-back = Bring back
+task-brought-back = “{ $title }” is back.
 appointment-add-leg = Add a ride or a walk…
 leg-before = Before { $appointment } ({ $time })
 leg-after = After { $appointment } ({ $time })
@@ -6428,10 +6430,9 @@ leg-unconfirmed = Moved with the appointment; the timetable was not checked.
 leg-untie = Untie it from the appointment
 leg-untied = No longer tied to { $appointment }.
 leg-timetable = From a timetable
-leg-side-before = Before it
-leg-side-after = After it
 leg-made = { $leg }, before { $appointment }.
 leg-made-after = { $leg }, after { $appointment }.
+leg-elsewhere = In { $calendar }: the appointment's calendar does not take it.
 leg-repeating = Legs are for an appointment at one time: not one that repeats, nor one that lasts the whole day.
 leg-times = The leg's times do not read.
 leg-gone = Its appointment is not here.
@@ -6440,6 +6441,10 @@ legs-unconfirmed = { $leg } (timetable not checked)
 legs-deleted-with = { $n ->
     [one] Event deleted, with its leg to come.
    *[other] Event deleted, with its { $count } legs to come.
+}
+legs-kept-back = { $n ->
+    [one] One leg kept from agents is not written here: Sioul sets it right at its next pass.
+   *[other] { $Count } legs kept from agents are not written here: Sioul sets them right at its next pass.
 }
 agenda-show-legs = Each ride or walk as an event of its own
 reminder-legs-unconfirmed = (timetable not checked)

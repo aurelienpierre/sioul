@@ -274,8 +274,18 @@ pub fn upkept(text: &str, appointment: &Followed, seen: Option<Instants>, since:
     }
     let Some((start, end)) = agenda::first_times(text, zone) else { return Step::Nothing };
     let leg = Instants { start, end };
+    // Over: what happened stays as it was, whatever its appointment's record becomes (review of ab7daa4, later 9).
+    if end <= now.timestamp().as_second() {
+        return Step::Nothing;
+    }
     let at = instant(anchor.side, appointment.instants);
     if !untouched(leg, &anchor) {
+        // Moved by hand elsewhere, maybe with its appointment whose copy is not here yet: taken
+        // again only once a pull begun after the doubt went through, as a follow waits (review of
+        // ab7daa4, later 1), never set from an older copy.
+        if moves::verdict(false, false, since, pull) == Verdict::Wait {
+            return Step::Wait;
+        }
         // Moved by hand: its time kept, its side and distance from the appointment now; the hand wins.
         let set = anchored(leg, appointment.instants, &anchor);
         return rewritten(text, leg, &set, &appointment.stamp, zone).map_or(Step::Nothing, Step::Write);
@@ -309,11 +319,19 @@ fn followed(text: &str, anchor: &Anchor, leg: Instants, appointment: &Followed) 
 /// was) to `appointment` (as written now); a leg moved by hand meanwhile
 /// keeps its time, its anchor taken again. None when nothing changes.
 pub fn moved_with(text: &str, was: Instants, appointment: &Followed, zone: &TimeZone) -> Option<String> {
+    moved_with_at(text, was, appointment, zone, jiff::Timestamp::now().as_second())
+}
+
+/// `moved_with` at `now` (Unix seconds): a leg already over stays as it was.
+fn moved_with_at(text: &str, was: Instants, appointment: &Followed, zone: &TimeZone, now: i64) -> Option<String> {
     let anchor = parse(text)?;
     if anchor.appointment != appointment.uid || !appointment.followable() {
         return None;
     }
     let (start, end) = agenda::first_times(text, zone)?;
+    if end <= now {
+        return None;
+    }
     let leg = Instants { start, end };
     let before = Anchor { was: anchor.was.or(Some(instant(anchor.side, was))), ..anchor.clone() };
     if !untouched(leg, &before) {
@@ -486,10 +504,11 @@ pub fn mark(occurrences: &mut [Occurrence]) {
 /// `moves::upkeep`: each leg written as `upkept` says, through the writer's
 /// one rule (`composed::Change::write`: never a meeting with others, nor a
 /// calendar you only read). The files written; whether every leg is settled
-/// (written or needing nothing), and whether one waits.
-pub fn follow_legs(legs: &[&EventRef], appointment: &Followed, seen: Option<Instants>, since: i64, pull: Pull, now: &Zoned) -> (Vec<PathBuf>, bool, bool) {
+/// (written or needing nothing), and the instants of those that wait (each its
+/// own doubt, `since` giving when it began).
+pub fn follow_legs(legs: &[&EventRef], appointment: &Followed, seen: Option<Instants>, since: &dyn Fn(i64) -> i64, pull: Pull, now: &Zoned) -> (Vec<PathBuf>, bool, Vec<i64>) {
     let mut written = Vec::new();
-    let (mut settled, mut waits) = (true, false);
+    let (mut settled, mut waits) = (true, Vec::new());
     for leg in legs {
         let path = PathBuf::from(&leg.key);
         let Ok(text) = std::fs::read_to_string(&path) else {
@@ -500,9 +519,11 @@ pub fn follow_legs(legs: &[&EventRef], appointment: &Followed, seen: Option<Inst
         if agenda::guard(&path, agenda::Change::Write(&text)).is_err() {
             continue;
         }
-        match upkept(&text, appointment, seen, since, pull, now) {
+        // The doubt of this leg's own instant (`WAS`): a leg written later has its own.
+        let set_for = parse(&text).and_then(|a| a.was).unwrap_or(0);
+        match upkept(&text, appointment, seen, since(set_for), pull, now) {
             Step::Nothing => {}
-            Step::Wait => waits = true,
+            Step::Wait => waits.push(set_for),
             Step::Write(new) => match (crate::composed::Change { written: vec![(path.clone(), new)], ..crate::composed::Change::default() }).write() {
                 Ok(_) => written.push(path),
                 Err(_) => settled = false,
@@ -658,12 +679,13 @@ mod tests {
         let Step::Write(home_moved) = upkept(&home, &longer, seen, 0, pull, &now()) else { panic!("the leg after follows the end") };
         assert_eq!(times(&home_moved), (t("2026-10-29T15:10"), t("2026-10-29T15:35")));
         assert!(parse(&home_moved).unwrap().unconfirmed.is_none(), "no timetable: no doubt");
-        // To another day, across the clock change (25 October, an hour gained): absolute time.
-        let seen_25 = Some(Instants { start: t("2026-10-24T14:00"), end: t("2026-10-24T14:30") });
-        let bus_24 = event("bus", "2026-10-24T13:10", "2026-10-24T13:35", &format!("RELATED-TO;RELTYPE=PARENT:doctor\r\nX-SIOUL-ANCHOR;GAP=PT25M;WAS={}:BEFORE\r\n", moves::utc(t("2026-10-24T14:00"))));
-        let next = appointment("2026-10-26T14:00", "2026-10-26T14:30");
-        let Step::Write(across) = upkept(&bus_24, &next, seen_25, 0, pull, &now()) else { panic!("across the change") };
-        assert_eq!(times(&across), (t("2026-10-26T13:10"), t("2026-10-26T13:35")), "13:10 on the clock, both sides of the change");
+        // To another day, across the clock change (28 March 2027, an hour lost; a leg still to
+        // come, since one over stays): absolute time.
+        let seen_27 = Some(Instants { start: t("2027-03-27T14:00"), end: t("2027-03-27T14:30") });
+        let bus_27 = event("bus", "2027-03-27T13:10", "2027-03-27T13:35", &format!("RELATED-TO;RELTYPE=PARENT:doctor\r\nX-SIOUL-ANCHOR;GAP=PT25M;WAS={}:BEFORE\r\n", moves::utc(t("2027-03-27T14:00"))));
+        let next = appointment("2027-03-29T14:00", "2027-03-29T14:30");
+        let Step::Write(across) = upkept(&bus_27, &next, seen_27, 0, pull, &now()) else { panic!("across the change") };
+        assert_eq!(times(&across), (t("2027-03-29T13:10"), t("2027-03-29T13:35")), "13:10 on the clock, both sides of the change");
     }
 
     /// The four who-moved cases: neither (nothing), the appointment (follow),
@@ -671,7 +693,7 @@ mod tests {
     #[test]
     fn who_moved_in_the_four_cases() {
         let seen = Some(Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") });
-        let pull = Pull { syncs: true, began: None };
+        let pull = Pull { syncs: true, began: Some(1) };
         let same = appointment("2026-10-29T14:00", "2026-10-29T14:30");
         assert_eq!(upkept(&bus(), &same, seen, 0, pull, &now()), Step::Nothing, "neither");
         let by_hand = bus().replace(&moves::utc(t("2026-10-29T13:10")), &moves::utc(t("2026-10-29T13:00"))).replace(&moves::utc(t("2026-10-29T13:35")), &moves::utc(t("2026-10-29T13:25")));
@@ -685,6 +707,33 @@ mod tests {
         let a = parse(&both).unwrap();
         assert_eq!((a.gap, a.was, a.unconfirmed), (95 * 60, Some(t("2026-10-29T15:00")), None));
         assert_eq!(upkept(&both, &later, Some(later.instants), 0, pull, &now()), Step::Nothing, "twice: nothing");
+    }
+
+    /// A leg moved by hand elsewhere together with its appointment, the leg's
+    /// file come first (review of ab7daa4, later 1): it waits for a pull begun
+    /// after, then is set from the appointment as it came, written once, where
+    /// it was put; on a calendar that does not sync, at once.
+    #[test]
+    fn a_leg_moved_by_hand_with_its_appointment_waits_for_it() {
+        let stale = appointment("2026-10-29T14:00", "2026-10-29T14:30");
+        let by_hand = bus().replace(&moves::utc(t("2026-10-29T13:10")), &moves::utc(t("2026-10-29T13:00"))).replace(&moves::utc(t("2026-10-29T13:35")), &moves::utc(t("2026-10-29T13:25")));
+        assert_eq!(upkept(&by_hand, &stale, Some(stale.instants), 100, Pull { syncs: true, began: Some(50) }, &now()), Step::Wait, "never set from the older copy");
+        let came = appointment("2026-10-29T15:00", "2026-10-29T15:30");
+        let Step::Write(set) = upkept(&by_hand, &came, Some(stale.instants), 100, Pull { syncs: true, began: Some(200) }, &now()) else { panic!("set once the pull went through") };
+        assert_eq!(times(&set), (t("2026-10-29T13:00"), t("2026-10-29T13:25")), "where it was put");
+        assert_eq!(parse(&set).unwrap().gap, 95 * 60);
+        assert_eq!(upkept(&set, &came, Some(came.instants), 100, Pull { syncs: true, began: Some(200) }, &now()), Step::Nothing, "written once");
+        assert!(matches!(upkept(&by_hand, &stale, Some(stale.instants), 100, Pull::default(), &now()), Step::Write(_)), "a calendar that does not sync: at once");
+    }
+
+    /// A leg already over stays as it was, whatever its appointment's record
+    /// becomes (review of ab7daa4, later 9).
+    #[test]
+    fn a_leg_over_does_not_follow() {
+        let later = appointment("2026-10-29T15:00", "2026-10-29T15:30");
+        let after_it: Zoned = "2026-10-29T18:00:00+01:00[Europe/Paris]".parse().unwrap();
+        assert_eq!(upkept(&bus(), &later, Some(Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") }), 0, Pull { syncs: true, began: None }, &after_it), Step::Nothing);
+        assert_eq!(moved_with_at(&bus(), Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") }, &later, &paris(), after_it.timestamp().as_second()), None, "nor with a gesture");
     }
 
     /// A leg set for an instant this device never saw (another device moved the
@@ -727,9 +776,10 @@ mod tests {
     fn a_gesture_moves_the_legs_with_it() {
         let was = Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") };
         let to = appointment("2026-10-30T09:00", "2026-10-30T09:30");
-        let moved = moved_with(&bus(), was, &to, &paris()).unwrap();
+        let at = now().timestamp().as_second();
+        let moved = moved_with_at(&bus(), was, &to, &paris(), at).unwrap();
         assert_eq!(times(&moved), (t("2026-10-30T08:10"), t("2026-10-30T08:35")));
-        assert_eq!(moved_with(&moved, to.instants, &to, &paris()), None, "the same: nothing");
+        assert_eq!(moved_with_at(&moved, to.instants, &to, &paris(), at), None, "the same: nothing");
     }
 
     /// Margins from the legs: from the earliest leg's start, to the latest leg's
@@ -766,10 +816,10 @@ mod tests {
         let legs = legs_of("doctor", &refs);
         let later = appointment("2026-10-29T15:00", "2026-10-29T15:30");
         let seen = Some(Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") });
-        let (written, settled, waits) = follow_legs(&legs, &later, seen, 0, Pull::default(), &now());
-        assert_eq!((written, settled, waits), (vec![path.clone()], true, false));
+        let (written, settled, waits) = follow_legs(&legs, &later, seen, &|_| 0, Pull::default(), &now());
+        assert_eq!((written, settled, waits), (vec![path.clone()], true, Vec::new()));
         assert_eq!(std::fs::read_to_string(&meeting).unwrap(), before, "a meeting with others is never written");
-        let (again, _, _) = follow_legs(&legs, &later, Some(later.instants), 0, Pull::default(), &now());
+        let (again, _, _) = follow_legs(&legs, &later, Some(later.instants), &|_| 0, Pull::default(), &now());
         assert!(again.is_empty(), "twice: nothing");
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }

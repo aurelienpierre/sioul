@@ -43,7 +43,10 @@ pub struct Instants {
 /// What this device saw of each appointment that something here follows,
 /// by its UID (`$XDG_STATE_HOME/sioul/moves-seen.toml`, version 2): its
 /// instants when last noted, and since when (Unix seconds) a follower has
-/// been set for an instant it never saw.
+/// been set for an instant it never saw, by that instant (`"<UID>@<instant>"`:
+/// a follower written later for another instant has a doubt of its own,
+/// never judged by a pull begun before it was written: review of ab7daa4,
+/// later 6).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seen {
     #[serde(default)]
@@ -52,6 +55,12 @@ pub struct Seen {
     pub at: BTreeMap<String, Instants>,
     #[serde(default)]
     pub doubt: BTreeMap<String, i64>,
+    /// When this device first set aside what an appointment over leaves open
+    /// (`pairs::closing`, Unix seconds): written once, never moved back; an
+    /// appointment that ended before it sets nothing aside (the past at the
+    /// install is no preparation forgotten).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closing_from: Option<i64>,
 }
 
 impl Seen {
@@ -78,19 +87,37 @@ impl Seen {
     /// Only the appointments something here still follows (`named`).
     pub fn keep_only(&mut self, named: &BTreeSet<String>) {
         self.at.retain(|uid, _| named.contains(uid));
-        self.doubt.retain(|uid, _| named.contains(uid));
+        self.doubt.retain(|key, _| named.contains(appointment_of(key)));
     }
 
-    /// The appointment `uid` noted at `instants`, its doubt gone.
+    /// The appointment `uid` noted at `instants`, its doubts gone.
     pub fn note(&mut self, uid: &str, instants: Instants) {
         self.at.insert(uid.to_string(), instants);
-        self.doubt.remove(uid);
+        self.doubt.retain(|key, _| appointment_of(key) != uid);
     }
 
-    /// A follower of `uid` set for an instant never seen here: since when, kept from the first time.
-    pub fn doubted(&mut self, uid: &str, now: i64) -> i64 {
-        *self.doubt.entry(uid.to_string()).or_insert(now)
+    /// Since when a follower of `uid` set for `instant` has been in doubt; `now` when it is not.
+    pub fn since(&self, uid: &str, instant: i64, now: i64) -> i64 {
+        self.doubt.get(&doubt_key(uid, instant)).copied().unwrap_or(now)
     }
+
+    /// A follower of `uid` set for `instant`, an instant never seen here: since when, kept from the first time.
+    pub fn doubted(&mut self, uid: &str, instant: i64, now: i64) -> i64 {
+        *self.doubt.entry(doubt_key(uid, instant)).or_insert(now)
+    }
+}
+
+/// A doubt's key: the appointment's UID and the instant its follower was set for.
+fn doubt_key(uid: &str, instant: i64) -> String {
+    format!("{uid}@{instant}")
+}
+
+/// The appointment a doubt's key names (an older key, the UID alone, names it whole).
+fn appointment_of(key: &str) -> &str {
+    key.rsplit_once('@').map_or(key, |(uid, _)| uid)
+}
+
+impl Seen {
 }
 
 /// What to do with one follower.
@@ -180,8 +207,7 @@ pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], 
         let Some(appointment) = crate::anchors::Followed::read(path, zone) else { continue };
         let pull = Pull::of(path);
         let at = seen.at.get(uid).copied();
-        let since = seen.doubt.get(uid).copied().unwrap_or(stamp);
-        let (mut settled, mut waits) = (true, false);
+        let (mut settled, mut waits) = (true, Vec::new());
         let day = jiff::Timestamp::from_second(appointment.instants.start).ok().map(|t| t.to_zoned(zone.clone()).date());
         let dated = crate::pairs::Appointment { day, cancelled: reference.cancelled, recurring: reference.recurring, start: appointment.instants.start };
         for task in tied {
@@ -189,10 +215,10 @@ pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], 
                 settled = false;
                 continue;
             };
-            let (consistent, saw) = crate::pairs::stand(task, &text, &dated, at, zone);
-            match verdict(consistent, saw, since, pull) {
+            let (consistent, saw, set_for) = crate::pairs::stand(task, &text, &dated, at, zone);
+            match verdict(consistent, saw, seen.since(uid, set_for, stamp), pull) {
                 Verdict::Consistent => {}
-                Verdict::Wait => waits = true,
+                Verdict::Wait => waits.push(set_for),
                 Verdict::Follow => {
                     if let Some(followed) = crate::pairs::followed(task, &text, &dated, now) {
                         match crate::vdir::write_item(Path::new(&task.key), &followed) {
@@ -203,12 +229,14 @@ pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], 
                 }
             }
         }
-        let (legs_written, legs_settled, legs_wait) = crate::anchors::follow_legs(legs, &appointment, at, since, pull, now);
+        let (legs_written, legs_settled, legs_wait) = crate::anchors::follow_legs(legs, &appointment, at, &|instant| seen.since(uid, instant, stamp), pull, now);
         written.extend(legs_written);
         settled &= legs_settled;
-        waits |= legs_wait;
-        if waits {
-            seen.doubted(uid, stamp);
+        waits.extend(legs_wait);
+        if !waits.is_empty() {
+            for instant in waits {
+                seen.doubted(uid, instant, stamp);
+            }
         } else if settled {
             seen.note(uid, appointment.instants);
         }
@@ -235,6 +263,24 @@ mod tests {
         let at = jiff::Timestamp::from_second(1_793_278_800).unwrap().as_second();
         assert_eq!(read_utc(&utc(at)), Some(at));
         assert_eq!(read_utc("2026-10-29"), None);
+    }
+
+    /// A doubt is its follower's instant's: one written later for another
+    /// instant starts its own (review of ab7daa4, later 6); noted, all go;
+    /// the closing's start is kept across a save.
+    #[test]
+    fn each_follower_s_instant_has_its_own_doubt() {
+        let mut seen = Seen::default();
+        assert_eq!(seen.doubted("visit", 1000, 100), 100);
+        assert_eq!((seen.since("visit", 1000, 500), seen.since("visit", 2000, 500)), (100, 500), "the later follower's own doubt");
+        seen.doubted("visit", 2000, 500);
+        seen.note("visit", Instants { start: 1, end: 2 });
+        assert!(seen.doubt.is_empty());
+        seen.doubt.insert("visit".into(), 7);
+        seen.keep_only(&["visit".to_string()].into());
+        assert!(seen.doubt.contains_key("visit"), "an older key, the UID alone, still the appointment's");
+        seen.closing_from = Some(42);
+        assert_eq!(toml::from_str::<Seen>(&toml::to_string(&seen).unwrap()).unwrap().closing_from, Some(42));
     }
 
     /// An older form (days only) is not read: first sight again, harmless.

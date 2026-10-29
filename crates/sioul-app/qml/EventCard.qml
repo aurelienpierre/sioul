@@ -309,7 +309,9 @@ CardFrame {
         // getting_there, coming_back, steps_after, also, leg_of}.
         property var shown: null
         readonly property var legOf: part.shown && part.shown.leg_of ? part.shown.leg_of : null
-        readonly property bool legsTaken: card.there && !card.isTask && part.legOf === null && card.event.recurring !== true && card.event.all_day !== true
+        // Never on an appointment that will not be (cancelled, declined), nor a task's block opened
+        // as an event (review of ab7daa4, later 15).
+        readonly property bool legsTaken: card.there && !card.isTask && part.legOf === null && card.event.recurring !== true && card.event.all_day !== true && card.event.cancelled !== true && card.event.declined !== true && (card.event.task || "") === ""
 
         function read() {
             part.shown = card.there && !card.isTask ? JSON.parse(card.sioul.appointmentView(card.event.key, card.event.start) || "{}") : null
@@ -328,11 +330,10 @@ CardFrame {
             const begin = new Date(end.getTime() - 25 * 60000)
             const clock = d => two(d.getHours()) + ":" + two(d.getMinutes())
             const day = d => d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate())
-            const line = card.sioul.textArgs("leg-before", JSON.stringify({ appointment: card.event.summary, time: clock(at) }))
-            legDialog.now().makeLeg(card.event.key, "before", line, day(begin), clock(begin), clock(end))
+            legDialog.now().makeLeg(card.event.key, card.event.summary, card.event.start, card.event.end, day(begin), clock(begin), clock(end))
         }
 
-        visible: part.shown !== null && ((part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0 || (part.shown.getting_there || []).length > 0 || (part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0 || part.legOf !== null || part.legsTaken)
+        visible: part.shown !== null && ((part.shown.set_aside || []).length > 0 || (part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0 || (part.shown.getting_there || []).length > 0 || (part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0 || part.legOf !== null || part.legsTaken)
         Layout.fillWidth: true
         spacing: 4
 
@@ -600,6 +601,57 @@ CardFrame {
                             TapHandler {
                                 cursorShape: Qt.PointingHandCursor
                                 onTapped: card.host.follow({ kind: "task", owner: also.modelData.uid, title: also.modelData.title })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // What it set aside by itself once over (its steps before it left open, its task): each
+        // can come back, and is never set aside again by it. Made only when there is one.
+        Loader {
+            objectName: "eventCardSetAside"
+            active: !!part.shown && (part.shown.set_aside || []).length > 0
+            visible: active
+            Layout.fillWidth: true
+
+            sourceComponent: Component {
+                ColumnLayout {
+                    spacing: 4
+
+                    Label {
+                        Layout.topMargin: 4
+                        text: card.sioul.text("appointment-set-aside")
+                        textFormat: Text.PlainText
+                        font.bold: true
+                        color: card.theme.text
+                    }
+                    Repeater {
+                        model: part.shown ? part.shown.set_aside || [] : []
+
+                        delegate: RowLayout {
+                            id: aside
+
+                            required property var modelData
+
+                            Layout.fillWidth: true
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: aside.modelData.title
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: card.theme.muted
+                            }
+                            Button {
+                                objectName: "eventCardBringBack"
+                                flat: true
+                                text: card.sioul.text("appointment-bring-back")
+                                onClicked: {
+                                    const answer = JSON.parse(card.sioul.bringBack(aside.modelData.uid) || "{}")
+                                    card.said(answer.error || "")
+                                    part.read()
+                                }
                             }
                         }
                     }

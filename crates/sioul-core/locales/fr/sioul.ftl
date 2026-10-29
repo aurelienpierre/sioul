@@ -6446,8 +6446,10 @@ appointment-bring = À emporter
 appointment-more = et { $n } de plus
 appointment-getting-there = Y aller
 appointment-coming-back = Au retour
-appointment-arrive = arrivée à { $time }
 appointment-also-tied = Aussi lié : { $title }
+appointment-set-aside = Mis de côté après lui
+appointment-bring-back = Reprendre
+task-brought-back = « { $title } » est de retour.
 appointment-add-leg = Ajouter un trajet…
 leg-before = Avant { $appointment } ({ $time })
 leg-after = Après { $appointment } ({ $time })
@@ -6456,10 +6458,9 @@ leg-unconfirmed = Déplacé avec le rendez-vous ; l’horaire n’a pas été 
 leg-untie = Le détacher du rendez-vous
 leg-untied = N’est plus lié à { $appointment }.
 leg-timetable = D’après un horaire
-leg-side-before = Avant
-leg-side-after = Après
 leg-made = { $leg }, avant { $appointment }.
 leg-made-after = { $leg }, après { $appointment }.
+leg-elsewhere = Dans { $calendar } : l’agenda du rendez-vous ne le prend pas.
 leg-repeating = Les trajets vont avec un rendez-vous à une heure : pas un rendez-vous qui se répète, ni un qui dure toute la journée.
 leg-times = Les heures du trajet ne se lisent pas.
 leg-gone = Son rendez-vous n’est pas ici.
@@ -6467,7 +6468,11 @@ legs-moved-with = Trajets déplacés avec lui : { $legs }.
 legs-unconfirmed = { $leg } (horaire non vérifié)
 legs-deleted-with = { $n ->
     [one] Événement supprimé, avec son trajet à venir.
-   *[other] Événement supprimé, avec ses { $countf } trajets à venir.
+   *[other] Événement supprimé, avec ses { $count } trajets à venir.
+}
+legs-kept-back = { $n ->
+    [one] Un trajet tenu à l’écart des agents n’est pas écrit ici : Sioul le remet en place à son prochain passage.
+   *[other] { $Count } trajets tenus à l’écart des agents ne sont pas écrits ici : Sioul les remet en place à son prochain passage.
 }
 agenda-show-legs = Chaque trajet comme un événement à part
 reminder-legs-unconfirmed = (horaire non vérifié)

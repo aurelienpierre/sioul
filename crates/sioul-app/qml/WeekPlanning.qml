@@ -595,11 +595,20 @@ ColumnLayout {
     function thingAt(p) {
         let found = null
         let behind = null
+        let leg = null
         for (let i = 0; i < things.count; i++) {
             const row = things.get(i)
             const box = planning.boxOf(row)
             if (p.x < box.x || p.x > box.x + box.width || p.y < box.y - 4 || p.y > box.y + box.height + 4)
                 continue
+            // A leg is a line in its appointment's lead: in the Week, a press there is the
+            // appointment's, never the leg's; in the Day, the leg's where nothing else is (review
+            // of ab7daa4, later 8).
+            if (row.kind === "leg") {
+                if (p.y >= box.y && p.y <= box.y + box.height && leg === null)
+                    leg = { row: row, index: i, part: "body" }
+                continue
+            }
             const inside = Math.max(4, Math.min(8, box.height / 3))
             let part = "body"
             if (row.kind === "night") {
@@ -618,7 +627,9 @@ ColumnLayout {
                 continue
             found = { row: row, index: i, part: part }
         }
-        return found || behind
+        if (leg !== null && planning.single && (found === null || found.row.itemId !== leg.row.itemId))
+            return leg
+        return found || leg || behind
     }
 
     // ---- The drag: a thing taken by the hand, where it would go, let go.

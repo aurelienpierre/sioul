@@ -242,6 +242,11 @@ pub struct Task {
     /// `X-SIOUL-ANCHOR:AFTER`): laid forward from the appointment's end, said
     /// under Coming back, never dropped when the appointment is over.
     pub after: bool,
+    /// Set aside by itself once its appointment was over (`pairs::closing`,
+    /// `X-SIOUL-SET-ASIDE:<the appointment's UID>`): that UID; "" for none.
+    pub set_aside: String,
+    /// Brought back since (`;BROUGHT-BACK=TRUE` on that line): never set aside again by that appointment.
+    pub brought_back: bool,
     /// Its list: name, "account/id", colour, and whether it can be changed.
     pub list: String,
     pub list_id: String,
@@ -638,6 +643,10 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
             crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
+            crate::pairs::SET_ASIDE => {
+                task.set_aside = value.trim().to_string();
+                task.brought_back = lines::param(line, "BROUGHT-BACK").is_some_and(|b| b.trim().eq_ignore_ascii_case("TRUE"));
+            }
             // A whole number; another program's decimal read to the nearest.
             SORT_ORDER => task.sort_order = value.trim().parse::<i64>().ok().or_else(|| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() < 9e15).map(|v| v.round() as i64)),
             "DTSTAMP" => stamp = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),

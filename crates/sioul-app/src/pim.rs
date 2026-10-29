@@ -505,7 +505,9 @@ pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, l
 
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
 pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, calendar: &str) -> Result<(), String> {
-    let saved = write_event_with(key, edit, calendar, &crate::work::loaded(shared).events)?;
+    // The events as last read, never a read of the stores here (review of ab7daa4, later 3).
+    let known = crate::work::loaded_known(shared);
+    let saved = write_event_with(key, edit, calendar, known.as_ref().map(|l| l.events.as_slice()).unwrap_or_default())?;
     for account in &saved.accounts {
         nudge(shared, account);
     }
@@ -712,8 +714,12 @@ pub(crate) struct Moved {
 /// what it wrote when a file fails), every file once. The files written, and
 /// the legs' names as the line says them.
 pub(crate) fn written_with_legs(shared: &Shared, path: &Path, before: &str, text: &str, zone: &TimeZone) -> Result<(Vec<sioul_core::agentwrites::FileChange>, Vec<String>), String> {
-    let events = crate::work::loaded(shared).events.clone();
-    let gesture = sioul_core::anchors::gesture(path, before, text, &events, zone);
+    // The events as last read (`loaded_known`), never a read of the stores on the window's
+    // thread: a leg made since the last read is followed by the next pass, as a move seen here
+    // (review of ab7daa4, later 3). What a drag reads: the file moved and its legs' files.
+    let known = crate::work::loaded_known(shared);
+    let events = known.as_ref().map(|l| l.events.as_slice()).unwrap_or_default();
+    let gesture = sioul_core::anchors::gesture(path, before, text, events, zone);
     let legs: Vec<String> = gesture.legs.iter().map(|(_, t)| sioul_core::anchors::moved_name(t, tr())).collect();
     let mut written = vec![(path.to_path_buf(), gesture.own)];
     written.extend(gesture.legs);
@@ -769,7 +775,8 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
         // Its legs to come go with it, under the same Undo (part E2); those over stay.
         let zone = TimeZone::system();
         let uid = std::fs::read_to_string(&path).ok().and_then(|t| agenda::event_ref(&t, &path.display().to_string(), &zone)).filter(|r| r.anchor.is_none()).map(|r| r.uid).unwrap_or_default();
-        let legs = if uid.is_empty() { Vec::new() } else { sioul_core::anchors::to_come(&uid, &crate::work::loaded(shared).events, Timestamp::now().as_second(), &zone) };
+        let known = crate::work::loaded_known(shared);
+        let legs = if uid.is_empty() { Vec::new() } else { sioul_core::anchors::to_come(&uid, known.as_ref().map(|l| l.events.as_slice()).unwrap_or_default(), Timestamp::now().as_second(), &zone) };
         if legs.is_empty() {
             mail::schedule_removal(qt, shared, &account, path, tr().text("undo-event-deleted", None));
         } else {
@@ -797,6 +804,18 @@ fn leg_calendar(appointment: &Collection) -> Option<Collection> {
     agenda::default_calendar().filter(|c| !google(c))
 }
 
+/// What a leg made says: before or after which appointment, and in which
+/// calendar when the appointment's own could not take it (the calendar for
+/// new events; review of ab7daa4, later 7).
+fn leg_made_line(side: sioul_core::anchors::Side, leg: &str, appointment: &str, own: Option<&Collection>, calendar: &Collection) -> String {
+    let word = if side == sioul_core::anchors::Side::Before { "leg-made" } else { "leg-made-after" };
+    let line = say(word, &[("leg", leg.to_string()), ("appointment", appointment.to_string())]);
+    if own.is_none_or(|c| c.dir != calendar.dir) {
+        return format!("{line} {}", say("leg-elsewhere", &[("calendar", calendar.label(&load_config(), tr()))]));
+    }
+    line
+}
+
 /// A leg added beside the appointment in `key` (part E5: "Add a ride or a
 /// walk…"): the event form `edit`, on `side` ("before", "after"), from a
 /// timetable or not; in the appointment's calendar and projects (the
@@ -815,11 +834,12 @@ pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &st
         let side = if side == "after" { sioul_core::anchors::Side::After } else { sioul_core::anchors::Side::Before };
         let projects = agenda::event_ref(&text, key, &zone).map(|r| r.projects).unwrap_or_default();
         let leg = sioul_core::anchors::new_leg(&edit, &appointment, &projects, side, timetable, &zone).map_err(|e| tr().text(&e, None))?;
-        let calendar = collection_of(&path).and_then(|c| leg_calendar(&c)).ok_or_else(|| tr().text("dav-no-calendar", None))?;
+        let own = collection_of(&path);
+        let calendar = own.as_ref().and_then(leg_calendar).ok_or_else(|| tr().text("dav-no-calendar", None))?;
         let files = sioul_core::composed::Change { made: vec![(agenda::new_path(&calendar), leg)], ..sioul_core::composed::Change::default() }.write()?;
         let named = agenda::edit_of_text(&text, &zone).map(|e| e.title).unwrap_or_default();
-        let word = if side == sioul_core::anchors::Side::Before { "leg-made" } else { "leg-made-after" };
-        crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line: say(word, &[("leg", edit.title.trim().to_string()), ("appointment", named)]), files });
+        let line = leg_made_line(side, edit.title.trim(), &named, own.as_ref(), &calendar);
+        crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line, files });
         Ok(edit)
     };
     match made() {
@@ -840,8 +860,8 @@ pub(crate) fn untie_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> Strin
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
         let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
         let zone = TimeZone::system();
-        let events = crate::work::loaded(shared).events.clone();
-        let appointment = sioul_core::anchors::parse(&text).and_then(|a| events.iter().find(|e| e.uid == a.appointment).map(|e| e.summary.clone())).unwrap_or_default();
+        let known = crate::work::loaded_known(shared);
+        let appointment = sioul_core::anchors::parse(&text).and_then(|a| known.as_ref()?.events.iter().find(|e| e.uid == a.appointment).map(|e| e.summary.clone())).unwrap_or_default();
         let Some(alone) = sioul_core::anchors::untied(&text) else { return Ok(()) };
         let files = sioul_core::composed::Change { written: vec![(path.clone(), alone)], ..sioul_core::composed::Change::default() }.write()?;
         let _ = zone;
@@ -1220,6 +1240,22 @@ mod tests {
         (calendar, doctor, bus)
     }
 
+    /// A leg made in the calendar for new events, the appointment's own not
+    /// taking it, says where it went; one made beside its appointment says
+    /// nothing more (review of ab7daa4, later 7).
+    #[test]
+    fn a_leg_made_elsewhere_says_where() {
+        let (own, _, _) = doctor_and_bus("legs-elsewhere");
+        let (other, _, _) = doctor_and_bus("legs-elsewhere-new");
+        let beside = leg_made_line(sioul_core::anchors::Side::Before, "Bus 24", "Doctor", Some(&own), &own);
+        assert_eq!(beside, say("leg-made", &[("leg", "Bus 24".into()), ("appointment", "Doctor".into())]));
+        let label = other.label(&load_config(), tr());
+        let elsewhere = leg_made_line(sioul_core::anchors::Side::After, "Walk home", "Doctor", Some(&own), &other);
+        assert!(elsewhere.starts_with(&say("leg-made-after", &[("leg", "Walk home".into()), ("appointment", "Doctor".into())])));
+        assert!(elsewhere.ends_with(&say("leg-elsewhere", &[("calendar", label.clone())])), "said where: {elsewhere}");
+        assert!(leg_made_line(sioul_core::anchors::Side::Before, "Bus 24", "Doctor", None, &other).contains(&label));
+    }
+
     /// Part E2: a drag of the appointment moves its legs in the same change, the
     /// line names them with their doubt, and one Undo puts every file back; a leg
     /// dragged by hand keeps its time, its distance taken again; the form moves
@@ -1228,8 +1264,16 @@ mod tests {
     fn a_drag_moves_the_legs_with_the_appointment_under_one_undo() {
         let (calendar, doctor, bus) = doctor_and_bus("legs-drag");
         let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
-        let shared = Shared::default();
         let at = |h: i8, m: i8| jiff::civil::date(2099, 10, 29).at(h, m, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
+        // Nothing read yet: a drag reads no store on the window's thread (review of ab7daa4, later 3);
+        // its legs are left to the next pass then.
+        let cold = Shared::default();
+        assert!(move_written(&cold, &doctor.display().to_string(), at(13, 0), at(13, 5), at(13, 35), false).unwrap().is_some());
+        assert!(cold.loaded.lock().unwrap().is_none(), "no read of the stores for a drag");
+        assert_eq!(std::fs::read_to_string(&bus).unwrap(), bus_before, "its leg left to the next pass");
+        std::fs::write(&doctor, &doctor_before).unwrap();
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
         let moved = move_written(&shared, &doctor.display().to_string(), at(13, 0), at(14, 0), at(14, 30), false).unwrap().unwrap();
         let zone = TimeZone::system();
         assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &zone), Some((at(13, 10), at(13, 35))), "the bus moved with it");

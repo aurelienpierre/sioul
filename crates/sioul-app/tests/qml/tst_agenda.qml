@@ -355,12 +355,25 @@ Item {
         function test_a_leg_is_a_quiet_line() {
             const page = makePage()
             page.mode = "day"
-            const monday = day(0, { timed: [placed("doctor", "event", root.monday, 840, 870, { when: "14:00 – 14:30" }, { line: "Leave at 13:10 · Bus 24" }), placed("bus", "leg", root.monday, 790, 815, { when: "13:10 – 13:35" }, { owner: "doctor", certainty: "unconfirmed" })] })
+            const monday = day(0, { timed: [placed("doctor", "event", root.monday, 840, 870, { when: "14:00 – 14:30" }, { line: "Leave at 13:10 · Bus 24", time: { type: "span", start: root.monday + 790 * 60, at: root.monday + 840 * 60, until: root.monday + 870 * 60, end: root.monday + 870 * 60 } }), placed("bus", "leg", root.monday, 790, 815, { when: "13:10 – 13:35" }, { owner: "doctor", certainty: "unconfirmed" })] })
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
             wait(50)
             const lines = root.all(page, o => o.objectName === "planning-leg" && o.visible)
             compare(lines.length, 1, "one quiet line")
             verify(lines[0].opacity < 0.5, "fainter while its timetable was not checked")
+            // A press on the leg's line: the leg's in the Day; in the Week, its appointment's,
+            // whose lead it lies in (review of ab7daa4, later 8).
+            const pressedOn = () => {
+                const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+                const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0, ""))
+                const thing = planning.thingAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 })
+                return thing ? thing.row.kind : ""
+            }
+            compare(pressedOn(), "leg", "the Day: the leg")
+            page.mode = "week"
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, day(1), day(2), day(3), day(4), day(5), day(6)] })
+            wait(50)
+            compare(pressedOn(), "event", "the Week: its appointment")
             // A phone's week: the leg in the appointment's line, no row of its own.
             const phone = makePage(412)
             phone.mode = "week"

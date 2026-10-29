@@ -188,6 +188,11 @@ impl Detail {
 /// repeating one; 0 asks for the next time it comes, else its last. As JSON;
 /// "{}" when it is gone, or while its deletion (or that time's) waits for Undo.
 pub(crate) fn event_card(shared: &Shared, key: &str, start: i64) -> String {
+    event_card_as(shared, key, start, &|| load_config().every_account().filter_map(|a| a.address.clone()).collect())
+}
+
+/// `event_card`, with `own` giving your addresses (read only when someone declined).
+fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<String>) -> String {
     let Some(path) = pim::ours(key) else { return "{}".into() };
     let Some(calendar) = pim::collection_of(&path) else { return "{}".into() };
     let (removed, skipped) = mail::hidden_pim(shared);
@@ -216,6 +221,10 @@ pub(crate) fn event_card(shared: &Shared, key: &str, start: i64) -> String {
         next.into_iter().collect()
     };
     agenda::mark_tasks(&mut found, &tasks_known(shared));
+    // Declined by you, as the agenda marks it: takes no leg (review of ab7daa4, later 15).
+    if found.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
+        agenda::mark_declined(&mut found, &own());
+    }
     let Some(o) = found.into_iter().next().filter(|o| !skipped.contains(&(path.clone(), o.start))) else { return "{}".into() };
     let item = agenda::items(std::slice::from_ref(&o), &zone, &|_| false).into_iter().next();
     let date = jiff::Timestamp::from_second(o.start).map_or_else(|_| Zoned::now().date(), |t| t.to_zoned(zone.clone()).date());
@@ -238,6 +247,7 @@ pub(crate) fn event_card(shared: &Shared, key: &str, start: i64) -> String {
         "color": o.color,
         "recurring": o.recurring,
         "cancelled": o.cancelled,
+        "declined": o.declined,
         "tentative": o.tentative,
         "read_only": o.read_only,
         "with_others": o.with_others,
@@ -1122,6 +1132,26 @@ mod tests {
         assert_eq!(moved["start"], later, "the time asked, where it went: {moved}");
         crate::mail::wait_to_remove(&shared, file.clone());
         assert_eq!(event_card(&shared, &key, third), "{}", "its deletion waits for Undo: no card");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An invitation you declined says so on its card, so that it offers no
+    /// leg; one declined by another guest does not (review of ab7daa4, later 15).
+    #[test]
+    fn an_invitation_you_declined_says_so_on_its_card() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Card declined", None, &["VEVENT"]).unwrap();
+        let file = calendar.dir.join("card-declined.ics");
+        // A hundred days ahead, its time asked: within the card's reach whatever the day.
+        let day = Zoned::now().date().checked_add(jiff::Span::new().days(100)).unwrap();
+        let start = day.at(9, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap();
+        let utc = |z: &Zoned| z.strftime("%Y%m%dT%H%M%SZ").to_string();
+        std::fs::write(&file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:card-declined\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Board review\r\nORGANIZER:mailto:chair@board.example\r\nATTENDEE;PARTSTAT=DECLINED:mailto:me@home.example\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:other@board.example\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(&start), utc(&start.checked_add(jiff::Span::new().hours(1)).unwrap()))).unwrap();
+        let (shared, key) = (Shared::default(), file.display().to_string());
+        let at = start.timestamp().as_second();
+        let card = |own: Vec<String>| -> serde_json::Value { serde_json::from_str(&event_card_as(&shared, &key, at, &|| own.clone())).unwrap() };
+        assert_eq!(card(vec!["Me@Home.example".into()])["declined"], true, "declined by you");
+        assert_eq!(card(vec!["other@board.example".into()])["declined"], false, "declined by someone else");
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
